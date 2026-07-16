@@ -291,7 +291,7 @@ export function GeneralPanel(props: {
 
 function ProductUpdates() {
   const update = useProductUpdate()
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const status = update.desktopStatus
   const serverStatus = update.serverStatus
   const isDesktop = () => update.surface === "desktop"
@@ -350,8 +350,8 @@ function ProductUpdates() {
         fallback={
           <div class="settings-update-status">
             <div class="settings-update-lines">
-              <span>{translateDescriptor(webVersionStatus(update.appVersion, update.serverVersion()), _)}</span>
-              <span>{translateDescriptor(serverUpdateStatusCopy(serverStatus()), _)}</span>
+              <span>{translateDescriptor(webVersionStatus(update.appVersion, update.serverVersion()), i18n())}</span>
+              <span>{translateDescriptor(serverUpdateStatusCopy(serverStatus()), i18n())}</span>
             </div>
             <Show when={serverStatus()?.capability === "managed"}>
               <div class="settings-update-actions">
@@ -381,7 +381,7 @@ function ProductUpdates() {
         }
       >
         <div class="settings-update-status">
-          <span>{translateDescriptor(desktopUpdateStatusCopy(status()), _)}</span>
+          <span>{translateDescriptor(desktopUpdateStatusCopy(status()), i18n())}</span>
           <div class="settings-update-actions">
             <Button
               type="button"
@@ -411,7 +411,9 @@ function ProductUpdates() {
                 disabled={busy() || phase() === "downloading"}
                 onClick={() => void update.installDesktopUpdate()}
               >
-                {phase() === "downloading" ? translateDescriptor(downloadLabel(status()), _) : _(copy.restartToUpdate)}
+                {phase() === "downloading"
+                  ? translateDescriptor(downloadLabel(status()), i18n())
+                  : _(copy.restartToUpdate)}
               </Button>
             </Show>
           </div>

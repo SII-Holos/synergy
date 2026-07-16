@@ -26,7 +26,7 @@ const canonicalDomains = [
 describe("settings catalog", () => {
   test("defines the built-in sections in the requested order", () => {
     expect(BUILTIN_SETTINGS_SECTIONS.map((section) => section.id)).toEqual([...BUILTIN_SETTINGS_IDS])
-    expect(SETTINGS_GROUP_ORDER).toEqual(["Personal", "Core", "Library", "Integrations", "Safety", "Runtime", "System"])
+    expect(SETTINGS_GROUP_ORDER).toEqual(["personal", "core", "library", "integrations", "safety", "runtime", "system"])
   })
 
   test("visible built-in labels do not use ampersand pairing", () => {
@@ -99,8 +99,8 @@ describe("settings catalog", () => {
   })
 
   test("unknown groups sort after built-ins for plugin compatibility", () => {
-    expect(settingsGroupOrder("Personal")).toBe(0)
-    expect(settingsGroupOrder("Plugin Group")).toBeGreaterThan(settingsGroupOrder("System"))
+    expect(settingsGroupOrder("personal")).toBe(0)
+    expect(settingsGroupOrder("plugin:Plugin Group")).toBeGreaterThan(settingsGroupOrder("system"))
   })
 })
 

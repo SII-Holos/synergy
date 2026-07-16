@@ -147,6 +147,22 @@ describe("createLocaleController", () => {
       expect(ctrl.pendingPreference()).toBeUndefined()
     })
 
+    test("rejects invalid runtime preference values without activation or persistence", async () => {
+      const store = new Map<string, string>()
+      const ctrl = createLocaleController(makeStorage(store))
+      let activations = 0
+      ctrl.setActivation(async () => {
+        activations += 1
+      })
+
+      const ok = await ctrl.setPreference("fr" as Parameters<typeof ctrl.setPreference>[0])
+
+      expect(ok).toBe(false)
+      expect(activations).toBe(0)
+      expect(ctrl.preference()).toBe("system")
+      expect(store.has("synergy-locale")).toBe(false)
+    })
+
     test("rapid en→zh→en only last generation commits", async () => {
       const ctrl = createLocaleController(makeStorage())
       ctrl.setActivation(async (_locale) => {})
@@ -209,6 +225,21 @@ describe("createLocaleController", () => {
       await ctrl.reconcileGlobalPreference("zh-CN")
       await prefPromise
       expect(ctrl.preference()).toBe("en")
+    })
+
+    test("ignores invalid runtime global preference values", async () => {
+      const store = new Map<string, string>()
+      const ctrl = createLocaleController(makeStorage(store))
+      let activations = 0
+      ctrl.setActivation(async () => {
+        activations += 1
+      })
+
+      await ctrl.reconcileGlobalPreference("fr" as Parameters<typeof ctrl.reconcileGlobalPreference>[0])
+
+      expect(activations).toBe(0)
+      expect(ctrl.preference()).toBe("system")
+      expect(store.has("synergy-locale")).toBe(false)
     })
 
     test("undefined clears global-config back to system", async () => {

@@ -7,8 +7,8 @@ import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/syne
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { subagentFooterSessionStatus } from "./subagent-session-footer-model"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
-import type { MessageDescriptor } from "@lingui/core"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
 
@@ -19,10 +19,6 @@ function formatDuration(startedAt: number, completedAt?: number): string {
   const minutes = Math.floor(seconds / 60)
   const remaining = seconds % 60
   return `${minutes}m ${remaining}s`
-}
-
-function translateDescriptor(descriptor: MessageDescriptor, i18n: ReturnType<typeof useLocale>["i18n"]): string {
-  return i18n._(descriptor)
 }
 
 function cleanPreview(input?: string): string | undefined {

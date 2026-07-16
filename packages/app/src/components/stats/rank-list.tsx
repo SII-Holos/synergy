@@ -1,10 +1,10 @@
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import type { RankingMetric, RankingRow } from "./model"
 import { formatCompact, formatCost } from "./use-stats"
 import { S } from "./stats-i18n"
-import type { MessageDescriptor } from "@lingui/core"
 
 type LegacyRankItem = {
   id: string
@@ -99,10 +99,6 @@ function trimDecimal(value: number, digits = 1) {
 function formatCount(value: number, fmt: (n: number) => string) {
   if (Math.abs(value) >= 100_000) return formatCompact(value)
   return fmt(Math.round(value))
-}
-
-function translateDescriptor(descriptor: MessageDescriptor, i18n: ReturnType<typeof useLocale>["i18n"]): string {
-  return i18n._(descriptor)
 }
 
 function metricLabel(metric: RankingMetric, i18n: ReturnType<typeof useLocale>["i18n"]): string {

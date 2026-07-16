@@ -1,4 +1,3 @@
-import type { MessageDescriptor } from "@lingui/core"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
 import {
@@ -90,6 +89,7 @@ import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-bluepr
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 
 function sanitizePromptHistory(value: unknown) {
@@ -156,10 +156,6 @@ function WorkflowChip(props: {
       </button>
     </Tooltip>
   )
-}
-
-function translateDescriptor(descriptor: MessageDescriptor, i18n: ReturnType<typeof useLocale>["i18n"]): string {
-  return i18n._(descriptor)
 }
 
 export const PromptInput: Component<PromptInputProps> = (props) => {

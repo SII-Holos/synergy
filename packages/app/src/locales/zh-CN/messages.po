@@ -1731,12 +1731,12 @@ msgstr "错误详情"
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.mcpFailed"
-msgstr "MCP 服务器 \"{name}\" 失败。注意，synergy 尚不支持 MCP 身份验证。"
+msgstr "MCP 服务器“{name}”失败。请检查服务器配置、身份验证状态和连接详细信息。"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.modelCheckConfig"
-msgstr "请检查配置（synergy.json）中的 provider/model 名称"
+msgstr "请检查模型和提供商配置中的 provider/model 名称"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

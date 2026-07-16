@@ -8,8 +8,8 @@ import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/clien
 import { getAgentVisual } from "@/components/agent-visual"
 import { resolveRuntimeIconState } from "@/components/status-bar"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
-import type { MessageDescriptor } from "@lingui/core"
 import "./subagent-dock.css"
 
 type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
@@ -26,10 +26,6 @@ function formatElapsed(startedAt: number): string {
   const minutes = Math.floor(seconds / 60)
   const remaining = seconds % 60
   return `${minutes}m ${remaining}s`
-}
-
-function translateDescriptor(descriptor: MessageDescriptor, i18n: ReturnType<typeof useLocale>["i18n"]): string {
-  return i18n._(descriptor)
 }
 
 interface SubagentAvatarProps {

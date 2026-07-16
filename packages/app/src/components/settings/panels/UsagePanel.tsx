@@ -299,10 +299,10 @@ function UsageProviderPanel(props: {
   environment?: string[]
   onConnect: () => void
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const { fmt } = useLocale()
   const needsAction = createMemo(() => providerNeedsAction(props.health, props.snapshot))
-  const badge = createMemo(() => translateDescriptor(providerUsageStatusLabel(props.health, props.snapshot), _))
+  const badge = createMemo(() => translateDescriptor(providerUsageStatusLabel(props.health, props.snapshot), i18n()))
   return (
     <div class="usage-provider-panel">
       <div class="usage-provider-panel-head">
@@ -322,10 +322,10 @@ function UsageProviderPanel(props: {
         <div class="usage-warning-row">
           <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
           <span>
-            {translateDescriptor(providerRecoveryCopy(props.providerName, props.health, props.environment), _)}
+            {translateDescriptor(providerRecoveryCopy(props.providerName, props.health, props.environment), i18n())}
           </span>
           <Button type="button" variant="secondary" size="small" onClick={props.onConnect}>
-            {translateDescriptor(providerRecoveryActionLabel(props.health), _)}
+            {translateDescriptor(providerRecoveryActionLabel(props.health), i18n())}
           </Button>
         </div>
       </Show>

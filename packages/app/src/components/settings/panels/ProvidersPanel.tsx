@@ -93,7 +93,7 @@ export function ProvidersPanel(props: {
   authMethods: ProviderAuthResponse
   providerFocusID?: string
 }) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const [query, setQuery] = createSignal("")
   const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
 
@@ -134,7 +134,7 @@ export function ProvidersPanel(props: {
   })
 
   const statusLabel = (provider: ProviderConnectionSummary) =>
-    translateDescriptor(providerStatusLabel(provider.health, provider.availability), _)
+    translateDescriptor(providerStatusLabel(provider.health, provider.availability), i18n())
 
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
@@ -232,7 +232,7 @@ export function ProvidersPanel(props: {
                     <span>
                       {translateDescriptor(
                         providerRecoveryCopy(provider().name, provider().health, provider().profile?.environment),
-                        _,
+                        i18n(),
                       )}
                     </span>
                   </div>
@@ -242,7 +242,7 @@ export function ProvidersPanel(props: {
                   <div>
                     <div class="providers-connect-title">
                       {providerNeedsAction(provider().health)
-                        ? translateDescriptor(providerRecoveryActionLabel(provider().health), _)
+                        ? translateDescriptor(providerRecoveryActionLabel(provider().health), i18n())
                         : provider().connected
                           ? _(accountTab)
                           : _(connectTab)}

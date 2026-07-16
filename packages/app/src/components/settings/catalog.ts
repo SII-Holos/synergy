@@ -15,9 +15,9 @@ const SETTINGS_GROUP_COPY = {
   system: { id: "settings.catalog.group.system", message: "System" },
 } satisfies Record<SettingsGroupKey, MessageDescriptor>
 
-export const SETTINGS_GROUP_ORDER = SETTINGS_GROUP_KEYS.map((key) => defaultMessage(SETTINGS_GROUP_COPY[key]))
+export const SETTINGS_GROUP_ORDER: readonly SettingsGroupKey[] = SETTINGS_GROUP_KEYS
 
-export type SettingsGroup = (typeof SETTINGS_GROUP_ORDER)[number] | string
+export type SettingsGroup = string
 
 export const BUILTIN_SETTINGS_IDS = [
   "account",
@@ -64,6 +64,7 @@ export type SettingsCatalogSection = {
   id: BuiltinSettingsId
   label: string
   group: SettingsGroup
+  groupKey: SettingsGroupKey
   order: number
   iconToken: SemanticIconTokenName
   description: string
@@ -482,6 +483,7 @@ function section(
     id,
     label: defaultMessage(copy.label),
     group: defaultMessage(copy.group),
+    groupKey,
     order,
     iconToken,
     description: defaultMessage(copy.description),
@@ -559,7 +561,7 @@ export function isBuiltinSettingsId(id: string): id is BuiltinSettingsId {
   return (BUILTIN_SETTINGS_IDS as readonly string[]).includes(id)
 }
 
-export function settingsGroupOrder(group: string): number {
-  const index = SETTINGS_GROUP_ORDER.indexOf(group)
+export function settingsGroupOrder(groupKey: string): number {
+  const index = SETTINGS_GROUP_ORDER.indexOf(groupKey as SettingsGroupKey)
   return index === -1 ? SETTINGS_GROUP_ORDER.length + 1 : index
 }

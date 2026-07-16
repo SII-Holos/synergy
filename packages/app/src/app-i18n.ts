@@ -46,7 +46,8 @@ export const AP = {
   errorVersionLabel: { id: "app.error.versionLabel", message: "Version: {version}" },
   errorMCPFailed: {
     id: "app.error.mcpFailed",
-    message: 'MCP server "{name}" failed. Note, synergy does not support MCP authentication yet.',
+    message:
+      'MCP server "{name}" failed. Check the server configuration, authentication state, and connection details.',
   },
   errorProviderAuth: {
     id: "app.error.providerAuth",
@@ -62,7 +63,7 @@ export const AP = {
   },
   errorModelCheckConfig: {
     id: "app.error.modelCheckConfig",
-    message: "Check your config (synergy.json) provider/model names",
+    message: "Check your Models and Providers configuration for provider/model names",
   },
   errorProviderInit: {
     id: "app.error.providerInit",

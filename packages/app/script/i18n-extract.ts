@@ -1,4 +1,5 @@
 #!/usr/bin/env bun
+import { decodePoString } from "./po-string"
 
 /**
  * AST-based deterministic extractor for Lingui non-macro runtime descriptors.
@@ -458,10 +459,6 @@ export function extractFromFile(sourceFile: ts.SourceFile): {
 
   visit(sourceFile)
   return { entries, errors }
-}
-
-function decodePoString(value: string): string {
-  return JSON.parse(`"${value}"`) as string
 }
 
 export function readExistingPo(root: string, locale: string): Map<string, string> {

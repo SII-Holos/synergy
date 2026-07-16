@@ -70,6 +70,7 @@ export function createLocaleController(
   }
 
   async function setPreference(pref: LocalePreference): Promise<boolean> {
+    if (!isValidPreference(pref)) return false
     const ticket = ++ticketId
     const targetLocale = deriveActiveLocale(pref, navigatorLanguages)
 
@@ -96,6 +97,7 @@ export function createLocaleController(
 
   async function reconcileGlobalPreference(pref: LocalePreference | undefined): Promise<void> {
     const effectivePreference = pref ?? "system"
+    if (!isValidPreference(effectivePreference)) return
     const authoritativeSource: LocaleSource = pref === undefined ? "system" : "global-config"
     const pending = pendingPreference()
 

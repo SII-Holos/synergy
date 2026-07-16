@@ -153,7 +153,7 @@ export function SettingsDialog(props: DialogSettingsProps) {
 }
 
 export function SettingsPanel(props: SettingsPanelProps) {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const dialog = useDialog()
   const confirm = useConfirm()
   const globalSDK = useGlobalSDK()
@@ -410,8 +410,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
       const failure = configFileOpenFailure(error, filepath)
       showToast({
         type: "error",
-        title: translateDescriptor(failure.title, _),
-        description: translateDescriptor(failure.description, _),
+        title: translateDescriptor(failure.title, i18n()),
+        description: translateDescriptor(failure.description, i18n()),
       })
     } finally {
       setOpeningDomain(undefined)

@@ -2,6 +2,7 @@
 
 import { readdir } from "node:fs/promises"
 import path from "node:path"
+import { decodePoString } from "./po-string"
 
 const appDir = path.resolve(import.meta.dir, "..")
 const repositoryRoot = path.resolve(appDir, "../..")
@@ -10,10 +11,6 @@ const catalogsRoot = path.join(appDir, "src/locales")
 export function changedCatalogPaths(before: ReadonlyMap<string, string>, after: ReadonlyMap<string, string>): string[] {
   const paths = new Set([...before.keys(), ...after.keys()])
   return [...paths].filter((file) => before.get(file) !== after.get(file)).toSorted()
-}
-
-function decodePoString(value: string): string {
-  return JSON.parse(`"${value}"`) as string
 }
 
 function catalogTranslations(catalog: string): Map<string, string> {

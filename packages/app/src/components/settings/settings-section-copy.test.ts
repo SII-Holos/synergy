@@ -56,7 +56,7 @@ describe("settings section localization", () => {
     const groupKey = settingsSectionGroupKey(localized)
 
     expect(localized.group).toBe("核心")
-    expect(groupKey).toBe("Core")
+    expect(groupKey).toBe("core")
     expect(settingsGroupOrder(groupKey)).toBe(1)
   })
 
@@ -64,5 +64,6 @@ describe("settings section localization", () => {
     const i18n = setupI18n({ locale: "zh-CN" })
     i18n.loadAndActivate({ locale: "zh-CN", messages: {} })
     expect(localizeSettingsSection(plugin, (descriptor: MessageDescriptor) => i18n._(descriptor))).toBe(plugin)
+    expect(settingsSectionGroupKey(plugin)).toBe("plugin:Plugin Group")
   })
 })

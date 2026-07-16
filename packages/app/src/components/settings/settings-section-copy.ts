@@ -23,6 +23,6 @@ export function localizeSettingsSection<T extends SettingsSection>(
 }
 
 export function settingsSectionGroupKey(section: SettingsSection): string {
-  if (section.pluginId || !isBuiltinSettingsId(section.id)) return section.group
-  return getBuiltinSettingsSection(section.id)?.group ?? section.group
+  if (section.pluginId || !isBuiltinSettingsId(section.id)) return `plugin:${section.group || "Plugins"}`
+  return getBuiltinSettingsSection(section.id)?.groupKey ?? `plugin:${section.group || "Plugins"}`
 }

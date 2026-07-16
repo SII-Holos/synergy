@@ -42,7 +42,7 @@ function formatInitError(error: InitError): string {
   const data = error.data
   switch (error.name) {
     case "MCPFailed":
-      return `MCP server "${data.name}" failed. Note, synergy does not support MCP authentication yet.`
+      return `MCP server "${data.name}" failed. Check the server configuration, authentication state, and connection details.`
     case "ProviderAuthError": {
       const providerID = typeof data.providerID === "string" ? data.providerID : "unknown"
       const message = typeof data.message === "string" ? data.message : safeJson(data.message)
@@ -75,7 +75,7 @@ function formatInitError(error: InitError): string {
       return [
         `Model not found: ${providerID}/${modelID}`,
         ...(Array.isArray(suggestions) && suggestions.length ? ["Did you mean: " + suggestions.join(", ")] : []),
-        `Check your config (synergy.json) provider/model names`,
+        `Check your Models and Providers configuration for provider/model names`,
       ].join("\n")
     }
     case "ProviderInitError": {

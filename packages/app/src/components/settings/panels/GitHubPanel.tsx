@@ -57,7 +57,7 @@ const envConnectedDescription = {
 }
 
 export function GitHubPanel() {
-  const { _ } = useLingui()
+  const { _, i18n } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const [status, { refetch }] = createResource(async () => {
@@ -80,7 +80,9 @@ export function GitHubPanel() {
   })
   const needsAction = createMemo(() => providerNeedsAction(effectiveHealth()))
   const statusLabel = createMemo(() =>
-    needsAction() ? translateDescriptor(providerStatusLabel(effectiveHealth()), _) : githubStatusLabel(status(), _),
+    needsAction()
+      ? translateDescriptor(providerStatusLabel(effectiveHealth()), i18n())
+      : githubStatusLabel(status(), _),
   )
 
   async function refreshStatus() {
@@ -129,7 +131,10 @@ export function GitHubPanel() {
           <div class="providers-auth-warning" role="status">
             <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
             <span>
-              {translateDescriptor(providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"]), _)}
+              {translateDescriptor(
+                providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"]),
+                i18n(),
+              )}
             </span>
           </div>
         </SettingsSection>
