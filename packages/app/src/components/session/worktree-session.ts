@@ -75,14 +75,14 @@ function workspaceStepForSelection(
 ): SessionStartupWorkspaceStep {
   return selection.mode === "create"
     ? {
-        label: S.worktreeStepCreateCheckout.message,
-        activeDetail: S.worktreeDetailPreparingWorktree.message,
-        completeDetail: S.worktreeDetailWorkspaceSetupComplete.message,
+        label: S.worktreeStepCreateCheckout,
+        activeDetail: S.worktreeDetailPreparingWorktree,
+        completeDetail: S.worktreeDetailWorkspaceSetupComplete,
       }
     : {
-        label: S.worktreeStepBindWorktree.message,
-        activeDetail: S.worktreeDetailUsingCheckout.message,
-        completeDetail: S.worktreeDetailWorkspaceSetupComplete.message,
+        label: S.worktreeStepBindWorktree,
+        activeDetail: S.worktreeDetailUsingCheckout,
+        completeDetail: S.worktreeDetailWorkspaceSetupComplete,
       }
 }
 
@@ -93,13 +93,13 @@ export function createWorkspaceTransitionLoadingProgress(
     return {
       kind: "leave-worktree",
       phase: "loading",
-      title: "Leaving worktree",
-      description: "Returning this session to the main checkout.",
+      title: S.worktreeTitleLeaving,
+      description: S.worktreeDescLeaving,
       steps: [
         {
           id: "leave",
-          label: "Return to main checkout",
-          detail: "Updating this session workspace.",
+          label: S.worktreeStepReturnCheckout,
+          detail: S.worktreeDetailUpdatingWorkspace,
           state: "active",
         },
       ],
@@ -109,13 +109,13 @@ export function createWorkspaceTransitionLoadingProgress(
   return {
     kind: "enter-worktree",
     phase: "loading",
-    title: "Moving session to worktree",
-    description: "Creating an isolated checkout and binding this session to it.",
+    title: S.worktreeTitleMoving,
+    description: S.worktreeDescMoving,
     steps: [
       {
         id: "enter",
-        label: "Create and bind checkout",
-        detail: "Preparing the worktree and updating this session workspace.",
+        label: S.worktreeStepCreateBind,
+        detail: S.worktreeDetailPreparingWorktreeBind,
         state: "active",
       },
     ],
@@ -124,19 +124,19 @@ export function createWorkspaceTransitionLoadingProgress(
 
 export function createWorkspaceTransitionSuccessProgress(input: {
   operation: "enter" | "leave"
-  description?: string
+  description?: SessionTransitionProgress["description"]
 }): SessionTransitionProgress {
   if (input.operation === "leave") {
     return {
       kind: "leave-worktree",
       phase: "success",
-      title: "Main checkout active",
-      description: input.description ?? "This session now runs from the main checkout. The worktree remains available.",
+      title: S.worktreeTitleMainActive,
+      description: input.description ?? S.worktreeDescMainActive,
       steps: [
         {
           id: "leave",
-          label: "Return to main checkout",
-          detail: "Session workspace updated.",
+          label: S.worktreeStepReturnCheckout,
+          detail: S.worktreeDetailWorkspaceUpdated,
           state: "complete",
         },
       ],
@@ -146,13 +146,13 @@ export function createWorkspaceTransitionSuccessProgress(input: {
   return {
     kind: "enter-worktree",
     phase: "success",
-    title: "Worktree active",
-    description: input.description ?? "This session now runs in the isolated checkout.",
+    title: S.worktreeTitleWorktreeActive,
+    description: input.description ?? S.worktreeDescWorktreeActive,
     steps: [
       {
         id: "enter",
-        label: "Create and bind checkout",
-        detail: "Session workspace updated.",
+        label: S.worktreeStepCreateBind,
+        detail: S.worktreeDetailWorkspaceUpdated,
         state: "complete",
       },
     ],
@@ -166,7 +166,7 @@ export function createWorkspaceTransitionErrorProgress(input: {
   return {
     kind: input.operation === "leave" ? "leave-worktree" : "enter-worktree",
     phase: "error",
-    title: input.operation === "leave" ? "Leave worktree failed" : "Move to worktree failed",
+    title: input.operation === "leave" ? S.worktreeTitleLeaveFailed : S.worktreeTitleMoveFailed,
     description: input.message,
     steps: [],
   }
@@ -179,8 +179,8 @@ export function createNewSessionWorkspaceProgress(input: {
   return {
     kind: "new-worktree-session",
     phase: "loading",
-    title: "Starting worktree session",
-    description: "Preparing the workspace and submitting your first message.",
+    title: S.worktreeTitleStarting,
+    description: S.worktreeDescStarting,
     steps: createSessionStartupSteps({
       stage: input.stage,
       workspace: workspaceStepForSelection(input.selection),
@@ -194,8 +194,8 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
   return {
     kind: "new-worktree-session",
     phase: "success",
-    title: "Worktree session request accepted",
-    description: "The workspace is ready and your first message is queued for processing.",
+    title: S.worktreeTitleStarted,
+    description: S.worktreeDescStarted,
     steps: createSessionStartupSteps({
       stage: "complete",
       workspace: workspaceStepForSelection(input.selection),
@@ -204,7 +204,7 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
 }
 
 export function createNewSessionWorkspaceErrorProgress(input: {
-  title: string
+  title: SessionTransitionProgress["title"]
   message: string
 }): SessionTransitionProgress {
   return {

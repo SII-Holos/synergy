@@ -414,6 +414,22 @@ export const S = {
   worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
   worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
 
+  // session-transition-card.tsx — generic transition card
+  transitionCardDismissAria: { id: "session.transition.card.dismissAria", message: "Dismiss session progress" },
+  transitionCardRetry: { id: "session.transition.card.retry", message: "Retry" },
+
+  // session-transition-progress.ts — general session startup factory
+  transitionStepPrepareSession: { id: "session.transition.step.prepareSession", message: "Prepare session" },
+  transitionStepSubmitMessage: { id: "session.transition.step.submitMessage", message: "Submit message" },
+  transitionTitleStarting: { id: "session.transition.title.starting", message: "Starting session" },
+  transitionDescSubmitting: { id: "session.transition.desc.submitting", message: "Submitting your first message." },
+  transitionDetailMessageQueued: { id: "session.transition.detail.messageQueued", message: "First message queued." },
+  transitionTitleAccepted: { id: "session.transition.title.accepted", message: "Session request accepted" },
+  transitionDescQueued: {
+    id: "session.transition.desc.queued",
+    message: "Your first message is queued for processing.",
+  },
+
   // worktree-transition-dialog.tsx
   worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },
   worktreeDialogDesc: {
@@ -500,12 +516,12 @@ export const S = {
   worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting worktree session" },
   worktreeDescStarting: {
     id: "session.worktree.desc.starting",
-    message: "Preparing the workspace and sending your first prompt.",
+    message: "Preparing the workspace and submitting your first message.",
   },
-  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree session started" },
+  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree session request accepted" },
   worktreeDescStarted: {
     id: "session.worktree.desc.started",
-    message: "The session is ready and your prompt was sent.",
+    message: "The workspace is ready and your first message is queued for processing.",
   },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },

@@ -2,7 +2,13 @@ import { Show, createEffect, createSignal, onCleanup } from "solid-js"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { sessionTransitionPresentation, type SessionTransitionProgress } from "./session-transition-progress"
+import { useLocale } from "@/context/locale"
+import {
+  sessionTransitionPresentation,
+  translateSessionTransitionCopy,
+  type SessionTransitionProgress,
+} from "./session-transition-progress"
+import { S } from "./session-i18n"
 import {
   createSessionTransitionLifecycle,
   type SessionTransitionTimerDriver,
@@ -20,6 +26,9 @@ export function SessionTransitionCard(props: {
   onRetry?: () => void
   onDismiss?: () => void
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
+
   const [exiting, setExiting] = createSignal(false)
   let lifecycle: ReturnType<typeof createSessionTransitionLifecycle> | undefined
 
@@ -65,9 +74,13 @@ export function SessionTransitionCard(props: {
           <Icon name={presentation().icon} size="small" />
         </span>
         <div class="session-transition-card-heading">
-          <span class="session-transition-card-kicker">{presentation().kicker}</span>
-          <span class="session-transition-card-title">{props.progress.title}</span>
-          <span class="session-transition-card-description">{props.progress.description}</span>
+          <span class="session-transition-card-kicker">{i18n._(presentation().kicker)}</span>
+          <span class="session-transition-card-title">
+            {translateSessionTransitionCopy(props.progress.title, i18n)}
+          </span>
+          <span class="session-transition-card-description">
+            {translateSessionTransitionCopy(props.progress.description, i18n)}
+          </span>
         </div>
         <Show when={props.onDismiss}>
           <Button
@@ -76,8 +89,8 @@ export function SessionTransitionCard(props: {
             icon={getSemanticIcon("action.close")}
             class="session-transition-card-dismiss"
             onClick={handleDismiss}
-            aria-label="Dismiss session progress"
-            title="Dismiss"
+            aria-label={_(S.transitionCardDismissAria)}
+            title={_(S.worktreeCardDismissTitle)}
           />
         </Show>
       </div>
@@ -88,7 +101,7 @@ export function SessionTransitionCard(props: {
         {(retry) => (
           <div class="session-transition-card-actions">
             <Button variant="primary" size="small" onClick={retry()}>
-              Retry
+              {_(S.transitionCardRetry)}
             </Button>
           </div>
         )}

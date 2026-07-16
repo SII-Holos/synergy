@@ -5,7 +5,7 @@ import { Markdown } from "./markdown"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Collapsible } from "./collapsible"
-import { resolveCompactionCardPresentation } from "./compaction-card-model"
+import { COMPACTION_CARD_DESC, resolveCompactionCardPresentation } from "./compaction-card-model"
 
 import "./compaction-card.css"
 
@@ -27,14 +27,6 @@ function asCompactionRecovery(part: PartType | undefined): CompactionRecoveryPay
   if (!part) return undefined
   if ((part as unknown as CompactionRecoveryPayload).type !== "compaction_recovery") return undefined
   return part as unknown as CompactionRecoveryPayload
-}
-
-const compactionCompleteDescriptor = { id: "ui.compaction.complete", message: "Context compressed" }
-const compactionRunningDescriptor = { id: "ui.compaction.running", message: "Compressing context..." }
-const compactionSummaryReadyDescriptor = { id: "ui.compaction.summaryReady", message: "Summary ready" }
-const compactionPreparingDescriptor = {
-  id: "ui.compaction.preparing",
-  message: "Preparing a compact continuation summary",
 }
 const compactionMechanicalWarningDescriptor = {
   id: "ui.compaction.mechanicalWarning",
@@ -60,10 +52,12 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
     return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   })
   const title = createMemo(() =>
-    presentation().status === "running" ? _(compactionRunningDescriptor) : _(compactionCompleteDescriptor),
+    presentation().status === "running" ? _(COMPACTION_CARD_DESC.runningTitle) : _(COMPACTION_CARD_DESC.completeTitle),
   )
   const description = createMemo(() =>
-    presentation().status === "running" ? _(compactionPreparingDescriptor) : _(compactionSummaryReadyDescriptor),
+    presentation().status === "running"
+      ? _(COMPACTION_CARD_DESC.preparingDescription)
+      : _(COMPACTION_CARD_DESC.summaryReadyDescription),
   )
   const canExpand = createMemo(() => presentation().canExpand)
   const open = createMemo(() => canExpand() && expanded())
