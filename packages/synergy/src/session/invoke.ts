@@ -322,10 +322,6 @@ export namespace SessionInvoke {
         const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
-          // Pre-jobs (compaction especially) can rewrite history in ways the
-          // incremental cache maintenance does not model; drop the cache so the
-          // next step re-reads authoritative state (#350 D2, R2).
-          SessionMessageCache.invalidate(sessionID)
           if (result === "stop") break
           if (result === "continue") {
             // A processed compaction re-arms the emergency-compaction fallback so
@@ -844,7 +840,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           turnDeadline.abort(deadlineError)
           rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
-        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const onSessionAbort = () => clearTimeout(turnTimer)
+        abort.addEventListener("abort", onSessionAbort, { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
         // Race against the deadline instead of relying on abort propagation:
@@ -910,9 +907,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             turnSpanEnded = true
           }
         } finally {
+          const turnTimedOut = turnDeadline.signal.aborted
           clearTimeout(turnTimer)
+          abort.removeEventListener("abort", onSessionAbort)
+          turnDeadline.abort()
           processTimer.stop()
-          releaseTurnReferences(!turnDeadline.signal.aborted)
+          releaseTurnReferences(!turnTimedOut)
           if (!turnSpanEnded) {
             ObservabilitySpans.end(turnSpan, {
               attributes: {

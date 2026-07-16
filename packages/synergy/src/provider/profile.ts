@@ -90,6 +90,8 @@ export namespace ProviderProfile {
     id: string
     rank?: number
     model?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
   }
 
   export interface Profile {
@@ -109,6 +111,7 @@ export namespace ProviderProfile {
     aiSdkPackage?: string
     modelFactory?: ModelFactory
     modelsDevProviderID?: string
+    sourceModelProviderID?: string
     fallbackModels?: string[]
     defaultAuxModel?: string
     healthCheck?: HealthCheck

@@ -8,6 +8,7 @@ import { registerBuiltinProviderProfiles } from "./builtin"
 import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
@@ -87,6 +88,8 @@ export namespace ProviderCatalog {
     profile?: ProviderProfile.Profile
     npm: string
     patch?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
   }): ModelsDev.Model {
     const base = input.sourceModel
       ? {
@@ -101,6 +104,21 @@ export namespace ProviderCatalog {
         }
       : fallbackModel(input.provider, input.modelID)
     const model = input.patch ? (mergeDeep(base, input.patch) as ModelsDev.Model) : base
+    if (input.inputImage !== undefined) {
+      const modalities = model.modalities ?? { input: ["text"], output: ["text"] }
+      const hasImage = modalities.input.includes("image")
+      model.modalities = {
+        ...modalities,
+        input: input.inputImage
+          ? hasImage
+            ? modalities.input
+            : [...modalities.input, "image"]
+          : modalities.input.filter((modality) => modality !== "image"),
+      }
+    }
+    if (input.supportedImageMediaTypes !== undefined) {
+      model.supported_image_media_types = normalizeImageMediaTypes(input.supportedImageMediaTypes) ?? []
+    }
     model.id = input.modelID
     model.provider = {
       ...(model.provider ?? {}),
@@ -127,6 +145,7 @@ export namespace ProviderCatalog {
   ): ModelsDev.Provider {
     const sourceID = profile.modelsDevProviderID ?? profile.id
     const source = modelsDev[sourceID]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const sourceModelIDs = Object.keys(source?.models ?? {})
     const mappedProvider = sourceID !== profile.id
     const modelIDs =
@@ -149,7 +168,7 @@ export namespace ProviderCatalog {
     }
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     for (const modelID of modelIDs) {
-      const sourceModel = source?.models?.[modelID]
+      const sourceModel = source?.models?.[modelID] ?? metadataSource?.models?.[modelID]
       provider.models[modelID] = modelFromSource({
         modelID,
         provider,
@@ -281,11 +300,12 @@ export namespace ProviderCatalog {
     }
     liveDiscovery.set(profile.id, "verified")
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     const next: ModelsDev.Provider = { ...provider, models: {} }
     for (const entry of live) {
       const modelID = entry.id
-      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID]
+      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID] ?? metadataSource?.models?.[modelID]
       next.models[modelID] = modelFromSource({
         modelID,
         provider,
@@ -293,6 +313,8 @@ export namespace ProviderCatalog {
         profile,
         npm,
         patch: entry.model,
+        inputImage: entry.inputImage,
+        supportedImageMediaTypes: entry.supportedImageMediaTypes,
       })
     }
     return next

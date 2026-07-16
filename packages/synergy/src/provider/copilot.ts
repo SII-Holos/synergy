@@ -4,6 +4,7 @@ import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
 import { ProviderAuthRecovery } from "./auth-recovery"
 import type { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace CopilotProvider {
   export const PROVIDER_ID = "github-copilot"
@@ -267,7 +268,7 @@ export namespace CopilotProvider {
 
   export const copilotFetch = copilotFetchFor(PROVIDER_ID)
 
-  export async function fetchModelIDs(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch): Promise<string[]> {
+  async function fetchModelPayload(providerID: string, fetchFn: FetchLike) {
     const response = await ProviderAuthRecovery.execute({
       providerID,
       request: async () => {
@@ -294,8 +295,37 @@ export namespace CopilotProvider {
     })
     if (!response.ok) return []
     const payload = await safeJson(response)
-    const data = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : []
-    return data.map((item) => item?.id).filter((id): id is string => typeof id === "string" && !!id)
+    return Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : []
+  }
+
+  export async function fetchModelCatalog(
+    providerID = PROVIDER_ID,
+    fetchFn: FetchLike = fetch,
+  ): Promise<ProviderProfile.ModelCatalogEntry[]> {
+    const entries = await fetchModelPayload(providerID, fetchFn)
+    const result: ProviderProfile.ModelCatalogEntry[] = []
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id.trim()) continue
+      const id = entry.id.trim()
+      const supportsVision = entry.capabilities?.supports?.vision
+      const supportedImageMediaTypes = Array.isArray(entry.capabilities?.limits?.vision?.supported_media_types)
+        ? (normalizeImageMediaTypes(
+            entry.capabilities.limits.vision.supported_media_types.filter(
+              (mimeType: unknown): mimeType is string => typeof mimeType === "string",
+            ),
+          ) ?? [])
+        : undefined
+      result.push({
+        id,
+        ...(typeof supportsVision === "boolean" ? { inputImage: supportsVision } : {}),
+        ...(supportedImageMediaTypes !== undefined ? { supportedImageMediaTypes } : {}),
+      })
+    }
+    return result
+  }
+
+  export async function fetchModelIDs(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch): Promise<string[]> {
+    return (await fetchModelCatalog(providerID, fetchFn)).map((entry) => entry.id)
   }
 
   export async function refreshAuth(

@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Config } from "../../src/config/config"
 import type { Provider } from "../../src/provider/provider"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
@@ -887,5 +888,48 @@ describe("session.compaction.selectPartsToPrune", () => {
 
     expect(withoutModel).toHaveLength(0)
     expect(withModel).toHaveLength(0)
+  })
+
+  test("prunes from the loop snapshot without rereading or mutating it", async () => {
+    const oldPart = toolPart({ id: "old-tool", output: "x".repeat(300_000) })
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [oldPart]),
+      userMsg("u1"),
+      assistantMsg("a1", []),
+      userMsg("u2"),
+      assistantMsg("a2", []),
+    ]
+    const originalMessages = Session.messages
+    const originalUpdatePart = Session.updatePart
+    const originalConfigCurrent = Config.current
+    let persisted: MessageV2.Part | undefined
+    ;(Config.current as any) = mock(async () => ({ compaction: {} }))
+    ;(Session.messages as any) = mock(async () => {
+      throw new Error("prune reread full history")
+    })
+    ;(Session.updatePart as any) = mock(async (part: MessageV2.Part) => {
+      persisted = part
+      return part
+    })
+
+    try {
+      await SessionCompaction.prune({ sessionID: "test-session", messages: msgs })
+    } finally {
+      ;(Config.current as any) = originalConfigCurrent
+      ;(Session.messages as any) = originalMessages
+      ;(Session.updatePart as any) = originalUpdatePart
+    }
+
+    expect(oldPart.state.status).toBe("completed")
+    if (oldPart.state.status === "completed") {
+      expect(oldPart.state.output.length).toBe(300_000)
+      expect(oldPart.state.time.compacted).toBeUndefined()
+    }
+    expect(persisted?.type).toBe("tool")
+    if (persisted?.type === "tool" && persisted.state.status === "completed") {
+      expect(persisted.state.output).toBe("")
+      expect(persisted.state.time.compacted).toBeNumber()
+    }
   })
 })

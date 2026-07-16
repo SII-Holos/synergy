@@ -129,9 +129,38 @@ The `server` object supports `hostname`, `port`, `mdns`, and additional CORS ori
 
 Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
 
-## Import and Editing
+## Config Import
 
-`synergy config wizard` writes core provider/model configuration. `synergy config import` can import all or selected domains with a dry-run plan and merge modes `merge`, `replace-domain`, or `append` where supported.
+`synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. Direct plan/apply API requests are limited to a 2 MiB JSON envelope.
+
+### Import flow
+
+1. **Load** — The source is parsed as JSONC and validated against the config schema. Unrecognized keys produce a validation error; only JSONC syntax errors include line and column information.
+2. **Plan** — The loaded config is split by domain, each owning-domain fragment is merged into the current config at the target scope, and value-level changes (add, modify, remove) are produced. Conflicts are classified and hardcoded secrets are flagged as warnings without blocking the import. A revision hash captures the plan identity.
+3. **Apply** — After review and confirmation, each changed domain file is written atomically with a per-scope exclusive lock, staged writes, and rollback on failure. JSONC comments in existing files are preserved.
+4. **Reload** — Committed files trigger a runtime config reload. Reload failure does not roll back committed config files; if the runtime reports restart-required targets, restart the server to pick them up.
+
+### CLI options
+
+```bash
+synergy config import <source>
+  --scope global|project  # default: global; project requires an active project scope
+  --only <domain>         # import only the named domain; repeatable
+  --mode merge|replace-domain|append  # per-domain merge policy override
+  --dry-run               # show the plan without writing files
+  --force                 # apply even when the revision does not match (stale plan)
+  --yes, -y               # skip the confirmation prompt
+```
+
+All domains are importable and default to `merge` mode. A stale plan (revised config after planning) is rejected unless `--force` is supplied.
+
+`merge` recursively merges objects and replaces ordinary arrays, `replace-domain` replaces the complete selected domain, and `append` recursively merges objects while appending arrays in source order. Imported scalar values override existing scalar values in both merge modes.
+
+### Web Settings Import
+
+The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC. It supports explicit Global/Project target selection, a project chooser for project imports, domain-level selection with a re-review gate when the domain set changes, value-level current-versus-imported display, diagnostic warnings, stale-plan detection with a refresh action, and a reload-result summary after apply.
+
+## Config Editing
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.
 
