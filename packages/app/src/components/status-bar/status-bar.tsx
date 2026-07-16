@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -7,6 +7,7 @@ import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { ContextBar } from "./context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
@@ -558,7 +559,7 @@ function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "d
 
 export function StatusBar() {
   const params = useParams()
-  const navigate = useNavigate()
+  const navigateToSession = useNavigateToSession()
   const globalSync = useGlobalSync()
   const holos = useHolos()
   const server = useServer()
@@ -721,7 +722,7 @@ export function StatusBar() {
             <SubsessionsButton
               sessionID={params.id!}
               statusFor={childSessionStatus}
-              onSelect={(child) => navigate(`/${params.dir}/session/${child.id}`)}
+              onSelect={(child) => navigateToSession(child.id)}
             />
             <ContextBar />
           </Show>

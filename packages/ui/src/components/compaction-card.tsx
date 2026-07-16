@@ -5,6 +5,7 @@ import { Markdown } from "./markdown"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
 import { Collapsible } from "./collapsible"
+import { resolveCompactionCardPresentation } from "./compaction-card-model"
 
 import "./compaction-card.css"
 
@@ -30,15 +31,19 @@ function asCompactionRecovery(part: PartType | undefined): CompactionRecoveryPay
 
 const CompactionCard: Component<CompactionCardProps> = (props) => {
   const recovery = createMemo(() => asCompactionRecovery(props.part))
-  const complete = createMemo(() => recovery()?.validated === true)
   const summary = createMemo(() => recovery()?.summary?.trim() ?? "")
+  const presentation = createMemo(() =>
+    resolveCompactionCardPresentation({
+      hasRecovery: recovery() !== undefined,
+      messageCompleted: "completed" in props.message.time && props.message.time.completed != null,
+      hasSummary: summary().length > 0,
+    }),
+  )
 
   const [expanded, setExpanded] = createSignal(props.defaultOpen ?? false)
 
   const timestamp = createMemo(() => DateTime.fromMillis(props.message.time.created).toFormat("HH:mm"))
-  const title = createMemo(() => (complete() ? "Context compressed" : "Compressing context..."))
-  const description = createMemo(() => (complete() ? "Summary ready" : "Preparing a compact continuation summary"))
-  const canExpand = createMemo(() => complete() && !!summary())
+  const canExpand = createMemo(() => presentation().canExpand)
   const open = createMemo(() => canExpand() && expanded())
   const expandIcon = createMemo(() =>
     open() ? getSemanticIcon("navigation.collapse") : getSemanticIcon("navigation.expand"),
@@ -50,11 +55,7 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
   }
 
   return (
-    <div
-      data-component="compaction-card"
-      data-status={complete() ? "complete" : "running"}
-      data-expanded={open() ? "" : undefined}
-    >
+    <div data-component="compaction-card" data-status={presentation().status} data-expanded={open() ? "" : undefined}>
       <Collapsible open={open()} onOpenChange={handleOpenChange} disabled={!canExpand()} variant="ghost">
         <Collapsible.Trigger data-slot="compaction-card-header" type="button">
           <div data-slot="compaction-card-leading">
@@ -63,9 +64,9 @@ const CompactionCard: Component<CompactionCardProps> = (props) => {
             </div>
             <div data-slot="compaction-card-copy">
               <div data-slot="compaction-card-title-row">
-                <span data-slot="compaction-card-title">{title()}</span>
+                <span data-slot="compaction-card-title">{presentation().title}</span>
               </div>
-              <span data-slot="compaction-card-description">{description()}</span>
+              <span data-slot="compaction-card-description">{presentation().description}</span>
             </div>
           </div>
           <div data-slot="compaction-card-meta">

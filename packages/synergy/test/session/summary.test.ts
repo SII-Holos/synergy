@@ -446,11 +446,16 @@ describe("SessionSummary", () => {
             afterBytes: 8,
           })
           let calls = 0
+          let markFirstRunStarted!: () => void
+          const firstRunStarted = new Promise<void>((resolve) => {
+            markFirstRunStarted = resolve
+          })
           const diffSummary = mock(async () => {
             calls++
-            // First run hangs forever; the per-run timeout must unblock the
-            // coalescing loop so `active` clears and later runs still execute.
-            if (calls === 1) return new Promise<never>(() => {})
+            if (calls === 1) {
+              markFirstRunStarted()
+              return new Promise<never>(() => {})
+            }
             return [diff]
           })
           ;(Snapshot.diffSummary as any) = diffSummary
@@ -472,10 +477,12 @@ describe("SessionSummary", () => {
             options: {},
           }))
 
-          // First run hangs internally; summarize() must still settle (via the
-          // per-run timeout) rather than block forever.
-          await SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
-          // Session is not wedged: a subsequent run executes and persists.
+          const firstRun = SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
+          await firstRunStarted
+          await firstRun
+
+          if (previousTimeout === undefined) delete process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+          else process.env.SYNERGY_SUMMARY_TIMEOUT_MS = previousTimeout
           await SessionSummary.summarize({ sessionID: session.id, messageID: user.id })
 
           expect(calls).toBeGreaterThanOrEqual(2)
