@@ -79,8 +79,9 @@ export namespace Envelope {
         return { kind: "error", requestId: env.request_id, code, message }
       }
       case "ws_send": {
-        if (!env.caller) {
-          log.warn("ws_send missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("ws_send missing or invalid caller", { requestId: env.request_id })
           return null
         }
         return {
@@ -88,7 +89,7 @@ export namespace Envelope {
           requestId: env.request_id ?? "",
           event: String(meta.event ?? ""),
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
       case "ws_failed":
@@ -99,8 +100,9 @@ export namespace Envelope {
           message: String(meta.message ?? "Unknown failure"),
         }
       case "http_request": {
-        if (!env.caller) {
-          log.warn("http_request missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("http_request missing or invalid caller", { requestId: env.request_id })
           return null
         }
         return {
@@ -112,7 +114,7 @@ export namespace Envelope {
           headers: (meta.headers as Record<string, string>) ?? {},
           contentType: meta.content_type ? String(meta.content_type) : undefined,
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
       case "http_response":

@@ -678,6 +678,37 @@ describe("HolosProvider native tunnel", () => {
     })
   })
 
+  test("accepts opaque native callers while preserving trusted tunnel identity", async () => {
+    const connection = createRuntimeConnection()
+    const observed: NativeMessage[] = []
+    connection.nativeObservers.add((message) => {
+      observed.push(message)
+    })
+    const { provider, socket } = await connectProvider(connection)
+    socket.message(connectedFrame("session-opaque-caller"))
+    await waitFor(() => connection.generation === 1)
+
+    const pending = provider.sendNativeRequest({
+      type: "clarus.project.subscribe",
+      payload: {},
+      requestID: "native-opaque-caller",
+      expectedResponseType: "clarus.project.subscribed",
+      timeoutMs: 50,
+    })
+    socket.message({
+      type: "clarus.project.subscribed",
+      request_id: "native-opaque-caller",
+      meta: {},
+      payload: { project_id: "project-1", subscribed: true },
+      caller: { agent_id: 42, owner_user_id: "opaque", gateway_field: true },
+    })
+
+    const response = await pending.response
+    await waitFor(() => observed.length === 1)
+    expect(response.agentID).toBe("agent_test")
+    expect(observed[0]).toBe(response)
+  })
+
   test("increments generations across providers and ignores stale sockets", async () => {
     const connection = createRuntimeConnection()
     const lifecycle: HolosConnectionEvent[] = []
