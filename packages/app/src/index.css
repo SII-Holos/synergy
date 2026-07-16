@@ -172,6 +172,11 @@ a:active,
   background-color: var(--workbench-canvas-bg);
 }
 
+.session-workbench-pane {
+  height: 100%;
+  min-height: 0;
+}
+
 .synergy-workbench-canvas :where(.workbench-panel-surface) {
   background-color: var(--workbench-panel-bg);
   border-color: var(--workbench-border);
