@@ -1,9 +1,16 @@
+import { TOOL_MISC_DESC } from "../../tool-title-descriptors"
 import { createMemo, For, Show } from "solid-js"
 import { useData } from "../../../context"
 import { createAutoScroll } from "../../../hooks"
 import { BasicTool } from "../../basic-tool"
 import { Icon } from "../../icon"
+import type { MessageDescriptor } from "@lingui/core"
 import { ToolRegistry, getToolInfo } from "../../message-part"
+
+function resolveTitle(title: string | MessageDescriptor): string {
+  if (typeof title === "string") return title
+  return title.message ?? title.id
+}
 
 ToolRegistry.register({
   name: "task",
@@ -45,7 +52,7 @@ ToolRegistry.register({
             icon: "list-todo",
             title: `${props.input.subagent_type || props.tool} Agent`,
             subtitle: props.input.description,
-            tags: isBackground() ? [{ label: "background" }] : undefined,
+            tags: isBackground() ? [{ label: TOOL_MISC_DESC.backgroundTask.message! }] : undefined,
           }}
           onSubtitleClick={handleSubtitleClick}
         >
@@ -62,7 +69,7 @@ ToolRegistry.register({
                   return (
                     <div data-slot="task-tool-item">
                       <Icon name={info.icon} size="small" />
-                      <span data-slot="task-tool-title">{info.title}</span>
+                      <span data-slot="task-tool-title">{resolveTitle(info.title)}</span>
                       <Show when={item.state.title}>
                         <span data-slot="task-tool-subtitle">{item.state.title}</span>
                       </Show>

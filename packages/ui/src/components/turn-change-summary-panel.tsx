@@ -1,10 +1,12 @@
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
+import { TURN_CHANGE_DESC } from "./tool-title-descriptors"
 import {
   turnChangeSummaryHiddenCount,
   turnChangeSummaryTitle,
@@ -22,6 +24,7 @@ export type TurnChangeSummaryPanelProps = {
 }
 
 export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
+  const { _ } = useLingui()
   const [store, setStore] = createStore({ expanded: false })
   const previewLimit = () => props.previewLimit ?? 3
   const hiddenCount = createMemo(() => turnChangeSummaryHiddenCount(props.diffs, previewLimit()))
@@ -43,7 +46,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
           </div>
         </div>
         <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
-          Review changes
+          {_(TURN_CHANGE_DESC.reviewChanges)}
         </button>
       </div>
       <div data-slot="turn-change-summary-list">
@@ -61,7 +64,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
               </span>
               <span data-slot="turn-change-summary-row-actions">
                 <Show when={diff.binary}>
-                  <span data-slot="turn-change-summary-binary">Binary</span>
+                  <span data-slot="turn-change-summary-binary">{_(TURN_CHANGE_DESC.binary)}</span>
                 </Show>
                 <DiffChanges changes={diff} />
               </span>

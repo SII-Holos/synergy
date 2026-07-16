@@ -12,6 +12,7 @@ import {
 } from "solid-js"
 import { createStore, produce } from "solid-js/store"
 import { Dynamic } from "solid-js/web"
+import { useLingui } from "@lingui/solid"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -34,6 +35,7 @@ import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dia
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
 import { AppPanel } from "@/components/app-panel"
+import { translateDescriptor } from "@/locales/translate"
 import "./settings-panel.css"
 import type { DialogSettingsProps, McpEntry, ModelsStore, ProviderGroup, ProviderModel, SettingsState } from "./types"
 import { defaultSettingsState, emptyMcp, groupByProvider } from "./types"
@@ -65,6 +67,7 @@ import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import { localizeSettingsSection, settingsSectionGroupKey } from "./settings-section-copy"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -74,20 +77,83 @@ const legacyInitialTabs: Record<string, string> = {
   profile: "account",
 }
 
+const copy = {
+  dialogLabel: { id: "settings.panel.dialog.label", message: "Settings" },
+  closeLabel: { id: "settings.panel.close.label", message: "Close settings" },
+  globalConfig: { id: "settings.panel.globalConfig.label", message: "Global Config" },
+  customInstructionsNotSaved: {
+    id: "settings.panel.customInstructions.notSaved",
+    message: "Custom instructions not saved",
+  },
+  customInstructionsReview: {
+    id: "settings.panel.customInstructions.review",
+    message: "Review the Custom Instructions content and try again.",
+  },
+  customInstructionsSaved: {
+    id: "settings.panel.customInstructions.saved",
+    message: "Custom instructions saved",
+  },
+  customInstructionsReset: {
+    id: "settings.panel.customInstructions.reset",
+    message: "Custom instructions reset",
+  },
+  customInstructionsOverride: {
+    id: "settings.panel.customInstructions.override",
+    message: "Synergy will use AGENTS.override.md for subsequent prompt assembly.",
+  },
+  customInstructionsGlobal: {
+    id: "settings.panel.customInstructions.global",
+    message: "Synergy will fall back to the global AGENTS.md file.",
+  },
+  configFileOpened: { id: "settings.panel.configFile.opened", message: "Config file opened" },
+  formatterTitle: { id: "settings.panel.reference.formatterTitle", message: "Formatter" },
+  formatterDescription: {
+    id: "settings.panel.reference.formatterDescription",
+    message: "Formatter configuration file access.",
+  },
+  lspTitle: { id: "settings.panel.reference.lspTitle", message: "LSP" },
+  lspDescription: {
+    id: "settings.panel.reference.lspDescription",
+    message: "Language server configuration file access.",
+  },
+  pluginsGroup: { id: "settings.panel.group.plugins", message: "Plugins" },
+  errorBadge: { id: "settings.panel.badge.error", message: "Error" },
+  unsavedBadge: { id: "settings.panel.badge.unsaved", message: "Unsaved" },
+  savingBadge: { id: "settings.panel.badge.saving", message: "Saving" },
+  savedBadge: { id: "settings.panel.badge.saved", message: "Saved" },
+  developerBadge: { id: "settings.panel.badge.developer", message: "Dev" },
+  searchPlaceholder: { id: "settings.panel.search.placeholder", message: "Search settings..." },
+  noSettings: { id: "settings.panel.search.empty", message: "No settings found" },
+  developerMode: { id: "settings.panel.developerMode.label", message: "Developer mode" },
+  cancel: { id: "settings.panel.action.cancel", message: "Cancel" },
+  saving: { id: "settings.panel.action.saving", message: "Saving..." },
+  saveChanges: { id: "settings.panel.action.saveChanges", message: "Save Changes" },
+  loading: { id: "settings.panel.loading.label", message: "Loading..." },
+  emptyTitle: { id: "settings.panel.empty.title", message: "Settings" },
+  emptyDescription: { id: "settings.panel.empty.description", message: "Select a settings section." },
+  noSection: { id: "settings.panel.empty.noSection", message: "No section selected" },
+  sectionUnavailable: {
+    id: "settings.panel.section.unavailable",
+    message: "{label} is not available",
+  },
+}
+
 export type SettingsPanelProps = DialogSettingsProps & {
   onClose?: () => void
 }
 
 export function SettingsDialog(props: DialogSettingsProps) {
   const dialog = useDialog()
+  const { _ } = useLingui()
   return (
-    <Dialog ariaLabel="Settings" class="settings-dialog-panel">
+    <Dialog ariaLabel={_(copy.dialogLabel)} class="settings-dialog-panel">
       <SettingsPanel {...props} onClose={() => dialog.close()} />
     </Dialog>
   )
 }
 
 export function SettingsPanel(props: SettingsPanelProps) {
+  const { _, i18n } = useLingui()
   const dialog = useDialog()
   const confirm = useConfirm()
   const globalSDK = useGlobalSDK()
@@ -273,7 +339,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
 
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
-  const editingLabel = createMemo(() => "Global Config")
+  const editingLabel = createMemo(() => _(copy.globalConfig))
   const hasAnyChanges = createMemo(() => hasServerChanges() || personalizeController.dirty())
 
   function showConfirm(params: ConfirmOptions) {
@@ -297,17 +363,19 @@ export function SettingsPanel(props: SettingsPanelProps) {
     if (!saved) {
       showToast({
         type: "error",
-        title: "Custom instructions not saved",
-        description: personalizeController.error() ?? "Review the Custom Instructions content and try again.",
+        title: _(copy.customInstructionsNotSaved),
+        description: personalizeController.error() ?? _(copy.customInstructionsReview),
       })
       return false
     }
     showToast({
       type: "success",
-      title: personalizeController.info()?.hasOverride ? "Custom instructions saved" : "Custom instructions reset",
+      title: personalizeController.info()?.hasOverride
+        ? _(copy.customInstructionsSaved)
+        : _(copy.customInstructionsReset),
       description: personalizeController.info()?.hasOverride
-        ? "Synergy will use AGENTS.override.md for subsequent prompt assembly."
-        : "Synergy will fall back to the global AGENTS.md file.",
+        ? _(copy.customInstructionsOverride)
+        : _(copy.customInstructionsGlobal),
     })
     return true
   }
@@ -333,13 +401,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
       const res = await globalSDK.client.config.domain.open({ domain })
       showToast({
         type: "success",
-        title: "Config file opened",
+        title: _(copy.configFileOpened),
         description: res.data?.path ?? domain,
       })
       await refetchDomains()
     } catch (error) {
       const filepath = domainSummaries()?.find((item) => item.id === domain)?.path ?? domain
-      showToast({ type: "error", ...configFileOpenFailure(error, filepath) })
+      const failure = configFileOpenFailure(error, filepath)
+      showToast({
+        type: "error",
+        title: translateDescriptor(failure.title, i18n()),
+        description: translateDescriptor(failure.description, i18n()),
+      })
     } finally {
       setOpeningDomain(undefined)
     }
@@ -501,8 +574,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
-    formatter: () => referencePanel("Formatter", "Formatter configuration file access.", ["runtime"]),
-    lsp: () => referencePanel("LSP", "Language server configuration file access.", ["runtime"]),
+    formatter: () => referencePanel(_(copy.formatterTitle), _(copy.formatterDescription), ["runtime"]),
+    lsp: () => referencePanel(_(copy.lspTitle), _(copy.lspDescription), ["runtime"]),
     observability: () => (
       <ObservabilityPanel
         runtime={settings.runtime}
@@ -530,7 +603,10 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const settingsSections = createMemo(() => {
     const components = builtinSettingsComponents()
     return filterSettingsSections(getSettingsSections(), developerMode())
-      .map((section) => (isBuiltinSettingsId(section.id) ? { ...section, component: components[section.id] } : section))
+      .map((section) => {
+        const localized = localizeSettingsSection(section, _)
+        return isBuiltinSettingsId(section.id) ? { ...localized, component: components[section.id] } : localized
+      })
       .sort(compareSections)
   })
 
@@ -554,14 +630,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
 
   const navGroups = createMemo(() => {
-    const map = new Map<string, RegisteredSettingsSection[]>()
+    const map = new Map<string, { label: string; sections: RegisteredSettingsSection[] }>()
     for (const section of filteredSections()) {
-      const group = section.group || "Plugins"
-      map.set(group, [...(map.get(group) ?? []), section])
+      const key = settingsSectionGroupKey(section) || "Plugins"
+      const label = section.group || _(copy.pluginsGroup)
+      const group = map.get(key)
+      if (group) group.sections.push(section)
+      else map.set(key, { label, sections: [section] })
     }
     return [...map.entries()]
       .sort(([a], [b]) => settingsGroupOrder(a) - settingsGroupOrder(b) || a.localeCompare(b))
-      .map(([label, sections]) => ({ label, sections: sections.sort(compareSections) }))
+      .map(([, group]) => ({ ...group, sections: group.sections.sort(compareSections) }))
   })
 
   const domainMap = createMemo(() => new Map((domainSummaries() ?? []).map((domain) => [domain.id, domain])))
@@ -580,7 +659,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   return (
     <div class="settings-panel-frame">
-      <button type="button" class="settings-panel-close" aria-label="Close settings" onClick={save.closeWithGuard}>
+      <button type="button" class="settings-panel-close" aria-label={_(copy.closeLabel)} onClick={save.closeWithGuard}>
         <Icon name={getSemanticIcon("action.close")} size="small" />
       </button>
       {ready() ? (
@@ -588,22 +667,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
           <AppPanel.Nav>
             <div class="px-3 pt-4 pb-2 flex flex-col gap-2">
               <div>
-                <div class="settings-nav-title truncate">Global Config</div>
+                <div class="settings-nav-title truncate">{_(copy.globalConfig)}</div>
                 <div class="flex items-center gap-1.5 flex-wrap">
                   <Show when={saveFooterStatus() === "error"}>
-                    <span class="settings-nav-badge settings-nav-badge-error">Error</span>
+                    <span class="settings-nav-badge settings-nav-badge-error">{_(copy.errorBadge)}</span>
                   </Show>
                   <Show when={saveFooterStatus() === "dirty"}>
-                    <span class="settings-nav-badge settings-nav-badge-dirty">Unsaved</span>
+                    <span class="settings-nav-badge settings-nav-badge-dirty">{_(copy.unsavedBadge)}</span>
                   </Show>
                   <Show when={saveFooterStatus() === "saving"}>
-                    <span class="settings-nav-badge settings-nav-badge-saving">Saving</span>
+                    <span class="settings-nav-badge settings-nav-badge-saving">{_(copy.savingBadge)}</span>
                   </Show>
                   <Show when={saveFooterStatus() === "saved"}>
-                    <span class="settings-nav-badge settings-nav-badge-saved">Saved</span>
+                    <span class="settings-nav-badge settings-nav-badge-saved">{_(copy.savedBadge)}</span>
                   </Show>
                   <Show when={developerMode()}>
-                    <span class="settings-nav-badge settings-nav-badge-dev">Dev</span>
+                    <span class="settings-nav-badge settings-nav-badge-dev">{_(copy.developerBadge)}</span>
                   </Show>
                 </div>
               </div>
@@ -611,7 +690,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 <Icon name={getSemanticIcon("action.search")} size="small" />
                 <input
                   value={search()}
-                  placeholder="Search settings..."
+                  placeholder={_(copy.searchPlaceholder)}
                   onInput={(event) => setSearch(event.currentTarget.value)}
                 />
               </div>
@@ -635,7 +714,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
                 )}
               </For>
               <Show when={navGroups().length === 0}>
-                <div class="settings-empty-text px-3 py-6 text-text-weaker">No settings found</div>
+                <div class="settings-empty-text px-3 py-6 text-text-weaker">{_(copy.noSettings)}</div>
               </Show>
             </div>
           </AppPanel.Nav>
@@ -653,11 +732,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   aria-pressed={developerMode()}
                 >
                   <Icon name={getSemanticIcon("settings.diagnostics")} size="small" />
-                  <span>Developer mode</span>
+                  <span>{_(copy.developerMode)}</span>
                 </button>
               </div>
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
-                Cancel
+                {_(copy.cancel)}
               </Button>
               <Show when={hasExplicitChanges()}>
                 <Button
@@ -667,14 +746,14 @@ export function SettingsPanel(props: SettingsPanelProps) {
                   disabled={explicitSaveBlocked()}
                   onClick={() => void saveExplicitChanges()}
                 >
-                  {saving() || personalizeController.status() === "saving" ? "Saving..." : "Save Changes"}
+                  {saving() || personalizeController.status() === "saving" ? _(copy.saving) : _(copy.saveChanges)}
                 </Button>
               </Show>
             </AppPanel.Footer>
           </AppPanel.Content>
         </AppPanel.Root>
       ) : (
-        <div class="settings-panel-loading">Loading...</div>
+        <div class="settings-panel-loading">{_(copy.loading)}</div>
       )}
       <div class="settings-popover-layer" ref={setSettingsPopoverLayer} />
     </div>
@@ -684,9 +763,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const section = settingsSections().find((item) => item.id === activeTab())
     if (!section) {
       return (
-        <SettingsPage title="Settings" description="Select a settings section.">
+        <SettingsPage title={_(copy.emptyTitle)} description={_(copy.emptyDescription)}>
           <SettingsSection>
-            <div class="ds-empty-state">No section selected</div>
+            <div class="ds-empty-state">{_(copy.noSection)}</div>
           </SettingsSection>
         </SettingsPage>
       )
@@ -715,6 +794,7 @@ type SettingsComponentProps = {
 
 function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const globalSDK = useGlobalSDK()
+  const { _ } = useLingui()
   const [comp, setComp] = createSignal<Component<SettingsComponentProps> | null>(null)
   const [loading, setLoading] = createSignal(true)
 
@@ -773,7 +853,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
               when={section().formSchema}
               fallback={
                 <div class="settings-availability-message flex items-center justify-center py-8">
-                  {section().label} is not available
+                  {_({ ...copy.sectionUnavailable, values: { label: section().label } })}
                 </div>
               }
             >
@@ -819,11 +899,7 @@ function normalizeInitialTab(id: string | undefined) {
 }
 
 function compareSections(a: RegisteredSettingsSection, b: RegisteredSettingsSection) {
-  return (
-    settingsGroupOrder(a.group) - settingsGroupOrder(b.group) ||
-    (a.order ?? 0) - (b.order ?? 0) ||
-    a.label.localeCompare(b.label)
-  )
+  return (a.order ?? 0) - (b.order ?? 0) || a.label.localeCompare(b.label)
 }
 
 function normalizeSearch(value: string) {

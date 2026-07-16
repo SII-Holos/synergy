@@ -1,3 +1,5 @@
+import { PI } from "./prompt-input-i18n"
+
 export type SlashBackendCommand = {
   name: string
   kind?: "prompt" | "action"
@@ -69,14 +71,14 @@ export function resolveSlashCommandIntent(input: {
 export function getPendingLightLoopSlashBlock(intent: SlashCommandIntent): PendingLightLoopSlashBlock | undefined {
   if (intent.kind === "backend-action") {
     return {
-      title: "Use a task message",
-      description: "Light Loop can't start from an action command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask.message,
+      description: PI.slashNoAction.message,
     }
   }
   if (intent.kind === "ui") {
     return {
-      title: "Use a task message",
-      description: "Light Loop can't start from a UI command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask.message,
+      description: PI.slashNoUi.message,
     }
   }
   return undefined

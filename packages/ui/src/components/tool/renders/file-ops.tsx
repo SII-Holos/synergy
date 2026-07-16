@@ -1,3 +1,4 @@
+import { TOOL_TITLE_DESC } from "../../tool-title-descriptors"
 import { createMemo, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -29,7 +30,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "scan-document",
-          title: "File Search",
+          title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
           tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
         }}
@@ -57,7 +58,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Edit",
+          title: TOOL_TITLE_DESC["edit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
         }}
@@ -83,7 +84,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "text-select",
-          title: "Write",
+          title: TOOL_TITLE_DESC["write"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
@@ -114,7 +115,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Multi Edit",
+          title: TOOL_TITLE_DESC["multiedit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >

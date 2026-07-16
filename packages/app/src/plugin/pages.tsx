@@ -10,6 +10,7 @@ import {
   type JSX,
 } from "solid-js"
 import { useParams } from "@solidjs/router"
+import { useLingui } from "@lingui/solid"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -50,6 +51,7 @@ function errorMessage(error: unknown) {
 }
 
 function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: NavigationContentProps }) {
+  const { _ } = useLingui()
   const [component, setComponent] = createSignal<Component<NavigationContentProps> | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [loadError, setLoadError] = createSignal<string | undefined>()
@@ -104,7 +106,11 @@ function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: Nav
             fallback={
               <PluginSurfaceUnavailable
                 title={props.entry.label}
-                message="This plugin navigation surface has no loadable Solid component. Rebuild or validate the plugin."
+                message={_({
+                  id: "app.plugin.surface.noComponent",
+                  message:
+                    "This plugin navigation surface has no loadable Solid component. Rebuild or validate the plugin.",
+                })}
               />
             }
           >
@@ -157,6 +163,7 @@ function NavigationPageContent(props: {
 }
 
 export function BuiltinNavigationPage(props: { navigationId: string }) {
+  const { _ } = useLingui()
   const [registryVersion, setRegistryVersion] = createSignal(0)
   onCleanup(subscribeNavigation(() => setRegistryVersion((version) => version + 1)))
   const entry = createMemo(() => {
@@ -167,13 +174,20 @@ export function BuiltinNavigationPage(props: { navigationId: string }) {
   return (
     <NavigationPageContent
       entry={entry}
-      title="Page unavailable"
-      message={() => `No built-in navigation surface is registered for ${props.navigationId}.`}
+      title={_({ id: "app.plugin.surface.pageUnavailable", message: "Page unavailable" })}
+      message={() =>
+        _({
+          id: "app.plugin.surface.noBuiltinNav",
+          message: "No built-in navigation surface is registered for {id}.",
+          values: { id: props.navigationId },
+        })
+      }
     />
   )
 }
 
 export function PluginNavigationPage() {
+  const { _ } = useLingui()
   const params = useParams()
   const [registryVersion, setRegistryVersion] = createSignal(0)
   onCleanup(subscribeNavigation(() => setRegistryVersion((version) => version + 1)))
@@ -191,8 +205,14 @@ export function PluginNavigationPage() {
   return (
     <NavigationPageContent
       entry={entry}
-      title="Plugin page unavailable"
-      message={() => `No plugin navigation surface is registered for ${pluginId() ?? ""}/${navigationId() ?? ""}.`}
+      title={_({ id: "app.plugin.surface.pluginPageUnavailable", message: "Plugin page unavailable" })}
+      message={() =>
+        _({
+          id: "app.plugin.surface.noPluginNav",
+          message: "No plugin navigation surface is registered for {pluginId}/{navigationId}.",
+          values: { pluginId: pluginId() ?? "", navigationId: navigationId() ?? "" },
+        })
+      }
     />
   )
 }

@@ -1863,3 +1863,24 @@ test("experimental.mcp_timeout does not break config loading", async () => {
     },
   })
 })
+
+test("locale config accepts valid values and rejects invalid ones", () => {
+  expect(Config.Info.parse({}).locale).toBeUndefined()
+  expect(Config.Info.parse({ locale: "system" }).locale).toBe("system")
+  expect(Config.Info.parse({ locale: "en" }).locale).toBe("en")
+  expect(Config.Info.parse({ locale: "zh-CN" }).locale).toBe("zh-CN")
+  expect(() => Config.Info.parse({ locale: "" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "fr" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "de-DE" })).toThrow()
+})
+
+test("locale is optional and absent configs remain valid", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.locale).toBeUndefined()
+    },
+  })
+})

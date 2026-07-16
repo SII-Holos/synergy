@@ -1,3 +1,5 @@
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { createMemo, For, Show } from "solid-js"
 import { Todo } from "@ericsanchezok/synergy-sdk"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
@@ -9,7 +11,9 @@ import { RenderHtml } from "../../render-html"
 import { AttachmentGallery } from "../../attachment-card"
 import { ToolTextOutput } from "../../tool-output-text"
 import { ToolRegistry, getToolInfo, getDirectory } from "../../message-part"
+import { TOOL_TITLE_DESC } from "../../tool-title-descriptors"
 import { getSemanticIcon } from "../../semantic-icon"
+import { TOOL_MISC_DESC } from "../../tool-title-descriptors"
 
 function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   if ((metadata.kind || input.kind) === "blueprint") return true
@@ -37,7 +41,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "glasses",
-          title: "Read",
+          title: TOOL_TITLE_DESC["read"],
           subtitle: props.input.filePath
             ? getDirectory(props.input.filePath) + getFilename(props.input.filePath)
             : undefined,
@@ -64,7 +68,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "image",
-          title: "View Image",
+          title: TOOL_TITLE_DESC["view_image"],
           subtitle: props.input.filePath
             ? getDirectory(props.input.filePath) + getFilename(props.input.filePath)
             : undefined,
@@ -90,7 +94,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "folder",
-          title: "List",
+          title: TOOL_TITLE_DESC["list"],
           subtitle: props.input.path ? getDirectory(props.input.path) + getFilename(props.input.path) : undefined,
         }}
       >
@@ -115,7 +119,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "list",
-          title: "Sessions",
+          title: TOOL_TITLE_DESC["session_list"],
           subtitle: props.input.scope || "",
           tags:
             count() != null ? [`${count()} session${count() === 1 ? "" : "s"}`].map((l) => ({ label: l })) : undefined,
@@ -142,7 +146,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "folder-tree",
-          title: "Scopes",
+          title: TOOL_TITLE_DESC["scope_list"],
           subtitle: props.input.query || "",
           tags:
             total() != null ? [`${total()} scope${total() === 1 ? "" : "s"}`].map((l) => ({ label: l })) : undefined,
@@ -168,7 +172,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "message-square",
-          title: "Read Session",
+          title: TOOL_TITLE_DESC["session_read"],
           subtitle: props.input.target || "",
         }}
       >
@@ -192,7 +196,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "quote",
-          title: "Search Sessions",
+          title: TOOL_TITLE_DESC["session_search"],
           subtitle: props.input.pattern || "",
           tags: props.input.scope ? [{ label: props.input.scope }] : undefined,
         }}
@@ -217,7 +221,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "share",
-          title: "Send Message",
+          title: TOOL_TITLE_DESC["session_send"],
           subtitle: props.input.target || "",
           tags: props.input.role ? [{ label: props.input.role }] : undefined,
         }}
@@ -268,7 +272,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "user",
-          title: "Profile",
+          title: TOOL_TITLE_DESC["profile_get"],
         }}
       >
         <Show when={props.output}>
@@ -291,7 +295,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "user",
-          title: "Update Profile",
+          title: TOOL_TITLE_DESC["profile_update"],
           subtitle: props.input.name || "",
         }}
       >
@@ -315,7 +319,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "search",
-          title: "Grep",
+          title: TOOL_TITLE_DESC["grep"],
           subtitle: getDirectory(props.input.path || "/"),
           tags: [
             ...(props.input.pattern ? [{ label: "pattern=" + props.input.pattern }] : []),
@@ -343,7 +347,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "search",
-          title: "Glob",
+          title: TOOL_TITLE_DESC["glob"],
           subtitle: (props.input.pattern || "") as string,
         }}
       >
@@ -367,7 +371,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "mouse-pointer-2",
-          title: "Webfetch",
+          title: TOOL_TITLE_DESC["webfetch"],
           subtitle: props.input.url || "",
           tags: props.input.format ? [{ label: "format=" + props.input.format }] : undefined,
           action: (
@@ -402,7 +406,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "terminal",
-          title: "Shell",
+          title: TOOL_TITLE_DESC["bash"],
           subtitle: props.input.description,
           tags: cmd() ? [{ label: cmd()! }] : undefined,
         }}
@@ -438,7 +442,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "list-checks",
-          title: "To-dos",
+          title: TOOL_TITLE_DESC["todowrite"],
           subtitle: firstTodo() || "",
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}
@@ -469,7 +473,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "list-checks",
-          title: "Read to-dos",
+          title: TOOL_TITLE_DESC["todoread"],
         }}
       >
         <Show when={props.output}>
@@ -495,7 +499,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "message-circle",
-          title: timedOut() ? "Question Timed Out" : "Questions",
+          title: timedOut() ? TOOL_TITLE_DESC["question_timed_out"] : TOOL_TITLE_DESC["question"],
           subtitle: timedOut() ? "No response received" : `Asked ${count()} question${count() !== 1 ? "s" : ""}`,
         }}
       >
@@ -530,7 +534,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "globe",
-          title: "Web Search",
+          title: TOOL_TITLE_DESC["websearch"],
           subtitle: props.input.query || "",
           tags: [
             ...(props.input.categories ? [{ label: props.input.categories }] : []),
@@ -570,7 +574,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "eye",
-          title: props.metadata?.timedOut ? "Analysis timed out" : "Look at",
+          title: props.metadata?.timedOut ? TOOL_TITLE_DESC["look_at_timed_out"] : TOOL_TITLE_DESC["look_at"],
           subtitle: props.input.goal || "",
           tags: subtitle() ? [{ label: subtitle() }] : undefined,
         }}
@@ -601,7 +605,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "scan-document",
-          title: "Read Document",
+          title: TOOL_TITLE_DESC["scan_document"],
           subtitle: props.input.filePath ? getFilename(props.input.filePath) : "",
           tags: (() => {
             const a = args()
@@ -629,7 +633,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "code",
-          title: "AST Search",
+          title: TOOL_TITLE_DESC["ast_grep"],
           subtitle: props.input.pattern || "",
           tags: props.input.lang ? [{ label: props.input.lang }] : undefined,
         }}
@@ -654,7 +658,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "text-select",
-          title: "Patch",
+          title: TOOL_TITLE_DESC["patch"],
           subtitle: props.status === "generating" ? "Generating patch…" : props.metadata.diff ? "Applied" : "",
         }}
       >
@@ -678,7 +682,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "server",
-          title: "LSP",
+          title: TOOL_TITLE_DESC["lsp"],
           subtitle: props.input.operation || "",
           tags: [
             ...(props.input.filePath ? [{ label: getFilename(props.input.filePath) }] : []),
@@ -706,7 +710,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "sparkles",
-          title: "Skill",
+          title: TOOL_TITLE_DESC["skill"],
           subtitle: props.input.name + (props.input.reference ? ` (${props.input.reference})` : "") || "",
         }}
       >
@@ -731,7 +735,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "tool-search",
-          title: "Search Tools",
+          title: TOOL_TITLE_DESC["search_tools"],
           subtitle: props.input.query || "",
           tags: count() != null ? [{ label: `${count()} match${count() === 1 ? "" : "es"}` }] : undefined,
         }}
@@ -751,6 +755,7 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "expand_tools",
   render(props) {
+    const { _ } = useLingui()
     const groups = () => (props.metadata?.newlyExpandedGroups ?? props.input.groups ?? []) as string[]
     const tools = () => (props.metadata?.newlyActivatedTools ?? props.input.tools ?? []) as string[]
     const target = () => [...groups(), ...tools()].join(", ") || props.input.reason || ""
@@ -759,9 +764,9 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "tool-expand",
-          title: "Expand Tools",
+          title: TOOL_TITLE_DESC["expand_tools"],
           subtitle: target(),
-          tags: props.metadata?.availableRequestedTools?.length ? [{ label: "Ready" }] : undefined,
+          tags: props.metadata?.availableRequestedTools?.length ? [{ label: _(TOOL_MISC_DESC.ready) }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -784,7 +789,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "file-text",
-          title: "arXiv Search",
+          title: TOOL_TITLE_DESC["arxiv_search"],
           subtitle: props.input.query || "",
         }}
       >
@@ -808,7 +813,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "download",
-          title: "arXiv Download",
+          title: TOOL_TITLE_DESC["arxiv_download"],
           subtitle: props.input.arxivId || "",
           tags: props.input.outputPath ? [{ label: getFilename(props.input.outputPath) }] : undefined,
         }}
@@ -850,7 +855,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "terminal",
-          title: "Process",
+          title: TOOL_TITLE_DESC["process"],
           subtitle: props.input.action || "",
           tags: (() => {
             const a = args()
@@ -879,8 +884,8 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "list-todo",
-          title: "Task List",
-          subtitle: "Visible background tasks",
+          title: TOOL_TITLE_DESC["task_list"],
+          subtitle: TOOL_TITLE_DESC["visibleBackgroundTasks"].message,
           tags: count() != null ? [{ label: `${count()} task${count() === 1 ? "" : "s"}` }] : undefined,
         }}
       >
@@ -909,7 +914,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "list-todo",
-          title: "Task Output",
+          title: TOOL_TITLE_DESC["task_output"],
           subtitle: description() || shortId(),
           tags: description() ? [{ label: shortId() }] : undefined,
         }}
@@ -939,7 +944,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "x",
-          title: "Task Cancel",
+          title: TOOL_TITLE_DESC["task_cancel"],
           subtitle: description() || shortId(),
           tags: description() ? [{ label: shortId() }] : undefined,
         }}
@@ -965,7 +970,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "brain",
-          title: "Memory Search",
+          title: TOOL_TITLE_DESC["memory_search"],
           subtitle: props.input.query || "",
           tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
         }}
@@ -997,7 +1002,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "brain",
-          title: "Memory Get",
+          title: TOOL_TITLE_DESC["memory_get"],
           subtitle: idList(),
           tags: count() != null ? [{ label: `${count()} found` }] : undefined,
         }}
@@ -1028,7 +1033,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "brain",
-          title: "Memory Write",
+          title: TOOL_TITLE_DESC["memory_write"],
           subtitle: props.input.title || props.metadata?.title || "",
           tags: status() ? [{ label: status()! }] : undefined,
         }}
@@ -1048,15 +1053,16 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "memory_edit",
   render(props) {
+    const { _ } = useLingui()
     const edited = () => !!props.metadata?.id
     return (
       <BasicTool
         {...props}
         trigger={{
           icon: "brain",
-          title: "Memory Edit",
+          title: TOOL_TITLE_DESC["memory_edit"],
           subtitle: props.input.title || props.metadata?.title || "",
-          tags: edited() ? [{ label: "Updated" }] : undefined,
+          tags: edited() ? [{ label: _(TOOL_MISC_DESC.updated) }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -1083,7 +1089,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
-          title: isBlueprint() ? "Blueprints" : "Notes",
+          title: isBlueprint() ? TOOL_TITLE_DESC["blueprints"] : TOOL_TITLE_DESC["note_list"],
           subtitle: scope(),
           tags:
             total() != null ? [{ label: `${total()} ${label().toLowerCase()}${total() === 1 ? "" : "s"}` }] : undefined,
@@ -1121,7 +1127,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
-          title: isBlueprint() ? "Read Blueprint" : "Read Note",
+          title: isBlueprint() ? TOOL_TITLE_DESC["read_blueprint"] : TOOL_TITLE_DESC["note_read"],
           subtitle: subtitle(),
         }}
       >
@@ -1157,7 +1163,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
-          title: isBlueprint() ? "Blueprint Search" : "Note Search",
+          title: isBlueprint() ? TOOL_TITLE_DESC["blueprint_search"] : TOOL_TITLE_DESC["note_search"],
           subtitle: props.input.pattern || "",
           tags: (() => {
             const a = args()
@@ -1229,7 +1235,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: isBlueprint() ? BLUEPRINT_ICON : "notebook-pen",
-          title: isBlueprint() ? "Edit Blueprint" : "Edit Note",
+          title: isBlueprint() ? TOOL_TITLE_DESC["edit_blueprint"] : TOOL_TITLE_DESC["note_edit"],
           subtitle: noteTitle(),
           tags: opCount() ? [{ label: `${opCount()} change(s)` }] : undefined,
         }}
@@ -1246,7 +1252,7 @@ ToolRegistry.register({
   },
 })
 
-function BlueprintLoopTool(props: any & { icon: string; title: string; subtitle: string }) {
+function BlueprintLoopTool(props: any & { icon: string; title: string | MessageDescriptor; subtitle: string }) {
   return (
     <BasicTool
       {...props}
@@ -1274,7 +1280,7 @@ ToolRegistry.register({
       <BlueprintLoopTool
         {...props}
         icon="circle-pause"
-        title="Request Blueprint Review"
+        title={TOOL_TITLE_DESC["blueprint_loop_stop"]}
         subtitle={(props.input.summary as string) || ""}
       />
     )
@@ -1288,7 +1294,7 @@ ToolRegistry.register({
       <BlueprintLoopTool
         {...props}
         icon="file-check-2"
-        title="Approve BlueprintLoop"
+        title={TOOL_TITLE_DESC["blueprint_loop_approve"]}
         subtitle={(props.input.summary as string) || (props.input.sessionID as string) || ""}
       />
     )
@@ -1302,7 +1308,7 @@ ToolRegistry.register({
       <BlueprintLoopTool
         {...props}
         icon="clipboard-x"
-        title="Reject BlueprintLoop"
+        title={TOOL_TITLE_DESC["blueprint_loop_reject"]}
         subtitle={(props.input.reason as string) || (props.input.sessionID as string) || ""}
       />
     )
@@ -1317,7 +1323,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "flag",
-          title: "Request Review",
+          title: TOOL_TITLE_DESC["loop_stop"],
           subtitle: (props.input.summary as string) || "",
         }}
       >
@@ -1341,7 +1347,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "circle-check",
-          title: "Approve Light Loop",
+          title: TOOL_TITLE_DESC["light_loop_approve"],
           subtitle: (props.input.summary as string) || (props.input.sessionID as string) || "",
         }}
       />
@@ -1357,7 +1363,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "rotate-ccw",
-          title: "Reject Light Loop",
+          title: TOOL_TITLE_DESC["light_loop_reject"],
           subtitle: (props.input.reason as string) || (props.input.sessionID as string) || "",
         }}
       />
@@ -1373,7 +1379,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "calendar-days",
-          title: "Schedule Agenda",
+          title: TOOL_TITLE_DESC["agenda_schedule"],
           subtitle: (props.metadata?.title || props.input.title || "") as string,
           tags: [
             props.metadata?.status ? { label: props.metadata.status as string } : undefined,
@@ -1403,7 +1409,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "eye",
-          title: "Watch",
+          title: TOOL_TITLE_DESC["agenda_watch"],
           subtitle: (props.input.title || "") as string,
           tags: props.input.delay ? [{ label: props.input.delay as string }] : undefined,
         }}
@@ -1429,7 +1435,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "clipboard-list",
-          title: "Agenda",
+          title: TOOL_TITLE_DESC["agenda_list"],
           subtitle: props.input.status || "",
           tags: count() != null ? [{ label: `${count()} item${count() === 1 ? "" : "s"}` }] : undefined,
         }}
@@ -1454,7 +1460,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "refresh-ccw",
-          title: "Update Agenda",
+          title: TOOL_TITLE_DESC["agenda_update"],
           subtitle: (props.metadata?.title || props.input.id || "") as string,
           tags: [
             props.metadata?.status ? { label: props.metadata.status as string } : undefined,
@@ -1484,7 +1490,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "trash-2",
-          title: "Cancel Agenda",
+          title: TOOL_TITLE_DESC["agenda_cancel"],
           subtitle: (props.input.id || "") as string,
         }}
       >
@@ -1508,7 +1514,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "zap",
-          title: "Trigger Agenda",
+          title: TOOL_TITLE_DESC["agenda_trigger"],
           subtitle: (props.input.id || "") as string,
         }}
       >
@@ -1533,7 +1539,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "clock",
-          title: "Agenda Logs",
+          title: TOOL_TITLE_DESC["agenda_logs"],
           subtitle: (props.input.id || "") as string,
           tags: total() != null ? [{ label: `${total()} run${total() === 1 ? "" : "s"}` }] : undefined,
         }}
@@ -1573,7 +1579,7 @@ ToolRegistry.register({
         defaultOpen
         trigger={{
           icon: "paperclip",
-          title: "Attach",
+          title: TOOL_TITLE_DESC["attach"],
           subtitle: subtitle(),
           tags: files().length ? [{ label: totalSize() }] : undefined,
         }}
@@ -1599,7 +1605,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "mail",
-          title: "Send Email",
+          title: TOOL_TITLE_DESC["email_send"],
           subtitle: recipients(),
           tags: props.input.subject && recipients() ? [{ label: props.input.subject as string }] : undefined,
         }}
@@ -1626,12 +1632,12 @@ ToolRegistry.register({
           icon: "mail-search",
           title:
             (props.input.action as string) === "search"
-              ? "Search Email"
+              ? TOOL_TITLE_DESC["email_search"]
               : (props.input.action as string) === "read"
-                ? "Read Email"
+                ? TOOL_TITLE_DESC["email_read"]
                 : (props.input.action as string) === "markSeen"
-                  ? "Mark Read"
-                  : "Email Inbox",
+                  ? TOOL_TITLE_DESC["email_mark_read"]
+                  : TOOL_TITLE_DESC["email_inbox"],
           subtitle: (props.input.search?.from ||
             props.input.search?.subject ||
             (props.input.folder as string) ||
@@ -1682,7 +1688,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "cable",
-          title: "Connect",
+          title: TOOL_TITLE_DESC["connect"],
           subtitle: props.input.linkID || "",
           tags: (() => {
             const l = statusLabel() || actionLabel()
@@ -1739,7 +1745,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "refresh-ccw",
-          title: "Runtime Reload",
+          title: TOOL_TITLE_DESC["runtime_reload"],
           subtitle: targetLabel() || (props.input.reason as string) || "",
           tags: props.input.scope ? [{ label: props.input.scope as string }] : undefined,
         }}
@@ -1766,6 +1772,7 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "render",
   render(props) {
+    const { _ } = useLingui()
     const html = () => props.metadata?.html as string | undefined
     return (
       <BasicTool
@@ -1774,9 +1781,9 @@ ToolRegistry.register({
         forceOpen
         trigger={{
           icon: "code",
-          title: "Render",
+          title: TOOL_TITLE_DESC["render"],
           subtitle: props.input.title || "",
-          tags: html() ? [{ label: "HTML preview" }] : undefined,
+          tags: html() ? [{ label: _(TOOL_MISC_DESC.htmlPreview) }] : undefined,
         }}
       >
         <Show
@@ -1807,7 +1814,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "image",
-          title: "Generate Image",
+          title: TOOL_TITLE_DESC["generate_image"],
           subtitlePath: (props.input.output_path as string | undefined) ?? undefined,
           tags: props.input.quality ? [{ label: props.input.quality as string }] : undefined,
         }}
@@ -1832,7 +1839,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "image",
-          title: "Edit Image",
+          title: TOOL_TITLE_DESC["edit_image"],
           subtitlePath: (props.input.output_path as string | undefined) ?? undefined,
           tags: props.input.quality ? [{ label: props.input.quality as string }] : undefined,
         }}

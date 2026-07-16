@@ -3,6 +3,7 @@ import {
   type SessionStartupWorkspaceStep,
   type SessionTransitionProgress,
 } from "./session-transition-progress"
+import { S } from "./session-i18n"
 
 export type NewSessionWorkspaceSelection =
   | { mode: "current" }

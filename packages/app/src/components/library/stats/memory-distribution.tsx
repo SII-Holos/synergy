@@ -1,7 +1,9 @@
 import { For, Show, createMemo } from "solid-js"
 import { Doughnut } from "solid-chartjs"
 import { Chart as ChartJS, ArcElement, Tooltip, DoughnutController } from "chart.js"
-import { categoryLabels } from "../shared"
+import { useLingui } from "@lingui/solid"
+import { getCategoryLabel, getRecallModeLabel } from "../shared"
+import { library as L } from "@/locales/messages"
 import { useChartTheme } from "../../visualization/use-chart-theme"
 
 ChartJS.register(ArcElement, Tooltip, DoughnutController)
@@ -20,13 +22,12 @@ const CATEGORY_ORDER = [
   "personal",
 ] as const
 
-const RECALL_MODE_STYLES: Record<string, { bg: string; label: string }> = {
-  always: { bg: "bg-surface-warning-weak text-text-on-warning-base ring-border-warning-base/24", label: "Always" },
+const RECALL_MODE_STYLES: Record<string, { bg: string }> = {
+  always: { bg: "bg-surface-warning-weak text-text-on-warning-base ring-border-warning-base/24" },
   contextual: {
     bg: "bg-surface-success-weak text-text-on-success-base ring-border-success-base/24",
-    label: "Contextual",
   },
-  search_only: { bg: "bg-surface-weak text-text-weak ring-border-weak-base/24", label: "Search-only" },
+  search_only: { bg: "bg-surface-weak text-text-weak ring-border-weak-base/24" },
 }
 
 export function MemoryDistribution(props: {
@@ -36,6 +37,7 @@ export function MemoryDistribution(props: {
   }
   totalMemories: number
 }) {
+  const { _ } = useLingui()
   const theme = useChartTheme()
   const categories = () => props.distribution.byCategory
   const recallModes = () => props.distribution.byRecallMode
@@ -46,7 +48,7 @@ export function MemoryDistribution(props: {
   const categoryColor = (category: string) => categoryColors()[category] ?? theme().axis
 
   const chartData = createMemo(() => ({
-    labels: categories().map((c) => categoryLabels[c.category as keyof typeof categoryLabels] ?? c.category),
+    labels: categories().map((c) => getCategoryLabel(_, c.category as any) ?? c.category),
     datasets: [
       {
         data: categories().map((c) => c.count),
@@ -78,23 +80,30 @@ export function MemoryDistribution(props: {
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">Memory categories</h3>
+        <h3 class="text-13-medium text-text-strong">
+          {_({ id: "app.library.stats.memory.categories", message: "Memory categories" })}
+        </h3>
       </div>
 
-      <Show when={props.totalMemories > 0} fallback={<div class="library-empty-row">No memories yet</div>}>
+      <Show
+        when={props.totalMemories > 0}
+        fallback={
+          <div class="library-empty-row">
+            {_({ id: "app.library.stats.memory.noData", message: "No memories yet" })}
+          </div>
+        }
+      >
         <div class="flex gap-4">
-          {/* Doughnut */}
           <div class="shrink-0 w-32 h-32 flex items-center justify-center">
             <Doughnut data={chartData()} options={chartOptions()} />
           </div>
 
-          {/* Categories + recall modes */}
           <div class="flex-1 min-w-0 flex flex-col gap-2.5">
             <div class="flex flex-wrap gap-x-3 gap-y-1">
               <For each={categories()}>
                 {(item) => {
                   const pct = () => (props.totalMemories > 0 ? (item.count / props.totalMemories) * 100 : 0)
-                  const label = categoryLabels[item.category as keyof typeof categoryLabels] ?? item.category
+                  const label = getCategoryLabel(_, item.category as any) ?? item.category
                   return (
                     <div class="inline-flex items-center gap-1.5 py-0.5">
                       <span
@@ -118,7 +127,7 @@ export function MemoryDistribution(props: {
                       class={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-10-medium ring-1 ring-inset ${style.bg}`}
                     >
                       <span class="font-semibold tabular-nums">{item.count}</span>
-                      <span>{style.label}</span>
+                      <span>{getRecallModeLabel(_, item.recallMode as any)}</span>
                     </div>
                   )
                 }}

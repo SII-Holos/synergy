@@ -3,6 +3,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionTransitionStep, SessionTransitionStepState } from "./session-transition-progress"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 export function SessionTransitionStepIcon(props: { state: SessionTransitionStepState }) {
   return (
@@ -23,6 +25,9 @@ export function SessionTransitionStepIcon(props: { state: SessionTransitionStepS
 }
 
 export function SessionTransitionStepList(props: { steps: SessionTransitionStep[] }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
+
   return (
     <div class="session-transition-step-list">
       <For each={props.steps}>
@@ -37,9 +42,9 @@ export function SessionTransitionStepList(props: { steps: SessionTransitionStep[
             </div>
             <span class="session-transition-step-status">
               <Switch>
-                <Match when={step.state === "active"}>In progress</Match>
-                <Match when={step.state === "complete"}>Done</Match>
-                <Match when={true}>Pending</Match>
+                <Match when={step.state === "active"}>{_(S.worktreeStepActive)}</Match>
+                <Match when={step.state === "complete"}>{_(S.worktreeStepComplete)}</Match>
+                <Match when={true}>{_(S.worktreeStepPending)}</Match>
               </Switch>
             </span>
           </div>

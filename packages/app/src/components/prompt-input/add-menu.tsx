@@ -3,6 +3,8 @@ import { List } from "@ericsanchezok/synergy-ui/list"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 
 export type PromptAddMenuItem = {
   id: string
@@ -42,7 +44,6 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
       </div>
     </div>
   )
-
   return (
     <Tooltip placement="right" inactive={!props.item.tooltip} value={props.item.tooltip}>
       {row}
@@ -51,23 +52,24 @@ function PromptAddMenuItemRow(props: { item: PromptAddMenuItem }) {
 }
 
 export function PromptAddMenu(props: { sections: PromptAddMenuSection[] }) {
+  const { i18n } = useLocale()
   const items = () => props.sections.flatMap((section) => section.items)
   const currentItem = () => items().find((item) => item.selected)
 
   return (
     <ToolbarSelectorPopover
       trigger={
-        <Tooltip placement="top" value="Add">
+        <Tooltip placement="top" value={i18n._(PI.addLabel)}>
           <button
             type="button"
-            aria-label="Add"
+            aria-label={i18n._(PI.addLabel)}
             class="prompt-input-toolbar-icon-button flex items-center justify-center text-icon-base"
           >
             <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Tooltip>
       }
-      title="Add"
+      title={i18n._(PI.addLabel)}
       contentClass="w-52 max-h-80"
       placement="top-start"
     >

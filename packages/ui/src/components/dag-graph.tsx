@@ -1,8 +1,12 @@
+import type { I18n } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Icon, type IconName } from "./icon"
 import { Markdown } from "./markdown"
 import "./dag-graph.css"
+import { DAG_CHROME_DESC } from "./tool-title-descriptors"
+import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "./semantic-icon"
 
 export interface DagNode {
@@ -169,20 +173,20 @@ function averageDepOrder(node: DagNode, layerOrder: Map<string, number>, fallbac
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, i18n?: I18n) {
   switch (status) {
     case "completed":
-      return "DONE"
+      return i18n?._({ id: "dag.status.completed", message: "DONE" }) ?? "DONE"
     case "running":
-      return "RUNNING"
+      return i18n?._({ id: "dag.status.running", message: "RUNNING" }) ?? "RUNNING"
     case "failed":
-      return "FAILED"
+      return i18n?._({ id: "dag.status.failed", message: "FAILED" }) ?? "FAILED"
     case "blocked":
-      return "BLOCKED"
+      return i18n?._({ id: "dag.status.blocked", message: "BLOCKED" }) ?? "BLOCKED"
     case "cancelled":
-      return "SKIP"
+      return i18n?._({ id: "dag.status.cancelled", message: "SKIP" }) ?? "SKIP"
     default:
-      return "PENDING"
+      return i18n?._({ id: "dag.status.pending", message: "PENDING" }) ?? "PENDING"
   }
 }
 
@@ -204,11 +208,14 @@ interface NodeBadge {
   value: string
 }
 
-function nodeBadges(node: DagNode): NodeBadge[] {
+function nodeBadges(node: DagNode, _: (desc: MessageDescriptor) => string): NodeBadge[] {
   const badges: NodeBadge[] = []
-  if (node.worktree) badges.push({ kind: "worktree", icon: "git-branch", label: "Worktree", value: node.worktree })
-  if (node.result) badges.push({ kind: "result", icon: "clipboard-check", label: "Result", value: node.result })
-  if (node.session_id) badges.push({ kind: "session", icon: "log-in", label: "Open session", value: node.session_id })
+  if (node.worktree)
+    badges.push({ kind: "worktree", icon: "git-branch", label: _(DAG_CHROME_DESC.worktree), value: node.worktree })
+  if (node.result)
+    badges.push({ kind: "result", icon: "clipboard-check", label: _(DAG_CHROME_DESC.result), value: node.result })
+  if (node.session_id)
+    badges.push({ kind: "session", icon: "log-in", label: _(DAG_CHROME_DESC.openSession), value: node.session_id })
   return badges
 }
 
@@ -231,6 +238,7 @@ export function DagGraph(props: {
      the ResizeObserver storm doesn't thrash layout + focus every frame. */
   frozen?: boolean
 }) {
+  const { _, i18n: linguiI18n } = useLingui()
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
@@ -475,31 +483,31 @@ export function DagGraph(props: {
         <div data-slot="dag-graph-toolbar">
           <div data-slot="dag-graph-stats">
             <span data-slot="dag-graph-stat" data-kind="done">
-              {counts().completed} done
+              {counts().completed} {_(DAG_CHROME_DESC.done)}
             </span>
             <span data-slot="dag-graph-stat" data-kind="running">
-              {counts().running} running
+              {counts().running} {_(DAG_CHROME_DESC.running)}
             </span>
             <span data-slot="dag-graph-stat" data-kind="pending">
-              {counts().pending} pending
+              {counts().pending} {_(DAG_CHROME_DESC.pending)}
             </span>
             <Show when={counts().blocked > 0}>
               <span data-slot="dag-graph-stat" data-kind="blocked">
-                {counts().blocked} blocked
+                {counts().blocked} {_(DAG_CHROME_DESC.blocked)}
               </span>
             </Show>
             <Show when={counts().failed > 0}>
               <span data-slot="dag-graph-stat" data-kind="failed">
-                {counts().failed} failed
+                {counts().failed} {_(DAG_CHROME_DESC.failed)}
               </span>
             </Show>
           </div>
           <div data-slot="dag-graph-controls">
             <button type="button" onClick={focusActiveNodes}>
-              Focus
+              {_(DAG_CHROME_DESC.focus)}
             </button>
             <button type="button" onClick={fitView}>
-              Fit
+              {_(DAG_CHROME_DESC.fit)}
             </button>
             <button type="button" onClick={() => zoomAt(scale() * 0.86)}>
               −
@@ -593,10 +601,10 @@ export function DagGraph(props: {
                 >
                   <div data-slot="dag-graph-card-header">
                     <span data-slot="dag-graph-status-dot" />
-                    <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status)}</span>
-                    <Show when={nodeBadges(ln.node).length > 0}>
-                      <div data-slot="dag-graph-node-badges" aria-label="Node metadata">
-                        <For each={nodeBadges(ln.node)}>
+                    <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status, linguiI18n())}</span>
+                    <Show when={nodeBadges(ln.node, _).length > 0}>
+                      <div data-slot="dag-graph-node-badges" aria-label={_(DAG_CHROME_DESC.nodeMetadata)}>
+                        <For each={nodeBadges(ln.node, _)}>
                           {(badge) =>
                             badge.kind === "session" && ln.node.session_id && props.onOpenSession ? (
                               <button
@@ -646,7 +654,7 @@ export function DagGraph(props: {
               >
                 <div data-slot="dag-node-preview-header">
                   <span data-slot="dag-node-preview-status" data-status={node.status}>
-                    {statusLabel(node.status)}
+                    {statusLabel(node.status, linguiI18n())}
                   </span>
                   <Show keyed when={node.assign}>
                     {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}
@@ -661,13 +669,13 @@ export function DagGraph(props: {
                       }}
                     >
                       <Icon name={getSemanticIcon("action.open")} size="small" />
-                      Open session
+                      {_(DAG_CHROME_DESC.openSession)}
                     </button>
                   ) : null}
                   <button
                     type="button"
                     data-slot="dag-node-preview-close"
-                    aria-label="Close node details"
+                    aria-label={_(DAG_CHROME_DESC.closeDetails)}
                     onPointerDown={(event) => event.stopPropagation()}
                     onClick={(event) => {
                       event.stopPropagation()
@@ -680,16 +688,30 @@ export function DagGraph(props: {
                 <div data-slot="dag-node-preview-title">{node.content}</div>
                 <div data-slot="dag-node-preview-meta">
                   <Show keyed when={node.task_id}>
-                    {(taskID) => <span title={taskID}>Task: {displayIdentifier(taskID)}</span>}
+                    {(taskID) => (
+                      <span title={taskID}>
+                        {_(DAG_CHROME_DESC.task)}: {displayIdentifier(taskID)}
+                      </span>
+                    )}
                   </Show>
                   <Show keyed when={node.session_id}>
-                    {(sessionID) => <span title={sessionID}>Session: {displayIdentifier(sessionID)}</span>}
+                    {(sessionID) => (
+                      <span title={sessionID}>
+                        {_(DAG_CHROME_DESC.session)}: {displayIdentifier(sessionID)}
+                      </span>
+                    )}
                   </Show>
                   <Show keyed when={node.worktree}>
-                    {(worktree) => <span>Worktree: {worktree}</span>}
+                    {(worktree) => (
+                      <span>
+                        {_(DAG_CHROME_DESC.worktree)}: {worktree}
+                      </span>
+                    )}
                   </Show>
                   <Show when={node.deps.length > 0}>
-                    <span>Deps: {node.deps.join(", ")}</span>
+                    <span>
+                      {_(DAG_CHROME_DESC.deps)}: {node.deps.join(", ")}
+                    </span>
                   </Show>
                 </div>
                 <Show keyed when={node.memo}>
@@ -706,7 +728,7 @@ export function DagGraph(props: {
             )}
           </Show>
         </Portal>
-        <div data-slot="dag-graph-hint">Drag to pan · Ctrl/⌘ + wheel to zoom · Double-click to focus</div>
+        <div data-slot="dag-graph-hint">{_(DAG_CHROME_DESC.hint)}</div>
       </Show>
     </div>
   )

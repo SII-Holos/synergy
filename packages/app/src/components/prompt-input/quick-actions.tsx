@@ -3,6 +3,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { CommandOption } from "@/context/command"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 import "./quick-actions.css"
 
 type QuickActionBase = {
@@ -12,18 +14,10 @@ type QuickActionBase = {
 }
 
 type QuickAction =
-  | (QuickActionBase & {
-      type: "ui"
-      commandId: string
-    })
-  | (QuickActionBase & {
-      type: "runtime"
-      command: string
-    })
+  | (QuickActionBase & { type: "ui"; commandId: string })
+  | (QuickActionBase & { type: "runtime"; command: string })
 
-type QuickActionGroup = {
-  actions: QuickAction[]
-}
+type QuickActionGroup = { actions: QuickAction[] }
 
 const ACTION_GROUPS: QuickActionGroup[] = [
   {
@@ -31,22 +25,22 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "ui",
         icon: "command.undo",
-        label: "Undo",
-        description: "Undo the last message turn",
+        label: PI.qaUndo.message,
+        description: PI.qaUndoDesc.message,
         commandId: "session.undo",
       },
       {
         type: "ui",
         icon: "command.redo",
-        label: "Redo",
-        description: "Restore the last undone message turn",
+        label: PI.qaRedo.message,
+        description: PI.qaRedoDesc.message,
         commandId: "session.redo",
       },
       {
         type: "ui",
         icon: "command.compact",
-        label: "Compact",
-        description: "Summarize the session to reduce context size",
+        label: PI.qaCompact.message,
+        description: PI.qaCompactDesc.message,
         commandId: "session.compact",
       },
     ],
@@ -56,29 +50,29 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "runtime",
         icon: "command.init",
-        label: "Init",
-        description: "Initialize project guidance",
+        label: PI.qaInit.message,
+        description: PI.qaInitDesc.message,
         command: "init",
       },
       {
         type: "runtime",
         icon: "command.review",
-        label: "Review",
-        description: "Review recent code changes",
+        label: PI.qaReview.message,
+        description: PI.qaReviewDesc.message,
         command: "review",
       },
       {
         type: "runtime",
         icon: "command.commit",
-        label: "Commit",
-        description: "Prepare and commit changes",
+        label: PI.qaCommit.message,
+        description: PI.qaCommitDesc.message,
         command: "commit",
       },
       {
         type: "runtime",
         icon: "command.rmslop",
-        label: "Rmslop",
-        description: "Remove AI slop from recent changes",
+        label: PI.qaRmslop.message,
+        description: PI.qaRmslopDesc.message,
         command: "rmslop",
       },
     ],
@@ -88,29 +82,29 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "runtime",
         icon: "notes.main",
-        label: "Note",
-        description: "Write or update a project note",
+        label: PI.qaNote.message,
+        description: PI.qaNoteDesc.message,
         command: "note",
       },
       {
         type: "runtime",
         icon: "command.continue",
-        label: "Continue",
-        description: "Continue the current task",
+        label: PI.qaContinue.message,
+        description: PI.qaContinueDesc.message,
         command: "continue",
       },
       {
         type: "runtime",
         icon: "command.audit",
-        label: "Audit",
-        description: "Audit the current work",
+        label: PI.qaAudit.message,
+        description: PI.qaAuditDesc.message,
         command: "audit",
       },
       {
         type: "runtime",
         icon: "command.start",
-        label: "Start",
-        description: "Start working from current context",
+        label: PI.qaStart.message,
+        description: PI.qaStartDesc.message,
         command: "start",
       },
     ],
@@ -140,6 +134,7 @@ interface QuickActionsProps {
 }
 
 export function QuickActions(props: QuickActionsProps) {
+  const { i18n } = useLocale()
   const [open, setOpen] = createSignal(false)
   const commandsDisabled = () => props.commandsDisabled ?? props.disabled
   const runtimeCommandsDisabled = () => props.runtimeCommandsDisabled ?? props.disabled
@@ -166,7 +161,6 @@ export function QuickActions(props: QuickActionsProps) {
     const option = commandOption(action)
     const title = option?.title ?? action.label
     const description = option?.description ?? action.description
-
     return (
       <div class="qa-tooltip">
         <span class="qa-tooltip-title">{title}</span>
@@ -212,7 +206,7 @@ export function QuickActions(props: QuickActionsProps) {
           </div>
         </div>
       </Show>
-      <Tooltip placement="top" value={open() ? "Close quick actions" : "Quick actions"}>
+      <Tooltip placement="top" value={open() ? i18n._(PI.qaClose) : i18n._(PI.qaOpen)}>
         <button
           type="button"
           disabled={props.disabled}

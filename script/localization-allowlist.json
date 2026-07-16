@@ -1,0 +1,234 @@
+[
+  {
+    "path": "packages/ui/src/components/logo.tsx",
+    "kind": "jsx-text",
+    "literal": "HOLOS",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Product brand name — not translated."
+  },
+  {
+    "path": "packages/ui/src/components/logo.tsx",
+    "kind": "jsx-text",
+    "literal": "SYNERGY",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Product brand name — not translated."
+  },
+  {
+    "path": "packages/ui/src/components/session-resonance-popover.tsx",
+    "kind": "jsx-text",
+    "literal": "Q",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Quality score abbreviation — a mathematical metric label, not translateable."
+  },
+  {
+    "path": "packages/ui/src/theme/generate.ts",
+    "kind": "user-visible-property",
+    "literal": "Synergy Theme",
+    "occurrence": 1,
+    "category": "developer-output",
+    "reason": "Developer-facing theme JSON metadata label — not a UI string seen by end users."
+  },
+  {
+    "path": "packages/ui/src/theme/generate.ts",
+    "kind": "user-visible-property",
+    "literal": "A complete Synergy color theme generated from light and dark seed palettes.",
+    "occurrence": 1,
+    "category": "developer-output",
+    "reason": "Developer-facing theme JSON description — not a UI string seen by end users."
+  },
+  {
+    "path": "packages/ui/src/components/session-review.tsx",
+    "kind": "jsx-text",
+    "literal": "&lrm;",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Unicode left-to-right mark used for correct bidirectional text ordering."
+  },
+  {
+    "path": "packages/ui/src/components/turn-change-summary-panel.tsx",
+    "kind": "jsx-text",
+    "literal": "&lrm;",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Unicode left-to-right mark used for correct bidirectional text ordering."
+  },
+  {
+    "path": "packages/ui/src/components/tool/anysearch-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Anysearch",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party plugin name — provided by the Anysearch plugin, not Synergy-owned chrome."
+  },
+  {
+    "path": "packages/ui/src/components/tool/anysearch-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Anysearch Batch",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party plugin name — provided by the Anysearch plugin, not Synergy-owned chrome."
+  },
+  {
+    "path": "packages/ui/src/components/tool/anysearch-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Anysearch Extract",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party plugin name — provided by the Anysearch plugin, not Synergy-owned chrome."
+  },
+  {
+    "path": "packages/ui/src/components/tool/anysearch-info.ts",
+    "kind": "user-visible-property",
+    "literal": "Search Domains",
+    "occurrence": 1,
+    "category": "plugin-content",
+    "reason": "Third-party plugin label — provided by the Anysearch plugin, not Synergy-owned chrome."
+  },
+  {
+    "path": "packages/ui/src/components/tool/renders/standard.tsx",
+    "kind": "user-visible-property",
+    "literal": "pattern=",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal tool-parameter prefix echoing the API field name — not a user-facing label."
+  },
+  {
+    "path": "packages/ui/src/components/tool/renders/standard.tsx",
+    "kind": "user-visible-property",
+    "literal": "include=",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal tool-parameter prefix echoing the API field name — not a user-facing label."
+  },
+  {
+    "path": "packages/ui/src/components/tool/renders/standard.tsx",
+    "kind": "user-visible-property",
+    "literal": "format=",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal tool-parameter prefix echoing the API field name — not a user-facing label."
+  },
+  {
+    "path": "packages/app/src/components/dialog/dialog-select-server.tsx",
+    "kind": "jsx-attribute",
+    "literal": "http://localhost:4096",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Server URL syntax example shown as an input placeholder, not natural-language product copy."
+  },
+  {
+    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "kind": "jsx-attribute",
+    "literal": "INP",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
+  },
+  {
+    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "kind": "jsx-attribute",
+    "literal": "LCP",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
+  },
+  {
+    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "kind": "jsx-attribute",
+    "literal": "CLS",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
+  },
+  {
+    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "kind": "jsx-attribute",
+    "literal": "FCP",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
+  },
+  {
+    "path": "packages/app/src/components/performance/PerformanceDashboard.tsx",
+    "kind": "jsx-attribute",
+    "literal": "TTFB",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Standard Web Vitals metric acronym; translating it would break diagnostic terminology."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "kind": "jsx-attribute",
+    "literal": "bash=600\\nwebfetch=120",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Configuration syntax example shown as an input placeholder, not natural-language product copy."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "kind": "jsx-attribute",
+    "literal": "info",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Canonical logging-level value shown as configuration input syntax."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/RuntimePanels.tsx",
+    "kind": "jsx-attribute",
+    "literal": "node_modules\\n.git",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Filesystem ignore-pattern syntax shown as an input placeholder, not natural-language product copy."
+  },
+  {
+    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "kind": "user-visible-property",
+    "literal": "localhost:3000",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal development server host and port used by the browser navigation preset."
+  },
+  {
+    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "kind": "user-visible-property",
+    "literal": "localhost:5173",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal development server host and port used by the browser navigation preset."
+  },
+  {
+    "path": "packages/app/src/components/workspace/browser/address-bar.tsx",
+    "kind": "user-visible-property",
+    "literal": "localhost:8080",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "Literal development server host and port used by the browser navigation preset."
+  },
+  {
+    "path": "packages/app/src/components/workspace/browser/annotation-input.tsx",
+    "kind": "jsx-attribute",
+    "literal": "14px",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "CSS font-size syntax example shown as an annotation style placeholder."
+  },
+  {
+    "path": "packages/app/src/components/workspace/browser/annotation-input.tsx",
+    "kind": "jsx-attribute",
+    "literal": "#3b82f6",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "CSS hexadecimal color syntax example shown as an annotation style placeholder."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/language-self-names.ts",
+    "kind": "chinese-literal",
+    "literal": "简体中文",
+    "occurrence": 1,
+    "category": "language-self-name",
+    "reason": "Language selectors preserve each supported language's self-name so users can always recover from an unreadable locale."
+  }
+]

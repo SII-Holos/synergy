@@ -120,6 +120,7 @@ Repository gates run from the root:
 ```bash
 bun run format:check
 bun run lint
+bun run localization:check
 bun run typecheck
 bun run monorepo:check
 bun run package:check

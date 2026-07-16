@@ -9,7 +9,9 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { sidebar } from "@/locales/messages"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
@@ -31,6 +33,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import "./sidebar.css"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
@@ -76,6 +79,7 @@ export function Sidebar(props: SidebarProps) {
   const params = useParams()
   const { pickProjectDirectories } = useProjectDirectoryPicker()
   const productUpdate = useProductUpdate()
+  const { _ } = useLingui()
 
   const isExpanded = () => layout.sidebar.opened()
   const isDark = () => theme.mode() === "dark"
@@ -173,7 +177,7 @@ export function Sidebar(props: SidebarProps) {
     if (orphanSessions.length > 0) {
       result.push({
         chatId: ORPHAN_CHAT_GROUP_ID,
-        name: "Other",
+        name: _(sidebar.orphanGroup),
         sessions: orphanSessions.sort((a, b) => b.lastActivityAt - a.lastActivityAt),
       })
     }
@@ -248,7 +252,10 @@ export function Sidebar(props: SidebarProps) {
   }
 
   const handleAddProject = async () => {
-    const result = await pickProjectDirectories({ title: "Add project", multiple: true })
+    const result = await pickProjectDirectories({
+      title: _(sidebar.addProjectDialogTitle),
+      multiple: true,
+    })
     if (!result) return
     for (const dir of result.directoryPaths) {
       layout.scopes.open(dir)
@@ -288,16 +295,16 @@ export function Sidebar(props: SidebarProps) {
         <Show
           when={isExpanded()}
           fallback={
-            <Tooltip value="Expand sidebar" placement="right">
+            <Tooltip value={_(sidebar.expand)} placement="right">
               <button
                 type="button"
                 class="sb-collapsed-toggle"
-                aria-label="Expand sidebar"
+                aria-label={_(sidebar.expand)}
                 onClick={() => layout.sidebar.toggle()}
               >
                 <img
                   src={holosLogoPath(isDark() ? "dark" : "light")}
-                  alt="HOLOS"
+                  alt={_(sidebar.logoAlt)}
                   class="sb-collapsed-logo"
                   draggable={false}
                 />
@@ -307,20 +314,25 @@ export function Sidebar(props: SidebarProps) {
           }
         >
           <A href={`/${base64Encode("home")}/session`} class="sb-logo">
-            <img src={holosLogoPath(isDark() ? "dark" : "light")} alt="HOLOS" class="sb-logo-img" draggable={false} />
-            <span class="sb-logo-text">HOLOS</span>
+            <img
+              src={holosLogoPath(isDark() ? "dark" : "light")}
+              alt={_(sidebar.logoAlt)}
+              class="sb-logo-img"
+              draggable={false}
+            />
+            <span class="sb-logo-text">{_(sidebar.logoAlt)}</span>
           </A>
           <div class="sb-header-actions">
-            <Tooltip value="Search sessions" placement="right">
-              <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
+            <Tooltip value={_(sidebar.search)} placement="right">
+              <button type="button" class="sb-icon-btn" aria-label={_(sidebar.search)} onClick={props.onSearchOpen}>
                 <Icon name={getSemanticIcon("action.search")} size="normal" />
               </button>
             </Tooltip>
-            <Tooltip value="Collapse sidebar" placement="right">
+            <Tooltip value={_(sidebar.collapse)} placement="right">
               <button
                 type="button"
                 class="sb-icon-btn"
-                aria-label="Collapse sidebar"
+                aria-label={_(sidebar.collapse)}
                 onClick={() => layout.sidebar.toggle()}
               >
                 <Icon name={getSemanticIcon("app.sidebar.close")} size="normal" />
@@ -333,8 +345,8 @@ export function Sidebar(props: SidebarProps) {
       {/* Collapsed search button — only visible when sidebar is collapsed */}
       <Show when={!isExpanded()}>
         <div class="sb-collapsed-search">
-          <Tooltip value="Search sessions" placement="right">
-            <button type="button" class="sb-icon-btn" aria-label="Search sessions" onClick={props.onSearchOpen}>
+          <Tooltip value={_(sidebar.search)} placement="right">
+            <button type="button" class="sb-icon-btn" aria-label={_(sidebar.search)} onClick={props.onSearchOpen}>
               <Icon name={getSemanticIcon("action.search")} size="normal" />
             </button>
           </Tooltip>
@@ -343,11 +355,11 @@ export function Sidebar(props: SidebarProps) {
 
       {/* Action buttons */}
       <div class="sb-actions">
-        <Tooltip value="New session" placement="right">
-          <button type="button" class="sb-action-btn" aria-label="New session" onClick={handleNewSession}>
+        <Tooltip value={_(sidebar.newSession)} placement="right">
+          <button type="button" class="sb-action-btn" aria-label={_(sidebar.newSession)} onClick={handleNewSession}>
             <Icon name={getSemanticIcon("session.new")} size="normal" />
             <Show when={isExpanded()}>
-              <span class="sb-action-label">New</span>
+              <span class="sb-action-label">{_(sidebar.newSessionShort)}</span>
             </Show>
           </button>
         </Tooltip>
@@ -382,10 +394,10 @@ export function Sidebar(props: SidebarProps) {
         when={isExpanded()}
         fallback={
           <div class="sb-projects-collapsed">
-            <Tooltip value="Projects" placement="right">
+            <Tooltip value={_(sidebar.projects)} placement="right">
               <button
                 type="button"
-                aria-label="Projects"
+                aria-label={_(sidebar.projects)}
                 classList={{
                   "sb-icon-btn": true,
                   "sb-projects-flyout-trigger": true,
@@ -404,7 +416,7 @@ export function Sidebar(props: SidebarProps) {
             fallback={
               <div class="flex flex-col items-center justify-center h-full min-h-[200px] gap-3">
                 <Spinner class="text-text-weak size-8" />
-                <span class="text-text-weak text-xs">Loading projects…</span>
+                <span class="text-text-weak text-xs">{_(sidebar.loadingProjects)}</span>
               </div>
             }
           >
@@ -416,7 +428,7 @@ export function Sidebar(props: SidebarProps) {
                 role="button"
                 tabindex="0"
               >
-                <span class="sb-section-title">Recent</span>
+                <span class="sb-section-title">{_(sidebar.recent)}</span>
                 <Icon
                   name={recentSectionOpen() ? "chevron-down" : "chevron-right"}
                   size="small"
@@ -426,7 +438,7 @@ export function Sidebar(props: SidebarProps) {
               <Show when={recentSectionOpen()}>
                 <Show
                   when={recentEntries().length > 0}
-                  fallback={<div class="sb-section-empty">No recent sessions</div>}
+                  fallback={<div class="sb-section-empty">{_(sidebar.noRecentSessions)}</div>}
                 >
                   <SidebarSessionList
                     entries={recentEntries()}
@@ -435,7 +447,7 @@ export function Sidebar(props: SidebarProps) {
                   />
                   <Show when={hasMoreRecent()}>
                     <button type="button" class="sb-load-more-btn" onClick={() => layout.nav.loadMoreNav("__recent__")}>
-                      Load more
+                      {_(sidebar.loadMore)}
                     </button>
                   </Show>
                 </Show>
@@ -444,7 +456,7 @@ export function Sidebar(props: SidebarProps) {
 
             {/* Home */}
             <RootNavSection
-              title="Home"
+              title={_(sidebar.home)}
               open={homeSectionOpen}
               onToggle={() => setHomeSectionOpen((v) => !v)}
               entries={layout.nav.rootNavEntries("home")}
@@ -462,7 +474,7 @@ export function Sidebar(props: SidebarProps) {
                 role="button"
                 tabindex="0"
               >
-                <span class="sb-section-title">Channel</span>
+                <span class="sb-section-title">{_(sidebar.channel)}</span>
                 <Icon
                   name={channelSectionOpen() ? "chevron-down" : "chevron-right"}
                   size="small"
@@ -472,7 +484,7 @@ export function Sidebar(props: SidebarProps) {
               <Show when={channelSectionOpen()}>
                 <Show
                   when={channelGroupedEntries().length > 0}
-                  fallback={<div class="sb-section-empty">No sessions</div>}
+                  fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
                 >
                   <div class="sb-session-group">
                     <div
@@ -486,7 +498,7 @@ export function Sidebar(props: SidebarProps) {
                         size="small"
                         class="sb-section-chevron"
                       />
-                      <span>Feishu</span>
+                      <span>{_(sidebar.channelFeishu)}</span>
                     </div>
                     <Show when={feishuGroupOpen()}>
                       <For each={channelGroupedEntries()}>
@@ -507,7 +519,7 @@ export function Sidebar(props: SidebarProps) {
                       class="sb-load-more-btn"
                       onClick={() => layout.nav.loadMoreRootNavSection("channel")}
                     >
-                      Load more
+                      {_(sidebar.loadMore)}
                     </button>
                   </Show>
                 </Show>
@@ -516,7 +528,7 @@ export function Sidebar(props: SidebarProps) {
 
             {/* Background */}
             <RootNavSection
-              title="Background"
+              title={_(sidebar.background)}
               open={backgroundSectionOpen}
               onToggle={() => setBackgroundSectionOpen((v) => !v)}
               entries={layout.nav.rootNavEntries("background")}
@@ -534,7 +546,7 @@ export function Sidebar(props: SidebarProps) {
                 role="button"
                 tabindex="0"
               >
-                <span class="sb-section-title">Projects</span>
+                <span class="sb-section-title">{_(sidebar.projects)}</span>
                 <Icon
                   name={projectsSectionOpen() ? "chevron-down" : "chevron-right"}
                   size="small"
@@ -542,18 +554,18 @@ export function Sidebar(props: SidebarProps) {
                 />
                 <span class="sb-projects-header-spacer" />
                 <Show when={hasExpandedProject()}>
-                  <Tooltip value="Collapse all projects" placement="top">
+                  <Tooltip value={_(sidebar.collapseAllProjects)} placement="top">
                     <button
                       type="button"
                       class="sb-projects-header-expand-all"
-                      aria-label="Collapse all projects"
+                      aria-label={_(sidebar.collapseAllProjects)}
                       onClick={(e) => handleCollapseAllProjects(e)}
                     >
                       <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
                     </button>
                   </Tooltip>
                 </Show>
-                <Tooltip value="Add project" placement="top">
+                <Tooltip value={_(sidebar.addProject)} placement="top">
                   <button
                     type="button"
                     class="sb-projects-header-plus"
@@ -589,6 +601,7 @@ export function Sidebar(props: SidebarProps) {
                         onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
                         activeSessionID={params.id}
                         onSessionClick={handleSessionClick}
+                        _={_}
                       />
                     )}
                   </For>
@@ -608,7 +621,7 @@ export function Sidebar(props: SidebarProps) {
       <Show when={!isExpanded() && projectsFlyoutOpen()}>
         <div class="sb-projects-flyout-backdrop" onClick={() => setProjectsFlyoutOpen(false)} />
         <div class="sb-projects-flyout">
-          <div class="sb-flyout-header">Projects</div>
+          <div class="sb-flyout-header">{_(sidebar.projectsFlyout)}</div>
           <For each={scopes()}>
             {(scope) => {
               const sessions = createMemo(() => layout.nav.projectNavEntries(scope))
@@ -642,55 +655,6 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-function SidebarAttentionNotice(props: {
-  notice?: AppAttentionNotice
-  isExpanded: boolean
-  onAction: (notice: AppAttentionNotice) => void
-}) {
-  return (
-    <Show when={props.notice}>
-      {(notice) => (
-        <div
-          classList={{
-            "sb-attention-notice": true,
-            "sb-attention-notice--collapsed": !props.isExpanded,
-          }}
-          data-tone={notice().tone}
-          aria-live="polite"
-        >
-          <Tooltip value={`${notice().title}${notice().detail ? ` — ${notice().detail}` : ""}`} placement="right">
-            <button
-              type="button"
-              class="sb-attention-button"
-              aria-label={`${notice().title}${notice().detail ? `. ${notice().detail}` : ""}`}
-              disabled={notice().busy}
-              onClick={() => props.onAction(notice())}
-            >
-              <span class="sb-attention-icon">
-                <Icon name={getSemanticIcon(notice().iconToken)} size="small" />
-              </span>
-              <Show when={props.isExpanded}>
-                <span class="sb-attention-copy">
-                  <span class="sb-attention-title">{notice().title}</span>
-                  <span class="sb-attention-detail">{notice().detail}</span>
-                </span>
-                <Show when={notice().actionLabel}>
-                  <span class="sb-attention-action">{notice().busy ? "Working..." : notice().actionLabel}</span>
-                </Show>
-              </Show>
-            </button>
-          </Tooltip>
-          <Show when={notice().progress != null}>
-            <div class="sb-attention-progress" aria-hidden="true">
-              <span style={{ "--sb-attention-progress": `${notice().progress ?? 0}%` }} />
-            </div>
-          </Show>
-        </div>
-      )}
-    </Show>
-  )
-}
-
 function SidebarProjectGroup(props: {
   scope: () => LocalScope | undefined
   activeID?: string
@@ -709,6 +673,7 @@ function SidebarProjectGroup(props: {
   onLoadMore: (scope: LocalScope) => void
   activeSessionID?: string
   onSessionClick: (scope: LocalScope, entry: NavEntry) => void
+  _: ReturnType<typeof useLingui>["_"]
 }) {
   const [menuOpen, setMenuOpen] = createSignal(false)
   const isSupplemental = createMemo(() => {
@@ -748,7 +713,7 @@ function SidebarProjectGroup(props: {
           <button
             type="button"
             class="sb-project-chevron-btn"
-            aria-label={props.scope()?.expanded ? "Collapse project" : "Expand project"}
+            aria-label={props.scope()?.expanded ? props._(sidebar.collapseProject) : props._(sidebar.expandProject)}
             aria-expanded={props.scope()?.expanded}
             onClick={(event) => {
               const scope = props.scope()
@@ -808,7 +773,7 @@ function SidebarProjectGroup(props: {
                     }}
                   >
                     <Icon name={getSemanticIcon("action.pin")} size="small" />
-                    <span>{props.scope()?.pinned ? "Unpin" : "Pin"}</span>
+                    <span>{props.scope()?.pinned ? props._(sidebar.unpin) : props._(sidebar.pin)}</span>
                   </button>
                   <button
                     type="button"
@@ -819,7 +784,7 @@ function SidebarProjectGroup(props: {
                     }}
                   >
                     <Icon name={getSemanticIcon("action.rename")} size="small" />
-                    <span>Edit</span>
+                    <span>{props._(sidebar.edit)}</span>
                   </button>
                   <button
                     type="button"
@@ -830,7 +795,7 @@ function SidebarProjectGroup(props: {
                     }}
                   >
                     <Icon name={getSemanticIcon("action.remove")} size="small" />
-                    <span>Archive</span>
+                    <span>{props._(sidebar.archive)}</span>
                   </button>
                 </div>
               </>
@@ -839,10 +804,6 @@ function SidebarProjectGroup(props: {
         </div>
 
         <Show when={props.scope()?.expanded}>
-          {/* Local scope: show skeleton while nav is loading, then swap to
-              the real session list once it arrives. The skeleton pre-reserves
-              vertical space so the expand FLIP animation captures the correct
-              final height — no jump when loadScopeNav completes. */}
           <Show
             when={!isSupplemental()}
             fallback={
@@ -858,7 +819,7 @@ function SidebarProjectGroup(props: {
                         if (scope) props.onLoadScopeNav(scope)
                       }}
                     >
-                      Load sessions
+                      {props._(sidebar.loadSessions)}
                     </button>
                   </div>
                 }
@@ -882,7 +843,7 @@ function SidebarProjectGroup(props: {
                         if (scope) props.onLoadMore(scope)
                       }}
                     >
-                      Load more
+                      {props._(sidebar.loadMore)}
                     </button>
                   </div>
                 </Show>
@@ -916,7 +877,7 @@ function SidebarProjectGroup(props: {
                       if (scope) props.onLoadMore(scope)
                     }}
                   >
-                    Load more
+                    {props._(sidebar.loadMore)}
                   </button>
                 </div>
               </Show>
@@ -978,6 +939,7 @@ function RootNavSection(props: {
   activeID?: string
   onSessionClick: (entry: NavEntry) => void
 }) {
+  const { _ } = useLingui()
   return (
     <div class="sb-root-section">
       <div class="sb-projects-header" onClick={props.onToggle} role="button" tabindex="0">
@@ -985,11 +947,11 @@ function RootNavSection(props: {
         <Icon name={props.open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
       </div>
       <Show when={props.open()}>
-        <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">No sessions</div>}>
+        <Show when={props.entries.length > 0} fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}>
           <SidebarSessionList entries={props.entries} activeID={props.activeID} onSessionClick={props.onSessionClick} />
           <Show when={props.hasMore}>
             <button type="button" class="sb-load-more-btn" onClick={props.onLoadMore}>
-              Load more
+              {_(sidebar.loadMore)}
             </button>
           </Show>
         </Show>
@@ -1045,11 +1007,18 @@ function SidebarSessionRow(props: {
   flyout?: boolean
   onClick: (event: MouseEvent) => void
 }) {
+  const { _ } = useLingui()
+  const lingui = useLingui()
   const globalSync = useGlobalSync()
 
   const visual = createMemo(() => {
     if (props.scope) return resolveSessionVisualState(globalSync.peekScopeState(props.scope.worktree)?.[0], props.entry)
     return resolveSessionVisualState(getStoreForEntry(globalSync, props.entry), props.entry)
+  })
+
+  const sessionTooltip = createMemo(() => {
+    const v = visual()
+    return v ? lingui._(v.label) : ""
   })
 
   return (
@@ -1063,21 +1032,7 @@ function SidebarSessionRow(props: {
       data-session-id={props.entry.id}
       onClick={props.onClick}
     >
-      <span
-        classList={{
-          "sb-session-icon-wrap": true,
-          "sb-session-icon-active-tone": visual()?.tone === "active",
-          "sb-session-icon-waiting-tone": visual()?.tone === "waiting",
-          "sb-session-icon-worktree-tone": visual()?.tone === "worktree",
-          "sb-session-icon-muted-tone": visual()?.tone === "muted",
-          "sb-session-icon-blueprint-tone": visual()?.tone === "blueprint",
-          "sb-session-icon-blueprint-running-tone": visual()?.tone === "blueprint-running",
-          "sb-session-icon-blueprint-waiting-tone": visual()?.tone === "blueprint-waiting",
-          "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
-          "sb-session-icon-pulse": !!visual()?.pulse,
-        }}
-        title={visual()?.label ?? ""}
-      >
+      <span classList={{ ...sessionIconClassList(visual()) }} title={sessionTooltip()}>
         <Icon
           name={visual()?.icon ?? "loader"}
           size="small"
@@ -1088,7 +1043,7 @@ function SidebarSessionRow(props: {
         </Show>
       </span>
       <span class={props.flyout ? "sb-flyout-session-title" : "sb-session-title"}>
-        {props.entry.title || "Untitled"}
+        {props.entry.title || _(sidebar.untitled)}
       </span>
     </button>
   )
@@ -1101,6 +1056,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const platform = usePlatform()
   const dialog = useDialog()
   const agentActions = useHolosAgentActions(props.globalSDK)
+  const { _ } = useLingui()
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [agentSwitcherOpen, setAgentSwitcherOpen] = createSignal(false)
   const [holosStatusOpen, setHolosStatusOpen] = createSignal(false)
@@ -1118,12 +1074,12 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   }
 
   const displayDescription = () => {
-    if (!holos.loaded) return "Loading identity..."
-    if (!holos.state.identity.loggedIn) return "Local workspace"
-    if (holos.state.social.profileError) return "Profile unavailable"
+    if (!holos.loaded) return _(sidebar.loadingIdentity)
+    if (!holos.state.identity.loggedIn) return _(sidebar.localWorkspace)
+    if (holos.state.social.profileError) return _(sidebar.profileUnavailable)
     const description = holos.state.social.profile?.description?.trim()
     if (description) return description
-    return holos.state.connection.status === "connected" ? "Connected to Holos" : holosMenuRightLabel()
+    return holos.state.connection.status === "connected" ? _(sidebar.connectedToHolos) : holosMenuRightLabel()
   }
 
   const connectionTone = () => {
@@ -1163,14 +1119,13 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
     }
   }
   const holosMenuRightLabel = () => {
-    if (!holos.loaded) return "Loading…"
-    if (!holos.state.identity.loggedIn) return "Sign in"
-    if (holos.state.connection.status === "connected") return "Connected"
-    if (holos.state.connection.status === "connecting") return "Connecting…"
-    if (holos.state.connection.status === "failed") return "Connection failed"
-    if (holos.state.connection.status === "disconnected") return "Disconnected"
-    if (holos.state.connection.status === "disabled") return "Disabled"
-    return "Not available"
+    if (!holos.state.identity.loggedIn) return _(sidebar.signIn)
+    if (holos.state.connection.status === "connected") return _(sidebar.connected)
+    if (holos.state.connection.status === "connecting") return _(sidebar.connecting)
+    if (holos.state.connection.status === "failed") return _(sidebar.connectionFailed)
+    if (holos.state.connection.status === "disconnected") return _(sidebar.disconnected)
+    if (holos.state.connection.status === "disabled") return _(sidebar.disabled)
+    return _(sidebar.notAvailable)
   }
 
   const holosMenuDisabled = () => {
@@ -1190,8 +1145,8 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
   const accountDescription = (account: HolosAccountMeta) => {
     const description = accountProfile(account)?.description?.trim()
     if (description) return description
-    if (account.profileError) return "Profile unavailable"
-    return isActiveAccount(account.agentId) ? displayDescription() : "Saved on this device"
+    if (account.profileError) return _(sidebar.profileUnavailable)
+    return isActiveAccount(account.agentId) ? displayDescription() : _(sidebar.savedOnDevice)
   }
 
   const handleSwitchAccount = async (agentId: string) => {
@@ -1247,10 +1202,10 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
 
   return (
     <div class="sidebar-account-hub">
-      <Tooltip value="Agent" placement="right" inactive={props.isExpanded}>
+      <Tooltip value={_(sidebar.agent)} placement="right" inactive={props.isExpanded}>
         <button
           type="button"
-          aria-label="Agent menu"
+          aria-label={_(sidebar.agentMenu)}
           classList={{
             "sidebar-account-trigger": true,
             "sidebar-account-trigger--expanded": menuOpen(),
@@ -1292,7 +1247,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               <span class="sidebar-account-card-copy">
                 <span class="sidebar-account-card-name">{displayName()}</span>
                 <span class="sidebar-account-card-description">{displayDescription()}</span>
-                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? "No agent"}</span>
+                <span class="sidebar-account-card-meta">{activeAgentShortID() ?? sidebar.noAgent.message}</span>
               </span>
               <Icon name={agentSwitcherOpen() || holosStatusOpen() ? "chevron-up" : "chevron-down"} size="small" />
             </button>
@@ -1341,7 +1296,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 }}
               >
                 <Icon name={getSemanticIcon("account.create")} size="small" />
-                <span>Create Agent</span>
+                <span>{_(sidebar.createAgent)}</span>
               </button>
               <button
                 type="button"
@@ -1350,28 +1305,28 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                 onClick={openImportExistingAgentDialog}
               >
                 <Icon name={getSemanticIcon("account.import")} size="small" />
-                <span>Import Agent</span>
+                <span>{_(sidebar.importAgent)}</span>
               </button>
             </div>
           </Show>
 
           <Show when={holosStatusOpen()}>
             <div class="sidebar-account-popover" role="menu">
-              <div class="sidebar-account-section-label">Holos Connection</div>
+              <div class="sidebar-account-section-label">{_(sidebar.holosConnection)}</div>
               <div class="sidebar-holos-status-panel">
                 <div class="sidebar-holos-status-row">
                   <Icon name={getSemanticIcon("holos.main")} size="small" />
-                  <span>Login</span>
+                  <span>{_(sidebar.holosLogin)}</span>
                   <span
                     class="sidebar-account-menuStatus"
                     data-tone={holos.state.identity.loggedIn ? "success" : "muted"}
                   >
-                    {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
+                    {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : _(sidebar.notLoggedIn)}
                   </span>
                 </div>
                 <div class="sidebar-holos-status-row">
                   <Icon name={getSemanticIcon("providers.main")} size="small" />
-                  <span>Service</span>
+                  <span>{_(sidebar.holosService)}</span>
                   <span class="sidebar-account-menuStatus" data-tone={connectionTone()}>
                     {holosMenuRightLabel()}
                   </span>
@@ -1387,7 +1342,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                     onClick={handleReconnect}
                   >
                     <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                    <span>Reconnect</span>
+                    <span>{_(sidebar.reconnect)}</span>
                   </button>
                 </Show>
               </div>
@@ -1406,7 +1361,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   onClick={handleHolosClick}
                 >
                   <Icon name={getSemanticIcon("account.create")} size="small" />
-                  <span>Create Agent</span>
+                  <span>{_(sidebar.createAgent)}</span>
                 </button>
                 <button
                   type="button"
@@ -1415,7 +1370,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   onClick={openImportExistingAgentDialog}
                 >
                   <Icon name={getSemanticIcon("account.import")} size="small" />
-                  <span>Import Agent</span>
+                  <span>{_(sidebar.importAgent)}</span>
                 </button>
                 <button
                   type="button"
@@ -1424,7 +1379,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   onClick={() => openSettings("general")}
                 >
                   <Icon name={getSemanticIcon("settings.general")} size="small" />
-                  <span>Settings</span>
+                  <span>{_(sidebar.settings)}</span>
                 </button>
                 <button
                   type="button"
@@ -1433,11 +1388,11 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
                   onClick={() => openSettings("providers")}
                 >
                   <Icon name={getSemanticIcon("providers.main")} size="small" />
-                  <span>Providers</span>
+                  <span>{_(sidebar.providers)}</span>
                 </button>
                 <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
                   <Icon name={getSemanticIcon("github.main")} size="small" />
-                  <span>Repository</span>
+                  <span>{_(sidebar.repository)}</span>
                   <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
                 </button>
               </>
@@ -1450,12 +1405,12 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               onClick={() => openSettings("account")}
             >
               <Icon name={getSemanticIcon("settings.account")} size="small" />
-              <span>Account</span>
+              <span>{_(sidebar.account)}</span>
             </button>
             <Show when={showHolosStatus()}>
               <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={handleReconnect}>
                 <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                <span>Reconnect</span>
+                <span>{_(sidebar.reconnect)}</span>
               </button>
             </Show>
             <button
@@ -1465,7 +1420,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               onClick={() => openSettings("general")}
             >
               <Icon name={getSemanticIcon("settings.general")} size="small" />
-              <span>Settings</span>
+              <span>{_(sidebar.settings)}</span>
             </button>
             <button
               type="button"
@@ -1474,7 +1429,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               onClick={() => openSettings("providers")}
             >
               <Icon name={getSemanticIcon("providers.main")} size="small" />
-              <span>Providers</span>
+              <span>{_(sidebar.providers)}</span>
             </button>
             <button
               type="button"
@@ -1483,11 +1438,11 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               onClick={() => openSettings("usage")}
             >
               <Icon name={getSemanticIcon("settings.usage")} size="small" />
-              <span>Usage</span>
+              <span>{_(sidebar.usage)}</span>
             </button>
             <button type="button" class="sidebar-account-menuItem" role="menuitem" onClick={openRepository}>
               <Icon name={getSemanticIcon("github.main")} size="small" />
-              <span>Repository</span>
+              <span>{_(sidebar.repository)}</span>
               <Icon name={getSemanticIcon("action.open")} size="small" class="sidebar-account-menuTrailingIcon" />
             </button>
             <button
@@ -1497,7 +1452,7 @@ function SidebarAgentHub(props: { isExpanded: boolean; globalSDK: ReturnType<typ
               onClick={logout}
             >
               <Icon name={getSemanticIcon("account.logout")} size="small" />
-              <span>Log out</span>
+              <span>{_(sidebar.logout)}</span>
             </button>
           </Show>
         </div>

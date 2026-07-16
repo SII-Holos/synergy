@@ -7,6 +7,9 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
 import { resolveRuntimeIconState } from "@/components/status-bar"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
 import "./subagent-dock.css"
 
 type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
@@ -34,6 +37,8 @@ interface SubagentAvatarProps {
 function SubagentAvatar(props: SubagentAvatarProps) {
   const sync = useSync()
   const navigateToSession = useNavigateToSession()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
   const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
@@ -143,7 +148,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
             <span class="select-none leading-none" style={{ "font-size": "14px" }}>
               {cfg.emoji}
             </span>
-            <span>{cfg.label}</span>
+            <span>{translateDescriptor(cfg.label, i18n)}</span>
           </span>
 
           <span class="text-11-regular text-text-subtle">{elapsed()}</span>
@@ -152,7 +157,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
         <Show when={!isQueued() && task.progress}>
           <div class="flex items-center gap-2 text-11-regular text-text-subtle">
             <Show when={task.progress!.toolCalls > 0}>
-              <span>{task.progress!.toolCalls} tools</span>
+              <span>{i18n._({ ...S.subagentToolsCount, values: { count: task.progress!.toolCalls } })}</span>
             </Show>
             <Show when={task.progress!.lastTool}>
               <span class="truncate max-w-28">{task.progress!.lastTool}</span>
@@ -166,7 +171,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
               <div class="flex flex-col gap-0.5">
                 <div class="flex items-center gap-1.5 text-11-medium text-text-on-critical-base">
                   <Icon name={state.icon} size="small" />
-                  <span>Retry #{s.attempt}</span>
+                  <span>{i18n._({ ...S.subagentRetry, values: { attempt: s.attempt } })}</span>
                 </div>
                 <Show when={s.message}>
                   <span class="text-11-regular text-text-on-critical-base leading-relaxed break-words line-clamp-3">
@@ -178,19 +183,27 @@ function SubagentAvatar(props: SubagentAvatarProps) {
           }}
         </Show>
         <span class="text-11-regular text-text-interactive-base">
-          {isQueued() ? "Queued — waiting for slot" : "Tap to open · press and hold to cancel"}
+          {isQueued() ? _(S.subagentQueuedWait) : _(S.subagentTapToOpen)}
         </span>
       </div>
     )
   }
 
   const ariaLabel = createMemo(() => {
-    if (isQueued()) return `${config().label} queued`
+    if (isQueued())
+      return i18n._({ ...S.subagentAriaQueued, values: { agent: translateDescriptor(config().label, i18n) } })
     const status = sessionStatus()
     if (isRetryStatus(status)) {
-      return `${config().label}: Retry #${status.attempt} — ${status.message}`
+      return i18n._({
+        ...S.subagentRetryAria,
+        values: {
+          agent: translateDescriptor(config().label, i18n),
+          attempt: status.attempt,
+          message: status.message ?? "",
+        },
+      })
     }
-    return `Open ${props.task.description}. Press and hold to cancel.`
+    return i18n._({ ...S.subagentAriaLabel, values: { description: props.task.description } })
   })
 
   return (
@@ -216,30 +229,33 @@ function SubagentAvatar(props: SubagentAvatarProps) {
           }}
           style={{ "--subagent-accent-color": config().color }}
         >
-          <Show when={!isQueued() && isHolding()}>
-            <svg class="subagent-hold-ring absolute inset-0 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
-              <circle class="subagent-hold-ring-track" cx="22" cy="22" r="19" fill="none" />
-              <circle
-                class="subagent-hold-ring-progress"
-                cx="22"
-                cy="22"
-                r="19"
-                fill="none"
-                style={{
-                  "stroke-dasharray": `${HOLD_RING_CIRCUMFERENCE}`,
-                  "stroke-dashoffset": `${ringOffset()}`,
-                }}
-              />
-            </svg>
-          </Show>
-          <span
-            classList={{
-              "subagent-icon inline-flex items-center justify-center size-5 select-none text-[16px] leading-none": true,
-              "text-icon-base": !isRetrying(),
-              "text-icon-critical-base": isRetrying(),
-            }}
-          >
-            {config().emoji}
+          <span class="relative flex size-4 items-center justify-center">
+            <Show when={!isHolding()}>
+              <svg width="32" height="32" viewBox="0 0 32 32" class="absolute inset-0 size-full -m-2">
+                <circle
+                  cx="16"
+                  cy="16"
+                  r="13"
+                  fill="none"
+                  stroke="var(--subagent-accent-color)"
+                  stroke-width="3"
+                  stroke-linecap="round"
+                  stroke-dasharray={`${HOLD_RING_CIRCUMFERENCE}`}
+                  stroke-dashoffset={ringOffset()}
+                  style={{ transition: "stroke-dashoffset 75ms linear" }}
+                  transform="rotate(-90 16 16)"
+                />
+              </svg>
+            </Show>
+            <span
+              class="relative select-none leading-none transition-transform duration-150"
+              style={{
+                "font-size": "14px",
+                transform: isHolding() ? "scale(0.8)" : undefined,
+              }}
+            >
+              {config().emoji}
+            </span>
           </span>
         </button>
       </Tooltip>
@@ -247,31 +263,12 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   )
 }
 
-interface SubagentDockProps {
-  sessionID: string
-}
-
-export function SubagentDock(props: SubagentDockProps) {
-  const sync = useSync()
-  const sdk = useSDK()
-
-  const activeTasks = createMemo(() =>
-    sync.data.cortex
-      .filter((t) => t.parentSessionID === props.sessionID && (t.status === "running" || t.status === "queued"))
-      .sort((a, b) => a.startedAt - b.startedAt),
-  )
-
-  const handleCancel = (taskID: string) => {
-    sdk.client.cortex.cancel({ taskID }).catch(() => {})
-  }
-
+export function SubagentDock(props: { tasks: CortexTask[]; onCancelTask: (taskID: string) => void }) {
   return (
-    <Show when={activeTasks().length > 0}>
-      <div class="flex items-center justify-center gap-2 pb-2 pointer-events-auto">
-        <For each={activeTasks()}>
-          {(task, index) => <SubagentAvatar task={task} index={index()} onCancel={handleCancel} />}
-        </For>
-      </div>
-    </Show>
+    <div class="subagent-dock">
+      <For each={props.tasks}>
+        {(task, index) => <SubagentAvatar task={task} index={index()} onCancel={props.onCancelTask} />}
+      </For>
+    </div>
   )
 }

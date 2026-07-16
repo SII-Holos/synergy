@@ -13,7 +13,7 @@ export interface RuntimeIconState {
   copyText?: string
 }
 
-export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
+export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean): string {
   if (waiting) return "waiting"
   if (!status || status.type === "idle") return "idle"
   if (status.type === "busy") return status.description || "running"

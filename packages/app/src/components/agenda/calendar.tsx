@@ -7,9 +7,12 @@ import {
   addMonths,
   monthRange,
   formatHour,
-  MONTH_NAMES_SHORT,
-  DAY_LABELS_SHORT,
+  getMonthNamesShort,
+  getDayLabelsShort,
+  formatLocaleDate,
 } from "./date"
+import { A } from "./agenda-i18n"
+import { useLocale, type IntlFormatter } from "@/context/locale"
 
 export type ViewMode = "day" | "week" | "month"
 
@@ -89,21 +92,23 @@ interface CalendarGridProps {
   onRangeChange?: (start: number, end: number) => void
 }
 
-function formatDayHeader(ts: number): { label: string; day: number; isToday: boolean } {
+function formatDayHeader(ts: number, fmt: IntlFormatter): { label: string; day: number; isToday: boolean } {
   const d = new Date(ts)
   const now = new Date()
+  const dayLabels = getDayLabelsShort(fmt)
   return {
-    label: DAY_LABELS_SHORT[d.getDay()],
+    label: dayLabels[d.getDay()],
     day: d.getDate(),
     isToday: d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear(),
   }
 }
 
-function formatDateRange(weekStart: number): string {
+function formatDateRange(weekStart: number, fmt: IntlFormatter): string {
   const s = new Date(weekStart)
   const e = new Date(addDays(weekStart, 6))
-  if (s.getMonth() === e.getMonth()) return `${MONTH_NAMES_SHORT[s.getMonth()]} ${s.getDate()} – ${e.getDate()}`
-  return `${MONTH_NAMES_SHORT[s.getMonth()]} ${s.getDate()} – ${MONTH_NAMES_SHORT[e.getMonth()]} ${e.getDate()}`
+  const months = getMonthNamesShort(fmt)
+  if (s.getMonth() === e.getMonth()) return `${months[s.getMonth()]} ${s.getDate()} – ${e.getDate()}`
+  return `${months[s.getMonth()]} ${s.getDate()} – ${months[e.getMonth()]} ${e.getDate()}`
 }
 
 function formatEventTime(ts: number): string {
@@ -137,7 +142,7 @@ const MONTH_DOT_CLASSES: Record<string, string> = {
 
 export function CalendarGrid(props: CalendarGridProps) {
   let scrollRef: HTMLDivElement | undefined
-
+  const { i18n, fmt } = useLocale()
   const weekStart = createMemo(() => startOfWeek(props.anchor))
   const dayStart = createMemo(() => startOfDay(props.anchor))
 
@@ -157,9 +162,10 @@ export function CalendarGrid(props: CalendarGridProps) {
   const dayColumns = createMemo(() => {
     const count = props.viewMode === "week" ? 7 : 1
     const start = props.viewMode === "week" ? weekStart() : dayStart()
+    const f = fmt
     return Array.from({ length: count }, (_, i) => {
       const ts = addDays(start, i)
-      return { ts, ...formatDayHeader(ts) }
+      return { ts, ...formatDayHeader(ts, f) }
     })
   })
 
@@ -205,13 +211,17 @@ export function CalendarGrid(props: CalendarGridProps) {
   }
 
   function navTitle(): string {
+    const f = fmt
     if (props.viewMode === "month") {
       const d = new Date(props.anchor)
-      return `${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getFullYear()}`
+      const months = getMonthNamesShort(f)
+      return `${months[d.getMonth()]} ${d.getFullYear()}`
     }
-    if (props.viewMode === "week") return formatDateRange(weekStart())
+    if (props.viewMode === "week") return formatDateRange(weekStart(), f)
     const d = new Date(dayStart())
-    return `${DAY_LABELS_SHORT[d.getDay()]}, ${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+    const months = getMonthNamesShort(f)
+    const days = getDayLabelsShort(f)
+    return `${days[d.getDay()]}, ${months[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
   }
 
   onMount(() => {
@@ -267,8 +277,13 @@ function NavBar(props: {
   onNext: () => void
   onViewModeChange?: (mode: ViewMode) => void
 }) {
+  const { i18n } = useLocale()
   const modes: ViewMode[] = ["day", "week", "month"]
-  const labels: Record<ViewMode, string> = { day: "Day", week: "Week", month: "Month" }
+  const labels: Record<ViewMode, () => string> = {
+    day: () => i18n._(A.calendarDay),
+    week: () => i18n._(A.calendarWeek),
+    month: () => i18n._(A.calendarMonth),
+  }
 
   return (
     <div class="agenda-calendar-frame agenda-calendar-toolbar flex shrink-0 items-center gap-2 px-3.5 py-3">
@@ -277,7 +292,7 @@ function NavBar(props: {
         class="workbench-control-surface rounded-full bg-surface-raised-base px-2.5 py-1 text-10-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
         onClick={props.onToday}
       >
-        Today
+        {i18n._(A.calendarToday)}
       </button>
       <button
         type="button"
@@ -306,7 +321,7 @@ function NavBar(props: {
               }}
               onClick={() => props.onViewModeChange?.(mode)}
             >
-              {labels[mode]}
+              {labels[mode]()}
             </button>
           )}
         </For>
@@ -451,9 +466,10 @@ function MonthGrid(props: {
   onEventClick?: (event: CalendarEvent, e: MouseEvent) => void
   onDateClick?: (ts: number) => void
 }) {
+  const { i18n, fmt } = useLocale()
   const today = createMemo(() => startOfDay(Date.now()))
   const anchorMonth = createMemo(() => new Date(props.anchor).getMonth())
-
+  const dayLabels = createMemo(() => getDayLabelsShort(fmt))
   const weeks = createMemo(() => {
     const result: { ts: number; day: number; isCurrentMonth: boolean; isToday: boolean }[][] = []
     let cursor = props.rangeStart
@@ -477,7 +493,7 @@ function MonthGrid(props: {
   return (
     <div class="agenda-calendar-frame agenda-calendar-body min-h-0 flex-1 overflow-y-auto">
       <div class="agenda-month-header grid grid-cols-7 bg-transparent">
-        <For each={DAY_LABELS_SHORT}>
+        <For each={dayLabels()}>
           {(label) => <div class="py-2.5 text-center text-11-medium text-text-weaker">{label}</div>}
         </For>
       </div>
@@ -523,7 +539,9 @@ function MonthGrid(props: {
                         )}
                       </For>
                       <Show when={overflow() > 0}>
-                        <span class="px-0.5 text-10-regular text-text-weaker">+{overflow()} more</span>
+                        <span class="px-0.5 text-10-regular text-text-weaker">
+                          {i18n._({ ...A.calendarMore, values: { count: overflow() } })}
+                        </span>
                       </Show>
                     </div>
                   </div>

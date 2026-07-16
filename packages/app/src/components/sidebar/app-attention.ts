@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { ProductUpdateNotice } from "@/context/product-update"
@@ -8,9 +9,11 @@ export type AppAttentionNotice = {
   source: "product-update" | "provider-auth"
   priority: number
   tone: "active" | "warning" | "ready" | "error"
-  title: string
-  detail: string
-  actionLabel?: string
+  /** Localized Synergy-owned display title. */
+  title: MessageDescriptor
+  /** Localized Synergy-owned display detail. */
+  detail: MessageDescriptor
+  actionLabel?: MessageDescriptor
   progress?: number
   busy?: boolean
   iconToken: SemanticIconTokenName
@@ -31,13 +34,15 @@ export function selectAppAttention(input: {
 function productUpdateAttention(notice: ProductUpdateNotice): AppAttentionNotice | undefined {
   if (!notice.visible) return undefined
   const priority = notice.tone === "active" ? 400 : notice.tone === "error" ? 200 : 100
+  const title = notice.title
+  const detail = notice.detail
   return {
     id: "product-update",
     source: "product-update",
     priority,
     tone: notice.tone === "neutral" ? "ready" : notice.tone,
-    title: notice.title,
-    detail: notice.detail,
+    title,
+    detail,
     actionLabel: notice.actionLabel ?? undefined,
     progress: notice.progress ?? undefined,
     busy: notice.busy || !notice.action,
@@ -64,9 +69,16 @@ function providerAuthAttention(input: {
     source: "provider-auth",
     priority: 300,
     tone: "warning",
-    title: single ? `${firstName} needs sign-in` : `${affected.length} providers need attention`,
-    detail: single ? "Reconnect to restore models and usage." : "Review rejected credentials in Settings.",
-    actionLabel: single && first.recovery === "update_environment" ? "Review" : "Reconnect",
+    title: single
+      ? { id: "attention.providerAuth.title.single", message: `${firstName} needs sign-in` }
+      : { id: "attention.providerAuth.title.plural", message: `${affected.length} providers need attention` },
+    detail: single
+      ? { id: "attention.providerAuth.detail.single", message: "Reconnect to restore models and usage." }
+      : { id: "attention.providerAuth.detail.plural", message: "Review rejected credentials in Settings." },
+    actionLabel:
+      single && first.recovery === "update_environment"
+        ? { id: "attention.providerAuth.action.review", message: "Review" }
+        : { id: "attention.providerAuth.action.reconnect", message: "Reconnect" },
     iconToken: "providers.reconnect",
     action: {
       type: "open-settings",

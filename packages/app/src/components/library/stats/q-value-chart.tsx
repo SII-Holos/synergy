@@ -10,6 +10,7 @@ import {
   Filler,
   Tooltip,
 } from "chart.js"
+import { useLingui } from "@lingui/solid"
 import { useChartTheme } from "../../visualization/use-chart-theme"
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Tooltip)
@@ -33,6 +34,7 @@ export function QValueChart(props: {
     frequentlyRetrieved: number
   }
 }) {
+  const { _ } = useLingui()
   const theme = useChartTheme()
   const dist = () => props.distribution
   const total = () => dist().histogram.reduce((sum, b) => sum + b.count, 0)
@@ -85,9 +87,14 @@ export function QValueChart(props: {
         callbacks: {
           title: (items: { label: string }[]) => {
             const label = items[0]?.label ?? ""
-            return `Q range: ${label}`
+            return `${_({ id: "app.library.stats.q.qRange", message: "Q range" })}: ${label}`
           },
-          label: (ctx: { raw: number }) => `${ctx.raw} experiences`,
+          label: (ctx: { raw: number }) =>
+            _({
+              id: "app.library.stats.q.experiencesCount",
+              message: "{count} experiences",
+              values: { count: String(ctx.raw) },
+            }),
         },
       },
     },
@@ -140,7 +147,7 @@ export function QValueChart(props: {
           label: (ctx: { dataIndex: number }) => {
             const point = dist().trend[ctx.dataIndex]
             if (!point) return ""
-            return `median Q: ${formatQ(point.medianQ)} (${point.count} exps)`
+            return `${_({ id: "app.library.stats.q.medianQ", message: "median Q" })}: ${formatQ(point.medianQ)} (${point.count} exps)`
           },
         },
       },
@@ -153,39 +160,56 @@ export function QValueChart(props: {
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">Q‑value distribution</h3>
+        <h3 class="text-13-medium text-text-strong">
+          {_({ id: "app.library.stats.q.distribution", message: "Q‑value distribution" })}
+        </h3>
       </div>
 
-      <Show when={hasData()} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
-        {/* Summary row */}
+      <Show
+        when={hasData()}
+        fallback={
+          <div class="library-empty-row">
+            {_({ id: "app.library.stats.reward.noData", message: "No evaluated experiences yet" })}
+          </div>
+        }
+      >
         <div class="mb-3 grid grid-cols-5 gap-2">
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Avg Q</div>
+            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+              {_({ id: "app.library.stats.q.avgQ", message: "Avg Q" })}
+            </div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().avgCompositeQ)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Median</div>
+            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+              {_({ id: "app.library.stats.q.median", message: "Median" })}
+            </div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{formatQ(dist().medianCompositeQ)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">σ Q</div>
+            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+              {_({ id: "app.library.stats.q.sigma", message: "σ Q" })}
+            </div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{dist().stdCompositeQ.toFixed(3)}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Unused</div>
+            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+              {_({ id: "app.library.stats.q.unused", message: "Unused" })}
+            </div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.neverRetrieved}</div>
           </div>
           <div class="rounded-xl bg-surface-inset-base px-2.5 py-2 ring-1 ring-inset ring-border-base/45">
-            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">Active</div>
+            <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak">
+              {_({ id: "app.library.stats.q.active", message: "Active" })}
+            </div>
             <div class="mt-0.5 text-13-semibold tabular-nums text-text-strong">{props.rl.frequentlyRetrieved}</div>
           </div>
         </div>
 
-        {/* Histogram + trend side-by-side */}
         <div class="grid grid-cols-1 gap-2.5">
           <div class="library-chart-inner">
             <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
-              Composite Q Histogram
+              {_({ id: "app.library.stats.q.compositeHistogram", message: "Composite Q Histogram" })}
             </div>
             <div class="h-32">
               <Bar data={histData()} options={histOptions()} />
@@ -195,7 +219,7 @@ export function QValueChart(props: {
           <Show when={dist().trend.length >= 2}>
             <div class="library-chart-inner">
               <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-1.5">
-                Median Q · Weekly Trend
+                {_({ id: "app.library.stats.q.weeklyTrend", message: "Median Q · Weekly Trend" })}
               </div>
               <div class="h-28">
                 <Line data={trendData()} options={trendOptions()} />

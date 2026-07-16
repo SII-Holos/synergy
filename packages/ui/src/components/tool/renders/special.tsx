@@ -1,3 +1,4 @@
+import { TOOL_TITLE_DESC } from "../../tool-title-descriptors"
 import { Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
 import { DiagramRenderer } from "../../diagram"
@@ -33,7 +34,7 @@ ToolRegistry.register({
         forceOpen
         trigger={{
           icon: "layout-grid",
-          title: "Diagram",
+          title: TOOL_TITLE_DESC["diagram"],
           subtitle: props.input.title || "",
           tags: statsLabel() ? [{ label: statsLabel() }] : undefined,
         }}

@@ -1,4 +1,5 @@
 import { Show, splitProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
 import { Button } from "./button"
 import { Card } from "./card"
@@ -9,6 +10,14 @@ import { Icon } from "./icon"
 import "./error-card.css"
 import { getSemanticIcon } from "./semantic-icon"
 
+const errorDetailsTitleDescriptor = { id: "ui.errorCard.detailsTitle", message: "Error details" }
+const errorMessageLabelDescriptor = { id: "ui.errorCard.errorMessage", message: "Error message" }
+const toolInputLabelDescriptor = { id: "ui.errorCard.toolInput", message: "Tool input" }
+const copyDetailsDescriptor = { id: "ui.errorCard.copyDetails", message: "Copy details" }
+const copiedDescriptor = { id: "ui.errorCard.copied", message: "Copied" }
+const copyFailureDescriptor = { id: "ui.errorCard.copyFailure", message: "Unable to copy the error details." }
+const viewDetailsDescriptor = { id: "ui.errorCard.viewDetails", message: "View details" }
+
 export interface ErrorCardProps {
   error: string
   compact?: boolean
@@ -16,26 +25,27 @@ export interface ErrorCardProps {
 }
 
 function ErrorDetailsDialog(props: Pick<ErrorCardProps, "error" | "input">) {
+  const { _ } = useLingui()
   const copy = createCopyController({
     text: () => errorDetailsText(props.error, props.input),
-    copyLabel: "Copy details",
-    copiedLabel: "Copied",
-    failureDescription: "Unable to copy the error details.",
+    copyLabel: _(copyDetailsDescriptor),
+    copiedLabel: _(copiedDescriptor),
+    failureDescription: _(copyFailureDescriptor),
     copyIcon: getSemanticIcon("action.copy"),
     copiedIcon: getSemanticIcon("state.success"),
     failedIcon: getSemanticIcon("state.error"),
   })
 
   return (
-    <Dialog title="Error details" size="wide" class="error-details-dialog">
+    <Dialog title={_(errorDetailsTitleDescriptor)} size="wide" class="error-details-dialog">
       <section data-slot="error-details-section">
-        <div data-slot="error-details-label">Error message</div>
+        <div data-slot="error-details-label">{_(errorMessageLabelDescriptor)}</div>
         <pre data-slot="error-details-content">{props.error}</pre>
       </section>
       <Show when={errorInputText(props.input)}>
         {(input) => (
           <section data-slot="error-details-section">
-            <div data-slot="error-details-label">Tool input</div>
+            <div data-slot="error-details-label">{_(toolInputLabelDescriptor)}</div>
             <pre data-slot="error-details-content">{input()}</pre>
           </section>
         )}
@@ -58,6 +68,7 @@ function ErrorDetailsDialog(props: Pick<ErrorCardProps, "error" | "input">) {
 }
 
 export function ErrorCard(props: ErrorCardProps) {
+  const { _ } = useLingui()
   const [local] = splitProps(props, ["error", "input"])
   const dialog = useDialog()
 
@@ -73,7 +84,7 @@ export function ErrorCard(props: ErrorCardProps) {
           <span data-slot="error-card-message">{errorPreview(local.error)}</span>
         </div>
         <span data-slot="error-card-details">
-          View details
+          {_(viewDetailsDescriptor)}
           <Icon name={getSemanticIcon("navigation.expand")} size="small" />
         </span>
       </button>

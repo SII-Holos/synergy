@@ -5,6 +5,8 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
 import { normalizeServerUrl, serverDisplayName, useServer } from "@/context/server"
 import { usePlatform } from "@/context/platform"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
@@ -29,9 +31,10 @@ interface DialogSelectServerProps {
 }
 
 export function DialogSelectServer(props: DialogSelectServerProps = {}) {
-  const dialog = useDialog()
+  const dialogContext = useDialog()
   const server = useServer()
   const platform = usePlatform()
+  const { _ } = useLingui()
   const [store, setStore] = createStore({
     url: "",
     adding: false,
@@ -87,7 +90,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
 
   function select(value: string, persist?: boolean) {
     if (!persist && store.status[value]?.healthy === false) return
-    dialog.close()
+    dialogContext.close()
     if (persist) {
       server.add(value)
       props.onSelected?.()
@@ -109,7 +112,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
     setStore("adding", false)
 
     if (!result.healthy) {
-      setStore("error", "Could not connect to server")
+      setStore("error", _(dialog.cannotConnect))
       return
     }
 
@@ -118,11 +121,11 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
   }
 
   return (
-    <Dialog title="Servers" description="Switch which Synergy server this app connects to." size="list">
+    <Dialog title={_(dialog.servers)} description={_(dialog.serversDesc)} size="list">
       <div class="flex flex-col gap-4 pb-4">
         <List
-          search={{ placeholder: "Search servers", autofocus: true }}
-          emptyMessage="No servers yet"
+          search={{ placeholder: _(dialog.searchServers), autofocus: true }}
+          emptyMessage={_(dialog.noServers)}
           items={sortedItems}
           key={(x) => x}
           current={current()}
@@ -151,14 +154,14 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
 
         <div class="px-3 pt-4 pb-1 flex flex-col gap-2 border-t border-border-weak-base/40 mx-3">
           <div class="px-3">
-            <h3 class="text-12-medium text-text-weak">Add a server</h3>
+            <h3 class="text-12-medium text-text-weak">{_(dialog.addServer)}</h3>
           </div>
           <form onSubmit={handleSubmit}>
             <div class="flex items-start gap-2">
               <div class="flex-1 min-w-0 h-auto">
                 <TextField
                   type="text"
-                  label="Server URL"
+                  label={_(dialog.serverUrl)}
                   hideLabel
                   placeholder="http://localhost:4096"
                   value={store.url}
@@ -177,7 +180,7 @@ export function DialogSelectServer(props: DialogSelectServerProps = {}) {
                 size="large"
                 disabled={store.adding}
               >
-                {store.adding ? "Checking..." : "Add"}
+                {store.adding ? _(dialog.checking) : _(dialog.add)}
               </Button>
             </div>
           </form>
