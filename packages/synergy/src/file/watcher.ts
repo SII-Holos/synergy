@@ -5,7 +5,6 @@ import z from "zod"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Log } from "../util/log"
-import { FileIgnore } from "./ignore"
 import { Config } from "../config/config"
 import { Global } from "../global"
 import path from "path"
@@ -22,6 +21,7 @@ import { existsSync } from "fs"
 import { WorkspaceFileIndexer } from "../workspace-file/indexer"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
+import { FileWatcherEvents } from "./watcher-events"
 
 const SUBSCRIBE_TIMEOUT_MS = 10_000
 
@@ -29,7 +29,7 @@ declare const SYNERGY_LIBC: string | undefined
 
 export namespace FileWatcher {
   const log = Log.create({ service: "file.watcher" })
-  type WorkspaceFileEvent = "added" | "changed" | "deleted" | "renamed"
+  type WorkspaceFileEvent = FileWatcherEvents.WorkspaceEvent
 
   export const Event = {
     Updated: BusEvent.define(
@@ -42,6 +42,7 @@ export namespace FileWatcher {
         oldAbsolute: z.string().optional(),
         parent: z.string().optional(),
         node: z.any().optional(),
+        resync: z.boolean().optional(),
       }),
     ),
   }
@@ -52,73 +53,60 @@ export namespace FileWatcher {
     return "change"
   }
 
-  async function publishWorkspaceFileEvent(file: string, event: WorkspaceFileEvent, options?: { oldPath?: string }) {
+  function workspaceRelative(file: string) {
     try {
-      const relative = WorkspaceFileService.relative(file)
-      WorkspaceFileStatus.invalidate()
-      const oldRelative = options?.oldPath ? WorkspaceFileService.relative(options.oldPath) : undefined
-      if (event === "renamed" && oldRelative) {
-        await WorkspaceFileIndexer.applyRename({ from: oldRelative, to: relative }).catch(() =>
-          WorkspaceFileIndexer.invalidate(),
-        )
-      } else {
-        const changeEvent = event === "renamed" ? "added" : event
-        await WorkspaceFileIndexer.applyChange({ path: relative, event: indexerEvent(changeEvent) }).catch(() =>
-          WorkspaceFileIndexer.invalidate(),
-        )
-      }
-      const node = event === "deleted" ? undefined : await WorkspaceFileService.maybeNode(relative)
-      Bus.publish(Event.Updated, {
-        file: relative,
-        event,
-        absolute: file,
-        oldPath: oldRelative,
-        oldAbsolute: options?.oldPath,
-        parent: path.dirname(relative) === "." ? "" : path.dirname(relative),
-        node,
-      })
+      return WorkspaceFileService.relative(file)
     } catch (error) {
-      log.warn("failed to publish workspace file event", { file, event, error: String(error) })
-      WorkspaceFileIndexer.invalidate()
-      WorkspaceFileStatus.invalidate()
+      if (error instanceof WorkspaceFileService.AccessDeniedError && path.basename(file) === "HEAD") return ".git/HEAD"
+      throw error
     }
   }
 
-  function parentOf(input: string) {
-    return path.dirname(input)
-  }
-
-  function normalizeWorkspaceEvents(evts: ParcelWatcher.Event[]) {
-    const deletes = evts.filter((evt) => evt.type === "delete")
-    const creates = evts.filter((evt) => evt.type === "create")
-    const updates = evts.filter((evt) => evt.type === "update")
-    const usedDeletes = new Set<number>()
-    const result: Array<{ path: string; event: WorkspaceFileEvent; oldPath?: string }> = []
-
-    for (const create of creates) {
-      const deleteIndex = deletes.findIndex((item, index) => {
-        if (usedDeletes.has(index)) return false
-        if (parentOf(item.path) === parentOf(create.path)) return true
-        return deletes.length === 1 && creates.length === 1
-      })
-      if (deleteIndex === -1) {
-        result.push({ path: create.path, event: "added" })
-        continue
+  async function publishWorkspaceBatch(batch: FileWatcherEvents.WorkspaceChange[]) {
+    const changes = batch.map((item) => ({
+      ...item,
+      relative: workspaceRelative(item.path),
+      oldRelative: item.oldPath ? workspaceRelative(item.oldPath) : undefined,
+    }))
+    WorkspaceFileStatus.invalidate()
+    const indexChanges = changes.flatMap((item) => {
+      if (item.relative.startsWith(".git/")) return []
+      if (item.event === "renamed") {
+        return [
+          ...(item.oldRelative ? [{ path: item.oldRelative, event: "unlink" as const }] : []),
+          { path: item.relative, event: "add" as const },
+        ]
       }
-      usedDeletes.add(deleteIndex)
-      result.push({ path: create.path, event: "renamed", oldPath: deletes[deleteIndex]!.path })
-    }
+      return [{ path: item.relative, event: indexerEvent(item.event) }]
+    })
+    const nodes = await WorkspaceFileIndexer.applyChanges(indexChanges).catch((error) => {
+      log.warn("failed to apply workspace file batch", { count: batch.length, error: String(error) })
+      WorkspaceFileIndexer.invalidate()
+      return new Map()
+    })
 
-    for (const update of updates) {
-      result.push({ path: update.path, event: "changed" })
+    for (const item of changes) {
+      await Bus.publish(Event.Updated, {
+        file: item.relative,
+        event: item.event,
+        absolute: item.path,
+        oldPath: item.oldRelative,
+        oldAbsolute: item.oldPath,
+        parent: path.dirname(item.relative) === "." ? "" : path.dirname(item.relative),
+        node: nodes.get(item.relative),
+      })
     }
+  }
 
-    for (const [index, deleted] of deletes.entries()) {
-      if (usedDeletes.has(index)) continue
-      result.push({ path: deleted.path, event: "deleted" })
-    }
-
-    return result
+  async function publishWorkspaceResync() {
+    WorkspaceFileIndexer.invalidate()
+    WorkspaceFileStatus.invalidate()
+    await Bus.publish(Event.Updated, {
+      file: "",
+      event: "changed",
+      parent: "",
+      resync: true,
+    })
   }
 
   const watcher = lazy(() => {
@@ -174,43 +162,24 @@ export namespace FileWatcher {
         return { subs }
       }
 
-      // Project scopes always watch the workspace. Git scopes additionally watch
-      // their VCS directory below so index-only changes are observed.
-      const pendingByParent = new Map<string, Array<{ path: string; event: WorkspaceFileEvent; oldPath?: string }>>()
-      const timers = new Map<string, ReturnType<typeof setTimeout>>()
+      // Project scopes watch workspace files. Git scopes additionally watch HEAD
+      // so branch updates do not depend on ordinary workspace file traffic.
+      const drain = FileWatcherEvents.createDrain({
+        debounceMs: 50,
+        maxPending: 4_096,
+        process: publishWorkspaceBatch,
+        overflow: publishWorkspaceResync,
+      })
 
-      const enqueue = (events: ReturnType<typeof normalizeWorkspaceEvents>) => {
-        for (const event of events) {
-          const parent = parentOf(event.path)
-          const queued = pendingByParent.get(parent) ?? []
-          queued.push(event)
-          pendingByParent.set(parent, queued)
-          const existing = timers.get(parent)
-          if (existing) clearTimeout(existing)
-          timers.set(
-            parent,
-            setTimeout(() => {
-              timers.delete(parent)
-              const batch = pendingByParent.get(parent) ?? []
-              pendingByParent.delete(parent)
-              for (const item of batch) {
-                void publishWorkspaceFileEvent(item.path, item.event, { oldPath: item.oldPath })
-              }
-            }, 50),
-          )
-        }
-      }
-
-      const subscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
+      const subscribe: ParcelWatcher.SubscribeCallback = (err, events) => {
         if (err) return
-        enqueue(normalizeWorkspaceEvents(evts))
+        drain.enqueue(FileWatcherEvents.normalize(events))
       }
 
       const cfgIgnores = cfg?.watcher?.ignore ?? []
 
-      // P7: Watch .synergy/ directory for config/agent/command/skill/tool/plugin changes.
-      // These events are emitted to GlobalBus so the auto-reload system can process them,
-      // just like global config directory events.
+      // Project runtime inputs have a dedicated subscription; generated worktrees,
+      // caches, and other .synergy state remain outside the workspace hot path.
       const synergyDir = path.join(ScopeContext.current.directory, ".synergy")
       if (existsSync(synergyDir)) {
         const synergySubscribe: ParcelWatcher.SubscribeCallback = (err, evts) => {
@@ -218,9 +187,7 @@ export namespace FileWatcher {
           for (const evt of evts) {
             const eventType =
               evt.type === "create" ? "add" : evt.type === "update" ? "change" : evt.type === "delete" ? "unlink" : null
-            if (!eventType) continue
-            // Skip node_modules and other non-config files
-            if (evt.path.includes("node_modules")) continue
+            if (!eventType || !FileWatcherEvents.isProjectRuntimeInput(evt.path)) continue
             log.info("project .synergy file event", { file: evt.path, event: eventType })
             GlobalBus.emit("event", {
               directory: ScopeContext.current.directory,
@@ -231,7 +198,10 @@ export namespace FileWatcher {
             })
           }
         }
-        const pending = watcher().subscribe(synergyDir, synergySubscribe, { backend, ignore: ["node_modules"] })
+        const pending = watcher().subscribe(synergyDir, synergySubscribe, {
+          backend,
+          ignore: FileWatcherEvents.projectRuntimeSubscriptionIgnores(),
+        })
         const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
           log.error("failed to subscribe to project .synergy directory", { error: err })
           pending.then((s) => s.unsubscribe()).catch(() => {})
@@ -241,7 +211,7 @@ export namespace FileWatcher {
       }
 
       const pending = watcher().subscribe(ScopeContext.current.directory, subscribe, {
-        ignore: [...FileIgnore.PATTERNS, ...cfgIgnores],
+        ignore: FileWatcherEvents.workspaceSubscriptionIgnores(cfgIgnores),
         backend,
       })
       const sub = await withTimeout(pending, SUBSCRIBE_TIMEOUT_MS).catch((err) => {
@@ -261,10 +231,14 @@ export namespace FileWatcher {
               .then((x) => path.resolve(ScopeContext.current.directory, x.trim()))
               .catch(() => undefined)
           : undefined
+      const vcsSubscribe: ParcelWatcher.SubscribeCallback = (err, events) => {
+        if (err) return
+        drain.enqueue(FileWatcherEvents.normalize(events.filter((event) => path.basename(event.path) === "HEAD")))
+      }
       if (vcsDir && !cfgIgnores.includes(".git") && !cfgIgnores.includes(vcsDir)) {
         const gitDirContents = await readdir(vcsDir).catch(() => [])
         const ignoreList = gitDirContents.filter((entry) => entry !== "HEAD")
-        const pending = watcher().subscribe(vcsDir, subscribe, {
+        const pending = watcher().subscribe(vcsDir, vcsSubscribe, {
           ignore: ignoreList,
           backend,
         })
@@ -276,15 +250,12 @@ export namespace FileWatcher {
         if (sub) subs.push(sub)
       }
 
-      return { subs, timers }
+      return { subs, drain }
     },
     async (state) => {
       if (!state.subs) return
-      if ("timers" in state) {
-        const timers = state.timers
-        if (timers) for (const timer of timers.values()) clearTimeout(timer)
-      }
       await Promise.all(state.subs.map((sub) => sub?.unsubscribe()))
+      if ("drain" in state) await state.drain?.dispose()
     },
   )
 
