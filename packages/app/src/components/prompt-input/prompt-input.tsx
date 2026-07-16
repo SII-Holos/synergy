@@ -206,9 +206,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
-  const lightLoopTaskDesc = createMemo(() => {
+  const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : undefined
+    return params.id && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
   const persistedLightLoopActive = createMemo(() => activeWorkflow()?.kind === "lightloop")
   const lightLoopReviewPending = createMemo(() => {
@@ -842,7 +842,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             id: "light-loop",
             label: i18n._(PI.workflowLightLoop),
             description: lightLoopActive()
-              ? (lightLoopTaskDesc() ?? i18n._(PI.lightLoopNextMsg))
+              ? (lightLoopInstructions() ?? i18n._(PI.lightLoopNextMsg))
               : i18n._(PI.workflowLightLoopDesc),
             icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
