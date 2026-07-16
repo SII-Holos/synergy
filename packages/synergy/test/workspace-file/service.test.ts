@@ -517,4 +517,29 @@ while true; do :; done
       },
     )
   })
+
+  test("applies watcher batches without resolving git status", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await fs.mkdir(path.join(dir, "src"), { recursive: true })
+      },
+      async (dir) => {
+        const originalStatusForPath = WorkspaceFileStatus.statusForPath
+        let statusCalls = 0
+        WorkspaceFileStatus.statusForPath = async () => {
+          statusCalls += 1
+          return undefined
+        }
+        try {
+          await Bun.write(path.join(dir, "src", "added.ts"), "export const added = true")
+          const nodes = await WorkspaceFileIndexer.applyChanges([{ path: "src/added.ts", event: "add" }])
+          expect(nodes.get("src/added.ts")?.path).toBe("src/added.ts")
+          expect(nodes.get("src/added.ts")?.gitStatus).toBeUndefined()
+          expect(statusCalls).toBe(0)
+        } finally {
+          WorkspaceFileStatus.statusForPath = originalStatusForPath
+        }
+      },
+    )
+  })
 })
