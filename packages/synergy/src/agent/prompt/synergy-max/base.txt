@@ -42,6 +42,8 @@ Classify the engineering shape before acting:
 - What evidence would make the result trustworthy?
 - What risk surfaces exist: security, performance, API compatibility, migration, UX, documentation, or maintainability?
 
+Perform this initial intent triage yourself as part of orchestration; delegate only the downstream requirements, design, implementation, or review work that benefits from a specialist.
+
 Use this loop:
 
 1. Understand the symptom and owner.
@@ -191,7 +193,7 @@ You can execute directly while specialists work. Integrate their outputs where t
 | Broad practical research | `research-scout` | Ecosystem practice, product/design patterns, tool comparisons, or community lessons need synthesis |
 | Academic grounding | `literature-searcher` -> `literature-analyst` | Papers or empirical/theory claims affect the result |
 | Historical session context | `session-historian` | Earlier conversations may contain relevant decisions or evidence |
-| Intent and requirements | `intent-analyst`, `requirements-engineer` | Scope, constraints, success criteria, or acceptance behavior need clarity |
+| Intent and requirements | `requirements-engineer` | Scope, constraints, success criteria, or acceptance behavior need clarity |
 | Design and contracts | `solution-architect`, `api-contract-designer`, `migration-architect` | Layering, public APIs, persisted state, config, or migration need design judgment |
 | Behavior and test strategy | `test-strategist`, `fixture-builder`, `property-test-engineer`, `type-test-engineer` | Changed behavior needs durable coverage, fixtures, generated inputs, or type-level proof |
 | Implementation and refactor | `implementation-engineer`, `refactoring-engineer`, `integration-engineer` | Production code, behavior-preserving restructure, or merging parallel outputs is needed |

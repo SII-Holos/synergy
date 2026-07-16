@@ -7,6 +7,8 @@ import { Scope } from "@/scope"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { Context } from "@/util/context"
+import { Lock } from "@/util/lock"
+import { sha256Content } from "@/util/crypto"
 import { Log } from "@/util/log"
 import { fn } from "@/util/fn"
 import { Agent } from "@/agent/agent"
@@ -50,6 +52,7 @@ export namespace SessionInbox {
       id: Identifier.schema("inbox"),
       sessionID: Identifier.schema("session"),
       mode: ItemMode,
+      deliveryKey: z.string().optional(),
       // Payload for materialization
       message: z
         .object({
@@ -115,6 +118,7 @@ export namespace SessionInbox {
   export namespace Deliver {
     export const Input = z.object({
       sessionID: Identifier.schema("session"),
+      deliveryKey: z.string().min(1).optional(),
       mode: z.enum(["task", "steer", "context"]),
       message: z.object({
         parts: z.array(PayloadPart),
@@ -143,6 +147,7 @@ export namespace SessionInbox {
     export const Output = z.object({
       itemID: Identifier.schema("inbox"),
       messageID: Identifier.schema("message"),
+      created: z.boolean().optional(),
     })
   }
 
@@ -172,6 +177,7 @@ export namespace SessionInbox {
       id: item.id,
       sessionID: item.sessionID,
       mode: item.mode,
+      deliveryKey: item.deliveryKey,
       message: item.message,
       summaryPreview: item.summaryPreview,
       summary: item.summary,
@@ -359,24 +365,32 @@ export namespace SessionInbox {
     )
   }
 
-  /**
-   * Deliver a new inbox item with the given mode.
-   * Pre-allocates messageID for idempotent materialization.
-   */
-  export const deliver = fn(Deliver.Input, async (input) => {
-    const messageID = Identifier.ascending("message")
-    const itemID = Identifier.ascending("inbox")
+  function stableDeliveryItemID(sessionID: string, deliveryKey: string): string {
+    const hash = sha256Content(`${sessionID}:${deliveryKey}`).slice(0, 26)
+    return `inb_${hash}`
+  }
+
+  function legacyStableMessageID(sessionID: string, deliveryKey: string): string {
+    const hash = sha256Content(`${sessionID}:${deliveryKey}`).slice(0, 26)
+    return `msg_${hash}`
+  }
+
+  function deliveryItem(input: z.infer<typeof Deliver.Input>, ids: { itemID: string; messageID: string }): StoredItem {
     const summarized = summarizeParts(input.message.parts)
     const mode = input.mode
-    const origin = input.message.role === "user" ? (input.message.origin ?? { type: "user" as const }) : undefined
+    const origin =
+      input.message.role === "user"
+        ? (input.message.origin ?? MessageV2.originFromMetadata(input.message.metadata))
+        : undefined
     const source: ItemSource = input.message.agent
       ? { type: "agent", label: input.message.agent }
       : origin
         ? { type: origin.type, label: origin.label ?? (origin.type === "user" ? "You" : origin.type) }
         : { type: "agent", label: "Agent" }
-    const item: StoredItem = {
-      id: itemID,
+    return {
+      id: ids.itemID,
       sessionID: input.sessionID,
+      deliveryKey: input.deliveryKey,
       mode,
       message: {
         parts: input.message.parts as any,
@@ -399,17 +413,54 @@ export namespace SessionInbox {
       detail: summarized.detail,
       source,
       time: { created: Date.now() },
-      orderKey: itemID,
-      messageID,
+      orderKey: ids.messageID,
+      messageID: ids.messageID,
     }
+  }
+
+  /**
+   * Deliver a new inbox item with the given mode.
+   * Pre-allocates messageID for idempotent materialization.
+   */
+  export const deliver = fn(Deliver.Input, async (input) => {
+    const ids = {
+      itemID: Identifier.ascending("inbox"),
+      messageID: Identifier.ascending("message"),
+    }
+    const item = deliveryItem(input, ids)
     if (input.message.role === "assistant") {
       await materializeItem(item, await latestRootID(input.sessionID))
-      return { itemID, messageID }
+      return { ...ids, created: true }
     }
 
     await writeItem(item)
-    return { itemID, messageID }
+    return { ...ids, created: true }
   })
+
+  export async function deliverUnique(
+    input: z.infer<typeof Deliver.Input> & { deliveryKey: string },
+  ): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
+    using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
+
+    const existing = await getStored(input.sessionID, itemID).catch(() => undefined)
+    if (existing) return { itemID: existing.id, messageID: existing.messageID, created: false }
+
+    const legacyMessageID = legacyStableMessageID(input.sessionID, input.deliveryKey)
+    const materialized = (await Session.messages({ sessionID: input.sessionID })).find(
+      (message) => message.info.id === legacyMessageID || message.info.metadata?.inboxDeliveryKey === input.deliveryKey,
+    )
+    if (materialized) return { itemID, messageID: materialized.info.id, created: false }
+
+    const ids = { itemID, messageID: Identifier.ascending("message") }
+    const item = deliveryItem(input, ids)
+    if (input.message.role === "assistant") {
+      await materializeItem(item, await latestRootID(input.sessionID))
+    } else {
+      await writeItem(item)
+    }
+    return { ...ids, created: true }
+  }
 
   export async function enqueueUser(input: InvokeInput): Promise<Item> {
     const itemID = Identifier.ascending("inbox")
@@ -486,6 +537,7 @@ export namespace SessionInbox {
         visible: visibleFor(mode, origin),
         metadata: input.mail.metadata,
         summary: userMail.summary,
+        tools: userMail.tools,
       },
       summaryPreview: summarized.preview,
       summary: {
@@ -659,7 +711,14 @@ export namespace SessionInbox {
         ...(resolvedRootID ? { rootID: resolvedRootID } : {}),
         visible: payload.visible,
         origin,
-        ...(payload.metadata ? { metadata: payload.metadata } : {}),
+        ...(payload.metadata || item.deliveryKey
+          ? {
+              metadata: {
+                ...payload.metadata,
+                ...(item.deliveryKey ? { inboxDeliveryKey: item.deliveryKey } : {}),
+              },
+            }
+          : {}),
         ...(summary ? { summary } : {}),
         ...(payload.system ? { system: payload.system } : {}),
         ...(payload.tools ? { tools: payload.tools } : {}),
@@ -691,7 +750,14 @@ export namespace SessionInbox {
       modelID: assistantModel.modelID,
       providerID: assistantModel.providerID,
       visible: payload.visible,
-      ...(payload.metadata ? { metadata: payload.metadata } : {}),
+      ...(payload.metadata || item.deliveryKey
+        ? {
+            metadata: {
+              ...payload.metadata,
+              ...(item.deliveryKey ? { inboxDeliveryKey: item.deliveryKey } : {}),
+            },
+          }
+        : {}),
     }
     await Session.updateMessage(info)
     for (const part of parts) {

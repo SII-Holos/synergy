@@ -1,42 +1,29 @@
-import { Identifier } from "@/id/id"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { ContinuationKernel } from "./continuation-kernel"
-import { SessionManager } from "./manager"
 
-/**
- * BlueprintContinuationPolicy: when a session bound to a `running` BlueprintLoop
- * goes idle after a terminal assistant response, wake it to keep executing the
- * loop. Registered with the ContinuationKernel at higher priority than Lattice
- * so a live BlueprintLoop owns the idle while it is running.
- */
 export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
   id: "blueprint_loop",
   priority: 100,
   async handle(gate) {
     const loopID = gate.session.blueprint?.loopID
-    if (!loopID) return false
+    if (!loopID) return undefined
 
     const loop = await BlueprintLoopStore.get(gate.scopeID, loopID).catch(() => undefined)
-    if (!loop || loop.status !== "running") return false
+    if (!loop || loop.status !== "running") return undefined
 
-    await deliverContinuation(gate.sessionID, loop)
-    return true
+    return continuationProposal(loop)
   },
 }
 
-async function deliverContinuation(sessionID: string, loop: BlueprintLoopInfo): Promise<void> {
-  await SessionManager.deliver({
-    target: sessionID,
-    mail: {
-      type: "user",
-      summary: {
-        title: `Continue ${loop.title} blueprint`,
-      },
+function continuationProposal(loop: BlueprintLoopInfo): ContinuationKernel.InboxProposal {
+  return {
+    kind: "inbox",
+    mode: "steer",
+    message: {
+      role: "user",
+      summary: { title: `Continue ${loop.title} blueprint` },
       parts: [
         {
-          id: Identifier.ascending("part"),
-          sessionID,
-          messageID: "",
           type: "text",
           text: continuationText(loop),
           synthetic: true,
@@ -50,7 +37,7 @@ async function deliverContinuation(sessionID: string, loop: BlueprintLoopInfo): 
         status: loop.status,
       },
     },
-  })
+  }
 }
 
 function continuationText(loop: BlueprintLoopInfo): string {
@@ -68,19 +55,12 @@ function continuationText(loop: BlueprintLoopInfo): string {
     .join("\n")
 }
 
-/**
- * Backwards-compatible facade. Prefer ContinuationKernel directly; this keeps
- * the original single-session entry point (used by tests and any legacy call
- * sites) working by running the shared gate then the blueprint policy.
- */
 export namespace BlueprintContinuation {
   export function init(): () => void {
     return ContinuationKernel.init()
   }
 
   export async function handleIdle(sessionID: string): Promise<boolean> {
-    const gate = await ContinuationKernel.passesSharedGate(sessionID)
-    if (!gate) return false
-    return BlueprintContinuationPolicy.handle(gate)
+    return ContinuationKernel.evaluate(sessionID)
   }
 }

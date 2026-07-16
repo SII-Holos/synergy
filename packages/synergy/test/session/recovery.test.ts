@@ -8,6 +8,7 @@ import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionRecovery } from "../../src/session/recovery"
+import { SessionProgress } from "../../src/session/progress"
 import * as SessionWorking from "../../src/session/working"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
@@ -355,6 +356,53 @@ describe("SessionProgress.pendingReplyFor", () => {
           scopeID: ScopeContext.current.scope.id,
           sessionID: session.id,
         })
+        expect(result).toBe(true)
+      },
+    })
+  })
+  test("preserves pending reply order for legacy stable delivery message ids", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const oldRoot = await createPendingUserMessage(session.id)
+        await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "assistant",
+          parentID: oldRoot.id,
+          rootID: oldRoot.id,
+          time: { created: Date.now(), completed: Date.now() },
+          modelID: "test-model",
+          providerID: "test-provider",
+          path: { cwd: tmp.path, root: tmp.path },
+          mode: "test",
+          agent: "test",
+          cost: 0,
+          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          finish: "stop",
+        })
+        const legacyRootID = `msg_${"f".repeat(26)}`
+        await Session.updateMessage({
+          id: legacyRootID,
+          sessionID: session.id,
+          role: "user",
+          agent: "test",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: true,
+          rootID: legacyRootID,
+          time: { created: Date.now() + 1 },
+        })
+
+        const orderedMessages = await Session.messages({ sessionID: session.id, raw: true })
+        expect(orderedMessages.map((message) => message.info.id).at(-1)).toBe(legacyRootID)
+
+        const result = await SessionProgress.pendingReplyFor({
+          scopeID: ScopeContext.current.scope.id,
+          sessionID: session.id,
+        })
+
         expect(result).toBe(true)
       },
     })

@@ -14,6 +14,16 @@ function hasColumn(conn: Database, table: string, column: string): boolean {
   return rows.some((row) => row.name === column)
 }
 
+function hasTable(conn: Database, table: string): boolean {
+  const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1").get(table)
+  return row !== undefined
+}
+
+function hasIndex(conn: Database, index: string): boolean {
+  const row = conn.prepare("SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1").get(index)
+  return row !== undefined
+}
+
 function inferMigratedMemory(
   title: string,
   content: string,
@@ -240,6 +250,25 @@ describe.serial("library migrations", () => {
 
       expect(LibraryDB.Experience.get("exp-invalid-1")).toBeNull()
       expect(LibraryDB.Experience.get("exp-valid-1")).not.toBeNull()
+    })
+  })
+
+  describe("reencode job table migration", () => {
+    test("creates the durable job schema idempotently", async () => {
+      const migration = migrations.find((item) => item.id === "20260715-library-reencode-job-tables")
+      expect(migration).toBeDefined()
+
+      const progressLog: [number, number][] = []
+      await migration!.up((current, total) => progressLog.push([current, total]))
+      await migration!.up(() => {})
+
+      const conn = LibraryDB.connection()
+      expect(hasTable(conn, "experience_reencode_job")).toBe(true)
+      expect(hasTable(conn, "experience_reencode_job_item")).toBe(true)
+      expect(hasIndex(conn, "idx_experience_reencode_job_started")).toBe(true)
+      expect(hasIndex(conn, "idx_experience_reencode_job_item_status")).toBe(true)
+      expect(hasIndex(conn, "idx_experience_reencode_job_item_updated")).toBe(true)
+      expect(progressLog.at(-1)).toEqual([1, 1])
     })
   })
 })

@@ -1,4 +1,5 @@
 import z from "zod"
+import { AgendaSessionWakeup } from "../agenda/session-wakeup"
 import { BlueprintLoopStore, LoopError } from "../blueprint"
 import { LoopEvent } from "../blueprint/event"
 import { Bus } from "../bus"
@@ -57,6 +58,11 @@ export const BlueprintLoopStopTool = Tool.define("blueprint_loop_stop", {
 
     const summary = params.summary.trim()
     if (!summary) throw new Error("summary is required")
+    await AgendaSessionWakeup.assertClear({
+      sessionID: ctx.sessionID,
+      scopeID,
+      operation: "BlueprintLoop audit",
+    })
 
     const reviewPrompt = [
       "## Task",

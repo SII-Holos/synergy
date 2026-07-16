@@ -146,6 +146,7 @@ function open(): Database {
   conn.exec("PRAGMA busy_timeout=5000")
   conn.exec("PRAGMA foreign_keys=ON")
   initialize(conn)
+  reconcileReencodeJobs(conn)
   db = instrumentConnection(conn)
 
   // Periodic WAL checkpoint to prevent unbounded WAL file growth.
@@ -277,6 +278,70 @@ function vecTableRowCount(conn: Database, name: string): number | null {
   }
 }
 
+function initializeReencodeJobSchema(conn: Database) {
+  conn.exec(`
+    CREATE TABLE IF NOT EXISTS experience_reencode_job (
+      id             TEXT PRIMARY KEY,
+      type           TEXT NOT NULL,
+      reason         TEXT,
+      status         TEXT NOT NULL,
+      total_count    INTEGER NOT NULL,
+      ok_count       INTEGER NOT NULL DEFAULT 0,
+      skipped_count  INTEGER NOT NULL DEFAULT 0,
+      failed_count   INTEGER NOT NULL DEFAULT 0,
+      started_at     INTEGER NOT NULL,
+      completed_at   INTEGER,
+      error          TEXT
+    )
+  `)
+  conn.exec(`
+    CREATE TABLE IF NOT EXISTS experience_reencode_job_item (
+      job_id            TEXT NOT NULL,
+      experience_id     TEXT NOT NULL,
+      session_id        TEXT NOT NULL,
+      scope_id          TEXT NOT NULL,
+      detection_reason  TEXT NOT NULL,
+      detail            TEXT NOT NULL,
+      position          INTEGER NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'pending',
+      result_reason     TEXT,
+      updated_at        INTEGER NOT NULL,
+      PRIMARY KEY (job_id, experience_id),
+      FOREIGN KEY (job_id) REFERENCES experience_reencode_job(id) ON DELETE CASCADE
+    )
+  `)
+  conn.exec(
+    "CREATE INDEX IF NOT EXISTS idx_experience_reencode_job_started ON experience_reencode_job(started_at DESC)",
+  )
+  conn.exec(
+    "CREATE INDEX IF NOT EXISTS idx_experience_reencode_job_item_status ON experience_reencode_job_item(job_id, status, position)",
+  )
+  conn.exec(
+    "CREATE INDEX IF NOT EXISTS idx_experience_reencode_job_item_updated ON experience_reencode_job_item(job_id, updated_at, position)",
+  )
+}
+
+function reconcileReencodeJobs(conn: Database) {
+  const now = Date.now()
+  conn.transaction(() => {
+    conn
+      .prepare(
+        `UPDATE experience_reencode_job_item
+         SET status = 'pending', result_reason = NULL, updated_at = ?1
+         WHERE status = 'processing'
+           AND job_id IN (SELECT id FROM experience_reencode_job WHERE status = 'running')`,
+      )
+      .run(now)
+    conn
+      .prepare(
+        `UPDATE experience_reencode_job
+         SET status = 'interrupted', completed_at = ?1
+         WHERE status = 'running'`,
+      )
+      .run(now)
+  })()
+}
+
 function initialize(conn: Database) {
   conn.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -392,6 +457,7 @@ function initialize(conn: Database) {
   conn.exec("CREATE INDEX IF NOT EXISTS idx_experience_content_session ON experience_content(session_id)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_category ON memory(category, created_at)")
   conn.exec("CREATE INDEX IF NOT EXISTS idx_memory_recall_mode ON memory(recall_mode)")
+  initializeReencodeJobSchema(conn)
 
   log.info("schema ready")
 }
@@ -553,6 +619,208 @@ export namespace LibraryDB {
       schemaDimensions: embeddingDimensions ?? null,
       experience: tableHealth(conn, vecExperience),
       memory: tableHealth(conn, vecMemory),
+    }
+  }
+
+  export namespace ReencodeJob {
+    export type Type = "intent" | "script"
+    export type Status = "running" | "completed" | "failed" | "cancelled" | "interrupted"
+    export type ItemStatus = "pending" | "processing" | "ok" | "skipped" | "failed"
+
+    export interface Row {
+      id: string
+      type: Type
+      reason: string | null
+      status: Status
+      total_count: number
+      ok_count: number
+      skipped_count: number
+      failed_count: number
+      started_at: number
+      completed_at: number | null
+      error: string | null
+    }
+
+    export interface ItemRow {
+      job_id: string
+      experience_id: string
+      session_id: string
+      scope_id: string
+      detection_reason: string
+      detail: string
+      position: number
+      status: ItemStatus
+      result_reason: string | null
+      updated_at: number
+    }
+
+    export interface CandidateInput {
+      id: string
+      sessionID: string
+      scopeID: string
+      reason: string
+      detail: string
+    }
+
+    export function ensureSchema() {
+      initializeReencodeJobSchema(open())
+    }
+
+    export function create(input: {
+      id: string
+      type: Type
+      reason?: string
+      candidates: CandidateInput[]
+      startedAt: number
+    }): Row {
+      const conn = open()
+      conn.transaction(() => {
+        const active = conn
+          .prepare("SELECT id FROM experience_reencode_job WHERE status = 'running' LIMIT 1")
+          .get() as { id: string } | null
+        if (active) throw new Error(`Experience reencode job already running: ${active.id}`)
+
+        conn
+          .prepare(
+            `INSERT INTO experience_reencode_job
+             (id, type, reason, status, total_count, started_at)
+             VALUES (?1, ?2, ?3, 'running', ?4, ?5)`,
+          )
+          .run(input.id, input.type, input.reason ?? null, input.candidates.length, input.startedAt)
+
+        const insertItem = conn.prepare(
+          `INSERT INTO experience_reencode_job_item
+           (job_id, experience_id, session_id, scope_id, detection_reason, detail, position, updated_at)
+           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`,
+        )
+        input.candidates.forEach((candidate, position) =>
+          insertItem.run(
+            input.id,
+            candidate.id,
+            candidate.sessionID,
+            candidate.scopeID,
+            candidate.reason,
+            candidate.detail,
+            position,
+            input.startedAt,
+          ),
+        )
+      })()
+      return get(input.id)!
+    }
+
+    export function get(id: string): Row | null {
+      return open().prepare("SELECT * FROM experience_reencode_job WHERE id = ?1").get(id) as Row | null
+    }
+
+    export function current(): Row | null {
+      return open()
+        .prepare("SELECT * FROM experience_reencode_job ORDER BY started_at DESC, rowid DESC LIMIT 1")
+        .get() as Row | null
+    }
+
+    export function items(jobID: string): ItemRow[] {
+      return open()
+        .prepare("SELECT * FROM experience_reencode_job_item WHERE job_id = ?1 ORDER BY position ASC")
+        .all(jobID) as ItemRow[]
+    }
+
+    export function pendingItems(jobID: string): ItemRow[] {
+      return open()
+        .prepare(
+          "SELECT * FROM experience_reencode_job_item WHERE job_id = ?1 AND status = 'pending' ORDER BY position ASC",
+        )
+        .all(jobID) as ItemRow[]
+    }
+
+    export function terminalItemsSince(jobID: string, updatedAt: number): ItemRow[] {
+      return open()
+        .prepare(
+          `SELECT * FROM experience_reencode_job_item
+           WHERE job_id = ?1 AND status IN ('ok', 'skipped', 'failed') AND updated_at >= ?2
+           ORDER BY updated_at ASC, position ASC`,
+        )
+        .all(jobID, updatedAt) as ItemRow[]
+    }
+
+    export function markItemProcessing(jobID: string, experienceID: string): boolean {
+      const result = open()
+        .prepare(
+          `UPDATE experience_reencode_job_item
+           SET status = 'processing', result_reason = NULL, updated_at = ?1
+           WHERE job_id = ?2 AND experience_id = ?3 AND status = 'pending'
+             AND EXISTS (SELECT 1 FROM experience_reencode_job WHERE id = ?2 AND status = 'running')`,
+        )
+        .run(Date.now(), jobID, experienceID)
+      return result.changes > 0
+    }
+
+    export function finishItem(
+      jobID: string,
+      experienceID: string,
+      status: "ok" | "skipped" | "failed",
+      reason?: string,
+    ) {
+      const conn = open()
+      conn.transaction(() => {
+        const result = conn
+          .prepare(
+            `UPDATE experience_reencode_job_item
+             SET status = ?1, result_reason = ?2, updated_at = ?3
+             WHERE job_id = ?4 AND experience_id = ?5 AND status = 'processing'
+               AND EXISTS (SELECT 1 FROM experience_reencode_job WHERE id = ?4 AND status = 'running')`,
+          )
+          .run(status, reason ?? null, Date.now(), jobID, experienceID)
+        if (result.changes === 0) return
+        conn
+          .prepare(
+            `UPDATE experience_reencode_job
+             SET ok_count = ok_count + ?1,
+                 skipped_count = skipped_count + ?2,
+                 failed_count = failed_count + ?3
+             WHERE id = ?4 AND status = 'running'`,
+          )
+          .run(status === "ok" ? 1 : 0, status === "skipped" ? 1 : 0, status === "failed" ? 1 : 0, jobID)
+      })()
+    }
+
+    export function finish(jobID: string, status: "completed" | "failed", error?: string) {
+      open()
+        .prepare(
+          `UPDATE experience_reencode_job
+           SET status = ?1, completed_at = ?2, error = ?3
+           WHERE id = ?4 AND status = 'running'`,
+        )
+        .run(status, Date.now(), error ?? null, jobID)
+    }
+
+    export function cancel(jobID: string) {
+      const conn = open()
+      conn.transaction(() => {
+        const now = Date.now()
+        conn
+          .prepare(
+            `UPDATE experience_reencode_job_item
+             SET status = 'pending', result_reason = NULL, updated_at = ?1
+             WHERE job_id = ?2 AND status = 'processing'`,
+          )
+          .run(now, jobID)
+        conn
+          .prepare(
+            `UPDATE experience_reencode_job
+             SET status = 'cancelled', completed_at = ?1
+             WHERE id = ?2 AND status = 'running'`,
+          )
+          .run(now, jobID)
+      })()
+    }
+
+    export function removeAll() {
+      const conn = open()
+      conn.transaction(() => {
+        conn.prepare("DELETE FROM experience_reencode_job_item").run()
+        conn.prepare("DELETE FROM experience_reencode_job").run()
+      })()
     }
   }
 

@@ -45,6 +45,17 @@ const imageModel = {
   },
 } as any
 
+const restrictedImageModel = {
+  ...imageModel,
+  capabilities: {
+    ...imageModel.capabilities,
+    input: {
+      ...imageModel.capabilities.input,
+      supportedImageMediaTypes: ["image/png", "image/jpeg"],
+    },
+  },
+} as any
+
 const allowAllAgent: Agent.Info = {
   name: "synergy",
   mode: "primary",
@@ -127,20 +138,92 @@ describe("tool exposure", () => {
     expect(internal.exposure).toEqual({ mode: "internal" })
   })
 
-  test("ToolResolver exposes exactly one image inspection tool for active model capability", async () => {
+  test("text-only model with no vision_model exposes neither look_at nor view_image", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
 
-        const textOnly = await definitionIDs(session)
-        expect(textOnly.has("look_at")).toBe(true)
-        expect(textOnly.has("view_image")).toBe(false)
+        const ids = await definitionIDs(session)
+        // Without a configured vision_model neither image inspection tool should be exposed.
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
 
-        const imageCapable = await definitionIDs(session, { model: imageModel })
-        expect(imageCapable.has("look_at")).toBe(false)
-        expect(imageCapable.has("view_image")).toBe(true)
+  test("text-only model with vision_model configured exposes look_at only", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/gpt-4.1-mini",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session)
+        // With vision_model set, look_at should be usable.
+        expect(ids.has("look_at")).toBe(true)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
+
+  test("text-only model with unavailable vision_model exposes neither image inspection tool", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/missing-vision-model",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session)
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
+
+  test("image-capable model exposes view_image and hides look_at regardless of vision_model", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session, { model: imageModel })
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(true)
+      },
+    })
+  })
+
+  test("format-restricted image model also exposes configured look_at fallback", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/gpt-4.1-mini",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session, { model: restrictedImageModel })
+        expect(ids.has("look_at")).toBe(true)
+        expect(ids.has("view_image")).toBe(true)
       },
     })
   })

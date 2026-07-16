@@ -40,6 +40,7 @@ import {
 } from "./ipc-contract.js"
 import { selectDirectoryWithNativeDialog } from "./directory-picker.js"
 import { installAppMenu } from "./menu.js"
+import { DesktopRendererDelivery } from "./main-renderer-delivery.js"
 import { DesktopServerManager } from "./server-manager.js"
 import { enforceProductionLoading, installSessionSecurity, installWindowSecurity } from "./security.js"
 import { DesktopStartupOverlay } from "./startup-overlay.js"
@@ -58,6 +59,7 @@ import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.
 import {
   desktopDevDockIconPath,
   desktopIconPath,
+  desktopEmitsWindowStateEvents,
   desktopShouldHideToTray,
   desktopStartupIconPath,
   desktopUsesSystemTray,
@@ -71,6 +73,7 @@ process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET ??= randomBytes(32).toStrin
 BrowserRegistrationSecretSchema.parse(process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET)
 
 let mainWindow: BrowserWindow | null = null
+let mainRendererDelivery: DesktopRendererDelivery | null = null
 let startupOverlay: DesktopStartupOverlay | null = null
 let nativeViews: BrowserNativeViewManager | null = null
 let nativePagePool: BrowserNativePagePool | null = null
@@ -89,6 +92,7 @@ let unreadCompletionCount = 0
 let desktopUnreadOverlayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 let desktopUnreadTrayIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
 let desktopTrayDefaultIcon: ReturnType<typeof nativeImage.createFromPath> | null = null
+let emitDesktopWindowState: (() => void) | null = null
 
 const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
@@ -187,7 +191,7 @@ async function createWindow() {
       userDataDir: app.getPath("userData"),
       stopServer: () => serverManager?.stop() ?? Promise.resolve(),
     })
-    updater.onEvent((event) => mainWindow?.webContents.send("desktop-update:event", event))
+    updater.onEvent((event) => mainRendererDelivery?.sendLatest("desktop-update", "desktop-update:event", event))
     await updater.init()
   }
 
@@ -228,17 +232,24 @@ async function createWindow() {
 
   mainWindow = new BrowserWindow(windowOptions)
   applyDesktopUnreadState()
+  const rendererDelivery = new DesktopRendererDelivery(mainWindow.webContents)
+  mainRendererDelivery = rendererDelivery
   runtimeLog("createWindow", { mode, show: process.env.SYNERGY_DESKTOP_SHOW !== "0" })
   if (process.platform !== "darwin") {
     mainWindow.setMenuBarVisibility(false)
   }
   nativePagePool ??= new BrowserNativePagePool()
-  nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool)
+  nativeViews = new BrowserNativeViewManager(mainWindow, nativePagePool, (event) => {
+    rendererDelivery.send("browser-native:event", event)
+  })
   installWindowSecurity(mainWindow, () => currentAppURL)
   enforceProductionLoading(mainWindow.webContents, () => currentAppURL)
   scheduleWindowStatePersistence(mainWindow, app.getPath("userData"))
   installWindowInputShortcuts(mainWindow, isDebugEnabled(channel))
-  installDesktopWindowStateEvents(mainWindow)
+  const windowStateEvents = desktopEmitsWindowStateEvents(process.platform)
+    ? installDesktopWindowStateEvents(mainWindow)
+    : null
+  emitDesktopWindowState = windowStateEvents?.emit ?? null
   installWindowCloseBehavior(mainWindow)
 
   if (windowState.maximized) mainWindow.maximize()
@@ -256,6 +267,10 @@ async function createWindow() {
   }
 
   mainWindow.on("closed", () => {
+    windowStateEvents?.dispose()
+    if (emitDesktopWindowState === windowStateEvents?.emit) emitDesktopWindowState = null
+    rendererDelivery.dispose()
+    if (mainRendererDelivery === rendererDelivery) mainRendererDelivery = null
     startupOverlay?.destroy()
     startupOverlay = null
     nativeViews?.destroy()
@@ -312,8 +327,7 @@ function updateDesktopThemeSnapshot(
 }
 
 function broadcastDesktopTheme(snapshot: DesktopThemeSnapshot): void {
-  if (!mainWindow || mainWindow.isDestroyed()) return
-  mainWindow.webContents.send("desktop-theme:event", { type: "theme", snapshot })
+  mainRendererDelivery?.sendLatest("desktop-theme", "desktop-theme:event", { type: "theme", snapshot })
 }
 
 async function setDesktopThemeSource(input: unknown): Promise<DesktopThemeSnapshot> {
@@ -456,6 +470,17 @@ function registerIpcHandlers() {
   })
   ipcMain.handle("desktop.startup.appReady", async (event) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return false
+    const delivery = mainRendererDelivery
+    if (!delivery?.markReady(event.senderFrame)) return false
+    emitDesktopWindowState?.()
+    delivery.sendLatest("desktop-theme", "desktop-theme:event", {
+      type: "theme",
+      snapshot: getDesktopThemeSnapshot(),
+    })
+    const updateStatus = updater?.getStatus()
+    if (updateStatus) {
+      delivery.sendLatest("desktop-update", "desktop-update:event", { type: "status", status: updateStatus })
+    }
     await dismissStartupOverlay()
     return true
   })
@@ -578,10 +603,13 @@ function installWindowInputShortcuts(window: BrowserWindow, debug: boolean): voi
   })
 }
 
-function installDesktopWindowStateEvents(window: BrowserWindow): void {
+function installDesktopWindowStateEvents(window: BrowserWindow): { emit: () => void; dispose: () => void } {
   const emit = () => {
     if (window.isDestroyed()) return
-    window.webContents.send("desktop-window:event", { type: "state", state: desktopWindowState(window) })
+    mainRendererDelivery?.sendLatest("desktop-window-state", "desktop-window:event", {
+      type: "state",
+      state: desktopWindowState(window),
+    })
   }
   window.on("maximize", emit)
   window.on("unmaximize", emit)
@@ -589,6 +617,17 @@ function installDesktopWindowStateEvents(window: BrowserWindow): void {
   window.on("leave-full-screen", emit)
   window.on("focus", emit)
   window.on("blur", emit)
+  return {
+    emit,
+    dispose() {
+      window.off("maximize", emit)
+      window.off("unmaximize", emit)
+      window.off("enter-full-screen", emit)
+      window.off("leave-full-screen", emit)
+      window.off("focus", emit)
+      window.off("blur", emit)
+    },
+  }
 }
 
 function desktopLogDir(): string {
@@ -602,7 +641,7 @@ function findDeepLinks(argv: string[]): string[] {
 function handleDeepLinks(urls: string[]) {
   if (!urls.length) return
   focusMainWindow()
-  for (const url of urls) mainWindow?.webContents.send("desktop.deepLink", url)
+  for (const url of urls) mainRendererDelivery?.enqueue("desktop.deepLink", url)
 }
 
 app.on("second-instance", (_event, argv) => {

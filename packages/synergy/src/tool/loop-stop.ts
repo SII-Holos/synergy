@@ -1,6 +1,8 @@
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
+import { AgendaSessionWakeup } from "../agenda/session-wakeup"
+import { ScopeContext } from "../scope/context"
 import DESCRIPTION from "./loop-stop.txt"
 
 const parameters = z.object({
@@ -37,6 +39,11 @@ export const LoopStopTool = Tool.define("loop_stop", {
         },
       }
     }
+    await AgendaSessionWakeup.assertClear({
+      sessionID: ctx.sessionID,
+      scopeID: ScopeContext.current.scope.id,
+      operation: "Light Loop review",
+    })
 
     const { Cortex } = await import("../cortex")
 
