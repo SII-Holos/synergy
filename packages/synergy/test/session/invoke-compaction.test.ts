@@ -16,6 +16,8 @@ import { Config } from "../../src/config/config"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionCompaction } from "../../src/session/compaction"
 import { Embedding } from "../../src/vector/embedding"
+import { Plugin } from "../../src/plugin"
+import { Turn } from "../../src/session/turn"
 
 Log.init({ print: false })
 
@@ -166,6 +168,112 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
       for (let i = messages.length - 1; i >= 0; i--) yield messages[i]
     })(),
   )
+}
+
+async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["error"]; text?: string }) {
+  await using tmp = await tmpdir({ git: true })
+
+  const originalGetModel = Provider.getModel
+  const originalGetAgent = Agent.get
+  const originalGetAvailableModel = Agent.getAvailableModel
+  const originalProcessorCreate = SessionProcessor.create
+  const originalPluginTrigger = Plugin.trigger
+
+  let initialSummary: boolean | undefined
+  let initialIncludeInContext: boolean | undefined
+  let initialVisible: boolean | undefined
+
+  try {
+    ;(Provider.getModel as any) = mock(async () => testModel())
+    ;(Agent.get as any) = mock(async () => primaryAgent())
+    ;(Agent.getAvailableModel as any) = mock(async () => ({
+      providerID: "test-provider",
+      modelID: "test-model",
+    }))
+    ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+    ;(SessionProcessor.create as any) = mock((processorInput: Parameters<typeof SessionProcessor.create>[0]) => {
+      initialSummary = processorInput.assistantMessage.summary
+      initialIncludeInContext = processorInput.assistantMessage.includeInContext
+      initialVisible = processorInput.assistantMessage.visible
+      return {
+        message: processorInput.assistantMessage,
+        partFromToolCall: () => undefined,
+        trackExecution: () => {},
+        process: mock(async () => {
+          if (input.text) {
+            const now = Date.now()
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: processorInput.assistantMessage.id,
+              sessionID: processorInput.sessionID,
+              type: "text",
+              text: input.text,
+              time: { start: now, end: now },
+            })
+          }
+          if (input.error) processorInput.assistantMessage.error = input.error
+          else processorInput.assistantMessage.finish = "stop"
+          processorInput.assistantMessage.time.completed = Date.now()
+          await Session.updateMessage(processorInput.assistantMessage)
+          return "stop" as const
+        }),
+      }
+    })
+
+    return await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "user",
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          time: { created: Date.now() },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: user.id,
+          sessionID: session.id,
+          type: "text",
+          text: "Continue this task after compaction.",
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: user.id,
+          sessionID: session.id,
+          type: "compaction",
+          auto: false,
+        })
+
+        const before = await Session.messages({ sessionID: session.id })
+        const result = await SessionCompaction.process({
+          parentID: user.id,
+          messages: before,
+          sessionID: session.id,
+          abort: new AbortController().signal,
+          auto: false,
+        })
+        const after = await Session.messages({ sessionID: session.id })
+        const attempt = after.find(
+          (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
+            message.info.role === "assistant" && message.info.mode === "compaction",
+        )
+        if (!attempt) throw new Error("compaction attempt was not persisted")
+        const root = after.find((message) => message.info.id === user.id)
+        if (!root) throw new Error("compaction root was not persisted")
+
+        return { result, attempt, root, initialSummary, initialIncludeInContext, initialVisible }
+      },
+    })
+  } finally {
+    ;(Provider.getModel as any) = originalGetModel
+    ;(Agent.get as any) = originalGetAgent
+    ;(Agent.getAvailableModel as any) = originalGetAvailableModel
+    ;(SessionProcessor.create as any) = originalProcessorCreate
+    ;(Plugin.trigger as any) = originalPluginTrigger
+  }
 }
 
 describe.serial("SessionInvoke preflight compaction", () => {
@@ -840,5 +948,85 @@ describe.serial("SessionInvoke preflight compaction", () => {
       text: "Polish the account settings UI.",
       sourceMessageID: realUser.info.id,
     })
+  })
+  test("keeps provider failures as uncommitted compaction attempts", async () => {
+    const error = new MessageV2.APIError({ message: "quota exhausted", isRetryable: false }).toObject()
+
+    const observed = await runCompactionProcessCase({ error })
+
+    expect(observed.result).toBe("stop")
+    expect(observed.initialSummary).toBeUndefined()
+    expect(observed.initialIncludeInContext).toBe(false)
+    expect(observed.initialVisible).toBe(false)
+    expect(observed.attempt.info.summary).toBeUndefined()
+    expect(observed.attempt.info.includeInContext).toBe(false)
+    expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.error).toEqual(error)
+    expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+    expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
+      true,
+    )
+    expect(Turn.collect([observed.root, observed.attempt], { skipSynthetic: true })[0]?.assistants).toHaveLength(0)
+  })
+
+  test("does not commit an empty compaction response", async () => {
+    const observed = await runCompactionProcessCase({})
+
+    expect(observed.result).toBe("stop")
+    expect(observed.attempt.info.summary).toBeUndefined()
+    expect(observed.attempt.info.includeInContext).toBe(false)
+    expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
+    expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
+      true,
+    )
+  })
+
+  test("promotes a completed LLM compaction to a summary boundary", async () => {
+    const observed = await runCompactionProcessCase({ text: "## Goal\n\nContinue the implementation." })
+
+    expect(observed.result).toBe("stop")
+    expect(observed.initialSummary).toBeUndefined()
+    expect(observed.initialIncludeInContext).toBe(false)
+    expect(observed.attempt.info.summary).toBe(true)
+    expect(observed.attempt.info.finish).toBe("stop")
+    expect(observed.attempt.info.visible).toBe(true)
+    expect(observed.attempt.info.includeInContext).toBe(true)
+    expect(observed.attempt.info.error).toBeUndefined()
+    expect(observed.attempt.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: "compaction_recovery",
+          summary: "## Goal\n\nContinue the implementation.",
+          mechanical: false,
+          validated: true,
+        }),
+      ]),
+    )
+    expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
+      false,
+    )
+  })
+
+  test("promotes a mechanical fallback to a summary boundary", async () => {
+    const error = new MessageV2.APIError({
+      message: "context_length_exceeded",
+      isRetryable: false,
+    }).toObject()
+
+    const observed = await runCompactionProcessCase({ error })
+    expect(observed.result).toBe("stop")
+
+    expect(observed.initialSummary).toBeUndefined()
+    expect(observed.attempt.info.summary).toBe(true)
+    expect(observed.attempt.info.finish).toBe("stop")
+    expect(observed.attempt.info.visible).toBe(true)
+    expect(observed.attempt.info.includeInContext).toBe(true)
+    expect(observed.attempt.info.error).toBeUndefined()
+    expect(observed.attempt.parts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ type: "compaction_recovery", mechanical: true, validated: false }),
+      ]),
+    )
   })
 })

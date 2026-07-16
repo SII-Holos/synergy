@@ -466,6 +466,18 @@ export namespace SessionManager {
     emitStatus(runtime, status)
   }
 
+  export async function publishStatusOnly(sessionID: string, status: StatusInfo): Promise<void> {
+    const session = await requireSession(sessionID)
+    const scope = session.scope as Scope
+    const properties = { sessionID, status }
+    const publish = () => Bus.publish(SessionEvent.Status, properties)
+    if (ScopeContext.tryScope()?.id === scope.id) {
+      await publish()
+      return
+    }
+    await ScopeContext.provide({ scope, fn: publish })
+  }
+
   export function isRunning(sessionID: string): boolean {
     return occupied(getRuntime(sessionID))
   }
