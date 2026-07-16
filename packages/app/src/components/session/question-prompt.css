@@ -48,7 +48,7 @@
 
 .question-prompt-muted-icon {
   flex: none;
-  color: var(--text-muted);
+  color: var(--text-weak);
 }
 
 .question-prompt-collapsed-title {
@@ -67,7 +67,7 @@
   align-items: center;
   gap: 8px;
   overflow: hidden;
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-weight: 500;
   text-overflow: ellipsis;
@@ -94,7 +94,7 @@
   height: 24px;
   display: grid;
   place-items: center;
-  color: var(--text-muted);
+  color: var(--text-weak);
   background: transparent;
   border: 0;
   border-radius: var(--radius-md);
@@ -111,7 +111,7 @@
 }
 
 .question-prompt-kicker {
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-weight: 500;
 }
@@ -128,7 +128,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -144,7 +144,7 @@
   height: 24px;
   min-width: auto;
   padding-inline: 8px;
-  color: var(--text-muted);
+  color: var(--text-weak);
   border-radius: var(--radius-md);
 }
 
@@ -161,7 +161,7 @@
   gap: 6px;
   min-height: 30px;
   padding: 0 11px;
-  color: var(--text-muted);
+  color: var(--text-weak);
   background: var(--question-control-bg);
   border: 0;
   border-radius: 999px;
@@ -251,7 +251,7 @@
   display: grid;
   place-items: center;
   margin-top: 1px;
-  color: var(--text-muted);
+  color: var(--text-weak);
   background: var(--question-control-bg);
   border-radius: var(--radius-full);
 }
@@ -278,7 +278,7 @@
 
 .question-prompt-option-description {
   display: block;
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.45;
@@ -312,7 +312,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-weight: 600;
 }
@@ -372,11 +372,11 @@
 }
 
 .question-prompt-review-row.is-missing {
-  color: var(--text-muted);
+  color: var(--text-weak);
 }
 
 .question-prompt-review-label {
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-weight: 600;
 }
@@ -392,7 +392,7 @@
 }
 
 .question-prompt-review-edit {
-  color: var(--text-muted);
+  color: var(--text-weak);
   font-size: 12px;
   font-weight: 600;
 }
