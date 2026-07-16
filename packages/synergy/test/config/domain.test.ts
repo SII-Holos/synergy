@@ -34,6 +34,11 @@ test("plugins domain merges by default so imported plugin arrays replace stale s
   expect(ConfigDomain.byId.get("plugins")?.mergePolicy).toBe("merge")
 })
 
+test("post-write diagnostics settings belong to the runtime domain", () => {
+  expect(ConfigDomain.domainForKey("lspWriteDiagnostics")?.id).toBe("runtime")
+  expect(ConfigDomain.domainForKey("lspDiagnostics")?.id).toBe("runtime")
+})
+
 test("product update mode is not part of server config", async () => {
   expect(ConfigDomain.domainForKey("autoupdate")).toBeUndefined()
   expect(Object.keys(Config.Info.shape)).not.toContain("autoupdate")

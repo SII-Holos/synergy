@@ -101,6 +101,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setSettings("runtime", {
+    lspWriteDiagnostics: cfg.lspWriteDiagnostics === false ? "false" : UI_DEFAULTS.lspWriteDiagnostics,
+    lspDiagnosticsSeverity: cfg.lspDiagnostics?.severity ?? UI_DEFAULTS.lspDiagnosticsSeverity,
+    lspDiagnosticsScope: cfg.lspDiagnostics?.scope ?? UI_DEFAULTS.lspDiagnosticsScope,
     questionTimeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
     compactionAuto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
     compactionPrune: cfg.compaction?.prune !== false ? UI_DEFAULTS.compactionPrune : "false",

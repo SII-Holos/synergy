@@ -18,7 +18,7 @@ import {
 } from "./anchored-file"
 import { stripHashlineDisplayPrefixes } from "../hashline/format"
 import { splitContentLines } from "../hashline/tag"
-import { collectWriteDiagnostics } from "./write-quality"
+import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 
 export const SaveFileTool = Tool.define("save_file", {
@@ -70,6 +70,8 @@ export const SaveFileTool = Tool.define("save_file", {
           },
         })
 
+        const beforeDiagnostics = await captureWriteDiagnosticsBefore()
+
         await ensureParentDir(filePath)
         await Bun.write(filePath, content)
         await Bus.publish(File.Event.Edited, { file: filePath })
@@ -77,7 +79,7 @@ export const SaveFileTool = Tool.define("save_file", {
         const finalConflict = detectConflicts(finalContent)
         FileTime.read(ctx.sessionID, filePath)
 
-        const diagnostics = await collectWriteDiagnostics(filePath)
+        const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
         const runtimeReloadTargets = RuntimeReload.detectTargetsForFile(filePath)
         const runtimeReloadScope = RuntimeReload.detectScopeForFile(filePath) ?? "auto"
         const runtimeReload = runtimeReloadTargets.length

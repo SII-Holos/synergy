@@ -56,6 +56,7 @@ import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { CodeChecksPanel } from "./panels/CodeChecksPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
@@ -429,6 +430,12 @@ export function SettingsPanel(props: SettingsPanelProps) {
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
+      />
+    ),
+    "code-checks": () => (
+      <CodeChecksPanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
     formatter: () => referencePanel("Formatter", "Formatter configuration file access.", ["runtime"]),

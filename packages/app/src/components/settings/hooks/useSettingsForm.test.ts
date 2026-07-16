@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import { readLegacyQuickSwitcherPreferences } from "./useSettingsForm"
+import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { ensureInit, readLegacyQuickSwitcherPreferences, type EnsureInitParams } from "./useSettingsForm"
 
 describe("settings form legacy quick switcher migration", () => {
   test("reads current quick switcher preferences from the legacy localStorage key", () => {
@@ -31,6 +32,50 @@ describe("settings form legacy quick switcher migration", () => {
     ])
   })
 })
+
+describe("settings form post-write diagnostics", () => {
+  test("initializes compatibility defaults when diagnostics settings are absent", () => {
+    expect(initializedRuntime({})).toMatchObject({
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "error",
+      lspDiagnosticsScope: "project",
+    })
+  })
+
+  test("initializes explicit diagnostics settings", () => {
+    expect(
+      initializedRuntime({
+        lspWriteDiagnostics: false,
+        lspDiagnostics: { severity: "warning", scope: "delta" },
+      }),
+    ).toMatchObject({
+      lspWriteDiagnostics: "false",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "delta",
+    })
+  })
+})
+
+function initializedRuntime(config: Record<string, unknown>) {
+  let runtime: unknown
+  const setSettings = ((...args: unknown[]) => {
+    if (args[0] === "runtime") runtime = args[1]
+  }) as unknown as EnsureInitParams["setSettings"]
+
+  ensureInit({
+    cfg: config as unknown as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    setSettings,
+    setInitialized: () => {},
+    originalMcpsRef: { current: {} },
+  })
+
+  return runtime
+}
 
 function storageWithModel(value: unknown): Storage {
   const entries = new Map<string, string>([["synergy.global.dat:model", JSON.stringify(value)]])

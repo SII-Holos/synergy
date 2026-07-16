@@ -18,6 +18,12 @@ afterEach(() => {
   GlobalBus.removeAllListeners("event")
 })
 
+test("post-write diagnostics settings are live-applied without restarting LSP", () => {
+  expect(RuntimeReload.CONFIG_LIVE_APPLIED.has("lspWriteDiagnostics")).toBe(true)
+  expect(RuntimeReload.CONFIG_LIVE_APPLIED.has("lspDiagnostics")).toBe(true)
+  expect(RuntimeReload.inferConfigCascades(["lspWriteDiagnostics", "lspDiagnostics"])).not.toContain("lsp")
+})
+
 describe("runtime.reload", () => {
   test("detects config, skill, and custom tool targets by file path", async () => {
     await using tmp = await tmpdir({ git: true })

@@ -1540,6 +1540,17 @@ export const Info = z
           error: "For custom LSP servers, 'extensions' array is required.",
         },
       ),
+    lspWriteDiagnostics: z
+      .boolean()
+      .optional()
+      .describe("Include LSP diagnostics after file-writing tools complete (default: true)"),
+    lspDiagnostics: z
+      .object({
+        severity: z.enum(["error", "warning"]).optional(),
+        scope: z.enum(["delta", "file", "project"]).optional(),
+      })
+      .optional()
+      .describe("Severity and scope policy for diagnostics returned after file-writing tools"),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     project_doc_fallback_filenames: z
       .array(z.string())

@@ -129,6 +129,31 @@ The `server` object supports `hostname`, `port`, `mdns`, and additional CORS ori
 
 Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
 
+## Code Checks
+
+Post-write language-server diagnostic policy. Controls the diagnostics returned after write, edit, save_file, and revise_file complete. All fields are owned by `120-runtime.jsonc`.
+
+```jsonc
+{
+  "lspWriteDiagnostics": true,
+  "lspDiagnostics": {
+    "severity": "error",
+    "scope": "project",
+  },
+}
+```
+
+`lspWriteDiagnostics` (boolean, optional, default `true`) is the master toggle. Setting it to `false` disables all post-write diagnostic output.
+
+`lspDiagnostics` (object, optional) sets the severity filter and reporting scope:
+
+- `severity` — `"error"` (default) reports only errors; `"warning"` includes both errors and warnings.
+- `scope` — `"project"` (default) reports matching diagnostics across the project; `"file"` reports matching diagnostics for the edited file only; `"delta"` reports added, resolved, and unchanged diagnostics for the edited file relative to the pre-write snapshot.
+
+When `lspDiagnostics` is absent, or when either nested field is omitted, missing values inherit `severity: "error"` and `scope: "project"`. Config changes are live-applied and do not restart LSP servers.
+
+The Web Settings Code Checks page exposes these three fields: an Include Diagnostics toggle that disables the Diagnostic Severity and Diagnostic Scope selectors when off.
+
 ## Config Import
 
 `synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. Direct plan/apply API requests are limited to a 2 MiB JSON envelope.
