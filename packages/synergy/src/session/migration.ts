@@ -13,6 +13,7 @@ import { MessageV2 } from "./message-v2"
 import { SessionNav } from "./nav"
 import { SessionProgress } from "./progress"
 import { SnapshotSchema } from "./snapshot-schema"
+import { Dag } from "./dag"
 
 import { MigrationRegistry } from "@/migration/registry"
 const log = Log.create({ service: "session.migration" })
@@ -1591,6 +1592,38 @@ async function migrateCortexTaskIdentity(progress: (current: number, total: numb
   log.info("cortex task identity migration complete", { total: tasks.length, changed })
 }
 
+async function migrateRetiredIntentAnalystDagAssignments(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
+  const allScopeIDs = Array.from(new Set(["home", ...scopeIDs]))
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of allScopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    const key = StoragePath.sessionDag(scope, sid)
+    const nodes = await Storage.read<Dag.Node[]>(key).catch(() => undefined)
+    if (Array.isArray(nodes)) {
+      const normalized = Dag.normalizeRetiredAssignments(nodes)
+      if (normalized !== nodes) {
+        await Storage.write(key, normalized)
+        changed++
+      }
+    }
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("retired intent analyst DAG assignment migration complete", { total: tasks.length, changed })
+}
+
 export const migrations: Migration[] = [
   {
     id: "20260411-session-endpoint-index",
@@ -2155,6 +2188,13 @@ export const migrations: Migration[] = [
     description: "Persist Cortex task IDs for durable delegated-task handles",
     async up(progress) {
       await migrateCortexTaskIdentity(progress)
+    },
+  },
+  {
+    id: "20260715-retired-intent-analyst-dag-assign",
+    description: "Migrate retired intent-analyst DAG assignments to the primary orchestrator",
+    async up(progress) {
+      await migrateRetiredIntentAnalystDagAssignments(progress)
     },
   },
 ]

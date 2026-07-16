@@ -55,7 +55,27 @@ When the session loop detects the same context-pressure signal that can initiate
 
 ### Library Inspection
 
-The Library surface exposes memories, experiences, filters, health, and aggregate statistics. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. Failed encodings remain detectable and can be retried without discarding their reward history. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
+The Library surface exposes memories, experiences, filters, health, and aggregate statistics. Experience records can be inspected by Scope or session and sorted by recency, reward, learned value, or visits. The adjacent Usage view summarizes session and tool activity rather than Library records; see [Activity and Statistics](activity-and-statistics.md).
+
+### Encoding Health and Re-encoding
+
+Experience encoding can degrade over time — an intent may be too long, empty, copied from raw user text, or lost during a failed pipeline step. The Library settings `Encoding health` panel runs a detection scan grouped by reason, then allows the user to start a durable server-owned re-encode job.
+
+A re-encode job processes each candidate experience and updates its intent or script embedding. The job is owned by the server, not the frontend: closing the settings panel or disconnecting the browser does not cancel it. At most one job is active at a time. Starting a new job when one is already running returns the existing job state with a 409 conflict.
+
+REST endpoints support the full lifecycle:
+
+- `POST /library/experience/reencode/jobs` — start a job (`intent` or `script` type, with an optional detection reason filter)
+- `GET /library/experience/reencode/jobs/current` — poll the most recent job's aggregate status and counts
+- `POST /library/experience/reencode/jobs/current/cancel` — cancel the active job without discarding already-completed results
+
+Items transition through `pending` → `processing` → `ok | skipped | failed`. A job finishes as `completed`, `failed`, or `cancelled`. If the server restarts while a job is running, startup reconciliation resets in-flight `processing` items to `pending` and marks the job `interrupted`; the user can start a new job to continue where it left off. Explicit cancel keeps completed results and only resets unprocessed items. The legacy SSE `POST /library/experience/reencode` endpoint remains as a compatible observer stream that starts or attaches to a running job.
+
+Three `library.experience.learning` configuration fields control the job runtime:
+
+- `reencodeConcurrency` (1–32, default 5) — how many experiences to re-encode in parallel
+- `reencodeRetries` (0–10, default 3) — how many times to retry a transient model, embedding, session, network, or database stage before marking the item failed
+- `reencodeRetryBackoffMs` (≥ 0, default 1000) — initial backoff in milliseconds for transient retries, doubled on each attempt (1s, 2s, 4s by default)
 
 ## Notes
 

@@ -1923,6 +1923,7 @@ export type ProviderConfig = {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
         output: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
+      supported_image_media_types?: Array<string>
       status?: "alpha" | "beta" | "deprecated"
       options?: {
         [key: string]: unknown
@@ -2119,6 +2120,18 @@ export type LearningConfig = {
    * Maximum characters collected from one encoder model stream before abort (default: 16000)
    */
   encoderMaxOutputChars?: number
+  /**
+   * Maximum concurrent experience reencode workers (default: 5)
+   */
+  reencodeConcurrency?: number
+  /**
+   * Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)
+   */
+  reencodeRetries?: number
+  /**
+   * Initial backoff for transient reencode stage retries in milliseconds (default: 1000)
+   */
+  reencodeRetryBackoffMs?: number
   /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
@@ -3155,35 +3168,78 @@ export type ConfigDomainOpenError = {
   path?: string
 }
 
+export type ConfigImportScope = "global" | "project"
+
+export type ConfigImportDiagnostic = {
+  severity: "warning" | "info"
+  code: string
+  message: string
+  path?: string
+}
+
 export type ConfigDomainImportChange = {
   key: string
+  type: "add" | "modify" | "remove"
   before?: unknown
   after?: unknown
   conflict: boolean
+  diagnostics: Array<ConfigImportDiagnostic>
+}
+
+export type ConfigDomainImportDomainPlan = {
+  id:
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  filename: string
+  path: string
+  mode: "merge" | "replace-domain" | "append"
+  revision: string
+  changes: Array<ConfigDomainImportChange>
 }
 
 export type ConfigDomainImportPlan = {
-  domains: Array<{
-    id:
-      | "general"
-      | "models"
-      | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "agents"
-      | "commands"
-      | "permissions"
-      | "channels"
-      | "holos"
-      | "email"
-      | "runtime"
-    filename: string
-    path: string
-    mode: "merge" | "replace-domain" | "append"
-    changes: Array<ConfigDomainImportChange>
-  }>
+  scope: ConfigImportScope
+  scopeID: string
+  source: string
+  revision: string
+  domains: Array<ConfigDomainImportDomainPlan>
   conflicts: Array<ConfigDomainImportChange>
+}
+
+export type ConfigImportProjectScopeRequiredError = {
+  name: "ConfigImportProjectScopeRequiredError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigImportInvalidConfigError = {
+  name: "ConfigInvalidError"
+  data: {
+    path: string
+    issues?: Array<unknown>
+    message?: string
+  }
+}
+
+export type ConfigImportSourceTooLargeError = {
+  name: "ConfigImportSourceTooLargeError"
+  data: {
+    message: string
+    source: string
+    maxBytes: number
+  }
 }
 
 export type ConfigDomainImportPlanInput = {
@@ -3204,6 +3260,119 @@ export type ConfigDomainImportPlanInput = {
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
+  scope?: ConfigImportScope
+  source?: string
+}
+
+export type RuntimeReloadTarget =
+  | "config"
+  | "skill"
+  | "provider"
+  | "agent"
+  | "plugin"
+  | "mcp"
+  | "lsp"
+  | "formatter"
+  | "watcher"
+  | "channel"
+  | "holos"
+  | "command"
+  | "tool_registry"
+  | "all"
+
+export type RuntimeReloadFailure = {
+  target: RuntimeReloadTarget
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  recoverable?: boolean
+}
+
+export type RuntimeReloadDiagnostic = {
+  target: RuntimeReloadTarget
+  severity: "error" | "warning" | "info"
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  source?: string
+}
+
+export type RuntimeReloadResult = {
+  success: boolean
+  requested: Array<RuntimeReloadTarget>
+  executed: Array<RuntimeReloadTarget>
+  cascaded: Array<RuntimeReloadTarget>
+  changedFields: Array<string>
+  restartRequired: Array<string>
+  liveApplied: Array<string>
+  warnings: Array<string>
+  failed: Array<RuntimeReloadTarget>
+  failures: Array<RuntimeReloadFailure>
+  diagnostics: Array<RuntimeReloadDiagnostic>
+}
+
+export type ConfigDomainImportApplyResult = {
+  plan: ConfigDomainImportPlan
+  reload: RuntimeReloadResult
+}
+
+export type ConfigImportRevisionConflictError = {
+  name: "ConfigImportRevisionConflictError"
+  data: {
+    message: string
+    domains: Array<
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    >
+  }
+}
+
+export type ConfigImportLockedError = {
+  name: "ConfigImportLockedError"
+  data: {
+    message: string
+    scope: ConfigImportScope
+  }
+}
+
+export type ConfigDomainImportApplyInput = {
+  config: Config
+  only?: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  >
+  mode?: "merge" | "replace-domain" | "append"
+  scope?: ConfigImportScope
+  source?: string
+  revision?: string
+  yes?: boolean
+  force?: boolean
 }
 
 export type Model = {
@@ -3228,6 +3397,7 @@ export type Model = {
       image: boolean
       video: boolean
       pdf: boolean
+      supportedImageMediaTypes?: Array<string>
     }
     output: {
       text: boolean
@@ -3290,57 +3460,6 @@ export type Provider = {
   models: {
     [key: string]: Model
   }
-}
-
-export type RuntimeReloadTarget =
-  | "config"
-  | "skill"
-  | "provider"
-  | "agent"
-  | "plugin"
-  | "mcp"
-  | "lsp"
-  | "formatter"
-  | "watcher"
-  | "channel"
-  | "holos"
-  | "command"
-  | "tool_registry"
-  | "all"
-
-export type RuntimeReloadFailure = {
-  target: RuntimeReloadTarget
-  message: string
-  code?: string
-  name?: string
-  path?: string
-  phase?: string
-  recoverable?: boolean
-}
-
-export type RuntimeReloadDiagnostic = {
-  target: RuntimeReloadTarget
-  severity: "error" | "warning" | "info"
-  message: string
-  code?: string
-  name?: string
-  path?: string
-  phase?: string
-  source?: string
-}
-
-export type RuntimeReloadResult = {
-  success: boolean
-  requested: Array<RuntimeReloadTarget>
-  executed: Array<RuntimeReloadTarget>
-  cascaded: Array<RuntimeReloadTarget>
-  changedFields: Array<string>
-  restartRequired: Array<string>
-  liveApplied: Array<string>
-  warnings: Array<string>
-  failed: Array<RuntimeReloadTarget>
-  failures: Array<RuntimeReloadFailure>
-  diagnostics: Array<RuntimeReloadDiagnostic>
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -3541,6 +3660,8 @@ export type SessionCortexDelegation = {
     modelID: string
   }
   error?: string
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
   visibility?: "visible" | "hidden"
   tools?: {
     [key: string]: boolean
@@ -3970,6 +4091,7 @@ export type SessionInboxItem = {
   id: string
   sessionID: string
   mode: "task" | "steer" | "context"
+  deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
     parts: Array<
@@ -5088,6 +5210,34 @@ export type ExperienceDetectResult = {
     total: number
     groups: Array<ExperienceDetectGroup>
   }
+}
+
+export type ReencodeJobStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted"
+
+export type ReencodeJobState = {
+  id: string
+  status: ReencodeJobStatus
+  type: "intent" | "script"
+  reason: string | null
+  totalCount: number
+  okCount: number
+  skippedCount: number
+  failedCount: number
+  completedCount: number
+  startedAt: number
+  completedAt: number | null
+  error: string | null
+}
+
+export type ReencodeJobConflict = {
+  code: string
+  message: string
+  job: ReencodeJobState
+}
+
+export type ReencodeJobError = {
+  code: string
+  message: string
 }
 
 export type MemoryStats = {
@@ -8537,9 +8687,13 @@ export type ConfigImportPlanData = {
 
 export type ConfigImportPlanErrors = {
   /**
-   * Bad request
+   * Invalid import or missing project scope
    */
-  400: BadRequestError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
@@ -8554,26 +8708,7 @@ export type ConfigImportPlanResponses = {
 export type ConfigImportPlanResponse = ConfigImportPlanResponses[keyof ConfigImportPlanResponses]
 
 export type ConfigImportApplyData = {
-  body?: {
-    config: Config
-    only?: Array<
-      | "general"
-      | "models"
-      | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "agents"
-      | "commands"
-      | "permissions"
-      | "channels"
-      | "holos"
-      | "email"
-      | "runtime"
-    >
-    mode?: "merge" | "replace-domain" | "append"
-    yes?: boolean
-  }
+  body?: ConfigDomainImportApplyInput
   path?: never
   query?: {
     directory?: string
@@ -8584,18 +8719,26 @@ export type ConfigImportApplyData = {
 
 export type ConfigImportApplyErrors = {
   /**
-   * Bad request
+   * Invalid import or missing project scope
    */
-  400: BadRequestError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
+  /**
+   * Stale plan or concurrent import
+   */
+  409: ConfigImportRevisionConflictError | ConfigImportLockedError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
 
 export type ConfigImportApplyResponses = {
   /**
-   * Applied config import plan
+   * Applied config import result
    */
-  200: ConfigDomainImportPlan
+  200: ConfigDomainImportApplyResult
 }
 
 export type ConfigImportApplyResponse = ConfigImportApplyResponses[keyof ConfigImportApplyResponses]
@@ -11572,6 +11715,113 @@ export type LibraryExperienceDetectResponses = {
 
 export type LibraryExperienceDetectResponse = LibraryExperienceDetectResponses[keyof LibraryExperienceDetectResponses]
 
+export type LibraryExperienceStartReencodeJobData = {
+  body?: {
+    /**
+     * What to re-encode
+     */
+    type: "intent" | "script"
+    /**
+     * Filter to one detection reason; omit for all
+     */
+    reason?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs"
+}
+
+export type LibraryExperienceStartReencodeJobErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * A reencode job is already running
+   */
+  409: ReencodeJobConflict
+}
+
+export type LibraryExperienceStartReencodeJobError =
+  LibraryExperienceStartReencodeJobErrors[keyof LibraryExperienceStartReencodeJobErrors]
+
+export type LibraryExperienceStartReencodeJobResponses = {
+  /**
+   * Reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceStartReencodeJobResponse =
+  LibraryExperienceStartReencodeJobResponses[keyof LibraryExperienceStartReencodeJobResponses]
+
+export type LibraryExperienceGetReencodeJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs/current"
+}
+
+export type LibraryExperienceGetReencodeJobErrors = {
+  /**
+   * No reencode job exists
+   */
+  404: ReencodeJobError
+}
+
+export type LibraryExperienceGetReencodeJobError =
+  LibraryExperienceGetReencodeJobErrors[keyof LibraryExperienceGetReencodeJobErrors]
+
+export type LibraryExperienceGetReencodeJobResponses = {
+  /**
+   * Current reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceGetReencodeJobResponse =
+  LibraryExperienceGetReencodeJobResponses[keyof LibraryExperienceGetReencodeJobResponses]
+
+export type LibraryExperienceCancelReencodeJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs/current/cancel"
+}
+
+export type LibraryExperienceCancelReencodeJobErrors = {
+  /**
+   * No reencode job exists
+   */
+  404: ReencodeJobError
+  /**
+   * The current job is not running
+   */
+  409: ReencodeJobConflict
+}
+
+export type LibraryExperienceCancelReencodeJobError =
+  LibraryExperienceCancelReencodeJobErrors[keyof LibraryExperienceCancelReencodeJobErrors]
+
+export type LibraryExperienceCancelReencodeJobResponses = {
+  /**
+   * Cancelled reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceCancelReencodeJobResponse =
+  LibraryExperienceCancelReencodeJobResponses[keyof LibraryExperienceCancelReencodeJobResponses]
+
 export type LibraryExperienceReencodeData = {
   body?: {
     /**
@@ -11602,7 +11852,7 @@ export type LibraryExperienceReencodeError = LibraryExperienceReencodeErrors[key
 
 export type LibraryExperienceReencodeResponses = {
   /**
-   * SSE stream of re-encode progress events
+   * SSE stream of reencode job progress
    */
   200: {
     type: "start" | "progress" | "done" | "error"

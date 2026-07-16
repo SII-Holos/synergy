@@ -230,7 +230,7 @@ export namespace SessionCompaction {
     return "## Conversation Summary (Automatic Fallback)\n\n" + sections.join("\n\n")
   }
 
-  /** Overwrite the compaction assistant message with a mechanical summary. */
+  /** Commit the hidden attempt as a complete mechanical summary boundary. */
   async function writeMechanicalSummary(
     msg: MessageV2.Assistant,
     input: { messages: MessageV2.WithParts[]; sessionID: string },
@@ -245,10 +245,6 @@ export namespace SessionCompaction {
       origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
-    msg.error = undefined
-    msg.finish = "stop"
-    if (!msg.time.completed) msg.time.completed = Date.now()
-    await Session.updateMessage(msg)
     await Session.updatePart({
       id: Identifier.ascending("part"),
       messageID: msg.id,
@@ -258,6 +254,13 @@ export namespace SessionCompaction {
       mechanical: true,
       validated: false,
     })
+    msg.error = undefined
+    msg.finish = "stop"
+    msg.summary = true
+    msg.visible = true
+    msg.includeInContext = true
+    if (!msg.time.completed) msg.time.completed = Date.now()
+    await Session.updateMessage(msg)
     log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
   }
 
@@ -278,7 +281,7 @@ export namespace SessionCompaction {
 
     loop: for (let msgIndex = protectBoundary - 1; msgIndex >= 0; msgIndex--) {
       const msg = msgs[msgIndex]
-      if (msg.info.role === "assistant" && msg.info.summary) break loop
+      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) break loop
       for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
         const part = msg.parts[partIndex]
         if (part.type === "tool")
@@ -298,25 +301,29 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
-  export async function prune(input: { sessionID: string; modelID?: string }) {
+  export async function prune(input: { sessionID: string; messages: MessageV2.WithParts[]; modelID?: string }) {
     const config = await Config.current()
     if (config.compaction?.prune === false) return
     log.info("pruning")
-    const msgs = await Session.messages({ sessionID: input.sessionID })
-
-    const toPrune = selectPartsToPrune(msgs, input.modelID)
+    const toPrune = selectPartsToPrune(input.messages, input.modelID)
 
     if (toPrune.length > 0) {
       const completed = toPrune.filter(
         (part): part is MessageV2.ToolPart & { state: { status: "completed"; time: { compacted?: number } } } =>
           part.state.status === "completed",
       )
+      const compacted = Date.now()
       await Promise.all(
-        completed.map((part) => {
-          part.state.time.compacted = Date.now()
-          part.state.output = ""
-          return Session.updatePart(part)
-        }),
+        completed.map((part) =>
+          Session.updatePart({
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+              time: { ...part.state.time, compacted },
+            },
+          }),
+        ),
       )
       log.info("pruned", { count: completed.length })
     }
@@ -400,11 +407,11 @@ export namespace SessionCompaction {
       role: "assistant",
       parentID: input.parentID,
       rootID: input.parentID,
-      visible: true,
+      visible: false,
+      includeInContext: false,
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
-      summary: true,
       path: {
         cwd: directory,
         root: directory,
@@ -453,7 +460,7 @@ export namespace SessionCompaction {
       ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
       : modelMessages
 
-    const result = await processor.process({
+    await processor.process({
       user: userMessage,
       agent,
       abort: input.abort,
@@ -478,46 +485,41 @@ export namespace SessionCompaction {
     // If the LLM call failed due to context limits (e.g. bad token estimation
     // or model-reported limits don't match reality), fall back to a
     // deterministic mechanical summary rather than letting compaction fail.
-    let compactionOk = true
+    let usedMechanicalFallback = false
     if (processor.message.error) {
       if (isContextExceeded(processor.message.error)) {
         log.warn("compaction LLM context exceeded, using mechanical fallback", {
           sessionID: input.sessionID,
         })
         await writeMechanicalSummary(msg, input)
+        usedMechanicalFallback = true
       } else {
-        compactionOk = false
+        return "stop"
       }
     }
 
-    if (!compactionOk) return "stop"
+    if (!usedMechanicalFallback) {
+      const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+      const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
+      const allText = textParts.map((p) => p.text).join("\n")
+      if (!allText.trim()) return "stop"
 
-    // Ensure the compaction assistant message is marked as finished even if the
-    // processor didn't emit a finish-step event (e.g. stream was interrupted).
-    // Without this, filterCompacted can't identify the compaction boundary and
-    // the loop may incorrectly break on the next user message.
-    if (!msg.finish) {
-      msg.finish = "stop"
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: msg.id,
+        sessionID: input.sessionID,
+        type: "compaction_recovery",
+        summary: allText,
+        mechanical: false,
+        validated: true,
+      })
+      if (!msg.finish) msg.finish = "stop"
+      if (!msg.time.completed) msg.time.completed = Date.now()
+      msg.summary = true
+      msg.visible = true
+      msg.includeInContext = true
+      await Session.updateMessage(msg)
     }
-    if (!msg.time.completed) {
-      msg.time.completed = Date.now()
-    }
-    await Session.updateMessage(msg)
-
-    // Emit the full compaction text for the frontend.
-    const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
-    const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
-    const allText = textParts.map((p) => p.text).join("\n")
-
-    await Session.updatePart({
-      id: Identifier.ascending("part"),
-      messageID: msg.id,
-      sessionID: input.sessionID,
-      type: "compaction_recovery",
-      summary: allText,
-      mechanical: false,
-      validated: true,
-    })
 
     if (input.auto) {
       const anchor = resolveAnchor(input.messages, input.parentID)
@@ -604,7 +606,7 @@ export namespace SessionCompaction {
       return [{ type: "prune" }]
     },
     async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID, modelID: ctx.modelID })
+      await prune({ sessionID: ctx.sessionID, messages: ctx.messages, modelID: ctx.modelID })
       return "pass"
     },
   })
