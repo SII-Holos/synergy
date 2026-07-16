@@ -1,9 +1,11 @@
 List sessions by scope. Returns session metadata, scope info, and the latest message exchange for each session.
 
 The `scope` parameter selects which sessions to list:
-- "project": Sessions across all projects. Each entry includes which scope (project) it belongs to.
+- "project": Ordinary sessions across all projects. Each entry includes its project Scope.
 - "home": All top-level sessions in the Home Scope, including channel sessions
 - "feishu": Feishu/Lark channel sessions across Home and project Scopes
+
+To list sessions from one project, first use `scope_list` to find its project ID, then call `session_list` with `scope: "project"` and that ID as `scopeID`. Omit `scopeID` to list ordinary sessions across all projects. `scopeID` is rejected with `scope: "home"` or `scope: "feishu"`.
 
 Use `since` and `before` to filter sessions by last updated time (ISO 8601 dates). For example, to get today's sessions use `since: "2026-03-15"`, or last week's sessions with `since: "2026-03-08"`.
 
