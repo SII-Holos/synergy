@@ -32,7 +32,7 @@ export namespace ExperienceEncoder {
     return raw.slice(0, limit)
   }
 
-  interface EncodeOutcome {
+  export interface EncodeOutcome {
     encoded: boolean
     skipped: boolean
     superseded?: string
@@ -95,16 +95,21 @@ export namespace ExperienceEncoder {
     sessionID: string,
     userMessageID: string,
     msgs: MessageV2.WithParts[],
+    learning?: Required<Config.Learning>,
   ): Promise<{ intent: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
     const userText = Turn.resolveUserText(msgs, userMessageID)
     if (!userText) throw new Error("no-user-text")
-
-    const learning = await loadLearning()
     const model = await resolveModel(userMessageID)
+    const effectiveLearning = learning ?? (await loadLearning())
 
     const userMsg = msgs.find((m) => m.info.id === userMessageID)
     const userInfo = userMsg?.info as MessageV2.User | undefined
-    const ctx: AgentContext = { sessionID, userMsg: userInfo ?? ({} as MessageV2.User), model, learning }
+    const ctx: AgentContext = {
+      sessionID,
+      userMsg: userInfo ?? ({} as MessageV2.User),
+      model,
+      learning: effectiveLearning,
+    }
 
     const history = buildIntentHistory(msgs, userMessageID)
     const rawIntent = await generateIntent(ctx, history, userText)
@@ -131,11 +136,12 @@ export namespace ExperienceEncoder {
     sessionID: string,
     userMessageID: string,
     raw: string,
+    learning?: Required<Config.Learning>,
   ): Promise<{ script: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
-    const learning = await loadLearning()
     const model = await resolveModel(userMessageID)
+    const effectiveLearning = learning ?? (await loadLearning())
 
-    const ctx: AgentContext = { sessionID, userMsg: {} as MessageV2.User, model, learning }
+    const ctx: AgentContext = { sessionID, userMsg: {} as MessageV2.User, model, learning: effectiveLearning }
 
     const content = buildReencodeScriptContent(raw)
     const rawScript = await generateScript(ctx, content)
@@ -159,8 +165,19 @@ export namespace ExperienceEncoder {
 
     return { script, embedding, reason: result.reason, usedFallback }
   }
+  export async function repairFailedExperience(
+    sessionID: string,
+    userMessageID: string,
+    learning?: Required<Config.Learning>,
+  ): Promise<EncodeOutcome> {
+    return encode(sessionID, userMessageID, { force: true, learning })
+  }
 
-  async function encode(sessionID: string, userMessageID: string): Promise<EncodeOutcome> {
+  async function encode(
+    sessionID: string,
+    userMessageID: string,
+    options: { force?: boolean; learning?: Required<Config.Learning> } = {},
+  ): Promise<EncodeOutcome> {
     const existing = LibraryDB.Experience.get(userMessageID)
     if (existing && existing.reward_status !== "encoding_failed") {
       const content = LibraryDB.Experience.getContent(userMessageID)
@@ -173,17 +190,19 @@ export namespace ExperienceEncoder {
 
     const scope = session.scope as Scope
 
-    const config = await Config.current()
-    const library = (config as any).library as
-      | { experience?: { encode?: boolean; learning?: Config.Learning } }
-      | undefined
-    if (library?.experience?.encode === false) return { encoded: false, skipped: true }
+    const config = options.learning ? undefined : await Config.current()
+    const library = config
+      ? ((config as any).library as { experience?: { encode?: boolean; learning?: Config.Learning } } | undefined)
+      : undefined
+    if (!options.force && library?.experience?.encode === false) return { encoded: false, skipped: true }
 
-    const learning = {
-      ...Config.LEARNING_DEFAULTS,
-      ...library?.experience?.learning,
-      rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...library?.experience?.learning?.rewardWeights },
-    } as Required<Config.Learning>
+    const learning =
+      options.learning ??
+      ({
+        ...Config.LEARNING_DEFAULTS,
+        ...library?.experience?.learning,
+        rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...library?.experience?.learning?.rewardWeights },
+      } as Required<Config.Learning>)
     const msgs = await Session.messages({ sessionID })
 
     userMessageID = Turn.resolveRealUser(msgs, userMessageID)

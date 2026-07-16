@@ -4,10 +4,12 @@ import { Server } from "../../src/server/server"
 import { ScopeContext } from "../../src/scope/context"
 import { ScopeRuntime } from "../../src/scope/runtime"
 import { LibraryDB, closeDB } from "../../src/library/database"
+import { ExperienceReencode } from "../../src/library/experience-reencode"
 
 afterEach(async () => {
   LibraryDB.Experience.removeAll()
   LibraryDB.Memory.removeAll()
+  LibraryDB.ReencodeJob.removeAll()
   await ScopeRuntime.disposeAll()
   closeDB()
 })
@@ -240,6 +242,105 @@ describe("Library API DTO contracts", () => {
         expect(body).toHaveLength(1)
         expectMemoryCardFields(body[0])
       },
+    })
+  })
+
+  describe("Library reencode job API", () => {
+    test("reports when no job exists", async () => {
+      await using project = await tmpdir({ git: true })
+      const scope = await project.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const response = await Server.App().request("/library/experience/reencode/jobs/current")
+          expect(response.status).toBe(404)
+          expect(await response.json()).toEqual({ code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" })
+        },
+      })
+    })
+
+    test("starts and persists an empty job", async () => {
+      await using project = await tmpdir({ git: true })
+      const scope = await project.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const response = await Server.App().request("/library/experience/reencode/jobs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ type: "intent" }),
+          })
+          expect(response.status).toBe(200)
+
+          const started = (await response.json()) as Record<string, unknown>
+          expect(started).toEqual(
+            expect.objectContaining({
+              id: expect.any(String),
+              type: "intent",
+              status: "completed",
+              totalCount: 0,
+              completedCount: 0,
+            }),
+          )
+          expect(started).not.toHaveProperty("items")
+
+          const current = await Server.App().request("/library/experience/reencode/jobs/current")
+          expect(current.status).toBe(200)
+          expect(await current.json()).toEqual(started)
+        },
+      })
+    })
+
+    test("rejects duplicate starts and cancels the active job", async () => {
+      await using project = await tmpdir({ git: true })
+      const scope = await project.scope()
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const running = ExperienceReencode.createJob({
+            type: "script",
+            candidates: [
+              {
+                id: "exp-active",
+                sessionID: "session-active",
+                scopeID: scope.id,
+                reason: "invalid",
+                detail: "invalid script",
+              },
+            ],
+          })
+
+          const duplicate = await Server.App().request("/library/experience/reencode/jobs", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ type: "intent" }),
+          })
+          expect(duplicate.status).toBe(409)
+          const duplicateBody = (await duplicate.json()) as {
+            job: Record<string, unknown>
+          }
+          expect(duplicateBody).toEqual(
+            expect.objectContaining({
+              code: "REENCODE_JOB_ALREADY_RUNNING",
+              job: expect.objectContaining({ id: running.id, status: "running" }),
+            }),
+          )
+          expect(duplicateBody.job).not.toHaveProperty("items")
+
+          const cancelled = await Server.App().request("/library/experience/reencode/jobs/current/cancel", {
+            method: "POST",
+          })
+          expect(cancelled.status).toBe(200)
+          const cancelledBody = (await cancelled.json()) as Record<string, unknown>
+          expect(cancelledBody).toEqual(
+            expect.objectContaining({ id: running.id, status: "cancelled", completedAt: expect.any(Number) }),
+          )
+          expect(cancelledBody).not.toHaveProperty("items")
+        },
+      })
     })
   })
 })

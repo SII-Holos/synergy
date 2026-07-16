@@ -1,17 +1,25 @@
 import { useConfirm } from "@/components/dialog/confirm-dialog"
-import { reencodeExperienceConfirm } from "@/components/dialog/confirm-copy"
+import { cancelReencodeConfirm, reencodeExperienceConfirm } from "@/components/dialog/confirm-copy"
 
-import { createSignal, Show, For, createMemo } from "solid-js"
+import { createSignal, Show, For, createMemo, onCleanup, onMount } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { SettingsSubsection } from "../components/SettingsPrimitives"
 import { SettingsStepScale, type SettingsStepOption } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { SettingRow } from "../components/SettingRow"
 import { useGlobalSDK } from "@/context/global-sdk"
-import type { ExperienceDetectResult, ExperienceDetectGroup } from "@ericsanchezok/synergy-sdk/client"
+import type { ExperienceDetectResult, ExperienceDetectGroup, ReencodeJobState } from "@ericsanchezok/synergy-sdk/client"
 import type { LibrarySettingsStore } from "../types"
+import {
+  isReencodeJobNotFound,
+  pollReencodeJob,
+  reencodeConflictJob,
+  reencodeJobSummary,
+} from "./library-reencode-model"
+import { LibraryReencodeProgress } from "./library-reencode-progress"
 
 const similarityOptions: SettingsStepOption[] = [
   { value: "0.5", label: "Broad", tickLabel: "0.5", detail: "Loose context match" },
@@ -159,22 +167,83 @@ function EncodingHealthSection() {
 
   const [scanning, setScanning] = createSignal(false)
   const [result, setResult] = createSignal<ExperienceDetectResult | null>(null)
-  const [reencoding, setReencoding] = createSignal<{
-    kind: "intent" | "script"
-    reason?: string
-    total: number
-    completed: number
-    ok: number
-    skipped: number
-    failed: number
-    aborter: AbortController
-  } | null>(null)
-  const [reencodeDone, setReencodeDone] = createSignal<{ ok: number; skipped: number; failed: number } | null>(null)
+  const [reencoding, setReencoding] = createSignal<ReencodeJobState | null>(null)
+  const [reencodeDone, setReencodeDone] = createSignal<ReencodeJobState | null>(null)
+  const [cancelling, setCancelling] = createSignal(false)
+  let observer: AbortController | undefined
+  let disposed = false
 
   const hasIssues = createMemo(() => {
     const r = result()
     if (!r) return false
     return r.intent.total > 0 || r.script.total > 0
+  })
+
+  function applyJob(job: ReencodeJobState) {
+    if (job.status === "running") {
+      setReencoding(job)
+      setReencodeDone(null)
+      return
+    }
+    setReencoding(null)
+    setReencodeDone(job)
+  }
+
+  async function loadCurrentJob() {
+    const response = await globalSDK.client.library.experience.getReencodeJob()
+    if (response.error) throw response.error
+    return response.data
+  }
+
+  async function observeJob(job: ReencodeJobState) {
+    observer?.abort()
+    const controller = new AbortController()
+    observer = controller
+    applyJob(job)
+    try {
+      await pollReencodeJob({
+        load: loadCurrentJob,
+        onUpdate: applyJob,
+        signal: controller.signal,
+      })
+    } catch (error) {
+      if (controller.signal.aborted || disposed) return
+      setReencoding(null)
+      showToast({
+        type: "error",
+        title: "Re-encoding status unavailable",
+        description: error instanceof Error ? error.message : "The current job could not be loaded.",
+      })
+    } finally {
+      if (observer === controller) observer = undefined
+    }
+  }
+
+  onMount(() => {
+    void (async () => {
+      try {
+        const response = await globalSDK.client.library.experience.getReencodeJob()
+        if (response.error) {
+          if (isReencodeJobNotFound(response.error)) return
+          throw response.error
+        }
+        if (disposed) return
+        if (response.data.status === "running") void observeJob(response.data)
+        else applyJob(response.data)
+      } catch (error) {
+        if (disposed) return
+        showToast({
+          type: "error",
+          title: "Re-encoding history unavailable",
+          description: error instanceof Error ? error.message : "The latest job could not be loaded.",
+        })
+      }
+    })()
+  })
+
+  onCleanup(() => {
+    disposed = true
+    observer?.abort()
   })
 
   async function handleScan() {
@@ -204,66 +273,45 @@ function EncodingHealthSection() {
   }
 
   async function startReencode(kind: "intent" | "script", reason?: string) {
-    const aborter = new AbortController()
-    const reenc = {
-      kind,
-      reason,
-      total: 0,
-      completed: 0,
-      ok: 0,
-      skipped: 0,
-      failed: 0,
-      aborter,
-    }
-    setReencoding(reenc)
     setReencodeDone(null)
-
     try {
-      const sseResult = await globalSDK.client.library.experience.reencode(
-        { type: kind, reason },
-        {
-          signal: aborter.signal,
-          parseAs: "stream",
-          onSseEvent: (event) => {
-            const d = event.data as Record<string, unknown>
-            if (d.type === "start" && typeof d.total === "number") {
-              setReencoding((prev) => (prev ? { ...prev, total: d.total as number } : prev))
-            } else if (d.type === "progress" && typeof d.completed === "number") {
-              setReencoding((prev) => {
-                if (!prev) return prev
-                const status = d.status as string
-                return {
-                  ...prev,
-                  completed: d.completed as number,
-                  ok: prev.ok + (status === "ok" ? 1 : 0),
-                  skipped: prev.skipped + (status === "skipped" ? 1 : 0),
-                  failed: prev.failed + (status === "failed" ? 1 : 0),
-                }
-              })
-            } else if (d.type === "done") {
-              setReencodeDone({
-                ok: (d.ok as number) ?? 0,
-                skipped: (d.skipped as number) ?? 0,
-                failed: (d.failed as number) ?? 0,
-              })
-              setReencoding(null)
-            } else if (d.type === "error") {
-              throw new Error((d.message as string) ?? "Re-encode failed")
-            }
-          },
-        },
-      )
-      for await (const _ of sseResult.stream) {
-        // no-op: onSseEvent handles progress
-      }
-    } catch {
-      setReencoding(null)
+      const response = await globalSDK.client.library.experience.startReencodeJob({ type: kind, reason })
+      const job = response.error ? reencodeConflictJob(response.error) : response.data
+      if (!job) throw response.error
+      if (job.status === "running") void observeJob(job)
+      else applyJob(job)
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: "Re-encoding could not start",
+        description: error instanceof Error ? error.message : "The job could not be started.",
+      })
     }
   }
 
   function handleCancel() {
-    reencoding()?.aborter.abort()
-    setReencoding(null)
+    const current = reencoding()
+    if (!current || cancelling()) return
+    confirm.show({
+      ...cancelReencodeConfirm(current.completedCount, current.totalCount),
+      async onConfirm() {
+        setCancelling(true)
+        try {
+          const response = await globalSDK.client.library.experience.cancelReencodeJob()
+          if (response.error) throw response.error
+          observer?.abort()
+          applyJob(response.data)
+        } catch (error) {
+          showToast({
+            type: "error",
+            title: "Re-encoding could not be cancelled",
+            description: error instanceof Error ? error.message : "The job is still running.",
+          })
+        } finally {
+          setCancelling(false)
+        }
+      },
+    })
   }
 
   return (
@@ -303,40 +351,18 @@ function EncodingHealthSection() {
         </div>
       </div>
 
-      {/* Re-encode progress bar */}
       <Show when={reencoding()}>
-        {(reenc) => {
-          const pct = reenc().total > 0 ? Math.round((reenc().completed / reenc().total) * 100) : 0
-          return (
-            <SettingsSubsection title={`Re-encoding ${reenc().kind} records…`}>
-              <div class="usage-window-meter" style="margin-bottom: 8px;">
-                <span style={{ width: `${pct}%` }} />
-              </div>
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="gap:12px; display:flex;">
-                  <span class="usage-overview-label">
-                    {reenc().completed} / {reenc().total}
-                  </span>
-                  <span class="usage-overview-label">Updated: {reenc().ok}</span>
-                  <span class="usage-overview-label">Skipped: {reenc().skipped}</span>
-                  <span class="usage-overview-label">Failed: {reenc().failed}</span>
-                </div>
-                <Button type="button" variant="ghost" size="small" onClick={handleCancel}>
-                  Cancel
-                </Button>
-              </div>
-            </SettingsSubsection>
-          )
-        }}
+        {(reenc) => <LibraryReencodeProgress job={reenc} cancelling={cancelling()} onCancel={handleCancel} />}
       </Show>
 
       {/* Re-encode done message */}
       <Show when={reencodeDone()}>
         {(done) => (
-          <div class="ds-setting-subsection" style={{ color: "var(--icon-success-base)" }}>
-            <span>
-              Complete: {done().ok} updated, {done().skipped} skipped, {done().failed} failed
-            </span>
+          <div
+            class="ds-setting-subsection"
+            style={{ color: done().status === "completed" ? "var(--icon-success-base)" : "var(--text-weak)" }}
+          >
+            <span>{reencodeJobSummary(done())}</span>
           </div>
         )}
       </Show>

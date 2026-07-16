@@ -2121,6 +2121,18 @@ export type LearningConfig = {
    */
   encoderMaxOutputChars?: number
   /**
+   * Maximum concurrent experience reencode workers (default: 5)
+   */
+  reencodeConcurrency?: number
+  /**
+   * Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)
+   */
+  reencodeRetries?: number
+  /**
+   * Initial backoff for transient reencode stage retries in milliseconds (default: 1000)
+   */
+  reencodeRetryBackoffMs?: number
+  /**
    * Max estimated tokens for tool output in turn digest (default: 800)
    */
   digestToolOutputBudget?: number
@@ -5198,6 +5210,34 @@ export type ExperienceDetectResult = {
     total: number
     groups: Array<ExperienceDetectGroup>
   }
+}
+
+export type ReencodeJobStatus = "running" | "completed" | "failed" | "cancelled" | "interrupted"
+
+export type ReencodeJobState = {
+  id: string
+  status: ReencodeJobStatus
+  type: "intent" | "script"
+  reason: string | null
+  totalCount: number
+  okCount: number
+  skippedCount: number
+  failedCount: number
+  completedCount: number
+  startedAt: number
+  completedAt: number | null
+  error: string | null
+}
+
+export type ReencodeJobConflict = {
+  code: string
+  message: string
+  job: ReencodeJobState
+}
+
+export type ReencodeJobError = {
+  code: string
+  message: string
 }
 
 export type MemoryStats = {
@@ -11675,6 +11715,113 @@ export type LibraryExperienceDetectResponses = {
 
 export type LibraryExperienceDetectResponse = LibraryExperienceDetectResponses[keyof LibraryExperienceDetectResponses]
 
+export type LibraryExperienceStartReencodeJobData = {
+  body?: {
+    /**
+     * What to re-encode
+     */
+    type: "intent" | "script"
+    /**
+     * Filter to one detection reason; omit for all
+     */
+    reason?: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs"
+}
+
+export type LibraryExperienceStartReencodeJobErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * A reencode job is already running
+   */
+  409: ReencodeJobConflict
+}
+
+export type LibraryExperienceStartReencodeJobError =
+  LibraryExperienceStartReencodeJobErrors[keyof LibraryExperienceStartReencodeJobErrors]
+
+export type LibraryExperienceStartReencodeJobResponses = {
+  /**
+   * Reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceStartReencodeJobResponse =
+  LibraryExperienceStartReencodeJobResponses[keyof LibraryExperienceStartReencodeJobResponses]
+
+export type LibraryExperienceGetReencodeJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs/current"
+}
+
+export type LibraryExperienceGetReencodeJobErrors = {
+  /**
+   * No reencode job exists
+   */
+  404: ReencodeJobError
+}
+
+export type LibraryExperienceGetReencodeJobError =
+  LibraryExperienceGetReencodeJobErrors[keyof LibraryExperienceGetReencodeJobErrors]
+
+export type LibraryExperienceGetReencodeJobResponses = {
+  /**
+   * Current reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceGetReencodeJobResponse =
+  LibraryExperienceGetReencodeJobResponses[keyof LibraryExperienceGetReencodeJobResponses]
+
+export type LibraryExperienceCancelReencodeJobData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/experience/reencode/jobs/current/cancel"
+}
+
+export type LibraryExperienceCancelReencodeJobErrors = {
+  /**
+   * No reencode job exists
+   */
+  404: ReencodeJobError
+  /**
+   * The current job is not running
+   */
+  409: ReencodeJobConflict
+}
+
+export type LibraryExperienceCancelReencodeJobError =
+  LibraryExperienceCancelReencodeJobErrors[keyof LibraryExperienceCancelReencodeJobErrors]
+
+export type LibraryExperienceCancelReencodeJobResponses = {
+  /**
+   * Cancelled reencode job state
+   */
+  200: ReencodeJobState
+}
+
+export type LibraryExperienceCancelReencodeJobResponse =
+  LibraryExperienceCancelReencodeJobResponses[keyof LibraryExperienceCancelReencodeJobResponses]
+
 export type LibraryExperienceReencodeData = {
   body?: {
     /**
@@ -11705,7 +11852,7 @@ export type LibraryExperienceReencodeError = LibraryExperienceReencodeErrors[key
 
 export type LibraryExperienceReencodeResponses = {
   /**
-   * SSE stream of re-encode progress events
+   * SSE stream of reencode job progress
    */
   200: {
     type: "start" | "progress" | "done" | "error"
