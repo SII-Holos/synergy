@@ -1,3 +1,5 @@
+import { ClarusRuntime } from "@/clarus/runtime"
+import { ClarusRestClient } from "@/clarus/rest-client"
 import { Agenda, AgendaBootstrap } from "@/agenda"
 import { ChannelOutbound } from "@/channel/outbound"
 import { registerProviders } from "@/channel/provider"
@@ -10,7 +12,7 @@ import { GitHubPollRuntime } from "@/github/poll-runtime"
 import { PluginMarketplaceRegistry } from "@/plugin/marketplace-registry"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
-import { FileWatcher } from "@/file/watcher"
+import { FileWatcher } from "@/file-watcher"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
@@ -36,6 +38,20 @@ export namespace GlobalRuntime {
           })
           await startChannels(config)
           await HolosRuntime.init()
+          const clarusApiUrl = config.clarus?.apiUrl ?? config.holos?.apiUrl ?? "https://api.holosai.io"
+          const clarusClient = new ClarusRestClient({
+            apiUrl: clarusApiUrl,
+            credentials: async () => {
+              const { HolosAuth } = await import("@/holos/auth")
+              const cred = await HolosAuth.getStoredCredential()
+              if (!cred) return undefined
+              return { agentId: cred.agentId, agentSecret: cred.agentSecret }
+            },
+          })
+          ClarusRuntime.configureRest(clarusClient)
+          await ClarusRuntime.init().catch((error) => {
+            log.warn("Clarus init failed", { error })
+          })
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
@@ -55,6 +71,7 @@ export namespace GlobalRuntime {
     await GitHubPollRuntime.stop()
     await GitHubRuntime.stop()
     Agenda.stop()
+    ClarusRuntime.configureRest(null)
     await Promise.all([
       ScopeContext.provide({
         scope: Scope.home(),

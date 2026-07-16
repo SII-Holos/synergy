@@ -10,8 +10,6 @@ import { ObservabilityResources } from "@/observability/resources"
 
 export namespace Storage {
   const READ_MANY_CONCURRENCY = 32
-  // Successful duration samples are high-cardinality and previously amplified
-  // telemetry write load under UI polling (#343). Keep errors at 100%.
   const STORAGE_DURATION_SAMPLE_RATE = 0.02
 
   export const NotFoundError = NamedError.create(
@@ -25,9 +23,37 @@ export namespace Storage {
     return Global.Path.data
   }
 
+  function assertValidKey(key: string[]): void {
+    if (
+      key.some(
+        (segment) =>
+          segment.length === 0 ||
+          segment === "." ||
+          segment === ".." ||
+          segment.includes("\0") ||
+          segment.includes("/") ||
+          segment.includes("\\"),
+      )
+    ) {
+      throw new Error("Storage path contains an invalid segment")
+    }
+  }
+
+  function resolveDirectory(key: string[]): { dir: string; target: string } {
+    assertValidKey(key)
+    const dir = path.resolve(resolveDir())
+    const target = path.resolve(dir, ...key)
+    if (target !== dir && !target.startsWith(`${dir}${path.sep}`)) throw new Error("Storage path escapes data root")
+    return { dir, target }
+  }
+
+  function resolveTarget(key: string[]): { dir: string; target: string } {
+    const resolved = resolveDirectory(key)
+    return { ...resolved, target: `${resolved.target}.json` }
+  }
+
   export async function remove(key: string[]) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
+    const { dir, target } = resolveTarget(key)
     return measureStorage("remove", key, async () => {
       await fs.unlink(target).catch(() => {})
       await pruneEmptyParents(path.dirname(target), dir)
@@ -35,8 +61,7 @@ export namespace Storage {
   }
 
   export async function read<T>(key: string[]) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
+    const { target } = resolveTarget(key)
     return measureStorage("read", key, async () =>
       withErrorHandling(async () => {
         using _ = await Lock.read(target)
@@ -50,7 +75,7 @@ export namespace Storage {
   }
 
   export async function readMany<T>(keys: string[][]): Promise<(T | undefined)[]> {
-    const dir = resolveDir()
+    const targets = keys.map((key) => resolveTarget(key).target)
     return measureStorage("readMany", [keys[0]?.[0] ?? "root"], async () => {
       const result: (T | undefined)[] = new Array(keys.length)
       let next = 0
@@ -58,8 +83,8 @@ export namespace Storage {
       const workers = Array.from({ length: Math.min(READ_MANY_CONCURRENCY, keys.length) }, async () => {
         while (next < keys.length) {
           const index = next++
-          const key = keys[index]
-          const target = path.join(dir, ...key) + ".json"
+          const target = targets[index]
+          if (!target) continue
           try {
             using _ = await Lock.read(target)
             const file = Bun.file(target)
@@ -85,8 +110,7 @@ export namespace Storage {
   }
 
   export async function update<T>(key: string[], fn: (draft: T) => void, options?: WriteOptions) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
+    const { target } = resolveTarget(key)
     return measureStorage("update", key, async () =>
       withErrorHandling(async () => {
         using _ = await Lock.write(target)
@@ -101,8 +125,7 @@ export namespace Storage {
   }
 
   export async function write<T>(key: string[], content: T, options?: WriteOptions) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...key) + ".json"
+    const { target } = resolveTarget(key)
     return measureStorage("write", key, async () =>
       withErrorHandling(async () => {
         using _ = await Lock.write(target)
@@ -114,14 +137,13 @@ export namespace Storage {
   }
 
   export async function scan(prefix: string[]): Promise<string[]> {
-    const dir = resolveDir()
-    const target = path.join(dir, ...prefix)
+    const { target } = resolveDirectory(prefix)
     return measureStorage("scan", prefix, async () => {
       try {
         const entries = await fs.readdir(target)
         return entries
-          .filter((e) => !isTempFile(e))
-          .map((e) => (e.endsWith(".json") ? e.slice(0, -5) : e))
+          .filter((entry) => !isTempFile(entry))
+          .map((entry) => (entry.endsWith(".json") ? entry.slice(0, -5) : entry))
           .sort()
       } catch {
         return []
@@ -130,14 +152,13 @@ export namespace Storage {
   }
 
   export async function removeTree(prefix: string[]) {
-    const dir = resolveDir()
-    const target = path.join(dir, ...prefix)
+    const { dir, target } = resolveDirectory(prefix)
     await fs.rm(target, { recursive: true, force: true })
     await pruneEmptyParents(path.dirname(target), dir)
   }
 
   async function pruneEmptyParents(current: string, root: string) {
-    while (current !== root && current.startsWith(root)) {
+    while (current !== root && current.startsWith(`${root}${path.sep}`)) {
       try {
         const entries = await fs.readdir(current)
         if (entries.length > 0) break
@@ -199,30 +220,33 @@ export namespace Storage {
   }
 
   async function withErrorHandling<T>(body: () => Promise<T>) {
-    return body().catch((e) => {
-      if (!(e instanceof Error)) throw e
-      const errnoException = e as NodeJS.ErrnoException
+    return body().catch((error) => {
+      if (!(error instanceof Error)) throw error
+      const errnoException = error as NodeJS.ErrnoException
       if (errnoException.code === "ENOENT") {
-        throw new NotFoundError({ message: `Resource not found: ${errnoException.path}` })
+        throw new NotFoundError({ message: "Resource not found" })
       }
-      throw e
+      if (errnoException.code || errnoException.path) {
+        throw new Error(`Storage I/O error: ${errnoException.code ?? "unknown"}`)
+      }
+      throw error
     })
   }
 
   const glob = new Bun.Glob("**/*")
   export async function list(prefix: string[]) {
-    const dir = resolveDir()
+    const { target } = resolveDirectory(prefix)
     return measureStorage("list", prefix, async () => {
       try {
         const result = await Array.fromAsync(
           glob.scan({
-            cwd: path.join(dir, ...prefix),
+            cwd: target,
             onlyFiles: true,
           }),
         ).then((results) =>
           results
-            .filter((x) => x.endsWith(".json") && !isTempFile(path.basename(x)))
-            .map((x) => [...prefix, ...x.slice(0, -5).split(path.sep)]),
+            .filter((entry) => entry.endsWith(".json") && !isTempFile(path.basename(entry)))
+            .map((entry) => [...prefix, ...entry.slice(0, -5).split(path.sep)]),
         )
         result.sort()
         return result

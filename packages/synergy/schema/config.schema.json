@@ -2141,6 +2141,28 @@
       "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
       "additionalProperties": false
     },
+    "clarus": {
+      "description": "Clarus project binding and task session routing configuration",
+      "ref": "ClarusConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable Clarus project binding and task session routing",
+          "default": true,
+          "type": "boolean"
+        },
+        "workspaceRoot": {
+          "description": "Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)",
+          "type": "string"
+        },
+        "apiUrl": {
+          "description": "Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.",
+          "type": "string"
+        }
+      },
+      "required": ["enabled"],
+      "additionalProperties": false
+    },
     "email": {
       "description": "Outgoing email configuration",
       "ref": "EmailConfig",

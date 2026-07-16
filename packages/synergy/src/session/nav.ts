@@ -63,7 +63,7 @@ export const ScopeNavEntry = z
 
 export interface DeriveCategoryInput {
   scopeType: "home" | "project"
-  endpointKind?: "channel"
+  endpointKind?: "channel" | "clarus"
   provenance?: "github"
   parentID?: string
   cortex?: {
@@ -122,9 +122,9 @@ export interface NavCursor {
 
 export namespace SessionNav {
   const log = Log.create({ service: "session.nav" })
-
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
+    if (input.endpointKind === "clarus") return "background"
     if (input.provenance === "github") return "github"
     if (input.parentID || input.cortex || input.agenda) return "background"
     if (input.scopeType === "home") return "home"
@@ -173,6 +173,8 @@ export namespace SessionNav {
           cortex: session.cortex,
           agenda: session.agenda,
         })
+        // Clarus sessions must never appear in ordinary nav
+        if (endpointIsClarus) continue
         if (!session.category) {
           await Storage.write(StoragePath.sessionInfo(sid, Identifier.asSessionID(session.id)), {
             ...session,

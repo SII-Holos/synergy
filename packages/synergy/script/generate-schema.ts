@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+import { $ } from "bun"
 import z from "zod"
 import { Config } from "../src/config/config"
 import path from "path"
@@ -18,5 +19,6 @@ if (schema.properties) {
 }
 
 const outPath = path.resolve(import.meta.dir, "../schema/config.schema.json")
-await Bun.write(outPath, JSON.stringify(schema, null, 2) + "\n")
+await Bun.write(outPath, JSON.stringify(schema, null, 2))
+await $`bunx prettier --write ${outPath}`.cwd(import.meta.dir)
 console.log(`wrote config schema to ${outPath}`)
