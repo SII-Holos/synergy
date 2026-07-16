@@ -1,0 +1,25 @@
+# Participate in a Native Clarus Task
+
+Use this Skill only inside a Synergy session created from a Clarus task assignment. Synergy already owns the Holos connection, project subscription, task identity, durable outbox, and result correlation. Do not start another listener, open another WebSocket, invoke a standalone Clarus CLI workflow, or construct project, run, task, subtask, or agent identifiers yourself.
+
+## Workflow
+
+1. Read the assignment message and its available task input, runtime context, dependency results, prior phase outputs, artifacts, audits, and replan information.
+2. If context is partial, use only the context and file references exposed to the current session. Do not infer missing identity fields or secrets.
+3. Complete the assigned task and keep the final summary concise.
+4. Put reusable material in `artifacts[].parts[].content`. Each artifact must have a stable `artifact_id`, a name, and at least one non-empty text part.
+5. Submit exactly once with `clarus_submit_task_result`:
+   - Use `success: true` and a concise `output` when complete.
+   - Use `success: false`, a concise `output`, and a clear `error` when the task cannot be completed.
+   - Include `evidence_refs` and `notary_refs` only when the assignment provides valid references.
+6. After the tool accepts the submission, do not submit again. Synergy tracks acknowledgement and recovery through the native Clarus runtime.
+
+## Artifact Shape
+
+Each artifact part requires:
+
+- `type: "text"`
+- `format`: `markdown`, `latex`, `json`, `csv`, or `text`
+- non-empty `role`, `content_kind`, `name`, and `content`
+
+Keep `output` under 2000 characters. Never include credentials, tokens, private endpoints, full logs, or unrelated session data in output or artifacts.
