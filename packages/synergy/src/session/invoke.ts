@@ -48,6 +48,7 @@ import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
+import * as SessionWorking from "./working"
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
@@ -105,14 +106,20 @@ export namespace SessionInvoke {
   }
 
   /**
-   * Repair the persisted incomplete assistant message and clear pendingReply
-   * for a session after abort. This is safe to call from the HTTP abort handler
-   * or anywhere with a valid sessionID.
+   * Repair persisted abort state and synchronize status when no live loop owns
+   * the session. Lifecycle idle remains owned by SessionManager.release().
+   *
+   * @returns Whether an incomplete assistant message was repaired.
    */
-  export async function repairAfterAbort(sessionID: string): Promise<void> {
-    await repairIncompleteAssistant(sessionID).catch((err) => {
+  export async function repairAfterAbort(sessionID: string): Promise<boolean> {
+    const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
       log.error("assistant repair after abort failed", { sessionID, error: err })
+      return false
     })
+    if (!repaired || SessionManager.isRunning(sessionID)) return repaired
+    if (await SessionWorking.resolve(sessionID)) return repaired
+    await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
+    return repaired
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -1061,9 +1068,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
    * with time.completed, finish: "error", and an AbortedError, then clears
    * pendingReply so working.ts no longer reports "recovering".
    */
-  async function repairIncompleteAssistant(sessionID: string): Promise<void> {
+  async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
     const session = await SessionManager.getSession(sessionID)
-    if (!session) return
+    if (!session) return false
 
     const messages = await Session.messages({ sessionID })
     let latestAssistant: MessageV2.Assistant | undefined
@@ -1073,7 +1080,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         break
       }
     }
-    if (!latestAssistant || latestAssistant.time.completed != null) return
+    if (!latestAssistant || latestAssistant.time.completed != null) return false
 
     log.info("repairing incomplete assistant after abort", {
       sessionID,
@@ -1093,6 +1100,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
+    return true
   }
 
   async function completeAssistantWithError(input: {
@@ -1803,6 +1811,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
       if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.isRunning(sessionID)) {
         log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
+        // Startup reconciliation persists state only; connected clients recover
+        // from the subsequent status snapshot rather than a lifecycle event.
         await repairIncompleteAssistant(sessionID).catch((err) => {
           log.error("auto-repair failed", { sessionID, error: err })
         })

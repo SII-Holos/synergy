@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
+import { Bus } from "../../src/bus"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
@@ -8,6 +9,7 @@ import * as SessionWorking from "../../src/session/working"
 import { Identifier } from "../../src/id/id"
 import { Log } from "../../src/util/log"
 import { SessionInvoke } from "../../src/session/invoke"
+import { SessionEvent } from "../../src/session/event"
 
 const projectRoot = path.join(__dirname, "../..")
 Log.init({ print: false })
@@ -222,8 +224,22 @@ describe("SessionWorking", () => {
           assertExists(before)
           expect(before.status).toBe("recovering")
 
-          // Repair
-          await SessionInvoke.repairAfterAbort(session.id)
+          const statuses: Array<{ type: string }> = []
+          let idleEvents = 0
+          const unsubscribeStatus = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
+          })
+          const unsubscribeIdle = Bus.subscribe(SessionEvent.Idle, (event) => {
+            if (event.properties.sessionID === session.id) idleEvents++
+          })
+
+          const repaired = await SessionInvoke.repairAfterAbort(session.id)
+          unsubscribeStatus()
+          unsubscribeIdle()
+
+          expect(repaired).toBe(true)
+          expect(statuses).toEqual([{ type: "idle" }])
+          expect(idleEvents).toBe(0)
 
           // After repair: should not be recovering
           const after = await SessionWorking.resolve(session.id)
@@ -247,10 +263,104 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("does not publish idle status while an active runtime is still stopping", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+          const statuses: Array<{ type: string }> = []
+          const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
+          })
+
+          try {
+            expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
+            expect(statuses).toEqual([])
+          } finally {
+            unsubscribe()
+            await SessionManager.release(lease!)
+            SessionManager.unregisterRuntime(session.id)
+          }
+        },
+      })
+    })
+
+    test("does not republish idle status when abort repair is repeated", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          const statuses: Array<{ type: string }> = []
+          const unsubscribe = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
+          })
+
+          expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(true)
+          expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
+          unsubscribe()
+          expect(statuses).toEqual([{ type: "idle" }])
+        },
+      })
+    })
+
     test("no-ops when session does not exist", async () => {
-      expect(async () => {
-        await SessionInvoke.repairAfterAbort("ses_nonexistent")
-      }).not.toThrow()
+      expect(await SessionInvoke.repairAfterAbort("ses_nonexistent")).toBe(false)
     })
 
     test("no-ops when session has no messages", async () => {
@@ -259,10 +369,7 @@ describe("SessionWorking", () => {
         scope: await tmp.scope(),
         fn: async () => {
           const session = await Session.create({})
-
-          expect(async () => {
-            await SessionInvoke.repairAfterAbort(session.id)
-          }).not.toThrow()
+          expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
         },
       })
     })
@@ -297,8 +404,7 @@ describe("SessionWorking", () => {
             finish: "stop",
           })
 
-          // Should not throw
-          await SessionInvoke.repairAfterAbort(session.id)
+          expect(await SessionInvoke.repairAfterAbort(session.id)).toBe(false)
 
           // Should still be complete (not recovering)
           const result = await SessionWorking.resolve(session.id)
