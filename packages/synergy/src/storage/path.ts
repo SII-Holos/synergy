@@ -177,4 +177,76 @@ export namespace StoragePath {
   /** Daily buckets: stats/daily/{YYYY-MM-DD} */
   export const statsDailyRoot = () => ["stats", "daily"]
   export const statsDaily = (day: string) => ["stats", "daily", day]
+
+  // Clarus
+  export const clarusBindingsRoot = () => ["clarus", "bindings"]
+  export const clarusBinding = (key: string) => ["clarus", "bindings", key]
+  export const clarusTaskBinding = (key: string) => ["clarus", "bindings", "tasks", key]
+  export const clarusSessionTaskIndex = (sessionID: string) => ["clarus", "session_task_index", sessionID]
+  export const clarusDedupRoot = () => ["clarus", "dedup"]
+  export const clarusDedupMessage = (key: string) => ["clarus", "dedup", "messages", key]
+  export const clarusDedupTaskMessage = (key: string) => ["clarus", "dedup", "task_messages", key]
+  export const clarusOutboxRoot = () => ["clarus", "outbox"]
+  export const clarusOutbox = (requestID: string) => ["clarus", "outbox", requestID]
+  export const clarusProjectActivityRoot = () => ["clarus", "activity"]
+  export const clarusProjectActivity = (agentId: string, projectId: string, messageId: string) => [
+    "clarus",
+    "activity",
+    encodeURIComponent(agentId),
+    encodeURIComponent(projectId),
+    encodeURIComponent(messageId),
+  ]
+  /** Timeline index for chronological activity ordering scoped to agent/project.
+   *  Sortable key: {receivedAt padded}--{encoded messageId}. */
+  export const clarusActivityTimelineRoot = () => ["clarus", "activity_timeline"]
+  export const clarusActivityTimelineIndex = (agentId: string, projectId: string) => [
+    "clarus",
+    "activity_timeline",
+    encodeURIComponent(agentId),
+    encodeURIComponent(projectId),
+  ]
+  export const clarusReconciliationRoot = () => ["clarus", "reconciliation"]
+  export const clarusReconciliation = (agentId: string) => ["clarus", "reconciliation", encodeURIComponent(agentId)]
+  export const clarusInboxItemIndexRoot = () => ["clarus", "inbox_item_index"]
+  export const clarusInboxItemIndex = (itemID: string) => ["clarus", "inbox_item_index", encodeURIComponent(itemID)]
+
+  /** Validate and encode a Clarus outbox request ID, returning a safe storage key.
+   *  Rejects empty, NUL, path separators, and oversize values; encodes the rest. */
+  export function clarusOutboxRequestKey(requestID: string): string[] {
+    if (requestID.length === 0) throw new Error("Clarus outbox request ID is empty")
+    if (requestID.length > 256) throw new Error("Clarus outbox request ID exceeds maximum length")
+    if (requestID.includes("\0")) throw new Error("Clarus outbox request ID contains NUL byte")
+    if (requestID.includes("/") || requestID.includes("\\"))
+      throw new Error("Clarus outbox request ID contains path separator")
+    return ["clarus", "outbox", encodeURIComponent(requestID)]
+  }
+
+  // Clarus Phase 4 sharded canonical paths — replace flat bindings layout.
+  // compat: legacy clarusBinding / clarusTaskBinding retained for migration
+  export const clarusShardProjectBinding = (agentId: string, projectId: string) => [
+    "clarus",
+    "bindings",
+    encodeURIComponent(agentId),
+    encodeURIComponent(projectId),
+  ]
+  export const clarusShardTaskBinding = (agentId: string, projectId: string, taskId: string) => [
+    "clarus",
+    "bindings",
+    "tasks",
+    encodeURIComponent(agentId),
+    encodeURIComponent(projectId),
+    encodeURIComponent(taskId),
+  ]
+  /** Scan root for one agent's project bindings — bounded O(|agent projects|). */
+  export const clarusAgentProjectRoot = (agentId: string) => ["clarus", "bindings", encodeURIComponent(agentId)]
+  /** Scan root for one agent's task binding project directories — bounded O(|agent projects|). */
+  export const clarusAgentTaskRoot = (agentId: string) => ["clarus", "bindings", "tasks", encodeURIComponent(agentId)]
+  /** Scan root for one project's task bindings — bounded O(|project tasks|). */
+  export const clarusProjectTaskRoot = (agentId: string, projectId: string) => [
+    "clarus",
+    "bindings",
+    "tasks",
+    encodeURIComponent(agentId),
+    encodeURIComponent(projectId),
+  ]
 }

@@ -1073,6 +1073,18 @@
                   "minimum": 0,
                   "maximum": 9007199254740991
                 },
+                "encoderTimeoutMs": {
+                  "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "encoderMaxOutputChars": {
+                  "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
                 "digestToolOutputBudget": {
                   "description": "Max estimated tokens for tool output in turn digest (default: 800)",
                   "type": "integer",
@@ -1883,28 +1895,28 @@
       "additionalProperties": false
     },
     "observability": {
-      "description": "Local logs, traces, and diagnostics settings",
+      "description": "Local logs, indexed telemetry, and diagnostics settings",
       "ref": "ObservabilityConfig",
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Enable local observability trace JSONL events (default: true)",
+          "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
           "type": "boolean"
         },
         "retentionDays": {
-          "description": "Days to retain local trace files (default: 7)",
+          "description": "Days to retain optional observability mirror files (default: 7)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "maxBytes": {
-          "description": "Maximum total trace storage in bytes (default: 250MB)",
+          "description": "Maximum total local observability storage in bytes (default: 250MB)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "stalledToolMs": {
-          "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+          "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
@@ -2020,6 +2032,7 @@
                   "type": "boolean"
                 },
                 "jsonlMirrorEnabled": {
+                  "description": "Enable optional JSONL mirror files for debugging exports",
                   "type": "boolean"
                 },
                 "maxSqliteBytes": {
@@ -2084,6 +2097,28 @@
         }
       },
       "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
+      "additionalProperties": false
+    },
+    "clarus": {
+      "description": "Clarus project binding and task session routing configuration",
+      "ref": "ClarusConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable Clarus project binding and task session routing",
+          "default": true,
+          "type": "boolean"
+        },
+        "workspaceRoot": {
+          "description": "Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)",
+          "type": "string"
+        },
+        "apiUrl": {
+          "description": "Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.",
+          "type": "string"
+        }
+      },
+      "required": ["enabled"],
       "additionalProperties": false
     },
     "email": {

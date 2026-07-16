@@ -5,6 +5,7 @@ import { Scope } from "@/scope"
 import { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 import { HolosProtocol } from "./protocol"
 import { HolosAccounts } from "./accounts"
+import { secureHolosFetch } from "./security"
 
 export namespace HolosAuth {
   export type VerifyResult = { valid: true; agentId: string } | { valid: false; reason: string }
@@ -12,8 +13,10 @@ export namespace HolosAuth {
   export async function verifyCredentials(
     agentSecret: string,
   ): Promise<{ valid: true } | { valid: false; reason: string }> {
-    const res = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/ws_token`, {
-      headers: { Authorization: `Bearer ${agentSecret}` },
+    const res = await secureHolosFetch({
+      url: `${HOLOS_URL}/api/v1/holos/agent_tunnel/ws_token`,
+      kind: "api",
+      secret: agentSecret,
     })
     const body = HolosProtocol.WsTokenResponse.safeParse(await res.json())
     if (!body.success || !res.ok || body.data.code !== 0) {

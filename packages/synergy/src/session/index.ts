@@ -228,7 +228,7 @@ export namespace Session {
       session.category ??
       SessionNav.deriveCategory({
         scopeType,
-        endpointKind: session.endpoint?.kind,
+        endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
         parentID: session.parentID,
         cortex: session.cortex,
         agenda: session.agenda,
@@ -358,7 +358,7 @@ export namespace Session {
     const scopeType = scope.type === "home" ? "home" : "project"
     const category = SessionNav.deriveCategory({
       scopeType,
-      endpointKind: endpoint?.kind,
+      endpointKind: endpoint?.kind === "channel" ? "channel" : undefined,
       parentID: input?.parentID,
       cortex: input?.cortex,
       agenda: input?.agenda,

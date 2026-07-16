@@ -2,6 +2,7 @@ import { HolosAuth } from "./auth"
 import { HOLOS_PORTAL_URL, HOLOS_URL } from "./constants"
 import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
+import { secureHolosRequest } from "./security"
 
 export namespace HolosLoginFlow {
   export interface ExchangeResult {
@@ -22,14 +23,18 @@ export namespace HolosLoginFlow {
     state: string
     profile: HolosProfile.Input
   }): Promise<ExchangeResult> {
-    const exchangeRes = await fetch(`${HOLOS_URL}/api/v1/holos/agent_tunnel/bind/exchange`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        code: input.code,
-        state: input.state,
-        profile: HolosProfile.toRemoteProfile(input.profile),
-      }),
+    const exchangeRes = await secureHolosRequest({
+      url: `${HOLOS_URL}/api/v1/holos/agent_tunnel/bind/exchange`,
+      kind: "api",
+      init: {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: input.code,
+          state: input.state,
+          profile: HolosProfile.toRemoteProfile(input.profile),
+        }),
+      },
     })
 
     if (!exchangeRes.ok) {
