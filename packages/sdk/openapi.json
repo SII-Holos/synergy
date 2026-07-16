@@ -2204,6 +2204,867 @@
         ]
       }
     },
+    "/global/clarus/status": {
+      "get": {
+        "operationId": "global.clarus.status",
+        "summary": "Clarus connection status",
+        "description": "Get Clarus connection status and metadata for the current runtime.",
+        "responses": {
+          "200": {
+            "description": "Clarus status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusStatusResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/reconnect": {
+      "post": {
+        "operationId": "global.clarus.reconnect",
+        "summary": "Reconnect Clarus",
+        "description": "Attempt to force a Clarus reconnection cycle. Returns full status after the attempt.",
+        "responses": {
+          "200": {
+            "description": "Full Clarus status after reconnect attempt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusReconnectResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.reconnect({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects": {
+      "get": {
+        "operationId": "global.clarus.projects.list",
+        "summary": "List Clarus project bindings",
+        "description": "List Clarus project bindings for the connected agent, bounded by cursor.",
+        "responses": {
+          "200": {
+            "description": "Bounded project bindings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectBindingListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.list({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "global.clarus.projects.create",
+        "summary": "Create or activate a Clarus project binding",
+        "description": "Create or activate a Clarus project binding for the connected agent.",
+        "responses": {
+          "200": {
+            "description": "Created or activated project binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectBindingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarusProjectBindingCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.create({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects/{projectId}": {
+      "get": {
+        "operationId": "global.clarus.projects.get",
+        "summary": "Get a Clarus project binding",
+        "description": "Get a single Clarus project binding by project ID.",
+        "responses": {
+          "200": {
+            "description": "Project binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectBindingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "global.clarus.projects.update",
+        "summary": "Update a Clarus project binding",
+        "description": "Update metadata for a Clarus project binding.",
+        "responses": {
+          "200": {
+            "description": "Updated project binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectBindingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarusProjectBindingUpdateInput"
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.update({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects/{projectId}/deactivate": {
+      "post": {
+        "operationId": "global.clarus.projects.deactivate",
+        "summary": "Deactivate a Clarus project binding",
+        "description": "Set a Clarus project binding to inactive (archived). Idempotent.",
+        "responses": {
+          "200": {
+            "description": "Deactivated project binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectBindingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.deactivate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects/{projectId}/activity": {
+      "get": {
+        "operationId": "global.clarus.projects.activity",
+        "summary": "List project activity",
+        "description": "List paginated activity records for a Clarus project in chronological order. Forward-only cursor; insertions after the cursor appear on subsequent pages. Unknown/malformed cursors resume from the beginning. Default limit 20, max 100.",
+        "responses": {
+          "200": {
+            "description": "Paginated project activity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusProjectActivityResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.activity({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/tasks": {
+      "get": {
+        "operationId": "global.clarus.tasks.list",
+        "summary": "List Clarus task bindings",
+        "description": "List task bindings for the connected agent, scoped to a specific project. A projectId query parameter is required.",
+        "responses": {
+          "200": {
+            "description": "Task bindings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusTaskBindingListResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectId",
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 20,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.tasks.list({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/tasks/{taskId}": {
+      "get": {
+        "operationId": "global.clarus.tasks.get",
+        "summary": "Get a Clarus task binding",
+        "description": "Get a single Clarus task binding by task ID and project ID.",
+        "responses": {
+          "200": {
+            "description": "Task binding",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusTaskBindingItem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "projectId",
+            "schema": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "taskId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.tasks.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/composer/users": {
+      "get": {
+        "operationId": "global.clarus.composer.lookupUsers",
+        "summary": "Lookup composer users",
+        "description": "Look up available users for the composer. Returns at most 5 candidates matching the search term. Fields: userId (owner_id), userName, agentId. No profile/agent_key leakage.",
+        "responses": {
+          "200": {
+            "description": "Matching user candidates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClarusComposerUserItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "default": "",
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.composer.lookupUsers({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/composer/projects": {
+      "get": {
+        "operationId": "global.clarus.composer.lookupProjects",
+        "summary": "Lookup composer projects",
+        "description": "Look up active projects for the composer from the connected agent's project bindings. Returns at most 5 candidates matching the search term.",
+        "responses": {
+          "200": {
+            "description": "Matching project candidates",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClarusComposerProjectItem"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "query",
+            "name": "search",
+            "schema": {
+              "default": "",
+              "type": "string",
+              "maxLength": 512
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 5,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 5
+            }
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.composer.lookupProjects({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/composer/submit": {
+      "post": {
+        "operationId": "global.clarus.composer.submit",
+        "summary": "Submit a composer message",
+        "description": "Validate the selected user/agent pair against current project bindings, allocate a requestID, and call ClarusRuntime.sendProjectMessage() exactly once with a 30s max timeout. Returns reconciliation identifiers. Ambiguous outcomes surface as structured recoverable/non-retry errors per Scheme A.",
+        "responses": {
+          "200": {
+            "description": "Submission result with reconciliation identifiers",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusComposerSubmitResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Clarus conflict error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Clarus ambiguous or server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClarusComposerSubmitInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.composer.submit({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/navigation": {
+      "get": {
+        "operationId": "global.clarus.navigation",
+        "summary": "Clarus navigation snapshot",
+        "description": "Returns a bounded navigation snapshot from locally persisted bindings. Works even when Clarus is disabled, signed out, reconnecting, or sync-failed.",
+        "responses": {
+          "200": {
+            "description": "Bounded navigation snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusNavigationResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.navigation({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects/{projectId}/tasks/{taskId}": {
+      "get": {
+        "operationId": "global.clarus.projects.taskDetail",
+        "summary": "Get safe bounded task detail",
+        "description": "Returns safe bounded task detail for header/composer use. Includes sessionID solely for HOME_SCOPE_KEY routing, bounded runID/taskId, display identity, phase, attempt, deadline, title, exact status/result/context enums, bounded assignment summary, local continuation state, and timestamps. Excludes workspacePath, scopeID, frozenAgent, raw task input/instructions/metadata/outbox/storage records, credentials, and unrestricted internal IDs.",
+        "responses": {
+          "200": {
+            "description": "Safe bounded task detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "taskId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.taskDetail({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/clarus/projects/{projectId}/tasks/{taskId}/continue-local": {
+      "post": {
+        "operationId": "global.clarus.projects.continueLocal",
+        "summary": "Enable local continuation for a task",
+        "description": "Allowed only when status is 'submitted' and resultState is 'acknowledged'. Idempotently persists localContinuationEnabledAt and resultState = local_only. Already local-only tasks return the existing binding. Works for already-local-only tasks (idempotent) and acknowledged/submitted tasks.",
+        "responses": {
+          "200": {
+            "description": "Local continuation enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Clarus error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Clarus not found error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClarusErrorDetail"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "taskId",
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.clarus.projects.continueLocal({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/github/configured": {
       "get": {
         "operationId": "github.configured",
@@ -3387,6 +4248,7 @@
                 "permissions",
                 "channels",
                 "holos",
+                "clarus",
                 "email",
                 "runtime",
                 "github"
@@ -3460,6 +4322,7 @@
                 "permissions",
                 "channels",
                 "holos",
+                "clarus",
                 "email",
                 "runtime",
                 "github"
@@ -3544,6 +4407,7 @@
                 "permissions",
                 "channels",
                 "holos",
+                "clarus",
                 "email",
                 "runtime",
                 "github"
@@ -23266,8 +24130,7 @@
         },
         "required": ["type", "chatId"]
       },
-      "SessionEndpoint": {
-        "description": "Endpoint context if created from a session endpoint",
+      "SessionChannelEndpoint": {
         "type": "object",
         "properties": {
           "kind": {
@@ -23279,6 +24142,40 @@
           }
         },
         "required": ["kind", "channel"]
+      },
+      "SessionClarusEndpoint": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "clarus"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["project", "task"]
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          }
+        },
+        "required": ["kind", "role", "agentId", "projectId"]
+      },
+      "SessionEndpoint": {
+        "description": "Endpoint context if created from a session endpoint",
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SessionChannelEndpoint"
+          },
+          {
+            "$ref": "#/components/schemas/SessionClarusEndpoint"
+          }
+        ]
       },
       "AgendaOrigin": {
         "description": "Context captured at creation time",
@@ -23588,6 +24485,707 @@
           }
         },
         "required": ["items", "total"]
+      },
+      "ClarusStatusResponse": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+          },
+          "epoch": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          },
+          "isReconciling": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["agentId", "status", "epoch", "generation", "isReconciling"]
+      },
+      "ClarusReconnectResponse": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+          },
+          "epoch": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          },
+          "isReconciling": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["agentId", "status", "epoch", "generation", "isReconciling"]
+      },
+      "ClarusProjectBindingItem": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "lifecycle": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "projectSlug": {
+            "type": "string"
+          },
+          "projectStatus": {
+            "type": "string"
+          },
+          "primaryAgent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "desiredSubscription": {
+            "type": "boolean"
+          },
+          "messageCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastProjectActivityAt": {
+            "type": "number"
+          },
+          "lastReconciliationAt": {
+            "type": "number"
+          },
+          "lastReconciliationError": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["agentId", "projectId", "lifecycle", "desiredSubscription", "createdAt", "updatedAt"]
+      },
+      "ClarusProjectBindingListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusProjectBindingItem"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "ClarusErrorDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "recoverable": {
+            "type": "boolean"
+          },
+          "disposition": {
+            "type": "string",
+            "enum": ["rejected", "ambiguous"]
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "timeout",
+              "aborted_after_dispatch",
+              "disconnected",
+              "invalid_response",
+              "unexpected_response",
+              "unknown"
+            ]
+          }
+        },
+        "required": ["code", "message", "recoverable"]
+      },
+      "ClarusProjectBindingCreateInput": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "projectName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectSlug": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectStatus": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "primaryAgent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["projectId", "projectName"]
+      },
+      "ClarusProjectBindingUpdateInput": {
+        "type": "object",
+        "properties": {
+          "projectName": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectSlug": {
+            "type": "string",
+            "maxLength": 512
+          },
+          "projectStatus": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "primaryAgent": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 512
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ClarusWireMetadataValue": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          },
+          {
+            "type": "array",
+            "items": {}
+          },
+          {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        ]
+      },
+      "ClarusProjectActivityItem": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "senderType": {
+            "type": "string"
+          },
+          "senderId": {
+            "type": "string"
+          },
+          "messageType": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "fileRefs": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusWireMetadataValue"
+            }
+          },
+          "metadata": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string",
+              "maxLength": 128
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ClarusWireMetadataValue"
+            }
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "receivedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["agentId", "projectId", "messageId", "receivedAt"]
+      },
+      "ClarusProjectActivityResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusProjectActivityItem"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["items", "nextCursor"]
+      },
+      "ClarusTaskBindingItem": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "taskId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "subtaskID": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "resultState": {
+            "type": "string"
+          },
+          "contextHydration": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "agentId",
+          "projectId",
+          "taskId",
+          "sessionID",
+          "runID",
+          "subtaskID",
+          "phase",
+          "attempt",
+          "title",
+          "status",
+          "resultState",
+          "contextHydration",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ClarusTaskBindingListResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusTaskBindingItem"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 1024
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
+      },
+      "ClarusComposerUserItem": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string"
+          },
+          "userName": {
+            "type": "string"
+          },
+          "agentId": {
+            "type": "string"
+          }
+        },
+        "required": ["userId", "userName", "agentId"]
+      },
+      "ClarusComposerProjectItem": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          }
+        },
+        "required": ["projectId", "projectName"]
+      },
+      "ClarusComposerSubmitResponse": {
+        "type": "object",
+        "properties": {
+          "requestID": {
+            "type": "string"
+          },
+          "messageId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "senderId": {
+            "type": "string"
+          },
+          "userId": {
+            "type": "string"
+          },
+          "epoch": {
+            "type": "number"
+          },
+          "generation": {
+            "type": "number"
+          }
+        },
+        "required": ["requestID", "messageId", "projectId", "senderId", "epoch", "generation"]
+      },
+      "ClarusComposerSubmitInput": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "agentId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "userId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000000
+          },
+          "messageType": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "fileRefs": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ClarusWireMetadataValue"
+              }
+            }
+          }
+        },
+        "required": ["projectId", "agentId", "userId", "content"]
+      },
+      "ClarusNavigationProjectDto": {
+        "type": "object",
+        "properties": {
+          "projectId": {
+            "type": "string"
+          },
+          "projectName": {
+            "type": "string"
+          },
+          "projectSlug": {
+            "type": "string"
+          },
+          "activeGroup": {
+            "type": "boolean"
+          },
+          "projectStatus": {
+            "type": "string"
+          },
+          "primaryAgent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lastProjectActivityAt": {
+            "type": "number"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["projectId", "activeGroup", "createdAt", "updatedAt"]
+      },
+      "ClarusNavigationTaskDto": {
+        "type": "object",
+        "properties": {
+          "taskId": {
+            "type": "string"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "resultState": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "deadlineAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "contextHydration": {
+            "type": "string"
+          },
+          "localContinuationEnabledAt": {
+            "type": "number"
+          },
+          "resultRecordedAt": {
+            "type": "number"
+          },
+          "runID": {
+            "type": "string"
+          },
+          "subtaskID": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "taskId",
+          "projectId",
+          "sessionID",
+          "title",
+          "status",
+          "resultState",
+          "phase",
+          "attempt",
+          "contextHydration",
+          "runID",
+          "subtaskID",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ClarusNavigationResponse": {
+        "type": "object",
+        "properties": {
+          "connection": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": ["disabled", "connected", "reconnecting", "sign_in_required", "sync_failed"]
+              },
+              "agentId": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status", "agentId"]
+          },
+          "projects": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusNavigationProjectDto"
+            }
+          },
+          "tasks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ClarusNavigationTaskDto"
+            }
+          }
+        },
+        "required": ["connection", "projects", "tasks"]
       },
       "GitHubConfiguredResponse": {
         "type": "object",
@@ -26893,6 +28491,26 @@
         },
         "additionalProperties": false
       },
+      "ClarusConfig": {
+        "description": "Clarus project binding and task session routing configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "description": "Enable Clarus project binding and task session routing",
+            "default": true,
+            "type": "boolean"
+          },
+          "workspaceRoot": {
+            "description": "Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)",
+            "type": "string"
+          },
+          "apiUrl": {
+            "description": "Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.",
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
       "EmailFromConfig": {
         "description": "Sender identity for outgoing emails",
         "type": "object",
@@ -27369,6 +28987,9 @@
           },
           "holos": {
             "$ref": "#/components/schemas/HolosConfig"
+          },
+          "clarus": {
+            "$ref": "#/components/schemas/ClarusConfig"
           },
           "email": {
             "$ref": "#/components/schemas/EmailConfig"
@@ -29390,6 +31011,7 @@
               "permissions",
               "channels",
               "holos",
+              "clarus",
               "email",
               "runtime",
               "github"
@@ -29551,6 +31173,7 @@
               "permissions",
               "channels",
               "holos",
+              "clarus",
               "email",
               "runtime",
               "github"
@@ -29700,6 +31323,7 @@
                 "permissions",
                 "channels",
                 "holos",
+                "clarus",
                 "email",
                 "runtime",
                 "github"
@@ -29918,6 +31542,7 @@
                     "permissions",
                     "channels",
                     "holos",
+                    "clarus",
                     "email",
                     "runtime",
                     "github"
@@ -29974,6 +31599,7 @@
                 "permissions",
                 "channels",
                 "holos",
+                "clarus",
                 "email",
                 "runtime",
                 "github"
@@ -40506,6 +42132,25 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.clarus.navigation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "clarus.navigation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -40772,6 +42417,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.holos.presence"
+          },
+          {
+            "$ref": "#/components/schemas/Event.clarus.navigation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"
