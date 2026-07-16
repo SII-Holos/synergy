@@ -7,18 +7,22 @@ import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
 
-async function bootstrap() {
+async function bootstrap(options?: { commit?: boolean }) {
   const sessionID = `test-${Math.random().toString(36).slice(2)}`
   return tmpdir({
-    git: true,
+    git: options?.commit,
     init: async (dir) => {
       const unique = Math.random().toString(36).slice(2)
       const aContent = `A${unique}`
       const bContent = `B${unique}`
       await Bun.write(`${dir}/a.txt`, aContent)
       await Bun.write(`${dir}/b.txt`, bContent)
-      await $`git add .`.cwd(dir).quiet()
-      await $`git commit --no-gpg-sign -m init`.cwd(dir).quiet()
+      if (options?.commit) {
+        await $`git add .`.cwd(dir).quiet()
+        await $`git commit --no-gpg-sign -m init`.cwd(dir).quiet()
+      } else {
+        await $`git init`.cwd(dir).quiet()
+      }
       return {
         aContent,
         bContent,
@@ -547,7 +551,7 @@ describe.serial("snapshot", () => {
   })
 
   test("patch detects changes in secondary worktree", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
@@ -579,7 +583,7 @@ describe.serial("snapshot", () => {
   })
 
   test("revert only removes files in invoking worktree", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const sessionID = "revert-worktree-isolation"
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
@@ -613,7 +617,7 @@ describe.serial("snapshot", () => {
   })
 
   test("diff reports worktree-only/shared edits and ignores primary-only", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
