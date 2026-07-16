@@ -1,6 +1,7 @@
 import z from "zod"
 import { ClarusTaskBindingStore } from "@/clarus/binding"
 import { ClarusRuntime } from "@/clarus/runtime"
+import { parseClarusRequestFailure } from "@/clarus/agent-tunnel-port"
 import { Tool } from "./tool"
 
 const artifactPart = z.object({
@@ -34,8 +35,8 @@ const parameters = z
     }
   })
 
-function toolError(code: string, message: string): Error {
-  return Object.assign(new Error(message), { code })
+function toolError(code: string, message: string, metadata?: Record<string, unknown>): Error {
+  return Object.assign(new Error(message), { code }, metadata)
 }
 
 export const ClarusSubmitTaskResultTool = Tool.define(
@@ -72,6 +73,21 @@ export const ClarusSubmitTaskResultTool = Tool.define(
           signal: ctx.abort,
         })
       } catch (error) {
+        const failure = parseClarusRequestFailure(error)
+        if (failure?.disposition === "rejected") {
+          throw toolError(
+            failure.code,
+            `${failure.code}: ${failure.message}. The Clarus server definitively rejected this result. Do not retry unless Clarus reassigns the task.`,
+            { disposition: failure.disposition, requestID: failure.requestID },
+          )
+        }
+        if (failure?.disposition === "ambiguous") {
+          throw toolError(
+            "CLARUS_TOOL_SUBMISSION_AMBIGUOUS",
+            `${failure.message}. Clarus may or may not have recorded the result. Do not retry this assignment; wait for Clarus to reassign it or for external confirmation.`,
+            { disposition: failure.disposition, requestID: failure.requestID, reason: failure.reason },
+          )
+        }
         if (error instanceof Error && "code" in error) throw error
         throw toolError(
           "CLARUS_TOOL_SUBMISSION_FAILED",
