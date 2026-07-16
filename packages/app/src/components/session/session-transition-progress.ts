@@ -55,6 +55,10 @@ export function sessionTransitionPresentation(progress: SessionTransitionProgres
   return { icon, kicker: presentation.kicker }
 }
 
+export function isSessionTransitionBlocking(progress: SessionTransitionProgress | null | undefined) {
+  return progress?.phase === "loading" || progress?.phase === "error"
+}
+
 export function createSessionStartupSteps(input: SessionStartupStepsInput): SessionTransitionStep[] {
   const messageState = input.stage === "workspace" ? "pending" : input.stage === "message" ? "active" : "complete"
   const steps: SessionTransitionStep[] = [
@@ -78,8 +82,8 @@ export function createSessionStartupSteps(input: SessionStartupStepsInput): Sess
 
   steps.push({
     id: "message",
-    label: "Send message",
-    detail: messageState === "complete" ? "First message dispatched." : "Dispatching your first message.",
+    label: "Submit message",
+    detail: messageState === "complete" ? "First message queued." : "Submitting your first message.",
     state: messageState,
   })
   return steps
@@ -90,7 +94,7 @@ export function createNewSessionTransitionProgress(): SessionTransitionProgress 
     kind: "new-session",
     phase: "loading",
     title: "Starting session",
-    description: "Sending your first message.",
+    description: "Submitting your first message.",
     steps: createSessionStartupSteps({ stage: "message" }),
   }
 }
@@ -99,8 +103,21 @@ export function createNewSessionTransitionSuccessProgress(): SessionTransitionPr
   return {
     kind: "new-session",
     phase: "success",
-    title: "Session started",
-    description: "Your first message was sent.",
+    title: "Session request accepted",
+    description: "Your first message is queued for processing.",
     steps: createSessionStartupSteps({ stage: "complete" }),
+  }
+}
+
+export function createNewSessionTransitionErrorProgress(input: {
+  title: string
+  message: string
+}): SessionTransitionProgress {
+  return {
+    kind: "new-session",
+    phase: "error",
+    title: input.title,
+    description: input.message,
+    steps: [],
   }
 }

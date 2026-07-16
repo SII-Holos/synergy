@@ -179,7 +179,7 @@ export function createNewSessionWorkspaceProgress(input: {
     kind: "new-worktree-session",
     phase: "loading",
     title: "Starting worktree session",
-    description: "Preparing the workspace and sending your first message.",
+    description: "Preparing the workspace and submitting your first message.",
     steps: createSessionStartupSteps({
       stage: input.stage,
       workspace: workspaceStepForSelection(input.selection),
@@ -193,11 +193,24 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
   return {
     kind: "new-worktree-session",
     phase: "success",
-    title: "Worktree session started",
-    description: "The session is ready and your first message was sent.",
+    title: "Worktree session request accepted",
+    description: "The workspace is ready and your first message is queued for processing.",
     steps: createSessionStartupSteps({
       stage: "complete",
       workspace: workspaceStepForSelection(input.selection),
     }),
+  }
+}
+
+export function createNewSessionWorkspaceErrorProgress(input: {
+  title: string
+  message: string
+}): SessionTransitionProgress {
+  return {
+    kind: "new-worktree-session",
+    phase: "error",
+    title: input.title,
+    description: input.message,
+    steps: [],
   }
 }

@@ -4,6 +4,7 @@ import type {
   SessionTransitionActions,
   SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
+import type { NewSessionRecovery } from "@/components/session/new-session-recovery"
 
 export type SessionTransitionEntry = {
   progress: SessionTransitionProgress
@@ -16,6 +17,7 @@ type StoredSessionTransitionEntry = SessionTransitionEntry & {
 
 export function createSessionTransitionState() {
   const [entries, setEntries] = createStore<Record<string, StoredSessionTransitionEntry>>({})
+  const recoveries = new Map<string, NewSessionRecovery>()
   let revision = 0
 
   const clear = (sessionID: string) => {
@@ -28,16 +30,18 @@ export function createSessionTransitionState() {
 
   const set = (sessionID: string, progress: SessionTransitionProgress, actions?: SessionTransitionActions) => {
     const currentRevision = ++revision
+    const guard = (action: (() => void) | undefined) =>
+      action
+        ? () => {
+            if (entries[sessionID]?.revision !== currentRevision) return
+            action()
+          }
+        : undefined
     const guardedActions =
       actions?.retry || actions?.dismiss
         ? {
-            retry: actions.retry,
-            dismiss: actions.dismiss
-              ? () => {
-                  if (entries[sessionID]?.revision !== currentRevision) return
-                  actions.dismiss?.()
-                }
-              : undefined,
+            retry: guard(actions.retry),
+            dismiss: guard(actions.dismiss),
           }
         : undefined
 
@@ -48,10 +52,21 @@ export function createSessionTransitionState() {
     })
   }
 
+  const clearRecovery = (scopeKey: string) => {
+    recoveries.delete(scopeKey)
+  }
+
+  const setRecovery = (scopeKey: string, recovery: NewSessionRecovery) => {
+    recoveries.set(scopeKey, recovery)
+  }
+
   return {
     get: (sessionID: string): SessionTransitionEntry | undefined => entries[sessionID],
     set,
     clear,
+    getRecovery: (scopeKey: string) => recoveries.get(scopeKey),
+    setRecovery,
+    clearRecovery,
   }
 }
 

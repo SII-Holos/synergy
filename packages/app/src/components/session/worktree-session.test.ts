@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   createNewSessionWorkspaceProgress,
+  createNewSessionWorkspaceErrorProgress,
   createNewSessionWorkspaceSuccessProgress,
   createWorkspaceTransitionErrorProgress,
   createWorkspaceTransitionLoadingProgress,
@@ -120,12 +121,12 @@ describe("workspace transition progress model", () => {
       kind: "new-worktree-session",
       phase: "loading",
       title: "Starting worktree session",
-      description: "Preparing the workspace and sending your first message.",
+      description: "Preparing the workspace and submitting your first message.",
     })
     expect(createProgress.steps.map((step) => [step.label, step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Create checkout", "active"],
-      ["Send message", "pending"],
+      ["Submit message", "pending"],
     ])
 
     const existingProgress = createNewSessionWorkspaceProgress({
@@ -135,19 +136,19 @@ describe("workspace transition progress model", () => {
     expect(existingProgress.steps.map((step) => [step.label, step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Bind worktree", "complete"],
-      ["Send message", "active"],
+      ["Submit message", "active"],
     ])
 
     const createSuccess = createNewSessionWorkspaceSuccessProgress({ selection: { mode: "create" } })
     expect(createSuccess).toMatchObject({
       kind: "new-worktree-session",
       phase: "success",
-      description: "The session is ready and your first message was sent.",
+      description: "The workspace is ready and your first message is queued for processing.",
     })
     expect(createSuccess.steps.map((step) => [step.label, step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Create checkout", "complete"],
-      ["Send message", "complete"],
+      ["Submit message", "complete"],
     ])
 
     const existingSuccess = createNewSessionWorkspaceSuccessProgress({
@@ -156,8 +157,18 @@ describe("workspace transition progress model", () => {
     expect(existingSuccess.steps.map((step) => step.label)).toEqual([
       "Prepare session",
       "Bind worktree",
-      "Send message",
+      "Submit message",
     ])
+
+    expect(
+      createNewSessionWorkspaceErrorProgress({ title: "Failed to prepare worktree", message: "Setup failed." }),
+    ).toEqual({
+      kind: "new-worktree-session",
+      phase: "error",
+      title: "Failed to prepare worktree",
+      description: "Setup failed.",
+      steps: [],
+    })
   })
 
   test("recognizes only create and existing workspace selections as worktrees", () => {

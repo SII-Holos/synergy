@@ -55,9 +55,10 @@ import {
   type NewSessionWorkspaceSelection,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
-import type {
-  SessionTransitionActions,
-  SessionTransitionProgress,
+import {
+  isSessionTransitionBlocking,
+  type SessionTransitionActions,
+  type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
@@ -173,7 +174,7 @@ function SessionPageContent() {
   })
   const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
   const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
-  const sessionTransitionPending = createMemo(() => visibleSessionTransition()?.phase === "loading")
+  const sessionTransitionPending = createMemo(() => isSessionTransitionBlocking(visibleSessionTransition()))
   const clearSessionTransition = sessionTransition.clear
   const setSessionTransition = sessionTransition.set
   const startWorkspaceTransition = (request: SessionWorkspaceTransitionRequest) => {

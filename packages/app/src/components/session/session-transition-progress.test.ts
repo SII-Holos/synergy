@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import {
+  createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
   createNewSessionTransitionSuccessProgress,
   createSessionStartupSteps,
+  isSessionTransitionBlocking,
   sessionTransitionPresentation,
   type SessionTransitionKind,
   type SessionTransitionProgress,
@@ -20,30 +22,45 @@ function progress(kind: SessionTransitionKind, phase: SessionTransitionProgress[
 }
 
 describe("session transition progress model", () => {
-  test("creates ordinary new-session loading and success steps", () => {
+  test("models ordinary new-session acceptance and persistent errors", () => {
     const loading = createNewSessionTransitionProgress()
     expect(loading).toMatchObject({
       kind: "new-session",
       phase: "loading",
       title: "Starting session",
-      description: "Sending your first message.",
+      description: "Submitting your first message.",
     })
     expect(loading.steps.map((step) => [step.id, step.label, step.state])).toEqual([
       ["session", "Prepare session", "complete"],
-      ["message", "Send message", "active"],
+      ["message", "Submit message", "active"],
     ])
 
     const success = createNewSessionTransitionSuccessProgress()
     expect(success).toMatchObject({
       kind: "new-session",
       phase: "success",
-      title: "Session started",
-      description: "Your first message was sent.",
+      title: "Session request accepted",
+      description: "Your first message is queued for processing.",
     })
     expect(success.steps.map((step) => [step.id, step.label, step.state])).toEqual([
       ["session", "Prepare session", "complete"],
-      ["message", "Send message", "complete"],
+      ["message", "Submit message", "complete"],
     ])
+
+    const error = createNewSessionTransitionErrorProgress({
+      title: "Failed to send prompt",
+      message: "Connection closed.",
+    })
+    expect(error).toEqual({
+      kind: "new-session",
+      phase: "error",
+      title: "Failed to send prompt",
+      description: "Connection closed.",
+      steps: [],
+    })
+    expect(isSessionTransitionBlocking(loading)).toBe(true)
+    expect(isSessionTransitionBlocking(error)).toBe(true)
+    expect(isSessionTransitionBlocking(success)).toBe(false)
   })
 
   test("shares startup step ordering across ordinary and worktree sessions", () => {
