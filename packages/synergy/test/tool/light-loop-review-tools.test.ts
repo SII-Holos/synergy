@@ -193,7 +193,7 @@ describe("light_loop_approve", () => {
 })
 
 describe("light_loop_reject", () => {
-  test("clears stopRequest, increments attempts, preserves taskDescription, and delivers control message", async () => {
+  test("clears stopRequest, increments attempts, preserves instructions, and delivers control message", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
