@@ -2742,6 +2742,144 @@
         ]
       }
     },
+    "/config/instructions": {
+      "get": {
+        "operationId": "config.instructions.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get global custom instructions",
+        "description": "Read the effective global AGENTS override or primary instructions file.",
+        "responses": {
+          "200": {
+            "description": "Effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "config.instructions.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Update global custom instructions",
+        "description": "Write the global AGENTS.override.md file, or remove it when the content is empty.",
+        "responses": {
+          "200": {
+            "description": "Updated effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigInstructionsUpdateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.update({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "config.instructions.reset",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Reset global custom instructions",
+        "description": "Remove AGENTS.override.md and fall back to the global AGENTS.md file.",
+        "responses": {
+          "200": {
+            "description": "Reset effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.reset({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/domains": {
       "get": {
         "operationId": "config.domain.list",
@@ -25095,6 +25233,51 @@
           }
         },
         "additionalProperties": false
+      },
+      "ConfigInstructionsInfo": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["override", "primary", "empty"]
+          },
+          "sourceFilename": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["AGENTS.override.md", "AGENTS.md"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "editableFilename": {
+            "type": "string",
+            "const": "AGENTS.override.md"
+          },
+          "hasOverride": {
+            "type": "boolean"
+          },
+          "maxBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["content", "source", "sourceFilename", "editableFilename", "hasOverride", "maxBytes"]
+      },
+      "ConfigInstructionsUpdateInput": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": ["content"]
       },
       "ConfigDomainSummary": {
         "type": "object",

@@ -68,6 +68,16 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.lspWriteDiagnostics).toBe("background")
     expect(FIELD_SAVE_STRATEGY.lspDiagnostics).toBe("background")
   })
+  test("places Personalize in the Personal group with custom instruction search terms", () => {
+    const personalize = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "personalize")
+    expect(personalize).toMatchObject({
+      label: "Personalize",
+      group: "Personal",
+      iconToken: "settings.personalize",
+    })
+    expect(personalize?.keywords).toContain("custom instructions")
+    expect(personalize?.rowLabels).toContain("Custom Instructions")
+  })
 
   test("all built-in icon tokens resolve", () => {
     for (const section of BUILTIN_SETTINGS_SECTIONS) {
