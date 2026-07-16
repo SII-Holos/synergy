@@ -15,8 +15,8 @@ const parameters = z.object({
     .enum(["project", "home", "feishu"])
     .describe(
       "'project' = sessions across all projects (each entry includes its scope), " +
-        "'home' = sessions in the home scope, " +
-        "'feishu' = Feishu/Lark channel sessions.",
+        "'home' = all top-level sessions in the Home Scope, including channel sessions, " +
+        "'feishu' = Feishu/Lark channel sessions across Home and project Scopes.",
     ),
   limit: z.coerce.number().default(20).describe("Maximum number of items to return."),
   offset: z.coerce.number().default(0).describe("Number of items to skip."),
@@ -80,7 +80,7 @@ async function listProject(limit: number, offset: number, filter: TimeFilter) {
 }
 
 async function listHome(limit: number, offset: number, filter: TimeFilter) {
-  const result = await SessionNav.queryScope("global", { category: "home", limit: QueryLimit })
+  const result = await SessionNav.queryScope(Scope.home().id, { limit: QueryLimit })
   const filtered = applyTimeFilter(result.items, filter)
   const total = filtered.length
   const page = filtered.slice(offset, offset + limit)
@@ -90,7 +90,7 @@ async function listHome(limit: number, offset: number, filter: TimeFilter) {
 }
 
 async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
-  const result = await SessionNav.queryScope("global", { category: "channel", limit: QueryLimit })
+  const result = await SessionNav.queryGlobal({ category: "channel", limit: QueryLimit })
   const filtered = applyTimeFilter(result.items, filter)
   const total = filtered.length
   const page = filtered.slice(offset, offset + limit)
