@@ -28,7 +28,8 @@ import { withTimeout } from "@/util/timeout"
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
-  const active = new Map<string, { promise: Promise<void>; next?: { sessionID: string; messageID: string } }>()
+  type SummaryInput = { sessionID: string; messageID: string; messages?: MessageV2.WithParts[] }
+  const active = new Map<string, { promise: Promise<void>; next?: SummaryInput }>()
 
   // Each summary LLM call is bounded so a stalled provider can never hang the
   // coalescing loop forever. AbortSignal.timeout aborts the request; the
@@ -46,6 +47,7 @@ export namespace SessionSummary {
     z.object({
       sessionID: z.string(),
       messageID: z.string(),
+      messages: z.custom<MessageV2.WithParts[]>().optional(),
     }),
     async (input) => {
       const pending = active.get(input.sessionID)
@@ -59,9 +61,9 @@ export namespace SessionSummary {
     },
   )
 
-  async function runSummaries(input: { sessionID: string; messageID: string }) {
+  async function runSummaries(input: SummaryInput) {
     try {
-      let current: { sessionID: string; messageID: string } | undefined = input
+      let current: SummaryInput | undefined = input
       while (current) {
         // Isolate per-iteration failures: a throw here (e.g. the session was
         // removed mid-run, a storage hiccup) must not abandon the coalescing
@@ -80,8 +82,8 @@ export namespace SessionSummary {
     }
   }
 
-  async function summarizeNow(input: { sessionID: string; messageID: string }) {
-    const all = await Session.messages({ sessionID: input.sessionID })
+  async function summarizeNow(input: SummaryInput) {
+    const all = input.messages ?? (await Session.messages({ sessionID: input.sessionID }))
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
     await Promise.all([
       summarizeSession({ sessionID: input.sessionID, messages: all, diffCache }),
@@ -169,13 +171,16 @@ export namespace SessionSummary {
     if (!turn) return
     const messages = [turn.user, ...turn.assistants]
     const msgWithParts = turn.user
-    const userMsg = msgWithParts.info as MessageV2.User
+    const existingUser = msgWithParts.info as MessageV2.User
     if (!MessageV2.isPromptVisible(msgWithParts)) return
     const diffs = await computeDiff({ messages, sessionID: input.sessionID, cache: input.diffCache })
-    const diffsChanged = !sameDiffs(userMsg.summary?.diffs, diffs)
-    userMsg.summary = {
-      ...userMsg.summary,
-      diffs,
+    const diffsChanged = !sameDiffs(existingUser.summary?.diffs, diffs)
+    const userMsg: MessageV2.User = {
+      ...existingUser,
+      summary: {
+        ...existingUser.summary,
+        diffs,
+      },
     }
 
     const assistantMsg = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
@@ -263,14 +268,20 @@ export namespace SessionSummary {
     }
 
     const [title, body] = await Promise.all([generateTitle(), generateBody()])
-
-    if (title) userMsg.summary.title = title
-    if (body) userMsg.summary.body = body
+    const summarizedUser: MessageV2.User = {
+      ...userMsg,
+      summary: {
+        ...userMsg.summary,
+        diffs,
+        ...(title ? { title } : {}),
+        ...(body ? { body } : {}),
+      },
+    }
 
     // Only persist when summary content changed. Diffs are included because
     // session-turn diff cards read them from the persisted user message summary.
     if (title || body || diffsChanged) {
-      await saveSummary(userMsg)
+      await saveSummary(summarizedUser)
     }
   }
 
@@ -282,9 +293,10 @@ export namespace SessionSummary {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      return Storage.read<SnapshotSchema.FileDiff[]>(
+      const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
         StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)),
       ).catch(() => [])
+      return SnapshotSchema.normalizeArray(diffs) ?? []
     },
   )
 
@@ -345,6 +357,7 @@ LoopJob.register({
     await SessionSummary.summarize({
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
+      messages: ctx.messages.slice(),
     })
     return "pass"
   },
