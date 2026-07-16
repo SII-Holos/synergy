@@ -228,8 +228,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  [data-component="turn-change-summary-panel"],
-  [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-icon"] {
+  [data-component="turn-change-summary-panel"].turn-change-summary-entering,
+  [data-component="turn-change-summary-panel"][data-diff-state="pending"] [data-slot="turn-change-summary-icon"] {
     animation: none;
     transform: none;
   }
