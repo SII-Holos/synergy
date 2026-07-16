@@ -10,6 +10,7 @@ import {
   MAX_METADATA_KEY_LENGTH,
   MAX_METADATA_RECURSION_DEPTH,
   MAX_PAYLOAD_AGGREGATE_BYTES,
+  MAX_PAYLOAD_STRING_LENGTH,
 } from "../../src/clarus/schemas"
 import { ClarusRestClient } from "../../src/clarus/rest-client"
 
@@ -56,9 +57,9 @@ function wireMessageItem(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-function wireMessageList(messages: unknown[], nextCursor: string | null = null) {
+function wireMessageList(items: unknown[], nextCursor: string | null = null) {
   return {
-    messages,
+    items,
     ...(nextCursor === null ? {} : { next_cursor: nextCursor }),
   }
 }
@@ -113,6 +114,27 @@ describe("ClarusProjectActivitySchema payload bounds", () => {
     expect(result.metadata?.key3).toEqual({ deeper: { leaf: "ok" } })
   })
 
+  test("accepts bounded dispatched task metadata", () => {
+    const metadata = {
+      event_type: "runtime.task.dispatched",
+      assigned_agent_id: "agent_test",
+      payload: {
+        project_id: "proj_test",
+        context: { session: { state: { ready: true } } },
+        input_refs: [[[[[["bounded"]]]]]],
+      },
+    }
+    const result = ClarusProjectActivitySchema.parse(validActivity({ metadata }))
+    expect(result.metadata).toEqual(metadata)
+  })
+
+  test("accepts bounded nested fileRefs from the live API", () => {
+    const fileRefs = [[[[[[[["bounded"]]]]]]]]
+    const result = ClarusProjectActivitySchema.parse(validActivity({ fileRefs }))
+
+    expect(result.fileRefs).toEqual(fileRefs)
+  })
+
   // ── FileRefs bounds ─────────────────────────────────────
 
   test("rejects fileRefs exceeding max item count", () => {
@@ -145,7 +167,7 @@ describe("ClarusProjectActivitySchema payload bounds", () => {
     // Many entries with 1.5 KB strings each to hit the 64 KB budget
     const big = Array.from({ length: 45 }, (_, i) => ({
       name: `file_${i}`,
-      description: "x".repeat(1400),
+      description: "x".repeat(1500),
     }))
     const result = ClarusProjectActivitySchema.safeParse(validActivity({ fileRefs: big }))
     expect(result.success).toBe(false)
@@ -153,7 +175,7 @@ describe("ClarusProjectActivitySchema payload bounds", () => {
   })
 
   test("rejects fileRefs with excessively long string value", () => {
-    const refs = [{ name: "x".repeat(2000) }]
+    const refs = [{ name: "x".repeat(MAX_PAYLOAD_STRING_LENGTH + 1) }]
     const result = ClarusProjectActivitySchema.safeParse(validActivity({ fileRefs: refs }))
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toContain("string")
@@ -221,15 +243,21 @@ describe("ClarusProjectActivitySchema payload bounds", () => {
   test("rejects metadata exceeding aggregate byte budget via many small strings", () => {
     const big: Record<string, unknown> = {}
     for (let i = 0; i < 45; i++) {
-      big[`key_${i}`] = "x".repeat(1400)
+      big[`key_${i}`] = "x".repeat(1500)
     }
     const result = ClarusProjectActivitySchema.safeParse(validActivity({ metadata: big }))
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toMatch(/aggregate|string/)
   })
 
-  test("rejects metadata with excessively long string value", () => {
-    const result = ClarusProjectActivitySchema.safeParse(validActivity({ metadata: { value: "x".repeat(2000) } }))
+  test("accepts the bounded live metadata string length", () => {
+    const metadata = { value: "x".repeat(5395) }
+    const result = ClarusProjectActivitySchema.parse(validActivity({ metadata }))
+    expect(result.metadata).toEqual(metadata)
+  })
+
+  test("rejects metadata strings above the bounded live contract", () => {
+    const result = ClarusProjectActivitySchema.safeParse(validActivity({ metadata: { value: "x".repeat(8193) } }))
     expect(result.success).toBe(false)
     expect(result.error?.issues[0]?.message).toContain("string")
   })
@@ -278,23 +306,31 @@ describe("ClarusProjectActivitySchema payload bounds", () => {
     expect(result.success).toBe(true)
   })
 
-  test("rejects multibyte strings that cause aggregate byte overrun", () => {
+  test("rejects multibyte strings that exceed the aggregate UTF-8 byte budget", () => {
     const big: Record<string, unknown> = {}
-    for (let i = 0; i < 45; i++) {
-      big[`k${i}`] = "中".repeat(1400)
+    for (let i = 0; i < 10; i++) {
+      big[`k${i}`] = "中".repeat(2500)
     }
     const result = ClarusProjectActivitySchema.safeParse(validActivity({ metadata: big }))
     expect(result.success).toBe(false)
-    expect(result.error?.issues[0]?.message).toMatch(/aggregate|string/)
+    expect(result.error?.issues[0]?.message).toContain("aggregate")
   })
 })
 
 // ── REST Client Tests ──────────────────────────────────────────
 
 describe("ClarusRestClient payload bounds (wire path)", () => {
-  test("rejects metadata string exceeding length limit through client", async () => {
+  test("accepts the bounded live metadata string length through client", async () => {
+    const metadata = { val: "x".repeat(5395) }
+    const client = makeClient(() => jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata })]))))
+
+    const result = await client.listMessages({ projectId: "proj_1" })
+    expect(result.messages[0]?.metadata).toEqual(metadata)
+  })
+
+  test("rejects metadata strings above the bounded live contract through client", async () => {
     const client = makeClient(() =>
-      jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata: { val: "x".repeat(2000) } })]))),
+      jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata: { val: "x".repeat(8193) } })]))),
     )
 
     await expect(client.listMessages({ projectId: "proj_1" })).rejects.toThrow(
@@ -346,7 +382,7 @@ describe("ClarusRestClient payload bounds (wire path)", () => {
   })
 
   test("error does not expose raw payload values through client", async () => {
-    const bigVal = "x".repeat(5000)
+    const bigVal = "x".repeat(MAX_PAYLOAD_STRING_LENGTH + 1)
     const client = makeClient(() =>
       jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata: { secret: bigVal } })]))),
     )
@@ -354,7 +390,7 @@ describe("ClarusRestClient payload bounds (wire path)", () => {
     await expect(client.listMessages({ projectId: "proj_1" })).rejects.toThrow(
       "Clarus metadata string exceeds its length limit",
     )
-    await expect(client.listMessages({ projectId: "proj_1" })).rejects.not.toThrow("x".repeat(5000))
+    await expect(client.listMessages({ projectId: "proj_1" })).rejects.not.toThrow(bigVal)
   })
 })
 
@@ -362,9 +398,10 @@ describe("ClarusRestClient payload bounds (wire path)", () => {
 
 describe("payload bound constants", () => {
   test("MAX_FILE_REFS is 50", () => expect(MAX_FILE_REFS).toBe(50))
-  test("MAX_FILE_REF_RECURSION_DEPTH is 3", () => expect(MAX_FILE_REF_RECURSION_DEPTH).toBe(3))
+  test("MAX_FILE_REF_RECURSION_DEPTH is 8", () => expect(MAX_FILE_REF_RECURSION_DEPTH).toBe(8))
   test("MAX_METADATA_KEYS is 50", () => expect(MAX_METADATA_KEYS).toBe(50))
   test("MAX_METADATA_KEY_LENGTH is 128", () => expect(MAX_METADATA_KEY_LENGTH).toBe(128))
-  test("MAX_METADATA_RECURSION_DEPTH is 3", () => expect(MAX_METADATA_RECURSION_DEPTH).toBe(3))
+  test("MAX_METADATA_RECURSION_DEPTH is 8", () => expect(MAX_METADATA_RECURSION_DEPTH).toBe(8))
+  test("MAX_PAYLOAD_STRING_LENGTH is 8192", () => expect(MAX_PAYLOAD_STRING_LENGTH).toBe(8192))
   test("MAX_PAYLOAD_AGGREGATE_BYTES is 65536", () => expect(MAX_PAYLOAD_AGGREGATE_BYTES).toBe(65536))
 })

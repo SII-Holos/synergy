@@ -3,6 +3,7 @@ import { isolateClarusHome } from "../helpers/clarus-isolation"
 await isolateClarusHome(import.meta.url)
 
 import { ClarusRestClient } from "../../src/clarus/rest-client"
+import { MAX_WIRE_FILE_REF_RECURSION_DEPTH, MAX_WIRE_METADATA_RECURSION_DEPTH } from "../../src/clarus/rest-port"
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -62,10 +63,18 @@ function wireMessageItem(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
-function wireMessageList(messages: unknown[], nextCursor: string | null = null) {
+function wireMessageList(items: unknown[], nextCursor: string | null = null) {
   return {
-    messages,
+    items,
     ...(nextCursor === null ? {} : { next_cursor: nextCursor }),
+  }
+}
+
+function wireLiveMessageList(items: unknown[], nextCursor: string | null = null) {
+  return {
+    items,
+    limit: 100,
+    next_cursor: nextCursor,
   }
 }
 
@@ -210,6 +219,44 @@ describe("ClarusRestClient security", () => {
     await expect(client.listProjects({})).rejects.toThrow("Clarus project page exceeds its limit")
   })
 
+  test("parses the live message collection contract", async () => {
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() =>
+        jsonResponse(standardEnvelope(wireLiveMessageList([wireMessageItem({ message_id: "live_msg" })]))),
+      ),
+    })
+
+    const result = await client.listMessages({ projectId: "proj_1" })
+    expect(result.messages.map((message) => message.messageId)).toEqual(["live_msg"])
+  })
+
+  test("accepts bounded dispatched task metadata from the live API", async () => {
+    const metadata = {
+      event_type: "runtime.task.dispatched",
+      assigned_agent_id: "agent_test",
+      payload: {
+        project_id: "proj_1",
+        run_id: "run_1",
+        task_id: "task_1",
+        phase: "implementation",
+        subtask_id: "subtask_1",
+        attempt: 1,
+        deadline_at: null,
+        context: { session: { state: { ready: true } } },
+        input_refs: [[[[[["bounded"]]]]]],
+      },
+    }
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() => jsonResponse(standardEnvelope(wireLiveMessageList([wireMessageItem({ metadata })])))),
+    })
+
+    const result = await client.listMessages({ projectId: "proj_1" })
+    expect(result.messages[0].metadata).toEqual(metadata)
+  })
   test("rejects message list exceeding per-page limit", async () => {
     const messages = Array.from({ length: 101 }, (_, i) => wireMessageItem({ message_id: `msg_${i}` }))
     const client = new ClarusRestClient({
@@ -240,8 +287,35 @@ describe("ClarusRestClient security", () => {
     )
   })
 
+  test("accepts the bounded live metadata string length", async () => {
+    const metadata = { value: "x".repeat(5395) }
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() => jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata })])))),
+    })
+
+    const result = await client.listMessages({ projectId: "proj_1" })
+    expect(result.messages[0]?.metadata).toEqual(metadata)
+  })
+
+  test("rejects metadata strings above the bounded live contract", async () => {
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() =>
+        jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata: { value: "x".repeat(8193) } })]))),
+      ),
+    })
+
+    await expect(client.listMessages({ projectId: "proj_1" })).rejects.toThrow(
+      "Clarus metadata string exceeds its length limit",
+    )
+  })
+
   test("rejects metadata exceeding recursion depth", async () => {
-    const nested: Record<string, unknown> = { a: { b: { c: { d: "too deep" } } } }
+    let nested: Record<string, unknown> = { leaf: "too deep" }
+    for (let i = 0; i < MAX_WIRE_METADATA_RECURSION_DEPTH + 1; i++) nested = { nested }
 
     const client = new ClarusRestClient({
       apiUrl: "https://localhost:8443",
@@ -254,9 +328,24 @@ describe("ClarusRestClient security", () => {
     )
   })
 
+  test("accepts bounded nested fileRefs from the live API", async () => {
+    const fileRefs = [[[[[[[["bounded"]]]]]]]]
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() =>
+        jsonResponse(standardEnvelope(wireLiveMessageList([wireMessageItem({ file_refs: fileRefs })]))),
+      ),
+    })
+
+    const result = await client.listMessages({ projectId: "proj_1" })
+
+    expect(result.messages[0]?.fileRefs).toEqual(fileRefs)
+  })
+
   test("rejects fileRefs exceeding recursion depth", async () => {
-    // 4 levels of array nesting exceeds MAX_WIRE_FILE_REF_RECURSION_DEPTH=3
-    const deep = [[[[{ name: "deep" }]]]]
+    let deep: unknown = { name: "deep" }
+    for (let i = 0; i < MAX_WIRE_FILE_REF_RECURSION_DEPTH + 1; i++) deep = [deep]
 
     const client = new ClarusRestClient({
       apiUrl: "https://localhost:8443",

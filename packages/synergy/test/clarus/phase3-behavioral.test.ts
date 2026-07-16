@@ -451,6 +451,156 @@ describe("Clarus Phase 3 discovery and reconciliation", () => {
 })
 
 describe("Clarus Phase 3 assignment, deadline, and events", () => {
+  test("REST backfill routes a live dispatched task through canonical assignment ingestion", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const taskId = "backfilled_task"
+    const rest = new FakeRest(
+      [{ projects: [project(PROJECT_ID)], nextCursor: null }],
+      new Map([
+        [
+          PROJECT_ID,
+          [
+            {
+              messages: [
+                {
+                  messageId: "remote_dispatch",
+                  messageType: "system",
+                  content: "Task dispatched",
+                  createdAt: new Date().toISOString(),
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: AGENT_ID,
+                    payload: {
+                      project_id: PROJECT_ID,
+                      run_id: "backfill_run",
+                      task_id: taskId,
+                      phase: "implementation",
+                      subtask_id: "backfill_subtask",
+                      attempt: 1,
+                      deadline_at: null,
+                      goal: "Recover this task",
+                      context: { snapshot: { state: { ready: true } } },
+                      input_refs: [],
+                    },
+                  },
+                },
+              ],
+              nextCursor: null,
+            },
+          ],
+        ],
+      ]),
+    )
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId))?.assignmentState === "enqueued",
+        )
+      },
+    })
+
+    const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId)
+    expect(binding).toMatchObject({
+      runID: "backfill_run",
+      subtaskID: "backfill_subtask",
+      title: "Recover this task",
+      contextHydration: "complete",
+      assignmentState: "enqueued",
+      taskInput: {
+        goal: "Recover this task",
+        context: { snapshot: { state: { ready: true } } },
+        input_refs: [],
+      },
+    })
+    expect(await SessionInbox.list(binding!.sessionID)).toHaveLength(1)
+  })
+
+  test("REST backfill rejects tasks assigned to another agent", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const taskId = "cross_agent_task"
+    const rest = new FakeRest(
+      [{ projects: [project(PROJECT_ID)], nextCursor: null }],
+      new Map([
+        [
+          PROJECT_ID,
+          [
+            {
+              messages: [
+                {
+                  messageId: "cross_agent_dispatch",
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: "another_agent",
+                    payload: {
+                      project_id: PROJECT_ID,
+                      run_id: "cross_agent_run",
+                      task_id: taskId,
+                      phase: "implementation",
+                      subtask_id: "cross_agent_subtask",
+                      attempt: 1,
+                      deadline_at: null,
+                    },
+                  },
+                },
+              ],
+              nextCursor: null,
+            },
+          ],
+        ],
+      ]),
+    )
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(async () => {
+          const state = await Storage.read<{ needsReconciliation?: boolean }>(
+            StoragePath.clarusReconciliation(AGENT_ID),
+          )
+          return state.needsReconciliation === false
+        })
+      },
+    })
+
+    expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId)).toBeUndefined()
+  })
+
+  test("live and backfilled assignment delivery is idempotent", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await prepareProject(scope)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        const assignment = taskAssignedEvent({ goal: "Idempotent task", context: { snapshot: true } })
+        await port.emit(assignment)
+        await port.emit(assignment)
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
+        )
+      },
+    })
+
+    const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+    expect(await SessionInbox.list(binding!.sessionID)).toHaveLength(1)
+  })
+
   test("assignment stores frozen agent and derived task metadata, then enqueues exactly once", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()

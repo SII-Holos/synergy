@@ -14,12 +14,12 @@ export const MAX_WIRE_STRING_CURSOR = 1024
 export const MAX_WIRE_PAGE_SIZE = 100
 export const MAX_WIRE_METADATA_KEYS = 50
 export const MAX_WIRE_METADATA_KEY_LENGTH = 128
-export const MAX_WIRE_METADATA_RECURSION_DEPTH = 3
+export const MAX_WIRE_METADATA_RECURSION_DEPTH = 8
 export const MAX_WIRE_FILE_REFS = 50
-export const MAX_WIRE_FILE_REF_RECURSION_DEPTH = 3
+export const MAX_WIRE_FILE_REF_RECURSION_DEPTH = 8
+export const MAX_WIRE_VALUE_STRING_LENGTH = 8192
 export const MAX_WIRE_RESPONSE_BYTES = 2 * 1024 * 1024
 export const MAX_WIRE_STRING_ERROR_MESSAGE = 500
-export const MAX_WIRE_PAYLOAD_AGGREGATE_BYTES = 65536
 export const MAX_WIRE_STRING_USER_QUERY = 256
 export const MAX_USER_CANDIDATES = 5
 
@@ -100,44 +100,6 @@ export namespace ClarusRestPort {
     ]),
   )
 
-  // ── Recursive bounds validators ─────────────────────────
-
-  export function validateWireMetadata(
-    raw: unknown,
-    depth: number,
-    maxKeys: number,
-    maxKeyLength: number,
-    maxDepth: number,
-  ): Record<string, unknown> {
-    if (depth > maxDepth) throw new Error("metadata exceeds recursion limit")
-    if (raw === null || typeof raw !== "object" || Array.isArray(raw)) throw new Error("metadata is not a record")
-    const obj = raw as Record<string, unknown>
-    const keys = Object.keys(obj)
-    if (keys.length > maxKeys) throw new Error("metadata key count exceeds limit")
-    for (const key of keys) {
-      if (key.length > maxKeyLength) throw new Error("metadata key exceeds length limit")
-      const value = obj[key]
-      if (value !== null && typeof value === "object" && !Array.isArray(value)) {
-        validateWireMetadata(value, depth + 1, maxKeys, maxKeyLength, maxDepth)
-      } else if (Array.isArray(value)) {
-        validateWireFileRefs(value, depth + 1, maxKeys)
-      }
-    }
-    return obj
-  }
-
-  export function validateWireFileRefs(raw: unknown, depth: number, maxDepth: number): unknown[] {
-    if (depth > maxDepth) throw new Error("fileRefs exceeds recursion limit")
-    if (!Array.isArray(raw)) throw new Error("fileRefs is not an array")
-    for (const item of raw) {
-      if (item !== null && typeof item === "object" && !Array.isArray(item)) {
-        validateWireMetadata(item as Record<string, unknown>, 2, maxDepth, maxDepth, maxDepth)
-      } else if (Array.isArray(item)) {
-        validateWireFileRefs(item, depth + 1, maxDepth)
-      }
-    }
-    return raw
-  }
   export const WireMessageItem = z
     .object({
       message_id: z.string().max(MAX_WIRE_STRING_ID),
@@ -150,8 +112,9 @@ export namespace ClarusRestPort {
     .passthrough()
 
   export const WireMessageListData = z.object({
-    messages: z.array(WireMessageItem),
+    items: z.array(WireMessageItem),
     next_cursor: z.string().max(MAX_WIRE_STRING_CURSOR).nullable().optional(),
+    limit: z.number().int().positive().max(MAX_WIRE_PAGE_SIZE).optional(),
   })
 
   export const StandardResponse = z.object({

@@ -671,7 +671,7 @@ describe("ClarusRestClient listUsers", () => {
     const client = makeClient(() =>
       jsonResponse(
         standardEnvelope({
-          messages: [
+          items: [
             {
               message_id: "msg_1",
               message_type: "text",

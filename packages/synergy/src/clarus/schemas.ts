@@ -331,17 +331,17 @@ export const ClarusOutboxRecordSchema = z.union([ClarusOutboxRecordV1, ClarusOut
 // --- Payload Bound Constants ---
 
 export const MAX_FILE_REFS = 50
-export const MAX_FILE_REF_RECURSION_DEPTH = 3
+export const MAX_FILE_REF_RECURSION_DEPTH = 8
 export const MAX_METADATA_KEYS = 50
 export const MAX_METADATA_KEY_LENGTH = 128
-export const MAX_METADATA_RECURSION_DEPTH = 3
-const MAX_INTERNAL_STRING_LENGTH = 1024
+export const MAX_METADATA_RECURSION_DEPTH = 8
+export const MAX_PAYLOAD_STRING_LENGTH = 8192
 const MAX_INTERNAL_ARRAY_LENGTH = 50
 export const MAX_PAYLOAD_AGGREGATE_BYTES = 65536
 
 function checkAggregateBytes(data: unknown, limit: number): number {
   try {
-    const len = JSON.stringify(data).length
+    const len = new TextEncoder().encode(JSON.stringify(data)).byteLength
     return len > limit ? len : 0
   } catch {
     return 0
@@ -350,7 +350,7 @@ function checkAggregateBytes(data: unknown, limit: number): number {
 
 function walkPayloadBounds(data: unknown, maxDepth: number, visited: WeakSet<object>, ctx: z.RefinementCtx): void {
   if (data === null || typeof data !== "object") {
-    if (typeof data === "string" && data.length > MAX_INTERNAL_STRING_LENGTH) {
+    if (typeof data === "string" && data.length > MAX_PAYLOAD_STRING_LENGTH) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, message: "payload string exceeds length limit" })
     }
     return
