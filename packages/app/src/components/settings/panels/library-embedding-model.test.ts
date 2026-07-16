@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import type { EmbeddingStatus } from "@ericsanchezok/synergy-sdk/client"
-import { pollEmbeddingStatus } from "./library-embedding-model"
+import { describeEmbeddingModel, pollEmbeddingStatus } from "./library-embedding-model"
 
 function localStatus(asset: "missing" | "downloading" | "cached" | "failed"): EmbeddingStatus {
   return {
@@ -12,6 +12,31 @@ function localStatus(asset: "missing" | "downloading" | "cached" | "failed"): Em
   }
 }
 
+describe("embedding model presentation", () => {
+  test("presents a user-configured remote embedding model as the active choice", () => {
+    expect(
+      describeEmbeddingModel({
+        mode: "remote",
+        model: "BAAI/bge-m3",
+        baseURL: "https://embedding.example/v1",
+      }),
+    ).toEqual({
+      title: "BAAI/bge-m3",
+      description: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
+      stateLabel: "Configured",
+      modeLabel: "Remote",
+    })
+  })
+
+  test("presents the bundled local model as the zero-config fallback", () => {
+    expect(describeEmbeddingModel(localStatus("missing"))).toEqual({
+      title: "Xenova/all-MiniLM-L6-v2",
+      description: "Built-in local fallback used when no remote embedding model is configured.",
+      stateLabel: "Default",
+      modeLabel: "Local",
+    })
+  })
+})
 describe("library embedding model", () => {
   test("polls sequentially until the local model download reaches a terminal state", async () => {
     const states = [localStatus("downloading"), localStatus("downloading"), localStatus("cached")]

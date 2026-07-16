@@ -9,7 +9,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { SettingRow } from "../components/SettingRow"
 import { SettingsSection } from "../components/SettingsPrimitives"
 import type { LibrarySettingsStore, LocalEmbeddingSource } from "../types"
-import { isEmbeddingDownloadActive, pollEmbeddingStatus } from "./library-embedding-model"
+import { describeEmbeddingModel, isEmbeddingDownloadActive, pollEmbeddingStatus } from "./library-embedding-model"
 
 function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) return error.message
@@ -32,7 +32,7 @@ function formatBytes(value: number): string {
 }
 
 function localStatusDescription(status: Extract<EmbeddingStatus, { mode: "local" }>): string {
-  if (status.asset === "cached") return `Ready · ${status.model}`
+  if (status.asset === "cached") return "Model files are ready"
   if (status.asset === "downloading") {
     const progress = status.progress
     if (progress?.totalBytes) {
@@ -41,7 +41,7 @@ function localStatusDescription(status: Extract<EmbeddingStatus, { mode: "local"
     return "Downloading local model files"
   }
   if (status.asset === "failed") return status.error?.message ?? "The last download failed"
-  return `Not downloaded · ${status.model}`
+  return "Model files are not downloaded"
 }
 
 export function LibraryEmbeddingSection(props: {
@@ -59,6 +59,10 @@ export function LibraryEmbeddingSection(props: {
   const localStatus = createMemo(() => {
     const current = status()
     return current?.mode === "local" ? current : undefined
+  })
+  const modelPresentation = createMemo(() => {
+    const current = status()
+    return current ? describeEmbeddingModel(current) : undefined
   })
   const customSourceMissing = createMemo(
     () => props.library.embeddingSource === "custom" && !props.library.embeddingRemoteHost.trim(),
@@ -151,7 +155,7 @@ export function LibraryEmbeddingSection(props: {
   return (
     <SettingsSection
       title="Embedding model"
-      description="Manage the bundled local model used to match memory and experience context."
+      description="See the active embedding model and manage downloads for the built-in local fallback."
     >
       <Show
         when={!loading()}
@@ -162,13 +166,23 @@ export function LibraryEmbeddingSection(props: {
           </div>
         }
       >
+        <Show when={modelPresentation()}>
+          {(model) => (
+            <SettingRow
+              title="Current model"
+              description={`${model().title} · ${model().description}`}
+              stateLabel={model().stateLabel}
+              trailing={<span class="settings-row-state">{model().modeLabel}</span>}
+            />
+          )}
+        </Show>
         <Show
           when={status()?.mode !== "remote"}
           fallback={
             <SettingRow
-              title="Remote embedding service"
-              description={`Local model controls are unavailable while ${status()?.model ?? "a remote model"} is configured.`}
-              stateLabel="Remote"
+              title="Local model download"
+              description="The user-configured remote model takes precedence, so the built-in local fallback is not used."
+              stateLabel="Inactive"
               trailing={<span class="settings-row-state">No download needed</span>}
             />
           }
@@ -216,7 +230,7 @@ export function LibraryEmbeddingSection(props: {
             {(current) => (
               <>
                 <SettingRow
-                  title="Local model"
+                  title="Local model files"
                   description={
                     props.configDirty
                       ? "Save the selected source before starting the download."

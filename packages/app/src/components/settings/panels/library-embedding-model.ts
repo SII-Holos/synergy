@@ -1,5 +1,29 @@
 import type { EmbeddingStatus } from "@ericsanchezok/synergy-sdk/client"
 
+export type EmbeddingModelPresentation = {
+  title: string
+  description: string
+  stateLabel: "Default" | "Configured"
+  modeLabel: "Local" | "Remote"
+}
+
+export function describeEmbeddingModel(status: EmbeddingStatus): EmbeddingModelPresentation {
+  if (status.mode === "remote") {
+    return {
+      title: status.model,
+      description: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
+      stateLabel: "Configured",
+      modeLabel: "Remote",
+    }
+  }
+  return {
+    title: status.model,
+    description: "Built-in local fallback used when no remote embedding model is configured.",
+    stateLabel: "Default",
+    modeLabel: "Local",
+  }
+}
+
 function wait(ms: number, signal: AbortSignal) {
   if (signal.aborted) return Promise.reject(new DOMException("Aborted", "AbortError"))
   return new Promise<void>((resolve, reject) => {

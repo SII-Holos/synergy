@@ -81,6 +81,8 @@ Three `library.experience.learning` configuration fields control the job runtime
 
 Synergy uses an embedding model to produce vector representations of text for semantic memory retrieval, experience recall, and Library search. Two modes are available, selected automatically by configuration:
 
+Settings → Library → Memory always shows the effective embedding model. A user-configured remote model is shown as configured and takes precedence; when no remote embedding API key is configured, the bundled local model is shown as the default fallback.
+
 ### Local Mode (default, zero-config)
 
 When no `embedding.apiKey` is configured, Synergy uses the bundled `Xenova/all-MiniLM-L6-v2` model running locally via `@huggingface/transformers`. The model is approximately 80 MB and produces 384-dimensional vectors.
