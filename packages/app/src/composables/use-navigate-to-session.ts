@@ -1,13 +1,16 @@
-import { useNavigate, useParams } from "@solidjs/router"
+import { useLocation, useNavigate, useParams } from "@solidjs/router"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSDK } from "@/context/sdk"
 import { useSync } from "@/context/sync"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { navigateResolvedSession, type SessionNavigationIntent } from "./use-navigate-to-session-model"
+export type { SessionNavigationIntent } from "./use-navigate-to-session-model"
 
 export function useNavigateToSession() {
   const params = useParams()
+  const location = useLocation()
   const navigate = useNavigate()
   const sdk = useSDK()
   const sync = useSync()
@@ -17,12 +20,15 @@ export function useNavigateToSession() {
   const routeDir = (scope: { type?: string; directory?: string }) =>
     base64Encode(scope.type === "home" ? HOME_SCOPE_KEY : (scope.directory ?? sdk.scopeKey))
 
-  return (sessionID: string) => {
-    const navState = { state: { from: window.location.pathname } }
+  return (sessionID: string, intent: SessionNavigationIntent = "open") => {
+    const currentPath = window.location.pathname
+    const from = (location.state as { from?: string } | undefined)?.from
+    const navigateResolved = (targetPath: string) =>
+      navigateResolvedSession(navigate, { intent, targetPath, currentPath, from })
 
     const localMatch = sync.data.session.find((s) => s.id === sessionID)
     if (localMatch) {
-      navigate(`/${routeDir(localMatch.scope)}/session/${sessionID}`, navState)
+      navigateResolved(`/${routeDir(localMatch.scope)}/session/${sessionID}`)
       return
     }
 
@@ -30,7 +36,7 @@ export function useNavigateToSession() {
       const [store] = globalSync.ensureScopeState(scope.worktree)
       const match = store.session.find((s) => s.id === sessionID)
       if (match) {
-        navigate(`/${routeDir(match.scope)}/session/${sessionID}`, navState)
+        navigateResolved(`/${routeDir(match.scope)}/session/${sessionID}`)
         return
       }
     }
@@ -40,13 +46,13 @@ export function useNavigateToSession() {
       .then((res) => {
         const session = res.data
         if (session) {
-          navigate(`/${routeDir(session.scope)}/session/${sessionID}`, navState)
+          navigateResolved(`/${routeDir(session.scope)}/session/${sessionID}`)
         } else {
-          navigate(`/${params.dir}/session/${sessionID}`, navState)
+          navigateResolved(`/${params.dir}/session/${sessionID}`)
         }
       })
       .catch(() => {
-        navigate(`/${params.dir}/session/${sessionID}`, navState)
+        navigateResolved(`/${params.dir}/session/${sessionID}`)
       })
   }
 }
