@@ -33,6 +33,7 @@ import {
 import { useLayout } from "@/context/layout"
 import { useSDK } from "@/context/sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useSessionTransition } from "@/context/session-transition"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { LatticeConfigDialog, type LatticeEnableConfig } from "@/components/lattice/lattice-config-dialog"
 import { LatticePanel } from "@/components/lattice/lattice-panel"
@@ -85,6 +86,7 @@ import {
   type BlueprintSlotDisplay,
 } from "@/components/prompt-input/blueprint-slot"
 import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/components/session/worktree-session"
+import { restoreNewSessionRecovery } from "@/components/session/new-session-recovery"
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
@@ -167,6 +169,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const layout = useLayout()
   const params = useParams()
   const command = useCommand()
+  const sessionTransition = useSessionTransition()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -460,8 +463,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
-  const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
-  const submitPending = createMemo(() => newSessionSubmitPending() || workspaceTransitionPending())
+  const sessionTransitionPending = createMemo(() => props.sessionTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const canSubmit = createMemo(() => {
     if (submitPending()) return false
     return canSubmitPrompt({
@@ -1485,6 +1488,35 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     queueScroll,
   })
 
+  createEffect(() => {
+    if (params.id || !prompt.ready()) return
+    const recovery = sessionTransition.getRecovery(sdk.scopeKey)
+    if (!recovery) return
+    sessionTransition.clearRecovery(sdk.scopeKey)
+    const autoSubmit = restoreNewSessionRecovery({
+      recovery,
+      setDraft: (draft) => {
+        prompt.set(draft.prompt, inlineLength(draft.prompt))
+        prompt.context.set(draft.context)
+      },
+      setMode: (mode) => setStore("mode", mode),
+      setWorkspaceSelection: (selection) => props.onNewSessionWorkspaceSelectionChange?.(selection),
+      setControlProfile: input.setControlProfile,
+      setPlan: setPendingPlan,
+      setLattice: setPendingLattice,
+      setLightLoop: setPendingLightLoop,
+      setBlueprintSlot: setLocalArmedLoop,
+      setAgent: local.agent.set,
+      setModel: (model) => local.model.set(model),
+      setVariant: (variant, model) => local.model.variant.set(variant, model),
+    })
+    if (!autoSubmit) {
+      requestAnimationFrame(() => editorRef?.focus())
+      return
+    }
+    requestAnimationFrame(() => void handleSubmit(new Event("submit", { cancelable: true })))
+  })
+
   const runRuntimeCommand = (name: string) => {
     const sessionID = params.id
     const currentModel = local.model.current()
@@ -1894,7 +1926,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Show
                       when={!submitPending()}
                       fallback={
-                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                        <span>
+                          {sessionTransitionPending() ? "Session transition in progress" : "Starting session"}
+                        </span>
                       }
                     >
                       <Switch>
@@ -1916,7 +1950,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 >
                   <IconButton
                     type="submit"
-                    aria-label={submitStopsSession() ? "Stop session" : "Send message"}
+                    aria-label={submitStopsSession() ? "Stop session" : "Submit message"}
                     disabled={!canSubmit()}
                     icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
                     variant="primary"
