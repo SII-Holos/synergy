@@ -6,4 +6,6 @@ Parameters:
 - evidence: Concrete verification evidence such as checks, artifacts, and file paths
 - remaining: Any known remaining work or limitations
 
+Before requesting review, cancel every active Agenda item that can still wake this session. This tool rejects the request and lists the required `agenda_cancel` commands while any such item remains.
+
 This launches the configured Blueprint reviewer. The reviewer will either approve completion or return concrete work to resume. Do not call any tools to check on the reviewer — it will deliver results directly to this session when the audit completes.

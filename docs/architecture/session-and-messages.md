@@ -31,7 +31,7 @@ Child sessions inherit the parent workspace and interaction context by default. 
 
 ## One Active Loop
 
-`SessionManager.acquire()` synchronously grants one caller a generation-tagged loop lease before asynchronous session or workspace setup begins. The runtime keeps that lease as its owner through `starting`, `running`, and `stopping`; abort signals the owner but does not make the session idle. Only `release()` with the exact current lease can clear ownership, so stale cleanup cannot terminate a replacement loop. A second caller waits on the existing runtime instead of creating a competing writer.
+`SessionManager.acquire()` synchronously grants one caller a generation-tagged loop lease before asynchronous session or workspace setup begins. The runtime keeps that lease as its owner through `starting`, `running`, and `stopping`; `signalAbort()` signals the owner controller and sets the phase to `stopping` but does not publish idle events or repair persisted state. Only `release()` with the exact current lease clears ownership and publishes the lifecycle idle event (`SessionEvent.Idle`), so stale cleanup cannot terminate a replacement loop. A second caller waits on the existing runtime instead of creating a competing writer.
 
 This single-writer rule supports:
 
@@ -118,6 +118,8 @@ Downstream loop, compaction, history, and frontend code read canonical fields. T
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
+Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. The read boundary restores those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+
 ## Message Parts
 
 Messages contain ordered parts rather than separate tool and text timelines. Current part kinds include:
@@ -152,7 +154,7 @@ Every item has one scheduling axis:
 | `steer`   | Existing root | Materialized before the next `needsModelCall` decision. | Wakes the latest root if one exists.          |
 | `context` | Existing root | Piggybacks only after a model call is already required. | Remains stored and does not wake the session. |
 
-The item pre-allocates its message ID so materialization is idempotent. Task, steer, and context order is stable through `orderKey`.
+Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID, and task, steer, and context order remains stable through `orderKey`; legacy hash-based transcript IDs are supported only at the read boundary.
 
 Typical mappings:
 
@@ -211,6 +213,14 @@ Recovery covers:
 
 An interrupted assistant that never reached terminal persistence is completed with an explicit error during repair. Recovery state is surfaced as `recovering`; it is not presented as ordinary busy work.
 
+### Abort status synchronization
+
+When a running session is aborted, `signalAbort()` signals the owning controller and sets the phase to `stopping` but does not publish events or repair durable state. The abort HTTP route additionally calls `repairAfterAbort()` to repair the persisted incomplete assistant message and synchronize the frontend status.
+
+`repairAfterAbort()` reads `SessionWorking.resolve()` (the same canonical check used at startup) to decide whether the repaired session is truly idle or still has active work (workflows, BlueprintLoops, incomplete assistants, or pending reply). It then publishes a status-only idle event through `SessionManager.publishStatusOnly()`, which emits `SessionEvent.Status` with `{ type: "idle" }` but never publishes `SessionEvent.Idle`.
+
+This separation exists because `SessionEvent.Idle` has side-effect consumers — `ContinuationKernel` for automatic loop wakeups and session completion notifications — that must not fire for repair-only status corrections. Lifecycle idle (`SessionEvent.Idle`) remains owned exclusively by `SessionManager.release()`, which publishes both `SessionEvent.Status` and `SessionEvent.Idle` when the runtime loop voluntarily yields ownership.
+
 ## Invariants
 
 - A session belongs to one Scope and has one current workspace.
@@ -218,7 +228,9 @@ An interrupted assistant that never reached terminal persistence is completed wi
 - One root user message owns each task and all assistant messages in that task.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.
+- Transcript chronology comes from the canonical ordered message array; raw message ID comparison is not a temporal boundary.
 - All incoming work uses the persistent inbox and one mode axis.
 - Rollback changes effective history; file restore changes files only through an explicit action.
 - Parent lineage and fork lineage remain distinct.
 - Durable state must be sufficient to recover after the in-memory runtime disappears.
+- Only `SessionManager.release()` publishes `SessionEvent.Idle`; repair paths publish `SessionEvent.Status` only.

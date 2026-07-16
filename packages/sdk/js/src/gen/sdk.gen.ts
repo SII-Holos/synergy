@@ -111,6 +111,7 @@ import type {
   Config as Config2,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
+  ConfigDomainImportApplyInput,
   ConfigDomainImportPlanInput,
   ConfigDomainListResponses,
   ConfigDomainOpenErrors,
@@ -4955,7 +4956,7 @@ export class Import extends HeyApiClient {
   /**
    * Plan config import
    *
-   * Create a dry-run plan for importing selected config domains.
+   * Create a dry-run plan for importing selected config domains into global or project config.
    */
   public plan<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -4992,30 +4993,13 @@ export class Import extends HeyApiClient {
   /**
    * Apply config import
    *
-   * Apply a selected-domain config import plan.
+   * Atomically apply a selected-domain config import plan and reload affected runtime state.
    */
   public apply<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
-      config?: Config2
-      only?: Array<
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      >
-      mode?: "merge" | "replace-domain" | "append"
-      yes?: boolean
+      configDomainImportApplyInput?: ConfigDomainImportApplyInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5026,10 +5010,7 @@ export class Import extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "config" },
-            { in: "body", key: "only" },
-            { in: "body", key: "mode" },
-            { in: "body", key: "yes" },
+            { key: "configDomainImportApplyInput", map: "body" },
           ],
         },
       ],

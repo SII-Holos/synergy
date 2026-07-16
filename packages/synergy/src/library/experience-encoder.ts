@@ -533,15 +533,14 @@ export namespace ExperienceEncoder {
         retries: ctx.learning.encoderRetries,
       })
 
-      const textStream =
-        stream.textStream ??
-        (async function* () {
-          yield await stream.text
-        })()
-
-      return await withTimeout(collectBoundedText({ textStream, maxChars, abort }), timeoutMs, {
-        message: `encoder ${agentName} timed out after ${timeoutMs}ms`,
-      })
+      const textStream = LLM.takeTextStream(stream)
+      try {
+        return await withTimeout(collectBoundedText({ textStream: textStream.stream, maxChars, abort }), timeoutMs, {
+          message: `encoder ${agentName} timed out after ${timeoutMs}ms`,
+        })
+      } finally {
+        await textStream.dispose()
+      }
     } catch (error) {
       if (error instanceof EncoderStreamError) throw error
       if (abort.signal.aborted || timeout.aborted) {

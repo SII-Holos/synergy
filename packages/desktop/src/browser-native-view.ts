@@ -16,6 +16,7 @@ export class BrowserNativeViewManager {
   constructor(
     private window: BrowserWindow,
     private pool: BrowserNativePagePool,
+    private readonly sendEvent: (event: BrowserNativeViewEvent) => void,
   ) {}
 
   async attach(input: BrowserNativeAttachRequest): Promise<void> {
@@ -62,7 +63,7 @@ export class BrowserNativeViewManager {
   private bindEvents(pageId: string, view: WebContentsView): () => void {
     const contents = view.webContents
     const emit = (event: BrowserNativeViewEvent) => {
-      if (!this.window.isDestroyed()) this.window.webContents.send("browser-native:event", event)
+      this.sendEvent(event)
     }
     const loading = () =>
       emit({

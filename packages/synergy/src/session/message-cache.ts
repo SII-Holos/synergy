@@ -1,4 +1,4 @@
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
 
 // Loop-scoped in-memory session message cache (issue #350 D2).
 //
@@ -93,11 +93,7 @@ export namespace SessionMessageCache {
       next[idx] = { info, parts: list[idx].parts }
       delta = estimateInfo(info) - estimateInfo(list[idx].info)
     } else {
-      next.splice(
-        insertionIndex(list, info.id, (m) => m.info.id),
-        0,
-        { info, parts: [] },
-      )
+      next.splice(messageInsertionIndex(list, info), 0, { info, parts: [] })
       delta = estimateInfo(info)
     }
     cache.set(sessionID, next)
@@ -212,8 +208,17 @@ export namespace SessionMessageCache {
     return total
   }
 
-  // Ascending-by-id insertion point. Message/part ids are monotonic, so this is
-  // an append in the common case; binary search keeps out-of-order inserts sane.
+  function messageInsertionIndex(messages: MessageV2.WithParts[], info: MessageV2.Info): number {
+    let lo = 0
+    let hi = messages.length
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1
+      if (MessageV2.compareStorageOrder(messages[mid].info, info) < 0) lo = mid + 1
+      else hi = mid
+    }
+    return lo
+  }
+
   function insertionIndex<T>(arr: T[], id: string, idOf: (t: T) => string): number {
     let lo = 0
     let hi = arr.length

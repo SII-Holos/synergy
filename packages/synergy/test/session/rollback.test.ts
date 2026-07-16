@@ -45,6 +45,36 @@ describe("session rollback history", () => {
     })
   })
 
+  test("legacy rollback events use the first dropped message as the chronological cut", () => {
+    const sessionID = "ses_legacy_rollback"
+    const firstRootID = Identifier.ascending("message")
+    const firstAssistantID = Identifier.ascending("message")
+    const legacyRootID = `msg_${"f".repeat(26)}`
+    const legacyAssistantID = Identifier.ascending("message")
+    const messages = [
+      rollbackUser(sessionID, firstRootID, 1),
+      rollbackAssistant(sessionID, firstAssistantID, firstRootID, 2),
+      rollbackUser(sessionID, legacyRootID, 3),
+      rollbackAssistant(sessionID, legacyAssistantID, legacyRootID, 4),
+    ]
+    const event: SessionHistory.RollbackEvent = {
+      id: Identifier.ascending("history"),
+      sessionID,
+      type: "rollback",
+      time: { created: 5 },
+      numTurns: 1,
+      droppedMessageIDs: [legacyRootID, legacyAssistantID],
+      droppedUserMessageIDs: [legacyRootID],
+      files: [],
+      patchPartIDs: [],
+    }
+
+    expect(SessionHistory.applyEvents(messages, [event]).map((message) => message.info.id)).toEqual([
+      firstRootID,
+      firstAssistantID,
+    ])
+  })
+
   test("new user input after rollback makes unrollback unavailable", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -99,6 +129,36 @@ describe("session rollback history", () => {
         expect(await visibleTexts(session.id)).toEqual(["first", "one", "steer after rollback", "replacement"])
         expect((await Session.get(session.id)).history?.rollback?.canUnrollback).toBe(false)
         expect(injected.info.rootID).toBe(rollback.cutMessageID)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("cutMessageID rollback starts at a chronological legacy-id message", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await sleep(2)
+        const legacyRootID = `msg_${"0".repeat(26)}`
+        await writeUser(session.id, "legacy second", {
+          id: legacyRootID,
+          isRoot: true,
+          rootID: legacyRootID,
+        })
+        await sleep(2)
+        await writeAssistant(session.id, tmp.path, legacyRootID, "legacy reply")
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          cutMessageID: legacyRootID,
+        })) as SessionHistory.RollbackEvent
+
+        expect(rollback.droppedMessageIDs).toHaveLength(2)
+        expect(await visibleTexts(session.id)).toEqual(["first", "one"])
 
         await Session.remove(session.id)
       },
@@ -205,6 +265,35 @@ describe("session rollback history", () => {
       },
     })
   })
+  test("fork before a chronological legacy-id message copies the preceding history", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Legacy source" })
+        await writeTurn(session.id, tmp.path, "first", "one")
+        await sleep(2)
+        const legacyRootID = `msg_${"0".repeat(26)}`
+        await writeUser(session.id, "legacy second", {
+          id: legacyRootID,
+          isRoot: true,
+          rootID: legacyRootID,
+        })
+        await sleep(2)
+        await writeAssistant(session.id, tmp.path, legacyRootID, "legacy reply")
+
+        const forked = await Session.fork({
+          sessionID: session.id,
+          position: { type: "before", messageID: legacyRootID },
+        })
+
+        expect(await visibleTexts(forked.id)).toEqual(["first", "one"])
+
+        await Session.remove(session.id)
+        await Session.remove(forked.id)
+      },
+    })
+  })
 })
 
 async function writeTurn(sessionID: string, cwd: string, userText: string, assistantText: string) {
@@ -285,6 +374,44 @@ async function writeAssistant(
     })
   }
   return { info, parts: await MessageV2.parts({ sessionID, messageID: info.id }) }
+}
+
+function rollbackUser(sessionID: string, id: string, created: number): MessageV2.WithParts {
+  return {
+    info: {
+      id,
+      sessionID,
+      role: "user",
+      agent: "default",
+      model: { providerID: "openai", modelID: "gpt-4" },
+      isRoot: true,
+      rootID: id,
+      time: { created },
+    },
+    parts: [],
+  }
+}
+
+function rollbackAssistant(sessionID: string, id: string, rootID: string, created: number): MessageV2.WithParts {
+  return {
+    info: {
+      id,
+      sessionID,
+      role: "assistant",
+      mode: "default",
+      agent: "default",
+      path: { cwd: "/tmp", root: "/tmp" },
+      cost: 0,
+      tokens: { output: 0, input: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      modelID: "gpt-4",
+      providerID: "openai",
+      parentID: rootID,
+      rootID,
+      time: { created, completed: created },
+      finish: "end_turn",
+    },
+    parts: [],
+  }
 }
 
 async function visibleTexts(sessionID: string) {

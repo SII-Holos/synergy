@@ -3,6 +3,7 @@ import { ModelsDev } from "../provider/models"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
+import { ConfigImport } from "./import"
 import { ConfigDomain } from "./domain"
 import { RuntimeReload } from "../runtime/reload"
 import { Global } from "../global"
@@ -854,25 +855,19 @@ export namespace ConfigSetup {
 
   async function verifyLanguageModel(
     value: string,
-    options?: { requireMultimodal?: boolean; label?: string; importContext?: ImportProbeContext },
+    options?: { requireImageInput?: boolean; label?: string; importContext?: ImportProbeContext },
   ): Promise<FieldValidationResult> {
     const startedAt = now()
     const label = options?.label ?? "Model"
     try {
       const target = await resolveProbeModelTarget(value, options?.importContext)
 
-      if (options?.requireMultimodal) {
-        const supportsVision =
-          target.model.capabilities.input.image ||
-          target.model.capabilities.input.video ||
-          target.model.capabilities.input.pdf
-        if (!supportsVision) {
-          return withTiming(startedAt, {
-            valid: false,
-            mode: "static",
-            message: `${label} must support image, PDF, or video input`,
-          })
-        }
+      if (options?.requireImageInput && !target.model.capabilities.input.image) {
+        return withTiming(startedAt, {
+          valid: false,
+          mode: "static",
+          message: `${label} must support image input`,
+        })
       }
 
       return withTiming(startedAt, {
@@ -987,7 +982,7 @@ export namespace ConfigSetup {
 
   async function probeLanguageModel(
     value: string,
-    options?: { requireMultimodal?: boolean; label?: string; importContext?: ImportProbeContext },
+    options?: { requireImageInput?: boolean; label?: string; importContext?: ImportProbeContext },
   ): Promise<FieldValidationResult> {
     const startedAt = now()
     const label = options?.label ?? "Model"
@@ -1001,7 +996,7 @@ export namespace ConfigSetup {
           : await createImportedLanguageRuntime(target, options?.importContext?.auth)
       const providerOptions = ProviderTransform.providerOptions(model, ProviderTransform.smallOptions(model))
 
-      const messages: ModelMessage[] = options?.requireMultimodal
+      const messages: ModelMessage[] = options?.requireImageInput
         ? [
             {
               role: "user",
@@ -1025,14 +1020,14 @@ export namespace ConfigSetup {
         maxOutputTokens: 8,
         temperature: 0,
         providerOptions,
-        abortSignal: AbortSignal.timeout(options?.requireMultimodal ? 60_000 : 12_000),
+        abortSignal: AbortSignal.timeout(options?.requireImageInput ? 60_000 : 12_000),
       })
 
       return withTiming(startedAt, {
         valid: true,
         mode: "live",
-        message: options?.requireMultimodal
-          ? `${label} passed a multimodal live probe`
+        message: options?.requireImageInput
+          ? `${label} passed an image-input live probe`
           : `${label} passed a live probe`,
       })
     } catch (error) {
@@ -1228,7 +1223,7 @@ export namespace ConfigSetup {
       vision_model: config.vision_model
         ? await verifyLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: context,
           })
         : recommendedSkipped("No vision model configured — look_at will be disabled"),
@@ -1256,7 +1251,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? probeLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: context,
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
@@ -1291,7 +1286,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? verifyLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: { config },
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
@@ -1323,7 +1318,7 @@ export namespace ConfigSetup {
       config.vision_model
         ? probeLanguageModel(config.vision_model, {
             label: "Vision model",
-            requireMultimodal: true,
+            requireImageInput: true,
             importContext: { config },
           })
         : Promise.resolve(recommendedSkipped("No vision model configured — look_at will be disabled")),
@@ -1558,7 +1553,7 @@ export namespace ConfigSetup {
       throw new Error(parsed.error.issues.map(formatIssue).join(", "))
     }
 
-    await Config.domainImportApply({ config: parsed.data, yes: true })
+    await ConfigImport.apply({ config: parsed.data, scope: "global", source: "setup", yes: true })
     return Config.globalPath()
   }
 
@@ -1566,45 +1561,8 @@ export namespace ConfigSetup {
     return Config.globalRaw()
   }
 
-  /**
-   * Download and parse JSON config from a URL.
-   * Used by `synergy config import <url>`.
-   */
+  /** Download and parse a bounded JSONC config source. */
   export async function downloadConfigFromURL(url: string): Promise<unknown> {
-    const TIMEOUT_MS = 15_000 // 15 seconds timeout
-
-    try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: {
-          Accept: "application/json",
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Config not found at URL (HTTP ${response.status})`)
-      }
-
-      const text = await response.text()
-      try {
-        return JSON.parse(text)
-      } catch {
-        throw new Error("Invalid JSON format in downloaded config")
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.name === "TimeoutError" || error.message.includes("timeout")) {
-          throw new Error("Connection timeout while downloading config")
-        }
-        if (error.message.includes("HTTP")) {
-          throw error // Already formatted HTTP error
-        }
-        if (error.message.includes("JSON")) {
-          throw error // Already formatted JSON error
-        }
-        throw new Error(`Failed to download config from URL: ${error.message}`)
-      }
-      throw new Error("Failed to download config from URL: Unknown error")
-    }
+    return ConfigImport.fetchSource(url)
   }
 }

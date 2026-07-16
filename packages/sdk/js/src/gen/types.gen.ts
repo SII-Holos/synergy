@@ -1923,6 +1923,7 @@ export type ProviderConfig = {
         input: Array<"text" | "audio" | "image" | "video" | "pdf">
         output: Array<"text" | "audio" | "image" | "video" | "pdf">
       }
+      supported_image_media_types?: Array<string>
       status?: "alpha" | "beta" | "deprecated"
       options?: {
         [key: string]: unknown
@@ -3167,35 +3168,78 @@ export type ConfigDomainOpenError = {
   path?: string
 }
 
+export type ConfigImportScope = "global" | "project"
+
+export type ConfigImportDiagnostic = {
+  severity: "warning" | "info"
+  code: string
+  message: string
+  path?: string
+}
+
 export type ConfigDomainImportChange = {
   key: string
+  type: "add" | "modify" | "remove"
   before?: unknown
   after?: unknown
   conflict: boolean
+  diagnostics: Array<ConfigImportDiagnostic>
+}
+
+export type ConfigDomainImportDomainPlan = {
+  id:
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  filename: string
+  path: string
+  mode: "merge" | "replace-domain" | "append"
+  revision: string
+  changes: Array<ConfigDomainImportChange>
 }
 
 export type ConfigDomainImportPlan = {
-  domains: Array<{
-    id:
-      | "general"
-      | "models"
-      | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "agents"
-      | "commands"
-      | "permissions"
-      | "channels"
-      | "holos"
-      | "email"
-      | "runtime"
-    filename: string
-    path: string
-    mode: "merge" | "replace-domain" | "append"
-    changes: Array<ConfigDomainImportChange>
-  }>
+  scope: ConfigImportScope
+  scopeID: string
+  source: string
+  revision: string
+  domains: Array<ConfigDomainImportDomainPlan>
   conflicts: Array<ConfigDomainImportChange>
+}
+
+export type ConfigImportProjectScopeRequiredError = {
+  name: "ConfigImportProjectScopeRequiredError"
+  data: {
+    message: string
+  }
+}
+
+export type ConfigImportInvalidConfigError = {
+  name: "ConfigInvalidError"
+  data: {
+    path: string
+    issues?: Array<unknown>
+    message?: string
+  }
+}
+
+export type ConfigImportSourceTooLargeError = {
+  name: "ConfigImportSourceTooLargeError"
+  data: {
+    message: string
+    source: string
+    maxBytes: number
+  }
 }
 
 export type ConfigDomainImportPlanInput = {
@@ -3216,6 +3260,119 @@ export type ConfigDomainImportPlanInput = {
     | "runtime"
   >
   mode?: "merge" | "replace-domain" | "append"
+  scope?: ConfigImportScope
+  source?: string
+}
+
+export type RuntimeReloadTarget =
+  | "config"
+  | "skill"
+  | "provider"
+  | "agent"
+  | "plugin"
+  | "mcp"
+  | "lsp"
+  | "formatter"
+  | "watcher"
+  | "channel"
+  | "holos"
+  | "command"
+  | "tool_registry"
+  | "all"
+
+export type RuntimeReloadFailure = {
+  target: RuntimeReloadTarget
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  recoverable?: boolean
+}
+
+export type RuntimeReloadDiagnostic = {
+  target: RuntimeReloadTarget
+  severity: "error" | "warning" | "info"
+  message: string
+  code?: string
+  name?: string
+  path?: string
+  phase?: string
+  source?: string
+}
+
+export type RuntimeReloadResult = {
+  success: boolean
+  requested: Array<RuntimeReloadTarget>
+  executed: Array<RuntimeReloadTarget>
+  cascaded: Array<RuntimeReloadTarget>
+  changedFields: Array<string>
+  restartRequired: Array<string>
+  liveApplied: Array<string>
+  warnings: Array<string>
+  failed: Array<RuntimeReloadTarget>
+  failures: Array<RuntimeReloadFailure>
+  diagnostics: Array<RuntimeReloadDiagnostic>
+}
+
+export type ConfigDomainImportApplyResult = {
+  plan: ConfigDomainImportPlan
+  reload: RuntimeReloadResult
+}
+
+export type ConfigImportRevisionConflictError = {
+  name: "ConfigImportRevisionConflictError"
+  data: {
+    message: string
+    domains: Array<
+      | "general"
+      | "models"
+      | "providers"
+      | "library"
+      | "mcp"
+      | "plugins"
+      | "agents"
+      | "commands"
+      | "permissions"
+      | "channels"
+      | "holos"
+      | "email"
+      | "runtime"
+    >
+  }
+}
+
+export type ConfigImportLockedError = {
+  name: "ConfigImportLockedError"
+  data: {
+    message: string
+    scope: ConfigImportScope
+  }
+}
+
+export type ConfigDomainImportApplyInput = {
+  config: Config
+  only?: Array<
+    | "general"
+    | "models"
+    | "providers"
+    | "library"
+    | "mcp"
+    | "plugins"
+    | "agents"
+    | "commands"
+    | "permissions"
+    | "channels"
+    | "holos"
+    | "email"
+    | "runtime"
+  >
+  mode?: "merge" | "replace-domain" | "append"
+  scope?: ConfigImportScope
+  source?: string
+  revision?: string
+  yes?: boolean
+  force?: boolean
 }
 
 export type Model = {
@@ -3240,6 +3397,7 @@ export type Model = {
       image: boolean
       video: boolean
       pdf: boolean
+      supportedImageMediaTypes?: Array<string>
     }
     output: {
       text: boolean
@@ -3302,57 +3460,6 @@ export type Provider = {
   models: {
     [key: string]: Model
   }
-}
-
-export type RuntimeReloadTarget =
-  | "config"
-  | "skill"
-  | "provider"
-  | "agent"
-  | "plugin"
-  | "mcp"
-  | "lsp"
-  | "formatter"
-  | "watcher"
-  | "channel"
-  | "holos"
-  | "command"
-  | "tool_registry"
-  | "all"
-
-export type RuntimeReloadFailure = {
-  target: RuntimeReloadTarget
-  message: string
-  code?: string
-  name?: string
-  path?: string
-  phase?: string
-  recoverable?: boolean
-}
-
-export type RuntimeReloadDiagnostic = {
-  target: RuntimeReloadTarget
-  severity: "error" | "warning" | "info"
-  message: string
-  code?: string
-  name?: string
-  path?: string
-  phase?: string
-  source?: string
-}
-
-export type RuntimeReloadResult = {
-  success: boolean
-  requested: Array<RuntimeReloadTarget>
-  executed: Array<RuntimeReloadTarget>
-  cascaded: Array<RuntimeReloadTarget>
-  changedFields: Array<string>
-  restartRequired: Array<string>
-  liveApplied: Array<string>
-  warnings: Array<string>
-  failed: Array<RuntimeReloadTarget>
-  failures: Array<RuntimeReloadFailure>
-  diagnostics: Array<RuntimeReloadDiagnostic>
 }
 
 export type RuntimeReloadScope = "auto" | "global" | "project"
@@ -3553,6 +3660,8 @@ export type SessionCortexDelegation = {
     modelID: string
   }
   error?: string
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
   visibility?: "visible" | "hidden"
   tools?: {
     [key: string]: boolean
@@ -3982,6 +4091,7 @@ export type SessionInboxItem = {
   id: string
   sessionID: string
   mode: "task" | "steer" | "context"
+  deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
     parts: Array<
@@ -8577,9 +8687,13 @@ export type ConfigImportPlanData = {
 
 export type ConfigImportPlanErrors = {
   /**
-   * Bad request
+   * Invalid import or missing project scope
    */
-  400: BadRequestError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportPlanError = ConfigImportPlanErrors[keyof ConfigImportPlanErrors]
@@ -8594,26 +8708,7 @@ export type ConfigImportPlanResponses = {
 export type ConfigImportPlanResponse = ConfigImportPlanResponses[keyof ConfigImportPlanResponses]
 
 export type ConfigImportApplyData = {
-  body?: {
-    config: Config
-    only?: Array<
-      | "general"
-      | "models"
-      | "providers"
-      | "library"
-      | "mcp"
-      | "plugins"
-      | "agents"
-      | "commands"
-      | "permissions"
-      | "channels"
-      | "holos"
-      | "email"
-      | "runtime"
-    >
-    mode?: "merge" | "replace-domain" | "append"
-    yes?: boolean
-  }
+  body?: ConfigDomainImportApplyInput
   path?: never
   query?: {
     directory?: string
@@ -8624,18 +8719,26 @@ export type ConfigImportApplyData = {
 
 export type ConfigImportApplyErrors = {
   /**
-   * Bad request
+   * Invalid import or missing project scope
    */
-  400: BadRequestError
+  400: BadRequestError | ConfigImportProjectScopeRequiredError | ConfigImportInvalidConfigError
+  /**
+   * Stale plan or concurrent import
+   */
+  409: ConfigImportRevisionConflictError | ConfigImportLockedError
+  /**
+   * Config import request is too large
+   */
+  413: ConfigImportSourceTooLargeError
 }
 
 export type ConfigImportApplyError = ConfigImportApplyErrors[keyof ConfigImportApplyErrors]
 
 export type ConfigImportApplyResponses = {
   /**
-   * Applied config import plan
+   * Applied config import result
    */
-  200: ConfigDomainImportPlan
+  200: ConfigDomainImportApplyResult
 }
 
 export type ConfigImportApplyResponse = ConfigImportApplyResponses[keyof ConfigImportApplyResponses]
