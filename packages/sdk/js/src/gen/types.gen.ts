@@ -3145,6 +3145,19 @@ export type Config = {
   }
 }
 
+export type ConfigInstructionsInfo = {
+  content: string
+  source: "override" | "primary" | "empty"
+  sourceFilename: "AGENTS.override.md" | "AGENTS.md" | null
+  editableFilename: "AGENTS.override.md"
+  hasOverride: boolean
+  maxBytes: number
+}
+
+export type ConfigInstructionsUpdateInput = {
+  content: string
+}
+
 export type ConfigDomainSummary = {
   id:
     | "general"
@@ -8554,6 +8567,73 @@ export type ConfigGlobalResponses = {
 }
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
+
+export type ConfigInstructionsResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsResetResponses = {
+  /**
+   * Reset effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsResetResponse = ConfigInstructionsResetResponses[keyof ConfigInstructionsResetResponses]
+
+export type ConfigInstructionsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsGetResponses = {
+  /**
+   * Effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsGetResponse = ConfigInstructionsGetResponses[keyof ConfigInstructionsGetResponses]
+
+export type ConfigInstructionsUpdateData = {
+  body?: ConfigInstructionsUpdateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigInstructionsUpdateError = ConfigInstructionsUpdateErrors[keyof ConfigInstructionsUpdateErrors]
+
+export type ConfigInstructionsUpdateResponses = {
+  /**
+   * Updated effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsUpdateResponse =
+  ConfigInstructionsUpdateResponses[keyof ConfigInstructionsUpdateResponses]
 
 export type ConfigDomainListData = {
   body?: never

@@ -41,10 +41,13 @@ import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
+import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
+import { PersonalizePanel } from "./panels/PersonalizePanel"
+import { createPersonalizeController } from "./panels/personalize-controller"
 import { UsagePanel } from "./panels/UsagePanel"
 import { GitHubPanel } from "./panels/GitHubPanel"
 import { McpPanel } from "./panels/McpPanel"
@@ -91,6 +94,16 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSync = useGlobalSync()
   const input = useInput()
   const platform = usePlatform()
+  const personalizeController = createPersonalizeController({
+    get: async () => (await globalSDK.client.config.instructions.get()).data!,
+    update: async (content) =>
+      (
+        await globalSDK.client.config.instructions.update({
+          configInstructionsUpdateInput: { content },
+        })
+      ).data!,
+    reset: async () => (await globalSDK.client.config.instructions.reset()).data!,
+  })
 
   const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
@@ -261,7 +274,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
   const editingLabel = createMemo(() => "Global Config")
-  const hasAnyChanges = createMemo(() => hasServerChanges())
+  const hasAnyChanges = createMemo(() => hasServerChanges() || personalizeController.dirty())
 
   function showConfirm(params: ConfirmOptions) {
     confirm.show(params)
@@ -278,6 +291,40 @@ export function SettingsPanel(props: SettingsPanelProps) {
     showConfirm,
   })
   cancelDebouncesRef.current = save.cancelDebounces
+
+  async function savePersonalizeChanges() {
+    const saved = await personalizeController.save()
+    if (!saved) {
+      showToast({
+        type: "error",
+        title: "Custom instructions not saved",
+        description: personalizeController.error() ?? "Review the Custom Instructions content and try again.",
+      })
+      return false
+    }
+    showToast({
+      type: "success",
+      title: personalizeController.info()?.hasOverride ? "Custom instructions saved" : "Custom instructions reset",
+      description: personalizeController.info()?.hasOverride
+        ? "Synergy will use AGENTS.override.md for subsequent prompt assembly."
+        : "Synergy will fall back to the global AGENTS.md file.",
+    })
+    return true
+  }
+
+  const explicitSaveSources = () => [
+    { dirty: save.explicitDirty, save: save.saveServerChanges },
+    { dirty: personalizeController.dirty, save: savePersonalizeChanges },
+  ]
+  const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
+  const explicitSaveBlocked = createMemo(
+    () =>
+      saving() || personalizeController.busy() || (personalizeController.dirty() && !personalizeController.canSave()),
+  )
+
+  async function saveExplicitChanges() {
+    await saveExplicitSettingsChanges(explicitSaveSources(), () => props.onClose?.() ?? dialog.close())
+  }
 
   async function openDomain(domain: ConfigDomainSummary["id"]) {
     if (!canOpenConfigFiles()) return
@@ -325,14 +372,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   const saveFooterStatus = createMemo<"idle" | "saving" | "saved" | "error" | "dirty">(() => {
-    if (save.autoStatus() === "error" || save.bgStatus() === "error") return "error"
-    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving()) return "saving"
+    if (save.autoStatus() === "error" || save.bgStatus() === "error" || personalizeController.status() === "error")
+      return "error"
+    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving() || personalizeController.busy())
+      return "saving"
     if (save.autoStatus() === "saved" || save.bgStatus() === "saved") return "saved"
-    if (save.explicitDirty()) return "dirty"
+    if (save.explicitDirty() || personalizeController.dirty()) return "dirty"
     return "idle"
   })
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     account: AccountPanel,
+    personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
       <GeneralPanel general={settings.general} onGeneralChange={(key, value) => setSettings("general", key, value)} />
     ),
@@ -609,15 +659,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
                 Cancel
               </Button>
-              <Show when={save.explicitDirty()}>
+              <Show when={hasExplicitChanges()}>
                 <Button
                   type="button"
                   variant="primary"
                   size="large"
-                  disabled={saving()}
-                  onClick={() => void save.saveServerChanges({ close: true })}
+                  disabled={explicitSaveBlocked()}
+                  onClick={() => void saveExplicitChanges()}
                 >
-                  {saving() ? "Saving..." : "Save Changes"}
+                  {saving() || personalizeController.status() === "saving" ? "Saving..." : "Save Changes"}
                 </Button>
               </Show>
             </AppPanel.Footer>

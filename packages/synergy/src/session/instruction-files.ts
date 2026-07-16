@@ -159,7 +159,7 @@ export namespace InstructionFiles {
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
     const projectPaths = maxBytes <= 0 ? [] : await discoverProjectPaths(config)
     const globalPath = maxBytes <= 0 ? undefined : await discoverGlobalPath()
-    const automaticPaths = globalPath ? [...projectPaths, globalPath] : projectPaths
+    const automaticPaths = globalPath ? [globalPath, ...projectPaths] : projectPaths
 
     const automaticParts = await Promise.all(
       automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
