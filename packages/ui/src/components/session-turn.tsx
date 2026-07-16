@@ -203,7 +203,7 @@ export function collectUserCompactionTimelineItems(
 
 export function shouldShowTurnDiffs(
   message: Pick<UserMessage, "metadata" | "summary"> | undefined,
-  options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean; now?: number } = {},
+  options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean } = {},
 ): TurnDiffPanelState {
   if (!message) return "hidden"
   if (options.isCompactedParent) return "hidden"
@@ -212,7 +212,7 @@ export function shouldShowTurnDiffs(
   const summary = message.summary
   const diffState = summary?.diffState
   if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
-  if (diffState.status === "pending") return (options.now ?? Date.now()) >= diffState.deadlineAt ? "error" : "pending"
+  if (diffState.status === "pending") return "pending"
   if (diffState.status === "error") return "error"
   return summary.diffs.length > 0 ? "ready" : "hidden"
 }
@@ -784,28 +784,17 @@ export function SessionTurn(
     timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
   )
   const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
-  const [diffNow, setDiffNow] = createSignal(Date.now())
   const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
   const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
   const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
-  const pendingDeadlineAt = createMemo(() => {
-    const diffState = message()?.summary?.diffState
-    return diffState?.status === "pending" ? diffState.deadlineAt : undefined
-  })
 
   createEffect(
-    on(pendingDeadlineAt, (deadlineAt) => {
-      const now = Date.now()
-      setDiffNow(now)
+    on(diffSettlementStatus, (status) => {
       setPendingDelayElapsed(false)
-      if (deadlineAt === undefined) return
+      if (status !== "pending") return
 
       const pendingTimer = setTimeout(() => setPendingDelayElapsed(true), TURN_DIFF_PENDING_DELAY_MS)
-      const deadlineTimer = setTimeout(() => setDiffNow(Date.now()), Math.max(0, deadlineAt - now + 1))
-      onCleanup(() => {
-        clearTimeout(pendingTimer)
-        clearTimeout(deadlineTimer)
-      })
+      onCleanup(() => clearTimeout(pendingTimer))
     }),
   )
 
@@ -816,7 +805,6 @@ export function SessionTurn(
     const projected = shouldShowTurnDiffs(msg, {
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
-      now: diffNow(),
     })
     return resolveTurnDiffPanelState(projected, pendingDelayElapsed())
   })

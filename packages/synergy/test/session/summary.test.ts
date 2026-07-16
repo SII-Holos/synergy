@@ -125,6 +125,70 @@ async function createTurn(input: {
   return { user, assistant, from, to, diff }
 }
 
+async function createContinuation(input: {
+  sessionID: string
+  directory: string
+  root: MessageV2.User
+  index: number
+}) {
+  const steer = (await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    sessionID: input.sessionID,
+    role: "user",
+    isRoot: false,
+    rootID: input.root.id,
+    visible: false,
+    time: { created: Date.now() },
+    agent: input.root.agent,
+    model: input.root.model,
+  })) as MessageV2.User
+  const assistant = (await Session.updateMessage({
+    id: Identifier.ascending("message"),
+    sessionID: input.sessionID,
+    role: "assistant",
+    parentID: input.root.id,
+    rootID: input.root.id,
+    modelID: "kimi-k2-thinking",
+    providerID: "moonshotai-cn",
+    time: { created: Date.now() },
+    mode: "synergy",
+    agent: "synergy",
+    path: { cwd: input.directory, root: input.directory },
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+    finish: "stop",
+  })) as MessageV2.Assistant
+  const from = `from_tree_${input.index}`
+  const to = `to_tree_${input.index}`
+  const relativeFile = `file-${input.index}.txt`
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: assistant.id,
+    sessionID: input.sessionID,
+    type: "step-start",
+    snapshot: from,
+  })
+  await Session.updatePart({
+    id: Identifier.ascending("part"),
+    messageID: assistant.id,
+    sessionID: input.sessionID,
+    type: "step-finish",
+    reason: "stop",
+    snapshot: to,
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  })
+  const diff = SnapshotSchema.fromPatch({
+    file: relativeFile,
+    additions: 1,
+    deletions: 0,
+    binary: false,
+    patch: `diff --git a/${relativeFile} b/${relativeFile}\n@@ -0,0 +1 @@\n+continued\n`,
+    afterBytes: 10,
+  })
+  return { steer, assistant, from, to, diff }
+}
+
 async function storedUser(sessionID: string, messageID: string) {
   const messages = await Session.messages({ sessionID })
   return messages.find((message) => message.info.id === messageID)?.info as MessageV2.User | undefined
@@ -560,6 +624,50 @@ describe("SessionSummary", () => {
     }
   })
 
+  test("preserves ready diffs when session aggregation exceeds the run timeout", async () => {
+    const previousTimeout = process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+    process.env.SYNERGY_SUMMARY_TIMEOUT_MS = "50"
+    await using tmp = await tmpdir({ git: true })
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Ready before timeout" })
+          const first = await createTurn({ sessionID: session.id, directory: tmp.path, index: 15 })
+          const second = await createTurn({ sessionID: session.id, directory: tmp.path, index: 16 })
+          const messageDiffReady = Promise.withResolvers<void>()
+          const sessionDiffStarted = Promise.withResolvers<void>()
+          const sessionDiff = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
+          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+            if (from === second.from && to === second.to) {
+              messageDiffReady.resolve()
+              return [second.diff]
+            }
+            if (from === first.from && to === second.to) {
+              sessionDiffStarted.resolve()
+              return sessionDiff.promise
+            }
+            return []
+          })
+          installTestModel()
+
+          const summarizing = SessionSummary.summarize({ sessionID: session.id, messageID: second.user.id })
+          await Promise.all([messageDiffReady.promise, sessionDiffStarted.promise])
+          expect((await storedUser(session.id, second.user.id))?.summary?.diffState).toEqual({ status: "ready" })
+          await summarizing
+          sessionDiff.resolve([first.diff, second.diff])
+
+          expect((await storedUser(session.id, second.user.id))?.summary?.diffState).toEqual({ status: "ready" })
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (previousTimeout === undefined) delete process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+      else process.env.SYNERGY_SUMMARY_TIMEOUT_MS = previousTimeout
+    }
+  })
+
   test("writes ready with empty diffs", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -715,6 +823,156 @@ describe("SessionSummary", () => {
         await Session.remove(session.id)
       },
     })
+  })
+
+  test("re-runs the same root for a later terminal assistant revision", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Same-root continuation" })
+        const first = await createTurn({ sessionID: session.id, directory: tmp.path, index: 11 })
+        const firstStarted = Promise.withResolvers<void>()
+        const firstResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
+        let continuation: Awaited<ReturnType<typeof createContinuation>> | undefined
+        const ranges: string[] = []
+        ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+          ranges.push(`${from}:${to}`)
+          if (from === first.from && to === first.to) {
+            firstStarted.resolve()
+            return firstResult.promise
+          }
+          if (continuation && from === first.from && to === continuation.to) {
+            return [first.diff, continuation.diff]
+          }
+          return []
+        })
+        installTestModel()
+
+        const firstRun = SessionSummary.summarize({
+          sessionID: session.id,
+          messageID: first.user.id,
+          revisionID: first.assistant.id,
+        })
+        await firstStarted.promise
+        continuation = await createContinuation({
+          sessionID: session.id,
+          directory: tmp.path,
+          root: first.user,
+          index: 12,
+        })
+        const secondRun = SessionSummary.summarize({
+          sessionID: session.id,
+          messageID: first.user.id,
+          revisionID: continuation.assistant.id,
+        })
+        firstResult.resolve([first.diff])
+        await Promise.all([firstRun, secondRun])
+
+        expect((await storedUser(session.id, first.user.id))?.summary?.diffs).toEqual([first.diff, continuation.diff])
+        expect(ranges).toContain(`${first.from}:${continuation.to}`)
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("times out the worker before advancing and rejects late writes", async () => {
+    const previousTimeout = process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+    process.env.SYNERGY_SUMMARY_TIMEOUT_MS = "50"
+    await using tmp = await tmpdir({ git: true })
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Timeout ordering" })
+          const first = await createTurn({ sessionID: session.id, directory: tmp.path, index: 13 })
+          const second = await createTurn({ sessionID: session.id, directory: tmp.path, index: 14 })
+          const firstMessageStarted = Promise.withResolvers<void>()
+          const firstMessageResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
+          const firstSessionResult = Promise.withResolvers<SnapshotSchema.FileDiff[]>()
+          let fullRangeCalls = 0
+          ;(Snapshot.diffSummary as any) = mock(async (from: string, to: string) => {
+            if (from === first.from && to === first.to) {
+              firstMessageStarted.resolve()
+              return firstMessageResult.promise
+            }
+            if (from === first.from && to === second.to) {
+              fullRangeCalls++
+              if (fullRangeCalls === 1) return firstSessionResult.promise
+              return [first.diff, second.diff]
+            }
+            if (from === second.from && to === second.to) return [second.diff]
+            return []
+          })
+          installTestModel()
+
+          const firstRun = SessionSummary.summarize({
+            sessionID: session.id,
+            messageID: first.user.id,
+            revisionID: first.assistant.id,
+          })
+          await firstMessageStarted.promise
+          const secondRun = SessionSummary.summarize({
+            sessionID: session.id,
+            messageID: second.user.id,
+            revisionID: second.assistant.id,
+          })
+          await Promise.all([firstRun, secondRun])
+
+          expect((await storedUser(session.id, first.user.id))?.summary?.diffState).toEqual({
+            status: "error",
+            code: "timeout",
+          })
+          expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([first.diff, second.diff])
+
+          firstMessageResult.resolve([first.diff])
+          firstSessionResult.resolve([first.diff])
+          await Bun.sleep(10)
+
+          expect(await SessionSummary.diff({ sessionID: session.id })).toEqual([first.diff, second.diff])
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      if (previousTimeout === undefined) delete process.env.SYNERGY_SUMMARY_TIMEOUT_MS
+      else process.env.SYNERGY_SUMMARY_TIMEOUT_MS = previousTimeout
+    }
+  })
+
+  test("projects clearly expired pending settlements as timeout errors", () => {
+    const expired = MessageV2.canonicalMessage<MessageV2.User>({
+      id: "msg_expired",
+      sessionID: "ses_expired",
+      role: "user",
+      time: { created: Date.now() - 300_000 },
+      agent: "synergy",
+      model: { providerID: "test", modelID: "test" },
+      summary: {
+        diffs: [],
+        diffState: { status: "pending", deadlineAt: Date.now() - 180_000 },
+      },
+    })
+
+    expect(expired.summary?.diffState).toEqual({ status: "error", code: "timeout" })
+  })
+
+  test("keeps unexpired pending settlements pending", () => {
+    const pending = MessageV2.canonicalMessage<MessageV2.User>({
+      id: "msg_pending",
+      sessionID: "ses_pending",
+      role: "user",
+      time: { created: Date.now() },
+      agent: "synergy",
+      model: { providerID: "test", modelID: "test" },
+      summary: {
+        diffs: [],
+        diffState: { status: "pending", deadlineAt: Date.now() + 60_000 },
+      },
+    })
+
+    expect(pending.summary?.diffState?.status).toBe("pending")
   })
 
   test("deduplicates a messageID already in the current run", async () => {

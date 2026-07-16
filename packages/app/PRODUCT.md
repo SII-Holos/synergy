@@ -112,7 +112,7 @@ Turn-level file changes summarize in the message flow; detailed file diff inspec
 
 The turn diff panel appears below each completed turn and follows the `diffState` lifecycle from the message summary:
 
-- **pending**: The panel shows a quiet "Calculating file changes…" label with a pulsing icon. The state is hidden for the first 150 ms to avoid flashing on fast completions. If the deadline (`deadlineAt`) expires before the server resolves, the pending state automatically promotes to **error**.
+- **pending**: The panel shows a quiet "Calculating file changes…" label with a pulsing icon. The state is hidden for the first 150 ms to avoid flashing on fast completions. The server owns timeout and restart recovery and publishes the terminal **error** state; the client does not compare `deadlineAt` with its local clock.
 - **ready**: The panel displays the file list with per-file add/delete bars and a "Review changes" button. The panel enters with a subtle slide-and-fade animation (`turn-change-summary-entering`). Empty diffs (`summary.diffs` with zero length) render as hidden — only non-empty diff sets are visible.
 - **error**: The panel shows "Couldn't calculate file changes" with a weak icon. No inline error details or retry action; the error state is informational only.
 - **legacy (no diffState)**: A message without `diffState` but with non-empty `summary.diffs` inherits `ready` treatment to preserve backward compatibility with older histories.

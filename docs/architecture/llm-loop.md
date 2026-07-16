@@ -161,11 +161,11 @@ A blocking job can return `continue` to restart the loop after changing history 
 The `summarize` post-step job computes file diffs and derives title/body for each completed turn without joining the blocking loop path:
 
 1. The job writes `diffState: { status: "pending", deadlineAt }` immediately so the frontend sees the pending state.
-2. It computes diffs from the turn's snapshot range (`step-start` → `step-finish` part snapshots).
-3. On success, it writes `{ diffs, diffState: { status: "ready" } }` atomically. On failure, it writes `{ diffState: { status: "error", code } }` with a safe error code while preserving existing summary fields.
+2. It computes diffs from the complete root turn's snapshot range (`step-start` → latest `step-finish` across its assistant revisions).
+3. On success, it writes `{ diffs, diffState: { status: "ready" } }` atomically. A diff failure writes `{ diffState: { status: "error", code } }`; a per-run timeout applies `error/timeout` only while that turn is still `pending`, preserving a diff that already reached `ready` while later enrichment or session aggregation was running.
 4. Title generation may proceed after either outcome. Body generation runs only after a successful non-empty diff settlement, and the applicable LLM calls run in parallel.
 
-Concurrent summarizations for the same session are coalesced into a FIFO queue. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
+Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
 ## Prompt Budget
 

@@ -20,23 +20,18 @@ import { Bus } from "@/bus"
 
 import { LLM } from "./llm"
 import { Agent } from "@/agent/agent"
-import { Turn } from "./turn"
 import { LoopJob } from "./loop-job"
 import { SessionProgress } from "./progress"
-import { withTimeout } from "@/util/timeout"
 
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
-  type SummaryInput = { sessionID: string; messageID: string }
+  type SummaryInput = { sessionID: string; messageID: string; revisionID?: string }
   type ActiveSummary = { promise: Promise<void>; pending: SummaryInput[] }
   const active = new Map<string, ActiveSummary>()
 
-  // Each summary LLM call is bounded so a stalled provider can never hang the
-  // coalescing loop forever. AbortSignal.timeout aborts the request; the
-  // per-run timeout below is a belt-and-suspenders guarantee that `active`
-  // always clears even if some other await (or an SDK deadlock the abort
-  // signal cannot interrupt) never settles.
+  // Snapshot and LLM work receive the per-run abort signal so the queue only
+  // advances after the active worker has fully settled.
   const SUMMARY_LLM_TIMEOUT_MS = 60_000
   const DEFAULT_SUMMARY_RUN_TIMEOUT_MS = 120_000
   function summaryRunTimeoutMs() {
@@ -44,15 +39,60 @@ export namespace SessionSummary {
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_SUMMARY_RUN_TIMEOUT_MS
   }
 
+  function abortError(signal: AbortSignal) {
+    if (signal.reason instanceof Error) return signal.reason
+    return new DOMException("Summary aborted", "AbortError")
+  }
+
+  function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+    if (signal.aborted) {
+      promise.catch(() => {})
+      return Promise.reject(abortError(signal))
+    }
+    return new Promise<T>((resolve, reject) => {
+      const onAbort = () => {
+        promise.catch(() => {})
+        reject(abortError(signal))
+      }
+      signal.addEventListener("abort", onAbort, { once: true })
+      promise.then(
+        (value) => {
+          signal.removeEventListener("abort", onAbort)
+          resolve(value)
+        },
+        (error) => {
+          signal.removeEventListener("abort", onAbort)
+          reject(error)
+        },
+      )
+    })
+  }
+
+  function collectRootTurn(messages: MessageV2.WithParts[], rootMessageID: string) {
+    const rootIndex = messages.findIndex((message) => message.info.role === "user" && message.info.id === rootMessageID)
+    if (rootIndex < 0) return
+    const user = messages[rootIndex]
+    const assistants: MessageV2.WithParts[] = []
+    for (let index = rootIndex + 1; index < messages.length; index++) {
+      const message = messages[index]
+      if (message.info.role === "user" && message.info.isRoot === true) break
+      if (message.info.role === "assistant" && message.info.rootID === rootMessageID) assistants.push(message)
+    }
+    return { user, assistants }
+  }
+
   export const summarize = fn(
     z.object({
       sessionID: z.string(),
       messageID: z.string(),
+      revisionID: z.string().optional(),
     }),
     async (input) => {
       const current = active.get(input.sessionID)
       if (current) {
-        if (!current.pending.some((item) => item.messageID === input.messageID)) current.pending.push(input)
+        const key = input.revisionID ?? input.messageID
+        const queued = current.pending.some((item) => (item.revisionID ?? item.messageID) === key)
+        if (!queued) current.pending.push(input)
         return current.promise
       }
 
@@ -69,9 +109,19 @@ export namespace SessionSummary {
         const state = active.get(sessionID)
         const current = state?.pending[0]
         if (!current) return
-        await withTimeout(summarizeNow(current), summaryRunTimeoutMs(), {
-          message: "summarize timed out",
-        }).catch((error) => log.error("summarize failed", { sessionID, error }))
+        const controller = new AbortController()
+        const timeout = setTimeout(
+          () => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
+          summaryRunTimeoutMs(),
+        )
+        try {
+          await summarizeNow(current, controller.signal)
+        } catch (error) {
+          if (controller.signal.aborted) await markPendingSummaryTimedOut(current)
+          log.error("summarize failed", { sessionID, error })
+        } finally {
+          clearTimeout(timeout)
+        }
         state.pending.shift()
       }
     } finally {
@@ -79,8 +129,9 @@ export namespace SessionSummary {
     }
   }
 
-  async function summarizeNow(input: SummaryInput) {
+  async function summarizeNow(input: SummaryInput, abort: AbortSignal) {
     const all = await Session.messages({ sessionID: input.sessionID })
+    abort.throwIfAborted()
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
     const pendingWritten = Promise.withResolvers<void>()
     const messageSummary = summarizeMessage({
@@ -88,11 +139,12 @@ export namespace SessionSummary {
       messages: all,
       sessionID: input.sessionID,
       diffCache,
+      abort,
       onPending: pendingWritten.resolve,
     })
     await pendingWritten.promise
     const settled = await Promise.allSettled([
-      summarizeSession({ sessionID: input.sessionID, messages: all, diffCache }),
+      summarizeSession({ sessionID: input.sessionID, messages: all, diffCache, abort }),
       messageSummary,
     ])
     const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -103,6 +155,7 @@ export namespace SessionSummary {
     sessionID: string
     messages: MessageV2.WithParts[]
     diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+    abort: AbortSignal
   }) {
     const session = await SessionManager.requireSession(input.sessionID)
     const directory = (session.scope as Scope).directory
@@ -118,11 +171,13 @@ export namespace SessionSummary {
       messages: input.messages,
       sessionID: input.sessionID,
       cache: input.diffCache,
+      abort: input.abort,
     }).then((x) =>
       x.filter((x) => {
         return files.has(x.file)
       }),
     )
+    input.abort.throwIfAborted()
     await Session.update(input.sessionID, (draft) => {
       draft.summary = {
         additions: diffs.reduce((sum, x) => sum + x.additions, 0),
@@ -130,7 +185,9 @@ export namespace SessionSummary {
         files: diffs.length,
       }
     })
+    input.abort.throwIfAborted()
     await Storage.write(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)), diffs)
+    input.abort.throwIfAborted()
     Bus.publish(SessionEvent.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
@@ -139,13 +196,28 @@ export namespace SessionSummary {
 
   type UserSummary = NonNullable<MessageV2.User["summary"]>
 
-  async function updateSummary(input: SummaryInput, patch: Partial<UserSummary>) {
+  async function markPendingSummaryTimedOut(input: SummaryInput) {
+    const session = await SessionManager.requireSession(input.sessionID)
+    const scopeID = asScopeID((session.scope as Scope).id)
+    const fresh = await Storage.read<MessageV2.User>(
+      StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
+    )
+    if (!fresh || fresh.role !== "user" || fresh.summary?.diffState?.status !== "pending") return
+    fresh.summary = {
+      ...fresh.summary,
+      diffState: { status: "error", code: "timeout" },
+    }
+    await Session.updateMessage(fresh)
+  }
+
+  async function updateSummary(input: SummaryInput, patch: Partial<UserSummary>, abort?: AbortSignal) {
     const session = await SessionManager.requireSession(input.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const fresh = await Storage.read<MessageV2.User>(
       StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)),
     )
     if (!fresh || fresh.role !== "user") return
+    abort?.throwIfAborted()
     fresh.summary = {
       diffs: fresh.summary?.diffs ?? [],
       ...fresh.summary,
@@ -166,6 +238,7 @@ export namespace SessionSummary {
     messages: MessageV2.WithParts[]
     sessionID: string
     diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+    abort: AbortSignal
     onPending: () => void
   }) {
     let pendingNotified = false
@@ -176,7 +249,7 @@ export namespace SessionSummary {
     }
 
     try {
-      const turn = Turn.collectOne(input.messages, input.messageID)
+      const turn = collectRootTurn(input.messages, input.messageID)
       if (!turn) return
       const messages = [turn.user, ...turn.assistants]
       const msgWithParts = turn.user
@@ -191,17 +264,25 @@ export namespace SessionSummary {
             deadlineAt: Date.now() + summaryRunTimeoutMs(),
           },
         },
+        input.abort,
       )
       notifyPending()
 
       let diffs: SnapshotSchema.FileDiff[] | undefined
       try {
-        diffs = await computeDiff({ messages, sessionID: input.sessionID, cache: input.diffCache })
+        diffs = await computeDiff({
+          messages,
+          sessionID: input.sessionID,
+          cache: input.diffCache,
+          abort: input.abort,
+        })
         latestUser = await updateSummary(
           { sessionID: input.sessionID, messageID: input.messageID },
           { diffs, diffState: { status: "ready" } },
+          input.abort,
         )
       } catch (error) {
+        if (input.abort.aborted) throw abortError(input.abort)
         latestUser = await updateSummary(
           { sessionID: input.sessionID, messageID: input.messageID },
           { diffState: { status: "error", code: diffErrorCode(error) } },
@@ -244,12 +325,13 @@ export namespace SessionSummary {
               content: `The following is the text to summarize:\n<text>\n${textPart.text ?? ""}\n</text>`,
             },
           ],
-          abort: AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS),
+          abort: AbortSignal.any([input.abort, AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS)]),
           sessionID: userMsg.sessionID,
           system: [],
           retries: 3,
         })
         const result = await LLM.collectText(stream).catch((error) => {
+          if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary title", { error })
           return undefined
         })
@@ -284,18 +366,22 @@ export namespace SessionSummary {
               content: `Summarize the above conversation according to your system prompts.`,
             },
           ],
-          abort: AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS),
+          abort: AbortSignal.any([input.abort, AbortSignal.timeout(SUMMARY_LLM_TIMEOUT_MS)]),
           sessionID: userMsg.sessionID,
           system: [],
           retries: 3,
         })
         return LLM.collectText(stream).catch((error) => {
+          if (input.abort.aborted) throw abortError(input.abort)
           log.error("failed to generate summary body", { error })
           return undefined
         })
       }
 
-      const [title, body] = await Promise.all([generateTitle(), generateBody()])
+      const [title, body] = await Promise.all([
+        abortable(generateTitle(), input.abort),
+        abortable(generateBody(), input.abort),
+      ])
       if (!title && !body) return
       await updateSummary(
         { sessionID: input.sessionID, messageID: input.messageID },
@@ -303,6 +389,7 @@ export namespace SessionSummary {
           ...(title ? { title } : {}),
           ...(body ? { body } : {}),
         },
+        input.abort,
       )
     } finally {
       notifyPending()
@@ -327,16 +414,17 @@ export namespace SessionSummary {
     messages: MessageV2.WithParts[]
     sessionID: string
     cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+    abort: AbortSignal
   }) {
     const range = diffRange(input.messages)
     if (!range) return []
     const key = `${range.from}:${range.to}`
     let cached = input.cache.get(key)
     if (!cached) {
-      cached = Snapshot.diffSummary(range.from, range.to, input.sessionID)
+      cached = Snapshot.diffSummary(range.from, range.to, input.sessionID, input.abort)
       input.cache.set(key, cached)
     }
-    return cached
+    return abortable(cached, input.abort)
   }
 
   function diffRange(messages: MessageV2.WithParts[]) {
@@ -380,6 +468,7 @@ LoopJob.register({
     await SessionSummary.summarize({
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
+      revisionID: ctx.lastAssistant?.id,
     })
     return "pass"
   },

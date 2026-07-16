@@ -441,18 +441,12 @@ describe("session turn assistant collection", () => {
     const diff = { file: "file.ts", additions: 1, deletions: 0 }
 
     expect(shouldShowTurnDiffs({ summary: { diffs: [diff] } })).toBe("ready")
+    expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "pending", deadlineAt: 301_000 } } })).toBe(
+      "pending",
+    )
     expect(
-      shouldShowTurnDiffs(
-        { summary: { diffs: [], diffState: { status: "pending", deadlineAt: 2_000 } } },
-        { now: 1_000 },
-      ),
+      shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "pending", deadlineAt: -299_000 } } }),
     ).toBe("pending")
-    expect(
-      shouldShowTurnDiffs(
-        { summary: { diffs: [], diffState: { status: "pending", deadlineAt: 999 } } },
-        { now: 1_000 },
-      ),
-    ).toBe("error")
     expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "error", code: "unknown" } } })).toBe(
       "error",
     )
