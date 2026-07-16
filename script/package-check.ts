@@ -71,6 +71,10 @@ async function main() {
 
 async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string) {
   console.log(`\n=== package check: ${pkg.name} ===\n`)
+  const packageJsonPath = path.join(pkg.dir, "package.json")
+  const sourcePackageJsonBytes = await Bun.file(packageJsonPath).bytes()
+  const sourcePackageJson = JSON.parse(new TextDecoder().decode(sourcePackageJsonBytes)) as PackageJson
+
   const sdkOpenApiPath = path.join(SDK_DIR, "openapi.json")
   const isSdkBuild = pkg.dir === SDK_DIR
   let sdkOpenApiBefore: string | null = null
@@ -85,11 +89,9 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
     if (sdkOpenApiBefore !== null) {
       await Bun.write(sdkOpenApiPath, sdkOpenApiBefore)
     }
+    await Bun.write(packageJsonPath, sourcePackageJsonBytes)
   }
 
-  const packageJsonPath = path.join(pkg.dir, "package.json")
-  const originalText = await Bun.file(packageJsonPath).text()
-  const sourcePackageJson = JSON.parse(originalText) as PackageJson
   const publishablePackageJson = createPublishablePackageJson({
     packageJson: sourcePackageJson,
     version: String(sourcePackageJson.version),
@@ -105,7 +107,7 @@ async function validateWorkspacePackage(pkg: PublishablePackage, tempDir: string
       await runAttw(tarball)
     }
   } finally {
-    await Bun.write(packageJsonPath, originalText)
+    await Bun.write(packageJsonPath, sourcePackageJsonBytes)
   }
 }
 
