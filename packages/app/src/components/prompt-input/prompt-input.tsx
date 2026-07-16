@@ -90,6 +90,9 @@ import { restoreNewSessionRecovery } from "@/components/session/new-session-reco
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { PI } from "./prompt-input-i18n"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -170,6 +173,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const params = useParams()
   const command = useCommand()
   const sessionTransition = useSessionTransition()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -747,7 +752,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           const disabled = sessionHasMessages() && !!agent.external
           return {
             id: `agent-${agent.name}`,
-            label: visual.label,
+            label: translateDescriptor(visual.label, i18n),
             icon: getSemanticIcon("agents.main"),
             selected: local.agent.current()?.name === agent.name,
             disabled,
@@ -1685,7 +1690,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       trigger={
                         <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
                           <span class="text-12-medium text-text-base whitespace-nowrap">
-                            {getAgentVisual(local.agent.current()).label}
+                            {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
                           </span>
                           <Icon
                             name={getSemanticIcon("navigation.collapse")}
@@ -1729,7 +1734,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                   }}
                                 >
                                   <div class="min-w-0">
-                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                    <div class="text-13-medium text-text-base truncate">
+                                      {translateDescriptor(visual.label, i18n)}
+                                    </div>
                                   </div>
                                 </div>
                               </Tooltip>

@@ -15,6 +15,7 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { useLocale } from "@/context/locale"
 import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -244,6 +245,7 @@ function SubsessionsButton(props: {
 }) {
   const pageSize = 8
   const sdk = useSDK()
+  const { fmt } = useLocale()
   const [open, setOpen] = createSignal(false)
   const [items, setItems] = createSignal<Session[]>([])
   const [total, setTotal] = createSignal<number | undefined>()
@@ -483,7 +485,7 @@ function SubsessionsButton(props: {
                             </span>
                           </Show>
                           <span class="block truncate text-10-regular text-text-subtle">
-                            {relativeTime(sessionActivityTime(session))}
+                            {relativeTime(fmt, sessionActivityTime(session))}
                           </span>
                         </span>
                       </button>

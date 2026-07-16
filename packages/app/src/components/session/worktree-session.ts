@@ -75,14 +75,14 @@ function workspaceStepForSelection(
 ): SessionStartupWorkspaceStep {
   return selection.mode === "create"
     ? {
-        label: "Create checkout",
-        activeDetail: "Preparing a new git worktree.",
-        completeDetail: "Workspace setup complete.",
+        label: S.worktreeStepCreateCheckout.message,
+        activeDetail: S.worktreeDetailPreparingWorktree.message,
+        completeDetail: S.worktreeDetailWorkspaceSetupComplete.message,
       }
     : {
-        label: "Bind worktree",
-        activeDetail: "Using the selected checkout.",
-        completeDetail: "Workspace setup complete.",
+        label: S.worktreeStepBindWorktree.message,
+        activeDetail: S.worktreeDetailUsingCheckout.message,
+        completeDetail: S.worktreeDetailWorkspaceSetupComplete.message,
       }
 }
 
