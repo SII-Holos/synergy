@@ -53,7 +53,7 @@ CI runs on push to `dev` / `main` and on pull requests targeting those branches.
 | --------------------- | --------------------------------------------------------------------- |
 | `quality`             | Formatting, lint, monorepo deps, dead code                            |
 | `typecheck`           | TypeScript type checking                                              |
-| `test`                | All package tests + Synergy coverage                                  |
+| `test`                | Non-Synergy package tests plus one full Synergy test pass             |
 | `package-validation`  | publint + attw for publishable packages                               |
 | `workflow-validation` | actionlint + zizmor for CI workflow files                             |
 | `secret-scan`         | gitleaks for secrets and credentials                                  |
@@ -61,6 +61,8 @@ CI runs on push to `dev` / `main` and on pull requests targeting those branches.
 | `smoke`               | Server health check smoke test                                        |
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
+
+The test job excludes `synergy` from the Turbo package pass, then runs the complete Synergy suite once from `packages/synergy`. Coverage is not collected in the required CI path.
 
 ## Tool Responsibilities
 

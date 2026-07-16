@@ -105,6 +105,8 @@ export namespace ConfigDomain {
       "watcher",
       "formatter",
       "lsp",
+      "lspWriteDiagnostics",
+      "lspDiagnostics",
       "question",
       "compaction",
       "experimental",

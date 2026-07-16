@@ -18,8 +18,7 @@ import { createBlockResolver } from "../hashline/block-resolver"
 import { NoopLoopGuard, noopLoopDiagnostic } from "../hashline/noop-loop-guard"
 import { noopSoftWarning, WIDENED_SWAP_WARNING } from "../hashline/messages"
 import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
-import { collectWriteDiagnostics } from "./write-quality"
-import { LSP } from "../lsp"
+import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 
 /**
@@ -220,8 +219,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
     const committedResults: PatchSectionResult[] = []
     let firstError: Error | undefined
 
-    // Capture before-diagnostics for delta computation
-    const beforeDiagnostics = await LSP.diagnostics().catch(() => undefined)
+    const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
     for (const p of prepared) {
       if (p.isNoop) {

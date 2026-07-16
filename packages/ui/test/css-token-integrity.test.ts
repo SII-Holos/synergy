@@ -22,6 +22,7 @@ const PHASE2_UI_FILES: FileSet[] = [
 
 const APP_FILES = [
   "../app/src/components/prompt-input/quick-actions.css",
+  "../app/src/components/session/question-prompt.css",
   "../app/src/components/header-bar.css",
   "../app/src/components/context-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
@@ -120,6 +121,7 @@ const KNOWN_LOCAL_TOKENS = new Set([
   "workbench-panel-bg-hover",
   "workbench-card-bg",
   "workbench-card-bg-hover",
+  "workbench-row-bg",
   "workbench-card-secondary-bg",
   "workbench-control-bg",
   "workbench-control-bg-hover",

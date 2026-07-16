@@ -13,6 +13,7 @@ import { SessionExport } from "./session-export"
 import { SessionEvent } from "./event"
 import { SessionNav } from "./nav"
 import { Log } from "@/util/log"
+import { SnapshotSchema } from "./snapshot-schema"
 
 export namespace SessionImport {
   const log = Log.create({ service: "session-import" })
@@ -189,7 +190,10 @@ export namespace SessionImport {
       if (dag.length > 0) await Dag.update({ sessionID, nodes: dag })
       if (data.todos.length > 0) await Todo.update({ sessionID, todos: data.todos })
       if (data.diffs.length > 0) {
-        await Storage.write(StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)), data.diffs)
+        await Storage.write(
+          StoragePath.sessionSummary(scopeID, Identifier.asSessionID(sessionID)),
+          SnapshotSchema.boundArray(data.diffs),
+        )
       }
 
       imported.push({ sourceSessionID: data.info.id, session: info })

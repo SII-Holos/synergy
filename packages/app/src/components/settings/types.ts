@@ -61,6 +61,9 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  lspWriteDiagnostics: "true" as string,
+  lspDiagnosticsSeverity: "error" as string,
+  lspDiagnosticsScope: "project" as string,
   defaultAgent: "synergy" as string,
 } as const
 
@@ -271,6 +274,9 @@ export type RuntimeStore = {
   watcherIgnore: string
   logLevel: string
   coauthorReminder: string
+  lspWriteDiagnostics: string
+  lspDiagnosticsSeverity: string
+  lspDiagnosticsScope: string
 }
 
 export type SettingsState = {
@@ -354,6 +360,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
+      lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
+      lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
     },
     email: {
       enabled: true,

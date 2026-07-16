@@ -52,6 +52,7 @@ describe("tool.scope_list", () => {
         expect(result.output).toContain(`[${scope.id}]`)
         expect(result.output).toContain("[current]")
         expect(result.output).toContain("[home]")
+        expect(result.output).toContain("Use a project id as scopeID with session_list")
 
         const scopes = result.metadata.scopes as Array<{
           id: string

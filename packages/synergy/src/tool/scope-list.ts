@@ -104,7 +104,7 @@ export const ScopeListTool = Tool.define("scope_list", {
 
     const rangeStart = offset + 1
     const rangeEnd = offset + shown
-    const header = `Found ${total} scope${total === 1 ? "" : "s"} (showing ${rangeStart}-${rangeEnd}). Use id with session_control create as scopeID.`
+    const header = `Found ${total} scope${total === 1 ? "" : "s"} (showing ${rangeStart}-${rangeEnd}). Use a project id as scopeID with session_list or session_control create.`
     const lines = page.map(formatEntry)
 
     return {

@@ -13,6 +13,7 @@ import { SessionImport } from "../../src/session/session-import"
 import { SessionNav } from "../../src/session/nav"
 import { Scope } from "../../src/scope"
 import { Log } from "../../src/util/log"
+import { SessionBounds } from "../../src/session/bounds"
 
 Log.init({ print: false })
 
@@ -147,6 +148,41 @@ describe("SessionImport", () => {
         expect(list.data.map((item) => item.id)).toContain(importedRoot.id)
         const nav = await SessionNav.queryScope(scope.id)
         expect(nav.items.map((item) => item.id)).toContain(importedRoot.id)
+      },
+    })
+  })
+
+  test("bounds aggregate diff previews before persisting imported summaries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const root = await Session.create({ title: "Unbounded Diff Export" })
+        const report = await SessionExport.generate({ sessionID: root.id, mode: "full" })
+        report.sessions[0].diffs = Array.from({ length: 50 }, (_, index) => ({
+          file: `large-${index}.txt`,
+          additions: index + 1,
+          deletions: index,
+          preview: "界".repeat(SessionBounds.DIFF_PREVIEW_MAX_CHARS),
+          beforeBytes: index,
+          afterBytes: index + 1,
+        }))
+        await Session.remove(root.id)
+
+        const result = await SessionImport.fromReport(report)
+        const stored = await Storage.read<any[]>(
+          StoragePath.sessionSummary(Identifier.asScopeID(scope.id), Identifier.asSessionID(result.rootSessionID)),
+        )
+        const previewBytes = stored.reduce(
+          (total, diff) => total + (diff.preview ? SessionBounds.byteLength(diff.preview) : 0),
+          0,
+        )
+
+        expect(stored).toHaveLength(50)
+        expect(previewBytes).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+        expect(stored.some((diff) => !diff.preview && diff.truncated)).toBe(true)
       },
     })
   })

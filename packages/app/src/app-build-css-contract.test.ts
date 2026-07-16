@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { chromium, webkit } from "playwright"
 
 const appDir = fileURLToPath(new URL("..", import.meta.url))
 
@@ -101,41 +102,118 @@ const rootRuleContracts: CssRuleContract[] = [
   },
 ]
 
-function collectRootRuleBodies(css: string, selector: string): string[] {
-  const bodies: string[] = []
-  let searchIndex = 0
+type CssRuleMatch = {
+  body: string
+  ancestors: string[]
+}
 
-  while (searchIndex < css.length) {
-    const selectorIndex = css.indexOf(selector, searchIndex)
-    if (selectorIndex === -1) break
-    searchIndex = selectorIndex + selector.length
+function findBlockStart(css: string, start: number, end: number): number {
+  let quote: string | undefined
+  for (let index = start; index < end; index++) {
+    const char = css[index]
+    if (quote) {
+      if (char === "\\") index++
+      else if (char === quote) quote = undefined
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (char === "/" && css[index + 1] === "*") {
+      const commentEnd = css.indexOf("*/", index + 2)
+      return commentEnd === -1 ? -1 : findBlockStart(css, commentEnd + 2, end)
+    }
+    if (char === "{") return index
+  }
+  return -1
+}
 
-    const blockStart = css.indexOf("{", selectorIndex)
-    if (blockStart === -1) break
-    const ruleStart = Math.max(css.lastIndexOf("}", selectorIndex), css.lastIndexOf("{", selectorIndex)) + 1
-    const prelude = css.slice(ruleStart, blockStart).trim()
-    const selectors = prelude.split(",").map((item) => item.trim())
-    if (!selectors.includes(selector)) continue
+function findBlockEnd(css: string, blockStart: number, end: number): number {
+  let depth = 1
+  let quote: string | undefined
+  for (let index = blockStart + 1; index < end; index++) {
+    const char = css[index]
+    if (quote) {
+      if (char === "\\") index++
+      else if (char === quote) quote = undefined
+      continue
+    }
+    if (char === '"' || char === "'") {
+      quote = char
+      continue
+    }
+    if (char === "/" && css[index + 1] === "*") {
+      const commentEnd = css.indexOf("*/", index + 2)
+      if (commentEnd === -1) return -1
+      index = commentEnd + 1
+      continue
+    }
+    if (char === "{") depth++
+    if (char !== "}") continue
+    depth--
+    if (depth === 0) return index
+  }
+  return -1
+}
 
-    let depth = 0
-    for (let index = blockStart; index < css.length; index++) {
-      const char = css[index]
-      if (char === "{") {
-        depth++
-        continue
+function collectRuleMatches(css: string, selector: string): CssRuleMatch[] {
+  const matches: CssRuleMatch[] = []
+
+  function scan(start: number, end: number, ancestors: string[]) {
+    let cursor = start
+    while (cursor < end) {
+      const blockStart = findBlockStart(css, cursor, end)
+      if (blockStart === -1) return
+      const blockEnd = findBlockEnd(css, blockStart, end)
+      if (blockEnd === -1) return
+
+      const rawPrelude = css
+        .slice(cursor, blockStart)
+        .replaceAll(/\/\*[\s\S]*?\*\//g, "")
+        .trim()
+      const prelude = rawPrelude.slice(rawPrelude.lastIndexOf(";") + 1).trim()
+      if (prelude.startsWith("@")) {
+        scan(blockStart + 1, blockEnd, [...ancestors, prelude])
+      } else {
+        const selectors = prelude.split(",").map((item) => item.trim())
+        if (selectors.includes(selector)) {
+          matches.push({ body: css.slice(blockStart + 1, blockEnd), ancestors })
+        }
       }
-      if (char !== "}") continue
-      depth--
-      if (depth === 0) {
-        bodies.push(css.slice(blockStart + 1, index))
-        searchIndex = index + 1
-        break
-      }
+      cursor = blockEnd + 1
     }
   }
 
-  return bodies
+  scan(0, css.length, [])
+  return matches
 }
+
+function collectRootRuleBodies(css: string, selector: string): string[] {
+  return collectRuleMatches(css, selector)
+    .filter((match) => !match.ancestors.some((ancestor) => ancestor.startsWith("@media")))
+    .map((match) => match.body)
+}
+
+function isReducedMotionAtRule(prelude: string): boolean {
+  return prelude.replaceAll(/\s/g, "").includes("@media(prefers-reduced-motion:reduce)")
+}
+
+describe("CSS rule collection", () => {
+  test("keeps media-query rules out of root selector results", () => {
+    const selector = "[data-component=compaction-card][data-status=running]:before"
+    const css = `/*! generated CSS */@layer base{${selector}{animation:compaction-card-shimmer}@media (prefers-reduced-motion: reduce){${selector}{animation:none}}}`
+
+    expect(collectRootRuleBodies(css, selector)).toEqual(["animation:compaction-card-shimmer"])
+    expect(collectRuleMatches(css, selector)).toEqual([
+      { body: "animation:compaction-card-shimmer", ancestors: ["@layer base"] },
+      {
+        body: "animation:none",
+        ancestors: ["@layer base", "@media (prefers-reduced-motion: reduce)"],
+      },
+    ])
+  })
+})
 
 function expectRootRule(css: string, contract: CssRuleContract) {
   const bodies = collectRootRuleBodies(css, contract.selector)
@@ -168,6 +246,63 @@ async function readBuiltIndex(outDir: string) {
 
 async function readBuiltAssets(outDir: string) {
   return readdir(path.join(outDir, "assets"))
+}
+
+async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } })
+    await page.setContent(`
+      <style>
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        ${css}
+      </style>
+      <main class="relative size-full overflow-hidden flex flex-col contain-[layout_style_paint]">
+        <div class="synergy-workbench-canvas relative size-full overflow-hidden flex flex-col">
+          <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
+            <div data-pane class="session-workbench-pane relative flex flex-col flex-1">
+              <div data-prompt class="absolute inset-x-0 bottom-0 h-20"></div>
+            </div>
+          </div>
+          <div
+            data-bottom
+            class="workbench-surface workbench-surface--bottom workbench-surface--resizing"
+          ></div>
+        </div>
+      </main>
+    `)
+
+    const bottom = page.locator("[data-bottom]")
+    for (const bottomHeight of [0, 280, 480]) {
+      await bottom.evaluate((element, height) => {
+        element.style.height = `${height}px`
+      }, bottomHeight)
+
+      const layout = await page.evaluate(() => {
+        const pane = document.querySelector<HTMLElement>("[data-pane]")
+        const prompt = document.querySelector<HTMLElement>("[data-prompt]")
+        const bottomSurface = document.querySelector<HTMLElement>("[data-bottom]")
+        if (!pane || !prompt || !bottomSurface) throw new Error("Missing session layout fixture")
+
+        const paneRect = pane.getBoundingClientRect()
+        const promptRect = prompt.getBoundingClientRect()
+        const bottomRect = bottomSurface.getBoundingClientRect()
+        return {
+          paneHeight: paneRect.height,
+          paneBottom: paneRect.bottom,
+          promptBottom: promptRect.bottom,
+          bottomTop: bottomRect.top,
+        }
+      })
+
+      expect(Math.abs(layout.paneHeight - (800 - bottomHeight))).toBeLessThanOrEqual(1)
+      expect(Math.abs(layout.paneBottom - layout.bottomTop)).toBeLessThanOrEqual(1)
+      expect(Math.abs(layout.promptBottom - layout.bottomTop)).toBeLessThanOrEqual(1)
+    }
+  } finally {
+    await browser.close()
+  }
 }
 
 async function runAppBuild(outDir: string) {
@@ -209,6 +344,25 @@ describe("app production build contract", () => {
       )
       expect(expandedCompactionBodies.length, "Missing expanded compaction card CSS rule").toBeGreaterThan(0)
       expect(expandedCompactionBodies.join(";")).not.toContain(" both")
+      const shimmerSelectors = [
+        "[data-component=compaction-card][data-status=running]:before",
+        "[data-component=compaction-card][data-status=running]::before",
+      ]
+      const runningCompactionShimmerRules = shimmerSelectors.flatMap((selector) => collectRuleMatches(css, selector))
+      const rootShimmer = runningCompactionShimmerRules
+        .filter((rule) => !rule.ancestors.some((ancestor) => ancestor.startsWith("@media")))
+        .map((rule) => rule.body)
+        .join(";")
+      expect(rootShimmer, "Missing running compaction shimmer CSS rule").toContain("animation:compaction-card-shimmer")
+      expect(rootShimmer).toContain("will-change:transform,opacity")
+
+      const reducedMotionShimmer = runningCompactionShimmerRules
+        .filter((rule) => rule.ancestors.some(isReducedMotionAtRule))
+        .map((rule) => rule.body)
+        .join(";")
+      expect(reducedMotionShimmer, "Missing reduced-motion compaction shimmer override").toContain("animation:none")
+      expect(reducedMotionShimmer).toContain("will-change:auto")
+      expect(css).toContain("@keyframes compaction-card-shimmer{")
 
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
       expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
@@ -218,6 +372,7 @@ describe("app production build contract", () => {
       ])
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
+      await expectSessionWorkbenchPaneTracksBottomSurface(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })

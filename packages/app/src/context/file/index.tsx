@@ -607,6 +607,10 @@ export const { use: useFile, provider: FileProvider } = createSimpleContext({
     const stop = sdk.event.listen((message) => {
       const event = message.details
       if (event.type !== "file.watcher.updated") return
+      if (event.properties.resync) {
+        refresh()
+        return
+      }
       const path = normalize(event.properties.file)
       if (!path || path.startsWith(".git/")) return
       const parent = normalize(event.properties.parent ?? "") ?? ""
