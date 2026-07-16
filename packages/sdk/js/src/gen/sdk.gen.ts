@@ -125,6 +125,11 @@ import type {
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
+  ConfigInstructionsGetResponses,
+  ConfigInstructionsResetResponses,
+  ConfigInstructionsUpdateErrors,
+  ConfigInstructionsUpdateInput,
+  ConfigInstructionsUpdateResponses,
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
@@ -4779,6 +4784,109 @@ export class Pty extends HeyApiClient {
   }
 }
 
+export class Instructions extends HeyApiClient {
+  /**
+   * Reset global custom instructions
+   *
+   * Remove AGENTS.override.md and fall back to the global AGENTS.md file.
+   */
+  public reset<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ConfigInstructionsResetResponses, unknown, ThrowOnError>({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get global custom instructions
+   *
+   * Read the effective global AGENTS override or primary instructions file.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigInstructionsGetResponses, unknown, ThrowOnError>({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update global custom instructions
+   *
+   * Write the global AGENTS.override.md file, or remove it when the content is empty.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      configInstructionsUpdateInput?: ConfigInstructionsUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "configInstructionsUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      ConfigInstructionsUpdateResponses,
+      ConfigInstructionsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Domain extends HeyApiClient {
   /**
    * List config domains
@@ -5156,6 +5264,8 @@ export class Config extends HeyApiClient {
       ...params,
     })
   }
+
+  instructions = new Instructions({ client: this.client })
 
   domain = new Domain({ client: this.client })
 

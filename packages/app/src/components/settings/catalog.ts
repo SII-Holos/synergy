@@ -14,6 +14,7 @@ export type SettingsGroup = (typeof SETTINGS_GROUP_ORDER)[number] | string
 
 export const BUILTIN_SETTINGS_IDS = [
   "account",
+  "personalize",
   "general",
   "models",
   "providers",
@@ -68,6 +69,17 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
     "Holos agent identities and local account controls.",
     ["user", "identity", "login", "holos", "agent"],
     ["holos"],
+  ),
+  section(
+    "personalize",
+    "Personalize",
+    "Personal",
+    20,
+    "settings.personalize",
+    "Global custom instructions that shape how Synergy works across projects.",
+    ["personalize", "custom instructions", "system prompt", "AGENTS.md", "AGENTS.override.md"],
+    [],
+    ["Custom Instructions"],
   ),
   section(
     "general",
