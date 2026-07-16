@@ -206,6 +206,15 @@ export const SemanticIconToken = {
   "state.warning": "alert-triangle",
   "state.error": "ban",
   "state.complete": "circle-check",
+  // Clarus product and connection status
+  "clarus.main": "compass",
+  "clarus.project": "layers",
+  "clarus.task": "list",
+  "clarus.status.disabled": "diamond",
+  "clarus.status.connected": "disc",
+  "clarus.status.reconnecting": "flame",
+  "clarus.status.sign_in_required": "megaphone",
+  "clarus.status.sync_failed": "scan",
 } as const satisfies Record<string, IconName>
 
 export type SemanticIconTokenName = keyof typeof SemanticIconToken

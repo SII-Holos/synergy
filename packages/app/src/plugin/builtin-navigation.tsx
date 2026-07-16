@@ -4,6 +4,20 @@ import { registerNavigation, type NavigationContentProps } from "./registries/na
 
 const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
+    id: "clarus",
+    navigationId: "clarus",
+    label: "Clarus",
+    iconToken: "clarus.main",
+    placement: "sidebar",
+    path: "/clarus",
+    order: 5,
+    loader: async () => {
+      const clarus = await import("@/components/clarus")
+      const ClarusNavigation: Component<NavigationContentProps> = () => <clarus.ClarusPanel />
+      return { default: ClarusNavigation }
+    },
+  },
+  {
     id: "agenda",
     navigationId: "agenda",
     label: pluginNav.agenda.id,
