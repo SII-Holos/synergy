@@ -1,3 +1,5 @@
+import type { DesktopServerStatus, Platform } from "@/context/platform"
+
 type ErrorRecord = Record<string, unknown>
 
 export type ConfigFileOpenFailure = {
@@ -14,6 +16,15 @@ function stringField(value: unknown, field: string): string | undefined {
   const record = asRecord(value)
   const candidate = record?.[field]
   return typeof candidate === "string" && candidate.length > 0 ? candidate : undefined
+}
+
+export function canUseConfigFileOpen(platform: Platform, status: DesktopServerStatus | null | undefined): boolean {
+  return (
+    platform.platform === "desktop" &&
+    !!platform.desktopServer &&
+    status?.mode === "managed" &&
+    status.state === "running"
+  )
 }
 
 export function configFileOpenFailure(error: unknown, fallbackPath: string): ConfigFileOpenFailure {

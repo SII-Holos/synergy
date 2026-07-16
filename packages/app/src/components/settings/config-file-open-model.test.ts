@@ -1,5 +1,30 @@
 import { describe, expect, test } from "bun:test"
-import { configFileOpenFailure } from "./config-file-open-model"
+import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
+import type { DesktopServerStatus, Platform } from "@/context/platform"
+
+const managedRunningStatus: DesktopServerStatus = {
+  mode: "managed",
+  state: "running",
+  url: "http://127.0.0.1:3000",
+  port: 3000,
+  pid: 123,
+  lastError: null,
+  logFile: null,
+}
+
+function platform(overrides: Partial<Platform> = {}): Platform {
+  return {
+    platform: "desktop",
+    openLink() {},
+    restart: async () => {},
+    notify: async () => {},
+    desktopServer: {
+      status: async () => managedRunningStatus,
+      restart: async () => managedRunningStatus,
+    },
+    ...overrides,
+  }
+}
 
 describe("config file open model", () => {
   test("surfaces structured opener failures with the config path and recovery action", () => {
@@ -32,5 +57,16 @@ describe("config file open model", () => {
     expect(failure.description).toContain("server could not open")
     expect(failure.description).toContain("/config/20-providers.jsonc")
     expect(failure.description).toContain("Copy Path")
+  })
+
+  test("allows Open File only for a running managed Desktop server", () => {
+    expect(canUseConfigFileOpen(platform(), managedRunningStatus)).toBe(true)
+    expect(canUseConfigFileOpen(platform({ platform: "web" }), managedRunningStatus)).toBe(false)
+    expect(canUseConfigFileOpen(platform(), { ...managedRunningStatus, mode: "external", state: "external" })).toBe(
+      false,
+    )
+    expect(canUseConfigFileOpen(platform(), { ...managedRunningStatus, state: "starting" })).toBe(false)
+    expect(canUseConfigFileOpen(platform({ desktopServer: undefined }), managedRunningStatus)).toBe(false)
+    expect(canUseConfigFileOpen(platform(), null)).toBe(false)
   })
 })

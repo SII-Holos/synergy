@@ -28,6 +28,7 @@ import type {
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
+import { usePlatform } from "@/context/platform"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -58,7 +59,7 @@ import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } fr
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
-import { configFileOpenFailure } from "./config-file-open-model"
+import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -87,6 +88,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const input = useInput()
+  const platform = usePlatform()
 
   const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
@@ -109,6 +111,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
     const res = await globalSDK.client.config.domain.list()
     return res.data ?? []
   })
+
+  const [desktopServerStatus] = createResource(async () => {
+    if (platform.platform !== "desktop" || !platform.desktopServer) return null
+    return platform.desktopServer.status().catch(() => null)
+  })
+
+  const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
   const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
     const res = await globalSDK.client.app.agentModelRoles()
@@ -258,6 +267,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   cancelDebouncesRef.current = save.cancelDebounces
 
   async function openDomain(domain: ConfigDomainSummary["id"]) {
+    if (!canOpenConfigFiles()) return
     setOpeningDomain(domain)
     try {
       const res = await globalSDK.client.config.domain.open({ domain })
@@ -434,7 +444,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <ConfigFilesPanel
         domains={domainSummaries() ?? []}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     ),
     "archived-sessions": ArchivedSessionsPanel,
@@ -615,7 +625,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description={description}
         domains={domainsFor(domainIds)}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     )
   }
