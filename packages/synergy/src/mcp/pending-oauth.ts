@@ -45,6 +45,18 @@ export namespace PendingOAuth {
     const entry = entries.get(name)
     if (!entry) return
     entries.delete(name)
+    await release(name, entry, reason)
+  }
+
+  export async function disposeIfCurrent(name: string, connection: Connection, reason: string): Promise<boolean> {
+    const entry = entries.get(name)
+    if (entry !== connection) return false
+    entries.delete(name)
+    await release(name, entry, reason)
+    return true
+  }
+
+  async function release(name: string, entry: Entry, reason: string): Promise<void> {
     clearTimeout(entry.timeout)
     await Promise.all([
       entry.client.close().catch((error) => {

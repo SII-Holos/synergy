@@ -409,6 +409,8 @@ export namespace MCP {
     if (!authorizationUrl) {
       return status().then((s) => s[mcpName] ?? { status: "connected" })
     }
+    const pending = PendingOAuth.get(mcpName)
+    if (!pending) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
 
     try {
       const oauthState = await McpAuth.getOAuthState(mcpName)
@@ -424,8 +426,7 @@ export namespace MCP {
       }
       return await finishAuth(mcpName, code)
     } finally {
-      await PendingOAuth.dispose(mcpName, "OAuth interaction ended")
-      await clearPendingOAuthState(mcpName)
+      await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth interaction ended")
     }
   }
 
@@ -450,11 +451,9 @@ export namespace MCP {
       const handle = await McpSupervisor.connect(mcpName)
       return mapStatus(handle)
     } catch (error) {
+      await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth failed")
       log.error("failed to finish oauth", { mcpName, error })
       return { status: "failed", error: error instanceof Error ? error.message : String(error) }
-    } finally {
-      await PendingOAuth.dispose(mcpName, "OAuth finished")
-      await clearPendingOAuthState(mcpName)
     }
   }
 

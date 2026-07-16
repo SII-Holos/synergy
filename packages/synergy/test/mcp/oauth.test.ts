@@ -432,6 +432,24 @@ describe.serial("McpOAuthCallback", () => {
     ])
   })
 
+  test("callback escapes provider errors before rendering HTML", async () => {
+    const oauthState = "escaped-error-state"
+    const errorDescription = `<script>alert("xss")</script> & denied`
+    const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
+    const response = dispatchCallback(
+      `${OAUTH_CALLBACK_PATH}?error=access_denied&error_description=${encodeURIComponent(errorDescription)}&state=${oauthState}`,
+    )
+
+    await Promise.all([
+      (async () => {
+        const body = await response.text()
+        expect(body).not.toContain("<script>alert")
+        expect(body).toContain("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; denied")
+      })(),
+      expect(callbackPromise).rejects.toThrow(errorDescription),
+    ])
+  })
+
   test("callback rejects with error code when no description", async () => {
     const oauthState = "error-state-no-desc"
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)

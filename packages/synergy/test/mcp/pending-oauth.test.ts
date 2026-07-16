@@ -45,6 +45,21 @@ describe.serial("PendingOAuth", () => {
     expect(PendingOAuth.get("demo")).toBeUndefined()
   })
 
+  test("disposeIfCurrent preserves a replacement owner", async () => {
+    const first = connection()
+    const second = connection()
+    await PendingOAuth.register("demo", first.value)
+    const firstOwner = PendingOAuth.get("demo")!
+    await PendingOAuth.register("demo", second.value)
+
+    const disposed = await PendingOAuth.disposeIfCurrent("demo", firstOwner, "stale interaction ended")
+
+    expect(disposed).toBe(false)
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(PendingOAuth.get("demo")?.transport).toBe(second.value.transport)
+  })
+
   test("expired pending connections close their owner", async () => {
     const pending = connection()
     await PendingOAuth.register("demo", pending.value, { timeoutMs: 5 })

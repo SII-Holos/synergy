@@ -386,6 +386,7 @@ class McpSupervisorImpl {
 
   /** Disconnect a handle. */
   async disconnect(name: string): Promise<void> {
+    await PendingOAuth.dispose(name, "disconnected")
     const handle = this.handles.get(name)
     if (!handle) return
     handle.state = HS.Stopping
