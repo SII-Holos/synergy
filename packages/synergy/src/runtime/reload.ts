@@ -6,13 +6,12 @@ import { GlobalBus } from "../bus/global"
 import { Config } from "../config/config"
 import { CortexConcurrency } from "../cortex/concurrency"
 import { ConfigDomain } from "../config/domain"
-import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { RuntimeSchema } from "./schema"
-import { SkillPaths } from "../skill/paths"
 import { Log } from "../util/log"
 import { isPathContained } from "../util/path-contain"
 import type { Skill } from "../skill/skill"
+import { RuntimeReloadPath } from "./reload-path"
 
 export namespace RuntimeReload {
   export const Target = RuntimeSchema.ReloadTarget
@@ -43,6 +42,8 @@ export namespace RuntimeReload {
     "compaction",
     "cortex",
     "snapshot",
+    "lspWriteDiagnostics",
+    "lspDiagnostics",
     //     "agora",
     "instructions",
     "enterprise",
@@ -413,7 +414,12 @@ export namespace RuntimeReload {
 
   function hasProjectConfig() {
     return (
-      projectLegacyConfigFiles().some((file) => existsSync(file)) ||
+      [
+        "synergy.jsonc",
+        "synergy.json",
+        path.join(".synergy", "synergy.jsonc"),
+        path.join(".synergy", "synergy.json"),
+      ].some((file) => existsSync(path.join(ScopeContext.current.directory, file))) ||
       ConfigDomain.definitions.some((domain) =>
         existsSync(path.join(ScopeContext.current.directory, ".synergy", "synergy.d", domain.filename)),
       )
@@ -516,136 +522,12 @@ export namespace RuntimeReload {
     return BUILTIN_SOURCE_RESTART_WARNING
   }
 
-  // Shared directory roots used by both scope and target detection
-  function globalConfigRoots() {
-    return {
-      agent: [
-        path.resolve(path.join(Global.Path.config, "agent")),
-        path.resolve(path.join(Global.Path.config, "agents")),
-      ],
-      command: [
-        path.resolve(path.join(Global.Path.config, "command")),
-        path.resolve(path.join(Global.Path.config, "commands")),
-      ],
-      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter(
-        (root) => !isPathContained(path.resolve(ScopeContext.current.directory), root),
-      ),
-      tool: [path.resolve(path.join(Global.Path.config, "tool"))],
-    }
-  }
-
-  function projectConfigRoots() {
-    return {
-      agent: [
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agent")),
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "agents")),
-      ],
-      command: [
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "command")),
-        path.resolve(path.join(ScopeContext.current.directory, ".synergy", "commands")),
-      ],
-      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter((root) =>
-        isPathContained(path.resolve(ScopeContext.current.directory), root),
-      ),
-      tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
-    }
-  }
-
-  function isUnderRoots(normalized: string, roots: string[]): boolean {
-    return roots.some((root) => isPathContained(root, normalized))
-  }
-
-  function globalLegacyConfigFiles() {
-    return [path.join(Global.Path.config, "synergy.jsonc"), path.join(Global.Path.config, "synergy.json")].map((file) =>
-      path.resolve(file),
-    )
-  }
-
-  function projectLegacyConfigFiles() {
-    return [
-      path.join(ScopeContext.current.directory, "synergy.jsonc"),
-      path.join(ScopeContext.current.directory, "synergy.json"),
-      path.join(ScopeContext.current.directory, ".synergy", "synergy.jsonc"),
-      path.join(ScopeContext.current.directory, ".synergy", "synergy.json"),
-    ].map((file) => path.resolve(file))
-  }
-
   export function detectScopeForFile(filePath: string): Scope | undefined {
-    const normalized = path.resolve(filePath)
-
-    if (globalLegacyConfigFiles().includes(normalized)) return "global"
-    if (projectLegacyConfigFiles().includes(normalized)) return "project"
-
-    const globalDomainDir = path.resolve(ConfigDomain.directory())
-    if (isPathContained(globalDomainDir, normalized) && ConfigDomain.domainForFile(normalized)) return "global"
-
-    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
-    if (isPathContained(projectDomainDir, normalized) && ConfigDomain.domainForFile(normalized)) return "project"
-
-    // P3: Check global config directory roots (agent, command, skill, tool)
-    const globalRoots = globalConfigRoots()
-    const allGlobalRoots = [...globalRoots.agent, ...globalRoots.command, ...globalRoots.skill, ...globalRoots.tool]
-    if (isUnderRoots(normalized, allGlobalRoots)) return "global"
-
-    // P3: Check project config directory roots
-    const projectRoots = projectConfigRoots()
-    const allProjectRoots = [
-      ...projectRoots.agent,
-      ...projectRoots.command,
-      ...projectRoots.skill,
-      ...projectRoots.tool,
-    ]
-    if (isUnderRoots(normalized, allProjectRoots)) return "project"
-
-    return undefined
+    return RuntimeReloadPath.detectScopeForFile(filePath)
   }
 
   export function detectTargetsForFile(filePath: string): Target[] {
-    const normalized = path.resolve(filePath)
-    const targets = [] as Target[]
-
-    if (globalLegacyConfigFiles().includes(normalized) || projectLegacyConfigFiles().includes(normalized)) {
-      targets.push("config")
-    }
-
-    const globalDomainDir = path.resolve(ConfigDomain.directory())
-    const projectDomainDir = path.resolve(path.join(ScopeContext.current.directory, ".synergy", "synergy.d"))
-    if (
-      (isPathContained(globalDomainDir, normalized) || isPathContained(projectDomainDir, normalized)) &&
-      ConfigDomain.domainForFile(normalized)
-    ) {
-      const domain = ConfigDomain.domainForFile(normalized)!
-      targets.push(...(domain.reloadTargets as Target[]))
-    }
-
-    const gRoots = globalConfigRoots()
-    const pRoots = projectConfigRoots()
-
-    // Skill files
-    const skillRoots = [...gRoots.skill, ...pRoots.skill]
-    if (normalized.endsWith(`${path.sep}SKILL.md`) && skillRoots.some((root) => isPathContained(root, normalized))) {
-      targets.push("skill")
-    }
-
-    // Agent markdown files
-    const agentRoots = [...gRoots.agent, ...pRoots.agent]
-    if (normalized.endsWith(".md") && isUnderRoots(normalized, agentRoots)) {
-      targets.push("config", "agent")
-    }
-
-    // Command markdown files
-    const commandRoots = [...gRoots.command, ...pRoots.command]
-    if (normalized.endsWith(".md") && isUnderRoots(normalized, commandRoots)) {
-      targets.push("config", "command")
-    }
-
-    // Custom tool files
-    const toolRoots = [...gRoots.tool, ...pRoots.tool]
-    if ([".ts", ".js"].includes(path.extname(normalized)) && isUnderRoots(normalized, toolRoots)) {
-      targets.push("tool_registry")
-    }
-
-    return unique(targets)
+    return RuntimeReloadPath.detectTargetsForFile(filePath)
   }
 
   function normalizeTargets(targets: Target[]) {

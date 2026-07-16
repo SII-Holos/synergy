@@ -35,25 +35,52 @@ describe("settings form legacy quick switcher migration", () => {
   })
 })
 
-describe("settings form Cortex concurrency", () => {
-  test("hydrates the configured global maximum", () => {
-    const [settings, setSettings] = createStore(defaultSettingsState("enter"))
-
-    ensureInit({
-      cfg: { cortex: { maxConcurrentTasks: 6 } } as Config,
-      setName: "global",
-      refreshing: () => false,
-      initialized: () => false,
-      initializedForSet: undefined,
-      sendShortcut: () => "enter",
-      setSettings,
-      setInitialized: () => undefined,
-      originalMcpsRef: { current: {} },
+describe("settings form post-write diagnostics", () => {
+  test("initializes compatibility defaults when diagnostics settings are absent", () => {
+    expect(initializedRuntime({})).toMatchObject({
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "error",
+      lspDiagnosticsScope: "project",
     })
+  })
 
-    expect(settings.runtime.cortexConcurrency).toBe("6")
+  test("initializes explicit diagnostics settings", () => {
+    expect(
+      initializedRuntime({
+        lspWriteDiagnostics: false,
+        lspDiagnostics: { severity: "warning", scope: "delta" },
+      }),
+    ).toMatchObject({
+      lspWriteDiagnostics: "false",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "delta",
+    })
   })
 })
+
+describe("settings form Cortex concurrency", () => {
+  test("hydrates the configured global maximum", () => {
+    expect(initializedRuntime({ cortex: { maxConcurrentTasks: 6 } }).cortexConcurrency).toBe("6")
+  })
+})
+
+function initializedRuntime(config: Record<string, unknown>) {
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+  ensureInit({
+    cfg: config as Config,
+    setName: "global",
+    refreshing: () => false,
+    initialized: () => false,
+    initializedForSet: undefined,
+    sendShortcut: () => "enter",
+    setSettings,
+    setInitialized: () => undefined,
+    originalMcpsRef: { current: {} },
+  })
+
+  return settings.runtime
+}
 
 function storageWithModel(value: unknown): Storage {
   const entries = new Map<string, string>([["synergy.global.dat:model", JSON.stringify(value)]])

@@ -237,6 +237,7 @@ Variant display resolves the explicit or historical session variant first, then 
 - One global event WebSocket multiplexes events by owning Scope directory.
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery.
+- Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
 - Web snapshot apply-gating is not implemented merely because response headers exist.
 - Store updates reconcile existing leaves and identities.
 - Streaming deltas converge through full checkpoints.

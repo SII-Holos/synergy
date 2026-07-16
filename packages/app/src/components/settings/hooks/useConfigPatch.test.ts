@@ -94,6 +94,64 @@ describe("settings config patch", () => {
     expect(patch).not.toHaveProperty("default_agent")
   })
 
+  test("persists post-write diagnostics policy without touching raw LSP server config", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "false",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "file",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "error", scope: "project" },
+        lsp: false,
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.lspWriteDiagnostics).toBe(false)
+    expect(patch.lspDiagnostics).toEqual({ severity: "warning", scope: "file" })
+    expect(patch).not.toHaveProperty("lsp")
+  })
+
+  test("does not re-save unchanged post-write diagnostics policy", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "delta",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "warning", scope: "delta" },
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
+  test("keeps the absent diagnostics policy implicit at compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "error",
+      lspDiagnosticsScope: "project",
+    })
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
   test("persists an explicit Cortex concurrency maximum", () => {
     const state = defaultSettingsState("enter")
     state.runtime.cortexConcurrency = "3"
@@ -235,6 +293,7 @@ describe("settings config patch", () => {
       fallbackPolicy: "warn",
     })
   })
+
   test("persists toast mute and duration preferences on the general domain", () => {
     const state = defaultSettingsState("enter")
     state.general.mutedToasts = ["info", "success"]

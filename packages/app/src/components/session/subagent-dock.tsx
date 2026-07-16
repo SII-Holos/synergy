@@ -1,7 +1,7 @@
 import { For, Show, createMemo, createSignal, onCleanup, type JSX } from "solid-js"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
@@ -33,8 +33,7 @@ interface SubagentAvatarProps {
 
 function SubagentAvatar(props: SubagentAvatarProps) {
   const sync = useSync()
-  const params = useParams()
-  const navigate = useNavigate()
+  const navigateToSession = useNavigateToSession()
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
   const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
@@ -64,9 +63,9 @@ function SubagentAvatar(props: SubagentAvatarProps) {
     if (holdFrame) cancelAnimationFrame(holdFrame)
   })
 
-  const navigateToSession = () => {
+  const openSession = () => {
     if (isQueued()) return
-    navigate(`/${params.dir}/session/${props.task.sessionID}`)
+    navigateToSession(props.task.sessionID)
   }
 
   const beginHold = () => {
@@ -105,7 +104,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
     const didCancel = cancelledByHold
     suppressClick = true
     stopHold()
-    if (!didCancel) navigateToSession()
+    if (!didCancel) openSession()
   }
 
   const handlePointerLeave: JSX.EventHandlerUnion<HTMLButtonElement, PointerEvent> = () => {
@@ -126,7 +125,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
       event.preventDefault()
       return
     }
-    navigateToSession()
+    openSession()
   }
 
   const ringOffset = () => HOLD_RING_CIRCUMFERENCE * (1 - holdProgress())

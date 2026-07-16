@@ -26,7 +26,12 @@ import { SessionProgress } from "./progress"
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
-  type SummaryInput = { sessionID: string; messageID: string; revisionID?: string }
+  type SummaryInput = {
+    sessionID: string
+    messageID: string
+    revisionID?: string
+    messages?: MessageV2.WithParts[]
+  }
   type ActiveSummary = { promise: Promise<void>; pending: SummaryInput[] }
   const active = new Map<string, ActiveSummary>()
 
@@ -86,13 +91,20 @@ export namespace SessionSummary {
       sessionID: z.string(),
       messageID: z.string(),
       revisionID: z.string().optional(),
+      messages: z.custom<MessageV2.WithParts[]>().optional(),
     }),
     async (input) => {
       const current = active.get(input.sessionID)
       if (current) {
         const key = input.revisionID ?? input.messageID
         const queued = current.pending.some((item) => (item.revisionID ?? item.messageID) === key)
-        if (!queued) current.pending.push(input)
+        if (!queued) {
+          current.pending.push({
+            sessionID: input.sessionID,
+            messageID: input.messageID,
+            revisionID: input.revisionID,
+          })
+        }
         return current.promise
       }
 
@@ -130,7 +142,7 @@ export namespace SessionSummary {
   }
 
   async function summarizeNow(input: SummaryInput, abort: AbortSignal) {
-    const all = await Session.messages({ sessionID: input.sessionID })
+    const all = input.messages ?? (await Session.messages({ sessionID: input.sessionID }))
     abort.throwIfAborted()
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
     const pendingWritten = Promise.withResolvers<void>()
@@ -404,9 +416,10 @@ export namespace SessionSummary {
     async (input) => {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
-      return Storage.read<SnapshotSchema.FileDiff[]>(
+      const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
         StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)),
       ).catch(() => [])
+      return SnapshotSchema.normalizeArray(diffs) ?? []
     },
   )
 
@@ -469,6 +482,7 @@ LoopJob.register({
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
       revisionID: ctx.lastAssistant?.id,
+      messages: ctx.messages.slice(),
     })
     return "pass"
   },

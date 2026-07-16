@@ -3027,6 +3027,17 @@ export type Config = {
             }
       }
   /**
+   * Include LSP diagnostics after file-writing tools complete (default: true)
+   */
+  lspWriteDiagnostics?: boolean
+  /**
+   * Severity and scope policy for diagnostics returned after file-writing tools
+   */
+  lspDiagnostics?: {
+    severity?: "error" | "warning"
+    scope?: "delta" | "file" | "project"
+  }
+  /**
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
@@ -3132,6 +3143,19 @@ export type Config = {
       [key: string]: number
     }
   }
+}
+
+export type ConfigInstructionsInfo = {
+  content: string
+  source: "override" | "primary" | "empty"
+  sourceFilename: "AGENTS.override.md" | "AGENTS.md" | null
+  editableFilename: "AGENTS.override.md"
+  hasOverride: boolean
+  maxBytes: number
+}
+
+export type ConfigInstructionsUpdateInput = {
+  content: string
 }
 
 export type ConfigDomainSummary = {
@@ -6946,6 +6970,13 @@ export type EventSessionCompacted = {
   }
 }
 
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -6958,13 +6989,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
   }
 }
 
@@ -7063,6 +7087,7 @@ export type EventFileWatcherUpdated = {
     oldAbsolute?: string
     parent?: string
     node?: unknown
+    resync?: boolean
   }
 }
 
@@ -7245,9 +7270,9 @@ export type Event =
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventSessionCompacted
+  | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileEdited
   | EventDagUpdated
   | EventTodoUpdated
   | EventAgendaItemCreated
@@ -8555,6 +8580,73 @@ export type ConfigGlobalResponses = {
 }
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
+
+export type ConfigInstructionsResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsResetResponses = {
+  /**
+   * Reset effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsResetResponse = ConfigInstructionsResetResponses[keyof ConfigInstructionsResetResponses]
+
+export type ConfigInstructionsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsGetResponses = {
+  /**
+   * Effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsGetResponse = ConfigInstructionsGetResponses[keyof ConfigInstructionsGetResponses]
+
+export type ConfigInstructionsUpdateData = {
+  body?: ConfigInstructionsUpdateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigInstructionsUpdateError = ConfigInstructionsUpdateErrors[keyof ConfigInstructionsUpdateErrors]
+
+export type ConfigInstructionsUpdateResponses = {
+  /**
+   * Updated effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsUpdateResponse =
+  ConfigInstructionsUpdateResponses[keyof ConfigInstructionsUpdateResponses]
 
 export type ConfigDomainListData = {
   body?: never

@@ -90,7 +90,7 @@ commands/**/*.md
 
 Frontmatter defines metadata and the Markdown body becomes the prompt or command template. Nested agent paths become names such as `review/security`.
 
-## Project Instructions
+## Instruction Files
 
 Automatic instruction discovery is distinct from agent definitions. For each directory from the project Scope root to the current working directory, Synergy selects the first existing file in this order:
 
@@ -102,7 +102,9 @@ Automatic instruction discovery is distinct from agent definitions. For each dir
 
 At most one automatic file is selected per directory. The default maximum is 32 KiB per automatically discovered file; `project_doc_max_bytes: 0` disables automatic discovery.
 
-Global instructions prefer `~/.synergy/config/AGENTS.override.md`, then `AGENTS.md`. Claude compatibility can add `~/.claude/CLAUDE.md` unless disabled. `SYNERGY_CONFIG_DIR` can provide its own override or primary file.
+Global instructions prefer `~/.synergy/config/AGENTS.override.md`, then `AGENTS.md`. Settings → Personalize → Custom Instructions displays this effective global content. Saving always writes `AGENTS.override.md` and preserves `AGENTS.md`; clearing the editor or choosing Reset removes the override and restores the primary file. The editor and API enforce a 32 KiB UTF-8 limit.
+
+Global instructions are loaded before project files. Project instructions then load from the Scope root toward the current working directory so more specific files appear later in the assembled prompt. Claude compatibility can add `~/.claude/CLAUDE.md` unless disabled. `SYNERGY_CONFIG_DIR` can provide its own override or primary file.
 
 The `instructions` array appends explicit files, globs, or HTTP(S) URLs after automatic discovery. Automatically selected paths are not duplicated. URL reads time out after five seconds.
 
@@ -128,6 +130,31 @@ Static provider catalogs and live account-backed model discovery use separate ca
 The `server` object supports `hostname`, `port`, `mdns`, and additional CORS origins. Explicit CLI network flags override configured values. The managed background service snapshots these values into its service definition, so restart the service after changing them.
 
 Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
+
+## Code Checks
+
+Post-write language-server diagnostic policy. Controls the diagnostics returned after write, edit, save_file, and revise_file complete. All fields are owned by `120-runtime.jsonc`.
+
+```jsonc
+{
+  "lspWriteDiagnostics": true,
+  "lspDiagnostics": {
+    "severity": "error",
+    "scope": "project",
+  },
+}
+```
+
+`lspWriteDiagnostics` (boolean, optional, default `true`) is the master toggle. Setting it to `false` disables all post-write diagnostic output.
+
+`lspDiagnostics` (object, optional) sets the severity filter and reporting scope:
+
+- `severity` — `"error"` (default) reports only errors; `"warning"` includes both errors and warnings.
+- `scope` — `"project"` (default) reports matching diagnostics across the project; `"file"` reports matching diagnostics for the edited file only; `"delta"` reports added, resolved, and unchanged diagnostics for the edited file relative to the pre-write snapshot.
+
+When `lspDiagnostics` is absent, or when either nested field is omitted, missing values inherit `severity: "error"` and `scope: "project"`. Config changes are live-applied and do not restart LSP servers.
+
+The Web Settings Code Checks page exposes these three fields: an Include Diagnostics toggle that disables the Diagnostic Severity and Diagnostic Scope selectors when off.
 
 ## Cortex Scheduling
 

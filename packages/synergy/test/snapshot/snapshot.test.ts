@@ -6,6 +6,7 @@ import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
+import { SessionBounds } from "../../src/session/bounds"
 
 async function bootstrap() {
   const sessionID = `test-${Math.random().toString(36).slice(2)}`
@@ -996,6 +997,36 @@ describe.serial("snapshot", () => {
 
         const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(0)
+      },
+    })
+  })
+
+  test("diffSummary bounds aggregate preview bytes while preserving file statistics", async () => {
+    await using tmp = await bootstrap()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const before = await Snapshot.track(tmp.extra.sessionID)
+        expect(before).toBeTruthy()
+
+        const fileCount = 50
+        const content = "界".repeat(8_000)
+        await Promise.all(
+          Array.from({ length: fileCount }, (_, index) =>
+            Bun.write(`${tmp.path}/large-${index.toString().padStart(2, "0")}.txt`, content),
+          ),
+        )
+
+        const after = await Snapshot.track(tmp.extra.sessionID)
+        expect(after).toBeTruthy()
+
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
+        const previewBytes = diffs.reduce((sum, diff) => sum + Buffer.byteLength(diff.preview ?? "", "utf8"), 0)
+
+        expect(diffs).toHaveLength(fileCount)
+        expect(diffs.every((diff) => diff.additions === 1 && diff.deletions === 0)).toBe(true)
+        expect(previewBytes).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+        expect(diffs.some((diff) => diff.preview === undefined && diff.truncated === true)).toBe(true)
       },
     })
   })
