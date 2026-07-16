@@ -94,7 +94,6 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const prompt = usePrompt()
   const params = useParams()
   const { i18n } = useLocale()
-  const __ = (d: { id: string; message: string }) => i18n._(d)
 
   return async (event: Event) => {
     event.preventDefault()
@@ -103,8 +102,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (input.props.workspaceTransitionPending) {
       showToast({
         type: "warning",
-        title: __(PI.submitPendingTitle),
-        description: __(PI.submitPendingDesc),
+        title: i18n._(PI.submitPendingTitle),
+        description: i18n._(PI.submitPendingDesc),
       })
       return
     }
@@ -116,8 +115,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (!newSessionSubmitLease) {
       showToast({
         type: "warning",
-        title: __(PI.submitInProgress),
-        description: __(PI.submitInProgressDesc),
+        title: i18n._(PI.submitInProgress),
+        description: i18n._(PI.submitInProgressDesc),
       })
       return
     }
@@ -176,8 +175,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (input.pendingLightLoop()) {
         showToast({
           type: "warning",
-          title: __(PI.submitLightLoopTitle),
-          description: __(PI.submitLightLoopDesc),
+          title: i18n._(PI.submitLightLoopTitle),
+          description: i18n._(PI.submitLightLoopDesc),
         })
         releaseNewSessionSubmit()
         return
@@ -191,8 +190,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (hasContextOnlyInput) {
         showToast({
           type: "warning",
-          title: __(PI.submitAddMessage),
-          description: __(PI.submitAddMessageDesc),
+          title: i18n._(PI.submitAddMessage),
+          description: i18n._(PI.submitAddMessageDesc),
         })
       }
       releaseNewSessionSubmit()
@@ -201,8 +200,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
       showToast({
         type: "warning",
-        title: __(PI.submitNormalMessage),
-        description: __(PI.submitNormalMessageDesc),
+        title: i18n._(PI.submitNormalMessage),
+        description: i18n._(PI.submitNormalMessageDesc),
       })
       releaseNewSessionSubmit()
       return
@@ -224,8 +223,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (!currentModel || !currentAgent) {
       showToast({
         type: "warning",
-        title: __(PI.submitSelectAgent),
-        description: __(PI.submitSelectAgentDesc),
+        title: i18n._(PI.submitSelectAgent),
+        description: i18n._(PI.submitSelectAgentDesc),
       })
       releaseNewSessionSubmit()
       return
@@ -259,8 +258,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
       showToast({
         type: "warning",
-        title: __(PI.submitLightLoopTitle),
-        description: __(PI.submitLightLoopDesc),
+        title: i18n._(PI.submitLightLoopTitle),
+        description: i18n._(PI.submitLightLoopDesc),
       })
       releaseNewSessionSubmit()
       return
@@ -322,7 +321,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       releaseNewSessionSubmit()
     }
     const sessionStartFailureMessage = (message: string) =>
-      createdSessionForSubmit ? `${__(PI.submitSessionNotStarted)} ${message}` : message
+      createdSessionForSubmit ? `${i18n._(PI.submitSessionNotStarted)} ${message}` : message
 
     let session: (typeof sync.session.get extends (...args: any[]) => infer R ? R : never) | null | undefined =
       params.id ? sync.session.get(params.id) : undefined
@@ -337,7 +336,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           releaseNewSessionSubmit()
           showToast({
             type: "error",
-            title: __(PI.submitFailedStart),
+            title: i18n._(PI.submitFailedStart),
             description: errorMessage(err),
           })
           return null
@@ -374,7 +373,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             const message = errorMessage(err)
             showToast({
               type: "error",
-              title: __(PI.submitFailedWorktree),
+              title: i18n._(PI.submitFailedWorktree),
               description: sessionStartFailureMessage(message),
             })
             await failCreatedSessionSetup(session.id, { focus: false })
@@ -433,7 +432,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to toggle Plan",
+            title: i18n._(PI.submitFailedTogglePlan),
             description: sessionStartFailureMessage(message),
           })
           await failSessionSetup(sessionID)
@@ -458,7 +457,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to enable Lattice",
+            title: i18n._(PI.submitFailedEnableLattice),
             description: sessionStartFailureMessage(message),
           })
           await failSessionSetup(sessionID)
@@ -483,7 +482,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: __(PI.submitFailedLightLoop),
+            title: i18n._(PI.submitFailedLightLoop),
             description: sessionStartFailureMessage(message),
           })
           await failSessionSetup(sessionID)
@@ -572,7 +571,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
         showToast({
           type: "error",
-          title: __(PI.submitFailedBlueprint),
+          title: i18n._(PI.submitFailedBlueprint),
           description: sessionStartFailureMessage(message),
         })
         await rollbackCreatedSession()
@@ -601,7 +600,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: __(PI.submitFailedShell),
+            title: i18n._(PI.submitFailedShell),
             description: sessionStartFailureMessage(message),
           })
           await rollbackCreatedSession()
@@ -635,7 +634,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           await rollbackLightLoopForSubmit()
           showToast({
             type: "error",
-            title: __(PI.submitFailedCommand),
+            title: i18n._(PI.submitFailedCommand),
             description: sessionStartFailureMessage(message),
           })
           await rollbackCreatedSession()
@@ -889,8 +888,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!wsConnected) {
           showToast({
             type: "warning",
-            title: __(PI.submitSent),
-            description: __(PI.submitSentDesc),
+            title: i18n._(PI.submitSent),
+            description: i18n._(PI.submitSentDesc),
           })
         }
       })
@@ -899,7 +898,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         await rollbackLightLoopForSubmit()
         showToast({
           type: "error",
-          title: __(PI.submitFailedSend),
+          title: i18n._(PI.submitFailedSend),
           description: sessionStartFailureMessage(message),
         })
         if (optimisticAdded) removeOptimisticMessage()

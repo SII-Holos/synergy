@@ -1,4 +1,5 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js"
+import { pluginMarketplace } from "@/locales/messages"
 import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -8,6 +9,7 @@ import { AppPanel } from "@/components/app-panel"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useLocale } from "@/context/locale"
 
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
@@ -162,7 +164,13 @@ export function MarketplacePage(props: MarketplacePageProps) {
             <section class="plugin-marketplace-list-panel">
               <div class="plugin-marketplace-list-heading">
                 <div>
-                  <h2>{currentLabel()} plugins</h2>
+                  <h2>
+                    {_({
+                      id: "app.plugin.marketplace.heading.label",
+                      message: "{label} plugins",
+                      values: { label: currentLabel() },
+                    })}
+                  </h2>
                   <p>
                     <Show
                       when={!searchResults.loading && !installedPlugins.loading}
@@ -247,11 +255,15 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <EmptyState
                   title={
                     debouncedQuery()
-                      ? _({
-                          id: "app.plugin.marketplace.empty.noInstalledPluginsFound",
-                          message:
-                            view() === "development" ? "No development plugins found" : "No installed plugins found",
-                        })
+                      ? view() === "development"
+                        ? _({
+                            id: "app.plugin.marketplace.empty.noDevelopmentPluginsFound",
+                            message: "No development plugins found",
+                          })
+                        : _({
+                            id: "app.plugin.marketplace.empty.noInstalledPluginsFound",
+                            message: "No installed plugins found",
+                          })
                       : view() === "development"
                         ? _({
                             id: "app.plugin.marketplace.empty.noDevelopmentPlugins",
@@ -336,19 +348,22 @@ function PluginRow(props: {
   onClick: () => void
 }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const installStatusLabel = () => {
     if (props.state === "update") {
       return props.installedVersion
         ? _({
             id: "app.plugin.marketplace.row.updateAvailable",
-            message: `Update available from v${props.installedVersion}`,
+            message: "Update available from v{version}",
+            values: { version: props.installedVersion },
           })
         : _({ id: "app.plugin.marketplace.row.updateAvailable.generic", message: "Update available" })
     }
     if (props.installedVersion) {
       return _({
         id: "app.plugin.marketplace.row.installedVersion",
-        message: `Installed v${props.installedVersion}`,
+        message: "Installed v{version}",
+        values: { version: props.installedVersion },
       })
     }
     return _({ id: "app.plugin.marketplace.row.installed", message: "Installed" })
@@ -370,7 +385,9 @@ function PluginRow(props: {
           {/* plugin.name is author content — pass through */}
           <span>{props.plugin.name}</span>
           <Show when={props.plugin.latestVersion}>
-            <span class="plugin-marketplace-version">v{props.plugin.latestVersion}</span>
+            <span class="plugin-marketplace-version">
+              {_(pluginMarketplace.versionLabel.id, { version: props.plugin.latestVersion })}
+            </span>
           </Show>
         </span>
         {/* plugin.description is author content — pass through */}
@@ -392,12 +409,11 @@ function PluginRow(props: {
           <span aria-hidden="true">·</span>
           {/* plugin.runtimeMode is catalog data — pass through */}
           <span>{props.plugin.runtimeMode}</span>
-          <span aria-hidden="true">·</span>
           <span>
             {_({
               id: "app.plugin.marketplace.row.updated",
               message: "Updated {time}",
-              values: { time: timeAgo(props.plugin.updatedAt) },
+              values: { time: fmt.relative(new Date(props.plugin.updatedAt)) },
             })}
           </span>
         </span>
@@ -427,7 +443,9 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
         <span class="plugin-marketplace-row-title">
           {/* plugin.name is author content; id is catalog identifier */}
           <span>{props.plugin.name ?? props.plugin.id}</span>
-          <span class="plugin-marketplace-version">v{props.plugin.version ?? "0.0.0"}</span>
+          <span class="plugin-marketplace-version">
+            {_(pluginMarketplace.versionLabel.id, { version: props.plugin.version ?? "0.0.0" })}
+          </span>
         </span>
         <span class="plugin-marketplace-row-description">
           <Show
@@ -463,13 +481,19 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
           <span>{installationLabel(props.plugin)}</span>
           <Show when={props.plugin.apiVersion}>
             <span aria-hidden="true">·</span>
-            <span>API {props.plugin.apiVersion}</span>
+            <span>{_(pluginMarketplace.apiVersionLabel.id, { version: props.plugin.apiVersion })}</span>
           </Show>
           <Show when={props.plugin.generation}>
             {(generation) => (
               <>
                 <span aria-hidden="true">·</span>
-                <span>Generation {generation().slice(0, 8)}</span>
+                <span>
+                  {_({
+                    id: "app.plugin.marketplace.generation.label",
+                    message: "Generation {id}",
+                    values: { id: generation().slice(0, 8) },
+                  })}
+                </span>
               </>
             )}
           </Show>
@@ -513,16 +537,4 @@ function SkeletonRows() {
       <For each={[0, 1, 2]}>{() => <div class="plugin-marketplace-skeleton-row" />}</For>
     </div>
   )
-}
-
-function timeAgo(ts: number | string): string {
-  const timestamp = typeof ts === "number" ? ts : Date.parse(ts)
-  const delta = Date.now() - (Number.isFinite(timestamp) ? timestamp : Date.now())
-  const mins = Math.floor(delta / 60000)
-  if (mins < 60) return mins <= 1 ? "just now" : `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString()
 }

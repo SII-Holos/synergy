@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { BlueprintLoopInfo } from "@ericsanchezok/synergy-sdk/client"
 import { useFilteredList } from "@ericsanchezok/synergy-ui/hooks"
 import {
@@ -88,6 +89,8 @@ import { isWorktreeWorkspaceSelection, worktreeOptionSelection } from "@/compone
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -106,7 +109,7 @@ function WorkflowChip(props: {
   working: () => boolean
   onCancel: () => void | Promise<void>
 }) {
-  const blockedTooltip = "Stop the session before changing workflow modes."
+  const blockedTooltip = PI.stopBeforeChange.message
   const handleClick = (event: MouseEvent) => {
     if (!props.working()) {
       void props.onCancel()
@@ -117,7 +120,7 @@ function WorkflowChip(props: {
     event.stopPropagation()
     showToast({
       type: "warning",
-      title: "Session is running",
+      title: PI.sessionRunning.message,
       description: blockedTooltip,
     })
   }
@@ -155,6 +158,10 @@ function WorkflowChip(props: {
   )
 }
 
+function translateDescriptor(descriptor: MessageDescriptor, i18n: ReturnType<typeof useLocale>["i18n"]): string {
+  return i18n._(descriptor)
+}
+
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
   const latticeDialog = useDialog()
@@ -167,6 +174,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const layout = useLayout()
   const params = useParams()
   const command = useCommand()
+  const { i18n } = useLocale()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -252,25 +260,24 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       { defer: true },
     ),
   )
-
   const getBlueprintSlotStatusLabel = (status: string) => {
     switch (status) {
       case "pending":
-        return "Ready to start"
+        return i18n._(PI.bpSlotReady)
       case "armed":
-        return "Equipped"
+        return i18n._(PI.bpSlotEquipped)
       case "running":
-        return "Running"
+        return i18n._(PI.bpSlotRunning)
       case "waiting":
-        return "Waiting"
+        return i18n._(PI.bpSlotWaiting)
       case "auditing":
-        return "In review"
+        return i18n._(PI.bpSlotAuditing)
       case "completed":
-        return "Completed"
+        return i18n._(PI.bpSlotCompleted)
       case "failed":
-        return "Needs attention"
+        return i18n._(PI.bpSlotFailed)
       case "cancelled":
-        return "Unequipped"
+        return i18n._(PI.bpSlotCancelled)
       default:
         return titlecaseStatusLabel(status)
     }
@@ -296,21 +303,23 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   }
 
   const getBlueprintSlotHoldLabel = (slot: BlueprintSlotDisplay) => {
-    if (slot.slot.type === "loop" && working()) return "Hold for 2 seconds to stop this Blueprint run."
-    if (slot.mode === "waiting" || slot.mode === "auditing") return "Hold for 2 seconds to cancel this BlueprintLoop."
-    return "Hold for 2 seconds to unequip."
+    if (slot.slot.type === "loop" && working()) return i18n._(PI.bpHoldStopRun)
+    if (slot.mode === "waiting" || slot.mode === "auditing") return i18n._(PI.bpHoldCancelLoop)
+    return i18n._(PI.bpHoldUnequip)
   }
 
   const getBlueprintSlotAriaLabel = (slot: BlueprintSlotDisplay) => {
-    if (slot.slot.type === "loop" && working()) return `Hold to stop Blueprint run: ${slot.slot.title}`
-    if (slot.mode === "waiting" || slot.mode === "auditing") return `Hold to cancel BlueprintLoop: ${slot.slot.title}`
-    return `Hold to unequip Blueprint: ${slot.slot.title}`
+    if (slot.slot.type === "loop" && working())
+      return i18n._({ ...PI.bpAriaHoldStop, values: { title: slot.slot.title } })
+    if (slot.mode === "waiting" || slot.mode === "auditing")
+      return i18n._({ ...PI.bpAriaHoldCancel, values: { title: slot.slot.title } })
+    return i18n._({ ...PI.bpAriaHoldUnequip, values: { title: slot.slot.title } })
   }
 
   const getBlueprintFailureTitle = (stopRunningSession: boolean, stoppedSession: boolean) => {
-    if (!stopRunningSession) return "Failed to unequip Blueprint"
-    if (stoppedSession) return "Session stopped, Blueprint still equipped"
-    return "Failed to stop Blueprint run"
+    if (!stopRunningSession) return i18n._(PI.bpFailUnequip)
+    if (stoppedSession) return i18n._(PI.bpFailStoppedEquipped)
+    return i18n._(PI.bpFailStopRun)
   }
 
   const abortSession = async (sessionID = params.id) => {
@@ -398,7 +407,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             clearVisibleSessionLoop(sessionID, loopID)
             showToast({
               type: "info",
-              title: "Blueprint unequipped",
+              title: i18n._(PI.blueprintUnequipped),
               description: slot.slot.title,
             })
             return
@@ -414,7 +423,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         if (localArmedLoop()?.noteID === slot.slot.noteID) setLocalArmedLoop(null)
         showToast({
           type: "info",
-          title: stopRunningSession ? "Blueprint run stopped" : "Blueprint unequipped",
+          title: stopRunningSession ? i18n._(PI.blueprintRunStopped) : i18n._(PI.blueprintUnequipped),
           description: slot.slot.title,
         })
       } catch (err) {
@@ -528,7 +537,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     requestAnimationFrame(scrollCursorIntoView)
   }
 
-  const setPlan = async (next: boolean, title = "Failed to toggle Plan") => {
+  const setPlan = async (next: boolean, title = i18n._(PI.submitFailedTogglePlan)) => {
     if (!params.id) {
       setPendingPlan(next)
       if (next) {
@@ -547,7 +556,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       showToast({
         type: "error",
         title,
-        description: err instanceof Error ? err.message : "Unknown error",
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
       })
       return false
     }
@@ -565,16 +574,16 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (working()) {
       showToast({
         type: "warning",
-        title: "Session is running",
-        description: "Wait for the current response before equipping this Blueprint.",
+        title: i18n._(PI.sessionRunning),
+        description: i18n._(PI.blueprintWaitResponse),
       })
       return
     }
     if (blueprintModeLocked()) {
       showToast({
         type: "warning",
-        title: "Blueprint slot occupied",
-        description: "Unequip the current Blueprint before equipping another one.",
+        title: i18n._(PI.blueprintSlotOccupied),
+        description: i18n._(PI.blueprintUnequipFirst),
       })
       return
     }
@@ -593,14 +602,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       sync.planBlueprintOffer.equip(sessionID, offer.key)
       showToast({
         type: "info",
-        title: "Blueprint equipped",
-        description: "Send when you are ready to start it.",
+        title: i18n._(PI.blueprintEquipped),
+        description: i18n._(PI.blueprintEquippedDesc),
       })
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to equip Blueprint",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: i18n._(PI.blueprintEquipFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
       })
     }
   }
@@ -644,8 +653,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to cancel Lattice",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: i18n._(PI.latticeCancelFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
       })
     }
   }
@@ -708,8 +717,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to toggle Light Loop",
-        description: err instanceof Error ? err.message : "Unknown error",
+        title: i18n._(PI.lightLoopToggleFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
       })
       return false
     }
@@ -735,7 +744,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
     const agentSection: PromptAddMenuSection = {
       id: "agent",
-      label: "Agent",
+      label: i18n._(PI.toolbarAgent),
       items: local.agent
         .list()
         .filter((a) => !a.hidden)
@@ -744,11 +753,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           const disabled = sessionHasMessages() && !!agent.external
           return {
             id: `agent-${agent.name}`,
-            label: visual.label,
+            label: translateDescriptor(visual.label, i18n),
             icon: getSemanticIcon("agents.main"),
             selected: local.agent.current()?.name === agent.name,
             disabled,
-            tooltip: disabled ? "Create a new session to use this external agent" : undefined,
+            tooltip: disabled ? i18n._(PI.externalAgentBlocked) : undefined,
             onSelect: () => {
               if (!disabled) local.agent.set(agent.name)
             },
@@ -766,12 +775,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return [
       {
         id: "context",
-        label: "Context",
+        label: i18n._(PI.toolbarContext),
         items: [
           {
             id: "files",
-            label: "Add files",
-            description: "Attach files or images",
+            label: i18n._(PI.toolbarAddFiles),
+            description: i18n._(PI.toolbarAttachFiles),
             icon: getSemanticIcon("prompt.attach"),
             onSelect: () => fileInputRef.click(),
           },
@@ -780,25 +789,25 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       ...(props.hideAgentSelector || layout.isDesktop() ? [] : [agentSection]),
       {
         id: "workflow",
-        label: "Workflow",
+        label: i18n._(PI.toolbarWorkflow),
         items: [
           {
             id: "light-loop",
-            label: "Light Loop",
+            label: i18n._(PI.workflowLightLoop),
             description: lightLoopActive()
-              ? (lightLoopTaskDesc() ?? "Next message starts the loop")
-              : "Auto-continue until task is done",
+              ? (lightLoopTaskDesc() ?? i18n._(PI.lightLoopNextMsg))
+              : i18n._(PI.workflowLightLoopDesc),
             icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
             ariaDisabled: blueprintModeLocked() || lightLoopActive() || planActive() || latticeActive(),
             title: blueprintModeLocked()
-              ? "Light Loop is unavailable while a Blueprint is equipped"
+              ? i18n._(PI.workflowUnavailableBlueprint)
               : lightLoopActive()
-                ? "Light Loop is already enabled"
+                ? i18n._(PI.workflowUnavailableAlready)
                 : planActive()
-                  ? "Light Loop is unavailable while Plan is active"
+                  ? i18n._(PI.workflowUnavailablePlan)
                   : latticeActive()
-                    ? "Light Loop is unavailable while Lattice is active"
+                    ? i18n._(PI.workflowUnavailableLattice)
                     : undefined,
             iconClass: lightLoopActive()
               ? "text-icon-base"
@@ -814,21 +823,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           },
           {
             id: "plan",
-            label: "Plan",
-            description: planActive() ? "Planning before execution" : "Ask for an approach first",
+            label: i18n._(PI.workflowPlan),
+            description: planActive() ? i18n._(PI.workflowPlanDesc) : i18n._(PI.workflowPlanDescAlt),
             icon: getSemanticIcon("prompt.plan"),
             selected: planActive(),
             ariaDisabled: blueprintModeLocked() || planActive() || latticeActive() || lightLoopActive(),
             title: blueprintModeLocked()
-              ? "Plan is unavailable while a Blueprint is equipped"
+              ? i18n._(PI.workflowPlanUnavailableBp)
               : planActive()
-                ? "Plan is already enabled"
+                ? i18n._(PI.workflowPlanUnavailableAlready)
                 : lightLoopActive()
-                  ? "Plan is unavailable while Light Loop is active"
+                  ? i18n._(PI.workflowPlanUnavailableLl)
                   : latticeActive()
-                    ? "Plan is unavailable while Lattice is active"
+                    ? i18n._(PI.workflowPlanUnavailableLattice)
                     : undefined,
-            tooltip: blueprintModeLocked() ? "Plan is unavailable while a Blueprint is equipped" : undefined,
+            tooltip: blueprintModeLocked() ? i18n._(PI.workflowPlanUnavailableBp) : undefined,
             iconClass: planActive()
               ? "text-icon-base"
               : blueprintModeLocked()
@@ -844,7 +853,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           },
           {
             id: "lattice-mode",
-            label: "Lattice",
+            label: i18n._(PI.cancelLatticeLabel),
             description: latticeMenuState.description,
             icon: getSemanticIcon("prompt.lattice"),
             selected: latticeActive(),
@@ -879,7 +888,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return [
       {
         id: "workspace",
-        label: "Workspace",
+        label: i18n._(PI.toolbarWorkspace),
         options: [
           {
             id: "workspace.local",
@@ -891,14 +900,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           },
           {
             id: "workspace.worktree",
-            label: "Worktree",
-            description: "Isolated checkout",
+            label: i18n._(PI.toolbarWorktree),
+            description: i18n._(PI.toolbarWorktreeDesc),
             icon: getSemanticIcon("workspace.worktree"),
             selected: worktreeSelected,
             disabled: !canCreateWorktree,
-            tooltip: canCreateWorktree
-              ? "Create an isolated worktree for this session."
-              : "Choose a project to use worktree isolation.",
+            tooltip: canCreateWorktree ? i18n._(PI.wsWorktreeTooltipCan) : i18n._(PI.wsWorktreeTooltipCannot),
             onSelect: () =>
               props.onNewSessionWorkspaceSelectionChange?.(
                 worktreeOptionSelection({
@@ -993,8 +1000,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (working()) {
       showToast({
         type: "warning",
-        title: "Session is running",
-        description: "Stop the session before changing its permission mode.",
+        title: i18n._(PI.sessionRunning),
+        description: i18n._(PI.permModeUpdateFailed),
       })
       return
     }
@@ -1011,8 +1018,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Permission mode unchanged",
-        description: err instanceof Error ? err.message : "Failed to update the session permission mode.",
+        title: i18n._(PI.permModeUnchanged),
+        description: err instanceof Error ? err.message : i18n._(PI.permModeUpdateFailed),
       })
     } finally {
       setStore("switchingProfile", false)
@@ -1501,8 +1508,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }).catch((err) => {
       showToast({
         type: "error",
-        title: "Failed to send command",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: i18n._(PI.commandSendFailed),
+        description: err instanceof Error ? err.message : i18n._(PI.genericRequestFailed),
       })
     })
   }
@@ -1559,7 +1566,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <div class="absolute inset-0 z-10 flex items-center justify-center bg-surface-raised-stronger-non-alpha/90 pointer-events-none">
             <div class="flex flex-col items-center gap-2 text-text-weak">
               <Icon name={getSemanticIcon("prompt.attach")} class="size-8" />
-              <span class="text-14-regular">Drop supported files, notes, or sessions here</span>
+              <span class="text-14-regular">{i18n._(PI.dropZone)}</span>
             </div>
           </div>
         </Show>
@@ -1642,8 +1649,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
               <Match when={store.mode === "shell"}>
                 <div class="prompt-input-toolbar-chip flex items-center gap-2">
                   <Icon name={getSemanticIcon("prompt.shell")} size="small" class="text-icon-interactive-base" />
-                  <span class="text-12-medium text-text-interactive-base">Shell</span>
-                  <span class="text-11-regular text-text-subtle">esc to exit</span>
+                  <span class="text-12-medium text-text-interactive-base">{i18n._(PI.shellLabel)}</span>
+                  <span class="text-11-regular text-text-subtle">{i18n._(PI.shellEscToExit)}</span>
                 </div>
               </Match>
               <Match when={store.mode === "normal"}>
@@ -1653,7 +1660,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       trigger={
                         <button type="button" class="prompt-input-toolbar-button flex items-center gap-1.5">
                           <span class="text-12-medium text-text-base whitespace-nowrap">
-                            {getAgentVisual(local.agent.current()).label}
+                            {translateDescriptor(getAgentVisual(local.agent.current()).label, i18n)}
                           </span>
                           <Icon
                             name={getSemanticIcon("navigation.collapse")}
@@ -1662,7 +1669,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                           />
                         </button>
                       }
-                      title="Select agent"
+                      title={i18n._(PI.selectAgent)}
                       contentClass="w-52 max-h-80"
                       placement="top-start"
                     >
@@ -1685,9 +1692,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                               <Tooltip
                                 placement="right"
                                 value={
-                                  sessionHasMessages() && agent.external
-                                    ? "Create a new session to use this external agent"
-                                    : undefined
+                                  sessionHasMessages() && agent.external ? i18n._(PI.externalAgentBlocked) : undefined
                                 }
                               >
                                 <div
@@ -1697,7 +1702,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                                   }}
                                 >
                                   <div class="min-w-0">
-                                    <div class="text-13-medium text-text-base truncate">{visual.label}</div>
+                                    <div class="text-13-medium text-text-base truncate">
+                                      {translateDescriptor(visual.label, i18n)}
+                                    </div>
                                   </div>
                                 </div>
                               </Tooltip>
@@ -1717,9 +1724,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 />
                 <Show when={planActive()}>
                   <WorkflowChip
-                    label="Plan"
-                    ariaLabel="Exit Plan"
-                    tooltip="Exit Plan"
+                    label={i18n._(PI.exitPlanLabel)}
+                    ariaLabel={i18n._(PI.exitPlan)}
+                    tooltip={i18n._(PI.exitPlan)}
                     icon={getSemanticIcon("prompt.plan")}
                     working={working}
                     onCancel={togglePlan}
@@ -1727,9 +1734,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Show when={lightLoopActive()}>
                   <WorkflowChip
-                    label="Light Loop"
-                    ariaLabel="Cancel Light Loop"
-                    tooltip="Cancel Light Loop"
+                    label={i18n._(PI.cancelLightLoopLabel)}
+                    ariaLabel={i18n._(PI.cancelLightLoop)}
+                    tooltip={i18n._(PI.cancelLightLoop)}
                     icon={getSemanticIcon("prompt.lightLoop")}
                     working={working}
                     onCancel={cancelLightLoop}
@@ -1737,9 +1744,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 </Show>
                 <Show when={latticeActive()}>
                   <WorkflowChip
-                    label="Lattice"
-                    ariaLabel="Cancel Lattice"
-                    tooltip="Cancel Lattice"
+                    label={i18n._(PI.cancelLatticeLabel)}
+                    ariaLabel={i18n._(PI.cancelLattice)}
+                    tooltip={i18n._(PI.cancelLattice)}
                     icon={getSemanticIcon("prompt.lattice")}
                     working={working}
                     onCancel={cancelLattice}
@@ -1767,7 +1774,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
             <Show when={!sdk.connected()}>
-              <Tooltip placement="top" value="Connection lost — responses may be delayed">
+              <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
                 <div class="flex items-center justify-center size-5">
                   <Icon
                     name={getSemanticIcon("prompt.signal")}
@@ -1786,7 +1793,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       value={
                         <div class="min-w-56 max-w-72">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
-                          <div class="mt-1 text-10-regular text-text-weak">Ready to start this BlueprintLoop.</div>
+                          <div class="mt-1 text-10-regular text-text-weak">{i18n._(PI.bpReady)}</div>
                           <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
                       }
@@ -1816,7 +1823,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                             />
                           </span>
                         </span>
-                        <span class="max-w-24 truncate text-11-medium">Loop ready</span>
+                        <span class="max-w-24 truncate text-11-medium">{i18n._(PI.loopReady)}</span>
                         <span
                           class="absolute bottom-0 left-2 h-0.5 rounded-full bg-text-interactive-base/80 transition-[width] duration-75"
                           style={{ width: `${slotLongPressProgress() * 82}%` }}
@@ -1827,14 +1834,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                       placement="top"
                       value={
                         <div class="flex items-center gap-2">
-                          <span>Start BlueprintLoop</span>
+                          <span>{i18n._(PI.startBpLoop)}</span>
                           <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
                         </div>
                       }
                     >
                       <IconButton
                         type="submit"
-                        aria-label="Start BlueprintLoop"
+                        aria-label={i18n._(PI.startBpLoop)}
                         icon={getSemanticIcon("prompt.blueprintStart")}
                         variant="primary"
                         class="prompt-input-submit size-8 rounded-full! bg-text-interactive-base!"
@@ -1852,7 +1859,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <div class="min-w-48 max-w-64">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
                           <div class="mt-1 text-10-regular text-text-weak">
-                            Blueprint {getBlueprintSlotStatusLabel(bp().mode).toLowerCase()}
+                            {i18n._({
+                              ...PI.bpStatusLabel,
+                              values: { status: getBlueprintSlotStatusLabel(bp().mode).toLowerCase() },
+                            })}
                           </div>
                           <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>
@@ -1894,19 +1904,21 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Show
                       when={!submitPending()}
                       fallback={
-                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                        <span>
+                          {workspaceTransitionPending() ? i18n._(PI.workspacePending) : i18n._(PI.startingSession)}
+                        </span>
                       }
                     >
                       <Switch>
                         <Match when={submitStopsSession()}>
                           <div class="flex items-center gap-2">
-                            <span>Stop</span>
-                            <span class="text-icon-base text-12-medium text-[10px]!">ESC</span>
+                            <span>{i18n._(PI.stopAction)}</span>
+                            <span class="text-icon-base text-12-medium text-[10px]!">{i18n._(PI.escKey)}</span>
                           </div>
                         </Match>
                         <Match when={true}>
                           <div class="flex items-center gap-2">
-                            <span>Send</span>
+                            <span>{i18n._(PI.sendAction)}</span>
                             <Icon name={getSemanticIcon("prompt.submit")} size="small" class="text-icon-base" />
                           </div>
                         </Match>
@@ -1916,7 +1928,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                 >
                   <IconButton
                     type="submit"
-                    aria-label={submitStopsSession() ? "Stop session" : "Send message"}
+                    aria-label={submitStopsSession() ? i18n._(PI.stopSession) : i18n._(PI.sendMessage)}
                     disabled={!canSubmit()}
                     icon={submitStopsSession() ? getSemanticIcon("action.stop") : getSemanticIcon("prompt.submitArrow")}
                     variant="primary"

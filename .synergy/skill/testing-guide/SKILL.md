@@ -57,8 +57,7 @@ Localized frontend changes also run:
 
 ```bash
 bun run --cwd packages/app i18n:extract
-bun run --cwd packages/app i18n:check
-bun script/localization-check.ts --strict
+bun run localization:check
 bun run --cwd packages/app build
 ```
 

@@ -121,6 +121,58 @@ export const PI = {
   toolbarWorktree: { id: "prompt.toolbar.worktree", message: "Worktree" },
   toolbarWorktreeDesc: { id: "prompt.toolbar.worktreeDesc", message: "Isolated checkout" },
 
+  // prompt-input.tsx — blueprint slot status labels
+  bpSlotReady: { id: "prompt.bpSlot.ready", message: "Ready to start" },
+  bpSlotEquipped: { id: "prompt.bpSlot.equipped", message: "Equipped" },
+  bpSlotRunning: { id: "prompt.bpSlot.running", message: "Running" },
+  bpSlotWaiting: { id: "prompt.bpSlot.waiting", message: "Waiting" },
+  bpSlotAuditing: { id: "prompt.bpSlot.auditing", message: "In review" },
+  bpSlotCompleted: { id: "prompt.bpSlot.completed", message: "Completed" },
+  bpSlotFailed: { id: "prompt.bpSlot.failed", message: "Needs attention" },
+  bpSlotCancelled: { id: "prompt.bpSlot.cancelled", message: "Unequipped" },
+
+  // prompt-input.tsx — blueprint slot hold labels
+  bpHoldStopRun: { id: "prompt.bpHold.stopRun", message: "Hold for 2 seconds to stop this Blueprint run." },
+  bpHoldCancelLoop: { id: "prompt.bpHold.cancelLoop", message: "Hold for 2 seconds to cancel this BlueprintLoop." },
+  bpHoldUnequip: { id: "prompt.bpHold.unequip", message: "Hold for 2 seconds to unequip." },
+
+  // prompt-input.tsx — blueprint slot aria labels
+  bpAriaHoldStop: { id: "prompt.bpAria.holdStop", message: "Hold to stop Blueprint run: {title}" },
+  bpAriaHoldCancel: { id: "prompt.bpAria.holdCancel", message: "Hold to cancel BlueprintLoop: {title}" },
+  bpAriaHoldUnequip: { id: "prompt.bpAria.holdUnequip", message: "Hold to unequip Blueprint: {title}" },
+
+  // prompt-input.tsx — blueprint failure titles
+  bpFailUnequip: { id: "prompt.bpFail.unequip", message: "Failed to unequip Blueprint" },
+  bpFailStoppedEquipped: { id: "prompt.bpFail.stoppedEquipped", message: "Session stopped, Blueprint still equipped" },
+  bpFailStopRun: { id: "prompt.bpFail.stopRun", message: "Failed to stop Blueprint run" },
+
+  // prompt-input.tsx — generic error / request failed
+  genericRequestFailed: { id: "prompt.generic.requestFailed", message: "Request failed" },
+
+  // prompt-input.tsx — editor placeholders
+  placeholderShell: { id: "prompt.placeholder.shell", message: "Enter shell command..." },
+  placeholderPlan: { id: "prompt.placeholder.plan", message: "Plan your approach..." },
+  placeholderAskGlobal: { id: "prompt.placeholder.askGlobal", message: "Ask me anything..." },
+  placeholderAskProject: { id: "prompt.placeholder.askProject", message: "Ask anything..." },
+
+  // prompt-input.tsx — light-loop active description
+  lightLoopNextMsg: { id: "prompt.lightLoop.nextMessage", message: "Next message starts the loop" },
+
+  // prompt-input.tsx — new session start options
+  wsLabelWorkspace: { id: "prompt.ws.workspace", message: "Workspace" },
+  wsLabelHome: { id: "prompt.ws.home", message: "Home" },
+  wsLabelMainCheckout: { id: "prompt.ws.mainCheckout", message: "Main checkout" },
+  wsDescGlobal: { id: "prompt.ws.globalDesc", message: "Global context" },
+  wsDescCurrent: { id: "prompt.ws.currentDesc", message: "Current checkout" },
+  wsWorktreeTooltipCan: {
+    id: "prompt.ws.worktreeTooltipCan",
+    message: "Create an isolated worktree for this session.",
+  },
+  wsWorktreeTooltipCannot: {
+    id: "prompt.ws.worktreeTooltipCannot",
+    message: "Choose a project to use worktree isolation.",
+  },
+
   // workflow descriptions
   workflowLightLoop: { id: "prompt.workflow.lightLoop", message: "Light Loop" },
   workflowLightLoopDesc: { id: "prompt.workflow.lightLoopDesc", message: "Auto-continue until task is done" },
@@ -161,6 +213,7 @@ export const PI = {
   dropZone: { id: "prompt.dropZone", message: "Drop supported files, notes, or sessions here" },
   bpReady: { id: "prompt.bp.ready", message: "Ready to start this BlueprintLoop." },
   bpLabel: { id: "prompt.bp.label", message: "Blueprint" },
+  bpStatusLabel: { id: "prompt.bp.statusLabel", message: "Blueprint {status}" },
   escKey: { id: "prompt.escKey", message: "ESC" },
 
   // permission-selector.tsx

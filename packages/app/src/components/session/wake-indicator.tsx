@@ -24,8 +24,7 @@ interface Props {
 
 export function SessionAgendaWakeIndicator(props: Props) {
   const sdk = useSDK()
-  const { i18n, controller } = useLocale()
-  const locale = () => controller.epoch().locale
+  const { i18n, fmt } = useLocale()
   const [open, setOpen] = createSignal(false)
   const [showAll, setShowAll] = createSignal(false)
   const [lastResponse, setLastResponse] = createSignal<SessionAgendaResponse>()
@@ -73,9 +72,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
     const items = agenda()?.items ?? []
     return showAll() ? items : items.slice(0, 3)
   })
-  const nextWakeLabel = createMemo(() =>
-    formatWakeTime(agenda()?.items[0]?.nextRunAt ?? null, { i18n, locale: locale() }),
-  )
+  const nextWakeLabel = createMemo(() => formatWakeTime(agenda()?.items[0]?.nextRunAt ?? null, { i18n, fmt }))
 
   function handleOpenChange(open: boolean) {
     setOpen(open)
@@ -127,9 +124,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
                   <div class="session-agenda-wake-row">
                     <span class="session-agenda-wake-dot" aria-hidden="true" />
                     <div class="session-agenda-wake-row-main">
-                      <div class="session-agenda-wake-time">
-                        {formatWakeTime(item.nextRunAt, { i18n, locale: locale() })}
-                      </div>
+                      <div class="session-agenda-wake-time">{formatWakeTime(item.nextRunAt, { i18n, fmt })}</div>
                       <div class="session-agenda-wake-title" title={item.title}>
                         {item.title}
                       </div>

@@ -14,6 +14,12 @@ const modelOverrideDesc = {
   id: "settings.accountToggle.modelOverrideDesc",
   message: "Select a model for messages from this account.",
 }
+const accountLabel = { id: "settings.accountToggle.account", message: "Account" }
+const searchModelsPlaceholder = { id: "settings.accountToggle.searchModels", message: "Search models" }
+const noModelResults = { id: "settings.accountToggle.noModelResults", message: "No model results" }
+function selectModelAria(key: string) {
+  return { id: "settings.accountToggle.selectModelFor", message: "Select model for {key}", values: { key } }
+}
 
 type ModelPickOption = {
   kind: "fallback" | "model"
@@ -82,7 +88,7 @@ export function AccountToggleCard(props: {
               <div class="ds-setting-subsection">
                 <SettingRow
                   title={account.key}
-                  description="Account"
+                  description={_(accountLabel)}
                   trailing={<Switch checked={account.enabled} onChange={(value) => props.onToggle(index(), value)} />}
                 />
                 <div class="settings-model-row">
@@ -96,7 +102,7 @@ export function AccountToggleCard(props: {
                     <KobaltePopover.Trigger
                       type="button"
                       class="settings-model-trigger"
-                      aria-label={`Select model for ${account.key}`}
+                      aria-label={_(selectModelAria(account.key))}
                     >
                       <span class="settings-model-trigger-text">
                         <span class="settings-model-trigger-title">{displayText()}</span>
@@ -104,11 +110,11 @@ export function AccountToggleCard(props: {
                       <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
                     </KobaltePopover.Trigger>
                     <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                      <KobaltePopover.Title class="sr-only">Select model for {account.key}</KobaltePopover.Title>
+                      <KobaltePopover.Title class="sr-only">{_(selectModelAria(account.key))}</KobaltePopover.Title>
                       <List<ModelPickOption>
                         class="settings-model-picker-list"
-                        search={{ placeholder: "Search models", autofocus: true }}
-                        emptyMessage="No model results"
+                        search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+                        emptyMessage={_(noModelResults)}
                         key={(option) => option.key}
                         items={modelOptions}
                         current={currentOption()}

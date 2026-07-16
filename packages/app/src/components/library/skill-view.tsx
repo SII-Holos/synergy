@@ -28,14 +28,14 @@ type SkillItem = SkillList["items"][number]
 type SkillListData = SkillList
 type SkillCompatibilityLevel = NonNullable<SkillItem["compatibility"]>["level"]
 
-function skillScopeLabel(skill: SkillItem) {
+function skillScopeLabel(skill: SkillItem, _: ReturnType<typeof useLingui>["_"]) {
   switch (skill.scope) {
     case "project":
-      return "project"
+      return _({ id: "app.library.skills.scope.project", message: "project" })
     case "global":
-      return "global"
+      return _({ id: "app.library.skills.scope.global", message: "global" })
     case "builtin":
-      return "builtin"
+      return _({ id: "app.library.skills.scope.builtin", message: "builtin" })
     default:
       return undefined
   }
@@ -74,14 +74,14 @@ function compatibilityTone(level?: SkillCompatibilityLevel) {
   }
 }
 
-function compatibilityLabel(level?: SkillCompatibilityLevel) {
+function compatibilityLabel(level?: SkillCompatibilityLevel, _?: ReturnType<typeof useLingui>["_"]) {
   switch (level) {
     case "native":
-      return "native"
+      return _ ? _({ id: "app.library.skills.compat.native", message: "native" }) : "native"
     case "compatible":
-      return "compatible"
+      return _ ? _({ id: "app.library.skills.compat.compatible", message: "compatible" }) : "compatible"
     case "partial":
-      return "partial"
+      return _ ? _({ id: "app.library.skills.compat.partial", message: "partial" }) : "partial"
     default:
       return undefined
   }
@@ -158,7 +158,15 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
   async function deleteSkill(name: string) {
     await scopedClient().skill.remove({ name })
     await refetch()
-    showToast({ type: "info", title: "Skill deleted", description: `Removed "${name}" from disk` })
+    showToast({
+      type: "info",
+      title: _({ id: "app.library.skills.deleted", message: "Skill deleted" }),
+      description: _({
+        id: "app.library.skills.deletedDesc",
+        message: 'Removed "{name}" from disk',
+        values: { name },
+      }),
+    })
   }
 
   function openSkillDetail(skill: SkillItem) {
@@ -174,13 +182,13 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
   const filterLabel = createMemo(() => {
     switch (filter()) {
       case "project":
-        return "Project skills"
+        return _({ id: "app.library.skills.filter.project", message: "Project skills" })
       case "global":
-        return "Global skills"
+        return _({ id: "app.library.skills.filter.global", message: "Global skills" })
       case "builtin":
-        return "Built-in skills"
+        return _({ id: "app.library.skills.filter.builtin", message: "Built-in skills" })
       default:
-        return "All skills"
+        return _({ id: "app.library.skills.filter.all", message: "All skills" })
     }
   })
 
@@ -205,11 +213,22 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
       const data = result.data as any
       showToast({
         type: "info",
-        title: "Skill imported",
-        description: `"${data?.name}" added to ${data?.scope ?? scope}`,
+        title: _({ id: "app.library.skills.importSuccess", message: "Skill imported" }),
+        description: _({
+          id: "app.library.skills.importSuccessDesc",
+          message: '"{name}" added to {scope}',
+          values: { name: data?.name ?? "", scope: data?.scope ?? scope },
+        }),
       })
     } catch {
-      showToast({ type: "error", title: "Import failed", description: "Check that the ZIP contains a valid SKILL.md" })
+      showToast({
+        type: "error",
+        title: _({ id: "app.library.skills.importFailed", message: "Import failed" }),
+        description: _({
+          id: "app.library.skills.importFailedDesc",
+          message: "Check that the ZIP contains a valid SKILL.md",
+        }),
+      })
     }
     setImporting(false)
     resetImport()
@@ -226,11 +245,22 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
       const data = result.data as any
       showToast({
         type: "info",
-        title: "Skill imported",
-        description: `"${data?.name}" added to ${data?.scope ?? "project"}`,
+        title: _({ id: "app.library.skills.importSuccess", message: "Skill imported" }),
+        description: _({
+          id: "app.library.skills.importSuccessDesc",
+          message: '"{name}" added to {scope}',
+          values: { name: data?.name ?? "", scope: data?.scope ?? "project" },
+        }),
       })
     } catch {
-      showToast({ type: "error", title: "Import failed", description: "Failed to download or extract. Check the URL." })
+      showToast({
+        type: "error",
+        title: _({ id: "app.library.skills.importFailed", message: "Import failed" }),
+        description: _({
+          id: "app.library.skills.importFailedUrlDesc",
+          message: "Failed to download or extract. Check the URL.",
+        }),
+      })
     }
     setImporting(false)
     resetImport()
@@ -258,7 +288,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                     setFilterOpen(false)
                   }}
                 >
-                  <span>All skills</span>
+                  <span>{_({ id: "app.library.skills.filter.all", message: "All skills" })}</span>
                   <span class="library-menu-count">{(skills()?.items ?? []).length}</span>
                 </button>
                 <Show when={scopeCounts().project > 0}>
@@ -273,7 +303,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                       setFilterOpen(false)
                     }}
                   >
-                    <span>Project</span>
+                    <span>{_({ id: "app.library.skills.filterOption.project", message: "Project" })}</span>
                     <span class="library-menu-count">{scopeCounts().project}</span>
                   </button>
                 </Show>
@@ -289,7 +319,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                       setFilterOpen(false)
                     }}
                   >
-                    <span>Global</span>
+                    <span>{_({ id: "app.library.skills.filterOption.global", message: "Global" })}</span>
                     <span class="library-menu-count">{scopeCounts().global}</span>
                   </button>
                 </Show>
@@ -305,14 +335,20 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                       setFilterOpen(false)
                     }}
                   >
-                    <span>Built-in</span>
+                    <span>{_({ id: "app.library.skills.filterOption.builtin", message: "Built-in" })}</span>
                     <span class="library-menu-count">{scopeCounts().builtin}</span>
                   </button>
                 </Show>
               </Popover.Content>
             </Popover.Portal>
           </Popover>
-          <span class="library-toolbar-summary">{filtered().length} skills</span>
+          <span class="library-toolbar-summary">
+            {_({
+              id: "app.library.skills.count",
+              message: "{count} skills",
+              values: { count: String(filtered().length) },
+            })}
+          </span>
         </div>
         <div class="library-toolbar-right">
           <Popover
@@ -335,7 +371,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
               >
                 <Spinner class="size-3" />
               </Show>
-              <span>Import</span>
+              <span>{_({ id: "app.library.skills.import", message: "Import" })}</span>
             </Popover.Trigger>
             <Popover.Portal>
               <Popover.Content class={`w-64 ${libraryMenuClass}`}>
@@ -351,8 +387,15 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                     >
                       <Icon name={getSemanticIcon("workspace.add")} size="small" class="text-icon-weak-base shrink-0" />
                       <div class="min-w-0">
-                        <div class="text-13-regular text-text-base">Upload ZIP</div>
-                        <div class="text-11-regular text-text-weaker">Import from a local .zip file</div>
+                        <div class="text-13-regular text-text-base">
+                          {_({ id: "app.library.skills.import.uploadZip", message: "Upload ZIP" })}
+                        </div>
+                        <div class="text-11-regular text-text-weaker">
+                          {_({
+                            id: "app.library.skills.import.uploadZipDesc",
+                            message: "Import from a local .zip file",
+                          })}
+                        </div>
                       </div>
                     </button>
                     <button
@@ -362,8 +405,15 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                     >
                       <Icon name={getSemanticIcon("browser.main")} size="small" class="text-icon-weak-base shrink-0" />
                       <div class="min-w-0">
-                        <div class="text-13-regular text-text-base">From URL</div>
-                        <div class="text-11-regular text-text-weaker">Download and import a .zip URL</div>
+                        <div class="text-13-regular text-text-base">
+                          {_({ id: "app.library.skills.import.fromUrl", message: "From URL" })}
+                        </div>
+                        <div class="text-11-regular text-text-weaker">
+                          {_({
+                            id: "app.library.skills.import.fromUrlDesc",
+                            message: "Download and import a .zip URL",
+                          })}
+                        </div>
                       </div>
                     </button>
                   </div>
@@ -371,12 +421,19 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                 <Show when={importMode() === "url"}>
                   <div class="flex flex-col gap-2.5 p-3">
                     <div>
-                      <div class={libraryMetaLabelClass}>Import</div>
-                      <div class="mt-1 text-12-medium text-text-strong">Import from URL</div>
+                      <div class={libraryMetaLabelClass}>
+                        {_({ id: "app.library.skills.import.label", message: "Import" })}
+                      </div>
+                      <div class="mt-1 text-12-medium text-text-strong">
+                        {_({ id: "app.library.skills.import.fromUrlHeading", message: "Import from URL" })}
+                      </div>
                     </div>
                     <input
                       type="url"
-                      placeholder="https://example.com/skill.zip"
+                      placeholder={_({
+                        id: "app.library.skills.import.urlPlaceholder",
+                        message: "https://example.com/skill.zip",
+                      })}
                       class="w-full rounded-[0.95rem] border border-border-base/38 bg-surface-inset-base px-3 py-2.5 text-13-regular text-text-base outline-none ring-1 ring-inset ring-border-base/35 transition-colors placeholder:text-text-weak focus:border-border-base/50 focus:bg-surface-inset-base"
                       value={importUrl()}
                       onInput={(e) => setImportUrl(e.currentTarget.value)}
@@ -391,7 +448,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                         class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-inset-base hover:text-text-base"
                         onClick={() => setImportMode("menu")}
                       >
-                        Back
+                        {_({ id: "app.library.skills.import.back", message: "Back" })}
                       </button>
                       <button
                         type="button"
@@ -405,7 +462,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
                         disabled={!importUrl().trim()}
                         onClick={handleUrlImport}
                       >
-                        Import
+                        {_({ id: "app.library.skills.import.button", message: "Import" })}
                       </button>
                     </div>
                   </div>
@@ -436,7 +493,7 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
             >
               <Spinner class="size-3" />
             </Show>
-            <span>Reload</span>
+            <span>{_({ id: "app.library.skills.reload", message: "Reload" })}</span>
           </button>
         </div>
       </div>
@@ -455,7 +512,14 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
             >
               <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base shrink-0" />
               <span class="flex-1 text-left">
-                {diagnostics().length} skill{diagnostics().length === 1 ? "" : "s"} skipped during load
+                {_({
+                  id: "app.library.skills.diagnostics.count",
+                  message: "{count} skill{plural} skipped during load",
+                  values: {
+                    count: String(diagnostics().length),
+                    plural: diagnostics().length === 1 ? "" : "s",
+                  },
+                })}
               </span>
               <Icon
                 name={getSemanticIcon("navigation.expand")}
@@ -485,8 +549,19 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
           fallback={
             <AppPanel.Empty
               icon={getSemanticIcon("command.rmslop")}
-              title={props.search ? `No skills match "${props.search}"` : "No skills loaded"}
-              description="Skills are loaded from SKILL.md files in .synergy/skill/ directories. Use Reload to rescan."
+              title={
+                props.search
+                  ? _({
+                      id: "app.library.skills.empty.search",
+                      message: 'No skills match "{query}"',
+                      values: { query: props.search },
+                    })
+                  : _({ id: "app.library.skills.empty.none", message: "No skills loaded" })
+              }
+              description={_({
+                id: "app.library.skills.empty.hint",
+                message: "Skills are loaded from SKILL.md files in .synergy/skill/ directories. Use Reload to rescan.",
+              })}
             />
           }
         >
@@ -502,11 +577,12 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
 }
 
 function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
-  const scopeLabel = () => skillScopeLabel(props.skill)
+  const { _ } = useLingui()
+  const scopeLabel = () => skillScopeLabel(props.skill, _)
   const displayLocation = () => compactPath(props.skill.location)
   const scriptsCount = () => props.skill.scripts?.length ?? 0
   const referencesCount = () => props.skill.references?.length ?? 0
-  const compatibility = () => compatibilityLabel(props.skill.compatibility?.level)
+  const compatibility = () => compatibilityLabel(props.skill.compatibility?.level, _)
 
   return (
     <div class={`${libraryCardBaseClass} ${libraryCardHoverClass} h-full`}>
@@ -530,8 +606,16 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
             type="button"
             class="flex size-7 shrink-0 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/40 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
             onClick={props.onOpen}
-            title={`Open details for ${props.skill.name}`}
-            aria-label={`Open details for ${props.skill.name}`}
+            title={_({
+              id: "app.library.skills.card.openDetails",
+              message: "Open details for {name}",
+              values: { name: props.skill.name },
+            })}
+            aria-label={_({
+              id: "app.library.skills.card.openDetails",
+              message: "Open details for {name}",
+              values: { name: props.skill.name },
+            })}
           >
             <Icon name={getSemanticIcon("action.open")} size="small" />
           </button>
@@ -552,12 +636,20 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
           <div class="flex flex-wrap items-center gap-1.5">
             <Show when={scriptsCount() > 0}>
               <span class="rounded-full bg-icon-warning-base/10 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
-                {scriptsCount()} script{scriptsCount() === 1 ? "" : "s"}
+                {_({
+                  id: "app.library.skills.card.scriptsCount",
+                  message: "{count} script{plural}",
+                  values: { count: String(scriptsCount()), plural: scriptsCount() === 1 ? "" : "s" },
+                })}
               </span>
             </Show>
             <Show when={referencesCount() > 0}>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                {referencesCount()} reference{referencesCount() === 1 ? "" : "s"}
+                {_({
+                  id: "app.library.skills.card.referencesCount",
+                  message: "{count} reference{plural}",
+                  values: { count: String(referencesCount()), plural: referencesCount() === 1 ? "" : "s" },
+                })}
               </span>
             </Show>
             <Show when={compatibility()}>
@@ -575,9 +667,10 @@ function SkillCard(props: { skill: SkillItem; onOpen: () => void }) {
 }
 
 function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<void>; onDeleted: () => void }) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const confirm = useConfirm()
-  const scopeLabel = () => skillScopeLabel(props.skill)
+  const scopeLabel = () => skillScopeLabel(props.skill, _)
   const displayLocation = () => compactPath(props.skill.location)
   const displayEntryFile = () => compactPath(props.skill.entryFile)
   const displayBaseDir = () => compactPath(props.skill.baseDir)
@@ -610,57 +703,81 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<v
             </Show>
             <Show when={compatibilityLabel(props.skill.compatibility?.level)}>
               <span class={`skill-detail-chip ${compatibilityTone(props.skill.compatibility?.level)}`}>
-                {compatibilityLabel(props.skill.compatibility?.level)} compatibility
+                {_({
+                  id: "app.library.skills.card.compatLabel",
+                  message: "{level} compatibility",
+                  values: { level: compatibilityLabel(props.skill.compatibility?.level) ?? "" },
+                })}
               </span>
             </Show>
           </div>
 
-          <SkillDetailSection label="Description">
+          <SkillDetailSection label={_({ id: "app.library.skills.detail.description", message: "Description" })}>
             <div class="skill-detail-description">{props.skill.description}</div>
           </SkillDetailSection>
 
           <Show when={displayLocation() || displayEntryFile() || displayBaseDir()}>
-            <SkillDetailSection label="Location">
+            <SkillDetailSection label={_({ id: "app.library.skills.detail.location", message: "Location" })}>
               <div class="skill-detail-rows">
                 <Show when={displayLocation()}>
-                  <SkillDetailRow label="Skill path" value={displayLocation()!} title={props.skill.location} />
+                  <SkillDetailRow
+                    label={_({ id: "app.library.skills.detail.skillPath", message: "Skill path" })}
+                    value={displayLocation()!}
+                    title={props.skill.location}
+                  />
                 </Show>
                 <Show when={displayEntryFile()}>
-                  <SkillDetailRow label="Entry file" value={displayEntryFile()!} title={props.skill.entryFile} />
+                  <SkillDetailRow
+                    label={_({ id: "app.library.skills.detail.entryFile", message: "Entry file" })}
+                    value={displayEntryFile()!}
+                    title={props.skill.entryFile}
+                  />
                 </Show>
                 <Show when={displayBaseDir()}>
-                  <SkillDetailRow label="Base directory" value={displayBaseDir()!} title={props.skill.baseDir} />
+                  <SkillDetailRow
+                    label={_({ id: "app.library.skills.detail.baseDir", message: "Base directory" })}
+                    value={displayBaseDir()!}
+                    title={props.skill.baseDir}
+                  />
                 </Show>
               </div>
             </SkillDetailSection>
           </Show>
 
           <Show when={compatibility()}>
-            <SkillDetailSection label="Compatibility">
+            <SkillDetailSection label={_({ id: "app.library.skills.detail.compatibility", message: "Compatibility" })}>
               <div class="skill-detail-rows">
                 <SkillDetailRow
-                  label="Level"
+                  label={_({ id: "app.library.skills.detail.compatLevel", message: "Level" })}
                   value={compatibilityLabel(compatibility()?.level) ?? "unknown"}
                   mono={false}
                 />
               </div>
               <Show when={(compatibility()?.warnings?.length ?? 0) > 0}>
-                <SkillDetailList title="Warnings" items={compatibility()?.warnings ?? []} tone="warning" />
+                <SkillDetailList
+                  title={_({ id: "app.library.skills.detail.warnings", message: "Warnings" })}
+                  items={compatibility()?.warnings ?? []}
+                  tone="warning"
+                />
               </Show>
               <Show when={(compatibility()?.unsupported?.length ?? 0) > 0}>
-                <SkillDetailList title="Unsupported" items={compatibility()?.unsupported ?? []} tone="danger" />
+                <SkillDetailList
+                  title={_({ id: "app.library.skills.detail.unsupported", message: "Unsupported" })}
+                  items={compatibility()?.unsupported ?? []}
+                  tone="danger"
+                />
               </Show>
             </SkillDetailSection>
           </Show>
 
           <Show when={(props.skill.references?.length ?? 0) > 0}>
-            <SkillDetailSection label="References">
+            <SkillDetailSection label={_({ id: "app.library.skills.detail.references", message: "References" })}>
               <SkillCodeList items={props.skill.references ?? []} />
             </SkillDetailSection>
           </Show>
 
           <Show when={(props.skill.scripts?.length ?? 0) > 0}>
-            <SkillDetailSection label="Scripts">
+            <SkillDetailSection label={_({ id: "app.library.skills.detail.scripts", message: "Scripts" })}>
               <SkillCodeList items={props.skill.scripts ?? []} />
             </SkillDetailSection>
           </Show>
@@ -669,7 +786,7 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<v
         <div class="skill-detail-footer">
           <Show when={props.onDelete}>
             <button type="button" class="skill-detail-button skill-detail-button-danger" onClick={requestDelete}>
-              Delete skill
+              {_({ id: "app.library.skills.detail.delete", message: "Delete skill" })}
             </button>
           </Show>
           <button
@@ -677,7 +794,7 @@ function SkillDetailDialog(props: { skill: SkillItem; onDelete?: () => Promise<v
             class="skill-detail-button skill-detail-button-secondary ml-auto"
             onClick={() => dialog.close()}
           >
-            Close
+            {_({ id: "app.library.skills.detail.close", message: "Close" })}
           </button>
         </div>
       </div>

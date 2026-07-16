@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import {
   analyzeLocalizationSource,
   applyLocalizationAllowlist,
+  findUnusedLocalizationAllowlistEntries,
+  isLocalizationAllowlistCategory,
   type LocalizationAllowlistEntry,
 } from "./localization-check"
 
@@ -108,6 +110,92 @@ describe("localization source contract", () => {
     expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
   })
 
+  test("accepts static Trans references, conditional descriptors, and descriptor collection callbacks", () => {
+    const source = `
+      import { Trans } from "@lingui/solid"
+      import { browser as B } from "./messages"
+      const local = { id: "app.local.action.label", message: "Local action" }
+      const options = [
+        { id: "app.option.first.label", message: "First" },
+        { id: "app.option.second.label", message: "Second" },
+      ]
+      export function Example(props) {
+        const { _ } = useLingui()
+        const labels = options.map((descriptor) => _(descriptor))
+        const state = _(props.ready
+          ? { id: "app.state.ready.label", message: "Ready" }
+          : { id: "app.state.waiting.label", message: "Waiting" })
+        return <>
+          <Trans id={B.retry.id} message={B.retry.message} />
+          <Trans id={local.id} message={local.message} />
+          <span>{labels.join(", ")}</span>
+          <span>{state}</span>
+        </>
+      }
+    `
+
+    expect(analyzeLocalizationSource("packages/app/src/example.tsx", source)).toEqual([])
+  })
+
+  test("accepts structurally typed descriptor helpers and descriptor property pairs", () => {
+    const source = `
+      import { agenda as A } from "./messages"
+      const local = { id: "app.local.ready.label", message: "Ready" }
+      const translate = (descriptor: { id: string; message: string }, values?: Record<string, unknown>) =>
+        i18n._(values ? { ...descriptor, values } : descriptor)
+      const imported = i18n._({ ...A.total, values: { total: 2 } })
+      const importedWithMessage = i18n._({ ...A.total, message: A.total.message, values: { total: 2 } })
+      const localPair = i18n._({ id: local.id, message: local.message, values: { count: 2 } })
+      const translated = translate(A.total, { total: 2 })
+    `
+
+    expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
+  })
+
+  test("accepts typed descriptor props and statically complete descriptor maps", () => {
+    const source = `
+      import type { MessageDescriptor } from "@lingui/core"
+      interface ConfirmOptions {
+        title: MessageDescriptor
+        cancelLabel?: MessageDescriptor
+        externalText: string
+      }
+      type RowDefinition = {
+        label: MessageDescriptor
+        detail?: MessageDescriptor
+      }
+      const unitDescriptors = {
+        minutes: { id: "app.duration.minutes.label", message: "minutes" },
+        hours: { id: "app.duration.hours.label", message: "hours" },
+      }
+      function ConfirmDialog(props: ConfirmOptions) {
+        const title = _(props.title)
+        const cancel = props.cancelLabel ? _(props.cancelLabel) : ""
+        return title + cancel
+      }
+      function row(def: RowDefinition) {
+        return _(def.label)
+      }
+      function unitLabel(unit: keyof typeof unitDescriptors) {
+        return _(unitDescriptors[unit])
+      }
+    `
+
+    expect(analyzeLocalizationSource("packages/app/src/example.ts", source)).toEqual([])
+  })
+
+  test("rejects properties whose type also permits arbitrary strings", () => {
+    const mixedType = analyzeLocalizationSource(
+      "packages/app/src/mixed.ts",
+      `
+        import type { MessageDescriptor } from "@lingui/core"
+        interface MixedOptions { title: string | MessageDescriptor }
+        function render(props: MixedOptions) { return _(props.title) }
+      `,
+    )
+    expect(mixedType.map((item) => item.kind)).toEqual(["invalid-message-descriptor"])
+  })
+
   test("requires runtime translation calls to use static descriptors", () => {
     const source = `
       const translated = _("settings.general.language.label")
@@ -117,6 +205,29 @@ describe("localization source contract", () => {
 
     const violations = analyzeLocalizationSource("packages/app/src/example.ts", source)
     expect(violations.map((item) => item.kind)).toEqual(["invalid-message-descriptor", "invalid-message-descriptor"])
+
+    const dynamicOverride = analyzeLocalizationSource(
+      "packages/app/src/dynamic.ts",
+      `import { agenda as A } from "./messages"; i18n._({ ...A.total, id: dynamicID })`,
+    )
+    expect(dynamicOverride.map((item) => item.kind)).toEqual(["dynamic-message-id"])
+  })
+
+  test("rejects descriptor maps indexed by unconstrained dynamic strings", () => {
+    const unsafeMapLookup = analyzeLocalizationSource(
+      "packages/app/src/dynamic-map.ts",
+      `
+        const labels = { ready: { id: "app.state.ready.label", message: "Ready" } }
+        function label(key: string) { return _(labels[key]) }
+      `,
+    )
+    expect(unsafeMapLookup.map((item) => item.kind)).toEqual(["invalid-message-descriptor"])
+  })
+
+  test("rejects unknown allowlist categories", () => {
+    expect(isLocalizationAllowlistCategory("brand")).toBe(true)
+    expect(isLocalizationAllowlistCategory("language-self-name")).toBe(true)
+    expect(isLocalizationAllowlistCategory("misc")).toBe(false)
   })
 
   test("allowlist entries are exact, categorized, and occurrence-scoped", () => {
@@ -138,5 +249,25 @@ describe("localization source contract", () => {
     const remaining = applyLocalizationAllowlist(violations, allowlist)
     expect(remaining).toHaveLength(1)
     expect(remaining[0]?.occurrence).toBe(2)
+  })
+
+  test("reports stale allowlist entries after their source violation is removed", () => {
+    const allowlist: LocalizationAllowlistEntry[] = [
+      {
+        path: "packages/app/src/example.tsx",
+        kind: "jsx-text",
+        literal: "Synergy",
+        occurrence: 1,
+        category: "brand",
+        reason: "Product names are not translated.",
+      },
+    ]
+
+    expect(findUnusedLocalizationAllowlistEntries([], allowlist)).toEqual(allowlist)
+    const violations = analyzeLocalizationSource(
+      "packages/app/src/example.tsx",
+      `export const Example = () => <span>Synergy</span>`,
+    )
+    expect(findUnusedLocalizationAllowlistEntries(violations, allowlist)).toEqual([])
   })
 })

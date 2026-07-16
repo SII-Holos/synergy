@@ -3,6 +3,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { WorkspaceProgressStep } from "./worktree-session"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 export type WorktreeProgressStepState = WorkspaceProgressStep["state"]
 
@@ -25,6 +27,9 @@ export function StepIcon(props: { state: WorktreeProgressStepState }) {
 }
 
 export function StepList(props: { steps: WorkspaceProgressStep[] }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
+
   return (
     <div class="wtd-step-list">
       <For each={props.steps}>
@@ -39,9 +44,9 @@ export function StepList(props: { steps: WorkspaceProgressStep[] }) {
             </div>
             <span class="wtd-step-status">
               <Switch>
-                <Match when={step.state === "active"}>In progress</Match>
-                <Match when={step.state === "complete"}>Done</Match>
-                <Match when={true}>Pending</Match>
+                <Match when={step.state === "active"}>{_(S.worktreeStepActive)}</Match>
+                <Match when={step.state === "complete"}>{_(S.worktreeStepComplete)}</Match>
+                <Match when={true}>{_(S.worktreeStepPending)}</Match>
               </Switch>
             </span>
           </div>

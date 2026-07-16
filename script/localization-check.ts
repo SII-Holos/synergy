@@ -30,9 +30,25 @@ export type LocalizationAllowlistCategory =
   | "code"
   | "developer-output"
   | "machine-identifier"
+  | "language-self-name"
   | "plugin-content"
   | "raw-error"
   | "user-content"
+
+const LOCALIZATION_ALLOWLIST_CATEGORIES = new Set<LocalizationAllowlistCategory>([
+  "brand",
+  "code",
+  "developer-output",
+  "machine-identifier",
+  "language-self-name",
+  "plugin-content",
+  "raw-error",
+  "user-content",
+])
+
+export function isLocalizationAllowlistCategory(value: unknown): value is LocalizationAllowlistCategory {
+  return typeof value === "string" && LOCALIZATION_ALLOWLIST_CATEGORIES.has(value as LocalizationAllowlistCategory)
+}
 
 export type LocalizationAllowlistEntry = {
   path: string
@@ -74,11 +90,14 @@ const INTL_FORMATTER =
   /^(?:Collator|DateTimeFormat|DisplayNames|ListFormat|NumberFormat|PluralRules|RelativeTimeFormat|Segmenter)$/
 const TRANSLATABLE_CHARACTER = /\p{L}/u
 const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..")
+type DescriptorTypeDeclaration = ts.InterfaceDeclaration | ts.TypeAliasDeclaration
+
 type DescriptorEnvironment = {
   sourceFile: ts.SourceFile
   imports: Set<string>
   variables: Map<string, ts.Expression>
   functions: Map<string, ts.FunctionLikeDeclaration>
+  types: Map<string, DescriptorTypeDeclaration>
 }
 
 export function analyzeLocalizationSource(filePath: string, source: string): LocalizationViolation[] {
@@ -132,11 +151,11 @@ export function analyzeLocalizationSource(filePath: string, source: string): Loc
     }
 
     if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
-      if (jsxTagName(node.tagName) === "Trans") analyzeTransElement(node, report)
+      if (jsxTagName(node.tagName) === "Trans") analyzeTransElement(node, descriptorEnvironment, report)
     }
 
     if (ts.isObjectLiteralExpression(node) && hasI18nMarker(node, source)) {
-      analyzeMessageDescriptor(node, report)
+      analyzeMessageDescriptor(node, descriptorEnvironment, node, report)
     }
 
     ts.forEachChild(node, visit)
@@ -166,6 +185,14 @@ export function applyLocalizationAllowlist(
     ),
   )
   return violations.filter((violation) => !allowed.has(allowlistKey(violation)))
+}
+
+export function findUnusedLocalizationAllowlistEntries(
+  violations: LocalizationViolation[],
+  allowlist: LocalizationAllowlistEntry[],
+): LocalizationAllowlistEntry[] {
+  const observed = new Set(violations.map(allowlistKey))
+  return allowlist.filter((entry) => !observed.has(allowlistKey(entry)))
 }
 
 function analyzeJsxAttribute(
@@ -236,16 +263,29 @@ function analyzeMessageCall(
   }
 
   for (const object of resolveDescriptorObjects(descriptor, environment, node, new Set())) {
-    analyzeMessageDescriptor(object, report)
+    analyzeMessageDescriptor(object, environment, object, report)
   }
 }
 
 function analyzeTransElement(
   node: ts.JsxSelfClosingElement | ts.JsxOpeningElement,
+  environment: DescriptorEnvironment,
   report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
 ) {
   const id = jsxAttribute(node, "id")
   const message = jsxAttribute(node, "message")
+
+  if (
+    id?.initializer &&
+    message?.initializer &&
+    isDescriptorPropertyPair(id.initializer, message.initializer, environment, node)
+  ) {
+    const owner = descriptorPropertyOwner(id.initializer)!
+    for (const object of resolveDescriptorObjects(owner, environment, node, new Set())) {
+      analyzeMessageDescriptor(object, environment, object, report)
+    }
+    return
+  }
 
   if (!id) {
     report("dynamic-message-id", node, "<missing>")
@@ -265,21 +305,86 @@ function analyzeTransElement(
   }
 }
 
+function descriptorPropertyOwner(expression: ts.Expression): ts.Expression | undefined {
+  const current = unwrapExpression(expression)
+  if (ts.isPropertyAccessExpression(current)) return current.expression
+  if (
+    ts.isElementAccessExpression(current) &&
+    current.argumentExpression &&
+    ts.isStringLiteralLike(current.argumentExpression)
+  ) {
+    return current.expression
+  }
+  return
+}
+
+function descriptorPropertyKey(expression: ts.Expression): string | undefined {
+  const current = unwrapExpression(expression)
+  if (ts.isPropertyAccessExpression(current)) return current.name.text
+  if (
+    ts.isElementAccessExpression(current) &&
+    current.argumentExpression &&
+    ts.isStringLiteralLike(current.argumentExpression)
+  ) {
+    return current.argumentExpression.text
+  }
+  return
+}
+
+function isDescriptorPropertyPair(
+  id: ts.Expression,
+  message: ts.Expression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  if (descriptorPropertyKey(id) !== "id" || descriptorPropertyKey(message) !== "message") return false
+  const idOwner = descriptorPropertyOwner(id)
+  const messageOwner = descriptorPropertyOwner(message)
+  if (!idOwner || !messageOwner || idOwner.getText() !== messageOwner.getText()) return false
+  return isStaticMessageDescriptorExpression(idOwner, environment, context, new Set())
+}
+
 function analyzeMessageDescriptor(
   node: ts.ObjectLiteralExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
   report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
 ) {
   const id = objectProperty(node, "id")
   const message = objectProperty(node, "message")
+  const inheritsDescriptor = node.properties.some(
+    (property) =>
+      ts.isSpreadAssignment(property) &&
+      isStaticMessageDescriptorExpression(property.expression, environment, context, new Set()),
+  )
 
-  if (!id || !ts.isStringLiteralLike(id.initializer)) {
-    report("dynamic-message-id", id ?? node, id?.initializer.getText() ?? "<missing>")
-  } else if (!MESSAGE_ID.test(id.initializer.text)) {
-    report("invalid-message-id", id.initializer, id.initializer.text)
+  if (id && message && isDescriptorPropertyPair(id.initializer, message.initializer, environment, context)) {
+    const owner = descriptorPropertyOwner(id.initializer)!
+    for (const object of resolveDescriptorObjects(owner, environment, context, new Set())) {
+      analyzeMessageDescriptor(object, environment, object, report)
+    }
+    return
   }
 
-  if (!message || !ts.isStringLiteralLike(message.initializer) || !message.initializer.text.trim()) {
-    report("missing-default-message", message ?? node, message?.initializer.getText() ?? "<missing>")
+  if (id) {
+    if (!ts.isStringLiteralLike(id.initializer)) {
+      report("dynamic-message-id", id, id.initializer.getText())
+    } else if (!MESSAGE_ID.test(id.initializer.text)) {
+      report("invalid-message-id", id.initializer, id.initializer.text)
+    }
+  } else if (!inheritsDescriptor) {
+    report("dynamic-message-id", node, "<missing>")
+  }
+
+  if (message) {
+    if (ts.isStringLiteralLike(message.initializer) && message.initializer.text.trim()) return
+    const owner = descriptorPropertyOwner(message.initializer)
+    if (descriptorPropertyKey(message.initializer) === "message" && owner) {
+      if (isStaticMessageDescriptorExpression(owner, environment, context, new Set())) return
+    }
+    report("missing-default-message", message, message.initializer.getText())
+  } else if (!inheritsDescriptor) {
+    report("missing-default-message", node, "<missing>")
   }
 }
 
@@ -297,6 +402,7 @@ function createDescriptorEnvironment(sourceFile: ts.SourceFile): DescriptorEnvir
   const imports = new Set<string>()
   const variables = new Map<string, ts.Expression>()
   const functions = new Map<string, ts.FunctionLikeDeclaration>()
+  const types = new Map<string, DescriptorTypeDeclaration>()
 
   function collect(node: ts.Node) {
     if (ts.isImportDeclaration(node) && node.importClause && !node.importClause.isTypeOnly) {
@@ -315,11 +421,12 @@ function createDescriptorEnvironment(sourceFile: ts.SourceFile): DescriptorEnvir
     }
 
     if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node)
+    if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) types.set(node.name.text, node)
     ts.forEachChild(node, collect)
   }
 
   collect(sourceFile)
-  return { sourceFile, imports, variables, functions }
+  return { sourceFile, imports, variables, functions, types }
 }
 
 function isStaticMessageDescriptorExpression(
@@ -344,11 +451,14 @@ function isStaticMessageDescriptorExpression(
   if (ts.isIdentifier(current)) {
     if (environment.imports.has(current.text)) return true
     if (isTypedMessageDescriptorParameter(current.text, context)) return true
+    if (isStaticDescriptorCollectionParameter(current, environment, context)) return true
     const initializer = environment.variables.get(current.text)
     return initializer ? isStaticMessageDescriptorExpression(initializer, environment, context, new Set(seen)) : false
   }
 
   if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (isTypedMessageDescriptorProperty(current, environment, context)) return true
+    if (isKeyofStaticDescriptorMap(current, environment, context)) return true
     if (isImportedReference(current, environment)) return true
     const resolved = resolvePropertyInitializer(current, environment, seen)
     return resolved ? isStaticMessageDescriptorExpression(resolved, environment, context, new Set(seen)) : false
@@ -437,9 +547,160 @@ function isTypedMessageDescriptorParameter(name: string, context: ts.Node): bool
     if (!ts.isFunctionLike(current)) continue
     const parameter = current.parameters.find((item) => ts.isIdentifier(item.name) && item.name.text === name)
     if (!parameter?.type) continue
-    return /(?:^|\W)MessageDescriptor(?:\W|$)/.test(parameter.type.getText())
+    if (/(?:^|\W)MessageDescriptor(?:\W|$)/.test(parameter.type.getText())) return true
+    if (!ts.isTypeLiteralNode(parameter.type)) return false
+    const members = new Map(
+      parameter.type.members.flatMap((member) => {
+        if (!ts.isPropertySignature(member) || !member.type || !member.name) return []
+        const key = propertyName(member.name)
+        return key ? ([[key, member.type]] as const) : []
+      }),
+    )
+    return ["id", "message"].every((key) => members.get(key)?.kind === ts.SyntaxKind.StringKeyword)
   }
   return false
+}
+
+function isTypedMessageDescriptorProperty(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  const property = ts.isPropertyAccessExpression(expression)
+    ? expression.name.text
+    : expression.argumentExpression && ts.isStringLiteralLike(expression.argumentExpression)
+      ? expression.argumentExpression.text
+      : undefined
+  const owner = unwrapExpression(expression.expression)
+  if (!property || !ts.isIdentifier(owner)) return false
+
+  const parameter = enclosingParameter(owner.text, context)
+  if (!parameter?.type) return false
+  const members = resolveTypeMembers(parameter.type, environment)
+  const member = members.find(
+    (item): item is ts.PropertySignature => ts.isPropertySignature(item) && propertyName(item.name) === property,
+  )
+  return !!member?.type && isMessageDescriptorType(member.type)
+}
+
+function isKeyofStaticDescriptorMap(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  if (!ts.isElementAccessExpression(expression) || !expression.argumentExpression) return false
+  const owner = unwrapExpression(expression.expression)
+  const key = unwrapExpression(expression.argumentExpression)
+  if (!ts.isIdentifier(owner) || !ts.isIdentifier(key)) return false
+
+  const parameter = enclosingParameter(key.text, context)
+  if (!parameter?.type || !isKeyofTypeQuery(parameter.type, owner.text)) return false
+  const initializer = environment.variables.get(owner.text)
+  const map = initializer && unwrapExpression(initializer)
+  if (!map || !ts.isObjectLiteralExpression(map) || map.properties.length === 0) return false
+  return map.properties.every(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      isStaticMessageDescriptorExpression(property.initializer, environment, context, new Set()),
+  )
+}
+
+function enclosingParameter(name: string, context: ts.Node): ts.ParameterDeclaration | undefined {
+  for (let current: ts.Node | undefined = context; current; current = current.parent) {
+    if (!ts.isFunctionLike(current)) continue
+    return current.parameters.find((item) => ts.isIdentifier(item.name) && item.name.text === name)
+  }
+}
+
+function resolveTypeMembers(type: ts.TypeNode, environment: DescriptorEnvironment): ts.NodeArray<ts.TypeElement> {
+  if (ts.isTypeLiteralNode(type)) return type.members
+  if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return ts.factory.createNodeArray()
+  const declaration = environment.types.get(type.typeName.text)
+  if (declaration && ts.isInterfaceDeclaration(declaration)) return declaration.members
+  if (declaration && ts.isTypeAliasDeclaration(declaration) && ts.isTypeLiteralNode(declaration.type)) {
+    return declaration.type.members
+  }
+  return ts.factory.createNodeArray()
+}
+
+function isMessageDescriptorType(type: ts.TypeNode): boolean {
+  if (ts.isUnionTypeNode(type)) {
+    const concrete = type.types.filter(
+      (item) => item.kind !== ts.SyntaxKind.UndefinedKeyword && item.kind !== ts.SyntaxKind.NullKeyword,
+    )
+    return concrete.length > 0 && concrete.every(isMessageDescriptorType)
+  }
+  if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+    return type.typeName.text === "MessageDescriptor"
+  }
+  if (!ts.isTypeLiteralNode(type)) return false
+  const members = new Map(
+    type.members.flatMap((member) => {
+      if (!ts.isPropertySignature(member) || !member.type || !member.name) return []
+      const key = propertyName(member.name)
+      return key ? ([[key, member.type]] as const) : []
+    }),
+  )
+  return ["id", "message"].every((key) => members.get(key)?.kind === ts.SyntaxKind.StringKeyword)
+}
+
+function isKeyofTypeQuery(type: ts.TypeNode, owner: string): boolean {
+  return (
+    ts.isTypeOperatorNode(type) &&
+    type.operator === ts.SyntaxKind.KeyOfKeyword &&
+    ts.isTypeQueryNode(type.type) &&
+    ts.isIdentifier(type.type.exprName) &&
+    type.type.exprName.text === owner
+  )
+}
+
+function isStaticDescriptorCollectionParameter(
+  identifier: ts.Identifier,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  for (let current: ts.Node | undefined = context; current; current = current.parent) {
+    if (!ts.isArrowFunction(current) && !ts.isFunctionExpression(current)) continue
+    const parameterIndex = current.parameters.findIndex(
+      (parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === identifier.text,
+    )
+    if (parameterIndex !== 0) continue
+
+    const parentNode: ts.Node = current.parent
+    if (!ts.isCallExpression(parentNode) || !parentNode.arguments.includes(current)) continue
+    const call: ts.CallExpression = parentNode
+    if (!ts.isPropertyAccessExpression(call.expression)) continue
+    if (
+      !new Set(["map", "flatMap", "filter", "find", "findIndex", "some", "every", "forEach"]).has(
+        call.expression.name.text,
+      )
+    ) {
+      continue
+    }
+
+    const collection = resolveCollectionExpression(call.expression.expression, environment, new Set())
+    if (!collection || !ts.isArrayLiteralExpression(collection) || collection.elements.length === 0) return false
+    return collection.elements.every(
+      (element) =>
+        ts.isExpression(element) && isStaticMessageDescriptorExpression(element, environment, current, new Set()),
+    )
+  }
+  return false
+}
+
+function resolveCollectionExpression(
+  expression: ts.Expression,
+  environment: DescriptorEnvironment,
+  seen: Set<ts.Node>,
+): ts.Expression | undefined {
+  const current = unwrapExpression(expression)
+  if (seen.has(current)) return
+  seen.add(current)
+  if (ts.isIdentifier(current)) {
+    const initializer = environment.variables.get(current.text)
+    return initializer ? resolveCollectionExpression(initializer, environment, seen) : undefined
+  }
+  return current
 }
 
 function isImportedReference(
@@ -633,8 +894,12 @@ function validateAllowlistEntry(value: unknown, filePath: string, index: number)
   if (!Number.isInteger(entry.occurrence) || Number(entry.occurrence) < 1) {
     throw new Error(`${filePath}[${index}]: occurrence must be a positive integer`)
   }
-  if (typeof entry.category !== "string" || typeof entry.reason !== "string" || entry.reason.trim().length < 12) {
-    throw new Error(`${filePath}[${index}]: category and a specific reason are required`)
+  if (
+    !isLocalizationAllowlistCategory(entry.category) ||
+    typeof entry.reason !== "string" ||
+    entry.reason.trim().length < 12
+  ) {
+    throw new Error(`${filePath}[${index}]: a supported category and a specific reason are required`)
   }
   return entry as LocalizationAllowlistEntry
 }
@@ -665,21 +930,32 @@ async function scanRepository() {
   const remaining = applyLocalizationAllowlist(violations, allowlist).toSorted(
     (a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.column - b.column,
   )
+  const unusedAllowlist = findUnusedLocalizationAllowlistEntries(violations, allowlist)
 
   if (json) {
     console.log(JSON.stringify(remaining, null, 2))
-  } else if (remaining.length === 0) {
-    console.log("Localization contract passed with no unclassified violations.")
   } else {
+    if (remaining.length === 0 && unusedAllowlist.length === 0) {
+      console.log("Localization contract passed with no unclassified violations or stale allowlist entries.")
+    }
     for (const violation of remaining) {
       console.error(
         `${violation.path}:${violation.line}:${violation.column} [${violation.kind}] ${JSON.stringify(violation.literal)} (occurrence ${violation.occurrence})`,
       )
     }
-    console.error(`Localization contract found ${remaining.length} unclassified violation(s).`)
+    if (remaining.length > 0) {
+      console.error(`Localization contract found ${remaining.length} unclassified violation(s).`)
+    }
   }
 
-  if (strict && remaining.length > 0) process.exit(1)
+  if (unusedAllowlist.length > 0) {
+    console.error("Localization allowlist contains stale entries:")
+    for (const entry of unusedAllowlist) {
+      console.error(`  ${entry.path} [${entry.kind}] ${JSON.stringify(entry.literal)} (occurrence ${entry.occurrence})`)
+    }
+  }
+
+  if (strict && (remaining.length > 0 || unusedAllowlist.length > 0)) process.exit(1)
 }
 
 if (import.meta.main) await scanRepository()

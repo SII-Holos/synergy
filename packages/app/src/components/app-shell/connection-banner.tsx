@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { appShell } from "@/locales/messages"
 import { useGlobalSDK } from "@/context/global-sdk"
 
 const PROLONGED_THRESHOLD_MS = 30_000
@@ -43,11 +44,7 @@ export function ConnectionBanner() {
               "bg-icon-critical-base": prolonged(),
             }}
           />
-          <span>
-            {prolonged()
-              ? _({ id: "connection.lost.banner", message: "Connection lost — check your network" })
-              : _({ id: "connection.reconnecting.banner", message: "Reconnecting…" })}
-          </span>
+          <span>{prolonged() ? _(appShell.connectionLost) : _(appShell.reconnecting)}</span>
         </div>
       </div>
     </Show>

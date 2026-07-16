@@ -1,3 +1,5 @@
+import type { MessageDescriptor } from "@lingui/core"
+
 import { useLingui } from "@lingui/solid"
 import type { Agent, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
 import { For } from "solid-js"
@@ -144,10 +146,7 @@ const watcherRowDesc = {
   message: "Patterns the file watcher should skip, one per line.",
 }
 
-function withLabel(
-  def: { value: string; label: { id: string; message: string } },
-  _: (d: { id: string; message: string }) => string,
-) {
+function withLabel(def: { value: string; label: MessageDescriptor }, _: (d: MessageDescriptor) => string) {
   return { value: def.value, label: _(def.label) }
 }
 
@@ -250,7 +249,11 @@ export function TimeoutsPanel(props: {
     if (managedByEnvironment()) return _(managedByEnvLabel)
     const recommended = props.concurrencyStatus?.recommended
     if (recommended !== undefined && recommended !== Number(props.runtime.cortexConcurrency)) {
-      return `Recommended: ${recommended}`
+      return _({
+        id: "settings.runtime.agents.concurrency.recommended",
+        message: "Recommended: {value}",
+        values: { value: String(recommended) },
+      })
     }
     return undefined
   }

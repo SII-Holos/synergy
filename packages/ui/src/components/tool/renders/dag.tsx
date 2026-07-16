@@ -1,3 +1,4 @@
+import { TOOL_TITLE_DESC, TOOL_MISC_DESC } from "../../tool-title-descriptors"
 import { Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
 import { DagGraph } from "../../dag-graph"
@@ -40,7 +41,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: getSemanticIcon("dag.main"),
-          title: "DAG",
+          title: TOOL_TITLE_DESC["dagwrite"],
           subtitle: firstReady() || "",
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}
@@ -73,8 +74,8 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: getSemanticIcon("dag.main"),
-          title: "DAG",
-          subtitle: "updated",
+          title: TOOL_TITLE_DESC["dagpatch"],
+          subtitle: TOOL_MISC_DESC.updated.message!,
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}
       >
@@ -106,7 +107,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: getSemanticIcon("dag.main"),
-          title: "Read DAG",
+          title: TOOL_TITLE_DESC["dagread"],
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}
       >

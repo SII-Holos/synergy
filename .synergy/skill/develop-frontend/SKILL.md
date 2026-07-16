@@ -29,8 +29,9 @@ Read [Frontend localization](../../../docs/architecture/localization.md) before 
 2. Keep descriptors statically extractable with an English default message and a translator comment when product context is not obvious. Use ICU variables, plural/select syntax, and component placeholders for complete messages.
 3. Translate Synergy-owned chrome, actions, states, recovery guidance, and accessibility labels together. Keep user, LLM, Note, source-code, terminal, browser-page, plugin-author, brand, path, identifier, and raw diagnostic content verbatim.
 4. Use the shared active-locale formatter for dates, time, numbers, percentages, currency, lists, and relative time. Do not hard-code locale tags or use a regional locale to imply an unrelated preference such as 24-hour time.
-5. `packages/app` owns locale state, catalog loading, Settings, and persistence. `packages/ui` consumes the same `I18nProvider` through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
-6. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
+5. `packages/app` owns locale state, catalog loading, Settings, persistence, bootstrap mirror reconciliation, and the global `I18nProvider`. `packages/ui` consumes that provider through peer dependencies; it does not create a second runtime, import App contexts, inspect browser locale, or own catalogs.
+6. Keep the Settings language control global, responsive, and recoverable: Follow System, English, and Simplified Chinese apply without refresh, do not follow project Scope, and must preserve language self-names so a user can switch back after a mistake.
+7. Run extraction after each coherent copy change, translate every new `zh-CN` message, remove obsolete entries, and keep strict compilation green. Finish with the repository localization contract so new hard-coded product text cannot bypass the catalog.
 
 ## Use Semantic Icons
 
@@ -96,8 +97,7 @@ For localized UI changes, also run:
 
 ```bash
 bun run --cwd packages/app i18n:extract
-bun run --cwd packages/app i18n:check
-bun script/localization-check.ts --strict
+bun run localization:check
 ```
 
 3. Inspect both themes, keyboard/focus, narrow layout, and loading/error behavior in an existing app or isolated second runtime.

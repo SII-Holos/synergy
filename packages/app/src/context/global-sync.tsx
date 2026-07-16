@@ -23,6 +23,7 @@ import {
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./global-config-sync"
+import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import { planBucketEviction } from "./message-eviction"
@@ -42,6 +43,8 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
 import { ErrorPage, type InitError } from "../pages/error"
+import { AP } from "@/app-i18n"
+import { useLingui } from "@lingui/solid"
 import {
   batch,
   createEffect,
@@ -1500,11 +1503,12 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
+  const { _ } = useLingui()
   return (
     <Switch
       fallback={
         <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
-          Loading...
+          {_(AP.appLoading)}
         </div>
       }
     >
@@ -1512,7 +1516,10 @@ export function GlobalSyncProvider(props: ParentProps) {
         <ErrorPage error={value.error} />
       </Match>
       <Match when={value.ready}>
-        <GlobalSyncContext.Provider value={value}>{props.children}</GlobalSyncContext.Provider>
+        <GlobalSyncContext.Provider value={value}>
+          <LocaleConfigReconciler preference={() => value.data.config.locale} />
+          {props.children}
+        </GlobalSyncContext.Provider>
       </Match>
     </Switch>
   )

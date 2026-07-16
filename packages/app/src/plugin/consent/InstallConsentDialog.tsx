@@ -1,3 +1,4 @@
+import { pluginPermission } from "@/locales/messages"
 import { For, Show, createMemo } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -13,47 +14,52 @@ import "./InstallConsentDialog.css"
 
 const DISPLAY_GROUPS: {
   key: string
-  labelId: string
-  labelMessage: string
   categories: string[]
   icon: SemanticIconTokenName
 }[] = [
   {
     key: "tools",
-    labelId: "app.plugin.permissionGroup.tools",
-    labelMessage: "Tools",
     categories: ["tools", "files"],
     icon: "plugins.permission.tools",
   },
   {
     key: "data",
-    labelId: "app.plugin.permissionGroup.data",
-    labelMessage: "Data",
     categories: ["data"],
     icon: "plugins.permission.data",
   },
   {
     key: "network",
-    labelId: "app.plugin.permissionGroup.network",
-    labelMessage: "Network",
     categories: ["network"],
     icon: "plugins.permission.network",
   },
   {
     key: "ui",
-    labelId: "app.plugin.permissionGroup.ui",
-    labelMessage: "UI",
     categories: ["ui"],
     icon: "plugins.permission.ui",
   },
   {
     key: "runtime",
-    labelId: "app.plugin.permissionGroup.runtime",
-    labelMessage: "Runtime",
     categories: ["runtime", "hooks"],
     icon: "plugins.permission.runtime",
   },
 ]
+
+function groupDescriptor(key: string) {
+  switch (key) {
+    case "tools":
+      return pluginPermission.groupTools
+    case "data":
+      return pluginPermission.groupData
+    case "network":
+      return pluginPermission.groupNetwork
+    case "ui":
+      return pluginPermission.groupUi
+    case "runtime":
+      return pluginPermission.groupRuntime
+    default:
+      return pluginPermission.groupTools
+  }
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -102,7 +108,8 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
       title={_({ id: "app.plugin.consent.title", message: "Install Plugin" })}
       description={_({
         id: "app.plugin.consent.description",
-        message: `${pluginLabel()} ${props.manifest.version} requests the following permissions.`,
+        message: "{plugin} {version} requests the following permissions.",
+        values: { plugin: pluginLabel(), version: props.manifest.version },
       })}
       class="consent-dialog"
     >
@@ -122,7 +129,7 @@ export function InstallConsentDialog(props: InstallConsentDialogProps) {
             <div class="consent-group">
               <div class="consent-group-header">
                 <Icon name={getSemanticIcon(group.icon)} size="small" class="consent-group-icon" />
-                <span class="consent-group-label">{_({ id: group.labelId, message: group.labelMessage })}</span>
+                <span class="consent-group-label">{_(groupDescriptor(group.key))}</span>
                 <span class="consent-group-count">{group.items.length}</span>
               </div>
               <ul class="consent-group-items">

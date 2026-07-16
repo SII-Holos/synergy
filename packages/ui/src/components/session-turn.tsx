@@ -1,3 +1,6 @@
+import { useLingui } from "@lingui/solid"
+import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
+
 import type {
   AssistantMessage,
   AttachmentPart,
@@ -107,7 +110,7 @@ export function formatTurnTokenCount(value: number): string {
 export function formatTurnCost(value: number): string | undefined {
   if (value <= 0) return undefined
   if (value < 0.01) return `$${value.toFixed(4)}`
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
   }).format(value)
@@ -504,6 +507,7 @@ function TimelineDisplay(props: {
   rollbackActive: boolean
   onRewind?: () => void
 }) {
+  const { _ } = useLingui()
   if (props.item.kind === "guided-user") {
     // A user's own mid-run message: same right-aligned bubble as a root turn,
     // sharing the reserved rewind gutter so both flush to the same edge. Steer
@@ -528,10 +532,10 @@ function TimelineDisplay(props: {
             e.stopPropagation()
             props.onRewind?.()
           }}
-          title="Rewind to before this message"
+          title={_(SESSION_TURN_DESC.rewindTitle)}
         >
           <Icon name={getSemanticIcon("session.rewind")} size="small" />
-          <span>Rewind</span>
+          <span>{_(SESSION_TURN_DESC.rewind)}</span>
         </button>
       </div>
     )
@@ -581,18 +585,19 @@ function ProviderPrelude(props: {
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {
+  const { _ } = useLingui()
   const data = useData()
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
   const sourceID = createMemo(
     () => (props.message.origin?.sessionID ?? props.message.metadata?.sourceSessionID) as string | undefined,
   )
-  const label = createMemo(() => sourceName() ?? sourceID() ?? "another session")
+  const label = createMemo(() => sourceName() ?? sourceID() ?? _(MAILBOX_DESC.anotherSession))
 
   return (
     <div data-slot="session-turn-mailbox-source">
       <Icon name={getSemanticIcon("session.inbox")} size="small" />
       <span>
-        From{" "}
+        {_(MAILBOX_DESC.from)}{" "}
         <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
           <button data-slot="session-turn-mailbox-link" onClick={() => data.navigateToSession?.(sourceID()!)}>
             {label()}
@@ -620,6 +625,7 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
+  const { _ } = useLingui()
 
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
@@ -842,9 +848,9 @@ export function SessionTurn(
   })
   const copyController = createCopyController({
     text: markdownText,
-    copyLabel: "Copy Markdown",
-    copiedLabel: "Copied!",
-    failureDescription: "Unable to copy the message.",
+    copyLabel: _(SESSION_TURN_DESC.copyMarkdown),
+    copiedLabel: _(SESSION_TURN_DESC.copied),
+    failureDescription: _(SESSION_TURN_DESC.copyFailure),
   })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
@@ -941,10 +947,10 @@ export function SessionTurn(
                               e.stopPropagation()
                               props.onRewind?.()
                             }}
-                            title="Rewind to before this message"
+                            title={_(SESSION_TURN_DESC.rewindTitle)}
                           >
                             <Icon name={getSemanticIcon("session.rewind")} size="small" />
-                            <span>Rewind</span>
+                            <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
                       </div>
@@ -1007,7 +1013,7 @@ export function SessionTurn(
                           {(stats) => (
                             <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                               <ProviderPrelude
-                                text="Completed"
+                                text={_(SESSION_TURN_DESC.completed)}
                                 elapsed={stats().duration}
                                 segments={stats().segments}
                                 variant="completed"

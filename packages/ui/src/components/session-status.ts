@@ -9,9 +9,10 @@ function defineDescriptor(id: string, message: string): MessageDescriptor {
 
 /** Resolve a descriptor through i18n when available, otherwise return the English default. */
 function resolveMsg(i18n: I18n | undefined, desc: MessageDescriptor, values?: Record<string, unknown>): string {
-  if (i18n) return i18n._({ id: desc.id, message: desc.message!, values })
+  if (i18n) return i18n._({ ...desc, values })
   return formatDefaultMsg(desc.message!, values)
 }
+const PLURAL_FALLBACK_LOCALE = "en"
 
 /** Minimal ICU formatter for the default-English path. Handles {key} and {count, plural, ...}. */
 function formatDefaultMsg(template: string, values?: Record<string, unknown>): string {
@@ -20,7 +21,7 @@ function formatDefaultMsg(template: string, values?: Record<string, unknown>): s
     if (pluralSpec) {
       const val = values[key] as number
       const opts = parsePluralOptions(pluralSpec)
-      const rule = new Intl.PluralRules("en").select(val - (opts.offset ?? 0))
+      const rule = new Intl.PluralRules(PLURAL_FALLBACK_LOCALE).select(val - (opts.offset ?? 0))
       const match = opts[rule] ?? opts.other
       return match ? match.replace(/#/g, String(val)) : String(val)
     }

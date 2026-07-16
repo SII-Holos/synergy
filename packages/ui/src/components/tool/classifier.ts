@@ -172,14 +172,6 @@ export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   },
 }
 
-/** Resolve a category spec's label descriptor through i18n or return English default. */
-export function resolveCategoryLabel(category: SemanticCategory, i18n?: any): string {
-  const desc = CATEGORIES[category]?.descriptor
-  if (!desc) return ""
-  if (i18n && typeof i18n._ === "function") return i18n._({ id: desc.id, message: desc.message! })
-  return desc.message ?? desc.id
-}
-
 // ── Flat tool name → category map ────────────────────────────────────
 
 const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
@@ -457,7 +449,7 @@ export function classifyTool(
 }
 
 function resolveDescriptor(i18n: any, desc: MessageDescriptor): string {
-  if (i18n && typeof i18n._ === "function") return i18n._({ id: desc.id, message: desc.message! })
+  if (i18n && typeof i18n._ === "function") return i18n._(desc)
   return desc.message ?? desc.id
 }
 

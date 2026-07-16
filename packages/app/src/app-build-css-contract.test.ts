@@ -247,7 +247,7 @@ async function runAppBuild(outDir: string) {
     cwd: appDir,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NODE_ENV: "production", NO_COLOR: "1" },
   })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -287,14 +287,21 @@ describe("app production build contract", () => {
       expect(initialAssets.length, "Production index must reference an initial JavaScript entry").toBeGreaterThan(0)
       const initialJavaScript = initialAssets.map((asset) => javascript.get(asset) ?? "").join("\n")
       const simplifiedChineseChunks = [...javascript.entries()].filter(
-        ([asset, source]) => asset.startsWith("messages-") && source.includes("加载中"),
+        ([asset, source]) =>
+          asset.startsWith("messages-") && source.includes('"ui.list.loading"') && source.includes("正在加载"),
       )
       expect(simplifiedChineseChunks, "Simplified Chinese must be emitted as one lazy catalog chunk").toHaveLength(1)
       const [simplifiedChineseAsset] = simplifiedChineseChunks[0]!
       expect(index).not.toContain(simplifiedChineseAsset)
       expect(initialJavaScript).toContain("Loading...")
-      expect(initialJavaScript).not.toContain("加载中")
+      expect(initialJavaScript).not.toContain("正在加载")
       expect([...javascript.keys()].filter((asset) => /pseudo/i.test(asset))).toEqual([])
+      expect(
+        [...javascript.entries()]
+          .filter(([asset]) => asset.startsWith("messages-"))
+          .some(([, source]) => source.includes("⟦") || source.includes("⟧")),
+      ).toBe(false)
+      expect([...javascript.values()].some((source) => source.includes("pseudoLocale"))).toBe(false)
 
       expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
         expect.stringMatching(/^BlexMonoNerdFontMono-Bold-/),

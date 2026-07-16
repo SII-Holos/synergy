@@ -8,6 +8,8 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createMemo, createResource, For, Show } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { useLocale, type IntlFormatter } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { compareProviderIDs, providerConnectCopy } from "@/components/provider/provider-recommendation"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
@@ -72,6 +74,7 @@ const connectedEmptyDescription = {
   message: "Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here.",
 }
 const unavailableLabel = { id: "settings.usage.unavailable", message: "Usage unavailable for this provider." }
+const creditsLabel = { id: "settings.usage.credits", message: "Credits" }
 
 function cooldownText(date: string) {
   return { id: "settings.usage.cooldown", message: "Cooldown until {date}", values: { date } }
@@ -85,6 +88,7 @@ function planText(plan: string) {
 
 export function UsagePanel(props: { onConnectProvider: (providerID?: string) => void }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const [usage, { refetch }] = createResource(async () => {
@@ -129,9 +133,14 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
       .map((value) => new Date(value).getTime())
       .filter((value) => Number.isFinite(value))
     if (times.length === 0) return undefined
-    return formatDate(new Date(Math.max(...times)).toISOString())
+    return formatDate(new Date(Math.max(...times)).toISOString(), fmt)
   })
-  const nextReset = createMemo(() => nextUsageReset(connectedUsage().map((item) => item.snapshot)))
+  const nextReset = createMemo(() =>
+    nextUsageReset(
+      connectedUsage().map((item) => item.snapshot),
+      fmt,
+    ),
+  )
 
   function providerName(providerID: string) {
     return providers().find((provider) => provider.id === providerID)?.name ?? providerID
@@ -291,8 +300,9 @@ function UsageProviderPanel(props: {
   onConnect: () => void
 }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const needsAction = createMemo(() => providerNeedsAction(props.health, props.snapshot))
-  const badge = createMemo(() => _(providerUsageStatusLabel(props.health, props.snapshot)))
+  const badge = createMemo(() => translateDescriptor(providerUsageStatusLabel(props.health, props.snapshot), _))
   return (
     <div class="usage-provider-panel">
       <div class="usage-provider-panel-head">
@@ -311,18 +321,19 @@ function UsageProviderPanel(props: {
       <Show when={needsAction()}>
         <div class="usage-warning-row">
           <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
-          <span>{_(providerRecoveryCopy(props.providerName, props.health, props.environment))}</span>
+          <span>
+            {translateDescriptor(providerRecoveryCopy(props.providerName, props.health, props.environment), _)}
+          </span>
           <Button type="button" variant="secondary" size="small" onClick={props.onConnect}>
-            {_(providerRecoveryActionLabel(props.health))}
+            {translateDescriptor(providerRecoveryActionLabel(props.health), _)}
           </Button>
         </div>
       </Show>
-
       <Show when={props.health?.cooldownUntil}>
-        {(value) => <div class="usage-muted-row">{_(cooldownText(formatUnix(value())))}</div>}
+        {(value) => <div class="usage-muted-row">{_(cooldownText(formatUnix(value(), fmt)))}</div>}
       </Show>
       <Show when={props.health?.resetAt}>
-        {(value) => <div class="usage-muted-row">{_(providerRenewsText(formatUnix(value())))}</div>}
+        {(value) => <div class="usage-muted-row">{_(providerRenewsText(formatUnix(value(), fmt)))}</div>}
       </Show>
 
       <Show when={props.snapshot} fallback={<div class="usage-muted-row">{_(unavailableLabel)}</div>}>
@@ -348,7 +359,7 @@ function UsageProviderPanel(props: {
                   </div>
                   <div class="usage-window-reading">
                     <div class="usage-window-value">{formatUsageWindowValue(window)}</div>
-                    <Show when={formatUsageResetSentence(window.resetAt)}>
+                    <Show when={formatUsageResetSentence(window.resetAt, fmt)}>
                       {(reset) => (
                         <div class="usage-window-reset" title={reset().title}>
                           {reset().value}
@@ -362,7 +373,7 @@ function UsageProviderPanel(props: {
             <Show when={snapshot().credits}>
               {(credits) => (
                 <div class="usage-window-row">
-                  <div class="usage-window-label">Credits</div>
+                  <div class="usage-window-label">{_(creditsLabel)}</div>
                   <div class="usage-window-meter usage-window-meter-empty" aria-hidden="true" />
                   <div class="usage-window-reading">
                     <div class="usage-window-value">
@@ -386,17 +397,12 @@ function UsageProviderPanel(props: {
   )
 }
 
-function formatDate(value: string) {
+function formatDate(value: string, fmt: IntlFormatter) {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+  return fmt.dateTime(date)
 }
 
-function formatUnix(value: number) {
-  return new Date(value * 1000).toLocaleString(undefined, {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  })
+function formatUnix(value: number, fmt: IntlFormatter) {
+  return fmt.dateTime(new Date(value * 1000))
 }

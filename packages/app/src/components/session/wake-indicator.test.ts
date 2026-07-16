@@ -1,3 +1,4 @@
+import { createIntlFormatter } from "@/context/locale/formatter"
 import { describe, expect, test } from "bun:test"
 import { setupI18n as coreSetupI18n } from "@lingui/core"
 import { formatWakeTime, formatDuration, statusLabel, triggerLabel, W } from "./wake-indicator-model"
@@ -62,51 +63,57 @@ describe("wake-indicator W descriptors", () => {
 describe("formatWakeTime", () => {
   test("returns Conditional when nextRunAt is null", () => {
     const i18n = mockI18n()
-    expect(formatWakeTime(null, { i18n, locale: "en" })).toBe("Conditional")
+    const fmt = createIntlFormatter(() => "en")
+    expect(formatWakeTime(null, { i18n, fmt })).toBe("Conditional")
   })
 
   test("returns Imminent for times within a minute", () => {
     const i18n = mockI18n()
+    const fmt = createIntlFormatter(() => "en")
     const in30s = Date.now() + 30_000
-    expect(formatWakeTime(in30s, { i18n, locale: "en" })).toBe("Imminent")
+    expect(formatWakeTime(in30s, { i18n, fmt })).toBe("Imminent")
   })
 
   test("returns minutes for times under an hour (en)", () => {
     const i18n = mockI18n()
+    const fmt = createIntlFormatter(() => "en")
     const in10min = Date.now() + 10 * 60_000
-    const result = formatWakeTime(in10min, { i18n, locale: "en" })
+    const result = formatWakeTime(in10min, { i18n, fmt })
     expect(result).toMatch(/^\d+ minutes?$/)
   })
 
-  test("returns hours for times under a day (en)", () => {
+  test("returns hours for same-day times under a day (en)", () => {
     const i18n = mockI18n()
-    const in6h = Date.now() + 6 * 60 * 60_000
-    const result = formatWakeTime(in6h, { i18n, locale: "en" })
+    const fmt = createIntlFormatter(() => "en")
+    const now = new Date(2026, 0, 15, 10, 0, 0, 0).getTime()
+    const in6h = now + 6 * 60 * 60_000
+    const result = formatWakeTime(in6h, { i18n, fmt, now })
     expect(result).toMatch(/^\d+h$/)
   })
 
   test("uses Tomorrow at HH:MM for next-day times (en)", () => {
     const i18n = mockI18n()
-    const now = new Date()
-    const tomorrow = new Date(now)
-    tomorrow.setDate(now.getDate() + 1)
-    tomorrow.setHours(14, 30, 0, 0)
-    const result = formatWakeTime(tomorrow.getTime(), { i18n, locale: "en" })
+    const fmt = createIntlFormatter(() => "en")
+    const now = new Date(2026, 0, 15, 23, 0, 0, 0).getTime()
+    const tomorrow = new Date(2026, 0, 16, 14, 30, 0, 0)
+    const result = formatWakeTime(tomorrow.getTime(), { i18n, fmt, now })
     expect(result).toMatch(/^Tomorrow at \d{2}:\d{2}$/)
   })
 
   test("uses dateTime for far-future times (en)", () => {
     const i18n = mockI18n()
+    const fmt = createIntlFormatter(() => "en")
     const far = Date.now() + 3 * 24 * 60 * 60_000
-    const result = formatWakeTime(far, { i18n, locale: "en" })
+    const result = formatWakeTime(far, { i18n, fmt })
     expect(result).not.toContain("Tomorrow")
     expect(result.length).toBeGreaterThan(0)
   })
 
   test("uses dateTime for far-future times (zh-CN)", () => {
     const i18n = mockI18n()
+    const fmt = createIntlFormatter(() => "zh-CN")
     const far = Date.now() + 3 * 24 * 60 * 60_000
-    const result = formatWakeTime(far, { i18n, locale: "zh-CN" })
+    const result = formatWakeTime(far, { i18n, fmt })
     expect(result).not.toContain("Tomorrow")
     expect(result.length).toBeGreaterThan(0)
   })

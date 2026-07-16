@@ -27,6 +27,57 @@ function scopeLabel(directory: string, name?: string) {
   return getScopeLabel({ worktree: directory, name }, directory)
 }
 
+const pageTitle = { id: "settings.worktrees.page.title", message: "Worktrees" }
+const pageDescription = {
+  id: "settings.worktrees.page.description",
+  message: "Browse and remove git worktrees across project scopes.",
+}
+const sectionTitle = { id: "settings.worktrees.section.title", message: "Worktree browser" }
+const sectionDescription = {
+  id: "settings.worktrees.section.description",
+  message: "Synergy-managed worktrees listed by project. Main and external worktrees are read-only.",
+}
+const refreshLabel = { id: "settings.worktrees.refresh", message: "Refresh" }
+const refreshingLabel = { id: "settings.worktrees.refreshing", message: "Refreshing..." }
+const emptyTitleUnavailable = { id: "settings.worktrees.empty.unavailable", message: "Worktrees unavailable" }
+const emptyTitleNone = { id: "settings.worktrees.empty.none", message: "No worktrees found" }
+const emptyDescFailure = {
+  id: "settings.worktrees.empty.failure",
+  message: "One or more project repositories could not be read. Try refreshing after checking their paths.",
+}
+const emptyDescNone = {
+  id: "settings.worktrees.empty.none.desc",
+  message: "Managed worktrees will appear here once created.",
+}
+const forceRemoveLabel = { id: "settings.worktrees.remove.force", message: "Force remove" }
+const forceRemovingLabel = { id: "settings.worktrees.remove.force.removing", message: "Force removing..." }
+const deletingLabel = { id: "settings.worktrees.deleting", message: "Deleting..." }
+const deleteLabel = { id: "settings.worktrees.delete", message: "Delete" }
+const loadErrorAllTitle = { id: "settings.worktrees.loadError.all", message: "Worktrees failed to load" }
+const loadErrorSomeTitle = { id: "settings.worktrees.loadError.some", message: "Some worktrees failed to load" }
+const loadErrorDesc = {
+  id: "settings.worktrees.loadError.desc",
+  message: "{count, plural, one {# project scope could not be loaded.} other {# project scopes could not be loaded.}}",
+}
+const removeSuccessForceTitle = {
+  id: "settings.worktrees.remove.force.success",
+  message: "Worktree force-removed",
+}
+const removeSuccessTitle = { id: "settings.worktrees.remove.success", message: "Worktree removed" }
+const removeErrorTitle = { id: "settings.worktrees.remove.error", message: "Failed to remove worktree" }
+const worktreeCountSummary = {
+  id: "settings.worktrees.count",
+  message:
+    "{worktreeCount, plural, one {# worktree} other {# worktrees}} across {projectCount, plural, one {# project} other {# projects}}",
+}
+const mainBadgeLabel = { id: "settings.worktrees.badge.main", message: "main" }
+const externalBadgeLabel = { id: "settings.worktrees.badge.external", message: "external" }
+const managedBadgeLabel = { id: "settings.worktrees.badge.managed", message: "managed" }
+const dirtyBadgeLabel = { id: "settings.worktrees.badge.dirty", message: "dirty" }
+const staleBadgeLabel = { id: "settings.worktrees.badge.stale", message: "stale" }
+const boundSessionSingular = { id: "settings.worktrees.badge.boundSession.singular", message: "bound session" }
+const boundSessionPlural = { id: "settings.worktrees.badge.boundSession.plural", message: "bound sessions" }
+
 export function WorktreesPanel() {
   const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
@@ -67,11 +118,10 @@ export function WorktreesPanel() {
         const first = result.failures[0]!
         showToast({
           type: "error",
-          title:
-            result.failures.length === scopes.length ? "Worktrees failed to load" : "Some worktrees failed to load",
+          title: result.failures.length === scopes.length ? _(loadErrorAllTitle) : _(loadErrorSomeTitle),
           description: requestErrorMessage(
             first.error,
-            `${result.failures.length} project scopes could not be loaded.`,
+            _({ ...loadErrorDesc, values: { count: result.failures.length } }),
           ),
         })
       }
@@ -80,8 +130,8 @@ export function WorktreesPanel() {
       setFailureCount(scopes.length)
       showToast({
         type: "error",
-        title: "Worktrees failed to load",
-        description: requestErrorMessage(error, "Try again."),
+        title: _(loadErrorAllTitle),
+        description: requestErrorMessage(error, _({ id: "settings.worktrees.loadError.retry", message: "Try again." })),
       })
     } finally {
       setLoading(false)
@@ -104,15 +154,18 @@ export function WorktreesPanel() {
       })
       showToast({
         type: "success",
-        title: force ? "Worktree force-removed" : "Worktree removed",
+        title: force ? _(removeSuccessForceTitle) : _(removeSuccessTitle),
         description: item.name,
       })
       setRefreshKey((value) => value + 1)
     } catch (error) {
       showToast({
         type: "error",
-        title: "Failed to remove worktree",
-        description: requestErrorMessage(error, "Try again."),
+        title: _(removeErrorTitle),
+        description: requestErrorMessage(
+          error,
+          _({ id: "settings.worktrees.remove.error.retry", message: "Try again." }),
+        ),
       })
     } finally {
       setBusyID(undefined)
@@ -133,16 +186,15 @@ export function WorktreesPanel() {
   }
 
   return (
-    <SettingsPage title="Worktrees" description="Browse and remove git worktrees across project scopes.">
-      <SettingsSection
-        title="Worktree browser"
-        description="Synergy-managed worktrees listed by project. Main and external worktrees are read-only."
-      >
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(sectionTitle)} description={_(sectionDescription)}>
         <div class="flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <span class="settings-row-description">
-              {totalCount()} worktree{totalCount() === 1 ? "" : "s"} across {projectScopes().length} project
-              {projectScopes().length === 1 ? "" : "s"}
+              {_({
+                ...worktreeCountSummary,
+                values: { worktreeCount: totalCount(), projectCount: projectScopes().length },
+              })}
             </span>
             <Button
               type="button"
@@ -152,19 +204,15 @@ export function WorktreesPanel() {
               disabled={loading()}
               onClick={() => void load()}
             >
-              {loading() ? "Refreshing..." : "Refresh"}
+              {loading() ? _(refreshingLabel) : _(refreshLabel)}
             </Button>
           </div>
 
           <SettingsEntityList
             isEmpty={!loading() && totalCount() === 0}
             emptyIcon={getSemanticIcon("workspace.worktree")}
-            emptyTitle={failureCount() > 0 ? "Worktrees unavailable" : "No worktrees found"}
-            emptyDescription={
-              failureCount() > 0
-                ? "One or more project repositories could not be read. Try refreshing after checking their paths."
-                : "Managed worktrees will appear here once created."
-            }
+            emptyTitle={failureCount() > 0 ? _(emptyTitleUnavailable) : _(emptyTitleNone)}
+            emptyDescription={failureCount() > 0 ? _(emptyDescFailure) : _(emptyDescNone)}
           >
             <For each={grouped()}>
               {(group) => (
@@ -190,21 +238,23 @@ export function WorktreesPanel() {
                                       <span class="ds-inline-badge ds-inline-badge-muted">{item.branch}</span>
                                     </Show>
                                     <Show when={item.isMain}>
-                                      <span class="ds-inline-badge ds-inline-badge-muted">main</span>
+                                      <span class="ds-inline-badge ds-inline-badge-muted">{_(mainBadgeLabel)}</span>
                                     </Show>
                                     <Show when={!item.managed && !item.isMain}>
-                                      <span class="ds-inline-badge ds-inline-badge-muted">external</span>
+                                      <span class="ds-inline-badge ds-inline-badge-muted">{_(externalBadgeLabel)}</span>
                                     </Show>
                                     <Show when={item.managed}>
-                                      <span class="ds-inline-badge ds-inline-badge-muted">managed</span>
+                                      <span class="ds-inline-badge ds-inline-badge-muted">{_(managedBadgeLabel)}</span>
                                     </Show>
                                     <Show when={item.dirty}>
                                       <span class="ds-inline-badge ds-inline-badge-muted text-text-diff-delete-base">
-                                        dirty
+                                        {_(dirtyBadgeLabel)}
                                       </span>
                                     </Show>
                                     <Show when={item.stale}>
-                                      <span class="ds-inline-badge ds-inline-badge-muted text-text-weaker">stale</span>
+                                      <span class="ds-inline-badge ds-inline-badge-muted text-text-weaker">
+                                        {_(staleBadgeLabel)}
+                                      </span>
                                     </Show>
                                   </div>
                                   <div class="settings-path-meta mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -216,7 +266,8 @@ export function WorktreesPanel() {
                                     </Show>
                                     <Show when={bindings.length > 0}>
                                       <span>
-                                        {bindings.length} bound session{bindings.length === 1 ? "" : "s"}
+                                        {bindings.length}{" "}
+                                        {bindings.length === 1 ? _(boundSessionSingular) : _(boundSessionPlural)}
                                       </span>
                                     </Show>
                                     <Show when={worktreeLifecycleLabel(item.lifecycle)}>
@@ -237,11 +288,11 @@ export function WorktreesPanel() {
                                   >
                                     {busy()
                                       ? item.dirty
-                                        ? "Force removing..."
-                                        : "Deleting..."
+                                        ? _(forceRemovingLabel)
+                                        : _(deletingLabel)
                                       : item.dirty
-                                        ? "Force remove"
-                                        : "Delete"}
+                                        ? _(forceRemoveLabel)
+                                        : _(deleteLabel)}
                                   </Button>
                                 </div>
                               </Show>

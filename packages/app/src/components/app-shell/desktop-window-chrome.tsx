@@ -5,11 +5,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
 import { usePlatform, type DesktopWindowState } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
-import {
-  desktopWindowChromeVisible,
-  desktopWindowToggleIcon,
-  desktopWindowToggleLabel,
-} from "./desktop-window-chrome-model"
+import { desktopWindowChromeVisible, desktopWindowToggleIcon } from "./desktop-window-chrome-model"
 import "./desktop-window-chrome.css"
 
 export function DesktopWindowChrome() {
@@ -22,7 +18,11 @@ export function DesktopWindowChrome() {
   const visible = () => desktopWindowChromeVisible(platform)
   const bridge = () => platform.desktopWindow
   const toggleIcon = createMemo(() => desktopWindowToggleIcon(store.state))
-  const toggleLabel = createMemo(() => _(desktopWindowToggleLabel(store.state)))
+  const toggleLabel = createMemo(() =>
+    store.state?.maximized || store.state?.fullscreen
+      ? _({ id: "app.shell.window.restore", message: "Restore" })
+      : _({ id: "app.shell.window.maximize", message: "Maximize" }),
+  )
 
   onMount(() => {
     if (!visible()) return

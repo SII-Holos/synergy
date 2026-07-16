@@ -1,7 +1,7 @@
 import type { MessageDescriptor } from "@lingui/core"
 
 function d(id: string, message: string): MessageDescriptor {
-  return { id, message }
+  return { id: id, message: message }
 }
 
 // ── Tool trigger titles ────────────────────────────────────────────
@@ -190,22 +190,56 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   qz_submit_hpc: d("tool.title.submit-hpc-job", "Submit HPC Job"),
   qz_hpc_usage: d("tool.title.hpc-usage", "HPC Usage"),
 
-  // Inspire
-  inspire_status: d("tool.title.inspire-status", "Inspire Status"),
-  inspire_config: d("tool.title.inspire-config", "Inspire Config"),
-  inspire_login: d("tool.title.inspire-login", "Inspire Login"),
-  inspire_images: d("tool.title.inspire-images", "Inspire Images"),
-  inspire_image_push: d("tool.title.inspire-image-push", "Inspire Image Push"),
-  inspire_submit: d("tool.title.inspire-submit", "Inspire Submit"),
-  inspire_submit_hpc: d("tool.title.inspire-submit-hpc", "Inspire Submit HPC"),
-  inspire_stop: d("tool.title.inspire-stop", "Inspire Stop"),
-  inspire_jobs: d("tool.title.inspire-jobs", "Inspire Jobs"),
-  inspire_job_detail: d("tool.title.inspire-job-detail", "Inspire Job Detail"),
-  inspire_logs: d("tool.title.inspire-logs", "Inspire Logs"),
-  inspire_metrics: d("tool.title.inspire-metrics", "Inspire Metrics"),
-  inspire_inference: d("tool.title.inspire-inference", "Inspire Inference"),
-  inspire_models: d("tool.title.inspire-models", "Inspire Models"),
-  inspire_notebook: d("tool.title.inspire-notebook", "Inspire Notebook"),
+  // Inspire — base keys use the most common variant; getToolInfo selects its own
+  inspire_status: d("tool.title.platform-status", "Platform Status"),
+  inspire_config: d("tool.title.set-default", "Set Default"),
+  inspire_login: d("tool.title.sii-login", "SII Login"),
+  inspire_images: d("tool.title.search-images", "Search Images"),
+  inspire_image_push: d("tool.title.push-image", "Push Image"),
+  inspire_submit: d("tool.title.submit-gpu-job", "Submit GPU Job"),
+  inspire_submit_hpc: d("tool.title.submit-hpc-job", "Submit HPC Job"),
+  inspire_stop: d("tool.title.stop-job", "Stop Job"),
+  inspire_jobs: d("tool.title.jobs", "Jobs"),
+  inspire_job_detail: d("tool.title.job-detail", "Job Detail"),
+  inspire_logs: d("tool.title.job-logs", "Job Logs"),
+  inspire_metrics: d("tool.title.job-metrics", "Job Metrics"),
+  inspire_inference: d("tool.title.inference-detail", "Inference Detail"),
+  inspire_models: d("tool.title.models", "Models"),
+  inspire_notebook: d("tool.title.notebooks", "Notebooks"),
+
+  // Inspire variant keys for getToolInfo dynamic title selection
+  inspire_config_set_default: d("tool.title.set-default", "Set Default"),
+  inspire_config_sii_defaults: d("tool.title.sii-defaults", "SII Defaults"),
+  inspire_login_harbor: d("tool.title.harbor-login", "Harbor Login"),
+  inspire_login_sii: d("tool.title.sii-login", "SII Login"),
+  inspire_images_detail: d("tool.title.image-detail", "Image Detail"),
+  inspire_images_search: d("tool.title.search-images", "Search Images"),
+  inspire_submit_gpu: d("tool.title.submit-gpu-job", "Submit GPU Job"),
+  inspire_stop_job: d("tool.title.stop-job", "Stop Job"),
+  inspire_stop_batch: d("tool.title.batch-stop", "Batch Stop"),
+  inspire_logs_download: d("tool.title.download-logs", "Download Logs"),
+  inspire_logs_view: d("tool.title.job-logs", "Job Logs"),
+  inspire_inference_deploy: d("tool.title.deploy-inference", "Deploy Inference"),
+  inspire_inference_stop: d("tool.title.stop-inference", "Stop Inference"),
+  inspire_inference_detail: d("tool.title.inference-detail", "Inference Detail"),
+  inspire_models_detail: d("tool.title.model-detail", "Model Detail"),
+  inspire_models_register: d("tool.title.register-model", "Register Model"),
+  inspire_models_delete: d("tool.title.delete-model", "Delete Model"),
+  inspire_models_list: d("tool.title.models", "Models"),
+  inspire_notebook_start: d("tool.title.start-notebook", "Start Notebook"),
+  inspire_notebook_stop: d("tool.title.stop-notebook", "Stop Notebook"),
+  inspire_notebook_create: d("tool.title.create-notebook", "Create Notebook"),
+  inspire_notebook_detail: d("tool.title.notebook-detail", "Notebook Detail"),
+  inspire_notebook_list: d("tool.title.notebooks", "Notebooks"),
+
+  // Dynamic tool-state labels used by standard.tsx renders
+  look_at_timed_out: d("tool.title.analysis-timed-out", "Analysis timed out"),
+  note_write_created: d("tool.title.note-created", "Created"),
+  note_write_appended: d("tool.title.note-appended", "Appended"),
+  note_write_replaced: d("tool.title.note-replaced", "Replaced"),
+  memory_write_similar_found: d("tool.title.memory-similar-found", "Similar found"),
+  memory_write_stored: d("tool.title.memory-stored", "Stored"),
+  memory_edit_updated: d("tool.title.memory-edit-updated", "Updated"),
 }
 
 // ── Classifier category labels ──────────────────────────────────────
@@ -275,6 +309,7 @@ export const DAG_CHROME_DESC = {
   blocked: d("dag.chrome.blocked", "blocked"),
   failed: d("dag.chrome.failed", "failed"),
   focus: d("dag.chrome.focus", "Focus"),
+  nodeMetadata: d("dag.chrome.node-metadata", "Node metadata"),
   fit: d("dag.chrome.fit", "Fit"),
   openSession: d("dag.chrome.open-session", "Open session"),
   closeDetails: d("dag.chrome.close-details", "Close node details"),
@@ -322,6 +357,7 @@ export const TOOL_MISC_DESC = {
   htmlPreview: d("tool.misc.html-preview", "HTML preview"),
   backgroundTask: d("tool.misc.background-task", "background"),
   files: d("tool.misc.files", "files"),
+  ready: d("tool.misc.ready", "Ready"),
   updated: d("tool.misc.updated", "updated"),
   visibleBackgroundTasks: d("tool.misc.visible-background-tasks", "Visible background tasks"),
 } as const
@@ -332,10 +368,10 @@ export const MARKDOWN_DESC = {
   diffLabel: d("markdown.diff-label", "Apply diff"),
 } as const
 
-// ── List ────────────────────────────────────────────────────────────
 export const LIST_DESC = {
   noItems: d("list.no-items", "No items"),
   noMatchedItems: d("list.no-matched-items", "No matched items"),
+  forLabel: d("list.for-label", "for"),
 } as const
 
 // ── Logo ────────────────────────────────────────────────────────────
@@ -354,9 +390,61 @@ export const ANCHORED_TOOL_DESC = {
   emptyPreview: d("anchored-tool.empty-preview", "No preview available"),
 } as const
 
-// ── Anysearch info ──────────────────────────────────────────────────
 export const ANYSEARCH_DESC = {
-  search: d("anysearch.title.search", "Search"),
-  batchSearch: d("anysearch.title.batch-search", "Batch Search"),
-  extract: d("anysearch.title.extract", "Extract"),
+  search: d("anysearch.title.search", "Anysearch"),
+  batchSearch: d("anysearch.title.batch-search", "Anysearch Batch"),
+  extract: d("anysearch.title.extract", "Anysearch Extract"),
+  domains: d("anysearch.title.domains", "Search Domains"),
+} as const
+
+// ── Message-part chrome ────────────────────────────────────────────
+export const MESSAGE_PART_DESC = {
+  diagnosticError: d("message-part.diagnostic-error", "Error"),
+  searchEarlyStop: d("message-part.search-early-stop", "Search early stop"),
+  searchReflection: d("message-part.search-reflection", "Search reflection"),
+  showMore: d("message-part.show-more", "Show more"),
+  showLess: d("message-part.show-less", "Show less"),
+  partRenderError: d("message-part.part-render-error", "Part Render Error: {partType}"),
+  copyMessage: d("message-part.copy-message", "Copy message"),
+  messageCopied: d("message-part.message-copied", "Message copied"),
+  copyFailure: d("message-part.copy-failure", "Unable to copy the message."),
+  noteLabel: d("message-part.note-label", "Note"),
+  sessionLabel: d("message-part.session-label", "Session"),
+  untitled: d("message-part.untitled", "Untitled"),
+} as const
+
+// ── Diagram ─────────────────────────────────────────────────────────
+export const DIAGRAM_DESC = {
+  totalLabel: d("diagram.total-label", "Total"),
+} as const
+
+// ── Diff preview ────────────────────────────────────────────────────
+export const DIFF_DESC = {
+  fileDiffPreview: d("diff.file-diff-preview", "File diff preview"),
+} as const
+
+// ── Anchored-tool chip labels ──────────────────────────────────────
+export const ANCHORED_CHIP_DESC = {
+  tag: d("anchored-chip.tag", "tag"),
+  conflict: d("anchored-chip.conflict", "conflict"),
+  recovered: d("anchored-chip.recovered", "recovered"),
+  resolvedConflict: d("anchored-chip.resolved-conflict", "resolved conflict"),
+} as const
+
+// ── Session-turn mailbox ───────────────────────────────────────────
+export const MAILBOX_DESC = {
+  from: d("mailbox.from", "From"),
+  anotherSession: d("mailbox.another-session", "another session"),
+} as const
+
+// ── Markdown code/latex copy ───────────────────────────────────────
+export const CODE_COPY_DESC = {
+  copyLaTeX: d("markdown.copy-latex", "Copy LaTeX"),
+  copyLaTeXFail: d("markdown.copy-latex-fail", "Unable to copy the LaTeX source."),
+  copyCode: d("markdown.copy-code", "Copy code"),
+  copyCodeFail: d("markdown.copy-code-fail", "Unable to copy the code block."),
+  copied: d("markdown.copied", "Copied"),
+  copyFailed: d("markdown.copy-failed", "Copy failed"),
+  copy: d("markdown.copy", "Copy"),
+  failed: d("markdown.failed", "Failed"),
 } as const

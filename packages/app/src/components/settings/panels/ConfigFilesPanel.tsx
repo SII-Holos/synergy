@@ -7,6 +7,11 @@ const configuredStatus = { id: "settings.configFiles.configured", message: "Conf
 const emptyStatus = { id: "settings.configFiles.empty", message: "Empty" }
 const noDomainsLabel = { id: "settings.configFiles.noDomains", message: "No config domains found" }
 const configSourceTitle = { id: "settings.configFiles.source", message: "Configuration source" }
+const pageTitle = { id: "settings.configFiles.page.title", message: "Config Files" }
+const pageDescription = {
+  id: "settings.configFiles.page.description",
+  message: "Canonical config domains and their backing files.",
+}
 
 function ownedKeysSummary(count: number) {
   return {
@@ -23,7 +28,7 @@ export function ConfigFilesPanel(props: {
 }) {
   const { _ } = useLingui()
   return (
-    <SettingsPage title="Config Files" description="Canonical config domains and their backing files.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
       <SettingsSection>
         <For each={props.domains}>
           {(domain) => (

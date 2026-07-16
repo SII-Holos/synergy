@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Check frontend localization
+        run: bun run localization:check
+
       - name: Check monorepo dependencies
         run: bun run monorepo:check
 

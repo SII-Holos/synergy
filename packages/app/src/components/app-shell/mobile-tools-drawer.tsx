@@ -4,27 +4,19 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLayout } from "@/context/layout"
 import { useLingui } from "@lingui/solid"
+import { appShell } from "@/locales/messages"
+
+type DrawerToolID = "agenda" | "library" | "performance" | "plugins"
 
 const DRAWER_TOOLS: Array<{
-  id: string
-  label: { id: string; message: string }
+  id: DrawerToolID
   icon: SemanticIconTokenName
   href: string
 }> = [
-  { id: "agenda", label: { id: "nav.tools.agenda", message: "Agenda" }, icon: "agenda.main", href: "/agenda" },
-  { id: "library", label: { id: "nav.tools.library", message: "Library" }, icon: "library.main", href: "/library" },
-  {
-    id: "performance",
-    label: { id: "nav.tools.performance", message: "Performance" },
-    icon: "performance.main",
-    href: "/performance",
-  },
-  {
-    id: "plugins",
-    label: { id: "nav.tools.plugins", message: "Plugins" },
-    icon: "plugins.main",
-    href: "/plugins/marketplace",
-  },
+  { id: "agenda", icon: "agenda.main", href: "/agenda" },
+  { id: "library", icon: "library.main", href: "/library" },
+  { id: "performance", icon: "performance.main", href: "/performance" },
+  { id: "plugins", icon: "plugins.main", href: "/plugins/marketplace" },
 ]
 
 export function MobileToolsDrawer() {
@@ -32,6 +24,12 @@ export function MobileToolsDrawer() {
   const navigate = useNavigate()
   const location = useLocation()
   const { _ } = useLingui()
+  const toolLabel = (id: DrawerToolID) => {
+    if (id === "agenda") return _(appShell.agenda)
+    if (id === "library") return _(appShell.library)
+    if (id === "performance") return _(appShell.performance)
+    return _(appShell.plugins)
+  }
 
   function close() {
     layout.rightSidebar.hide()
@@ -87,7 +85,7 @@ export function MobileToolsDrawer() {
                     onClick={() => navigateAndClose(tool.href)}
                   >
                     <Icon name={getSemanticIcon(tool.icon)} size="normal" class="shrink-0" />
-                    <span class="text-14-medium">{_(tool.label)}</span>
+                    <span class="text-14-medium">{toolLabel(tool.id)}</span>
                   </button>
                 )
               })}

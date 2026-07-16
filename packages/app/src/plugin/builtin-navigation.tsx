@@ -1,3 +1,4 @@
+import { pluginNav } from "@/locales/messages"
 import type { Component } from "solid-js"
 import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 
@@ -5,7 +6,7 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "agenda",
     navigationId: "agenda",
-    label: "Agenda",
+    label: pluginNav.agenda.message,
     iconToken: "agenda.main",
     placement: "sidebar",
     path: "/agenda",
@@ -19,7 +20,7 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "library",
     navigationId: "library",
-    label: "Library",
+    label: pluginNav.library.message,
     iconToken: "library.main",
     placement: "sidebar",
     path: "/library",
@@ -33,7 +34,7 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "performance",
     navigationId: "performance",
-    label: "Performance",
+    label: pluginNav.performance.message,
     iconToken: "performance.main",
     placement: "sidebar",
     path: "/performance",
@@ -47,7 +48,7 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "plugins",
     navigationId: "plugins",
-    label: "Plugins",
+    label: pluginNav.plugins.message,
     iconToken: "plugins.main",
     placement: "sidebar",
     path: "/plugins/marketplace",

@@ -32,7 +32,7 @@ describe("confirm copy", () => {
   })
 
   test("keeps settings discard cancellation explicit", () => {
-    const copy = discardSettingsConfirm("close Settings")
+    const copy = discardSettingsConfirm()
 
     expect(msg(copy.title)).toBe("Discard unsaved changes?")
     expect(copy.cancelLabel).toBeDefined()

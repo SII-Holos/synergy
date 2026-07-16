@@ -41,7 +41,7 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 - Preserve plugin-contributed settings and UI lifecycle. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
 - Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
 - Read [Plugin UI contributions](../../docs/plugins/ui-contributions.md) before changing the Web plugin host or registries.
-- Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Run the App i18n extraction/check commands and the repository localization contract for affected text.
+- Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Update catalogs with App extraction, then run the single repository localization gate for drift, strict compilation, and the App/UI source contract.
 
 ## Verification
 
@@ -52,6 +52,13 @@ bun run --cwd packages/app test
 bun run --cwd packages/app typecheck
 bun run --cwd packages/app build
 bun run quality:quick
+```
+
+For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run localization:check
 ```
 
 Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.

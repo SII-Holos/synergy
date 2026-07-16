@@ -29,7 +29,7 @@ function directoryLabel(path: string): string {
 /** Resolve a title prop — MessageDescriptor or plain string — through i18n. */
 function resolveTitle(title: string | MessageDescriptor, _: (desc: MessageDescriptor) => string): string {
   if (typeof title === "string") return title
-  return _({ id: title.id, message: title.message! })
+  return _(title)
 }
 
 export function ToolTrigger(props: ToolTriggerProps) {

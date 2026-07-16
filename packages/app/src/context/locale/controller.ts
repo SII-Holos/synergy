@@ -60,12 +60,13 @@ export function createLocaleController(
   async function commitActivation(locale: ActiveLocale, ticket: number): Promise<boolean> {
     if (!activationFn) return false
     try {
-      await activationFn(locale)
+      const commit = await activationFn(locale)
+      if (isAborted(ticket)) return false
+      commit?.()
+      return true
     } catch {
       return false
     }
-    if (isAborted(ticket)) return false
-    return true
   }
 
   async function setPreference(pref: LocalePreference): Promise<boolean> {
@@ -86,7 +87,7 @@ export function createLocaleController(
     persistMirror(pref)
     setPreferenceState(pref)
     setActiveLocaleState(targetLocale)
-    setSource("user")
+    if (pendingPreference() !== undefined) setSource("user")
     setError(undefined)
     setGeneration((g) => g + 1)
     if (!ready()) setReady(true)
@@ -94,40 +95,32 @@ export function createLocaleController(
   }
 
   async function reconcileGlobalPreference(pref: LocalePreference | undefined): Promise<void> {
-    if (pref === undefined) {
-      if (source() === "global-config") {
-        setPreferenceState("system")
-        setActiveLocaleState(deriveActiveLocale("system", navigatorLanguages))
-        persistMirror("system")
-        setSource("system")
-        setGeneration((g) => g + 1)
-      }
-      return
-    }
-
+    const effectivePreference = pref ?? "system"
+    const authoritativeSource: LocaleSource = pref === undefined ? "system" : "global-config"
     const pending = pendingPreference()
 
-    if (pending === pref) {
+    if (pending === effectivePreference) {
       setPendingPreference(undefined)
+      setSource(authoritativeSource)
       return
     }
 
-    if (pending !== undefined && pending !== pref) return
+    if (pending !== undefined && pending !== effectivePreference) return
 
     const ticket = ++ticketId
-    const targetLocale = deriveActiveLocale(pref, navigatorLanguages)
+    const targetLocale = deriveActiveLocale(effectivePreference, navigatorLanguages)
     const ok = await commitActivation(targetLocale, ticket)
     if (!ok) {
       if (isAborted(ticket)) return
-      setError(new Error(`Failed to activate global config locale: ${pref}`))
+      setError(new Error(`Failed to activate global config locale: ${effectivePreference}`))
       return
     }
     if (isAborted(ticket)) return
 
-    persistMirror(pref)
-    setPreferenceState(pref)
+    persistMirror(effectivePreference)
+    setPreferenceState(effectivePreference)
     setActiveLocaleState(targetLocale)
-    setSource("global-config")
+    setSource(authoritativeSource)
     setError(undefined)
     setGeneration((g) => g + 1)
     if (!ready()) setReady(true)

@@ -15,7 +15,19 @@ const variantDefault = { id: "settings.modelRole.variant.default", message: "Def
 const variantDesc = { id: "settings.modelRole.variant.desc", message: "Use the role default" }
 const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Role variant" }
 const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
-
+const usedByLabel = { id: "settings.modelRole.usedBy", message: "Used by" }
+const fallbackChainLabel = { id: "settings.modelRole.fallbackChain", message: "Fallback" }
+const resolutionLabel = { id: "settings.modelRole.resolution", message: "Resolution" }
+const selectModelLabel = { id: "settings.modelRole.selectModel", message: "Select model" }
+const searchModelsPlaceholder = {
+  id: "settings.modelRole.searchModels",
+  message: "Search models",
+}
+const noModelResultsLabel = { id: "settings.modelRole.noModelResults", message: "No model results" }
+const selectVariantLabel = { id: "settings.modelRole.selectVariant", message: "Select model variant" }
+const detailsAriaLabel = { id: "settings.modelRole.details.ariaLabel", message: "{label} details" }
+const systemAgentLabel = { id: "settings.modelRole.system", message: "system" }
+const overrideAgentLabel = { id: "settings.modelRole.override", message: "override" }
 type ModelRef = {
   providerID: string
   modelID: string
@@ -142,7 +154,7 @@ export function ModelRoleRow(props: {
                   <div class="settings-model-detail-muted">{props.summary.summary}</div>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Used by</div>
+                  <div class="settings-model-detail-label">{_(usedByLabel)}</div>
                   <Show
                     when={props.summary.usedBy.length > 0}
                     fallback={<div class="settings-model-detail-muted">{_(noAgentsUse)}</div>}
@@ -153,10 +165,10 @@ export function ModelRoleRow(props: {
                           <span class="settings-model-chip">
                             {agent.name}
                             <Show when={agent.hidden}>
-                              <span class="settings-model-chip-muted">system</span>
+                              <span class="settings-model-chip-muted">{_(systemAgentLabel)}</span>
                             </Show>
                             <Show when={agent.modelSource === "explicit"}>
-                              <span class="settings-model-chip-muted">override</span>
+                              <span class="settings-model-chip-muted">{_(overrideAgentLabel)}</span>
                             </Show>
                           </span>
                         )}
@@ -168,19 +180,23 @@ export function ModelRoleRow(props: {
                   </Show>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Fallback</div>
+                  <div class="settings-model-detail-label">{_(fallbackChainLabel)}</div>
                   <div class="settings-model-fallback-chain">
                     <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field)}</span>}</For>
                   </div>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Resolution</div>
+                  <div class="settings-model-detail-label">{_(resolutionLabel)}</div>
                   <div class="settings-model-detail-muted">{display().resolutionDescription}</div>
                 </div>
               </div>
             }
           >
-            <button type="button" class="settings-model-info-button" aria-label={`${props.summary.label} details`}>
+            <button
+              type="button"
+              class="settings-model-info-button"
+              aria-label={_({ ...detailsAriaLabel, values: { label: props.summary.label } })}
+            >
               <Icon name={getSemanticIcon("action.info")} size="small" />
             </button>
           </Tooltip>
@@ -193,7 +209,7 @@ export function ModelRoleRow(props: {
           <KobaltePopover.Trigger
             type="button"
             class="settings-model-trigger"
-            aria-label={`Select ${props.summary.label} model`}
+            aria-label={`${_(selectModelLabel)} ${props.summary.label}`}
           >
             <span class="settings-model-trigger-text">
               <span class="settings-model-trigger-title">{display().triggerLabel}</span>
@@ -205,11 +221,13 @@ export function ModelRoleRow(props: {
             {(layer) => (
               <Portal mount={layer()}>
                 <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                  <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
+                  <KobaltePopover.Title class="sr-only">
+                    {_(selectModelLabel)} {props.summary.label}
+                  </KobaltePopover.Title>
                   <List<ModelPickerOption>
                     class="settings-model-picker-list"
-                    search={{ placeholder: "Search models", autofocus: true }}
-                    emptyMessage="No model results"
+                    search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+                    emptyMessage={_(noModelResultsLabel)}
                     key={(option) => option.key}
                     items={options}
                     current={currentOption()}
@@ -237,7 +255,7 @@ export function ModelRoleRow(props: {
             placement="bottom-end"
             gutter={8}
           >
-            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label="Select model variant">
+            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label={_(selectVariantLabel)}>
               <span class="settings-model-variant-label">{currentVariantOption()?.label ?? _(variantDefault)}</span>
               <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
             </KobaltePopover.Trigger>
@@ -245,7 +263,7 @@ export function ModelRoleRow(props: {
               {(layer) => (
                 <Portal mount={layer()}>
                   <KobaltePopover.Content class="settings-model-variant-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                    <KobaltePopover.Title class="sr-only">Select model variant</KobaltePopover.Title>
+                    <KobaltePopover.Title class="sr-only">{_(selectVariantLabel)}</KobaltePopover.Title>
                     <List<ModelVariantOption>
                       class="settings-model-picker-list"
                       key={(option) => option.key}

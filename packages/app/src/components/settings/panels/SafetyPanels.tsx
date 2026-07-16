@@ -1,4 +1,5 @@
 import { useLingui } from "@lingui/solid"
+import type { MessageDescriptor } from "@lingui/core"
 import { For } from "solid-js"
 import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -77,20 +78,34 @@ const profilePageDesc = {
   message: "Resolved access profile applied to sessions and agents.",
 }
 
-const fallbackProfiles: ControlProfileSummary[] = [
-  {
-    id: "guarded",
-    label: "Guarded",
-    description:
+const FALLBACK_PROFILE_DESCRIPTIONS: Record<string, MessageDescriptor> = {
+  guarded: {
+    id: "settings.controlProfile.guarded.description",
+    message:
       "Auto-allow reads, safe local edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
   },
-  {
-    id: "autonomous",
-    label: "Autonomous",
-    description:
-      "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
+  autonomous: {
+    id: "settings.controlProfile.autonomous.description",
+    message: "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
   },
-  { id: "full_access", label: "Full Access", description: "Allow all local tool requests without approval prompts." },
+  full_access: {
+    id: "settings.controlProfile.fullAccess.description",
+    message: "Allow all local tool requests without approval prompts.",
+  },
+}
+
+const guardedLabel = { id: "settings.controlProfile.guarded.label", message: "Guarded" }
+const autonomousLabel = { id: "settings.controlProfile.autonomous.label", message: "Autonomous" }
+const fullAccessLabel = { id: "settings.controlProfile.fullAccess.label", message: "Full Access" }
+
+const fallbackProfiles: ControlProfileSummary[] = [
+  { id: "guarded", label: guardedLabel.message!, description: FALLBACK_PROFILE_DESCRIPTIONS.guarded.message! },
+  { id: "autonomous", label: autonomousLabel.message!, description: FALLBACK_PROFILE_DESCRIPTIONS.autonomous.message! },
+  {
+    id: "full_access",
+    label: fullAccessLabel.message!,
+    description: FALLBACK_PROFILE_DESCRIPTIONS.fullAccess.message!,
+  },
 ]
 
 export function PermissionsPanel(props: {

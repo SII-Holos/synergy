@@ -3,6 +3,8 @@ import { ErrorBoundary, Show, Switch, Match, lazy, createEffect, createMemo, typ
 import { Router, Route, Navigate } from "@solidjs/router"
 import { MetaProvider } from "@solidjs/meta"
 import { LocaleProvider } from "@/context/locale"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { Font } from "@ericsanchezok/synergy-ui/font"
 import { MarkedProvider, ensureSynergyHighlightTheme } from "@ericsanchezok/synergy-ui/context/marked"
 import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
@@ -76,19 +78,18 @@ const PluginDetailPage = lazy(async () => {
   return { default: pluginDetail.PluginDetailPage }
 })
 
-const Loading = () => (
-  <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
-    Loading...
-  </div>
-)
+function Loading() {
+  const { i18n } = useLocale()
+  return (
+    <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
+      {i18n._(AP.appLoading.id)}
+    </div>
+  )
+}
 
 import { proxyPrefix } from "@/utils/proxy"
 
 function browserBaseUrl() {
-  // Detect path-prefix proxies (e.g. VS Code remote) by comparing the
-  // server-side request path against the browser's full pathname.
-  // The server injects __SYNERGY_ROUTE__ = the path it received (proxy prefix stripped).
-  // Subtracting that suffix from location.pathname reveals the proxy prefix.
   const prefix = proxyPrefix()
   if (prefix) return (window.location.origin + prefix).replace(/\/+$/, "")
   return window.location.origin.replace(/\/+$/, "")
@@ -157,6 +158,16 @@ export function AppInterface() {
   )
 }
 
+function ModelReadyWarning() {
+  const { i18n } = useLocale()
+  return (
+    <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-weak text-text-on-warning-base">
+      <span>{"\u26A0"}</span>
+      <span>{i18n._(AP.appModelNotConfigured.id, { cmd: i18n._(AP.appModelConfigCmd.id) })}</span>
+    </div>
+  )
+}
+
 function ConnectedApp() {
   const dialog = useDialog()
   const server = useServer()
@@ -203,14 +214,7 @@ function ConnectedApp() {
               </Match>
               <Match when={startupView() === "ready"}>
                 <Show when={showModelReadyWarning()}>
-                  <div class="flex items-center justify-center gap-2 px-3 py-1.5 text-12-medium bg-surface-warning-weak text-text-on-warning-base">
-                    <span>⚠</span>
-                    <span>
-                      AI model not configured — run{" "}
-                      <code class="font-mono bg-surface-warning-base/20 px-1 rounded">synergy config</code> in your
-                      terminal to set one up
-                    </span>
-                  </div>
+                  <ModelReadyWarning />
                 </Show>
                 <Router
                   base={proxyPrefix()}

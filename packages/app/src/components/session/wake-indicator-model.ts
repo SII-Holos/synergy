@@ -1,6 +1,6 @@
 import type { I18n } from "@lingui/core"
 import type { SessionAgendaItem } from "@ericsanchezok/synergy-sdk/client"
-import type { ActiveLocale } from "@/context/locale/types"
+import type { IntlFormatter } from "@/context/locale/formatter"
 
 export const MINUTE = 60_000
 export const HOUR = 60 * MINUTE
@@ -47,44 +47,46 @@ export const W = {
   joinToken: { id: "session.agenda.wake.join", message: ", " },
 }
 
-const DURATION_UNIT: Record<string, { id: string; message: string }> = {
-  ms: { id: "session.agenda.wake.unit.ms", message: "ms" },
-  s: { id: "session.agenda.wake.unit.s", message: "seconds" },
-  m: { id: "session.agenda.wake.unit.m", message: "minutes" },
-  h: { id: "session.agenda.wake.unit.h", message: "hours" },
-  d: { id: "session.agenda.wake.unit.d", message: "days" },
-  w: { id: "session.agenda.wake.unit.w", message: "weeks" },
+function durationUnitLabel(unit: string, i18n: I18n): string {
+  if (unit === "ms") return i18n._({ id: "session.agenda.wake.unit.ms", message: "ms" })
+  if (unit === "s") return i18n._({ id: "session.agenda.wake.unit.s", message: "seconds" })
+  if (unit === "m") return i18n._({ id: "session.agenda.wake.unit.m", message: "minutes" })
+  if (unit === "h") return i18n._({ id: "session.agenda.wake.unit.h", message: "hours" })
+  if (unit === "d") return i18n._({ id: "session.agenda.wake.unit.d", message: "days" })
+  return i18n._({ id: "session.agenda.wake.unit.w", message: "weeks" })
 }
 
-function formatTimeForLocale(date: Date, locale: ActiveLocale): string {
-  return new Intl.DateTimeFormat(locale, { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)
+function formatTimeForLocale(date: Date, fmt: IntlFormatter): string {
+  return fmt.time(date, { hour12: false })
 }
 
-function formatDateTimeForLocale(date: Date, locale: ActiveLocale): string {
-  return new Intl.DateTimeFormat(locale, { dateStyle: "medium", timeStyle: "short" }).format(date)
+function formatDateTimeForLocale(date: Date, fmt: IntlFormatter): string {
+  return fmt.dateTime(date)
 }
 
-export function formatWakeTime(nextRunAt: number | null, deps: { i18n: I18n; locale: ActiveLocale }): string {
+export function formatWakeTime(
+  nextRunAt: number | null,
+  deps: { i18n: I18n; fmt: IntlFormatter; now?: number },
+): string {
   if (nextRunAt === null) return deps.i18n._(W.conditional)
-
-  const delta = nextRunAt - Date.now()
+  const now = new Date(deps.now ?? Date.now())
+  const delta = nextRunAt - now.getTime()
   if (delta < MINUTE) return deps.i18n._(W.imminent)
   if (delta < HOUR) return deps.i18n._({ ...W.inMinutes, values: { minutes: Math.ceil(delta / MINUTE) } })
-  if (delta < DAY) return deps.i18n._({ ...W.inHours, values: { hours: Math.ceil(delta / HOUR) } })
 
   const date = new Date(nextRunAt)
-  const now = new Date()
   const tomorrow = new Date(now)
   tomorrow.setDate(now.getDate() + 1)
 
-  const sameDay =
+  const isTomorrow =
     date.getFullYear() === tomorrow.getFullYear() &&
     date.getMonth() === tomorrow.getMonth() &&
     date.getDate() === tomorrow.getDate()
-  const time = formatTimeForLocale(date, deps.locale)
-  if (sameDay) return deps.i18n._({ ...W.tomorrowAt, values: { time } })
+  const time = formatTimeForLocale(date, deps.fmt)
+  if (isTomorrow) return deps.i18n._({ ...W.tomorrowAt, values: { time } })
+  if (delta < DAY) return deps.i18n._({ ...W.inHours, values: { hours: Math.ceil(delta / HOUR) } })
 
-  return formatDateTimeForLocale(date, deps.locale)
+  return formatDateTimeForLocale(date, deps.fmt)
 }
 
 export function statusLabel(status: SessionAgendaItem["status"], deps: { i18n: I18n }): string {
@@ -96,8 +98,7 @@ export function formatDuration(value: string | undefined, deps: { i18n: I18n }):
   if (!match) return value
   const amount = Number(match[1])
   const unit = match[2]
-  const unitDesc = DURATION_UNIT[unit]
-  const unitLabel = deps.i18n._(unitDesc ?? { id: `unit.${unit}`, message: unit })
+  const unitLabel = durationUnitLabel(unit, deps.i18n)
   return `${amount} ${unitLabel}`
 }
 

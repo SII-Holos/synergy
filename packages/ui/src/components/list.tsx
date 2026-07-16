@@ -1,3 +1,5 @@
+import { LIST_DESC } from "./tool-title-descriptors"
+
 import { type FilteredListProps, useFilteredList } from "../hooks"
 import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
@@ -219,8 +221,8 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           fallback={
             <div data-slot="list-empty-state">
               <div data-slot="list-message">
-                {props.emptyMessage ?? _(grouped.loading ? listLoadingDescriptor : listNoResultsDescriptor)} for{" "}
-                <span data-slot="list-filter">&quot;{filter()}&quot;</span>
+                {props.emptyMessage ?? _(grouped.loading ? listLoadingDescriptor : listNoResultsDescriptor)}{" "}
+                {_(LIST_DESC.forLabel)}{" "}
               </div>
             </div>
           }

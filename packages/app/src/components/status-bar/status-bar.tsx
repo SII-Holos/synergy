@@ -1,5 +1,8 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
+import { statusBar as copy, type AppMessageDescriptor } from "@/locales/messages"
 import { useHolos } from "@/context/holos"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -9,22 +12,24 @@ import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { ContextBar } from "./context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
-import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
+import {
+  createCopyController,
+  clipboardCopiedDescriptor,
+  clipboardCopyFailedDescriptor,
+} from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { getScopeLabel } from "@/utils/scope"
-import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
-import { resolveRuntimeIconState, runtimeLabel } from "./runtime"
+import { resolveRuntimeIconState } from "./runtime"
 import {
   normalizeSubsessionSearch,
   resolveSubsessionStatus,
   sessionActivityTime,
   subsessionCursorParams,
-  subsessionRangeLabel,
   type SubsessionCursor,
 } from "./subsession"
 
@@ -40,15 +45,26 @@ function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   }
 }
 
-function holosLabel(holos: ReturnType<typeof useHolos>) {
-  if (!holos.loaded) return "Holos loading"
-  if (!holos.state.identity.loggedIn) return "Holos signed out"
-  if (holos.state.connection.status === "connected") return "Holos connected"
-  if (holos.state.connection.status === "connecting") return "Holos connecting"
-  if (holos.state.connection.status === "failed") return "Holos failed"
-  if (holos.state.connection.status === "disconnected") return "Holos disconnected"
-  if (holos.state.connection.status === "disabled") return "Holos disabled"
-  return "Holos unknown"
+function holosLabelDescriptor(holos: ReturnType<typeof useHolos>): AppMessageDescriptor {
+  if (!holos.loaded) return copy.holosLoading
+  if (!holos.state.identity.loggedIn) return copy.holosSignedOut
+  if (holos.state.connection.status === "connected") return copy.holosConnected
+  if (holos.state.connection.status === "connecting") return copy.holosConnecting
+  if (holos.state.connection.status === "failed") return copy.holosFailed
+  if (holos.state.connection.status === "disconnected") return copy.holosDisconnected
+  if (holos.state.connection.status === "disabled") return copy.holosDisabled
+  return copy.holosUnknown
+}
+
+function holosStateDescriptor(holos: ReturnType<typeof useHolos>): AppMessageDescriptor {
+  if (!holos.loaded) return copy.holosStateLoading
+  if (!holos.state.identity.loggedIn) return copy.holosStateSignedOut
+  if (holos.state.connection.status === "connected") return copy.holosStateConnected
+  if (holos.state.connection.status === "connecting") return copy.holosStateConnecting
+  if (holos.state.connection.status === "failed") return copy.holosStateFailed
+  if (holos.state.connection.status === "disconnected") return copy.holosStateDisconnected
+  if (holos.state.connection.status === "disabled") return copy.holosStateDisabled
+  return copy.holosStateUnknown
 }
 
 function holosTone(holos: ReturnType<typeof useHolos>) {
@@ -74,10 +90,10 @@ function workspaceField(session: Session | undefined, key: string) {
   return typeof value === "string" ? value : undefined
 }
 
-function serverStatusLabel(healthy: boolean | undefined) {
-  if (healthy === true) return "active"
-  if (healthy === false) return "unavailable"
-  return "unknown"
+function serverStatusDescriptor(healthy: boolean | undefined): AppMessageDescriptor {
+  if (healthy === true) return copy.serverActive
+  if (healthy === false) return copy.serverUnavailable
+  return copy.serverUnknown
 }
 
 function iconButtonClass(tone?: "base" | "danger" | "success") {
@@ -95,8 +111,10 @@ function HolosIconButton() {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const agentActions = useHolosAgentActions(globalSDK)
-  const label = createMemo(() => holosLabel(holos))
+  const { _ } = useLingui()
+  const label = createMemo(() => _(holosLabelDescriptor(holos)))
   const dot = createMemo(() => holosTone(holos))
+  const serviceLabel = createMemo(() => _(holosStateDescriptor(holos)))
   const [open, setOpen] = createSignal(false)
 
   const activeAgentShortID = () => holos.state.identity.agentId?.slice(0, 8)
@@ -129,16 +147,20 @@ function HolosIconButton() {
       }
     >
       <div class="w-56">
-        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">Holos</div>
+        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">
+          {_(copy.holosTitle)}
+        </div>
         <div class="space-y-0.5 mb-2">
           <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">Login</span>
+            <span class="text-text-weak w-14 shrink-0">{_(copy.holosLoginLabel)}</span>
             <span class={holos.state.identity.loggedIn ? "text-text-on-success-base" : "text-text-subtle"}>
-              {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
+              {holos.state.identity.loggedIn
+                ? _({ ...copy.holosAgent, values: { id: activeAgentShortID() ?? "" } })
+                : _(copy.notLoggedIn)}
             </span>
           </div>
           <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">Service</span>
+            <span class="text-text-weak w-14 shrink-0">{_(copy.holosServiceLabel)}</span>
             <span
               classList={{
                 "text-text-on-success-base": holos.state.connection.status === "connected",
@@ -150,7 +172,7 @@ function HolosIconButton() {
                 ),
               }}
             >
-              {holosLabel(holos).replace("Holos ", "")}
+              {serviceLabel()}
             </span>
           </div>
           <Show when={holos.state.connection.error}>
@@ -166,7 +188,7 @@ function HolosIconButton() {
             onClick={handleReconnect}
           >
             <Icon name={getSemanticIcon("action.refresh")} size="small" />
-            <span>Reconnect</span>
+            <span>{_(copy.reconnect)}</span>
           </button>
         </Show>
       </div>
@@ -177,8 +199,10 @@ function HolosIconButton() {
 // ─── Workspace icon button ────────────────────────────────────────
 
 function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string }) {
+  const { _ } = useLingui()
   const icon = () => getSemanticIcon(props.isWorktree ? "workspace.worktree" : "workspace.main")
-  const tooltip = () => (props.isWorktree ? `Worktree: ${props.workspaceName}` : "Main checkout")
+  const tooltip = () =>
+    props.isWorktree ? _({ ...copy.worktreeLabel, values: { name: props.workspaceName } }) : _(copy.mainCheckout)
 
   return (
     <Tooltip placement="top" value={tooltip()}>
@@ -192,8 +216,9 @@ function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string
 // ─── Branch icon button ───────────────────────────────────────────
 
 function BranchIconButton(props: { branch: string }) {
+  const { _ } = useLingui()
   return (
-    <Tooltip placement="top" value={`Branch: ${props.branch}`}>
+    <Tooltip placement="top" value={_({ ...copy.branchLabel, values: { name: props.branch } })}>
       <button type="button" classList={iconButtonClass()}>
         <Icon name={getSemanticIcon("workspace.branch")} size="small" />
       </button>
@@ -204,13 +229,36 @@ function BranchIconButton(props: { branch: string }) {
 // ─── Runtime icon button ──────────────────────────────────────────
 
 function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean }) {
+  const { _ } = useLingui()
   const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting))
   const copyRetryError = createCopyController({
     text: () => runtimeState().copyText,
-    copyLabel: "Copy retry error",
-    failureDescription: "Unable to copy the retry error.",
+    get copyLabel() {
+      return _(copy.copyRetryError)
+    },
+    get copiedLabel() {
+      return _(clipboardCopiedDescriptor)
+    },
+    get failedLabel() {
+      return _(clipboardCopyFailedDescriptor)
+    },
+    get failureDescription() {
+      return _(copy.copyRetryErrorFailed)
+    },
   })
-  const tooltip = createMemo(() => (runtimeState().copyText ? copyRetryError.tooltip() : runtimeState().tooltip))
+  const localizedRuntimeLabel = createMemo(() => {
+    if (props.waiting) return _(copy.runtimeWaiting)
+    if (!props.status || props.status.type === "idle") return _(copy.runtimeIdle)
+    if (props.status.type === "busy") return props.status.description || _(copy.runtimeRunning)
+    if (props.status.type === "retry") return _({ ...copy.retryAttempt, values: { attempt: props.status.attempt } })
+    if (props.status.type === "recovering") return props.status.description || _(copy.runtimeRecovering)
+    return _(copy.runtimeIdle)
+  })
+  const tooltip = createMemo(() => {
+    if (runtimeState().copyText) return copyRetryError.tooltip()
+    if (props.status?.type === "recovering") return props.status.description || _(copy.recoveringTooltip)
+    return _({ ...copy.runtimeLabel, values: { label: localizedRuntimeLabel() } })
+  })
   const icon = createMemo(() =>
     runtimeState().copyText && copyRetryError.state() !== "idle" ? copyRetryError.icon() : runtimeState().icon,
   )
@@ -224,7 +272,7 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
         onClick={() => {
           if (runtimeState().copyText) void copyRetryError.copy()
         }}
-        aria-label={runtimeState().copyText ? "Copy retry error" : runtimeState().tooltip}
+        aria-label={runtimeState().copyText ? _(copy.copyRetryError) : tooltip()}
       >
         <span classList={{ "sb-session-icon-pulse": runtimeState().pulse }}>
           <Icon name={icon()} size="small" class="translate-y-0.5" />
@@ -243,6 +291,8 @@ function SubsessionsButton(props: {
 }) {
   const pageSize = 8
   const sdk = useSDK()
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const [open, setOpen] = createSignal(false)
   const [items, setItems] = createSignal<Session[]>([])
   const [total, setTotal] = createSignal<number | undefined>()
@@ -364,11 +414,21 @@ function SubsessionsButton(props: {
 
   const tooltip = () => {
     const loadedTotal = total()
-    if (loadedTotal === undefined) return "Subsessions"
-    return `${loadedTotal} subsession${loadedTotal !== 1 ? "s" : ""}`
+    if (loadedTotal === undefined) return _(copy.subsessions)
+    return _({ ...copy.subsessionsCount, values: { count: loadedTotal } })
   }
-  const rangeText = () => subsessionRangeLabel(pageIndex(), pageSize, items().length, total() ?? 0)
-  const emptyText = () => (debouncedSearch() ? "No matching subsessions" : "No subsessions yet")
+  const rangeText = () => {
+    const count = items().length
+    const itemTotal = total() ?? 0
+    if (itemTotal <= 0 || count <= 0) return _(copy.emptyRange)
+    const start = pageIndex() * pageSize + 1
+    const end = Math.min(start + count - 1, itemTotal)
+    return _({
+      ...copy.range,
+      values: { start: fmt.number(start), end: fmt.number(end), total: fmt.number(itemTotal) },
+    })
+  }
+  const emptyText = () => (debouncedSearch() ? _(copy.noMatching) : _(copy.noSubsessions))
 
   return (
     <Popover
@@ -394,10 +454,10 @@ function SubsessionsButton(props: {
     >
       <div class="min-w-0">
         <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/60 px-1 pb-2">
-          <span class="truncate text-12-medium text-text-base">Subsessions</span>
+          <span class="truncate text-12-medium text-text-base">{_(copy.subsessions)}</span>
           <span class="shrink-0 text-11-regular text-text-subtle">
-            <Show when={total() !== undefined} fallback="Loading">
-              {total()} total
+            <Show when={total() !== undefined} fallback={_(copy.loading)}>
+              {_({ ...copy.total, values: { total: fmt.number(total() ?? 0) } })}
             </Show>
           </span>
         </div>
@@ -406,7 +466,7 @@ function SubsessionsButton(props: {
           <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak-base" />
           <input
             value={search()}
-            placeholder="Search subsessions..."
+            placeholder={_(copy.searchPlaceholder)}
             class="min-w-0 flex-1 bg-transparent text-12-regular text-text-base placeholder:text-text-subtle focus:outline-none"
             onInput={(event) => setSearch(event.currentTarget.value)}
           />
@@ -415,13 +475,15 @@ function SubsessionsButton(props: {
         <div class="mt-2 min-h-44 max-h-72 overflow-y-auto [scrollbar-width:thin]">
           <Show
             when={!loading() || items().length > 0}
-            fallback={<div class="px-2 py-8 text-center text-12-regular text-text-subtle">Loading subsessions</div>}
+            fallback={
+              <div class="px-2 py-8 text-center text-12-regular text-text-subtle">{_(copy.loadingSubsessions)}</div>
+            }
           >
             <Show
               when={!error()}
               fallback={
                 <div class="flex min-h-32 flex-col items-center justify-center gap-2 px-2 py-6 text-center">
-                  <div class="text-12-medium text-text-base">Couldn’t load subsessions</div>
+                  <div class="text-12-medium text-text-base">{_(copy.loadError)}</div>
                   <button
                     type="button"
                     class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong-base"
@@ -432,7 +494,7 @@ function SubsessionsButton(props: {
                       })
                     }
                   >
-                    Retry
+                    {_(copy.retry)}
                   </button>
                 </div>
               }
@@ -456,12 +518,12 @@ function SubsessionsButton(props: {
                         <Icon name={status().icon} size="small" class={`mt-0.5 ${rowIconClass(status().tone)}`} />
                         <span class="min-w-0">
                           <span class="block truncate text-12-medium text-text-base">
-                            {session.title || "New session"}
+                            {session.title || _(copy.newSession)}
                           </span>
                           <Show
                             when={preview(session)}
                             fallback={
-                              <span class="mt-0.5 block text-11-regular text-text-subtle">No exchanges yet</span>
+                              <span class="mt-0.5 block text-11-regular text-text-subtle">{_(copy.noExchanges)}</span>
                             }
                           >
                             {(text) => (
@@ -482,7 +544,7 @@ function SubsessionsButton(props: {
                             </span>
                           </Show>
                           <span class="block truncate text-10-regular text-text-subtle">
-                            {relativeTime(sessionActivityTime(session))}
+                            {fmt.relative(sessionActivityTime(session))}
                           </span>
                         </span>
                       </button>
@@ -497,23 +559,23 @@ function SubsessionsButton(props: {
         <div class="mt-2 flex items-center justify-between gap-2 border-t border-border-weaker-base/60 px-1 pt-2">
           <span class="min-w-0 truncate text-11-regular text-text-subtle">{rangeText()}</span>
           <div class="flex items-center gap-1">
-            <Tooltip placement="top" value="Previous">
+            <Tooltip placement="top" value={_(copy.previous)}>
               <button
                 type="button"
                 classList={iconButtonClass()}
                 disabled={pageIndex() === 0 || loading()}
-                aria-label="Previous subsessions page"
+                aria-label={_(copy.previousPage)}
                 onClick={previousPage}
               >
                 <Icon name={getSemanticIcon("navigation.back")} size="small" />
               </button>
             </Tooltip>
-            <Tooltip placement="top" value="Next">
+            <Tooltip placement="top" value={_(copy.next)}>
               <button
                 type="button"
                 classList={iconButtonClass()}
                 disabled={!nextCursor() || loading()}
-                aria-label="Next subsessions page"
+                aria-label={_(copy.nextPage)}
                 onClick={nextPage}
               >
                 <Icon name={getSemanticIcon("navigation.forward")} size="small" />
@@ -563,6 +625,8 @@ export function StatusBar() {
   const holos = useHolos()
   const server = useServer()
   const sync = useSync()
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const [expanded, setExpanded] = createSignal(false)
 
   const directory = createMemo(() => decodeDirectory(params.dir))
@@ -589,7 +653,15 @@ export function StatusBar() {
     return workspaceField(session(), "branch") || sync.data.vcs?.branch
   })
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
-  const runtime = createMemo(() => runtimeLabel(status(), waiting()))
+  const runtime = createMemo(() => {
+    const current = status()
+    if (waiting()) return _(copy.runtimeWaiting)
+    if (!current || current.type === "idle") return _(copy.runtimeIdle)
+    if (current.type === "busy") return current.description || _(copy.runtimeRunning)
+    if (current.type === "retry") return _({ ...copy.retryAttempt, values: { attempt: current.attempt } })
+    if (current.type === "recovering") return current.description || _(copy.runtimeRecovering)
+    return _(copy.runtimeIdle)
+  })
   const retryMessage = createMemo(() => {
     const current = status()
     return current?.type === "retry" ? current.message.trim() : undefined
@@ -626,24 +698,22 @@ export function StatusBar() {
       running: status?.type === "busy" || status?.type === "retry" || status?.type === "recovering",
     })
     if (state === "waiting")
-      return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
+      return { label: _(copy.waiting), icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
     if (state === "running")
-      return { label: "running", icon: getSemanticIcon("session.running"), tone: "active" as const }
-    return { label: "idle", icon: getSemanticIcon("session.child"), tone: "base" as const }
+      return { label: _(copy.running), icon: getSemanticIcon("session.running"), tone: "active" as const }
+    return { label: _(copy.idle), icon: getSemanticIcon("session.child"), tone: "base" as const }
   }
-
-  const openPanel = () => setExpanded(true)
 
   const panelContent = (
     <div class="w-64">
       <Show when={waiting()}>
         <div class="rounded-xl bg-surface-critical-weak p-2.5 mb-3">
-          <PanelIconRow icon={getSemanticIcon("session.waiting")} label="Permission required" tone="danger" />
+          <PanelIconRow icon={getSemanticIcon("session.waiting")} label={_(copy.permissionRequired)} tone="danger" />
         </div>
       </Show>
 
-      <PanelSection title="Workspace">
-        <PanelRow>{isWorktree() ? "Git worktree" : "Main checkout"}</PanelRow>
+      <PanelSection title={_(copy.workspace)}>
+        <PanelRow>{isWorktree() ? _(copy.gitWorktree) : _(copy.mainCheckout)}</PanelRow>
         <PanelRow>{scopeLabel()}</PanelRow>
         <Show when={isWorktree()}>
           <PanelRow>{workspaceName()}</PanelRow>
@@ -653,7 +723,7 @@ export function StatusBar() {
         </Show>
       </PanelSection>
 
-      <PanelSection title="Runtime">
+      <PanelSection title={_(copy.runtime)}>
         <PanelRow>
           {runtime()}
           <Show
@@ -672,29 +742,36 @@ export function StatusBar() {
         </Show>
       </PanelSection>
 
-      <PanelSection title="Connections">
-        <PanelRow>Holos · {holosLabel(holos)}</PanelRow>
+      <PanelSection title={_(copy.connections)}>
+        <PanelRow>{_(holosLabelDescriptor(holos))}</PanelRow>
         <Show when={lspTotal() > 0}>
-          <PanelRow>LSP · {lspConnected()} active</PanelRow>
+          <PanelRow>{_({ ...copy.lspActive, values: { connected: fmt.number(lspConnected()) } })}</PanelRow>
         </Show>
         <Show when={mcpTotal() > 0}>
           <PanelRow>
-            MCP · {mcpConnected()} connected
+            {_({ ...copy.mcpConnected, values: { connected: fmt.number(mcpConnected()) } })}
             <Show when={mcpFailed() > 0}>
-              <span class="text-text-on-critical-base">, {mcpFailed()} unavailable</span>
+              <span class="text-text-on-critical-base">
+                {_({ ...copy.mcpUnavailable, values: { failed: fmt.number(mcpFailed()) } })}
+              </span>
             </Show>
           </PanelRow>
         </Show>
         <Show when={cortexRunning() > 0 || cortexCompleted() > 0}>
           <PanelRow>
-            Cortex · {cortexCompleted()} done
+            {_({ ...copy.cortexDone, values: { completed: fmt.number(cortexCompleted()) } })}
             <Show when={cortexRunning() > 0}>
-              <span class="text-text-interactive-base"> · {cortexRunning()} running</span>
+              <span class="text-text-interactive-base">
+                {_({ ...copy.cortexRunning, values: { running: fmt.number(cortexRunning()) } })}
+              </span>
             </Show>
           </PanelRow>
         </Show>
         <PanelRow>
-          Server · {server.name} ({serverStatusLabel(server.healthy())})
+          {_({
+            ...copy.serverStatus,
+            values: { name: server.name, status: _(serverStatusDescriptor(server.healthy())) },
+          })}
         </PanelRow>
       </PanelSection>
     </div>
@@ -734,7 +811,7 @@ export function StatusBar() {
             placement="top"
             gutter={8}
             trigger={
-              <Tooltip placement="top" value="Details">
+              <Tooltip placement="top" value={_(copy.details)}>
                 <button type="button" classList={iconButtonClass()}>
                   <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>

@@ -4,6 +4,8 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import type { SessionWorkspaceTransitionRequest } from "./worktree-session"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 import "./worktree-transition-dialog.css"
 
 export function WorktreeEnterConfirmDialog(props: {
@@ -12,6 +14,8 @@ export function WorktreeEnterConfirmDialog(props: {
   onConfirm: (request: SessionWorkspaceTransitionRequest) => void
 }) {
   const dialog = useDialog()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const [name, setName] = createSignal("")
 
   const confirm = () => {
@@ -27,11 +31,7 @@ export function WorktreeEnterConfirmDialog(props: {
   }
 
   return (
-    <Dialog
-      title="Move session to worktree?"
-      description="Create an isolated checkout and move this session into it. The main checkout stays unchanged."
-      class="workspace-transition-dialog"
-    >
+    <Dialog title={_(S.worktreeDialogTitle)} description={_(S.worktreeDialogDesc)} class="workspace-transition-dialog">
       <form
         class="wtd-form"
         onSubmit={(event) => {
@@ -39,13 +39,19 @@ export function WorktreeEnterConfirmDialog(props: {
           confirm()
         }}
       >
-        <TextField autofocus label="Worktree name" placeholder="Auto-generated" value={name()} onChange={setName} />
+        <TextField
+          autofocus
+          label={_(S.worktreeDialogNameLabel)}
+          placeholder={_(S.worktreeDialogNamePlaceholder)}
+          value={name()}
+          onChange={setName}
+        />
         <div class="wtd-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
-            Cancel
+            {_(S.worktreeDialogCancel)}
           </Button>
           <Button type="submit" variant="primary" size="large">
-            Create worktree
+            {_(S.worktreeDialogCreate)}
           </Button>
         </div>
       </form>

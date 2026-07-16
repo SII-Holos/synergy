@@ -314,17 +314,24 @@ const historyLoadFallback = {
 const startJobFallback = { id: "settings.library.encoding.startJobFallback", message: "The job could not be started." }
 const cancelJobFallback = { id: "settings.library.encoding.cancelJobFallback", message: "The job is still running." }
 
+const scanNowDescriptor = { id: "settings.library.encoding.scanNow", message: "Scan Now" }
+const scanningDescriptor = {
+  id: "settings.library.encoding.scanning",
+  message: "Scanning\u2026",
+}
+const showSamplesDescriptor = {
+  id: "settings.library.encoding.showSamples",
+  message: "\u25B8 Show samples",
+}
+const hideSamplesDescriptor = {
+  id: "settings.library.encoding.hideSamples",
+  message: "\u25BE Hide samples",
+}
 function scanNowLabel(scanning: boolean) {
-  return {
-    id: scanning ? "settings.library.encoding.scanning" : "settings.library.encoding.scanNow",
-    message: scanning ? "Scanning\u2026" : "Scan Now",
-  }
+  return scanning ? scanningDescriptor : scanNowDescriptor
 }
 function hideSamplesLabel(expanded: boolean) {
-  return {
-    id: expanded ? "settings.library.encoding.hideSamples" : "settings.library.encoding.showSamples",
-    message: expanded ? "\u25BE Hide samples" : "\u25B8 Show samples",
-  }
+  return expanded ? hideSamplesDescriptor : showSamplesDescriptor
 }
 
 /* ICU-driven estimate (LLM calls / duration) */
@@ -732,7 +739,8 @@ function ExperienceGroupCards(props: {
                           class="usage-overview-label"
                           style={{ "font-family": "var(--font-mono)", "font-size": "11px" }}
                         >
-                          {sample.id.slice(0, 12)}\u2026
+                          {sample.id.slice(0, 12)}
+                          {<>{String.fromCodePoint(0x2026)}</>}
                         </span>
                         <span class="usage-overview-label" style={{ "margin-left": "8px" }}>
                           {sample.detail}

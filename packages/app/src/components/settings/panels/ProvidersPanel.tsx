@@ -9,6 +9,7 @@ import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
+import { translateDescriptor } from "@/locales/translate"
 import {
   compareProviderIDs,
   providerConnectCopy,
@@ -62,6 +63,11 @@ const connectDesc = {
 const recoveryDesc = {
   id: "settings.providers.recoveryDesc",
   message: "Choose a recovery method. Existing backup credentials remain available.",
+}
+const envRecoveryFallbackDesc = {
+  id: "settings.providers.updateEnvRecovery",
+  message:
+    "Update the server environment, restart Synergy, then refresh this page. Environment values are never overwritten by Settings.",
 }
 
 function modelCount(count: number) {
@@ -128,7 +134,7 @@ export function ProvidersPanel(props: {
   })
 
   const statusLabel = (provider: ProviderConnectionSummary) =>
-    _(providerStatusLabel(provider.health, provider.availability))
+    translateDescriptor(providerStatusLabel(provider.health, provider.availability), _)
 
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
@@ -224,7 +230,10 @@ export function ProvidersPanel(props: {
                   <div class="providers-auth-warning" role="status">
                     <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
                     <span>
-                      {_(providerRecoveryCopy(provider().name, provider().health, provider().profile?.environment))}
+                      {translateDescriptor(
+                        providerRecoveryCopy(provider().name, provider().health, provider().profile?.environment),
+                        _,
+                      )}
                     </span>
                   </div>
                 </Show>
@@ -233,7 +242,7 @@ export function ProvidersPanel(props: {
                   <div>
                     <div class="providers-connect-title">
                       {providerNeedsAction(provider().health)
-                        ? _(providerRecoveryActionLabel(provider().health))
+                        ? translateDescriptor(providerRecoveryActionLabel(provider().health), _)
                         : provider().connected
                           ? _(accountTab)
                           : _(connectTab)}
@@ -248,12 +257,7 @@ export function ProvidersPanel(props: {
                   </div>
                   <Show
                     when={provider().health?.recovery !== "update_environment"}
-                    fallback={
-                      <p class="providers-connect-copy">
-                        Update the server environment, restart Synergy, then refresh this page. Environment values are
-                        never overwritten by Settings.
-                      </p>
-                    }
+                    fallback={<p class="providers-connect-copy">{_(envRecoveryFallbackDesc)}</p>}
                   >
                     <ProviderConnectionFlow
                       providerID={provider().id}

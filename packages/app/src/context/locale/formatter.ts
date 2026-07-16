@@ -1,9 +1,19 @@
 import type { ActiveLocale } from "./types"
 
+function optionsKey(options: object | undefined): string {
+  if (!options) return ""
+  return Object.entries(options)
+    .filter(([, value]) => value !== undefined)
+    .toSorted(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => `${key}:${String(value)}`)
+    .join("|")
+}
+
 export interface IntlFormatter {
   number(value: number, options?: Intl.NumberFormatOptions): string
   percent(value: number, options?: Intl.NumberFormatOptions): string
   currency(value: number, currency: string, options?: Intl.NumberFormatOptions): string
+  list(values: Iterable<string>, options?: Intl.ListFormatOptions): string
   date(value: Date | number, options?: Intl.DateTimeFormatOptions): string
   dateTime(value: Date | number, options?: Intl.DateTimeFormatOptions): string
   time(value: Date | number, options?: Intl.DateTimeFormatOptions): string
@@ -12,41 +22,51 @@ export interface IntlFormatter {
 
 export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatter {
   let lastLocale: ActiveLocale | undefined
-  let nf: Intl.NumberFormat | undefined
-  let dtf: Intl.DateTimeFormat | undefined
+  const numberFormats = new Map<string, Intl.NumberFormat>()
+  const dateTimeFormats = new Map<string, Intl.DateTimeFormat>()
+  const listFormats = new Map<string, Intl.ListFormat>()
   let rtf: Intl.RelativeTimeFormat | undefined
 
   function ensureLocale(): ActiveLocale {
     const locale = getLocale()
     if (locale !== lastLocale) {
       lastLocale = locale
-      nf = undefined
-      dtf = undefined
+      numberFormats.clear()
+      dateTimeFormats.clear()
+      listFormats.clear()
       rtf = undefined
     }
     return locale
   }
 
   function getNF(options?: Intl.NumberFormatOptions): Intl.NumberFormat {
-    if (!nf) {
-      const locale = lastLocale!
-      nf = new Intl.NumberFormat(locale)
-    }
-    if (options) {
-      return new Intl.NumberFormat(lastLocale!, options)
-    }
-    return nf
+    const key = optionsKey(options)
+    const cached = numberFormats.get(key)
+    if (cached) return cached
+
+    const formatter = new Intl.NumberFormat(lastLocale!, options)
+    numberFormats.set(key, formatter)
+    return formatter
   }
 
   function getDTF(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-    if (!dtf) {
-      const locale = lastLocale!
-      dtf = new Intl.DateTimeFormat(locale)
-    }
-    if (options) {
-      return new Intl.DateTimeFormat(lastLocale!, options)
-    }
-    return dtf
+    const key = optionsKey(options)
+    const cached = dateTimeFormats.get(key)
+    if (cached) return cached
+
+    const formatter = new Intl.DateTimeFormat(lastLocale!, options)
+    dateTimeFormats.set(key, formatter)
+    return formatter
+  }
+
+  function getLF(options?: Intl.ListFormatOptions): Intl.ListFormat {
+    const key = optionsKey(options)
+    const cached = listFormats.get(key)
+    if (cached) return cached
+
+    const formatter = new Intl.ListFormat(lastLocale!, options)
+    listFormats.set(key, formatter)
+    return formatter
   }
 
   function ensureRTF(): Intl.RelativeTimeFormat {
@@ -73,6 +93,11 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
       return getNF({ style: "currency", currency, ...options }).format(value)
     },
 
+    list(values, options?) {
+      ensureLocale()
+      return getLF(options).format(values)
+    },
+
     date(value, options?) {
       ensureLocale()
       return getDTF(options).format(value)
@@ -89,7 +114,7 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
     },
 
     relative(value, base?) {
-      const locale = ensureLocale()
+      ensureLocale()
       const now = base ?? new Date()
       const then = value instanceof Date ? value : new Date(value)
       const diffMs = then.getTime() - now.getTime()

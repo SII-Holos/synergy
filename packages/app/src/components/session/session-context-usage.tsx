@@ -19,7 +19,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const params = useParams()
   const layout = useLayout()
-  const { i18n, controller } = useLocale()
+  const { i18n, fmt } = useLocale()
 
   const variant = createMemo(() => props.variant ?? "button")
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
@@ -28,10 +28,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const cost = createMemo(() => {
     const total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
-    return new Intl.NumberFormat(controller.epoch().locale, {
-      style: "currency",
-      currency: "USD",
-    }).format(total)
+    return fmt.currency(total, "USD")
   })
 
   const context = createMemo(() => {
@@ -44,10 +41,10 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
     const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
     const limit = model?.limit
-    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    if (!limit || limit.context === 0) return { tokens: fmt.number(total), percentage: null }
     const usable = ModelLimit.usableInput(limit)
     return {
-      tokens: total.toLocaleString(),
+      tokens: fmt.number(total),
       percentage: Math.round((total / usable) * 100),
     }
   })

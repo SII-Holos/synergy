@@ -2,24 +2,25 @@ import { createSignal, createEffect } from "solid-js"
 import { Trans, useLingui } from "@lingui/solid"
 import { useBrowser } from "./browser-store"
 import { browser as B } from "@/locales/messages"
-import type { AppMessageDescriptor } from "@/locales/messages"
+
+type PresetID = "desktop" | "tablet" | "mobile"
 
 interface Preset {
-  label: string
+  id: PresetID
   width: number
   height: number
 }
 
 const PRESETS: Preset[] = [
-  { label: "Desktop", width: 1280, height: 720 },
-  { label: "Tablet", width: 768, height: 1024 },
-  { label: "Mobile", width: 375, height: 667 },
+  { id: "desktop", width: 1280, height: 720 },
+  { id: "tablet", width: 768, height: 1024 },
+  { id: "mobile", width: 375, height: 667 },
 ]
 
-const PRESET_I18N: Record<string, AppMessageDescriptor> = {
-  Desktop: { id: B.presetDesktop.id, message: B.presetDesktop.message },
-  Tablet: { id: B.presetTablet.id, message: B.presetTablet.message },
-  Mobile: { id: B.presetMobile.id, message: B.presetMobile.message },
+function presetLabel(id: PresetID, _: ReturnType<typeof useLingui>["_"]): string {
+  if (id === "desktop") return _(B.presetDesktop)
+  if (id === "tablet") return _(B.presetTablet)
+  return _(B.presetMobile)
 }
 
 export function ViewportSelector() {
@@ -34,11 +35,11 @@ export function ViewportSelector() {
     setLocalHeight(String(viewportHeight()))
   })
 
-  const selectedPreset = (): string | null => {
+  const selectedPreset = (): PresetID | null => {
     const w = viewportWidth()
     const h = viewportHeight()
     for (const p of PRESETS) {
-      if (p.width === w && p.height === h) return p.label
+      if (p.width === w && p.height === h) return p.id
     }
     return null
   }
@@ -68,16 +69,15 @@ export function ViewportSelector() {
 
       <div class="flex items-center gap-0.5">
         {PRESETS.map((preset) => {
-          const i18n = PRESET_I18N[preset.label]
-          const translated = i18n ? lingui._(i18n.id) : preset.label
+          const translated = presetLabel(preset.id, lingui._)
           return (
             <button
               type="button"
               class="px-1.5 h-6 rounded text-11 transition-colors shrink-0"
               classList={{
-                "workbench-selected-surface text-text-strong": selectedPreset() === preset.label,
+                "workbench-selected-surface text-text-strong": selectedPreset() === preset.id,
                 "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                  selectedPreset() !== preset.label,
+                  selectedPreset() !== preset.id,
               }}
               onClick={() => selectPreset(preset)}
               aria-label={`${translated} ${preset.width}x${preset.height}`}
@@ -96,7 +96,7 @@ export function ViewportSelector() {
         value={localWidth()}
         onInput={(e) => setLocalWidth(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
-        placeholder="W"
+        placeholder={lingui._(B.viewportWidthPlaceholder.id)}
         aria-label={lingui._(B.viewportWidth.id)}
       />
 
@@ -108,7 +108,7 @@ export function ViewportSelector() {
         value={localHeight()}
         onInput={(e) => setLocalHeight(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
-        placeholder="H"
+        placeholder={lingui._(B.viewportHeightPlaceholder.id)}
         aria-label={lingui._(B.viewportHeight.id)}
       />
 

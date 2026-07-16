@@ -18,7 +18,7 @@
     "serve": "vite preview",
     "i18n:extract": "bun run script/i18n-extract.ts",
     "i18n:compile": "lingui compile",
-    "i18n:check": "bun run script/i18n-extract.ts && lingui compile --strict"
+    "i18n:check": "bun run script/i18n-check.ts"
   },
   "license": "MIT",
   "devDependencies": {
@@ -29,9 +29,9 @@
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/bun": "1.0.9",
     "@types/bun": "catalog:",
-    "@types/luxon": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "babel-plugin-macros": "3.1.0",
     "playwright": "1.61.0",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -77,7 +77,6 @@
     "@tiptap/pm": "^3.27.2",
     "@tiptap/starter-kit": "^3.27.2",
     "@tiptap/suggestion": "^3.27.2",
-    "babel-plugin-macros": "3.1.0",
     "chart.js": "4.5.1",
     "croner": "10.0.1",
     "cropperjs": "1.6.2",
@@ -87,7 +86,6 @@
     "ghostty-web": "0.3.0",
     "jsonc-parser": "3.3.1",
     "katex": "catalog:",
-    "luxon": "catalog:",
     "marked": "catalog:",
     "marked-shiki": "catalog:",
     "mermaid": "11.13.0",

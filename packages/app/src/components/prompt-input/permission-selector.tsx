@@ -20,7 +20,6 @@ export function PermissionModeSelector(props: {
   updateProfile: (profile: ControlProfileId, close?: () => void) => void
 }) {
   const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
 
   return (
     <ToolbarSelectorPopover
@@ -36,8 +35,8 @@ export function PermissionModeSelector(props: {
             if (props.switching()) return
             showToast({
               type: "warning",
-              title: _(PI.permissionRunning),
-              description: _(PI.permissionStopBefore),
+              title: i18n._(PI.permissionRunning),
+              description: i18n._(PI.permissionStopBefore),
             })
           }}
           class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
@@ -67,7 +66,7 @@ export function PermissionModeSelector(props: {
           </Show>
         </button>
       }
-      title={_(PI.permissionMode)}
+      title={i18n._(PI.permissionMode)}
       contentClass="w-80"
       placement="top-start"
     >
@@ -94,7 +93,9 @@ export function PermissionModeSelector(props: {
             )}
           </List>
           <Show when={props.working()}>
-            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">{_(PI.permissionStopBeforeInline)}</div>
+            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">
+              {i18n._(PI.permissionStopBeforeInline)}
+            </div>
           </Show>
         </>
       )}

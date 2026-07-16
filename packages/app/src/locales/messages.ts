@@ -1,17 +1,14 @@
+import type { MessageDescriptor } from "@lingui/core"
+
 /**
  * Explicit Lingui runtime message descriptors.
  *
  * Each descriptor provides an `id` (stable extraction key) and the English
- * `message` (source text / fallback).  Components use `<Trans>` with string
- * literals for JSX content and `useLingui()._` for imperative strings.
+ * `message` (source text / fallback). Components use `<Trans>` for JSX content
+ * and the active Lingui runtime for imperative strings.
  */
 
-export interface AppMessageDescriptor {
-  /** Stable extraction key (dot-separated, lowercase, app.* namespace). */
-  id: string
-  /** English source text (fallback when no catalog is loaded). */
-  message: string
-}
+export type AppMessageDescriptor = MessageDescriptor
 
 // ── Workspace core ───────────────────────────────────────────────────────────
 
@@ -117,6 +114,21 @@ export const browser = {
   color: { id: "app.browser.annotation.color", message: "Color" },
   // ── Remote browser ──
   remoteTextInput: { id: "app.browser.remote.textInput", message: "Remote browser text input" },
+  // ── Remote browser status ──
+  remoteWaiting: { id: "app.browser.remote.status.waiting", message: "Waiting for Browser Host" },
+  remotePreparing: { id: "app.browser.remote.status.preparing", message: "Preparing remote browser" },
+  remoteStreamPreparing: {
+    id: "app.browser.remote.status.streamPreparing",
+    message: "Preparing remote browser stream",
+  },
+  remoteNegotiating: {
+    id: "app.browser.remote.status.negotiating",
+    message: "Negotiating remote browser stream",
+  },
+  remoteConnecting: { id: "app.browser.remote.status.connecting", message: "Connecting to remote browser" },
+  remoteUnavailable: { id: "app.browser.remote.status.unavailable", message: "Remote browser stream unavailable" },
+  viewportWidthPlaceholder: { id: "app.browser.viewport.width.placeholder", message: "W" },
+  viewportHeightPlaceholder: { id: "app.browser.viewport.height.placeholder", message: "H" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Browser panel empty states ───────────────────────────────────────────────
@@ -153,6 +165,13 @@ export const downloadsPanel = {
 
 export const assetsPanel = {
   empty: { id: "app.browser.assets.empty", message: "No page assets" },
+  typeImages: { id: "app.browser.assets.type.images", message: "Images" },
+  typeScripts: { id: "app.browser.assets.type.scripts", message: "Scripts" },
+  typeStylesheets: { id: "app.browser.assets.type.stylesheets", message: "Stylesheets" },
+  typeFonts: { id: "app.browser.assets.type.fonts", message: "Fonts" },
+  typeMedia: { id: "app.browser.assets.type.media", message: "Media" },
+  typeDocuments: { id: "app.browser.assets.type.documents", message: "Documents" },
+  typeOther: { id: "app.browser.assets.type.other", message: "Other" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── File workbench ───────────────────────────────────────────────────────────
@@ -319,7 +338,19 @@ export const note = {
   reloadRemote: { id: "app.note.detail.reloadRemote", message: "Reload remote" },
   overwriteRemote: { id: "app.note.detail.overwriteRemote", message: "Overwrite remote" },
   addTags: { id: "app.note.detail.addTags", message: "Add tags..." },
+  deleteNote: { id: "app.note.editor.deleteNote", message: "Delete note" },
+  keepMine: { id: "app.note.detail.keepMine", message: "Keep mine" },
+  downloadNote: { id: "app.note.editor.downloadNote", message: "Download note" },
+  pinnedState: { id: "app.note.editor.pinnedState", message: "Pinned" },
+  local: { id: "app.note.editor.local", message: "Local" },
+  global: { id: "app.note.editor.global", message: "Global" },
+  toNote: { id: "app.note.editor.toNote", message: "To Note" },
+  toBlueprint: { id: "app.note.editor.toBlueprint", message: "To Blueprint" },
+  noModelResults: { id: "app.note.run.noModelResults", message: "No model results" },
+  viewAllNotes: { id: "app.note.toolbar.viewAllNotes", message: "View all {count} notes" },
+  noteCountLabel: { id: "app.note.card.noteCountLabel", message: "{count, plural, one {# note} other {# notes}}" },
   addTag: { id: "app.note.detail.addTag", message: "Add tag" },
+  separator: { id: "app.note.separator.dot", message: " · " },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Note bubble menu ─────────────────────────────────────────────────────────
@@ -350,6 +381,10 @@ export const bubbleMenu = {
   mergeCells: { id: "app.note.bubble.table.mergeCells", message: "Merge cells" },
   splitCell: { id: "app.note.bubble.table.splitCell", message: "Split cell" },
   toggleHeaderRow: { id: "app.note.bubble.table.toggleHeaderRow", message: "Toggle header row" },
+  boldSymbol: { id: "app.note.bubble.symbol.bold", message: "B" },
+  italicSymbol: { id: "app.note.bubble.symbol.italic", message: "I" },
+  strikethroughSymbol: { id: "app.note.bubble.symbol.strikethrough", message: "S" },
+  codeSymbol: { id: "app.note.bubble.symbol.code", message: "<>" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Note slash menu ──────────────────────────────────────────────────────────
@@ -389,6 +424,701 @@ export const docEditor = {
 
 // ── All descriptors (for convenience / barrel re-exports) ─────────────────────
 
+// ── App Shell ────────────────────────────────────────────────────────────────
+
+export const appShell = {
+  // Connection banner
+  connectionLost: { id: "app.shell.connection.lost", message: "Connection lost — check your network" },
+  reconnecting: { id: "app.shell.connection.reconnecting", message: "Reconnecting…" },
+  // Mobile navigation drawer
+  navLabel: { id: "app.shell.mobile.nav.label", message: "Navigation" },
+  closeNav: { id: "app.shell.mobile.nav.close", message: "Close navigation" },
+  home: { id: "app.shell.mobile.nav.home", message: "Home" },
+  projects: { id: "app.shell.mobile.nav.projects", message: "Projects" },
+  tools: { id: "app.shell.mobile.nav.tools", message: "Tools" },
+  toolsTitle: { id: "app.shell.mobile.tools.title", message: "Tools" },
+  toolsSection: { id: "app.shell.mobile.tools.section", message: "Tools" },
+  newSession: { id: "app.shell.mobile.session.new", message: "New session" },
+  noSessions: { id: "app.shell.mobile.session.empty", message: "No sessions yet" },
+  agenda: { id: "app.shell.mobile.tool.agenda", message: "Agenda" },
+  library: { id: "app.shell.mobile.tool.library", message: "Library" },
+  performance: { id: "app.shell.mobile.tool.performance", message: "Performance" },
+  plugins: { id: "app.shell.mobile.tool.plugins", message: "Plugins" },
+  notes: { id: "app.shell.mobile.tool.notes", message: "Notes" },
+  browser: { id: "app.shell.mobile.tool.browser", message: "Browser" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+
+export const sidebar = {
+  // Tooltips and aria-labels
+  expand: { id: "app.sidebar.expand", message: "Expand sidebar" },
+  collapse: { id: "app.sidebar.collapse", message: "Collapse sidebar" },
+  search: { id: "app.sidebar.search", message: "Search sessions" },
+  newSession: { id: "app.sidebar.newSession", message: "New session" },
+  newSessionShort: { id: "app.sidebar.newSession.short", message: "New" },
+  projects: { id: "app.sidebar.projects", message: "Projects" },
+  addProject: { id: "app.sidebar.addProject", message: "Add project" },
+  collapseAllProjects: { id: "app.sidebar.collapseAllProjects", message: "Collapse all projects" },
+  agentMenu: { id: "app.sidebar.agent.menu", message: "Agent menu" },
+  agent: { id: "app.sidebar.agent", message: "Agent" },
+  // Sections
+  recent: { id: "app.sidebar.section.recent", message: "Recent" },
+  home: { id: "app.sidebar.section.home", message: "Home" },
+  channel: { id: "app.sidebar.section.channel", message: "Channel" },
+  background: { id: "app.sidebar.section.background", message: "Background" },
+  // Empty states
+  noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
+  noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },
+  loadingProjects: { id: "app.sidebar.loading.projects", message: "Loading projects…" },
+  loadMore: { id: "app.sidebar.loadMore", message: "Load more" },
+  loadSessions: { id: "app.sidebar.loadSessions", message: "Load sessions" },
+  // Project actions
+  expandProject: { id: "app.sidebar.project.expand", message: "Expand project" },
+  collapseProject: { id: "app.sidebar.project.collapse", message: "Collapse project" },
+  pin: { id: "app.sidebar.project.pin", message: "Pin" },
+  unpin: { id: "app.sidebar.project.unpin", message: "Unpin" },
+  edit: { id: "app.sidebar.project.edit", message: "Edit" },
+  archive: { id: "app.sidebar.project.archive", message: "Archive" },
+  // Flyout
+  projectsFlyout: { id: "app.sidebar.flyout.projects", message: "Projects" },
+  // Agent hub
+  noAgent: { id: "app.sidebar.agent.noAgent", message: "No agent" },
+  createAgent: { id: "app.sidebar.agent.create", message: "Create Agent" },
+  importAgent: { id: "app.sidebar.agent.import", message: "Import Agent" },
+  settings: { id: "app.sidebar.menu.settings", message: "Settings" },
+  providers: { id: "app.sidebar.menu.providers", message: "Providers" },
+  repository: { id: "app.sidebar.menu.repository", message: "Repository" },
+  account: { id: "app.sidebar.menu.account", message: "Account" },
+  reconnect: { id: "app.sidebar.menu.reconnect", message: "Reconnect" },
+  usage: { id: "app.sidebar.menu.usage", message: "Usage" },
+  logout: { id: "app.sidebar.menu.logout", message: "Log out" },
+  holosConnection: { id: "app.sidebar.holos.connection", message: "Holos Connection" },
+  holosLogin: { id: "app.sidebar.holos.login", message: "Login" },
+  holosService: { id: "app.sidebar.holos.service", message: "Service" },
+  notLoggedIn: { id: "app.sidebar.holos.notLoggedIn", message: "Not logged in" },
+  notAvailable: { id: "app.sidebar.holos.notAvailable", message: "Not available" },
+  profileUnavailable: { id: "app.sidebar.holos.profileUnavailable", message: "Profile unavailable" },
+  savedOnDevice: { id: "app.sidebar.holos.savedOnDevice", message: "Saved on this device" },
+  // Connection status labels
+  connected: { id: "app.sidebar.holos.connected", message: "Connected" },
+  connecting: { id: "app.sidebar.holos.connecting", message: "Connecting…" },
+  connectionFailed: { id: "app.sidebar.holos.connectionFailed", message: "Connection failed" },
+  disconnected: { id: "app.sidebar.holos.disconnected", message: "Disconnected" },
+  disabled: { id: "app.sidebar.holos.disabled", message: "Disabled" },
+  signIn: { id: "app.sidebar.holos.signIn", message: "Sign in" },
+  loadingIdentity: { id: "app.sidebar.holos.loadingIdentity", message: "Loading identity..." },
+  localWorkspace: { id: "app.sidebar.holos.localWorkspace", message: "Local workspace" },
+  connectedToHolos: { id: "app.sidebar.holos.connectedToHolos", message: "Connected to Holos" },
+  // Attention notice
+  busy: { id: "app.sidebar.attention.busy", message: "Working..." },
+  // Orphan group
+  orphanGroup: { id: "app.sidebar.channel.orphan", message: "Other" },
+  // Session fallback
+  untitled: { id: "app.sidebar.session.untitled", message: "Untitled" },
+  // Brand / logo
+  logoAlt: { id: "app.sidebar.brand.logo", message: "HOLOS" },
+  channelFeishu: { id: "app.sidebar.channel.feishu", message: "Feishu" },
+  addProjectDialogTitle: { id: "app.sidebar.dialog.addProject", message: "Add project" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Status Bar ───────────────────────────────────────────────────────────────
+
+export const statusBar = {
+  // Holos labels
+  holosLoading: { id: "app.statusBar.holos.loading", message: "Holos loading" },
+  holosSignedOut: { id: "app.statusBar.holos.signedOut", message: "Holos signed out" },
+  holosConnected: { id: "app.statusBar.holos.connected", message: "Holos connected" },
+  holosConnecting: { id: "app.statusBar.holos.connecting", message: "Holos connecting" },
+  holosFailed: { id: "app.statusBar.holos.failed", message: "Holos failed" },
+  holosDisconnected: { id: "app.statusBar.holos.disconnected", message: "Holos disconnected" },
+  holosDisabled: { id: "app.statusBar.holos.disabled", message: "Holos disabled" },
+  holosUnknown: { id: "app.statusBar.holos.unknown", message: "Holos unknown" },
+  holosTitle: { id: "app.statusBar.holos.title", message: "Holos" },
+  holosLoginLabel: { id: "app.statusBar.holos.login", message: "Login" },
+  holosServiceLabel: { id: "app.statusBar.holos.service", message: "Service" },
+  notLoggedIn: { id: "app.statusBar.holos.notLoggedIn", message: "Not logged in" },
+  reconnect: { id: "app.statusBar.holos.reconnect", message: "Reconnect" },
+  holosAgent: { id: "app.statusBar.holos.agent", message: "Agent {id}" },
+  holosStateLoading: { id: "app.statusBar.holos.state.loading", message: "Loading" },
+  holosStateSignedOut: { id: "app.statusBar.holos.state.signedOut", message: "Signed out" },
+  holosStateConnected: { id: "app.statusBar.holos.state.connected", message: "Connected" },
+  holosStateConnecting: { id: "app.statusBar.holos.state.connecting", message: "Connecting" },
+  holosStateFailed: { id: "app.statusBar.holos.state.failed", message: "Failed" },
+  holosStateDisconnected: { id: "app.statusBar.holos.state.disconnected", message: "Disconnected" },
+  holosStateDisabled: { id: "app.statusBar.holos.state.disabled", message: "Disabled" },
+  holosStateUnknown: { id: "app.statusBar.holos.state.unknown", message: "Unknown" },
+  // Workspace
+  mainCheckout: { id: "app.statusBar.workspace.main", message: "Main checkout" },
+  worktreeLabel: { id: "app.statusBar.workspace.worktree", message: "Worktree: {name}" },
+  branchLabel: { id: "app.statusBar.workspace.branch", message: "Branch: {name}" },
+  gitWorktree: { id: "app.statusBar.workspace.gitWorktree", message: "Git worktree" },
+  // Runtime
+  runtimeLabel: { id: "app.statusBar.runtime.label", message: "Runtime: {label}" },
+  copyRetryError: { id: "app.statusBar.runtime.copyRetryError", message: "Copy retry error" },
+  copyRetryErrorFailed: {
+    id: "app.statusBar.runtime.copyRetryErrorFailed",
+    message: "Unable to copy the retry error.",
+  },
+  recoveringTooltip: {
+    id: "app.statusBar.runtime.recovering",
+    message: "Session is recovering from an incomplete turn",
+  },
+  // Subsessions
+  subsessions: { id: "app.statusBar.subsessions", message: "Subsessions" },
+  subsessionsCount: {
+    id: "app.statusBar.subsessions.count",
+    message: "{count, plural, one {# subsession} other {# subsessions}}",
+  },
+  loading: { id: "app.statusBar.subsessions.loading", message: "Loading" },
+  total: { id: "app.statusBar.subsessions.total", message: "{total} total" },
+  searchPlaceholder: { id: "app.statusBar.subsessions.search", message: "Search subsessions..." },
+  loadingSubsessions: { id: "app.statusBar.subsessions.loadingList", message: "Loading subsessions" },
+  loadError: { id: "app.statusBar.subsessions.loadError", message: "Couldn't load subsessions" },
+  retry: { id: "app.statusBar.subsessions.retry", message: "Retry" },
+  newSession: { id: "app.statusBar.subsessions.newSession", message: "New session" },
+  noExchanges: { id: "app.statusBar.subsessions.noExchanges", message: "No exchanges yet" },
+  noMatching: { id: "app.statusBar.subsessions.noMatching", message: "No matching subsessions" },
+  noSubsessions: { id: "app.statusBar.subsessions.empty", message: "No subsessions yet" },
+  previous: { id: "app.statusBar.subsessions.previous", message: "Previous" },
+  next: { id: "app.statusBar.subsessions.next", message: "Next" },
+  previousPage: { id: "app.statusBar.subsessions.previousPage", message: "Previous subsessions page" },
+  nextPage: { id: "app.statusBar.subsessions.nextPage", message: "Next subsessions page" },
+  range: { id: "app.statusBar.subsessions.range", message: "{start}–{end} of {total}" },
+  emptyRange: { id: "app.statusBar.subsessions.emptyRange", message: "0 of 0" },
+  // Subsessions status labels
+  waiting: { id: "app.statusBar.subsessions.status.waiting", message: "waiting" },
+  running: { id: "app.statusBar.subsessions.status.running", message: "running" },
+  idle: { id: "app.statusBar.subsessions.status.idle", message: "idle" },
+  // Panel
+  permissionRequired: { id: "app.statusBar.panel.permissionRequired", message: "Permission required" },
+  workspace: { id: "app.statusBar.panel.workspace", message: "Workspace" },
+  runtime: { id: "app.statusBar.panel.runtime", message: "Runtime" },
+  connections: { id: "app.statusBar.panel.connections", message: "Connections" },
+  details: { id: "app.statusBar.details", message: "Details" },
+  // Connection stats
+  lspActive: { id: "app.statusBar.connections.lsp", message: "LSP · {connected} active" },
+  mcpConnected: { id: "app.statusBar.connections.mcp", message: "MCP · {connected} connected" },
+  mcpUnavailable: { id: "app.statusBar.connections.mcpUnavailable", message: ", {failed} unavailable" },
+  cortexDone: { id: "app.statusBar.connections.cortexDone", message: "Cortex · {completed} done" },
+  cortexRunning: { id: "app.statusBar.connections.cortexRunning", message: " · {running} running" },
+  serverStatus: { id: "app.statusBar.connections.server", message: "Server · {name} ({status})" },
+  serverActive: { id: "app.statusBar.connections.server.active", message: "active" },
+  serverUnavailable: { id: "app.statusBar.connections.server.unavailable", message: "unavailable" },
+  serverUnknown: { id: "app.statusBar.connections.server.unknown", message: "unknown" },
+  contextUsage: {
+    id: "app.statusBar.context.usage",
+    message: "{tokens} {count, plural, one {token} other {tokens}} · {percentage} used",
+  },
+  // Runtime state labels
+  runtimeWaiting: { id: "app.statusBar.runtime.waiting", message: "waiting" },
+  runtimeIdle: { id: "app.statusBar.runtime.idle", message: "idle" },
+  runtimeRunning: { id: "app.statusBar.runtime.running", message: "running" },
+  runtimeRecovering: { id: "app.statusBar.runtime.recoveringState", message: "recovering" },
+  retryAttempt: { id: "app.statusBar.runtime.retryAttempt", message: "retry {attempt}" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Top Bar ──────────────────────────────────────────────────────────────────
+
+export const topBar = {
+  sessionActions: { id: "app.topBar.session.actions", message: "Session actions" },
+  rename: { id: "app.topBar.session.rename", message: "Rename" },
+  exitWorktree: { id: "app.topBar.session.exitWorktree", message: "Exit worktree" },
+  enterWorktree: { id: "app.topBar.session.enterWorktree", message: "Enter worktree" },
+  exportSessionData: { id: "app.topBar.session.export", message: "Export session data" },
+  importSessionData: { id: "app.topBar.session.import", message: "Import session data" },
+  archive: { id: "app.topBar.session.archive", message: "Archive" },
+  worktreeDisabledHint: {
+    id: "app.topBar.session.worktreeDisabled",
+    message: "Stop the session before changing worktree.",
+  },
+  modelLocked: {
+    id: "app.topBar.model.locked",
+    message: "Model is locked for this external agent after the session starts",
+  },
+  modelLockedLabel: { id: "app.topBar.model.lockedLabel", message: "Model locked" },
+  selectModel: { id: "app.topBar.model.select", message: "Select model" },
+  chooseModel: { id: "app.topBar.model.choose", message: "Choose model" },
+  thinkingEffort: { id: "app.topBar.model.thinkingEffort", message: "Thinking effort" },
+  defaultVariant: { id: "app.topBar.model.defaultVariant", message: "Default" },
+  openNavigation: { id: "app.topBar.mobile.openNav", message: "Open navigation" },
+  openTools: { id: "app.topBar.mobile.openTools", message: "Open tools" },
+  newSession: { id: "app.topBar.session.new", message: "New session" },
+  hideBottomSpace: { id: "app.topBar.bottomSpace.hide", message: "Hide BottomSpace" },
+  openBottomSpace: { id: "app.topBar.bottomSpace.open", message: "Open BottomSpace" },
+  hideSideWorkspace: { id: "app.topBar.sideWorkspace.hide", message: "Hide side workspace" },
+  openSideWorkspace: { id: "app.topBar.sideWorkspace.open", message: "Open side workspace" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Dialogs ──────────────────────────────────────────────────────────────────
+
+export const dialog = {
+  // Confirm
+  actionFailed: { id: "app.dialog.confirm.actionFailed", message: "Action failed" },
+  actionNotCompleted: { id: "app.dialog.confirm.actionNotCompleted", message: "The action could not be completed." },
+  cancel: { id: "app.dialog.confirm.cancel", message: "Cancel" },
+  // Session rename
+  renameSession: { id: "app.dialog.session.rename.title", message: "Rename session" },
+  sessionTitle: { id: "app.dialog.session.rename.titleLabel", message: "Session title" },
+  saving: { id: "app.dialog.session.rename.saving", message: "Saving..." },
+  rename: { id: "app.dialog.session.rename.action", message: "Rename" },
+  sessionRenamed: { id: "app.dialog.session.rename.toast.renamed", message: "Session renamed" },
+  sessionRenameFailed: { id: "app.dialog.session.rename.toast.failed", message: "Rename failed" },
+  sessionRenameRequestFailed: {
+    id: "app.dialog.session.rename.toast.requestFailed",
+    message: "Request failed",
+  },
+  // Session import
+  importSessionData: { id: "app.dialog.session.import.title", message: "Import session data" },
+  importIntoProject: { id: "app.dialog.session.import.intoProject", message: "Import into current project" },
+  importAcceptedFormats: {
+    id: "app.dialog.session.import.acceptedFormats",
+    message: "Accepts .json and .json.gz session exports",
+  },
+  exportFile: { id: "app.dialog.session.import.fileLabel", message: "Export file" },
+  chooseFile: { id: "app.dialog.session.import.chooseFile", message: "Choose session export file" },
+  importHint: {
+    id: "app.dialog.session.import.hint",
+    message: "Imported sessions get new IDs and use this project workspace.",
+  },
+  importing: { id: "app.dialog.session.import.importing", message: "Importing..." },
+  importAction: { id: "app.dialog.session.import.action", message: "Import session" },
+  sessionImported: { id: "app.dialog.session.import.toast.imported", message: "Session imported" },
+  sessionImportFailed: { id: "app.dialog.session.import.toast.failed", message: "Import failed" },
+  importTargetAria: { id: "app.dialog.session.import.aria.importTarget", message: "Import target" },
+  // Session export
+  exportSessionData: { id: "app.dialog.session.export.title", message: "Export session data" },
+  untitledSession: { id: "app.dialog.session.export.untitled", message: "Untitled session" },
+  detailLevel: { id: "app.dialog.session.export.detailLevel", message: "Detail level" },
+  exportHint: { id: "app.dialog.session.export.hint", message: "Save session data as .json.gz" },
+  downloading: { id: "app.dialog.session.export.downloading", message: "Downloading..." },
+  downloadExport: { id: "app.dialog.session.export.action", message: "Download export" },
+  // Export modes
+  compact: { id: "app.dialog.session.export.mode.compact", message: "Compact" },
+  compactDesc: { id: "app.dialog.session.export.mode.compactDesc", message: "Truncated tool output, minimal thinking" },
+  standard: { id: "app.dialog.session.export.mode.standard", message: "Standard" },
+  standardDesc: {
+    id: "app.dialog.session.export.mode.standardDesc",
+    message: "Full messages, truncated large outputs",
+  },
+  full: { id: "app.dialog.session.export.mode.full", message: "Full" },
+  fullDesc: { id: "app.dialog.session.export.mode.fullDesc", message: "Everything included, no truncation" },
+  sessionExportDownloading: {
+    id: "app.dialog.session.export.toast.downloading",
+    message: "Session export downloading",
+  },
+  sessionExportFailed: { id: "app.dialog.session.export.toast.failed", message: "Export failed" },
+  sessionSummaryAria: { id: "app.dialog.session.export.aria.summary", message: "Session summary" },
+  // Model selection
+  selectModel: { id: "app.dialog.model.title", message: "Select model" },
+  selectModelDesc: {
+    id: "app.dialog.model.description",
+    message: "Choose a quick-switch model for the current session.",
+  },
+  modelSettings: { id: "app.dialog.model.settings", message: "Model settings" },
+  connectProvider: { id: "app.dialog.model.connectProvider", message: "Connect provider" },
+  searchModels: { id: "app.dialog.model.search", message: "Search models" },
+  // Server selection
+  servers: { id: "app.dialog.server.title", message: "Servers" },
+  serversDesc: { id: "app.dialog.server.description", message: "Switch which Synergy server this app connects to." },
+  searchServers: { id: "app.dialog.server.search", message: "Search servers" },
+  noServers: { id: "app.dialog.server.empty", message: "No servers yet" },
+  addServer: { id: "app.dialog.server.addSection", message: "Add a server" },
+  serverUrl: { id: "app.dialog.server.urlLabel", message: "Server URL" },
+  cannotConnect: { id: "app.dialog.server.cannotConnect", message: "Could not connect to server" },
+  checking: { id: "app.dialog.server.checking", message: "Checking..." },
+  add: { id: "app.dialog.server.add", message: "Add" },
+  // MCP selection
+  mcps: { id: "app.dialog.mcp.title", message: "MCPs" },
+  mcpsDesc: { id: "app.dialog.mcp.description", message: "Connect or pause MCP servers for this session." },
+  mcpConnectedCount: { id: "app.dialog.mcp.connectedCount", message: "{enabled} of {total} connected" },
+  mcpConnected: { id: "app.dialog.mcp.stat.connected", message: "Connected" },
+  mcpInactive: { id: "app.dialog.mcp.stat.inactive", message: "Inactive" },
+  mcpNeedsAttention: { id: "app.dialog.mcp.stat.needsAttention", message: "Needs attention" },
+  searchMcpServers: { id: "app.dialog.mcp.search", message: "Search servers" },
+  clearMcpSearch: { id: "app.dialog.mcp.clearSearch", message: "Clear MCP search" },
+  noMcpServers: { id: "app.dialog.mcp.empty.title", message: "No MCP servers configured" },
+  noMcpMatches: { id: "app.dialog.mcp.empty.noMatches", message: "No matches" },
+  noMcpServersDesc: {
+    id: "app.dialog.mcp.empty.configDesc",
+    message: "Configured MCP servers will appear here when this session can use them.",
+  },
+  noMcpMatchesDesc: { id: "app.dialog.mcp.empty.matchDesc", message: "Try a server name, status, or error detail." },
+  mcpUpdating: { id: "app.dialog.mcp.status.updating", message: "Updating" },
+  // MCP status labels
+  mcpStatusConnected: { id: "app.dialog.mcp.status.connected", message: "Connected" },
+  mcpStatusConnectedDesc: { id: "app.dialog.mcp.status.connectedDesc", message: "Available to agent tools" },
+  mcpStatusStarting: { id: "app.dialog.mcp.status.starting", message: "Starting" },
+  mcpStatusStartingDesc: { id: "app.dialog.mcp.status.startingDesc", message: "Starting the server process" },
+  mcpStatusConnecting: { id: "app.dialog.mcp.status.connecting", message: "Connecting" },
+  mcpStatusConnectingDesc: { id: "app.dialog.mcp.status.connectingDesc", message: "Opening the MCP connection" },
+  mcpStatusLoadingTools: { id: "app.dialog.mcp.status.loadingTools", message: "Loading tools" },
+  mcpStatusLoadingToolsDesc: {
+    id: "app.dialog.mcp.status.loadingToolsDesc",
+    message: "Reading tools, prompts, and resources",
+  },
+  mcpStatusReconnecting: { id: "app.dialog.mcp.status.reconnecting", message: "Reconnecting" },
+  mcpStatusReconnectingDesc: {
+    id: "app.dialog.mcp.status.reconnectingDesc",
+    message: "Retry {attempt} of {maxAttempts}",
+  },
+  mcpStatusFailed: { id: "app.dialog.mcp.status.failed", message: "Failed" },
+  mcpStatusFailedDesc: { id: "app.dialog.mcp.status.failedDesc", message: "Connection failed" },
+  mcpStatusNeedsAuth: { id: "app.dialog.mcp.status.needsAuth", message: "Needs auth" },
+  mcpStatusNeedsAuthDesc: { id: "app.dialog.mcp.status.needsAuthDesc", message: "Authentication is required" },
+  mcpStatusRegistration: { id: "app.dialog.mcp.status.registration", message: "Registration" },
+  mcpStatusRegistrationDesc: {
+    id: "app.dialog.mcp.status.registrationDesc",
+    message: "Client registration is required",
+  },
+  mcpStatusStopping: { id: "app.dialog.mcp.status.stopping", message: "Stopping" },
+  mcpStatusStoppingDesc: { id: "app.dialog.mcp.status.stoppingDesc", message: "Disconnecting from the server" },
+  mcpStatusDisabled: { id: "app.dialog.mcp.status.disabled", message: "Disabled" },
+  mcpStatusDisabledDesc: { id: "app.dialog.mcp.status.disabledDesc", message: "Not connected for this session" },
+  mcpStatusReady: { id: "app.dialog.mcp.status.ready", message: "Ready" },
+  mcpStatusReadyDesc: { id: "app.dialog.mcp.status.readyDesc", message: "Ready to connect" },
+  mcpConnectAria: { id: "app.dialog.mcp.connectAria", message: "Connect {name}" },
+  mcpDisconnectAria: { id: "app.dialog.mcp.disconnectAria", message: "Disconnect {name}" },
+  // Directory selection
+  openProject: { id: "app.dialog.directory.title", message: "Open project" },
+  openProjectDesc: { id: "app.dialog.directory.description", message: "Choose a folder to show in the sidebar." },
+  projectFolder: { id: "app.dialog.directory.folderLabel", message: "Project folder" },
+  searchFolders: { id: "app.dialog.directory.searchPlaceholder", message: "Search folders or paste a path" },
+  search: { id: "app.dialog.directory.search", message: "Search" },
+  clearSearch: { id: "app.dialog.directory.clearSearch", message: "Clear search" },
+  searching: { id: "app.dialog.directory.searching", message: "Searching..." },
+  noMatchingFolders: { id: "app.dialog.directory.empty", message: "No matching folders" },
+  searchFailed: { id: "app.dialog.directory.error", message: "Search failed" },
+  searchToChoose: { id: "app.dialog.directory.idle", message: "Search to choose a folder" },
+  tryFullerPath: {
+    id: "app.dialog.directory.emptyHint",
+    message: "Try a fuller folder path or a different project name.",
+  },
+  checkPath: { id: "app.dialog.directory.errorHint", message: "Check the path and try again." },
+  retry: { id: "app.dialog.directory.retry", message: "Retry" },
+  selectFolderAria: { id: "app.dialog.directory.selectAria", message: "Select {path}" },
+  serverFolders: { id: "app.dialog.directory.resultsLabel", message: "Server folders" },
+  directoryPickerFailed: { id: "app.dialog.directory.toast.pickerFailed", message: "Folder picker failed" },
+  directoryPickerCantOpen: {
+    id: "app.dialog.directory.toast.pickerCantOpen",
+    message: "Could not open the folder picker.",
+  },
+  browseFailed: { id: "app.dialog.directory.browseFailed", message: "Browse failed" },
+  // File selection
+  selectFile: { id: "app.dialog.file.title", message: "Select file" },
+  searchFiles: { id: "app.dialog.file.search", message: "Search files" },
+  noFilesFound: { id: "app.dialog.file.empty", message: "No files found" },
+  // Scope edit
+  editProject: { id: "app.dialog.scope.title", message: "Edit project" },
+  projectName: { id: "app.dialog.scope.nameLabel", message: "Project name" },
+  worktree: { id: "app.dialog.scope.worktree", message: "Worktree" },
+  directory: { id: "app.dialog.scope.directory", message: "Directory" },
+  scopeType: { id: "app.dialog.scope.type", message: "Type" },
+  scopeID: { id: "app.dialog.scope.id", message: "ID" },
+  projectDetails: { id: "app.dialog.scope.detailsLabel", message: "Project details" },
+  save: { id: "app.dialog.scope.save", message: "Save" },
+  scopeUpdated: { id: "app.dialog.scope.toast.updated", message: "Project updated" },
+  scopeUpdateFailed: { id: "app.dialog.scope.toast.updateFailed", message: "Failed to update project" },
+  scopeUpdateUnknownError: { id: "app.dialog.scope.toast.unknownError", message: "Unknown error" },
+  // Browser model status copy
+  directoryBrowserLoadingTitle: { id: "app.dialog.directory.browser.loading", message: "Searching folders" },
+  directoryBrowserLoadingDesc: {
+    id: "app.dialog.directory.browser.loadingDesc",
+    message: "Checking nearby server directories first.",
+  },
+  directoryBrowserReadyTitle: {
+    id: "app.dialog.directory.browser.ready",
+    message: "{count, plural, one {# folder found} other {# folders found}}",
+  },
+  directoryBrowserReadyDesc: {
+    id: "app.dialog.directory.browser.readyDesc",
+    message: "Choose a folder to open it as a Synergy project.",
+  },
+  directoryBrowserEmptyTitle: { id: "app.dialog.directory.browser.empty", message: "No folders found" },
+  directoryBrowserEmptyDesc: {
+    id: "app.dialog.directory.browser.emptyDesc",
+    message: "Try a more specific path, such as ~/projects, or search from a different parent folder.",
+  },
+  directoryBrowserErrorTitle: { id: "app.dialog.directory.browser.error", message: "Search failed" },
+  directoryBrowserErrorDesc: {
+    id: "app.dialog.directory.browser.errorDesc",
+    message: "The server could not browse that folder. Check the path and try again.",
+  },
+  directoryBrowserIdleTitle: { id: "app.dialog.directory.browser.idle", message: "Search the server filesystem" },
+  directoryBrowserIdleDesc: {
+    id: "app.dialog.directory.browser.idleDesc",
+    message:
+      "Type a folder path or project name, then search. Use paths like ~/projects or C:\\Users\\you\\code to narrow the scan.",
+  },
+  // Export/Import plural
+  exportSessionCount: {
+    id: "app.dialog.session.export.summary.sessions",
+    message: "{count, plural, one {# session} other {# sessions}}",
+  },
+  exportMessageCount: {
+    id: "app.dialog.session.export.summary.messages",
+    message: "{count, plural, one {# message} other {# messages}}",
+  },
+  exportSubsessionCount: {
+    id: "app.dialog.session.export.summary.subsessions",
+    message: "{count, plural, one {# subsession} other {# subsessions}}",
+  },
+  importSummary: {
+    id: "app.dialog.session.import.summary",
+    message:
+      "{sessionCount, plural, one {# session} other {# sessions}}, {messageCount, plural, one {# message} other {# messages}}",
+  },
+  importWarningCount: {
+    id: "app.dialog.session.import.warnings",
+    message: "{count, plural, one {# warning} other {# warnings}}",
+  },
+  // MCP aria
+  mcpConnectionSummaryAria: {
+    id: "app.dialog.mcp.aria.connectionSummary",
+    message: "MCP connection summary",
+  },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Provider Connection Flow ─────────────────────────────────────────────────
+
+export const providerFlow = {
+  // Method descriptions
+  methodApiDesc: { id: "app.provider.method.api.desc", message: "Paste a provider API key." },
+  methodOauthDesc: { id: "app.provider.method.oauth.desc", message: "Authorize in the browser and return here." },
+  methodImportDesc: {
+    id: "app.provider.method.import.desc",
+    message: "Use credentials already available on this device.",
+  },
+  methodApiDefaultLabel: { id: "app.provider.method.api.defaultLabel", message: "API key" },
+  methodGenericDesc: { id: "app.provider.method.generic.desc", message: "Connect this provider." },
+  // Choice screen
+  accountRecovery: { id: "app.provider.choice.recovery", message: "Account recovery" },
+  connectionMethod: { id: "app.provider.choice.method", message: "Connection method" },
+  reconnectOrReplace: { id: "app.provider.choice.reconnectOrReplace", message: "Reconnect or replace credentials" },
+  chooseHowToConnect: { id: "app.provider.choice.chooseHow", message: "Choose how to connect" },
+  // States
+  authInProgress: { id: "app.provider.state.pending", message: "Authorization in progress..." },
+  authFailed: { id: "app.provider.state.failed", message: "Authorization failed: {error}" },
+  tryAnotherMethod: { id: "app.provider.state.tryAnotherMethod", message: "Try another method" },
+  // API key
+  apiKey: { id: "app.provider.apiKey.title", message: "API key" },
+  replaceKey: { id: "app.provider.apiKey.replace", message: "Replace a {provider} key" },
+  addKey: { id: "app.provider.apiKey.add", message: "Add a {provider} key" },
+  apiKeyDescription: {
+    id: "app.provider.apiKey.description",
+    message: "Use a key from your provider account to make this provider available in Synergy.",
+  },
+  apiKeyLabel: { id: "app.provider.apiKey.label", message: "{provider} API key" },
+  apiKeyPlaceholder: { id: "app.provider.apiKey.placeholder", message: "API key" },
+  back: { id: "app.provider.apiKey.back", message: "Back" },
+  saveKey: { id: "app.provider.apiKey.save", message: "Save key" },
+  apiKeyRequired: { id: "app.provider.apiKey.required", message: "API key is required" },
+  // OAuth Step 1
+  step1: { id: "app.provider.oauth.step1", message: "Step 1" },
+  authorizeInBrowser: { id: "app.provider.oauth.authorizeInBrowser", message: "Authorize in your browser" },
+  autoOpened: {
+    id: "app.provider.oauth.autoOpened",
+    message: "We opened the authorization page automatically. Use the button if it did not appear.",
+  },
+  openAuthPage: { id: "app.provider.oauth.openAuthPage", message: "Open authorization page" },
+  // OAuth Step 2
+  step2: { id: "app.provider.oauth.step2", message: "Step 2" },
+  pasteAuthCode: { id: "app.provider.oauth.pasteAuthCode", message: "Paste the authorization code" },
+  authCodeLabel: { id: "app.provider.oauth.authCodeLabel", message: "Authorization code" },
+  authCodePlaceholder: { id: "app.provider.oauth.authCodePlaceholder", message: "Authorization code" },
+  submit: { id: "app.provider.oauth.submit", message: "Submit" },
+  invalidAuthCode: { id: "app.provider.oauth.invalidCode", message: "Invalid authorization code" },
+  authCodeRequired: { id: "app.provider.oauth.codeRequired", message: "Authorization code is required" },
+  // Device flow
+  authorize: { id: "app.provider.device.authorize", message: "Authorize" },
+  finishInBrowser: { id: "app.provider.device.finishInBrowser", message: "Finish in your browser" },
+  deviceInstructions: {
+    id: "app.provider.device.instructions",
+    message: "Open the authorization page and enter this confirmation code when prompted.",
+  },
+  confirmationCode: { id: "app.provider.device.confirmationCode", message: "Confirmation code" },
+  waitingForAuth: { id: "app.provider.device.waiting", message: "Waiting for authorization..." },
+  authTimeout: {
+    id: "app.provider.device.timeout",
+    message: "Authorization timed out. Open the authorization page and enter the confirmation code, then try again.",
+  },
+  // Toast
+  connected: { id: "app.provider.toast.connected", message: "connected" },
+  reconnected: { id: "app.provider.toast.reconnected", message: "reconnected" },
+  modelsAvailable: { id: "app.provider.toast.modelsAvailable", message: "{provider} models are now available to use." },
+  // Back to providers
+  backToProviders: { id: "app.provider.backToProviders", message: "Back to providers" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Library ───────────────────────────────────────────────────────────────────
+
+export const library = {
+  // Memory categories
+  categoryUser: { id: "app.library.category.user", message: "User" },
+  categorySelf: { id: "app.library.category.self", message: "Self" },
+  categoryRelationship: { id: "app.library.category.relationship", message: "Relationship" },
+  categoryInteraction: { id: "app.library.category.interaction", message: "Interaction" },
+  categoryWorkflow: { id: "app.library.category.workflow", message: "Workflow" },
+  categoryCoding: { id: "app.library.category.coding", message: "Coding" },
+  categoryWriting: { id: "app.library.category.writing", message: "Writing" },
+  categoryAsset: { id: "app.library.category.asset", message: "Asset" },
+  categoryInsight: { id: "app.library.category.insight", message: "Insight" },
+  categoryKnowledge: { id: "app.library.category.knowledge", message: "Knowledge" },
+  categoryPersonal: { id: "app.library.category.personal", message: "Personal" },
+  categoryGeneral: { id: "app.library.category.general", message: "General" },
+  // Recall modes
+  recallAlways: { id: "app.library.recall.always", message: "Always" },
+  recallContextual: { id: "app.library.recall.contextual", message: "Contextual" },
+  recallSearchOnly: { id: "app.library.recall.searchOnly", message: "Search only" },
+  // Sort labels
+  sortNewest: { id: "app.library.sort.newest", message: "Newest" },
+  sortOldest: { id: "app.library.sort.oldest", message: "Oldest" },
+  sortRelevance: { id: "app.library.sort.relevance", message: "Relevance" },
+  sortReward: { id: "app.library.sort.reward", message: "Reward" },
+  sortQValue: { id: "app.library.sort.qvalue", message: "Q-value" },
+  sortMostVisited: { id: "app.library.sort.mostVisited", message: "Most visited" },
+  // Reward dimensions (full labels)
+  dimOutcome: { id: "app.library.dim.outcome", message: "Outcome" },
+  dimIntent: { id: "app.library.dim.intent", message: "Intent" },
+  dimExecution: { id: "app.library.dim.execution", message: "Execution" },
+  dimOrchestration: { id: "app.library.dim.orchestration", message: "Orchestration" },
+  dimExpression: { id: "app.library.dim.expression", message: "Expression" },
+  // Empty / loading states
+  loadError: { id: "app.library.experience.empty.loadError", message: "Failed to load experiences" },
+  loadHint: {
+    id: "app.library.experience.empty.loadHint",
+    message: "Try refreshing the panel to load the latest experience records.",
+  },
+  noExperiences: { id: "app.library.experience.empty.none", message: "No experiences yet" },
+  noExperiencesHint: {
+    id: "app.library.experience.empty.noneHint",
+    message: "Experiences are recorded as you work with the agent and capture behavioral patterns.",
+  },
+  // Actions
+  retry: { id: "app.library.retry", message: "Retry" },
+  // Document editor save status
+  saved: { id: "app.library.editor.saved", message: "Saved" },
+  // Experience stat badges
+  rewardPrefix: { id: "app.library.experience.stat.reward", message: "R" },
+  qValuePrefix: { id: "app.library.experience.stat.qValue", message: "Q" },
+  confidencePrefix: { id: "app.library.experience.stat.confidence", message: "C" },
+  scorePrefix: { id: "app.library.experience.stat.score", message: "S" },
+  // Experience results count
+  searchResults: {
+    id: "app.library.experience.search.results",
+    message: "{count} results",
+  },
+  totalExperiences: {
+    id: "app.library.experience.total",
+    message: "{total} experiences",
+  },
+  // Collapsible section
+  sectionContent: { id: "app.library.experience.section.content", message: "Content" },
+  // Reward radar
+  sigmaPrefix: { id: "app.library.stats.reward.sigma", message: "σ" },
+  // Skill import URL placeholder
+  skillImportUrlPlaceholder: {
+    id: "app.library.skills.import.urlPlaceholder",
+    message: "https://example.com/skill.zip",
+  },
+} as const satisfies Record<string, AppMessageDescriptor>
+// ── Plugin builtin navigation ─────────────────────────────────────────────────
+
+export const pluginNav = {
+  agenda: { id: "app.plugin.builtin.agenda", message: "Agenda" },
+  library: { id: "app.plugin.builtin.library", message: "Library" },
+  performance: { id: "app.plugin.builtin.performance", message: "Performance" },
+  plugins: { id: "app.plugin.builtin.plugins", message: "Plugins" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Plugin marketplace ────────────────────────────────────────────────────────
+
+export const pluginMarketplace = {
+  navDiscover: { id: "app.plugin.marketplace.nav.discover", message: "Discover" },
+  navInstalled: { id: "app.plugin.marketplace.nav.installed", message: "Installed" },
+  navDevelopment: { id: "app.plugin.marketplace.nav.development", message: "Development" },
+  versionLabel: { id: "app.plugin.marketplace.version.label", message: "v{version}" },
+  apiVersionLabel: { id: "app.plugin.marketplace.apiVersion.label", message: "API {version}" },
+  generationLabel: { id: "app.plugin.marketplace.generation.label", message: "Generation {id}" },
+  headingLabel: { id: "app.plugin.marketplace.heading.label", message: "{label} plugins" },
+  pluginApiLabel: { id: "app.plugin.marketplace.pluginApi.label", message: "Plugin API {version}" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Plugin permission groups ──────────────────────────────────────────────────
+
+export const pluginPermission = {
+  groupTools: { id: "app.plugin.permissionGroup.tools", message: "Tools" },
+  groupData: { id: "app.plugin.permissionGroup.data", message: "Data" },
+  groupNetwork: { id: "app.plugin.permissionGroup.network", message: "Network" },
+  groupUi: { id: "app.plugin.permissionGroup.ui", message: "UI" },
+  groupRuntime: { id: "app.plugin.permissionGroup.runtime", message: "Runtime" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Plugin risk labels ────────────────────────────────────────────────────────
+
+export const pluginRisk = {
+  low: { id: "app.plugin.risk.low", message: "Low" },
+  medium: { id: "app.plugin.risk.medium", message: "Medium" },
+  high: { id: "app.plugin.risk.high", message: "High" },
+  ariaLow: { id: "app.plugin.risk.ariaLabel.low", message: "Risk level: Low" },
+  ariaMedium: { id: "app.plugin.risk.ariaLabel.medium", message: "Risk level: Medium" },
+  ariaHigh: { id: "app.plugin.risk.ariaLabel.high", message: "Risk level: High" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── Agent Visual ─────────────────────────────────────────────────────────────
+
+export const agentVisual = {
+  externalBadge: { id: "app.agent.visual.externalBadge", message: "External" },
+  defaultLabel: { id: "app.agent.visual.defaultLabel", message: "Agent" },
+  // ── Agent role labels (3+ segment IDs) ─────────────────────────────
+  roleSynergy: { id: "app.agent.role.synergy", message: "Synergy" },
+  roleSynergyMax: { id: "app.agent.role.synergyMax", message: "Synergy Max" },
+  roleDeveloper: { id: "app.agent.role.developer", message: "Developer" },
+  roleExplore: { id: "app.agent.role.explore", message: "Explore" },
+  roleScout: { id: "app.agent.role.scout", message: "Scout" },
+  roleAdvisor: { id: "app.agent.role.advisor", message: "Advisor" },
+  roleInspector: { id: "app.agent.role.inspector", message: "Inspector" },
+  roleScribe: { id: "app.agent.role.scribe", message: "Scribe" },
+  roleScholar: { id: "app.agent.role.scholar", message: "Scholar" },
+  roleRequirements: { id: "app.agent.role.requirementsEngineer", message: "Requirements" },
+  roleCodeMap: { id: "app.agent.role.codeCartographer", message: "Code Map" },
+  roleDependencyTrace: { id: "app.agent.role.dependencyTracer", message: "Dependency Trace" },
+  roleSolutionArchitect: { id: "app.agent.role.solutionArchitect", message: "Solution Architect" },
+  roleApiContract: { id: "app.agent.role.apiContractDesigner", message: "API Contract" },
+  roleMigration: { id: "app.agent.role.migrationArchitect", message: "Migration" },
+  roleTestStrategy: { id: "app.agent.role.testStrategist", message: "Test Strategy" },
+  roleFixtures: { id: "app.agent.role.fixtureBuilder", message: "Fixtures" },
+  rolePropertyTests: { id: "app.agent.role.propertyTestEngineer", message: "Property Tests" },
+  roleTypeTests: { id: "app.agent.role.typeTestEngineer", message: "Type Tests" },
+  roleImplementation: { id: "app.agent.role.implementationEngineer", message: "Implementation" },
+  roleRefactor: { id: "app.agent.role.refactoringEngineer", message: "Refactor" },
+  roleIntegration: { id: "app.agent.role.integrationEngineer", message: "Integration" },
+  roleDocs: { id: "app.agent.role.documentationEngineer", message: "Docs" },
+  roleQualityGate: { id: "app.agent.role.qualityGatekeeper", message: "Quality Gate" },
+  rolePythonQuality: { id: "app.agent.role.pythonQualityEngineer", message: "Python Quality" },
+  roleRustQuality: { id: "app.agent.role.rustQualityEngineer", message: "Rust Quality" },
+  roleTsQuality: { id: "app.agent.role.typescriptQualityEngineer", message: "TS Quality" },
+  roleMaintainability: { id: "app.agent.role.maintainabilityReviewer", message: "Maintainability" },
+  roleSecurity: { id: "app.agent.role.securityReviewer", message: "Security" },
+  rolePerformance: { id: "app.agent.role.performanceReviewer", message: "Performance" },
+  roleApiCompatibility: { id: "app.agent.role.apiCompatibilityReviewer", message: "API Compatibility" },
+  roleDocReview: { id: "app.agent.role.documentationReviewer", message: "Doc Review" },
+  roleDocsResearch: { id: "app.agent.role.docsResearcher", message: "Docs Research" },
+  roleResearchMethod: { id: "app.agent.role.researchMethodologist", message: "Research Method" },
+  roleResearchScout: { id: "app.agent.role.researchScout", message: "Research Scout" },
+  roleLiteratureSearch: { id: "app.agent.role.literatureSearcher", message: "Literature Search" },
+  roleLiteratureAnalyst: { id: "app.agent.role.literatureAnalyst", message: "Literature Analyst" },
+  roleMemory: { id: "app.agent.role.memoryCurator", message: "Memory" },
+  roleNotes: { id: "app.agent.role.noteLibrarian", message: "Notes" },
+  roleSessionHistory: { id: "app.agent.role.sessionHistorian", message: "Session History" },
+  roleSupervisor: { id: "app.agent.role.supervisor", message: "Supervisor" },
+  roleCodex: { id: "app.agent.role.codex", message: "Codex" },
+  roleClaudeCode: { id: "app.agent.role.claudeCode", message: "Claude Code" },
+  roleOpenClaw: { id: "app.agent.role.openClaw", message: "OpenClaw" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
+// ── All descriptors (for convenience / barrel re-exports) ─────────────────────
+
 export const messages = {
   workspace,
   panels,
@@ -406,4 +1136,16 @@ export const messages = {
   bubbleMenu,
   slashMenu,
   docEditor,
+  library,
+  appShell,
+  sidebar,
+  statusBar,
+  topBar,
+  dialog,
+  providerFlow,
+  agentVisual,
+  pluginNav,
+  pluginMarketplace,
+  pluginPermission,
+  pluginRisk,
 } as const

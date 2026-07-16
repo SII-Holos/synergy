@@ -3,14 +3,14 @@ import { useLingui } from "@lingui/solid"
 import { useBrowser, type AssetEntry } from "./browser-store"
 import { assetsPanel as P } from "@/locales/messages"
 
-const TYPE_LABELS: Record<string, string> = {
-  image: "Images",
-  script: "Scripts",
-  stylesheet: "Stylesheets",
-  font: "Fonts",
-  media: "Media",
-  document: "Documents",
-  other: "Other",
+const TYPE_LABELS: Record<string, { id: string; message: string }> = {
+  image: P.typeImages,
+  script: P.typeScripts,
+  stylesheet: P.typeStylesheets,
+  font: P.typeFonts,
+  media: P.typeMedia,
+  document: P.typeDocuments,
+  other: P.typeOther,
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -94,7 +94,7 @@ export function AssetsPanel() {
                 <div class="border-b border-border-weaker-base last:border-b-0">
                   <div class="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-surface-raised-base border-b border-border-weak-base text-11-medium text-text-weak uppercase tracking-wider">
                     <span class="text-text-subtle">{TYPE_ICONS[type]}</span>
-                    <span>{TYPE_LABELS[type]}</span>
+                    <span>{lingui._(TYPE_LABELS[type])}</span>
                     <span class="ml-auto tabular-nums text-text-weaker">{count()}</span>
                   </div>
                   <For each={items()}>

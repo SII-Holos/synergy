@@ -8,8 +8,8 @@ function msg(d: { message?: string }): string {
 
 const hiddenUpdate = {
   visible: false,
-  title: "",
-  detail: "",
+  title: { id: "test.productUpdate.hidden.title", message: "Product update available" },
+  detail: { id: "test.productUpdate.hidden.detail", message: "A new version is ready to install." },
   actionLabel: null,
   action: null,
   progress: null,
@@ -27,7 +27,7 @@ describe("app attention selector", () => {
       productUpdate: {
         ...hiddenUpdate,
         visible: true,
-        title: "Downloading Synergy",
+        title: { id: "test.productUpdate.active.title", message: "Downloading Synergy" },
         tone: "active",
         progress: 40,
       },
@@ -41,7 +41,13 @@ describe("app attention selector", () => {
   test("authentication is above update failures and ready updates", () => {
     for (const tone of ["error", "ready"] as const) {
       const notice = selectAppAttention({
-        productUpdate: { ...hiddenUpdate, visible: true, title: "Update", tone, action: "check" },
+        productUpdate: {
+          ...hiddenUpdate,
+          visible: true,
+          title: { id: "test.productUpdate.ready.title", message: "Update" },
+          tone,
+          action: "check",
+        },
         authHealth: { "openai-codex": auth("openai-codex") },
         providerNames: { "openai-codex": "OpenAI Codex" },
       })

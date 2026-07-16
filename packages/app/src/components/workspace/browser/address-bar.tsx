@@ -6,6 +6,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
 import { browserDebug } from "./browser-debug"
 import { browser as B } from "@/locales/messages"
+import type { I18n } from "@lingui/core"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -18,55 +19,51 @@ export type AddressBarProps = {
   onRequestDiagnostics: (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => void
 }
 
-const VIEWPORT_PRESETS = [
-  { label: "Desktop", width: 1280, height: 720 },
-  { label: "Tablet", width: 768, height: 1024 },
-  { label: "Mobile", width: 375, height: 667 },
-] as const
+type ViewportPresetID = "desktop" | "tablet" | "mobile"
 
-const PRESET_I18N: Record<string, string> = {
-  Desktop: B.presetDesktop.id,
-  Tablet: B.presetTablet.id,
-  Mobile: B.presetMobile.id,
+const VIEWPORT_PRESETS: ReadonlyArray<{ id: ViewportPresetID; width: number; height: number }> = [
+  { id: "desktop", width: 1280, height: 720 },
+  { id: "tablet", width: 768, height: 1024 },
+  { id: "mobile", width: 375, height: 667 },
+]
+
+function viewportPresetLabel(id: ViewportPresetID, _: I18n["_"]): string {
+  if (id === "desktop") return _(B.presetDesktop)
+  if (id === "tablet") return _(B.presetTablet)
+  return _(B.presetMobile)
 }
 
 type DiagnosticPanel = Exclude<DevPanel, "closed">
 
-const DEV_PANELS: { id: DiagnosticPanel; labelId: string; labelMsg: string; descId: string; descMsg: string }[] = [
+const DEV_PANELS: {
+  id: DiagnosticPanel
+  label: { id: string; message: string }
+  description: { id: string; message: string }
+}[] = [
   {
     id: "console",
-    labelId: B.devConsole.id,
-    labelMsg: B.devConsole.message,
-    descId: B.devConsoleDesc.id,
-    descMsg: B.devConsoleDesc.message,
+    label: B.devConsole,
+    description: B.devConsoleDesc,
   },
   {
     id: "network",
-    labelId: B.devNetwork.id,
-    labelMsg: B.devNetwork.message,
-    descId: B.devNetworkDesc.id,
-    descMsg: B.devNetworkDesc.message,
+    label: B.devNetwork,
+    description: B.devNetworkDesc,
   },
   {
     id: "elements",
-    labelId: B.devElements.id,
-    labelMsg: B.devElements.message,
-    descId: B.devElementsDesc.id,
-    descMsg: B.devElementsDesc.message,
+    label: B.devElements,
+    description: B.devElementsDesc,
   },
   {
     id: "assets",
-    labelId: B.devAssets.id,
-    labelMsg: B.devAssets.message,
-    descId: B.devAssetsDesc.id,
-    descMsg: B.devAssetsDesc.message,
+    label: B.devAssets,
+    description: B.devAssetsDesc,
   },
   {
     id: "downloads",
-    labelId: B.devDownloads.id,
-    labelMsg: B.devDownloads.message,
-    descId: B.devDownloadsDesc.id,
-    descMsg: B.devDownloadsDesc.message,
+    label: B.devDownloads,
+    description: B.devDownloadsDesc,
   },
 ]
 
@@ -102,7 +99,7 @@ export function AddressBar(props: AddressBarProps) {
     const current = VIEWPORT_PRESETS.find(
       (preset) => preset.width === browser.viewportWidth() && preset.height === browser.viewportHeight(),
     )
-    if (current) return lingui._(PRESET_I18N[current.label] ?? current.label)
+    if (current) return viewportPresetLabel(current.id, lingui._)
     return `${browser.viewportWidth()}x${browser.viewportHeight()}`
   })
 
@@ -276,16 +273,15 @@ export function AddressBar(props: AddressBarProps) {
                       type="button"
                       class="browser-segment-button"
                       classList={{
-                        "is-active text-text-strong":
-                          selectedViewport() === lingui._(PRESET_I18N[preset.label] ?? preset.label),
-                        "text-text-weak": selectedViewport() !== lingui._(PRESET_I18N[preset.label] ?? preset.label),
+                        "is-active text-text-strong": selectedViewport() === viewportPresetLabel(preset.id, lingui._),
+                        "text-text-weak": selectedViewport() !== viewportPresetLabel(preset.id, lingui._),
                       }}
                       onClick={(e) => {
                         e.stopPropagation()
                         browser.setViewport(preset.width, preset.height)
                       }}
                     >
-                      {lingui._(PRESET_I18N[preset.label] ?? preset.label)}
+                      {viewportPresetLabel(preset.id, lingui._)}
                     </button>
                   )}
                 </For>
@@ -309,12 +305,8 @@ export function AddressBar(props: AddressBarProps) {
                     onClick={() => requestPanel(panel.id)}
                   >
                     <span class="browser-menu-row-copy">
-                      <span class="browser-menu-row-title">
-                        <Trans id={panel.labelId} message={panel.labelMsg} />
-                      </span>
-                      <span class="browser-menu-row-description">
-                        <Trans id={panel.descId} message={panel.descMsg} />
-                      </span>
+                      <span class="browser-menu-row-title">{lingui._(panel.label)}</span>
+                      <span class="browser-menu-row-description">{lingui._(panel.description)}</span>
                     </span>
                     <Show when={browser.devPanel() === panel.id}>
                       <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />

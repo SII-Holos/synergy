@@ -3,7 +3,9 @@ import { setupI18n as coreSetupI18n, type I18n } from "@lingui/core"
 import { I18nProvider as LinguiI18nProvider } from "@lingui/solid"
 import { createLocaleController } from "./controller"
 import { createIntlFormatter, type IntlFormatter } from "./formatter"
-import type { LocaleController } from "./types"
+import type { ActiveLocale, LocaleController } from "./types"
+import { shouldUsePseudoLocale } from "./pseudo"
+import { applyDocumentLanguage } from "./document-language"
 
 import { messages as enMessages } from "@/locales/en/messages.po?lingui"
 
@@ -31,31 +33,36 @@ function getNavigatorLanguages(): readonly string[] {
 
 export function LocaleProvider(props: ParentProps): JSXElement {
   const controller = createLocaleController(localStorage, getNavigatorLanguages())
+  const pseudoEnabled =
+    import.meta.env.DEV && typeof location !== "undefined" && shouldUsePseudoLocale(true, location.search)
 
   const i18n = coreSetupI18n({
     locale: "en",
-    locales: ["en", "zh-CN"],
+    locales: pseudoEnabled ? ["en", "zh-CN", "pseudo"] : ["en", "zh-CN"],
     messages: { en: enMessages },
   })
 
   const fmt = createIntlFormatter(() => controller.activeLocale())
 
-  async function activateCatalog(locale: string): Promise<void> {
+  async function prepareCatalogActivation(locale: string): Promise<() => void> {
+    if (pseudoEnabled) {
+      const messages = await import("@/locales/pseudo/messages.po?lingui").then(
+        (module) => module.messages as Record<string, string>,
+      )
+      return () => i18n.loadAndActivate({ locale: "pseudo", messages })
+    }
     if (locale === "en") {
-      i18n.loadAndActivate({ locale: "en", messages: enMessages })
-      return
+      return () => i18n.loadAndActivate({ locale: "en", messages: enMessages })
     }
     const messages = await zhLoader()
-    i18n.loadAndActivate({ locale, messages })
+    return () => i18n.loadAndActivate({ locale, messages })
   }
 
-  function setHtmlLang(locale: string): void {
-    if (typeof document !== "undefined") {
-      document.documentElement.lang = locale
-    }
+  function setHtmlLang(locale: ActiveLocale): void {
+    if (typeof document !== "undefined") applyDocumentLanguage(document.documentElement, locale)
   }
 
-  controller.setActivation(activateCatalog)
+  controller.setActivation(prepareCatalogActivation)
 
   onMount(async () => {
     await controller.bootstrap()

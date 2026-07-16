@@ -5,6 +5,8 @@ import { relativeTime, absoluteDate } from "@/utils/time"
 import type { AgendaActivityEntry } from "@ericsanchezok/synergy-sdk/client"
 import { agendaRunDotTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
+import { A } from "./agenda-i18n"
 
 export type AgendaActivityGroup = {
   agendaID: string
@@ -49,6 +51,9 @@ export function ActivityView(props: {
   onNavigate: (sessionID: string, scopeID: string) => void
   onItemClick: (itemId: string) => void
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
+    i18n._(values ? { ...d, values } : d)
   const grouped = createMemo(() => groupAgendaActivity(props.items))
 
   return (
@@ -58,12 +63,12 @@ export function ActivityView(props: {
           <input
             value={props.query}
             onInput={(e) => props.onQueryChange(e.currentTarget.value)}
-            placeholder="Search history, agenda title, errors..."
+            placeholder={_(A.activitySearchPlaceholder)}
             class="workbench-input-surface h-9 w-full rounded-[0.9rem] border border-border-base/30 bg-surface-raised-base pl-3 pr-3 text-12-regular text-text-strong outline-none placeholder:text-text-weaker"
           />
         </div>
         <div class="shrink-0 rounded-full bg-surface-raised-stronger-non-alpha px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/45">
-          {props.total} runs
+          {_(A.activityRuns, { count: props.total })}
         </div>
       </div>
 
@@ -81,7 +86,7 @@ export function ActivityView(props: {
             fallback={
               <div class="flex flex-col items-center justify-center py-16 gap-2 rounded-[1.05rem] bg-surface-inset-base ring-1 ring-inset ring-border-base/35">
                 <Icon name={getSemanticIcon("agenda.main")} size="large" class="text-icon-weak-base" />
-                <span class="text-12-regular text-text-weaker">{props.error ?? "No history found"}</span>
+                <span class="text-12-regular text-text-weaker">{props.error ?? _(A.activityNoHistory)}</span>
               </div>
             }
           >
@@ -101,7 +106,7 @@ export function ActivityView(props: {
                 class="workbench-control-surface inline-flex h-9 items-center justify-center rounded-full bg-surface-raised-base px-4 text-11-medium text-text-strong ring-1 ring-inset ring-border-base/30 transition-colors hover:bg-surface-raised-base-hover"
                 onClick={props.onLoadMore}
               >
-                Load more
+                {_(A.activityLoadMore)}
               </button>
             </div>
           </Show>
@@ -185,11 +190,13 @@ function ActivityRunRow(props: {
   entry: AgendaActivityEntry
   onNavigate: (sessionID: string, scopeID: string) => void
 }) {
+  const { i18n, fmt } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const session = () => props.entry.session
   const title = () => {
     const sessionTitle = session()?.title
     if (sessionTitle) return sessionTitle
-    if (props.entry.run.status === "error") return props.entry.run.error ?? "Run error"
+    if (props.entry.run.status === "error") return props.entry.run.error ?? _(A.activityRunError)
     return props.entry.run.id
   }
 
@@ -212,9 +219,9 @@ function ActivityRunRow(props: {
           </span>
         </div>
         <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-text-weaker">
-          <span>{absoluteDate(props.entry.run.time.started)}</span>
+          <span>{absoluteDate(fmt, props.entry.run.time.started)}</span>
           <span>·</span>
-          <span>{relativeTime(props.entry.run.time.started)}</span>
+          <span>{relativeTime(fmt, props.entry.run.time.started)}</span>
           <Show when={props.entry.run.duration != null}>
             <>
               <span>·</span>
@@ -224,7 +231,7 @@ function ActivityRunRow(props: {
           <Show when={session()}>
             <>
               <span>·</span>
-              <span class="truncate">session ready</span>
+              <span class="truncate">{_(A.activitySessionReady)}</span>
             </>
           </Show>
         </div>

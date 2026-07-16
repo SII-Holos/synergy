@@ -108,7 +108,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
       showToast({
         type: "error",
         title: _(S.rewindFailed),
-        description: error instanceof Error ? error.message : "Request failed",
+        description: error instanceof Error ? error.message : _(S.rewindRequestFailed),
       })
       setState("pending", false)
     }
@@ -137,10 +137,12 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
     >
       <div class="rewind-confirm-impact">
         <span class="rewind-confirm-impact-label">{_(S.rewindThisHides)}</span>
-        <span class="rewind-confirm-impact-value">{hiddenItemText(counts())} starting here.</span>
+        <span class="rewind-confirm-impact-value">
+          {hiddenItemText(counts())} {_(S.rewindStartingHere)}
+        </span>
         <Show when={counts().affectedFiles > 0}>
           <span class="rewind-confirm-impact-note">
-            {fileChangeText(counts().affectedFiles)} associated with the hidden work.
+            {fileChangeText(counts().affectedFiles)} {_(S.rewindAssociatedWork)}
           </span>
         </Show>
       </div>

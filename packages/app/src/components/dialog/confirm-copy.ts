@@ -57,12 +57,12 @@ export function leaveWorktreeConfirm(title: string | undefined): ConfirmCopy {
   }
 }
 
-export function discardSettingsConfirm(actionLabel: string): ConfirmCopy {
+export function discardSettingsConfirm(): ConfirmCopy {
   return {
     title: { id: "confirm.discardSettings.title", message: "Discard unsaved changes?" },
     description: {
       id: "confirm.discardSettings.desc",
-      message: `You have unsaved changes for Settings. Discard them and ${actionLabel}?`,
+      message: "You have unsaved changes for Settings. Discard them and close Settings?",
     },
     confirmLabel: { id: "confirm.discardSettings.confirm", message: "Discard" },
     cancelLabel: { id: "confirm.discardSettings.cancel", message: "Keep Editing" },

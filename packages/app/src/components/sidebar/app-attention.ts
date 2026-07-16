@@ -9,9 +9,9 @@ export type AppAttentionNotice = {
   source: "product-update" | "provider-auth"
   priority: number
   tone: "active" | "warning" | "ready" | "error"
-  /** Display title — server-provided text for product-update, msg descriptor for provider-auth */
+  /** Localized Synergy-owned display title. */
   title: MessageDescriptor
-  /** Display detail — server-provided text for product-update, msg descriptor for provider-auth */
+  /** Localized Synergy-owned display detail. */
   detail: MessageDescriptor
   actionLabel?: MessageDescriptor
   progress?: number
@@ -34,16 +34,16 @@ export function selectAppAttention(input: {
 function productUpdateAttention(notice: ProductUpdateNotice): AppAttentionNotice | undefined {
   if (!notice.visible) return undefined
   const priority = notice.tone === "active" ? 400 : notice.tone === "error" ? 200 : 100
-  const titleStr = notice.title || "Product update available"
-  const detailStr = notice.detail || "A new version is ready to install."
+  const title = notice.title
+  const detail = notice.detail
   return {
     id: "product-update",
     source: "product-update",
     priority,
     tone: notice.tone === "neutral" ? "ready" : notice.tone,
-    title: { id: "attention.productUpdate.title", message: titleStr },
-    detail: { id: "attention.productUpdate.detail", message: detailStr },
-    actionLabel: notice.actionLabel ? { id: "attention.productUpdate.action", message: notice.actionLabel } : undefined,
+    title,
+    detail,
+    actionLabel: notice.actionLabel ?? undefined,
     progress: notice.progress ?? undefined,
     busy: notice.busy || !notice.action,
     iconToken: notice.action === "install" ? "product.update.install" : "product.update",

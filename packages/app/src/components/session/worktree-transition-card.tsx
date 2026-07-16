@@ -4,6 +4,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionWorkspaceProgress } from "./worktree-session"
 import { StepList } from "./worktree-progress-components"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 import "./worktree-transition-dialog.css"
 
 function operationIcon(progress: SessionWorkspaceProgress) {
@@ -14,10 +16,10 @@ function operationIcon(progress: SessionWorkspaceProgress) {
   return getSemanticIcon("workspace.worktree")
 }
 
-function operationLabel(progress: SessionWorkspaceProgress) {
-  if (progress.operation === "leave") return "Main checkout"
-  if (progress.operation === "enter") return "Session worktree"
-  return "Worktree session"
+function operationLabel(progress: SessionWorkspaceProgress, _: (d: { id: string; message: string }) => string) {
+  if (progress.operation === "leave") return _(S.worktreeCardMainCheckout)
+  if (progress.operation === "enter") return _(S.worktreeCardSessionWorktree)
+  return _(S.worktreeCardWorktreeSession)
 }
 
 export function WorktreeTransitionCard(props: {
@@ -25,6 +27,8 @@ export function WorktreeTransitionCard(props: {
   onRetry?: () => void
   onDismiss?: () => void
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const [exiting, setExiting] = createSignal(false)
 
   const handleDismiss = () => {
@@ -44,7 +48,7 @@ export function WorktreeTransitionCard(props: {
           <Icon name={operationIcon(props.progress)} size="small" />
         </span>
         <div class="wtd-card-heading">
-          <span class="wtd-card-kicker">{operationLabel(props.progress)}</span>
+          <span class="wtd-card-kicker">{operationLabel(props.progress, _)}</span>
           <span class="wtd-card-title">{props.progress.title}</span>
           <span class="wtd-card-description">{props.progress.description}</span>
         </div>
@@ -55,8 +59,8 @@ export function WorktreeTransitionCard(props: {
             icon={getSemanticIcon("action.close")}
             class="wtd-card-dismiss"
             onClick={handleDismiss}
-            aria-label="Dismiss worktree status"
-            title="Dismiss"
+            aria-label={_(S.worktreeCardDismissAria)}
+            title={_(S.worktreeCardDismissTitle)}
           />
         </Show>
       </div>
@@ -68,7 +72,7 @@ export function WorktreeTransitionCard(props: {
           <Show when={props.onRetry}>
             {(retry) => (
               <Button variant="primary" size="small" onClick={retry()}>
-                Retry
+                {_(S.worktreeCardRetry)}
               </Button>
             )}
           </Show>

@@ -1,9 +1,11 @@
+import { pluginMarketplace } from "@/locales/messages"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { uninstallPluginConfirm } from "@/components/dialog/confirm-copy"
@@ -39,31 +41,10 @@ interface ApprovalRequiredError {
   artifactCacheKey?: string
   message?: string
 }
-
-function timeAgo(value: number | string | undefined): string {
-  const delta = Date.now() - toTimestamp(value)
-  const mins = Math.floor(delta / 60000)
-  if (mins < 60) return mins <= 1 ? "just now" : `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return new Date(toTimestamp(value)).toLocaleDateString()
-}
-
-function formatDate(value: number | string | undefined): string {
-  return new Date(toTimestamp(value)).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
-
-function formatSigner(signer?: string): string {
-  if (!signer) return "Not signed"
+function formatSigner(signer?: string): string | null {
+  if (!signer) return null
   return `${signer.slice(0, 10)}...${signer.slice(-8)}`
 }
-
 function installErrorMessage(input: unknown): string {
   if (typeof input === "string") return input
   if (typeof input === "object" && input !== null) {
@@ -103,6 +84,7 @@ export function PluginDetailDialog(props: {
   const dialog = useDialog()
   const confirm = useConfirm()
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const [action, setAction] = createSignal<"install" | "update" | "uninstall" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
 
@@ -344,7 +326,9 @@ export function PluginDetailDialog(props: {
                       {/* plugin.name is author content — pass through */}
                       <h2>{current().name}</h2>
                       <Show when={current().latestVersion}>
-                        <span class="plugin-detail-version-pill">v{current().latestVersion}</span>
+                        <span class="plugin-detail-version-pill">
+                          {_(pluginMarketplace.versionLabel.id, { version: current().latestVersion })}
+                        </span>
                       </Show>
                     </div>
                     {/* description is author content; fallback is host chrome */}
@@ -460,7 +444,7 @@ export function PluginDetailDialog(props: {
                   />
                   <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.updated", message: "Updated" })}
-                    value={timeAgo(current().updatedAt)}
+                    value={fmt.relative(new Date(toTimestamp(current().updatedAt)))}
                   />
                   <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.author", message: "Author" })}
@@ -471,7 +455,10 @@ export function PluginDetailDialog(props: {
                   />
                   <DetailMetric
                     label={_({ id: "app.plugin.detail.metric.signer", message: "Signer" })}
-                    value={formatSigner(latestVersion()?.signature?.signer)}
+                    value={
+                      formatSigner(latestVersion()?.signature?.signer) ??
+                      _({ id: "app.plugin.detail.signer.unsigned", message: "Not signed" })
+                    }
                   />
                 </section>
 
@@ -495,11 +482,21 @@ export function PluginDetailDialog(props: {
                       <div class="plugin-detail-development-path">{installation().path}</div>
                       <div class="plugin-detail-chip-cloud">
                         <Show when={installedInfo()?.apiVersion}>
-                          {(apiVersion) => <span class="plugin-detail-chip">Plugin API {apiVersion()}</span>}
+                          {(apiVersion) => (
+                            <span class="plugin-detail-chip">
+                              {_(pluginMarketplace.pluginApiLabel.id, { version: apiVersion() })}
+                            </span>
+                          )}
                         </Show>
                         <Show when={installedInfo()?.generation}>
                           {(generation) => (
-                            <span class="plugin-detail-chip">Generation {generation().slice(0, 12)}</span>
+                            <span class="plugin-detail-chip">
+                              {_({
+                                id: "app.plugin.marketplace.generation.label",
+                                message: "Generation {id}",
+                                values: { id: generation().slice(0, 12) },
+                              })}
+                            </span>
                           )}
                         </Show>
                       </div>
@@ -606,7 +603,9 @@ export function PluginDetailDialog(props: {
                           {(version) => (
                             <div class="plugin-detail-version-row">
                               <div>
-                                <span class="plugin-detail-version-title">v{version()}</span>
+                                <span class="plugin-detail-version-title">
+                                  {_(pluginMarketplace.versionLabel.id, { version: version() })}
+                                </span>
                                 <span class="plugin-detail-version-meta">
                                   {_({
                                     id: "app.plugin.detail.version.installedLocally",
@@ -628,8 +627,16 @@ export function PluginDetailDialog(props: {
                         {(version) => (
                           <div class="plugin-detail-version-row">
                             <div>
-                              <span class="plugin-detail-version-title">v{version.version}</span>
-                              <span class="plugin-detail-version-meta">{formatDate(version.publishedAt)}</span>
+                              <span class="plugin-detail-version-title">
+                                {_(pluginMarketplace.versionLabel.id, { version: version.version })}
+                              </span>
+                              <span class="plugin-detail-version-meta">
+                                {fmt.date(new Date(toTimestamp(version.publishedAt)), {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
                               <Show when={version.changelog}>
                                 {/* changelog content is plugin-author content — pass through */}
                                 <span class="plugin-detail-version-copy">{version.changelog}</span>

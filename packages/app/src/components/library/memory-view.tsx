@@ -8,6 +8,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
+import { useLocale } from "@/context/locale"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { MemoryInfo, MemorySearchResult } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -15,11 +16,11 @@ import {
   type MemoryRecallMode,
   type MemorySortKey,
   MEMORY_CATEGORIES,
-  categoryLabels,
   categoryColors,
-  recallModeLabels,
   recallModeColors,
-  memorySortLabels,
+  getCategoryLabel,
+  getRecallModeLabel,
+  getMemorySortLabel,
   libraryActionButtonClass,
   libraryCardBaseClass,
   libraryCardExpandedClass,
@@ -204,7 +205,7 @@ export function MemoryView(props: {
   const filterLabel = createMemo(() => {
     const count = categoryFilter().size
     if (count === 0) return _({ id: "app.library.memory.allCategories", message: "All categories" })
-    if (count === 1) return categoryLabels[[...categoryFilter()][0]]
+    if (count === 1) return getCategoryLabel(_, [...categoryFilter()][0])
     return _({
       id: "app.library.memory.categoriesCount",
       message: "{count} categories",
@@ -263,7 +264,7 @@ export function MemoryView(props: {
                             }}
                             onClick={() => toggleCategory(cat)}
                           >
-                            <span>{categoryLabels[cat]}</span>
+                            <span>{getCategoryLabel(_, cat)}</span>
                             <span class="library-menu-count">{count()}</span>
                           </button>
                         </Show>
@@ -290,7 +291,7 @@ export function MemoryView(props: {
             </Show>
             <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
               <Popover.Trigger as="button" class={libraryActionButtonClass}>
-                <span>{memorySortLabels[sort()]}</span>
+                <span>{getMemorySortLabel(_, sort())}</span>
                 <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
               </Popover.Trigger>
               <Popover.Portal>
@@ -309,7 +310,7 @@ export function MemoryView(props: {
                           setSortOpen(false)
                         }}
                       >
-                        {memorySortLabels[key]}
+                        {getMemorySortLabel(_, key)}
                       </button>
                     )}
                   </For>
@@ -394,6 +395,7 @@ function MemoryCard(props: {
   onDelete: (e: MouseEvent) => void
 }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const updated = () => props.item.updatedAt
   const category = () => props.item.category as MemoryCategory | undefined
   const recallMode = () => props.item.recallMode as MemoryRecallMode | undefined
@@ -429,14 +431,14 @@ function MemoryCard(props: {
               <span
                 class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${categoryColors[category()!] ?? "bg-surface-inset-base text-text-weak"}`}
               >
-                {categoryLabels[category()!] ?? category()}
+                {getCategoryLabel(_, category()!) ?? category()}
               </span>
             </Show>
             <Show when={recallMode()}>
               <span
                 class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${recallModeColors[recallMode()!] ?? "bg-surface-inset-base text-text-weaker"}`}
               >
-                {recallModeLabels[recallMode()!] ?? recallMode()}
+                {getRecallModeLabel(_, recallMode()!) ?? recallMode()}
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
@@ -484,13 +486,13 @@ function MemoryCard(props: {
             }}
           >
             <span class="text-11-regular text-text-weaker">
-              <Show when={props.expanded} fallback={relativeTime(updated() ?? props.item.createdAt)}>
-                {absoluteDate(props.item.createdAt)}
+              <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
+                {absoluteDate(fmt, props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
                   {_({
                     id: "app.library.memory.updated",
                     message: "· updated {date}",
-                    values: { date: absoluteDate(updated()!) },
+                    values: { date: absoluteDate(fmt, updated()!) },
                   })}
                 </Show>
               </Show>
@@ -508,7 +510,7 @@ function MemoryCard(props: {
 
         <Show when={props.selecting}>
           <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
-            <span class="text-11-regular text-text-weaker">{relativeTime(updated() ?? props.item.createdAt)}</span>
+            <span class="text-11-regular text-text-weaker">{relativeTime(fmt, updated() ?? props.item.createdAt)}</span>
           </div>
         </Show>
       </div>

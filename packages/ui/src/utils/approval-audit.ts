@@ -117,7 +117,7 @@ function formatSmartAllow(smartAllow: NonNullable<ApprovalMeta["smartAllow"]>): 
 }
 
 function resolveMsg(i18n: I18n | undefined, desc: MessageDescriptor, values?: Record<string, unknown>): string {
-  if (i18n) return i18n._({ id: desc.id, message: desc.message!, values })
+  if (i18n) return i18n._({ ...desc, values })
   return desc.message ?? desc.id
 }
 

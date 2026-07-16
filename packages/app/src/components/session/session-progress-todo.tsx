@@ -1,5 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { useSync } from "@/context/sync"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 import type { TodoItem, TodoSummary } from "./session-progress-summary"
 
 interface SessionProgressTodoProps {
@@ -69,6 +71,8 @@ function labelClass(status: string): string {
 
 export function SessionProgressTodo(props: SessionProgressTodoProps) {
   const sync = useSync()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const todos = createMemo<TodoItem[]>(() => sync.data.todo[props.sessionID] ?? [])
 
   const summaryParts = createMemo(() => {
@@ -89,7 +93,7 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
     <div class={`flex flex-col min-h-0 ${props.class ?? ""}`}>
       <Show
         when={summaryParts().length > 0}
-        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">No active tasks</div>}
+        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">{_(S.progressNoActiveTasks)}</div>}
       >
         <div class="text-xs text-text-weaker px-2.5 py-1 shrink-0">{summaryParts().join(" · ")}</div>
       </Show>

@@ -8,6 +8,7 @@ import { createMemo, createResource, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import { translateDescriptor } from "@/locales/translate"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
   providerNeedsAction,
@@ -29,6 +30,31 @@ const notConnectedLabel = { id: "settings.github.notConnected", message: "Not co
 const envCredentialsTitle = { id: "settings.github.envCredentials", message: "Environment credentials" }
 const actionRequiredTitle = { id: "settings.github.actionRequired", message: "Action required" }
 const accountTitle = { id: "settings.github.account", message: "Account" }
+const githubTitleDisplay = { id: "settings.github.display.title", message: "GitHub" }
+const githubSubtitle = {
+  id: "settings.github.display.subtitle",
+  message: "Synergy injects a managed GH_TOKEN only when running GitHub CLI commands.",
+}
+const disconnectTitle = { id: "settings.github.disconnect.title", message: "GitHub disconnected" }
+const disconnectDesc = {
+  id: "settings.github.disconnect.description",
+  message: "Stored GitHub credentials were removed.",
+}
+const connectedDescription = {
+  id: "settings.github.connected.description",
+  message: "GitHub credentials are connected and available to GitHub CLI-backed shell commands.",
+}
+const openProfileLabel = { id: "settings.github.openProfile", message: "Open GitHub profile" }
+const logoutLabel = { id: "settings.github.logout", message: "Log out" }
+const envRecoveryDescription = {
+  id: "settings.github.envRecoveryDesc",
+  message:
+    "Update GH_TOKEN or GITHUB_TOKEN in the Synergy server environment, then restart the server and refresh this page.",
+}
+const envConnectedDescription = {
+  id: "settings.github.envConnectedDesc",
+  message: "GitHub is connected through GH_TOKEN or GITHUB_TOKEN in the Synergy server environment.",
+}
 
 export function GitHubPanel() {
   const { _ } = useLingui()
@@ -54,7 +80,7 @@ export function GitHubPanel() {
   })
   const needsAction = createMemo(() => providerNeedsAction(effectiveHealth()))
   const statusLabel = createMemo(() =>
-    needsAction() ? _(providerStatusLabel(effectiveHealth())) : githubStatusLabel(status(), _),
+    needsAction() ? translateDescriptor(providerStatusLabel(effectiveHealth()), _) : githubStatusLabel(status(), _),
   )
 
   async function refreshStatus() {
@@ -64,7 +90,7 @@ export function GitHubPanel() {
   async function logout() {
     await globalSDK.client.auth.githubLogout({}, { throwOnError: true })
     await refreshStatus()
-    showToast({ type: "warning", title: "GitHub disconnected", description: "Stored GitHub credentials were removed." })
+    showToast({ type: "warning", title: _(disconnectTitle), description: _(disconnectDesc) })
   }
 
   return (
@@ -88,10 +114,8 @@ export function GitHubPanel() {
           <div class="flex items-center gap-3 min-w-0">
             <Icon name={getSemanticIcon("github.main")} class="providers-detail-icon" />
             <div class="min-w-0">
-              <div class="providers-detail-title">GitHub</div>
-              <div class="providers-detail-copy">
-                Synergy injects a managed GH_TOKEN only when running GitHub CLI commands.
-              </div>
+              <div class="providers-detail-title">{_(githubTitleDisplay)}</div>
+              <div class="providers-detail-copy">{_(githubSubtitle)}</div>
             </div>
           </div>
           <span class="ds-inline-badge" classList={{ "ds-inline-badge-muted": !connected() }}>
@@ -104,7 +128,9 @@ export function GitHubPanel() {
         <SettingsSection title={_(actionRequiredTitle)}>
           <div class="providers-auth-warning" role="status">
             <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
-            <span>{_(providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"]))}</span>
+            <span>
+              {translateDescriptor(providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"]), _)}
+            </span>
           </div>
         </SettingsSection>
       </Show>
@@ -115,23 +141,21 @@ export function GitHubPanel() {
             <div class="providers-connect-section">
               <div class="min-w-0 flex-1">
                 <div class="providers-connect-title">{account().login}</div>
-                <p class="providers-connect-copy">
-                  GitHub credentials are connected and available to GitHub CLI-backed shell commands.
-                </p>
+                <p class="providers-connect-copy">{_(connectedDescription)}</p>
               </div>
             </div>
             <div class="providers-connect-actions">
               <Show when={account().url}>
                 {(url) => (
                   <a class="provider-auth-link" href={url()} target="_blank" rel="noreferrer">
-                    <span>Open GitHub profile</span>
+                    <span>{_(openProfileLabel)}</span>
                     <Icon name={getSemanticIcon("action.open")} size="small" />
                   </a>
                 )}
               </Show>
               <Show when={status()?.source === "store"}>
                 <button type="button" class="provider-auth-link" onClick={logout}>
-                  <span>Log out</span>
+                  <span>{_(logoutLabel)}</span>
                   <Icon name={getSemanticIcon("account.logout")} size="small" />
                 </button>
               </Show>
@@ -145,9 +169,7 @@ export function GitHubPanel() {
         fallback={
           <SettingsSection title={_(envCredentialsTitle)}>
             <p class="providers-connect-copy">
-              {needsAction()
-                ? "Update GH_TOKEN or GITHUB_TOKEN in the Synergy server environment, then restart the server and refresh this page."
-                : "GitHub is connected through GH_TOKEN or GITHUB_TOKEN in the Synergy server environment."}
+              {needsAction() ? _(envRecoveryDescription) : _(envConnectedDescription)}
             </p>
           </SettingsSection>
         }

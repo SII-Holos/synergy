@@ -3,34 +3,32 @@ import { useLingui } from "@lingui/solid"
 import { useBrowser, type DownloadEntry } from "./browser-store"
 import { downloadsPanel as P } from "@/locales/messages"
 
-const STATE_META: Record<DownloadEntry["state"], { labelKey: string; labelMsg: string; color: string; bg: string }> = {
+const STATE_META: Record<
+  DownloadEntry["state"],
+  { label: { id: string; message: string }; color: string; bg: string }
+> = {
   in_progress: {
-    labelKey: P.stateDownloading.id,
-    labelMsg: P.stateDownloading.message,
+    label: P.stateDownloading,
     color: "text-text-on-info-base",
     bg: "bg-surface-info-weak",
   },
   completed: {
-    labelKey: P.stateComplete.id,
-    labelMsg: P.stateComplete.message,
+    label: P.stateComplete,
     color: "text-text-on-success-base",
     bg: "bg-surface-success-weak",
   },
   cancelled: {
-    labelKey: P.stateCancelled.id,
-    labelMsg: P.stateCancelled.message,
+    label: P.stateCancelled,
     color: "text-text-weaker",
     bg: "bg-surface-inset-base",
   },
   interrupted: {
-    labelKey: P.stateInterrupted.id,
-    labelMsg: P.stateInterrupted.message,
+    label: P.stateInterrupted,
     color: "text-text-on-warning-base",
     bg: "bg-surface-warning-weak",
   },
   blocked: {
-    labelKey: P.stateBlocked.id,
-    labelMsg: P.stateBlocked.message,
+    label: P.stateBlocked,
     color: "text-text-on-critical-base",
     bg: "bg-surface-critical-weak",
   },
@@ -92,7 +90,7 @@ export function DownloadsPanel() {
                 <div class="flex gap-2 px-3 py-1.5 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
                   <span class="w-20 shrink-0">
                     <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta.color} ${meta.bg}`}>
-                      {lingui._({ id: meta.labelKey, message: meta.labelMsg })}
+                      {lingui._(meta.label)}
                     </span>
                   </span>
                   <span

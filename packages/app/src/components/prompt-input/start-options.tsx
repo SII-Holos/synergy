@@ -45,7 +45,6 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
 
 export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
   const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
   const options = () => props.groups.flatMap((group) => group.options)
   const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
 
@@ -53,21 +52,21 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
         trigger={
-          <Tooltip placement="top" value={_(PI.startMode)}>
+          <Tooltip placement="top" value={i18n._(PI.startMode)}>
             <button
               type="button"
-              aria-label={_(PI.startMode)}
+              aria-label={i18n._(PI.startMode)}
               class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
             >
               <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
-                {selectedOption()?.label ?? _(PI.startDefault)}
+                {selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
               <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
             </button>
           </Tooltip>
         }
-        title={_(PI.startMode)}
+        title={i18n._(PI.startMode)}
         contentClass="w-52 max-h-80"
         placement="top-start"
       >

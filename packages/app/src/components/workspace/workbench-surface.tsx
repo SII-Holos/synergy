@@ -114,6 +114,7 @@ function WorkbenchSortableTab(props: {
   onClose: () => void
   onFocusIndex: (index: number) => void
 }) {
+  const lingui = useLingui()
   const sortable = createSortable(props.tab.id)
   let main!: HTMLButtonElement
   createEffect(() => {
@@ -165,7 +166,11 @@ function WorkbenchSortableTab(props: {
       <button
         type="button"
         class="workbench-surface-tab-close"
-        aria-label={`Close ${props.tab.resourceId ?? props.title}`}
+        aria-label={lingui._({
+          id: W.closeTab.id,
+          message: W.closeTab.message,
+          values: { title: props.tab.resourceId ?? props.title },
+        })}
         onClick={(event) => {
           event.stopPropagation()
           props.onClose()
@@ -176,19 +181,21 @@ function WorkbenchSortableTab(props: {
     </div>
   )
 }
-
 function Launcher(props: {
   surface: WorkbenchPanelSurface
   panels: WorkbenchPanelEntry[]
   onOpen: (panel: WorkbenchPanelEntry, mode: "launcher" | "add") => void
 }) {
+  const lingui = useLingui()
   return (
     <div class="workbench-surface-launcher">
       <For
         each={props.panels}
         fallback={
           <div class="workbench-surface-empty">
-            {props.surface === "side" ? "No side panels available" : "No bottom panels available"}
+            {props.surface === "side"
+              ? lingui._({ id: W.noSidePanels.id, message: W.noSidePanels.message })
+              : lingui._({ id: W.noBottomPanels.id, message: W.noBottomPanels.message })}
           </div>
         }
       >
@@ -200,7 +207,9 @@ function Launcher(props: {
             <span class="workbench-surface-launcher-copy">
               <span class="workbench-surface-launcher-title">{panel.label}</span>
               <span class="workbench-surface-launcher-detail">
-                {panel.cardinality === "multi" ? "Open a new tab" : "Open panel"}
+                {panel.cardinality === "multi"
+                  ? lingui._({ id: W.openNewTab.id, message: W.openNewTab.message })
+                  : lingui._({ id: W.openPanel.id, message: W.openPanel.message })}
               </span>
             </span>
           </button>
@@ -211,6 +220,7 @@ function Launcher(props: {
 }
 
 export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reservedWidth?: number }) {
+  const lingui = useLingui()
   const workbench = useWorkbenchPanels()
   const state = createMemo(() => workbench.surface(props.surface))
   const panels = createMemo(() => workbench.panels(props.surface))
@@ -326,7 +336,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
       <aside
         class="workbench-surface-panel"
         role="complementary"
-        aria-label={isSide() ? "Side workspace" : "BottomSpace"}
+        aria-label={
+          isSide()
+            ? lingui._({ id: W.sideWorkspace.id, message: W.sideWorkspace.message })
+            : lingui._({ id: W.bottomWorkspace.id, message: W.bottomWorkspace.message })
+        }
       >
         <Show when={state().tabs().length > 0}>
           <div class="workbench-surface-tabs">
@@ -337,7 +351,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
                 ref={tabRun}
                 class="workbench-surface-tab-run"
                 role="tablist"
-                aria-label={isSide() ? "Side workspace tabs" : "Bottom workspace tabs"}
+                aria-label={
+                  isSide()
+                    ? lingui._({ id: W.sideTabs.id, message: W.sideTabs.message })
+                    : lingui._({ id: W.bottomTabs.id, message: W.bottomTabs.message })
+                }
                 onWheel={(event) => {
                   if (!tabRun || Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
                   tabRun.scrollLeft += event.deltaY
@@ -376,7 +394,11 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
                         <IconButton
                           icon={getSemanticIcon("action.add")}
                           variant="ghost"
-                          aria-label={isSide() ? "Add side panel" : "Add bottom panel"}
+                          aria-label={
+                            isSide()
+                              ? lingui._({ id: W.addSidePanel.id, message: W.addSidePanel.message })
+                              : lingui._({ id: W.addBottomPanel.id, message: W.addBottomPanel.message })
+                          }
                           aria-haspopup="menu"
                           aria-expanded={local.addOpen}
                         />

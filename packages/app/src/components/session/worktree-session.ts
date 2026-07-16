@@ -1,3 +1,5 @@
+import { S } from "./session-i18n"
+
 export type NewSessionWorkspaceSelection =
   | { mode: "current" }
   | { mode: "create" }
@@ -54,7 +56,7 @@ export function isSessionRunningForWorkspaceChange(input: {
 
 export function worktreeSetupFailureMessage(input: { setupFailed?: boolean; setupError?: string } | undefined) {
   if (!input?.setupFailed) return undefined
-  return input.setupError?.trim() || "Worktree setup command failed."
+  return input.setupError?.trim() || S.worktreeSetupCommandFailed.message
 }
 
 export type WorkspaceTransitionOperation = "enter" | "leave" | "start"
@@ -100,8 +102,12 @@ function withStepStates<T extends { id: string; label: string; detail?: string }
 
 function workspaceStepForSelection(selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>) {
   return selection.mode === "create"
-    ? { id: "workspace", label: "Create checkout", detail: "Preparing a new git worktree." }
-    : { id: "workspace", label: "Bind worktree", detail: "Using the selected checkout." }
+    ? {
+        id: "workspace",
+        label: S.worktreeStepCreateCheckout.message,
+        detail: S.worktreeDetailPreparingWorktree.message,
+      }
+    : { id: "workspace", label: S.worktreeStepBindWorktree.message, detail: S.worktreeDetailUsingCheckout.message }
 }
 
 export function createWorkspaceTransitionLoadingProgress(
@@ -111,13 +117,13 @@ export function createWorkspaceTransitionLoadingProgress(
     return {
       operation: "leave",
       phase: "loading",
-      title: "Leaving worktree",
-      description: "Returning this session to the main checkout.",
+      title: S.worktreeTitleLeaving.message,
+      description: S.worktreeDescLeaving.message,
       steps: [
         {
           id: "leave",
-          label: "Return to main checkout",
-          detail: "Updating this session workspace.",
+          label: S.worktreeStepReturnCheckout.message,
+          detail: S.worktreeDetailUpdatingWorkspace.message,
           state: "active",
         },
       ],
@@ -127,13 +133,13 @@ export function createWorkspaceTransitionLoadingProgress(
   return {
     operation: "enter",
     phase: "loading",
-    title: "Moving session to worktree",
-    description: "Creating an isolated checkout and binding this session to it.",
+    title: S.worktreeTitleMoving.message,
+    description: S.worktreeDescMoving.message,
     steps: [
       {
         id: "enter",
-        label: "Create and bind checkout",
-        detail: "Preparing the worktree and updating this session workspace.",
+        label: S.worktreeStepCreateBind.message,
+        detail: S.worktreeDetailPreparingWorktreeBind.message,
         state: "active",
       },
     ],
@@ -148,13 +154,13 @@ export function createWorkspaceTransitionSuccessProgress(input: {
     return {
       operation: "leave",
       phase: "success",
-      title: "Main checkout active",
-      description: input.description ?? "This session now runs from the main checkout. The worktree remains available.",
+      title: S.worktreeTitleMainActive.message,
+      description: input.description ?? S.worktreeDescMainActive.message,
       steps: [
         {
           id: "leave",
-          label: "Return to main checkout",
-          detail: "Session workspace updated.",
+          label: S.worktreeStepReturnCheckout.message,
+          detail: S.worktreeDetailWorkspaceUpdated.message,
           state: "complete",
         },
       ],
@@ -164,13 +170,13 @@ export function createWorkspaceTransitionSuccessProgress(input: {
   return {
     operation: "enter",
     phase: "success",
-    title: "Worktree active",
-    description: input.description ?? "This session now runs in the isolated checkout.",
+    title: S.worktreeTitleWorktreeActive.message,
+    description: input.description ?? S.worktreeDescWorktreeActive.message,
     steps: [
       {
         id: "enter",
-        label: "Create and bind checkout",
-        detail: "Session workspace updated.",
+        label: S.worktreeStepCreateBind.message,
+        detail: S.worktreeDetailWorkspaceUpdated.message,
         state: "complete",
       },
     ],
@@ -183,10 +189,10 @@ export function createWorkspaceTransitionErrorProgress(input: {
 }): SessionWorkspaceProgress {
   const title =
     input.operation === "leave"
-      ? "Leave worktree failed"
+      ? S.worktreeTitleLeaveFailed.message
       : input.operation === "enter"
-        ? "Move to worktree failed"
-        : "Worktree setup failed"
+        ? S.worktreeTitleMoveFailed.message
+        : S.worktreeTitleSetupFailed.message
 
   return {
     operation: input.operation,
@@ -204,13 +210,17 @@ export function createNewSessionWorkspaceProgress(input: {
   return {
     operation: "start",
     phase: "loading",
-    title: "Starting worktree session",
-    description: "Preparing the workspace and sending your first prompt.",
+    title: S.worktreeTitleStarting.message,
+    description: S.worktreeDescStarting.message,
     steps: withStepStates(
       [
-        { id: "session", label: "Prepare session", detail: "Creating the conversation state." },
+        {
+          id: "session",
+          label: S.worktreeStepPrepareSession.message,
+          detail: S.worktreeDetailCreatingConversation.message,
+        },
         workspaceStepForSelection(input.selection),
-        { id: "prompt", label: "Send prompt", detail: "Dispatching your first message." },
+        { id: "prompt", label: S.worktreeStepSendPrompt.message, detail: S.worktreeDetailDispatchingPrompt.message },
       ],
       input.stage,
     ),
@@ -224,12 +234,22 @@ export function createNewSessionWorkspaceSuccessProgress(input: {
   return {
     operation: "start",
     phase: "success",
-    title: "Worktree session started",
-    description: "The session is ready and your prompt was sent.",
+    title: S.worktreeTitleStarted.message,
+    description: S.worktreeDescStarted.message,
     steps: [
-      { id: "session", label: "Prepare session", detail: "Conversation state is ready.", state: "complete" },
-      { ...workspaceStep, detail: "Workspace setup complete.", state: "complete" },
-      { id: "prompt", label: "Send prompt", detail: "First prompt dispatched.", state: "complete" },
+      {
+        id: "session",
+        label: S.worktreeStepPrepareSession.message,
+        detail: S.worktreeDetailConversationReady.message,
+        state: "complete",
+      },
+      { ...workspaceStep, detail: S.worktreeDetailWorkspaceSetupComplete.message, state: "complete" },
+      {
+        id: "prompt",
+        label: S.worktreeStepSendPrompt.message,
+        detail: S.worktreeDetailPromptDispatched.message,
+        state: "complete",
+      },
     ],
   }
 }

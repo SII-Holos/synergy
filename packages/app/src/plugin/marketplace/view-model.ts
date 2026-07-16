@@ -1,11 +1,12 @@
+import { pluginMarketplace } from "@/locales/messages"
 import type { InstalledPlugin } from "./types"
 
 export type MarketplaceView = "discover" | "installed" | "development"
 
 export const MARKETPLACE_NAV_ITEMS: ReadonlyArray<{ id: MarketplaceView; label: string }> = [
-  { id: "discover", label: "Discover" },
-  { id: "installed", label: "Installed" },
-  { id: "development", label: "Development" },
+  { id: "discover", label: pluginMarketplace.navDiscover.message },
+  { id: "installed", label: pluginMarketplace.navInstalled.message },
+  { id: "development", label: pluginMarketplace.navDevelopment.message },
 ]
 
 function normalize(value: string | undefined): string {

@@ -1,6 +1,8 @@
 import { createEffect, createMemo, createSignal, onCleanup, onMount, ParentProps, Show } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useLayout } from "@/context/layout"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { useGlobalSync } from "@/context/global-sync"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -52,6 +54,7 @@ export default function Layout(props: ParentProps) {
   const theme = useTheme()
   const [searchOpen, setSearchOpen] = createSignal(false)
   const { pickProjectDirectories } = useProjectDirectoryPicker()
+  const { i18n } = useLocale()
   // Wire toast config from the active scope (project directory or home).
   createEffect(() => {
     const scopeKey = params.dir ? base64Decode(params.dir) : HOME_SCOPE_KEY
@@ -62,9 +65,9 @@ export default function Layout(props: ParentProps) {
 
   const colorSchemeOrder: ColorScheme[] = ["system", "light", "dark"]
   const colorSchemeLabel: Record<ColorScheme, string> = {
-    system: "System",
-    light: "Light",
-    dark: "Dark",
+    system: i18n._(AP.layoutSystem.id),
+    light: i18n._(AP.layoutLight.id),
+    dark: i18n._(AP.layoutDark.id),
   }
 
   function cycleColorScheme(direction = 1) {
@@ -76,7 +79,7 @@ export default function Layout(props: ParentProps) {
     theme.setColorScheme(next)
     showToast({
       type: "info",
-      title: "Color scheme",
+      title: i18n._(AP.layoutColorScheme.id),
       description: colorSchemeLabel[next],
     })
   }
@@ -91,14 +94,12 @@ export default function Layout(props: ParentProps) {
       if (e.details?.type !== "permission.asked") return
       const directory = e.name
       const perm = e.details.properties
-
       const [childStore] = globalSync.ensureScopeState(directory)
       const session = childStore.session.find((s) => s.id === perm.sessionID)
       const sessionKey = `${directory}:${perm.sessionID}`
-
-      const sessionTitle = session?.title ?? "New session"
+      const sessionTitle = session?.title ?? i18n._(AP.sessionTitleNew.id)
       const projectName = getFilename(directory)
-      const description = `${sessionTitle} in ${projectName} needs permission`
+      const description = i18n._(AP.layoutPermissionDesc.id, { sessionTitle, projectName })
       const href = `/${base64Encode(directory)}/session/${perm.sessionID}`
 
       const now = Date.now()
@@ -106,7 +107,7 @@ export default function Layout(props: ParentProps) {
       if (now - lastAlerted < permissionAlertCooldownMs) return
       alertedAtBySession.set(sessionKey, now)
 
-      void platform.notify("Permission required", description, href)
+      void platform.notify(i18n._(AP.layoutPermissionTitle.id), description, href)
 
       const currentDir = params.dir ? base64Decode(params.dir) : undefined
       const currentSession = params.id
@@ -121,22 +122,21 @@ export default function Layout(props: ParentProps) {
         type: "warning",
         duration: 10000,
         icon: getSemanticIcon("permission.required"),
-        title: "Permission required",
+        title: i18n._(AP.layoutPermissionTitle.id),
         description,
         actions: [
           {
-            label: "Go to session",
+            label: i18n._(AP.layoutPermissionGoTo.id),
             onClick: () => {
               navigate(href)
             },
           },
           {
-            label: "Dismiss",
+            label: i18n._(AP.layoutPermissionDismiss.id),
             onClick: "dismiss",
           },
         ],
       })
-      toastBySession.set(sessionKey, toastId)
     })
     onCleanup(unsub)
 
@@ -288,41 +288,41 @@ export default function Layout(props: ParentProps) {
     const commands: CommandOption[] = [
       {
         id: "project.open",
-        title: "Open project",
+        title: i18n._(AP.layoutOpenProject.id),
         category: "Project",
         keybind: "mod+o",
         onSelect: () => chooseProject(),
       },
       {
         id: "provider.connect",
-        title: "Connect provider",
+        title: i18n._(AP.layoutConnectProvider.id),
         category: "Provider",
         slash: "connect",
         onSelect: () => connectProvider(),
       },
       {
         id: "server.switch",
-        title: "Switch server",
+        title: i18n._(AP.layoutSwitchServer.id),
         category: "Server",
         onSelect: () => openServer(),
       },
       {
         id: "session.previous",
-        title: "Previous session",
+        title: i18n._(AP.layoutPreviousSession.id),
         category: "Session",
         keybind: "alt+arrowup",
         onSelect: () => navigateSessionByOffset(-1),
       },
       {
         id: "session.next",
-        title: "Next session",
+        title: i18n._(AP.layoutNextSession.id),
         category: "Session",
         keybind: "alt+arrowdown",
         onSelect: () => navigateSessionByOffset(1),
       },
       {
         id: "session.archive",
-        title: "Archive session",
+        title: i18n._(AP.layoutArchiveSession.id),
         category: "Session",
         keybind: "mod+shift+backspace",
         disabled: !params.dir || !params.id,
@@ -334,7 +334,7 @@ export default function Layout(props: ParentProps) {
       },
       {
         id: "theme.scheme.cycle",
-        title: "Cycle color scheme",
+        title: i18n._(AP.layoutCycleColorScheme.id),
         category: "Theme",
         keybind: "mod+shift+t",
         slash: "theme",
@@ -342,16 +342,16 @@ export default function Layout(props: ParentProps) {
       },
       {
         id: "help.show",
-        title: "Help",
-        description: "Show all available commands",
+        title: i18n._(AP.layoutHelp.id),
+        description: i18n._(AP.layoutShowCommands.id),
         category: "General",
         slash: "help",
         onSelect: () => command.show(),
       },
       {
         id: "session.list",
-        title: "Search sessions",
-        description: "Search sessions across all projects",
+        title: i18n._(AP.layoutSearchSessions.id),
+        description: i18n._(AP.layoutSearchSessionsDesc.id),
         category: "Session",
         slash: "session",
         onSelect: () => setSearchOpen(true),
@@ -361,7 +361,7 @@ export default function Layout(props: ParentProps) {
     for (const scheme of colorSchemeOrder) {
       commands.push({
         id: `theme.scheme.${scheme}`,
-        title: `Use color scheme: ${colorSchemeLabel[scheme]}`,
+        title: i18n._(AP.layoutColorSchemeUse.id, { scheme: colorSchemeLabel[scheme] }),
         category: "Theme",
         onSelect: () => theme.setColorScheme(scheme),
       })
@@ -409,16 +409,14 @@ export default function Layout(props: ParentProps) {
     layout.scopes.open(directory)
     if (nav) navigateToProject(directory)
   }
-
   async function chooseProject() {
-    const result = await pickProjectDirectories({ title: "Open project", multiple: true })
+    const result = await pickProjectDirectories({ title: i18n._(AP.layoutOpenProjectDialogTitle.id), multiple: true })
     if (!result) return
     for (const directory of result.directoryPaths) {
       openProject(directory, false)
     }
     navigateToProject(result.directoryPaths[0])
   }
-
   // Track last viewed session
   createEffect(() => {
     if (!params.dir || !params.id) return

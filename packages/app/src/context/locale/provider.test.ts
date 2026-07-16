@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n as coreSetupI18n } from "@lingui/core"
 import { i18n as globalI18n } from "@lingui/core"
+import { applyDocumentLanguage } from "./document-language"
 
 // Seed message: this ID will be extracted by lingui extract.
 const SEED_ID = "app.loading.label"
@@ -29,6 +30,14 @@ describe("locale runtime provider", () => {
       messages: { [SEED_ID]: "Loading test" },
     })
     expect(i18n._({ id: SEED_ID, message: SEED_MESSAGE })).toBe("Loading test")
+  })
+
+  test("applies the active locale to the document root", () => {
+    const root = { lang: "en" }
+
+    applyDocumentLanguage(root, "zh-CN")
+
+    expect(root.lang).toBe("zh-CN")
   })
 
   test("active locale is reflected", () => {

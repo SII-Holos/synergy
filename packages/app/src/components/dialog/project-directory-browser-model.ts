@@ -1,4 +1,6 @@
 import { resolvePathInput } from "@ericsanchezok/synergy-util/path"
+import { dialog } from "@/locales/messages"
+import type { MessageDescriptor } from "@lingui/core"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type DirectoryBrowserStatus = "idle" | "loading" | "ready" | "empty" | "error"
@@ -17,10 +19,9 @@ export interface DirectoryBrowserState {
   error?: string
   requestID: number
 }
-
 export interface DirectoryBrowserStatusCopy {
-  title: string
-  description: string
+  title: MessageDescriptor
+  description: MessageDescriptor
   icon: SemanticIconTokenName
 }
 
@@ -91,7 +92,7 @@ export function directoryBrowserSubmitError(
   return {
     ...state,
     status: "error",
-    error: error instanceof Error ? error.message : "Browse failed",
+    error: error instanceof Error ? error.message : `${dialog.browseFailed.message}`,
   }
 }
 
@@ -99,34 +100,33 @@ export function directoryBrowserStatusCopy(state: Pick<DirectoryBrowserState, "s
   switch (state.status) {
     case "loading":
       return {
-        title: "Searching folders",
-        description: "Checking nearby server directories first.",
+        title: dialog.directoryBrowserLoadingTitle,
+        description: dialog.directoryBrowserLoadingDesc,
         icon: "action.search",
       } satisfies DirectoryBrowserStatusCopy
     case "ready":
       return {
-        title: `${state.results.length} folder${state.results.length === 1 ? "" : "s"} found`,
-        description: "Choose a folder to open it as a Synergy project.",
+        title: dialog.directoryBrowserReadyTitle,
+        description: dialog.directoryBrowserReadyDesc,
         icon: "state.success",
       } satisfies DirectoryBrowserStatusCopy
     case "empty":
       return {
-        title: "No folders found",
-        description: "Try a more specific path, such as ~/projects, or search from a different parent folder.",
+        title: dialog.directoryBrowserEmptyTitle,
+        description: dialog.directoryBrowserEmptyDesc,
         icon: "state.empty",
       } satisfies DirectoryBrowserStatusCopy
     case "error":
       return {
-        title: "Search failed",
-        description: "The server could not browse that folder. Check the path and try again.",
+        title: dialog.directoryBrowserErrorTitle,
+        description: dialog.directoryBrowserErrorDesc,
         icon: "state.error",
       } satisfies DirectoryBrowserStatusCopy
     case "idle":
     default:
       return {
-        title: "Search the server filesystem",
-        description:
-          "Type a folder path or project name, then search. Use paths like ~/projects or C:\\Users\\you\\code to narrow the scan.",
+        title: dialog.directoryBrowserIdleTitle,
+        description: dialog.directoryBrowserIdleDesc,
         icon: "action.search",
       } satisfies DirectoryBrowserStatusCopy
   }

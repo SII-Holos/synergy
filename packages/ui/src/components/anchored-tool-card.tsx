@@ -1,3 +1,5 @@
+import { ANCHORED_CHIP_DESC } from "./tool-title-descriptors"
+
 import { createMemo, For, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { useLingui } from "@lingui/solid"
@@ -26,6 +28,7 @@ const scanFilesTitleDescriptor = { id: "ui.anchoredTool.scanFiles", message: "Sc
 const parseCodeTitleDescriptor = { id: "ui.anchoredTool.parseCode", message: "Parse Code" }
 const reviseFileTitleDescriptor = { id: "ui.anchoredTool.reviseFile", message: "Revise File" }
 const saveFileTitleDescriptor = { id: "ui.anchoredTool.saveFile", message: "Save File" }
+const ANCHORED_TAG_HEX_DESC = { id: "ui.anchoredTool.tagLabel", message: "tag" }
 const createFileTitleDescriptor = { id: "ui.anchoredTool.createFile", message: "Create File" }
 const currentScopeDescriptor = { id: "ui.anchoredTool.currentScope", message: "Current scope" }
 const fromStartDescriptor = { id: "ui.anchoredTool.fromStart", message: "from start" }
@@ -179,6 +182,7 @@ function fileRows(metadata: Record<string, any>) {
 }
 
 function SearchFiles(props: { metadata: Record<string, any>; mode: "text" | "ast" }) {
+  const { _ } = useLingui()
   const rows = () => fileRows(props.metadata)
   return (
     <Show when={rows().length > 0}>
@@ -189,7 +193,10 @@ function SearchFiles(props: { metadata: Record<string, any>; mode: "text" | "ast
               <span data-slot="anchored-file-path">{pathLabel(row.file)}</span>
               <span data-slot="anchored-file-meta">
                 {props.mode === "ast" ? row.ranges?.slice(0, 3).join(", ") : row.lines?.slice(0, 6).join(", ")}
-                <Show when={row.tag}> · tag {row.tag}</Show>
+                <Show when={row.tag}>
+                  {" "}
+                  · {_(ANCHORED_TAG_HEX_DESC)} {row.tag}
+                </Show>
               </span>
             </div>
           )}
@@ -223,8 +230,8 @@ export function AnchoredViewTool(props: ToolProps) {
       .map((label) => ({ label })),
     primaryRange() ? { label: primaryRange()! } : undefined,
     ranges().length > 2 ? { label: `+${ranges().length - 2} ranges` } : undefined,
-    props.metadata?.tag ? { label: `tag ${props.metadata.tag}` } : undefined,
-    conflictCount(props.metadata) > 0 ? { label: "conflict", tone: "warning" as const } : undefined,
+    props.metadata?.tag ? { label: _(ANCHORED_CHIP_DESC.tag) + " " + props.metadata.tag } : undefined,
+    conflictCount(props.metadata) > 0 ? { label: _(ANCHORED_CHIP_DESC.conflict), tone: "warning" as const } : undefined,
   ]
   return (
     <BasicTool
@@ -270,7 +277,7 @@ export function AnchoredSearchTool(props: ToolProps & { mode: "text" | "ast" }) 
     { label: `${files()} file${files() === 1 ? "" : "s"}` },
     props.input.include ? { label: props.input.include as string } : undefined,
     conflictCount(props.metadata) > 0
-      ? { label: `conflict ${conflictCount(props.metadata)}`, tone: "warning" as const }
+      ? { label: _(ANCHORED_CHIP_DESC.conflict) + " " + conflictCount(props.metadata), tone: "warning" as const }
       : undefined,
   ]
   return (
@@ -325,7 +332,7 @@ export function AnchoredReviseTool(props: ToolProps) {
     ...operationCounts(operations())
       .slice(0, 3)
       .map((label) => ({ label })),
-    props.metadata?.recovered ? { label: "recovered", tone: "success" as const } : undefined,
+    props.metadata?.recovered ? { label: _(ANCHORED_CHIP_DESC.recovered), tone: "success" as const } : undefined,
     diagnostics() > 0 ? { label: `diagnostics ${diagnostics()}`, tone: "danger" as const } : undefined,
   ]
   return (
@@ -364,9 +371,11 @@ export function AnchoredSaveTool(props: ToolProps) {
   const isOverwrite = () => props.metadata?.exists === true
   const diagnostics = () => diagnosticCount(props.metadata)
   const chips = () => [
-    props.metadata?.tag ? { label: `tag ${props.metadata.tag}` } : undefined,
+    props.metadata?.tag ? { label: _(ANCHORED_CHIP_DESC.tag) + " " + props.metadata.tag } : undefined,
     diagnostics() > 0 ? { label: `diagnostics ${diagnostics()}`, tone: "danger" as const } : undefined,
-    props.metadata?.previousHasConflicts ? { label: "resolved conflict", tone: "warning" as const } : undefined,
+    props.metadata?.previousHasConflicts
+      ? { label: _(ANCHORED_CHIP_DESC.resolvedConflict), tone: "warning" as const }
+      : undefined,
   ]
   const saveDiff = () => saveFilePreviewDiff(props)
   const hasContentInput = () => hasSaveFileContentInput(props)

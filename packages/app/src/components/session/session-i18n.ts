@@ -9,6 +9,9 @@ export const S = {
 
   // conversation.tsx
   convRenderEarlier: { id: "session.conversation.renderEarlier", message: "Render earlier messages" },
+  convQueue: { id: "session.conversation.queue", message: "Queue" },
+  convGuide: { id: "session.conversation.guide", message: "Guide" },
+  convPending: { id: "session.conversation.pending", message: "Pending\u2026" },
   convLoadEarlier: { id: "session.conversation.loadEarlier", message: "Load earlier messages" },
   convLoadingEarlier: { id: "session.conversation.loadingEarlier", message: "Loading earlier messages..." },
   convPausedTooltip: {
@@ -22,6 +25,12 @@ export const S = {
   convWithdraw: { id: "session.conversation.withdraw", message: "Withdraw" },
 
   // permission-dock.tsx
+
+  // conversation.tsx — pending timeline tooltips (these mirror the conv descriptors above
+  // but the checker sees the raw strings in title attributes)
+  convMoveToQueueTitle: { id: "session.conversation.moveToQueueTitle", message: "Move back to queue" },
+  convGuideRunTitle: { id: "session.conversation.guideRunTitle", message: "Guide current run" },
+  convRemovePendingTitle: { id: "session.conversation.removePendingTitle", message: "Remove pending message" },
   permDeny: { id: "session.permission.deny", message: "Deny" },
   permAllowForSession: { id: "session.permission.allowForSession", message: "Allow for session" },
   permAlwaysAllow: { id: "session.permission.alwaysAllow", message: "Always allow" },
@@ -36,6 +45,11 @@ export const S = {
 
   // commands.tsx — command registrations are product UI
   cmdNewSession: { id: "session.cmd.newSession", message: "New session" },
+
+  // prompt-dock.tsx — remaining hardcoded
+  dockLoadingPrompt: { id: "session.dock.loadingPrompt", message: "Loading prompt\u2026" },
+  dockParentSession: { id: "session.dock.parentSession", message: "Parent session" },
+  dockForkSourceTooltip: { id: "session.dock.forkSourceTooltip", message: "Fork source" },
   cmdNewSessionDesc: { id: "session.cmd.newSessionDesc", message: "Start a fresh conversation" },
   cmdOpenFile: { id: "session.cmd.openFile", message: "Open file" },
   cmdOpenFileDesc: { id: "session.cmd.openFileDesc", message: "Search and open a file" },
@@ -88,6 +102,10 @@ export const S = {
     message: "The thinking effort has been changed to {effort}",
   },
   cmdToastFilesRestored: { id: "session.cmd.toast.filesRestored", message: "Files restored" },
+  cmdToastFilesRestoredDesc: {
+    id: "session.cmd.toast.filesRestoredDesc",
+    message: "{count, plural, one {# file} other {# files}} restored",
+  },
   cmdToastNoModel: { id: "session.cmd.toast.noModel", message: "No model selected" },
   cmdToastNoModelDesc: { id: "session.cmd.toast.noModelDesc", message: "Connect a provider to summarize this session" },
 
@@ -113,6 +131,17 @@ export const S = {
   rollbackRestoreFiles: { id: "session.rollback.restoreFiles", message: "Restore files ({count})" },
   rollbackDismiss: { id: "session.rollback.dismiss", message: "Dismiss" },
   rollbackRestoreTooltip: { id: "session.rollback.restoreTooltip", message: "Restore the rewound messages" },
+
+  // rollback-banner.tsx — remaining hardcoded
+  rollbackRequestFailed: { id: "session.rollback.requestFailed", message: "Request failed" },
+  rollbackRedoSuccessDesc: {
+    id: "session.rollback.redoSuccessDesc",
+    message: "Restored {count, plural, one {# message} other {# messages}}",
+  },
+  rollbackRestoreSuccessDesc: {
+    id: "session.rollback.restoreSuccessDesc",
+    message: "{count, plural, one {# file} other {# files}} restored",
+  },
   rollbackCannotRedoTooltip: {
     id: "session.rollback.cannotRedoTooltip",
     message: "New messages have been added; cannot redo this rollback",
@@ -146,6 +175,7 @@ export const S = {
     message:
       "Revert on-disk edits made after this point across {files}. If you leave this off, you can still restore files later from the banner.",
   },
+  rewindRequestFailed: { id: "session.rewind.requestFailed", message: "Request failed" },
 
   // session-progress summary labels
   progressDone: { id: "session.progress.done", message: "Done · {count, plural, one {# task} other {# tasks}}" },
@@ -298,6 +328,7 @@ export const S = {
   },
   inboxGuideFailed: { id: "session.inbox.guideFailed", message: "Failed to send message now" },
   inboxGuideAllFailed: { id: "session.inbox.guideAllFailed", message: "Failed to send queued messages now" },
+  inboxRequestFailed: { id: "session.inbox.requestFailed", message: "Request failed" },
   inboxDelete: { id: "session.inbox.delete", message: "Delete" },
   inboxRemoved: { id: "session.inbox.removed", message: "Removed queued message" },
   inboxRemovedDesc: {
@@ -347,6 +378,135 @@ export const S = {
   scopesPermissionRequest: { id: "scopes.permissionRequest", message: "Permission request" },
   scopesError: { id: "scopes.error", message: "Error" },
   scopesNewActivity: { id: "scopes.newActivity", message: "New activity" },
+
+  // subagent-dock.tsx
+  subagentToolsCount: { id: "session.subagent.toolsCount", message: "{count} tools" },
+  subagentRetry: { id: "session.subagent.retry", message: "Retry #{attempt}" },
+  subagentQueuedWait: { id: "session.subagent.queuedWait", message: "Queued \u2014 waiting for slot" },
+  subagentTapToOpen: { id: "session.subagent.tapToOpen", message: "Tap to open \u00b7 press and hold to cancel" },
+  subagentAriaLabel: {
+    id: "session.subagent.ariaLabel",
+    message: "Open {description}. Press and hold to cancel.",
+  },
+  subagentAriaQueued: { id: "session.subagent.ariaQueued", message: "{agent} queued" },
+  subagentRetryAria: { id: "session.subagent.retryAria", message: "{agent}: Retry #{attempt} \u2014 {message}" },
+
+  // subagent-session-footer.tsx
+  subagentFooterQueued: { id: "session.subagent.footer.queued", message: "Queued" },
+  subagentFooterRunning: { id: "session.subagent.footer.running", message: "Running" },
+  subagentFooterCompleted: { id: "session.subagent.footer.completed", message: "Completed" },
+  subagentFooterError: { id: "session.subagent.footer.error", message: "Error" },
+  subagentFooterCancelled: { id: "session.subagent.footer.cancelled", message: "Cancelled" },
+  subagentFooterInterrupted: { id: "session.subagent.footer.interrupted", message: "Interrupted" },
+  subagentFooterParent: { id: "session.subagent.footer.parent", message: "Parent" },
+  subagentFooterRetry: { id: "session.subagent.footer.retry", message: "Retry #{attempt}" },
+
+  // worktree-progress-components.tsx
+  worktreeStepActive: { id: "session.worktree.step.active", message: "In progress" },
+  worktreeStepComplete: { id: "session.worktree.step.complete", message: "Done" },
+  worktreeStepPending: { id: "session.worktree.step.pending", message: "Pending" },
+
+  // worktree-transition-card.tsx
+  worktreeCardMainCheckout: { id: "session.worktree.card.mainCheckout", message: "Main checkout" },
+  worktreeCardSessionWorktree: { id: "session.worktree.card.sessionWorktree", message: "Session worktree" },
+  worktreeCardWorktreeSession: { id: "session.worktree.card.worktreeSession", message: "Worktree session" },
+  worktreeCardDismissAria: { id: "session.worktree.card.dismissAria", message: "Dismiss worktree status" },
+  worktreeCardDismissTitle: { id: "session.worktree.card.dismissTitle", message: "Dismiss" },
+  worktreeCardRetry: { id: "session.worktree.card.retry", message: "Retry" },
+
+  // worktree-transition-dialog.tsx
+  worktreeDialogTitle: { id: "session.worktree.dialog.title", message: "Move session to worktree?" },
+  worktreeDialogDesc: {
+    id: "session.worktree.dialog.desc",
+    message: "Create an isolated checkout and move this session into it. The main checkout stays unchanged.",
+  },
+  worktreeDialogNameLabel: { id: "session.worktree.dialog.nameLabel", message: "Worktree name" },
+  worktreeDialogNamePlaceholder: { id: "session.worktree.dialog.namePlaceholder", message: "Auto-generated" },
+  worktreeDialogCancel: { id: "session.worktree.dialog.cancel", message: "Cancel" },
+  worktreeDialogCreate: { id: "session.worktree.dialog.create", message: "Create worktree" },
+
+  // worktree-session.ts — factory step labels
+  worktreeStepCreateCheckout: { id: "session.worktree.step.createCheckout", message: "Create checkout" },
+  worktreeStepBindWorktree: { id: "session.worktree.step.bindWorktree", message: "Bind worktree" },
+  worktreeStepPrepareSession: { id: "session.worktree.step.prepareSession", message: "Prepare session" },
+  worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
+  worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to main checkout" },
+  worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and bind checkout" },
+
+  // worktree-session.ts — factory detail strings
+  worktreeDetailPreparingWorktree: {
+    id: "session.worktree.detail.preparingWorktree",
+    message: "Preparing a new git worktree.",
+  },
+  worktreeDetailUsingCheckout: { id: "session.worktree.detail.usingCheckout", message: "Using the selected checkout." },
+  worktreeDetailUpdatingWorkspace: {
+    id: "session.worktree.detail.updatingWorkspace",
+    message: "Updating this session workspace.",
+  },
+  worktreeDetailPreparingWorktreeBind: {
+    id: "session.worktree.detail.preparingWorktreeBind",
+    message: "Preparing the worktree and updating this session workspace.",
+  },
+  worktreeDetailWorkspaceUpdated: {
+    id: "session.worktree.detail.workspaceUpdated",
+    message: "Session workspace updated.",
+  },
+  worktreeDetailCreatingConversation: {
+    id: "session.worktree.detail.creatingConversation",
+    message: "Creating the conversation state.",
+  },
+  worktreeDetailDispatchingPrompt: {
+    id: "session.worktree.detail.dispatchingPrompt",
+    message: "Dispatching your first message.",
+  },
+  worktreeDetailConversationReady: {
+    id: "session.worktree.detail.conversationReady",
+    message: "Conversation state is ready.",
+  },
+  worktreeDetailWorkspaceSetupComplete: {
+    id: "session.worktree.detail.workspaceSetupComplete",
+    message: "Workspace setup complete.",
+  },
+  worktreeDetailPromptDispatched: {
+    id: "session.worktree.detail.promptDispatched",
+    message: "First prompt dispatched.",
+  },
+
+  // worktree-session.ts — factory title/description strings
+  worktreeTitleLeaving: { id: "session.worktree.title.leaving", message: "Leaving worktree" },
+  worktreeDescLeaving: {
+    id: "session.worktree.desc.leaving",
+    message: "Returning this session to the main checkout.",
+  },
+  worktreeTitleMoving: { id: "session.worktree.title.moving", message: "Moving session to worktree" },
+  worktreeDescMoving: {
+    id: "session.worktree.desc.moving",
+    message: "Creating an isolated checkout and binding this session to it.",
+  },
+  worktreeTitleMainActive: { id: "session.worktree.title.mainActive", message: "Main checkout active" },
+  worktreeDescMainActive: {
+    id: "session.worktree.desc.mainActive",
+    message: "This session now runs from the main checkout. The worktree remains available.",
+  },
+  worktreeTitleWorktreeActive: { id: "session.worktree.title.worktreeActive", message: "Worktree active" },
+  worktreeDescWorktreeActive: {
+    id: "session.worktree.desc.worktreeActive",
+    message: "This session now runs in the isolated checkout.",
+  },
+  worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Leave worktree failed" },
+  worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Move to worktree failed" },
+  worktreeTitleSetupFailed: { id: "session.worktree.title.setupFailed", message: "Worktree setup failed" },
+  worktreeSetupCommandFailed: { id: "session.worktree.setupCommandFailed", message: "Worktree setup command failed." },
+  worktreeTitleStarting: { id: "session.worktree.title.starting", message: "Starting worktree session" },
+  worktreeDescStarting: {
+    id: "session.worktree.desc.starting",
+    message: "Preparing the workspace and sending your first prompt.",
+  },
+  worktreeTitleStarted: { id: "session.worktree.title.started", message: "Worktree session started" },
+  worktreeDescStarted: {
+    id: "session.worktree.desc.started",
+    message: "The session is ready and your prompt was sent.",
+  },
   scopesNewSession: { id: "scopes.newSession", message: "New session" },
   scopesTasksRunning: { id: "scopes.tasksRunning", message: "{running}/{count} tasks running" },
   scopesTasksCount: { id: "scopes.tasksCount", message: "{count} tasks" },

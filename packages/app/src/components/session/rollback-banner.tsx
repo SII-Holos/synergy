@@ -40,7 +40,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
       showToast({
         type: "success",
         title: _(S.rollbackRedoComplete),
-        description: `Restored ${numMessages} message${numMessages === 1 ? "" : "s"}`,
+        description: i18n._({ ...S.rollbackRedoSuccessDesc, values: { count: numMessages } }),
       })
       props.onDismiss()
     } catch (err) {
@@ -50,7 +50,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
         showToast({
           type: "error",
           title: _(S.rollbackRedoFailed),
-          description: err instanceof Error ? err.message : "Request failed",
+          description: err instanceof Error ? err.message : _(S.rollbackRequestFailed),
         })
       }
     }
@@ -67,13 +67,13 @@ export function RollbackBanner(props: RollbackBannerProps) {
       showToast({
         type: "success",
         title: _(S.rollbackFilesRestored),
-        description: `${count} file${count === 1 ? "" : "s"} restored`,
+        description: i18n._({ ...S.rollbackRestoreSuccessDesc, values: { count } }),
       })
     } catch (err) {
       showToast({
         type: "error",
         title: _(S.rollbackFilesRestoreFailed),
-        description: err instanceof Error ? err.message : "Request failed",
+        description: err instanceof Error ? err.message : _(S.rollbackRequestFailed),
       })
     }
   }

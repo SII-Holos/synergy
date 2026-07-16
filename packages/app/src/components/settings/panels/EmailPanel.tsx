@@ -56,6 +56,14 @@ const imapPassTitle = { id: "settings.email.imap.pass.title", message: "Password
 const imapPassDesc = { id: "settings.email.imap.pass.desc", message: "IMAP authentication password." }
 const encImapTitle = { id: "settings.email.imap.enc.title", message: "Encrypted IMAP" }
 const encImapDesc = { id: "settings.email.imap.enc.desc", message: "Use TLS or SSL for inbox access." }
+const smtpHostPlaceholder = { id: "settings.email.smtp.host.placeholder", message: "smtp.example.com" }
+const smtpPortPlaceholder = { id: "settings.email.smtp.port.placeholder", message: "465" }
+const smtpUserPlaceholder = { id: "settings.email.smtp.user.placeholder", message: "agent@example.com" }
+const fromAddrPlaceholder = { id: "settings.email.smtp.fromAddr.placeholder", message: "agent@example.com" }
+const fromNamePlaceholder = { id: "settings.email.smtp.fromName.placeholder", message: "Synergy" }
+const imapHostPlaceholder = { id: "settings.email.imap.host.placeholder", message: "imap.example.com" }
+const imapPortPlaceholder = { id: "settings.email.imap.port.placeholder", message: "993" }
+const imapUserPlaceholder = { id: "settings.email.imap.user.placeholder", message: "agent@example.com" }
 
 export function EmailPanel(props: {
   email: EmailSettings
@@ -87,7 +95,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="smtp.example.com"
+                placeholder={_(smtpHostPlaceholder)}
                 value={email.smtpHost}
                 onChange={(v) => onEmailChange("smtpHost", v)}
               />
@@ -99,7 +107,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="number"
-                placeholder="465"
+                placeholder={_(smtpPortPlaceholder)}
                 value={email.smtpPort}
                 onChange={(v) => onEmailChange("smtpPort", v)}
               />
@@ -111,7 +119,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="agent@example.com"
+                placeholder={_(smtpUserPlaceholder)}
                 value={email.smtpUsername}
                 onChange={(v) => onEmailChange("smtpUsername", v)}
               />
@@ -134,7 +142,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="agent@example.com"
+                placeholder={_(fromAddrPlaceholder)}
                 value={email.fromAddress}
                 onChange={(v) => onEmailChange("fromAddress", v)}
               />
@@ -146,7 +154,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="Synergy"
+                placeholder={_(fromNamePlaceholder)}
                 value={email.fromName}
                 onChange={(v) => onEmailChange("fromName", v)}
               />
@@ -173,7 +181,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="imap.example.com"
+                placeholder={_(imapHostPlaceholder)}
                 value={email.imapHost}
                 onChange={(v) => onEmailChange("imapHost", v)}
               />
@@ -185,7 +193,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="number"
-                placeholder="993"
+                placeholder={_(imapPortPlaceholder)}
                 value={email.imapPort}
                 onChange={(v) => onEmailChange("imapPort", v)}
               />
@@ -197,7 +205,7 @@ export function EmailPanel(props: {
             trailing={
               <TextField
                 type="text"
-                placeholder="agent@example.com"
+                placeholder={_(imapUserPlaceholder)}
                 value={email.imapUsername}
                 onChange={(v) => onEmailChange("imapUsername", v)}
               />

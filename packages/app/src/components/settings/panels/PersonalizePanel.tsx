@@ -4,6 +4,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Show, onMount } from "solid-js"
+import { useLocale } from "@/context/locale"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { PersonalizeController } from "./personalize-controller"
@@ -38,6 +39,7 @@ const noGlobalFile = {
   id: "settings.personalize.noGlobalFile",
   message: "No global instructions file exists yet. Saving creates AGENTS.override.md.",
 }
+const retryLabel = { id: "settings.personalize.retry", message: "Retry" }
 const loadingLabel = { id: "settings.personalize.loading", message: "Loading global instructions..." }
 
 const pageTitle = { id: "settings.personalize.page.title", message: "Personalize" }
@@ -51,9 +53,28 @@ const sectionDescription = {
   message:
     "These instructions join Synergy's existing instruction chain. Project AGENTS.md files remain separate and can add more specific guidance.",
 }
+const showingSource = {
+  id: "settings.personalize.showingSource",
+  message: "Showing {filename}. Saving always writes AGENTS.override.md and preserves AGENTS.md.",
+}
+const byteLimitError = {
+  id: "settings.personalize.byteLimit",
+  message: "Custom instructions cannot exceed {maxBytes} bytes.",
+}
+const inputPlaceholder = {
+  id: "settings.personalize.input.placeholder",
+  message: "Describe your preferred language, response style, engineering conventions, or collaboration rules.",
+}
+const saveCustomInstructionsLabel = {
+  id: "settings.personalize.save.label",
+  message: "Save Custom Instructions",
+}
+const bytesLabel = { id: "settings.personalize.bytes", message: "bytes" }
+const savingLabel = { id: "settings.personalize.saving", message: "Saving..." }
 
 export function PersonalizePanel(props: { controller: PersonalizeController }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const confirm = useConfirm()
   const controller = props.controller
 
@@ -117,7 +138,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
               </Show>
               <Show when={controller.status() === "error"}>
                 <Button type="button" variant="secondary" size="small" onClick={() => void controller.load()}>
-                  Retry
+                  {_(retryLabel)}
                 </Button>
               </Show>
             </div>
@@ -131,8 +152,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
                 </div>
                 <div class="personalize-source-description">
                   <Show when={controller.info()?.sourceFilename} fallback={_(noGlobalFile)}>
-                    Showing {controller.info()?.sourceFilename}. Saving always writes AGENTS.override.md and preserves
-                    AGENTS.md.
+                    {_({ ...showingSource, values: { filename: controller.info()?.sourceFilename ?? "" } })}
                   </Show>
                 </div>
               </div>
@@ -144,7 +164,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
             </div>
 
             <TextField
-              label="Custom instructions"
+              label={_(sectionTitle)}
               hideLabel
               multiline
               class="personalize-instructions-input"
@@ -153,11 +173,11 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
               validationState={controller.overLimit() ? "invalid" : "valid"}
               error={
                 controller.overLimit()
-                  ? `Custom instructions cannot exceed ${controller.info()?.maxBytes} bytes.`
+                  ? _({ ...byteLimitError, values: { maxBytes: String(controller.info()?.maxBytes ?? 0) } })
                   : undefined
               }
               onChange={controller.setContent}
-              placeholder="Describe your preferred language, response style, engineering conventions, or collaboration rules."
+              placeholder={_(inputPlaceholder)}
             />
 
             <div class="personalize-editor-footer">
@@ -165,7 +185,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
                 class="personalize-byte-count"
                 classList={{ "personalize-byte-count-error": controller.overLimit() }}
               >
-                {controller.byteCount().toLocaleString()} / {controller.info()?.maxBytes.toLocaleString()} bytes
+                {fmt.number(controller.byteCount())} / {fmt.number(controller.info()?.maxBytes ?? 0)} {_(bytesLabel)}
               </div>
               <div class="personalize-actions">
                 <Show when={controller.status() === "error"}>
@@ -180,7 +200,7 @@ export function PersonalizePanel(props: { controller: PersonalizeController }) {
                   disabled={!controller.canSave()}
                   onClick={() => void save()}
                 >
-                  {controller.status() === "saving" ? "Saving..." : "Save Custom Instructions"}
+                  {controller.status() === "saving" ? _(savingLabel) : _(saveCustomInstructionsLabel)}
                 </Button>
               </div>
             </div>

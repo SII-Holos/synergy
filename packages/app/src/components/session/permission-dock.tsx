@@ -1,5 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import type { PermissionRequest, ToolPart } from "@ericsanchezok/synergy-sdk"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,6 +10,35 @@ import { useData } from "@ericsanchezok/synergy-ui/context"
 import { ToolRegistry, getToolInfo } from "@ericsanchezok/synergy-ui/message-part"
 import { SmartTool } from "@ericsanchezok/synergy-ui/basic-tool"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+
+const copy = {
+  agent: { id: "session.permissionDock.agent", message: "Agent" },
+  permission: { id: "session.permissionDock.permission", message: "Permission" },
+  outsideWorkspace: {
+    id: "session.permissionDock.risk.outsideWorkspace",
+    message: "Path is outside the workspace boundary",
+  },
+  vcsMetadata: {
+    id: "session.permissionDock.risk.vcsMetadata",
+    message: "Writing to version-control metadata (.git)",
+  },
+  credentials: {
+    id: "session.permissionDock.risk.credentials",
+    message: "Accessing credential directory",
+  },
+  secrets: { id: "session.permissionDock.risk.secrets", message: "Accessing secrets file (.env / credentials)" },
+  destructiveShell: {
+    id: "session.permissionDock.risk.destructiveShell",
+    message: "Destructive shell command",
+  },
+  identity: { id: "session.permissionDock.risk.identity", message: "Acting with your identity" },
+  email: { id: "session.permissionDock.risk.email", message: "Sending email on your behalf" },
+  fromAgent: { id: "session.permissionDock.origin.from", message: "from" },
+  deny: { id: "session.permissionDock.action.deny", message: "Deny" },
+  allowSession: { id: "session.permissionDock.action.allowSession", message: "Allow for session" },
+  alwaysAllow: { id: "session.permissionDock.action.alwaysAllow", message: "Always allow" },
+  allowOnce: { id: "session.permissionDock.action.allowOnce", message: "Allow once" },
+}
 
 export interface PermissionDockProps {
   sessionID: string
@@ -21,6 +52,8 @@ interface PermissionItem {
 
 export function PermissionDock(props: PermissionDockProps) {
   const data = useData()
+  const { _ } = useLingui()
+  const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
 
   const childSessions = createMemo(() => (data.store.session ?? []).filter((s) => s.parentID === props.sessionID))
 
@@ -36,7 +69,7 @@ export function PermissionDock(props: PermissionDockProps) {
         result.push({
           permission: perm,
           origin: "child",
-          sessionTitle: child.title ?? "Agent",
+          sessionTitle: child.title ?? _(copy.agent),
         })
       }
     }
@@ -71,16 +104,18 @@ export function PermissionDock(props: PermissionDockProps) {
 
   const permissionLabel = createMemo(() => {
     const item = activeItem()
-    if (!item) return "Permission"
+    if (!item) return _(copy.permission)
     const part = toolPart()
     if (part) {
       const info = getToolInfo(part.tool, part.state?.input, item.permission.metadata)
-      if (info.subtitle) return `${info.title} ${info.subtitle}`
-      return info.title
+      const title = toolTitle(info.title)
+      if (info.subtitle) return `${title} ${info.subtitle}`
+      return title
     }
     const info = getToolInfo(item.permission.permission, {}, item.permission.metadata ?? {})
-    if (info.subtitle) return `${info.title} ${info.subtitle}`
-    return info.title
+    const title = toolTitle(info.title)
+    if (info.subtitle) return `${title} ${info.subtitle}`
+    return title
   })
 
   const respond = (response: "once" | "session" | "always" | "reject") => {
@@ -99,13 +134,13 @@ export function PermissionDock(props: PermissionDockProps) {
     const meta = item.permission.metadata ?? {}
     const reason = meta.reason ?? meta.why
     if (typeof reason === "string" && reason.trim()) return reason
-    if (meta.workspaceBoundary || meta.outsideWorkspace) return "Path is outside the workspace boundary"
-    if (meta.protectedCategory === "vcs") return "Writing to version-control metadata (.git)"
-    if (meta.protectedCategory === "credentials") return "Accessing credential directory"
-    if (meta.protectedCategory === "secrets") return "Accessing secrets file (.env / credentials)"
-    if (meta.capability === "shell_destructive") return "Destructive shell command"
-    if (meta.capability === "identity_act") return "Acting with your identity"
-    if (meta.capability === "communication_email") return "Sending email on your behalf"
+    if (meta.workspaceBoundary || meta.outsideWorkspace) return _(copy.outsideWorkspace)
+    if (meta.protectedCategory === "vcs") return _(copy.vcsMetadata)
+    if (meta.protectedCategory === "credentials") return _(copy.credentials)
+    if (meta.protectedCategory === "secrets") return _(copy.secrets)
+    if (meta.capability === "shell_destructive") return _(copy.destructiveShell)
+    if (meta.capability === "identity_act") return _(copy.identity)
+    if (meta.capability === "communication_email") return _(copy.email)
     return undefined
   })
 
@@ -117,23 +152,23 @@ export function PermissionDock(props: PermissionDockProps) {
 
   function tabLabel(item: PermissionItem): string {
     const perm = item.permission
-    if (!perm.tool) return perm.permission ?? "Permission"
+    if (!perm.tool) return perm.permission ?? _(copy.permission)
     const { messageID, callID } = perm.tool
     const messages = data.store.message[perm.sessionID] ?? []
-    const message = messages.findLast((m) => m.id === messageID)
+    const message = messages.findLast((candidate) => candidate.id === messageID)
     if (message) {
       const parts = data.store.part[message.id] ?? []
       for (const part of parts) {
         if (part?.type === "tool" && (part as ToolPart).callID === callID) {
           const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
           if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-          return info.title
+          return toolTitle(info.title)
         }
       }
     }
     const info = getToolInfo(perm.permission, {}, perm.metadata ?? {})
     if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-    return info.title
+    return toolTitle(info.title)
   }
 
   const multi = createMemo(() => permissions().length > 1)
@@ -169,7 +204,7 @@ export function PermissionDock(props: PermissionDockProps) {
                     </span>
                     <Show when={item().origin === "child"}>
                       <span class="text-12-regular text-text-subtle shrink-0">
-                        from{" "}
+                        {_(copy.fromAgent)}{" "}
                         <button class="hover:underline cursor-pointer text-text-weak" onClick={navigateToChild}>
                           {item().sessionTitle}
                         </button>
@@ -178,16 +213,16 @@ export function PermissionDock(props: PermissionDockProps) {
                   </div>
                   <div class="flex flex-wrap items-center justify-end gap-1.5 shrink-0">
                     <Button variant="ghost" size="small" onClick={() => respond("reject")}>
-                      Deny
+                      {_(copy.deny)}
                     </Button>
                     <Button variant="ghost" size="small" onClick={() => respond("session")}>
-                      Allow for session
+                      {_(copy.allowSession)}
                     </Button>
                     <Button variant="ghost" size="small" onClick={() => respond("always")}>
-                      Always allow
+                      {_(copy.alwaysAllow)}
                     </Button>
                     <Button variant="primary" size="small" onClick={() => respond("once")}>
-                      Allow once
+                      {_(copy.allowOnce)}
                     </Button>
                   </div>
                 </div>

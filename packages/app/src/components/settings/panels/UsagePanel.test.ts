@@ -1,3 +1,5 @@
+import { createIntlFormatter } from "@/context/locale/formatter"
+
 import { describe, expect, test } from "bun:test"
 import {
   formatUsageResetCompact,
@@ -38,19 +40,20 @@ describe("Usage panel model", () => {
   })
 
   test("formats reset timing as product copy", () => {
+    const fmt = createIntlFormatter(() => "en")
     const resetAt = new Date(now + 90 * 60 * 1000).toISOString()
-    const sentence = formatUsageResetSentence(resetAt, now)
-    const compact = formatUsageResetCompact(resetAt, now)
-
+    const sentence = formatUsageResetSentence(resetAt, fmt, now)
+    const compact = formatUsageResetCompact(resetAt, fmt, now)
     expect(sentence?.value).toMatch(/^Resets today at /)
     expect(sentence?.title).toBe(sentence?.value)
     expect(compact?.value).toMatch(/^Today at /)
     expect(compact?.title).toBe(sentence?.value)
-    expect(formatUsageResetSentence(undefined, now)).toBeUndefined()
-    expect(formatUsageResetSentence("not-a-date", now)).toBeUndefined()
+    expect(formatUsageResetSentence(undefined, fmt, now)).toBeUndefined()
+    expect(formatUsageResetSentence("not-a-date", fmt, now)).toBeUndefined()
   })
 
   test("finds the next future reset across connected snapshots", () => {
+    const fmt = createIntlFormatter(() => "en")
     const earliest = new Date(now + 2 * 60 * 60 * 1000).toISOString()
     const later = new Date(now + 8 * 60 * 60 * 1000).toISOString()
     const past = new Date(now - 60 * 1000).toISOString()
@@ -75,6 +78,7 @@ describe("Usage panel model", () => {
           details: [],
         },
       ],
+      fmt,
       now,
     )
 

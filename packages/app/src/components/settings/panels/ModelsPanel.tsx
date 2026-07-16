@@ -29,6 +29,7 @@ const quickSwitcherDescription = {
   id: "settings.models.quickSwitcher.description",
   message: "Pick the connected models that appear in model switchers and command shortcuts.",
 }
+const connectProviderLabel = { id: "settings.models.connectProvider", message: "Connect provider" }
 
 export function ModelsPanel(props: {
   models: ModelsStore
@@ -83,7 +84,7 @@ export function ModelsPanel(props: {
           icon={getSemanticIcon("action.add")}
           onClick={props.onConnectProvider}
         >
-          Connect provider
+          {_(connectProviderLabel)}
         </Button>
       }
     >

@@ -205,7 +205,7 @@ export function SessionInbox(props: SessionInboxProps) {
       showToast({
         type: "error",
         title: _(S.inboxGuideFailed),
-        description: err instanceof Error ? err.message : "Request failed",
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
       })
     }
   }
@@ -221,7 +221,7 @@ export function SessionInbox(props: SessionInboxProps) {
       showToast({
         type: "error",
         title: _(S.inboxGuideAllFailed),
-        description: err instanceof Error ? err.message : "Request failed",
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
       })
     }
   }

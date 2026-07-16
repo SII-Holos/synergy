@@ -10,11 +10,7 @@
     "locale": {
       "description": "UI locale (system = follow OS, default: system)",
       "type": "string",
-      "enum": [
-        "system",
-        "en",
-        "zh-CN"
-      ]
+      "enum": ["system", "en", "zh-CN"]
     },
     "theme": {
       "description": "Theme name to use for the interface",
@@ -24,12 +20,7 @@
       "description": "Log level",
       "ref": "LogLevel",
       "type": "string",
-      "enum": [
-        "DEBUG",
-        "INFO",
-        "WARN",
-        "ERROR"
-      ]
+      "enum": ["DEBUG", "INFO", "WARN", "ERROR"]
     },
     "server": {
       "description": "Server configuration for synergy serve and web commands",
@@ -82,9 +73,7 @@
             "type": "string"
           }
         },
-        "required": [
-          "template"
-        ],
+        "required": ["template"],
         "additionalProperties": false
       }
     },
@@ -285,9 +274,7 @@
           "additionalProperties": false
         }
       },
-      "required": [
-        "limits"
-      ],
+      "required": ["limits"],
       "additionalProperties": false
     },
     "pluginMarketplace": {
@@ -470,17 +457,10 @@
               "state": {
                 "description": "Whether to force-add or force-remove the model from the quick switcher",
                 "type": "string",
-                "enum": [
-                  "add",
-                  "remove"
-                ]
+                "enum": ["add", "remove"]
               }
             },
-            "required": [
-              "providerID",
-              "modelID",
-              "state"
-            ],
+            "required": ["providerID", "modelID", "state"],
             "additionalProperties": false
           }
         }
@@ -585,11 +565,7 @@
             "properties": {
               "level": {
                 "type": "string",
-                "enum": [
-                  "featured",
-                  "recommended",
-                  "standard"
-                ]
+                "enum": ["featured", "recommended", "standard"]
               },
               "rank": {
                 "type": "integer",
@@ -616,20 +592,14 @@
                     "type": "string"
                   }
                 },
-                "required": [
-                  "kind",
-                  "label",
-                  "url"
-                ],
+                "required": ["kind", "label", "url"],
                 "additionalProperties": false
               },
               "defaultModel": {
                 "type": "string"
               }
             },
-            "required": [
-              "level"
-            ],
+            "required": ["level"],
             "additionalProperties": false
           },
           "env": {
@@ -683,9 +653,7 @@
                         "items": {}
                       }
                     },
-                    "required": [
-                      "type"
-                    ],
+                    "required": ["type"],
                     "additionalProperties": false
                   }
                 },
@@ -706,15 +674,10 @@
                       "properties": {
                         "field": {
                           "type": "string",
-                          "enum": [
-                            "reasoning_content",
-                            "reasoning_details"
-                          ]
+                          "enum": ["reasoning_content", "reasoning_details"]
                         }
                       },
-                      "required": [
-                        "field"
-                      ],
+                      "required": ["field"],
                       "additionalProperties": false
                     }
                   ]
@@ -750,17 +713,11 @@
                           "type": "number"
                         }
                       },
-                      "required": [
-                        "input",
-                        "output"
-                      ],
+                      "required": ["input", "output"],
                       "additionalProperties": false
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
+                  "required": ["input", "output"],
                   "additionalProperties": false
                 },
                 "limit": {
@@ -776,10 +733,7 @@
                       "type": "number"
                     }
                   },
-                  "required": [
-                    "context",
-                    "output"
-                  ],
+                  "required": ["context", "output"],
                   "additionalProperties": false
                 },
                 "modalities": {
@@ -789,33 +743,18 @@
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": [
-                          "text",
-                          "audio",
-                          "image",
-                          "video",
-                          "pdf"
-                        ]
+                        "enum": ["text", "audio", "image", "video", "pdf"]
                       }
                     },
                     "output": {
                       "type": "array",
                       "items": {
                         "type": "string",
-                        "enum": [
-                          "text",
-                          "audio",
-                          "image",
-                          "video",
-                          "pdf"
-                        ]
+                        "enum": ["text", "audio", "image", "video", "pdf"]
                       }
                     }
                   },
-                  "required": [
-                    "input",
-                    "output"
-                  ],
+                  "required": ["input", "output"],
                   "additionalProperties": false
                 },
                 "supported_image_media_types": {
@@ -826,11 +765,7 @@
                 },
                 "status": {
                   "type": "string",
-                  "enum": [
-                    "alpha",
-                    "beta",
-                    "deprecated"
-                  ]
+                  "enum": ["alpha", "beta", "deprecated"]
                 },
                 "options": {
                   "type": "object",
@@ -855,9 +790,7 @@
                       "type": "string"
                     }
                   },
-                  "required": [
-                    "npm"
-                  ],
+                  "required": ["npm"],
                   "additionalProperties": false
                 },
                 "variants": {
@@ -1311,11 +1244,7 @@
                   "startup": {
                     "description": "MCP startup mode",
                     "type": "string",
-                    "enum": [
-                      "eager",
-                      "lazy",
-                      "manual"
-                    ]
+                    "enum": ["eager", "lazy", "manual"]
                   },
                   "required": {
                     "description": "If true, this MCP server is required for the configured workflow",
@@ -1406,11 +1335,7 @@
                       "approval": {
                         "description": "Tool approval mode",
                         "type": "string",
-                        "enum": [
-                          "auto",
-                          "always",
-                          "per_session"
-                        ]
+                        "enum": ["auto", "always", "per_session"]
                       },
                       "maxOutputBytes": {
                         "description": "Maximum tool output size in bytes",
@@ -1429,11 +1354,7 @@
                       "mode": {
                         "description": "Tool list caching mode",
                         "type": "string",
-                        "enum": [
-                          "disabled",
-                          "session",
-                          "persistent"
-                        ]
+                        "enum": ["disabled", "session", "persistent"]
                       },
                       "ttlMs": {
                         "description": "Time-to-live for cached tool list in ms",
@@ -1445,10 +1366,7 @@
                     "additionalProperties": false
                   }
                 },
-                "required": [
-                  "type",
-                  "command"
-                ],
+                "required": ["type", "command"],
                 "additionalProperties": false
               },
               {
@@ -1515,11 +1433,7 @@
                   "startup": {
                     "description": "MCP startup mode",
                     "type": "string",
-                    "enum": [
-                      "eager",
-                      "lazy",
-                      "manual"
-                    ]
+                    "enum": ["eager", "lazy", "manual"]
                   },
                   "required": {
                     "description": "If true, this MCP server is required for the configured workflow",
@@ -1610,11 +1524,7 @@
                       "approval": {
                         "description": "Tool approval mode",
                         "type": "string",
-                        "enum": [
-                          "auto",
-                          "always",
-                          "per_session"
-                        ]
+                        "enum": ["auto", "always", "per_session"]
                       },
                       "maxOutputBytes": {
                         "description": "Maximum tool output size in bytes",
@@ -1633,11 +1543,7 @@
                       "mode": {
                         "description": "Tool list caching mode",
                         "type": "string",
-                        "enum": [
-                          "disabled",
-                          "session",
-                          "persistent"
-                        ]
+                        "enum": ["disabled", "session", "persistent"]
                       },
                       "ttlMs": {
                         "description": "Time-to-live for cached tool list in ms",
@@ -1649,10 +1555,7 @@
                     "additionalProperties": false
                   }
                 },
-                "required": [
-                  "type",
-                  "url"
-                ],
+                "required": ["type", "url"],
                 "additionalProperties": false
               }
             ]
@@ -1664,9 +1567,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "enabled"
-            ],
+            "required": ["enabled"],
             "additionalProperties": false
           }
         ]
@@ -1680,11 +1581,7 @@
         "startup": {
           "description": "MCP startup mode",
           "type": "string",
-          "enum": [
-            "eager",
-            "lazy",
-            "manual"
-          ]
+          "enum": ["eager", "lazy", "manual"]
         },
         "required": {
           "description": "If true, this MCP server is required for the configured workflow",
@@ -1775,11 +1672,7 @@
             "approval": {
               "description": "Tool approval mode",
               "type": "string",
-              "enum": [
-                "auto",
-                "always",
-                "per_session"
-              ]
+              "enum": ["auto", "always", "per_session"]
             },
             "maxOutputBytes": {
               "description": "Maximum tool output size in bytes",
@@ -1798,11 +1691,7 @@
             "mode": {
               "description": "Tool list caching mode",
               "type": "string",
-              "enum": [
-                "disabled",
-                "session",
-                "persistent"
-              ]
+              "enum": ["disabled", "session", "persistent"]
             },
             "ttlMs": {
               "description": "Time-to-live for cached tool list in ms",
@@ -1856,10 +1745,7 @@
                     "domain": {
                       "description": "Feishu domain (feishu for China, lark for international)",
                       "type": "string",
-                      "enum": [
-                        "feishu",
-                        "lark"
-                      ]
+                      "enum": ["feishu", "lark"]
                     },
                     "allowDM": {
                       "description": "Allow direct messages",
@@ -1896,12 +1782,7 @@
                       "description": "Session scoping strategy for group chats",
                       "default": "group",
                       "type": "string",
-                      "enum": [
-                        "group",
-                        "group_sender",
-                        "group_topic",
-                        "group_topic_sender"
-                      ]
+                      "enum": ["group", "group_sender", "group_topic", "group_topic_sender"]
                     },
                     "inboundDebounceMs": {
                       "description": "Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)",
@@ -1945,10 +1826,7 @@
               "domain": {
                 "description": "Default domain for all accounts",
                 "type": "string",
-                "enum": [
-                  "feishu",
-                  "lark"
-                ]
+                "enum": ["feishu", "lark"]
               },
               "streaming": {
                 "description": "Default streaming setting for all accounts",
@@ -1956,11 +1834,7 @@
                 "type": "boolean"
               }
             },
-            "required": [
-              "type",
-              "accounts",
-              "streaming"
-            ],
+            "required": ["type", "accounts", "streaming"],
             "additionalProperties": false
           }
         ]
@@ -1978,11 +1852,7 @@
         "fallbackPolicy": {
           "description": "How to proceed when the requested sandbox runtime is unavailable (default: 'warn')",
           "type": "string",
-          "enum": [
-            "warn",
-            "allow",
-            "deny"
-          ]
+          "enum": ["warn", "allow", "deny"]
         },
         "backend": {
           "description": "Force a specific sandbox backend. 'auto' (default) selects the platform-native backend. Valid: 'auto' (platform default), 'seatbelt-deny-default' (macOS deny-default SBPL), 'seatbelt-legacy-allow-default' (macOS allow-default SBPL), 'synergy-sandbox-linux' (Linux bundled bwrap), 'bwrap-inline-debug' (Linux in-tree bwrap debug), 'windows-restricted-token' (Windows MVP), 'windows-elevated' (Windows full, future).",
@@ -2004,11 +1874,7 @@
             "mode": {
               "description": "Network access mode within the sandbox (default: 'restricted')",
               "type": "string",
-              "enum": [
-                "restricted",
-                "proxy_only",
-                "full"
-              ]
+              "enum": ["restricted", "proxy_only", "full"]
             }
           },
           "additionalProperties": false
@@ -2046,11 +1912,7 @@
             "level": {
               "description": "Windows sandbox level (default: 'restricted-token')",
               "type": "string",
-              "enum": [
-                "disabled",
-                "restricted-token",
-                "elevated"
-              ]
+              "enum": ["disabled", "restricted-token", "elevated"]
             },
             "helperPath": {
               "description": "Path to the synergy-sandbox-windows.exe helper binary",
@@ -2248,11 +2110,7 @@
       "description": "Default control profile applied to all agents",
       "ref": "ControlProfileId",
       "type": "string",
-      "enum": [
-        "guarded",
-        "autonomous",
-        "full_access"
-      ]
+      "enum": ["guarded", "autonomous", "full_access"]
     },
     "holos": {
       "description": "Holos platform configuration",
@@ -2280,12 +2138,7 @@
           "type": "string"
         }
       },
-      "required": [
-        "enabled",
-        "apiUrl",
-        "wsUrl",
-        "portalUrl"
-      ],
+      "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
       "additionalProperties": false
     },
     "email": {
@@ -2441,9 +2294,7 @@
                     "const": true
                   }
                 },
-                "required": [
-                  "disabled"
-                ],
+                "required": ["disabled"],
                 "additionalProperties": false
               },
               {
@@ -2481,9 +2332,7 @@
                     "additionalProperties": {}
                   }
                 },
-                "required": [
-                  "command"
-                ],
+                "required": ["command"],
                 "additionalProperties": false
               }
             ]
@@ -2501,18 +2350,11 @@
       "properties": {
         "severity": {
           "type": "string",
-          "enum": [
-            "error",
-            "warning"
-          ]
+          "enum": ["error", "warning"]
         },
         "scope": {
           "type": "string",
-          "enum": [
-            "delta",
-            "file",
-            "project"
-          ]
+          "enum": ["delta", "file", "project"]
         }
       },
       "additionalProperties": false
@@ -2541,10 +2383,7 @@
       "description": "@deprecated Always uses stretch layout.",
       "ref": "LayoutConfig",
       "type": "string",
-      "enum": [
-        "auto",
-        "stretch"
-      ]
+      "enum": ["auto", "stretch"]
     },
     "permission": {
       "ref": "PermissionConfig"
@@ -2662,12 +2501,7 @@
           "type": "array",
           "items": {
             "type": "string",
-            "enum": [
-              "info",
-              "success",
-              "warning",
-              "error"
-            ]
+            "enum": ["info", "success", "warning", "error"]
           }
         },
         "durationOverrides": {
@@ -2675,12 +2509,7 @@
           "type": "object",
           "propertyNames": {
             "type": "string",
-            "enum": [
-              "info",
-              "success",
-              "warning",
-              "error"
-            ]
+            "enum": ["info", "success", "warning", "error"]
           },
           "additionalProperties": {
             "type": "integer",

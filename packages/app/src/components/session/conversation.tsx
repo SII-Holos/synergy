@@ -15,6 +15,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionWorkspaceProgress, SessionWorkspaceProgressActions } from "./worktree-session"
 import { WorktreeTransitionCard } from "./worktree-transition-card"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -51,6 +53,8 @@ export function SessionConversation(props: {
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <ConversationViewport
@@ -93,7 +97,7 @@ export function SessionConversation(props: {
             class="text-12-medium opacity-50"
             onClick={() => props.onSetTurnStart(Math.max(0, props.turnStart - props.turnBatch))}
           >
-            Render earlier messages
+            {_(S.convRenderEarlier)}
           </Button>
         </div>
       </Show>
@@ -106,7 +110,7 @@ export function SessionConversation(props: {
             disabled={props.historyLoading()}
             onClick={props.onLoadMore}
           >
-            {props.historyLoading() ? "Loading earlier messages..." : "Load earlier messages"}
+            {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
           </Button>
         </div>
       </Show>
@@ -192,11 +196,11 @@ export function SessionConversation(props: {
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
               const isTask = () => item.mode === "task"
-              const guideLabel = () => (item.mode === "steer" ? "Queue" : "Guide")
+              const guideLabel = () => (item.mode === "steer" ? _(S.convQueue) : _(S.convGuide))
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
                   ? (item.message!.parts[0] as { text: string }).text
-                  : (item.summary?.title ?? "Pending…")
+                  : (item.summary?.title ?? _(S.convPending))
               return (
                 <div
                   data-slot="pending-timeline-item"
@@ -208,11 +212,8 @@ export function SessionConversation(props: {
                     when={props.rollbackActive}
                     fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}
                   >
-                    <span
-                      class="text-xs opacity-70"
-                      title="Delivery paused during rollback. Will resume on redo or new task."
-                    >
-                      <Icon name={getSemanticIcon("agenda.main")} size="small" /> Paused
+                    <span class="text-xs opacity-70" title={_(S.convPausedTooltip)}>
+                      <Icon name={getSemanticIcon("agenda.main")} size="small" /> {_(S.convPaused)}
                     </span>
                   </Show>
                   <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
@@ -222,7 +223,7 @@ export function SessionConversation(props: {
                     <button
                       type="button"
                       class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title={item.mode === "steer" ? "Move back to queue" : "Guide current run"}
+                      title={item.mode === "steer" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
                       onClick={() => props.onPendingGuide?.(item)}
                     >
                       <Icon name={item.mode === "steer" ? "corner-down-left" : "zap"} size="small" />
@@ -231,11 +232,11 @@ export function SessionConversation(props: {
                     <button
                       type="button"
                       class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title="Remove pending message"
+                      title={_(S.convRemovePendingTitle)}
                       onClick={() => props.onPendingRemove?.(item)}
                     >
                       <Icon name={getSemanticIcon("action.close")} size="small" />
-                      <span>Withdraw</span>
+                      <span>{_(S.convWithdraw)}</span>
                     </button>
                   </div>
                 </div>

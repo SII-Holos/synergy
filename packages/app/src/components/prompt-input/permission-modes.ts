@@ -33,27 +33,25 @@ export const P = {
 export const PERMISSION_MODES: PermissionModeVisual[] = [
   {
     id: "guarded",
-    label: "Guarded",
-    shortLabel: "Guarded",
-    description:
-      "Auto-approve reads, safe edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
+    label: P.modeGuarded.message,
+    shortLabel: P.modeGuardedShort.message,
+    description: P.modeGuardedDesc.message,
     icon: "permission.guarded",
     iconClass: "text-icon-success-base",
   },
   {
     id: "autonomous",
-    label: "Autonomous",
-    shortLabel: "Auto",
-    description:
-      "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
+    label: P.modeAutonomous.message,
+    shortLabel: P.modeAutonomousShort.message,
+    description: P.modeAutonomousDesc.message,
     icon: "permission.autonomous",
     iconClass: "text-icon-interactive-base",
   },
   {
     id: "full_access",
-    label: "Full Access",
-    shortLabel: "Full",
-    description: "Allow all tool requests without approval prompts or workspace sandboxing.",
+    label: P.modeFullAccess.message,
+    shortLabel: P.modeFullAccessShort.message,
+    description: P.modeFullAccessDesc.message,
     icon: "permission.fullAccess",
     iconClass: "text-icon-warning-base",
   },

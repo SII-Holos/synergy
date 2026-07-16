@@ -15,6 +15,8 @@ const localTypeLabel = { id: "settings.mcp.card.type.local", message: "Local com
 const remoteTypeLabel = { id: "settings.mcp.card.type.remote", message: "Remote endpoint" }
 const commandNotSet = { id: "settings.mcp.card.commandNotSet", message: "Command not set" }
 const urlNotSet = { id: "settings.mcp.card.urlNotSet", message: "URL not set" }
+const localPillLabel = { id: "settings.mcp.card.pill.local", message: "Local" }
+const remotePillLabel = { id: "settings.mcp.card.pill.remote", message: "Remote" }
 const enabledLabel = { id: "settings.mcp.card.enabled", message: "Enabled" }
 const pausedLabel = { id: "settings.mcp.card.paused", message: "Paused" }
 const collapseLabel = { id: "settings.mcp.card.collapse", message: "Collapse server details" }
@@ -49,6 +51,16 @@ const startupTimeoutLabel = { id: "settings.mcp.card.startupTimeout", message: "
 const startupTimeoutDesc = {
   id: "settings.mcp.card.startupTimeout.description",
   message: "Milliseconds to wait before treating the server as unavailable.",
+}
+const startCmdPlaceholder = {
+  id: "settings.mcp.card.startCmd.placeholder",
+  message: "npx -y @modelcontextprotocol/server-filesystem C:\\Projects",
+}
+const envPlaceholder = { id: "settings.mcp.card.env.placeholder", message: "KEY=value ANOTHER=value" }
+const serverUrlPlaceholder = { id: "settings.mcp.card.serverUrl.placeholder", message: "https://mcp.example.com/sse" }
+const headersPlaceholder = {
+  id: "settings.mcp.card.headers.placeholder",
+  message: "Authorization: Bearer token X-Custom: value",
 }
 
 export function McpCard(props: {
@@ -127,8 +139,8 @@ export function McpCard(props: {
               <SegmentPill
                 value={props.entry.type}
                 options={[
-                  { value: "local", label: "Local" },
-                  { value: "remote", label: "Remote" },
+                  { value: "local", label: _(localPillLabel) },
+                  { value: "remote", label: _(remotePillLabel) },
                 ]}
                 onChange={(value) => props.onChange("type", value)}
               />
@@ -139,7 +151,7 @@ export function McpCard(props: {
             <TextField
               type="text"
               label={_(startCommandLabel)}
-              placeholder="npx -y @modelcontextprotocol/server-filesystem C:\\Projects"
+              placeholder={_(startCmdPlaceholder)}
               description={_(startCommandDesc)}
               value={props.entry.command}
               onChange={(value) => props.onChange("command", value)}
@@ -148,7 +160,7 @@ export function McpCard(props: {
               type="text"
               multiline
               label={_(envLabel)}
-              placeholder={"KEY=value\nANOTHER=value"}
+              placeholder={_(envPlaceholder)}
               description={_(envDesc)}
               value={props.entry.environment}
               onChange={(value) => props.onChange("environment", value)}
@@ -159,7 +171,7 @@ export function McpCard(props: {
             <TextField
               type="text"
               label={_(serverUrlLabel)}
-              placeholder="https://mcp.example.com/sse"
+              placeholder={_(serverUrlPlaceholder)}
               description={_(serverUrlDesc)}
               value={props.entry.url}
               onChange={(value) => props.onChange("url", value)}
@@ -168,7 +180,7 @@ export function McpCard(props: {
               type="text"
               multiline
               label={_(headersLabel)}
-              placeholder={"Authorization: Bearer token\nX-Custom: value"}
+              placeholder={_(headersPlaceholder)}
               description={_(headersDesc)}
               value={props.entry.headers}
               onChange={(value) => props.onChange("headers", value)}

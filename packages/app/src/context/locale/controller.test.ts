@@ -158,6 +158,28 @@ describe("createLocaleController", () => {
     })
   })
 
+  test("stale catalog preparation cannot commit after a newer switch", async () => {
+    const ctrl = createLocaleController(makeStorage())
+    const commits: string[] = []
+    let releaseZh!: () => void
+    const zhReady = new Promise<void>((resolve) => {
+      releaseZh = resolve
+    })
+    ctrl.setActivation(async (locale) => {
+      if (locale === "zh-CN") await zhReady
+      return () => commits.push(locale)
+    })
+
+    const stale = ctrl.setPreference("zh-CN")
+    const current = ctrl.setPreference("en")
+    await current
+    releaseZh()
+    await stale
+
+    expect(commits).toEqual(["en"])
+    expect(ctrl.activeLocale()).toBe("en")
+  })
+
   describe("reconcileGlobalPreference", () => {
     test("applies when no pending preference", async () => {
       const ctrl = createLocaleController(makeStorage())
@@ -174,6 +196,7 @@ describe("createLocaleController", () => {
       await ctrl.reconcileGlobalPreference("en")
       await prefPromise
       expect(ctrl.preference()).toBe("en")
+      expect(ctrl.source()).toBe("global-config")
     })
 
     test("does not overwrite when pending differs from config", async () => {
@@ -196,6 +219,22 @@ describe("createLocaleController", () => {
       await ctrl.reconcileGlobalPreference(undefined)
       expect(ctrl.preference()).toBe("system")
       expect(ctrl.source()).not.toBe("global-config")
+    })
+
+    test("removing a global override activates the resolved system catalog", async () => {
+      const ctrl = createLocaleController(makeStorage(), ["zh-CN"])
+      const commits: string[] = []
+      ctrl.setActivation(async (locale) => () => {
+        commits.push(locale)
+      })
+
+      await ctrl.reconcileGlobalPreference("en")
+      await ctrl.reconcileGlobalPreference(undefined)
+
+      expect(commits).toEqual(["en", "zh-CN"])
+      expect(ctrl.preference()).toBe("system")
+      expect(ctrl.activeLocale()).toBe("zh-CN")
+      expect(ctrl.source()).toBe("system")
     })
   })
 

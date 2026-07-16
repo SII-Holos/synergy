@@ -4,7 +4,8 @@ export type LocalePreference = "system" | "en" | "zh-CN"
 export type ActiveLocale = "en" | "zh-CN"
 export type LocaleSource = "bootstrap-mirror" | "system" | "global-config" | "user" | "fallback"
 
-export type ActivationFn = (locale: ActiveLocale) => Promise<void>
+export type ActivationCommit = () => void
+export type ActivationFn = (locale: ActiveLocale) => Promise<void | ActivationCommit>
 
 export interface LocaleEpoch {
   locale: ActiveLocale

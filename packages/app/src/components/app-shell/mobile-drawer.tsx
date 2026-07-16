@@ -19,10 +19,10 @@ import { archiveSessionConfirm } from "@/components/dialog/confirm-copy"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLingui } from "@lingui/solid"
+import { appShell } from "@/locales/messages"
 
 export function MobileDrawer() {
   const layout = useLayout()
-  const globalSync = useGlobalSync()
   const navigate = useNavigate()
   const params = useParams()
   const notification = useNotification()
@@ -92,7 +92,7 @@ export function MobileDrawer() {
           ref={drawerRef}
           role="dialog"
           aria-modal="true"
-          aria-label={_({ id: "mobile.drawer.nav.label", message: "Navigation" })}
+          aria-label={_(appShell.navLabel)}
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-left"
           style={{ animation: "mobileDrawerSlideIn 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
@@ -108,7 +108,7 @@ export function MobileDrawer() {
             <button
               ref={closeButtonRef}
               type="button"
-              aria-label={_({ id: "mobile.drawer.close.label", message: "Close navigation" })}
+              aria-label={_(appShell.closeNav)}
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
               onClick={close}
             >
@@ -150,21 +150,22 @@ export function MobileDrawer() {
   )
 }
 
+type DrawerToolID = "agenda" | "library" | "performance" | "plugins" | "notes" | "browser"
+
 interface DrawerTool {
-  id: string
-  label: string
+  id: DrawerToolID
   icon: SemanticIconTokenName
   href?: string
   panelId?: string
 }
 
 const DRAWER_TOOLS: DrawerTool[] = [
-  { id: "agenda", label: "Agenda", icon: "agenda.main", href: "/agenda" },
-  { id: "library", label: "Library", icon: "library.main", href: "/library" },
-  { id: "performance", label: "Performance", icon: "performance.main", href: "/performance" },
-  { id: "plugins", label: "Plugins", icon: "plugins.main", href: "/plugins/marketplace" },
-  { id: "notes", label: "Notes", icon: "notes.main", panelId: "notes" },
-  { id: "browser", label: "Browser", icon: "browser.main", panelId: "browser" },
+  { id: "agenda", icon: "agenda.main", href: "/agenda" },
+  { id: "library", icon: "library.main", href: "/library" },
+  { id: "performance", icon: "performance.main", href: "/performance" },
+  { id: "plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+  { id: "notes", icon: "notes.main", panelId: "notes" },
+  { id: "browser", icon: "browser.main", panelId: "browser" },
 ]
 
 function ScopeListView(props: {
@@ -180,6 +181,14 @@ function ScopeListView(props: {
   const params = useParams()
   const workbench = useWorkbenchPanels()
   const { _ } = useLingui()
+  const toolLabel = (id: DrawerToolID) => {
+    if (id === "agenda") return _(appShell.agenda)
+    if (id === "library") return _(appShell.library)
+    if (id === "performance") return _(appShell.performance)
+    if (id === "plugins") return _(appShell.plugins)
+    if (id === "notes") return _(appShell.notes)
+    return _(appShell.browser)
+  }
 
   const scopes = createMemo(() => {
     const homePath = globalSync.data.paths?.home
@@ -206,15 +215,13 @@ function ScopeListView(props: {
         onClick={props.onNavigateHome}
       >
         <Icon name={getSemanticIcon("navigation.home")} size="normal" class="shrink-0" />
-        <span class="text-14-medium">{_({ id: "nav.home", message: "Home" })}</span>
+        <span class="text-14-medium">{_(appShell.home)}</span>
       </button>
 
       <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
 
       <div class="px-4 pb-1.5">
-        <span class="text-11-medium text-text-weak uppercase tracking-wider">
-          {_({ id: "nav.projects", message: "Projects" })}
-        </span>
+        <span class="text-11-medium text-text-weak uppercase tracking-wider">{_(appShell.projects)}</span>
       </div>
       <For each={scopes()}>
         {(scope) => {
@@ -257,9 +264,7 @@ function ScopeListView(props: {
       <div class="mx-4 my-2 border-t border-border-weaker-base/60" />
 
       <div class="px-4 pb-1.5">
-        <span class="text-11-medium text-text-weak uppercase tracking-wider">
-          {_({ id: "nav.tools", message: "Tools" })}
-        </span>
+        <span class="text-11-medium text-text-weak uppercase tracking-wider">{_(appShell.toolsSection)}</span>
       </div>
       <div class="grid grid-cols-3 gap-1 px-3 pb-2">
         <For each={DRAWER_TOOLS}>
@@ -299,7 +304,7 @@ function ScopeListView(props: {
                 }}
               >
                 <Icon name={getSemanticIcon(tool.icon)} size="normal" />
-                <span class="text-[10px] font-medium leading-none">{tool.label}</span>
+                <span class="text-[10px] font-medium leading-none">{toolLabel(tool.id)}</span>
               </button>
             )
           }}
@@ -400,7 +405,7 @@ function SessionListDrawerView(props: {
           onClick={props.onBack}
         >
           <Icon name={getSemanticIcon("navigation.back")} size="small" />
-          <span class="text-12-medium">{_({ id: "nav.projects", message: "Projects" })}</span>
+          <span class="text-12-medium">{_(appShell.projects)}</span>
         </button>
         <span class="flex-1" />
         <span class="text-13-medium text-text-strong truncate max-w-40">{scopeName()}</span>
@@ -412,7 +417,7 @@ function SessionListDrawerView(props: {
         onClick={props.onNewSession}
       >
         <Icon name={getSemanticIcon("action.add")} size="small" />
-        <span>{_({ id: "session.new", message: "New session" })}</span>
+        <span>{_(appShell.newSession)}</span>
       </button>
 
       <Show when={childStore()}>
@@ -450,9 +455,7 @@ function SessionListDrawerView(props: {
           }}
         </For>
         <Show when={pagedSessions().length === 0}>
-          <div class="px-4 py-8 text-center text-13-regular text-text-weak">
-            {_({ id: "session.empty", message: "No sessions yet" })}
-          </div>
+          <div class="px-4 py-8 text-center text-13-regular text-text-weak">{_(appShell.noSessions)}</div>
         </Show>
       </div>
 

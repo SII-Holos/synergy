@@ -8,6 +8,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
 import "./dialog-select-mcp.css"
 
 type McpItem = {
@@ -23,35 +25,69 @@ type McpStatusCopy = {
   tone: McpStatusTone
 }
 
-function statusCopy(status: McpStatus | undefined): McpStatusCopy {
+function statusCopy(
+  status: McpStatus | undefined,
+  _: (id: string, values?: Record<string, unknown>) => string,
+): McpStatusCopy {
   switch (status?.status) {
     case "connected":
-      return { label: "Connected", description: "Available to agent tools", tone: "success" }
+      return {
+        label: _(dialog.mcpStatusConnected.id),
+        description: _(dialog.mcpStatusConnectedDesc.id),
+        tone: "success",
+      }
     case "starting":
-      return { label: "Starting", description: "Starting the server process", tone: "progress" }
+      return {
+        label: _(dialog.mcpStatusStarting.id),
+        description: _(dialog.mcpStatusStartingDesc.id),
+        tone: "progress",
+      }
     case "connecting":
-      return { label: "Connecting", description: "Opening the MCP connection", tone: "progress" }
+      return {
+        label: _(dialog.mcpStatusConnecting.id),
+        description: _(dialog.mcpStatusConnectingDesc.id),
+        tone: "progress",
+      }
     case "listing_tools":
-      return { label: "Loading tools", description: "Reading tools, prompts, and resources", tone: "progress" }
+      return {
+        label: _(dialog.mcpStatusLoadingTools.id),
+        description: _(dialog.mcpStatusLoadingToolsDesc.id),
+        tone: "progress",
+      }
     case "reconnecting":
       return {
-        label: "Reconnecting",
-        description: `Retry ${status.attempt} of ${status.maxAttempts}`,
+        label: _(dialog.mcpStatusReconnecting.id),
+        description: _(dialog.mcpStatusReconnectingDesc.id, {
+          attempt: status.attempt,
+          maxAttempts: status.maxAttempts,
+        }),
         tone: "progress",
       }
     case "failed":
-      return { label: "Failed", description: "Connection failed", tone: "danger" }
+      return { label: _(dialog.mcpStatusFailed.id), description: _(dialog.mcpStatusFailedDesc.id), tone: "danger" }
     case "needs_auth":
-      return { label: "Needs auth", description: "Authentication is required", tone: "warning" }
+      return {
+        label: _(dialog.mcpStatusNeedsAuth.id),
+        description: _(dialog.mcpStatusNeedsAuthDesc.id),
+        tone: "warning",
+      }
     case "needs_client_registration":
-      return { label: "Registration", description: "Client registration is required", tone: "warning" }
+      return {
+        label: _(dialog.mcpStatusRegistration.id),
+        description: _(dialog.mcpStatusRegistrationDesc.id),
+        tone: "warning",
+      }
     case "stopping":
-      return { label: "Stopping", description: "Disconnecting from the server", tone: "progress" }
+      return {
+        label: _(dialog.mcpStatusStopping.id),
+        description: _(dialog.mcpStatusStoppingDesc.id),
+        tone: "progress",
+      }
     case "disabled":
-      return { label: "Disabled", description: "Not connected for this session", tone: "neutral" }
+      return { label: _(dialog.mcpStatusDisabled.id), description: _(dialog.mcpStatusDisabledDesc.id), tone: "neutral" }
     case "uninitialized":
     default:
-      return { label: "Ready", description: "Ready to connect", tone: "neutral" }
+      return { label: _(dialog.mcpStatusReady.id), description: _(dialog.mcpStatusReadyDesc.id), tone: "neutral" }
   }
 }
 
@@ -64,6 +100,7 @@ function statusError(status: McpStatus | undefined): string | undefined {
 export const DialogSelectMcp: Component = () => {
   const sync = useSync()
   const sdk = useSDK()
+  const { _ } = useLingui()
   const [state, setState] = createStore({
     filter: "",
     loading: null as string | null,
@@ -105,7 +142,7 @@ export const DialogSelectMcp: Component = () => {
     const query = state.filter.trim().toLowerCase()
     if (!query) return items()
     return items().filter((item) => {
-      const copy = statusCopy(item.status)
+      const copy = statusCopy(item.status, (id) => id)
       const error = statusError(item.status)
       return [item.name, item.status.status, copy.label, copy.description, error ?? ""].some((value) =>
         value.toLowerCase().includes(query),
@@ -121,32 +158,32 @@ export const DialogSelectMcp: Component = () => {
           <span class="mcp-dialog-icon" aria-hidden="true">
             <Icon name={getSemanticIcon("mcp.main")} size="small" />
           </span>
-          <span>MCPs</span>
+          <span>{_(dialog.mcps)}</span>
         </div>
       }
       description={
         <div class="mcp-dialog-description">
-          <span>Connect or pause MCP servers for this session.</span>
+          <span>{_(dialog.mcpsDesc)}</span>
           <span class="mcp-dialog-summary">
-            {enabledCount()} of {totalCount()} connected
+            {_(dialog.mcpConnectedCount.id, { enabled: enabledCount(), total: totalCount() })}
           </span>
         </div>
       }
     >
       <div class="mcp-dialog-body">
         <Show when={totalCount() > 0}>
-          <div class="mcp-dialog-stats" aria-label="MCP connection summary">
+          <div class="mcp-dialog-stats" aria-label={_(dialog.mcpConnectionSummaryAria)}>
             <div class="mcp-stat">
               <span class="mcp-stat-value">{enabledCount()}</span>
-              <span class="mcp-stat-label">Connected</span>
+              <span class="mcp-stat-label">{_(dialog.mcpConnected)}</span>
             </div>
             <div class="mcp-stat">
               <span class="mcp-stat-value">{totalCount() - enabledCount()}</span>
-              <span class="mcp-stat-label">Inactive</span>
+              <span class="mcp-stat-label">{_(dialog.mcpInactive)}</span>
             </div>
             <div class="mcp-stat" classList={{ "mcp-stat-attention": attentionCount() > 0 }}>
               <span class="mcp-stat-value">{attentionCount()}</span>
-              <span class="mcp-stat-label">Needs attention</span>
+              <span class="mcp-stat-label">{_(dialog.mcpNeedsAttention)}</span>
             </div>
           </div>
         </Show>
@@ -155,10 +192,10 @@ export const DialogSelectMcp: Component = () => {
           <Icon name={getSemanticIcon("action.search")} size="small" class="mcp-search-icon" />
           <TextField
             variant="ghost"
-            label="Search MCP servers"
+            label={_(dialog.searchMcpServers)}
             hideLabel
             value={state.filter}
-            placeholder="Search servers"
+            placeholder={_(dialog.searchMcpServers)}
             spellcheck={false}
             autocorrect="off"
             autocomplete="off"
@@ -169,7 +206,7 @@ export const DialogSelectMcp: Component = () => {
             <button
               type="button"
               class="mcp-search-clear"
-              aria-label="Clear MCP search"
+              aria-label={_(dialog.clearMcpSearch)}
               onClick={() => setState("filter", "")}
             >
               <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -184,11 +221,9 @@ export const DialogSelectMcp: Component = () => {
               <span class="mcp-empty-icon" aria-hidden="true">
                 <Icon name={getSemanticIcon(totalCount() === 0 ? "mcp.main" : "action.search")} size="normal" />
               </span>
-              <div class="mcp-empty-title">{totalCount() === 0 ? "No MCP servers configured" : "No matches"}</div>
+              <div class="mcp-empty-title">{totalCount() === 0 ? _(dialog.noMcpServers) : _(dialog.noMcpMatches)}</div>
               <div class="mcp-empty-copy">
-                {totalCount() === 0
-                  ? "Configured MCP servers will appear here when this session can use them."
-                  : "Try a server name, status, or error detail."}
+                {totalCount() === 0 ? _(dialog.noMcpServersDesc) : _(dialog.noMcpMatchesDesc)}
               </div>
             </div>
           }
@@ -197,7 +232,7 @@ export const DialogSelectMcp: Component = () => {
             <For each={filteredItems()}>
               {(item) => {
                 const liveStatus = () => sync.data.mcp[item.name] ?? item.status
-                const copy = () => statusCopy(liveStatus())
+                const copy = () => statusCopy(liveStatus(), _)
                 const error = () => statusError(liveStatus())
                 const enabled = () => liveStatus().status === "connected"
                 const loading = () => state.loading === item.name
@@ -208,7 +243,11 @@ export const DialogSelectMcp: Component = () => {
                       type="button"
                       class="mcp-server-main"
                       disabled={disabled()}
-                      aria-label={`${enabled() ? "Disconnect" : "Connect"} ${item.name}`}
+                      aria-label={
+                        enabled()
+                          ? _(dialog.mcpDisconnectAria.id, { name: item.name })
+                          : _(dialog.mcpConnectAria.id, { name: item.name })
+                      }
                       onClick={() => void toggle(item.name)}
                     >
                       <span class="mcp-status-dot" aria-hidden="true" />
@@ -218,10 +257,12 @@ export const DialogSelectMcp: Component = () => {
                           {error() ?? copy().description}
                         </span>
                       </span>
-                      <span class="mcp-status-badge">{loading() ? "Updating" : copy().label}</span>
+                      <span class="mcp-status-badge">{loading() ? _(dialog.mcpUpdating) : copy().label}</span>
                     </button>
                     <Switch checked={enabled()} disabled={disabled()} hideLabel onChange={() => void toggle(item.name)}>
-                      {enabled() ? `Disconnect ${item.name}` : `Connect ${item.name}`}
+                      {enabled()
+                        ? _(dialog.mcpDisconnectAria.id, { name: item.name })
+                        : _(dialog.mcpConnectAria.id, { name: item.name })}
                     </Switch>
                   </div>
                 )

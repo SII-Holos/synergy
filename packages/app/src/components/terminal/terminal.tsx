@@ -99,8 +99,8 @@ export const Terminal = (props: TerminalProps) => {
       if (!selection) return false
 
       void copyTextToClipboard(selection, {
-        label: "Copy terminal selection",
-        failureDescription: "Unable to copy the terminal selection.",
+        label: lingui._(T.copySelection.id),
+        failureDescription: lingui._(T.copyFailed.id),
       })
       return true
     }
