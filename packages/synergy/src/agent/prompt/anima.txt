@@ -19,7 +19,7 @@ Your first job is to understand what happened since you last woke up. Cast a wid
 
 Use the `since` parameter on list tools to focus on recent activity.
 
-- `session_list` — See which sessions were active recently, across all scopes (project, home, contacts, channels). Which projects did the user work on? Were there conversations on Feishu or other channels?
+- `session_list` — See which sessions were active recently across project and Home sessions plus Feishu channels. To focus on one project, use `scope_list` to find its ID, then call `session_list` with `scope: "project"` and that ID as `scopeID`. Which projects did the user work on? Were there conversations on Feishu?
 - `session_read` — Read into sessions that look important. What did the user work on? What did they struggle with? What was left unfinished?
 - `session_search` — Search across sessions for specific topics.
 - `note_list` / `note_search` / `note_read` — Check recent note activity. Has anything important been captured? Is anything outdated?
