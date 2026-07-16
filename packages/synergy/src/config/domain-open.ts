@@ -11,14 +11,20 @@ export namespace ConfigDomainOpen {
   }
 
   export class UnsupportedPlatformError extends Error {
-    constructor(public platform: string) {
+    constructor(
+      public filepath: string,
+      public platform: string,
+    ) {
       super(`Opening config files is not supported on ${platform}`)
       this.name = "ConfigDomainOpenUnsupportedPlatformError"
     }
   }
 
   export class OpenerMissingError extends Error {
-    constructor(public opener: string) {
+    constructor(
+      public filepath: string,
+      public opener: string,
+    ) {
       super(`Required opener "${opener}" was not found`)
       this.name = "ConfigDomainOpenOpenerMissingError"
     }
@@ -44,13 +50,13 @@ export namespace ConfigDomainOpen {
   ): string[] {
     if (platform === "darwin") {
       const opener = resolve("open")
-      if (!opener) throw new OpenerMissingError("open")
+      if (!opener) throw new OpenerMissingError(filepath, "open")
       return [opener, filepath]
     }
 
     if (platform === "linux") {
       const opener = resolve("xdg-open")
-      if (!opener) throw new OpenerMissingError("xdg-open")
+      if (!opener) throw new OpenerMissingError(filepath, "xdg-open")
       return [opener, filepath]
     }
 
@@ -58,7 +64,7 @@ export namespace ConfigDomainOpen {
       return [process.env.COMSPEC || "cmd.exe", "/c", "start", "", filepath]
     }
 
-    throw new UnsupportedPlatformError(platform)
+    throw new UnsupportedPlatformError(filepath, platform)
   }
 
   export async function materialize(id: ConfigDomain.Id, root = Global.Path.config): Promise<string> {

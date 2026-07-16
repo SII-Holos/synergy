@@ -474,7 +474,7 @@ export namespace Session {
       const msgs = await messages({ sessionID: input.sessionID })
       const messageMap = new Map<string, string>()
       for (const msg of msgs) {
-        if (forkPoint && msg.info.id >= forkPoint) break
+        if (forkPoint && msg.info.id === forkPoint) break
         const id = Identifier.ascending("message")
         messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({

@@ -212,6 +212,16 @@ export function reencodeExperienceConfirm(kind: "intent" | "script", count: numb
   }
 }
 
+export function cancelReencodeConfirm(completed: number, total: number): ConfirmCopy {
+  return {
+    title: "Cancel re-encoding?",
+    description: `Cancel after ${completed} of ${total} records? Completed updates will be kept and unfinished records can be retried later.`,
+    confirmLabel: "Cancel re-encoding",
+    cancelLabel: "Keep running",
+    tone: "warning",
+  }
+}
+
 export function deleteWorktreeConfirm(input: { name?: string; dirty?: boolean; bindings?: string[] }): ConfirmCopy {
   const label = quoted(input.name, "Untitled worktree")
   const bindings = input.bindings ?? []

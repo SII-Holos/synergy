@@ -22,12 +22,14 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type {
   ConfigDomainSummary,
   ControlProfileSummary,
+  CortexConcurrencyStatus,
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
+import { usePlatform } from "@/context/platform"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -39,10 +41,13 @@ import { isBuiltinSettingsId, settingsGroupOrder } from "./catalog"
 import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
+import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
+import { PersonalizePanel } from "./panels/PersonalizePanel"
+import { createPersonalizeController } from "./panels/personalize-controller"
 import { UsagePanel } from "./panels/UsagePanel"
 import { GitHubPanel } from "./panels/GitHubPanel"
 import { McpPanel } from "./panels/McpPanel"
@@ -55,9 +60,11 @@ import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { CodeChecksPanel } from "./panels/CodeChecksPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
+import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -86,6 +93,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const input = useInput()
+  const platform = usePlatform()
+  const personalizeController = createPersonalizeController({
+    get: async () => (await globalSDK.client.config.instructions.get()).data!,
+    update: async (content) =>
+      (
+        await globalSDK.client.config.instructions.update({
+          configInstructionsUpdateInput: { content },
+        })
+      ).data!,
+    reset: async () => (await globalSDK.client.config.instructions.reset()).data!,
+  })
 
   const [activeTab, setActiveTab] = createSignal(normalizeInitialTab(props.initialTab))
   const [providerFocusID, setProviderFocusID] = createSignal(props.providerFocusID)
@@ -104,10 +122,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data!
   })
 
+  const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
+    const res = await globalSDK.client.cortex.concurrency()
+    return res.data as CortexConcurrencyStatus | undefined
+  })
+
   const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
     const res = await globalSDK.client.config.domain.list()
     return res.data ?? []
   })
+
+  const [desktopServerStatus] = createResource(async () => {
+    if (platform.platform !== "desktop" || !platform.desktopServer) return null
+    return platform.desktopServer.status().catch(() => null)
+  })
+
+  const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
   const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
     const res = await globalSDK.client.app.agentModelRoles()
@@ -222,7 +252,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries(), refetchAgents()])
+    await Promise.all([
+      refetchConfig(),
+      refetchDomains(),
+      refetchModelRoleSummaries(),
+      refetchAgents(),
+      refetchCortexConcurrencyStatus(),
+    ])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -238,7 +274,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
 
   const hasServerChanges = createMemo(() => Object.keys(serverPatch()).length > 0)
   const editingLabel = createMemo(() => "Global Config")
-  const hasAnyChanges = createMemo(() => hasServerChanges())
+  const hasAnyChanges = createMemo(() => hasServerChanges() || personalizeController.dirty())
 
   function showConfirm(params: ConfirmOptions) {
     confirm.show(params)
@@ -256,7 +292,42 @@ export function SettingsPanel(props: SettingsPanelProps) {
   })
   cancelDebouncesRef.current = save.cancelDebounces
 
+  async function savePersonalizeChanges() {
+    const saved = await personalizeController.save()
+    if (!saved) {
+      showToast({
+        type: "error",
+        title: "Custom instructions not saved",
+        description: personalizeController.error() ?? "Review the Custom Instructions content and try again.",
+      })
+      return false
+    }
+    showToast({
+      type: "success",
+      title: personalizeController.info()?.hasOverride ? "Custom instructions saved" : "Custom instructions reset",
+      description: personalizeController.info()?.hasOverride
+        ? "Synergy will use AGENTS.override.md for subsequent prompt assembly."
+        : "Synergy will fall back to the global AGENTS.md file.",
+    })
+    return true
+  }
+
+  const explicitSaveSources = () => [
+    { dirty: save.explicitDirty, save: save.saveServerChanges },
+    { dirty: personalizeController.dirty, save: savePersonalizeChanges },
+  ]
+  const hasExplicitChanges = createMemo(() => hasExplicitSettingsChanges(explicitSaveSources()))
+  const explicitSaveBlocked = createMemo(
+    () =>
+      saving() || personalizeController.busy() || (personalizeController.dirty() && !personalizeController.canSave()),
+  )
+
+  async function saveExplicitChanges() {
+    await saveExplicitSettingsChanges(explicitSaveSources(), () => props.onClose?.() ?? dialog.close())
+  }
+
   async function openDomain(domain: ConfigDomainSummary["id"]) {
+    if (!canOpenConfigFiles()) return
     setOpeningDomain(domain)
     try {
       const res = await globalSDK.client.config.domain.open({ domain })
@@ -266,8 +337,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description: res.data?.path ?? domain,
       })
       await refetchDomains()
-    } catch (error: any) {
-      showToast({ type: "error", title: "Open file failed", description: error.message })
+    } catch (error) {
+      const filepath = domainSummaries()?.find((item) => item.id === domain)?.path ?? domain
+      showToast({ type: "error", ...configFileOpenFailure(error, filepath) })
     } finally {
       setOpeningDomain(undefined)
     }
@@ -300,14 +372,17 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   const saveFooterStatus = createMemo<"idle" | "saving" | "saved" | "error" | "dirty">(() => {
-    if (save.autoStatus() === "error" || save.bgStatus() === "error") return "error"
-    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving()) return "saving"
+    if (save.autoStatus() === "error" || save.bgStatus() === "error" || personalizeController.status() === "error")
+      return "error"
+    if (save.autoStatus() === "saving" || save.bgStatus() === "saving" || saving() || personalizeController.busy())
+      return "saving"
     if (save.autoStatus() === "saved" || save.bgStatus() === "saved") return "saved"
-    if (save.explicitDirty()) return "dirty"
+    if (save.explicitDirty() || personalizeController.dirty()) return "dirty"
     return "idle"
   })
   const builtinSettingsComponents = (): Partial<Record<string, Component>> => ({
     account: AccountPanel,
+    personalize: () => <PersonalizePanel controller={personalizeController} />,
     general: () => (
       <GeneralPanel general={settings.general} onGeneralChange={(key, value) => setSettings("general", key, value)} />
     ),
@@ -417,6 +492,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
+        concurrencyStatus={cortexConcurrencyStatus()}
+      />
+    ),
+    "code-checks": () => (
+      <CodeChecksPanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
     formatter: () => referencePanel("Formatter", "Formatter configuration file access.", ["runtime"]),
@@ -427,12 +509,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
-    import: () => <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />,
+    import: () => (
+      <ImportPanel
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        onImported={refreshAfterConfigChange}
+      />
+    ),
     "config-files": () => (
       <ConfigFilesPanel
         domains={domainSummaries() ?? []}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     ),
     "archived-sessions": ArchivedSessionsPanel,
@@ -571,15 +659,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
               <Button type="button" variant="ghost" size="large" onClick={save.closeWithGuard}>
                 Cancel
               </Button>
-              <Show when={save.explicitDirty()}>
+              <Show when={hasExplicitChanges()}>
                 <Button
                   type="button"
                   variant="primary"
                   size="large"
-                  disabled={saving()}
-                  onClick={() => void save.saveServerChanges({ close: true })}
+                  disabled={explicitSaveBlocked()}
+                  onClick={() => void saveExplicitChanges()}
                 >
-                  {saving() ? "Saving..." : "Save Changes"}
+                  {saving() || personalizeController.status() === "saving" ? "Saving..." : "Save Changes"}
                 </Button>
               </Show>
             </AppPanel.Footer>
@@ -613,7 +701,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description={description}
         domains={domainsFor(domainIds)}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     )
   }

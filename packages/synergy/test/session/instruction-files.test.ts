@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { Config } from "../../src/config/config"
 import { Scope } from "../../src/scope"
@@ -92,6 +93,39 @@ describe("instruction files", () => {
 
     expect(joined.indexOf("root doc")).toBeGreaterThanOrEqual(0)
     expect(joined.indexOf("nested doc")).toBeGreaterThan(joined.indexOf("root doc"))
+  })
+
+  test("loads global instructions before project-specific instructions", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        const nested = path.join(dir, "packages", "app")
+        await fs.mkdir(nested, { recursive: true })
+        await Bun.write(path.join(dir, "AGENTS.md"), "project root doc")
+        await Bun.write(path.join(nested, "AGENTS.md"), "project nested doc")
+      },
+    })
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-instruction-home-"))
+    const previousHome = process.env.SYNERGY_TEST_HOME
+
+    try {
+      process.env.SYNERGY_TEST_HOME = home
+      const configDir = path.join(home, ".synergy", "config")
+      await fs.mkdir(configDir, { recursive: true })
+      await Bun.write(path.join(configDir, "AGENTS.override.md"), "global doc")
+
+      const parts = await customPromptFor(await tmp.scope(), path.join(tmp.path, "packages", "app"))
+      const joined = parts.join("\n\n")
+
+      expect(joined.indexOf("global doc")).toBeGreaterThanOrEqual(0)
+      expect(joined.indexOf("project root doc")).toBeGreaterThan(joined.indexOf("global doc"))
+      expect(joined.indexOf("project nested doc")).toBeGreaterThan(joined.indexOf("project root doc"))
+    } finally {
+      if (previousHome === undefined) delete process.env.SYNERGY_TEST_HOME
+      else process.env.SYNERGY_TEST_HOME = previousHome
+      await Config.state.resetAll()
+      await fs.rm(home, { recursive: true, force: true })
+    }
   })
 
   test("does not search above the active scope", async () => {

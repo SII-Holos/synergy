@@ -22,21 +22,21 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                      |
-| ---------------------- | ----------- | -------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                 |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                   |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                              |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                             |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                  |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                       |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                           |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                       |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                               |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                        |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                      |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, watcher, formatter, LSP, questions, compaction, experimental and observability settings |
+| File                   | Domain      | Owned configuration                                                                                                         |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                    |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                      |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                   |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                 |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                     |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                          |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                              |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                          |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                  |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                           |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                         |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental and observability settings |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -90,7 +90,7 @@ commands/**/*.md
 
 Frontmatter defines metadata and the Markdown body becomes the prompt or command template. Nested agent paths become names such as `review/security`.
 
-## Project Instructions
+## Instruction Files
 
 Automatic instruction discovery is distinct from agent definitions. For each directory from the project Scope root to the current working directory, Synergy selects the first existing file in this order:
 
@@ -102,7 +102,9 @@ Automatic instruction discovery is distinct from agent definitions. For each dir
 
 At most one automatic file is selected per directory. The default maximum is 32 KiB per automatically discovered file; `project_doc_max_bytes: 0` disables automatic discovery.
 
-Global instructions prefer `~/.synergy/config/AGENTS.override.md`, then `AGENTS.md`. Claude compatibility can add `~/.claude/CLAUDE.md` unless disabled. `SYNERGY_CONFIG_DIR` can provide its own override or primary file.
+Global instructions prefer `~/.synergy/config/AGENTS.override.md`, then `AGENTS.md`. Settings → Personalize → Custom Instructions displays this effective global content. Saving always writes `AGENTS.override.md` and preserves `AGENTS.md`; clearing the editor or choosing Reset removes the override and restores the primary file. The editor and API enforce a 32 KiB UTF-8 limit.
+
+Global instructions are loaded before project files. Project instructions then load from the Scope root toward the current working directory so more specific files appear later in the assembled prompt. Claude compatibility can add `~/.claude/CLAUDE.md` unless disabled. `SYNERGY_CONFIG_DIR` can provide its own override or primary file.
 
 The `instructions` array appends explicit files, globs, or HTTP(S) URLs after automatic discovery. Automatically selected paths are not duplicated. URL reads time out after five seconds.
 
@@ -129,9 +131,79 @@ The `server` object supports `hostname`, `port`, `mdns`, and additional CORS ori
 
 Binding a server beyond loopback exposes it to other hosts. Configure CORS and the surrounding network boundary deliberately.
 
-## Import and Editing
+## Code Checks
 
-`synergy config wizard` writes core provider/model configuration. `synergy config import` can import all or selected domains with a dry-run plan and merge modes `merge`, `replace-domain`, or `append` where supported.
+Post-write language-server diagnostic policy. Controls the diagnostics returned after write, edit, save_file, and revise_file complete. All fields are owned by `120-runtime.jsonc`.
+
+```jsonc
+{
+  "lspWriteDiagnostics": true,
+  "lspDiagnostics": {
+    "severity": "error",
+    "scope": "project",
+  },
+}
+```
+
+`lspWriteDiagnostics` (boolean, optional, default `true`) is the master toggle. Setting it to `false` disables all post-write diagnostic output.
+
+`lspDiagnostics` (object, optional) sets the severity filter and reporting scope:
+
+- `severity` — `"error"` (default) reports only errors; `"warning"` includes both errors and warnings.
+- `scope` — `"project"` (default) reports matching diagnostics across the project; `"file"` reports matching diagnostics for the edited file only; `"delta"` reports added, resolved, and unchanged diagnostics for the edited file relative to the pre-write snapshot.
+
+When `lspDiagnostics` is absent, or when either nested field is omitted, missing values inherit `severity: "error"` and `scope: "project"`. Config changes are live-applied and do not restart LSP servers.
+
+The Web Settings Code Checks page exposes these three fields: an Include Diagnostics toggle that disables the Diagnostic Severity and Diagnostic Scope selectors when off.
+
+## Cortex Scheduling
+
+The global Runtime domain controls the process-wide Cortex subagent maximum:
+
+```jsonc
+{
+  "cortex": {
+    "maxConcurrentTasks": 8,
+  },
+}
+```
+
+`cortex.maxConcurrentTasks` must be a positive integer and defaults to `8`. Changes made through global Settings or the global configuration API apply without restarting the runtime. Lowering the value leaves running tasks untouched and queues new work until capacity is available; raising it releases eligible queued work. Project configuration does not control this process-global scheduler.
+
+Memory pressure may recommend a lower value, shown in Settings and the Cortex concurrency status API, but the recommendation never overrides the effective maximum. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
+
+## Config Import
+
+`synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. Direct plan/apply API requests are limited to a 2 MiB JSON envelope.
+
+### Import flow
+
+1. **Load** — The source is parsed as JSONC and validated against the config schema. Unrecognized keys produce a validation error; only JSONC syntax errors include line and column information.
+2. **Plan** — The loaded config is split by domain, each owning-domain fragment is merged into the current config at the target scope, and value-level changes (add, modify, remove) are produced. Conflicts are classified and hardcoded secrets are flagged as warnings without blocking the import. A revision hash captures the plan identity.
+3. **Apply** — After review and confirmation, each changed domain file is written atomically with a per-scope exclusive lock, staged writes, and rollback on failure. JSONC comments in existing files are preserved.
+4. **Reload** — Committed files trigger a runtime config reload. Reload failure does not roll back committed config files; if the runtime reports restart-required targets, restart the server to pick them up.
+
+### CLI options
+
+```bash
+synergy config import <source>
+  --scope global|project  # default: global; project requires an active project scope
+  --only <domain>         # import only the named domain; repeatable
+  --mode merge|replace-domain|append  # per-domain merge policy override
+  --dry-run               # show the plan without writing files
+  --force                 # apply even when the revision does not match (stale plan)
+  --yes, -y               # skip the confirmation prompt
+```
+
+All domains are importable and default to `merge` mode. A stale plan (revised config after planning) is rejected unless `--force` is supplied.
+
+`merge` recursively merges objects and replaces ordinary arrays, `replace-domain` replaces the complete selected domain, and `append` recursively merges objects while appending arrays in source order. Imported scalar values override existing scalar values in both merge modes.
+
+### Web Settings Import
+
+The Settings Import surface accepts file upload, URL fetch, or pasted JSON/JSONC. It supports explicit Global/Project target selection, a project chooser for project imports, domain-level selection with a re-review gate when the domain set changes, value-level current-versus-imported display, diagnostic warnings, stale-plan detection with a refresh action, and a reload-result summary after apply.
+
+## Config Editing
 
 The Web Settings surface, domain APIs, and CLI all use the same domain ownership registry. Manual edits should preserve that ownership so reload targets and conflict previews remain meaningful.
 
@@ -164,15 +236,16 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Compatibility and behavior overrides
 
-| Variable                               | Effect                                                              |
-| -------------------------------------- | ------------------------------------------------------------------- |
-| `SYNERGY_DISABLE_AUTOCOMPACT=1`        | Force `compaction.auto` off for this process                        |
-| `SYNERGY_DISABLE_PRUNE=1`              | Force context tool-output pruning off                               |
-| `SYNERGY_DISABLE_CLAUDE_CODE=1`        | Disable both Claude instruction and skill compatibility discovery   |
-| `SYNERGY_DISABLE_CLAUDE_CODE_PROMPT=1` | Omit `~/.claude/CLAUDE.md` from global instruction discovery        |
-| `SYNERGY_DISABLE_CLAUDE_CODE_SKILLS=1` | Omit Claude-compatible global and project skills                    |
-| `SYNERGY_DISABLE_FILEWATCHER=1`        | Disable the default project file watcher for diagnosis              |
-| `SYNERGY_FAKE_VCS`                     | Override detected Scope VCS type for tests and controlled embedding |
+| Variable                               | Effect                                                                                  |
+| -------------------------------------- | --------------------------------------------------------------------------------------- |
+| `SYNERGY_DISABLE_AUTOCOMPACT=1`        | Force `compaction.auto` off for this process                                            |
+| `SYNERGY_DISABLE_PRUNE=1`              | Force context tool-output pruning off                                                   |
+| `SYNERGY_DISABLE_CLAUDE_CODE=1`        | Disable both Claude instruction and skill compatibility discovery                       |
+| `SYNERGY_DISABLE_CLAUDE_CODE_PROMPT=1` | Omit `~/.claude/CLAUDE.md` from global instruction discovery                            |
+| `SYNERGY_DISABLE_CLAUDE_CODE_SKILLS=1` | Omit Claude-compatible global and project skills                                        |
+| `SYNERGY_DISABLE_FILEWATCHER=1`        | Disable the default project file watcher for diagnosis                                  |
+| `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`    | Override the process-global Cortex subagent concurrency maximum with a positive integer |
+| `SYNERGY_FAKE_VCS`                     | Override detected Scope VCS type for tests and controlled embedding                     |
 
 ### Experimental and diagnostic escape hatches
 

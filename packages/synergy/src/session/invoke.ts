@@ -48,6 +48,7 @@ import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
+import * as SessionWorking from "./working"
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
@@ -105,14 +106,20 @@ export namespace SessionInvoke {
   }
 
   /**
-   * Repair the persisted incomplete assistant message and clear pendingReply
-   * for a session after abort. This is safe to call from the HTTP abort handler
-   * or anywhere with a valid sessionID.
+   * Repair persisted abort state and synchronize status when no live loop owns
+   * the session. Lifecycle idle remains owned by SessionManager.release().
+   *
+   * @returns Whether an incomplete assistant message was repaired.
    */
-  export async function repairAfterAbort(sessionID: string): Promise<void> {
-    await repairIncompleteAssistant(sessionID).catch((err) => {
+  export async function repairAfterAbort(sessionID: string): Promise<boolean> {
+    const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
       log.error("assistant repair after abort failed", { sessionID, error: err })
+      return false
     })
+    if (!repaired || SessionManager.isRunning(sessionID)) return repaired
+    if (await SessionWorking.resolve(sessionID)) return repaired
+    await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
+    return repaired
   }
 
   type InternalInvokeInput = InvokeInput & {
@@ -240,6 +247,7 @@ export namespace SessionInvoke {
         let RParts: MessageV2.Part[] | undefined
         let lastFinished: MessageV2.Assistant | undefined
         let lastFinishedParts: MessageV2.Part[] | undefined
+        let lastFinishedIndex = -1
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
@@ -257,6 +265,7 @@ export namespace SessionInvoke {
             if (!lastFinished && SessionProgress.isTerminalAssistant(msg.info as MessageV2.Assistant)) {
               lastFinished = msg.info as MessageV2.Assistant
               lastFinishedParts = msg.parts
+              lastFinishedIndex = i
             }
           }
           if (R && lastFinished) break
@@ -315,10 +324,6 @@ export namespace SessionInvoke {
         const preJobs = LoopJob.collect("pre", jobCtx, firedSignals)
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
-          // Pre-jobs (compaction especially) can rewrite history in ways the
-          // incremental cache maintenance does not model; drop the cache so the
-          // next step re-reads authoritative state (#350 D2, R2).
-          SessionMessageCache.invalidate(sessionID)
           if (result === "stop") break
           if (result === "continue") {
             // A processed compaction re-arms the emergency-compaction fallback so
@@ -484,8 +489,9 @@ export namespace SessionInvoke {
         // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
         // steer messages carry their own structured text and should not be wrapped.
         if (step > 1 && lastFinished) {
-          for (const msg of sessionMessages) {
-            if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
+          for (let index = lastFinishedIndex + 1; index < sessionMessages.length; index++) {
+            const msg = sessionMessages[index]
+            if (msg.info.role !== "user") continue
             const user = msg.info as MessageV2.User
             const isRoot = user.isRoot === true
             const originType = user.origin?.type
@@ -837,7 +843,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           turnDeadline.abort(deadlineError)
           rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
-        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const onSessionAbort = () => clearTimeout(turnTimer)
+        abort.addEventListener("abort", onSessionAbort, { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
         // Race against the deadline instead of relying on abort propagation:
@@ -903,9 +910,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             turnSpanEnded = true
           }
         } finally {
+          const turnTimedOut = turnDeadline.signal.aborted
           clearTimeout(turnTimer)
+          abort.removeEventListener("abort", onSessionAbort)
+          turnDeadline.abort()
           processTimer.stop()
-          releaseTurnReferences(!turnDeadline.signal.aborted)
+          releaseTurnReferences(!turnTimedOut)
           if (!turnSpanEnded) {
             ObservabilitySpans.end(turnSpan, {
               attributes: {
@@ -1061,9 +1071,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
    * with time.completed, finish: "error", and an AbortedError, then clears
    * pendingReply so working.ts no longer reports "recovering".
    */
-  async function repairIncompleteAssistant(sessionID: string): Promise<void> {
+  async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
     const session = await SessionManager.getSession(sessionID)
-    if (!session) return
+    if (!session) return false
 
     const messages = await Session.messages({ sessionID })
     let latestAssistant: MessageV2.Assistant | undefined
@@ -1073,7 +1083,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         break
       }
     }
-    if (!latestAssistant || latestAssistant.time.completed != null) return
+    if (!latestAssistant || latestAssistant.time.completed != null) return false
 
     log.info("repairing incomplete assistant after abort", {
       sessionID,
@@ -1093,6 +1103,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
+    return true
   }
 
   async function completeAssistantWithError(input: {
@@ -1779,6 +1790,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
   export async function resumePending(): Promise<void> {
     await reconcileInterruptedCortexDelegations()
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.reconcileParentNotifications()
 
     const sessionIDs = await SessionManager.listPendingReply()
     for (const sessionID of sessionIDs) {
@@ -1803,6 +1816,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
       if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.isRunning(sessionID)) {
         log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
+        // Startup reconciliation persists state only; connected clients recover
+        // from the subsequent status snapshot rather than a lifecycle event.
         await repairIncompleteAssistant(sessionID).catch((err) => {
           log.error("auto-repair failed", { sessionID, error: err })
         })
