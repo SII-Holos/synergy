@@ -43,6 +43,7 @@ export const UI_DEFAULTS = {
   compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
+  cortexConcurrency: "8" as string,
   libraryLearning: "true" as string,
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
@@ -60,6 +61,9 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  lspWriteDiagnostics: "true" as string,
+  lspDiagnosticsSeverity: "error" as string,
+  lspDiagnosticsScope: "project" as string,
   defaultAgent: "synergy" as string,
 } as const
 
@@ -260,6 +264,7 @@ export type RuntimeStore = {
   compactionPrune: string
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
+  cortexConcurrency: string
   invokeTimeout: string
   providerTtfbTimeout: string
   providerIdleTimeout: string
@@ -269,6 +274,9 @@ export type RuntimeStore = {
   watcherIgnore: string
   logLevel: string
   coauthorReminder: string
+  lspWriteDiagnostics: string
+  lspDiagnosticsSeverity: string
+  lspDiagnosticsScope: string
 }
 
 export type SettingsState = {
@@ -342,6 +350,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       compactionPrune: UI_DEFAULTS.compactionPrune,
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,
       providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
       providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,
@@ -351,6 +360,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
+      lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
+      lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
     },
     email: {
       enabled: true,

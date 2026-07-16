@@ -6,6 +6,7 @@ import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
 import { ConfigImport } from "../config/import"
 import { ConfigDomainOpen } from "../config/domain-open"
+import { ConfigInstructions } from "../config/instructions"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
 import { Log } from "../util/log"
@@ -153,6 +154,53 @@ export const ConfigRoute = new Hono()
       },
     }),
     async (c) => c.json(Config.redactForClient(await Config.globalRaw())),
+  )
+  .get(
+    "/instructions",
+    describeRoute({
+      summary: "Get global custom instructions",
+      description: "Read the effective global AGENTS override or primary instructions file.",
+      operationId: "config.instructions.get",
+      responses: {
+        200: {
+          description: "Effective global custom instructions",
+          content: { "application/json": { schema: resolver(ConfigInstructions.Info) } },
+        },
+      },
+    }),
+    async (c) => c.json(await ConfigInstructions.get()),
+  )
+  .put(
+    "/instructions",
+    describeRoute({
+      summary: "Update global custom instructions",
+      description: "Write the global AGENTS.override.md file, or remove it when the content is empty.",
+      operationId: "config.instructions.update",
+      responses: {
+        200: {
+          description: "Updated effective global custom instructions",
+          content: { "application/json": { schema: resolver(ConfigInstructions.Info) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", ConfigInstructions.UpdateInput),
+    async (c) => c.json(await ConfigInstructions.update(c.req.valid("json").content)),
+  )
+  .delete(
+    "/instructions",
+    describeRoute({
+      summary: "Reset global custom instructions",
+      description: "Remove AGENTS.override.md and fall back to the global AGENTS.md file.",
+      operationId: "config.instructions.reset",
+      responses: {
+        200: {
+          description: "Reset effective global custom instructions",
+          content: { "application/json": { schema: resolver(ConfigInstructions.Info) } },
+        },
+      },
+    }),
+    async (c) => c.json(await ConfigInstructions.reset()),
   )
   .get(
     "/domains",
@@ -343,7 +391,7 @@ async function reloadAfterConfigChange(changedFields: Set<string>, reason: strin
     log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
     return
   }
-  if (allLiveNoCascade) {
+  if (allLiveNoCascade && !changedFields.has("cortex")) {
     await Config.reload("global")
     log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
     return

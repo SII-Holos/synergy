@@ -1362,6 +1362,18 @@ export const Info = z
       })
       .optional()
       .describe("Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts"),
+    cortex: z
+      .object({
+        maxConcurrentTasks: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of Cortex subagent tasks that may run concurrently (default: 8)"),
+      })
+      .strict()
+      .optional()
+      .describe("Cortex task scheduling configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
@@ -1540,6 +1552,17 @@ export const Info = z
           error: "For custom LSP servers, 'extensions' array is required.",
         },
       ),
+    lspWriteDiagnostics: z
+      .boolean()
+      .optional()
+      .describe("Include LSP diagnostics after file-writing tools complete (default: true)"),
+    lspDiagnostics: z
+      .object({
+        severity: z.enum(["error", "warning"]).optional(),
+        scope: z.enum(["delta", "file", "project"]).optional(),
+      })
+      .optional()
+      .describe("Severity and scope policy for diagnostics returned after file-writing tools"),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     project_doc_fallback_filenames: z
       .array(z.string())

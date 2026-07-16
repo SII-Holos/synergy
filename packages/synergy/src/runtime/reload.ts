@@ -4,6 +4,7 @@ import z from "zod"
 import { BusEvent } from "../bus/bus-event"
 import { GlobalBus } from "../bus/global"
 import { Config } from "../config/config"
+import { CortexConcurrency } from "../cortex/concurrency"
 import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
@@ -40,7 +41,10 @@ export namespace RuntimeReload {
     "username",
     "category",
     "compaction",
+    "cortex",
     "snapshot",
+    "lspWriteDiagnostics",
+    "lspDiagnostics",
     //     "agora",
     "instructions",
     "enterprise",
@@ -282,6 +286,9 @@ export namespace RuntimeReload {
               message: `Config field \`${field}\` is client-side and is not reloaded by the server runtime`,
             })
           }
+        }
+        if (resolvedScope === "global" && result.changedFields.includes("cortex")) {
+          CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
         }
         // Infer cascades from changed config fields
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {

@@ -317,6 +317,7 @@ export namespace Config {
     // Apply centralized defaults for fields shown in Settings UI.
     // These fill undefined values only — user-set values are preserved.
     if (result.snapshot === undefined) result.snapshot = true
+    if (result.lspWriteDiagnostics === undefined) result.lspWriteDiagnostics = true
     if (result.default_agent === undefined) result.default_agent = "synergy"
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024

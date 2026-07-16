@@ -118,6 +118,7 @@ export const SemanticIconToken = {
   "settings.diagnostics": "bug",
   "settings.import": "upload",
   "settings.configFiles": "folder-cog",
+  "settings.personalize": "scroll-text",
 
   // Permission modes and prompts
   "permission.required": "octagon-alert",
