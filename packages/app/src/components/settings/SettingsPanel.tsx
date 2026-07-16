@@ -22,6 +22,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type {
   ConfigDomainSummary,
   ControlProfileSummary,
+  CortexConcurrencyStatus,
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
@@ -106,6 +107,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const [config, { refetch: refetchConfig }] = createResource(async () => {
     const res = await globalSDK.client.config.global()
     return res.data!
+  })
+
+  const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
+    const res = await globalSDK.client.cortex.concurrency()
+    return res.data as CortexConcurrencyStatus | undefined
   })
 
   const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
@@ -233,7 +239,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries(), refetchAgents()])
+    await Promise.all([
+      refetchConfig(),
+      refetchDomains(),
+      refetchModelRoleSummaries(),
+      refetchAgents(),
+      refetchCortexConcurrencyStatus(),
+    ])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -430,6 +442,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
+        concurrencyStatus={cortexConcurrencyStatus()}
       />
     ),
     "code-checks": () => (

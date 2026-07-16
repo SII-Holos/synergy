@@ -343,7 +343,7 @@ async function reloadAfterConfigChange(changedFields: Set<string>, reason: strin
     log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
     return
   }
-  if (allLiveNoCascade) {
+  if (allLiveNoCascade && !changedFields.has("cortex")) {
     await Config.reload("global")
     log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
     return

@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import { CortexTypes } from "../cortex/types"
+import { CortexConcurrency } from "../cortex/concurrency"
 import "../cortex/event"
 import z from "zod"
 import { errors } from "./error"
@@ -41,6 +42,25 @@ export const CortexRoute = new Hono()
       const tasks = sessionID ? Cortex.getVisibleTasks(sessionID) : Cortex.listVisible()
       return c.json(tasks)
     },
+  )
+  .get(
+    "/concurrency",
+    describeRoute({
+      summary: "Get Cortex concurrency status",
+      description: "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+      operationId: "cortex.concurrency",
+      responses: {
+        200: {
+          description: "Cortex concurrency status",
+          content: {
+            "application/json": {
+              schema: resolver(CortexConcurrency.GlobalStatus),
+            },
+          },
+        },
+      },
+    }),
+    (c) => c.json(CortexConcurrency.globalStatus()),
   )
   .get(
     "/:taskID",

@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
-import { ensureInit, readLegacyQuickSwitcherPreferences, type EnsureInitParams } from "./useSettingsForm"
+import { createStore } from "solid-js/store"
+import { ensureInit, readLegacyQuickSwitcherPreferences } from "./useSettingsForm"
+import { defaultSettingsState } from "../types"
 
 describe("settings form legacy quick switcher migration", () => {
   test("reads current quick switcher preferences from the legacy localStorage key", () => {
@@ -56,25 +58,28 @@ describe("settings form post-write diagnostics", () => {
   })
 })
 
+describe("settings form Cortex concurrency", () => {
+  test("hydrates the configured global maximum", () => {
+    expect(initializedRuntime({ cortex: { maxConcurrentTasks: 6 } }).cortexConcurrency).toBe("6")
+  })
+})
+
 function initializedRuntime(config: Record<string, unknown>) {
-  let runtime: unknown
-  const setSettings = ((...args: unknown[]) => {
-    if (args[0] === "runtime") runtime = args[1]
-  }) as unknown as EnsureInitParams["setSettings"]
+  const [settings, setSettings] = createStore(defaultSettingsState("enter"))
 
   ensureInit({
-    cfg: config as unknown as Config,
+    cfg: config as Config,
     setName: "global",
     refreshing: () => false,
     initialized: () => false,
     initializedForSet: undefined,
     sendShortcut: () => "enter",
     setSettings,
-    setInitialized: () => {},
+    setInitialized: () => undefined,
     originalMcpsRef: { current: {} },
   })
 
-  return runtime
+  return settings.runtime
 }
 
 function storageWithModel(value: unknown): Storage {

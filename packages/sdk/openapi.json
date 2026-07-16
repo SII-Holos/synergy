@@ -7729,6 +7729,47 @@
         ]
       }
     },
+    "/cortex/tasks/concurrency": {
+      "get": {
+        "operationId": "cortex.concurrency",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Cortex concurrency status",
+        "description": "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+        "responses": {
+          "200": {
+            "description": "Cortex concurrency status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CortexConcurrencyStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.concurrency({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/cortex/tasks/{taskID}": {
       "get": {
         "operationId": "cortex.get",
@@ -24520,6 +24561,19 @@
               }
             }
           },
+          "cortex": {
+            "description": "Cortex task scheduling configuration",
+            "type": "object",
+            "properties": {
+              "maxConcurrentTasks": {
+                "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -29825,6 +29879,79 @@
           "agent",
           "status",
           "startedAt"
+        ]
+      },
+      "CortexConcurrencyStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommended": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommendationReason": {
+            "type": "string",
+            "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["default", "config", "environment"]
+          },
+          "perAgentLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "configured",
+          "environment",
+          "effective",
+          "recommended",
+          "recommendationReason",
+          "source",
+          "perAgentLimit",
+          "running",
+          "queued"
         ]
       },
       "Command": {

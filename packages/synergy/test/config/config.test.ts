@@ -230,6 +230,13 @@ test("validates config schema and throws on invalid fields", async () => {
   })
 })
 
+test("validates Cortex concurrency as a positive integer", () => {
+  expect(Config.Info.parse({ cortex: { maxConcurrentTasks: 6 } }).cortex?.maxConcurrentTasks).toBe(6)
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 0 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: -1 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 2.5 } })).toThrow()
+})
+
 test("throws error for invalid JSON", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

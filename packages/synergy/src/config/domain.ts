@@ -101,6 +101,7 @@ export namespace ConfigDomain {
     def("runtime", "120-runtime.jsonc", "Runtime", [
       "server",
       "timeout",
+      "cortex",
       "watcher",
       "formatter",
       "lsp",

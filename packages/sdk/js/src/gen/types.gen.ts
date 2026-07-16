@@ -2870,6 +2870,15 @@ export type Config = {
       ask_sec?: number
     }
   }
+  /**
+   * Cortex task scheduling configuration
+   */
+  cortex?: {
+    /**
+     * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
+     */
+    maxConcurrentTasks?: number
+  }
   watcher?: {
     ignore?: Array<string>
   }
@@ -4809,6 +4818,18 @@ export type CortexTask = {
     cacheWriteTokens: number
     cost: number
   }
+}
+
+export type CortexConcurrencyStatus = {
+  configured: number | null
+  environment: number | null
+  effective: number
+  recommended: number
+  recommendationReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  source: "default" | "config" | "environment"
+  perAgentLimit: number
+  running: number
+  queued: number
 }
 
 export type Command = {
@@ -10775,6 +10796,25 @@ export type CortexListResponses = {
 }
 
 export type CortexListResponse = CortexListResponses[keyof CortexListResponses]
+
+export type CortexConcurrencyData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/cortex/tasks/concurrency"
+}
+
+export type CortexConcurrencyResponses = {
+  /**
+   * Cortex concurrency status
+   */
+  200: CortexConcurrencyStatus
+}
+
+export type CortexConcurrencyResponse = CortexConcurrencyResponses[keyof CortexConcurrencyResponses]
 
 export type CortexGetData = {
   body?: never

@@ -152,6 +152,53 @@ describe("settings config patch", () => {
     expect(patch).not.toHaveProperty("lspDiagnostics")
   })
 
+  test("persists an explicit Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "3"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.cortex).toEqual({ maxConcurrentTasks: 3 })
+  })
+
+  test("does not materialize the default Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("cortex")
+  })
+
+  test("omits unchanged or invalid Cortex concurrency values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "6"
+
+    expect(
+      buildPatch({
+        cfg: { cortex: { maxConcurrentTasks: 6 } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+
+    state.runtime.cortexConcurrency = "0"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+  })
+
   test("provider idle timeout can be disabled with false", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"
@@ -246,6 +293,7 @@ describe("settings config patch", () => {
       fallbackPolicy: "warn",
     })
   })
+
   test("persists toast mute and duration preferences on the general domain", () => {
     const state = defaultSettingsState("enter")
     state.general.mutedToasts = ["info", "success"]

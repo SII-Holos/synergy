@@ -212,6 +212,12 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.compaction = compaction
   }
 
+  const cortexConcurrency = positiveInteger(runtime.cortexConcurrency)
+  const currentCortexConcurrency = cfg.cortex?.maxConcurrentTasks ?? Number(UI_DEFAULTS.cortexConcurrency)
+  if (cortexConcurrency !== undefined && cortexConcurrency !== currentCortexConcurrency) {
+    patch.cortex = { maxConcurrentTasks: cortexConcurrency }
+  }
+
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
 

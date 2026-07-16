@@ -113,6 +113,10 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     compactionMaxHistoryImages: String(
       cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
     ),
+    cortexConcurrency:
+      cfg.cortex?.maxConcurrentTasks !== undefined
+        ? String(cfg.cortex.maxConcurrentTasks)
+        : UI_DEFAULTS.cortexConcurrency,
     invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
     providerTtfbTimeout:
       cfg.timeout?.provider?.ttfb_sec !== undefined

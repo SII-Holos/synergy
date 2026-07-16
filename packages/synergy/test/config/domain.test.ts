@@ -39,6 +39,13 @@ test("post-write diagnostics settings belong to the runtime domain", () => {
   expect(ConfigDomain.domainForKey("lspDiagnostics")?.id).toBe("runtime")
 })
 
+test("cortex task concurrency is owned by the runtime domain", () => {
+  expect(ConfigDomain.domainForKey("cortex")?.id).toBe("runtime")
+  expect(ConfigDomain.extract({ cortex: { maxConcurrentTasks: 6 } }, "runtime")).toEqual({
+    cortex: { maxConcurrentTasks: 6 },
+  })
+})
+
 test("product update mode is not part of server config", async () => {
   expect(ConfigDomain.domainForKey("autoupdate")).toBeUndefined()
   expect(Object.keys(Config.Info.shape)).not.toContain("autoupdate")

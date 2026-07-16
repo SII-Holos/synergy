@@ -43,6 +43,7 @@ export const UI_DEFAULTS = {
   compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
+  cortexConcurrency: "8" as string,
   libraryLearning: "true" as string,
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
@@ -263,6 +264,7 @@ export type RuntimeStore = {
   compactionPrune: string
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
+  cortexConcurrency: string
   invokeTimeout: string
   providerTtfbTimeout: string
   providerIdleTimeout: string
@@ -348,6 +350,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       compactionPrune: UI_DEFAULTS.compactionPrune,
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,
       providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
       providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,

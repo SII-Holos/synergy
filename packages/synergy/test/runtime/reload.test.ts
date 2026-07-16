@@ -8,6 +8,7 @@ import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
 import { GlobalBus } from "../../src/bus/global"
 import { Plugin } from "../../src/plugin"
+import { CortexConcurrency } from "../../src/cortex/concurrency"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
@@ -16,6 +17,7 @@ afterEach(() => {
   Config.reload = originalConfigReload
   ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   GlobalBus.removeAllListeners("event")
+  CortexConcurrency.reset()
 })
 
 test("post-write diagnostics settings are live-applied without restarting LSP", () => {
@@ -152,6 +154,26 @@ describe("runtime.reload", () => {
         expect(result.changedFields).toContain("server")
         expect(result.liveApplied).toContain("model")
         expect(result.restartRequired).toContain("server")
+      },
+    })
+  })
+
+  test("applies global Cortex concurrency changes without restart", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { cortex: { maxConcurrentTasks: 3 } },
+          changedFields: ["cortex"],
+          oldConfig: {},
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(result.liveApplied).toContain("cortex")
+        expect(result.restartRequired).not.toContain("cortex")
+        expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
       },
     })
   })
