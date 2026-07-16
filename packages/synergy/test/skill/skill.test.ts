@@ -387,6 +387,21 @@ description: A skill in the .claude/skills directory.
     })
   })
 
+  test("includes the native Clarus participation skill without user configuration", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = await Skill.get("clarus-agent-participation")
+        expect(skill?.builtin).toBe(true)
+        expect(skill?.content).toContain("clarus_submit_task_result")
+        expect(skill?.content).not.toContain("start-clarus-listener")
+        expect(skill?.content).not.toContain("clarus.runtime.task.result")
+      },
+    })
+  })
+
   test("synergy-config documents canonical agent and model settings", async () => {
     await using tmp = await tmpdir({ git: true })
 
