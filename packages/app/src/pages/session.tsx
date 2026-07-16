@@ -37,6 +37,7 @@ import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
+import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { SessionContextPanel } from "@/components/session/session-context-panel"
@@ -656,7 +657,7 @@ function SessionPageContent() {
     const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
     if (!sessionScope) return
     if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
-    navigate(`/${base64Encode(sessionScope)}/session/${id}`, { replace: true })
+    navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
   })
   const parentSession = createMemo(() => {
     const current = currentSession()
@@ -811,12 +812,12 @@ function SessionPageContent() {
   )
 
   const updateHash = (id: string) => {
-    window.history.replaceState(null, "", `#${anchor(id)}`)
+    replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
   }
 
   const clearHash = () => {
     if (!window.location.hash) return
-    window.history.replaceState(null, "", window.location.pathname + window.location.search)
+    replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
   }
 
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
