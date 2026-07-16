@@ -132,6 +132,7 @@ import type {
   ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
+  CortexConcurrencyResponses,
   CortexGetErrors,
   CortexGetResponses,
   CortexListErrors,
@@ -5935,6 +5936,36 @@ export class Cortex extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<CortexListResponses, CortexListErrors, ThrowOnError>({
       url: "/cortex/tasks",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Cortex concurrency status
+   *
+   * Get the configured, effective, and memory-recommended Cortex task concurrency limits.
+   */
+  public concurrency<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CortexConcurrencyResponses, unknown, ThrowOnError>({
+      url: "/cortex/tasks/concurrency",
       ...options,
       ...params,
     })

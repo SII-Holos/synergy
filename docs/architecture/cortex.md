@@ -26,7 +26,9 @@ Plugin-owned tasks additionally persist plugin ID, plugin generation, Scope ID, 
 
 The `task` tool validates that the requested subagent is visible to the parent and permitted by its delegation policy. Cortex then creates a child session in the parent's `Scope` and workspace, or reuses an idle compatible child when reuse is requested. If a new worktree is requested, Cortex creates one for the child; a child of an existing worktree inherits that worktree instead of nesting another.
 
-Tasks are admitted through a concurrency queue. The current default limit is eight running tasks per concurrency key. Queued tasks start when a slot is released.
+Tasks are admitted through both per-agent and process-global concurrency limits. Each concurrency key allows at most eight running tasks. The global maximum defaults to eight and can be set with the global `cortex.maxConcurrentTasks` configuration or overridden for the process by `SYNERGY_CORTEX_GLOBAL_CONCURRENCY`. Lowering the maximum does not cancel running tasks; it queues new work until capacity is available, while raising it wakes eligible queued work.
+
+Memory pressure produces a recommended global maximum of four under elevated pressure or two under critical pressure. This recommendation is observable but advisory: it never changes or overrides the configured, environment-provided, or default effective maximum. The read-only `cortex.concurrency` API reports configured, environment, effective, recommended, recommendation reason, source, per-agent, running, and queued values.
 
 An explicit task model wins. Otherwise Cortex resolves the selected agent's available model, with the parent's model available as the normal fallback path. The resolved model is persisted on the child session.
 

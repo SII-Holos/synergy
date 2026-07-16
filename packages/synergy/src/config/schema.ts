@@ -1337,6 +1337,18 @@ export const Info = z
       })
       .optional()
       .describe("Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts"),
+    cortex: z
+      .object({
+        maxConcurrentTasks: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of Cortex subagent tasks that may run concurrently (default: 8)"),
+      })
+      .strict()
+      .optional()
+      .describe("Cortex task scheduling configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
