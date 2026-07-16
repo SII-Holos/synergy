@@ -73,6 +73,42 @@ describe("SessionInbox", () => {
     })
   })
 
+  test("deduplicates stable delivery after the inbox item is materialized", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const input = {
+          sessionID: session.id,
+          deliveryKey: "test:materialized:once",
+          mode: "task" as const,
+          message: {
+            role: "user" as const,
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test-model" },
+            parts: [{ type: "text" as const, text: "materialize once" }],
+          },
+        }
+
+        const first = await SessionInbox.deliverUnique(input)
+        const item = await SessionInbox.getStored(session.id, first.itemID)
+        await SessionInbox.materializeItem(item)
+        await SessionInbox.remove({ sessionID: session.id, itemID: first.itemID })
+
+        const second = await SessionInbox.deliverUnique(input)
+
+        expect(second).toEqual({ itemID: first.itemID, messageID: first.messageID, created: false })
+        expect(await SessionInbox.list(session.id)).toEqual([])
+        expect((await Session.messages({ sessionID: session.id })).map((message) => message.info.id)).toEqual([
+          first.messageID,
+        ])
+
+        SessionManager.unregisterRuntime(session.id)
+      },
+    })
+  })
+
   test("promotes queued user input into guiding state", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

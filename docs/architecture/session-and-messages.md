@@ -118,6 +118,8 @@ Downstream loop, compaction, history, and frontend code read canonical fields. T
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
+Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. The read boundary restores those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+
 ## Message Parts
 
 Messages contain ordered parts rather than separate tool and text timelines. Current part kinds include:
@@ -152,7 +154,7 @@ Every item has one scheduling axis:
 | `steer`   | Existing root | Materialized before the next `needsModelCall` decision. | Wakes the latest root if one exists.          |
 | `context` | Existing root | Piggybacks only after a model call is already required. | Remains stored and does not wake the session. |
 
-The item pre-allocates its message ID so materialization is idempotent. Task, steer, and context order is stable through `orderKey`.
+Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID, and task, steer, and context order remains stable through `orderKey`; legacy hash-based transcript IDs are supported only at the read boundary.
 
 Typical mappings:
 
@@ -218,6 +220,7 @@ An interrupted assistant that never reached terminal persistence is completed wi
 - One root user message owns each task and all assistant messages in that task.
 - `rootID`, `visible`, `includeInContext`, and `origin` remain orthogonal.
 - `MessageV2.deriveSemantics()` and `MessageV2.isSystemPart()` are the canonical legacy boundaries.
+- Transcript chronology comes from the canonical ordered message array; raw message ID comparison is not a temporal boundary.
 - All incoming work uses the persistent inbox and one mode axis.
 - Rollback changes effective history; file restore changes files only through an explicit action.
 - Parent lineage and fork lineage remain distinct.
