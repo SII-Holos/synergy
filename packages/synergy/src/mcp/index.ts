@@ -13,9 +13,10 @@ import { McpOAuthProvider } from "./oauth-provider"
 import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import open from "open"
-import { McpSupervisor, mapStatus, pendingOAuthTransports } from "./supervisor"
+import { McpSupervisor, mapStatus } from "./supervisor"
 import type { McpHandle, PromptCache, ResourceCache } from "./supervisor"
 import { ToolExposure } from "@/tool/exposure"
+import { PendingOAuth } from "./pending-oauth"
 
 // Re-export supervisor symbols so downstream imports from "@/mcp" still work.
 // These go at module scope, not inside the namespace.
@@ -116,6 +117,11 @@ export namespace MCP {
   }
 
   // ── Lifecycle ───────────────────────────────────────────────────────
+
+  export async function stop() {
+    await McpOAuthCallback.stop()
+    await McpSupervisor.reset()
+  }
 
   export async function reload() {
     log.info("reloading mcp state")
@@ -325,6 +331,14 @@ export namespace MCP {
 
   // ── OAuth helpers ──────────────────────────────────────────────────
 
+  async function clearPendingOAuthState(mcpName: string): Promise<void> {
+    McpOAuthCallback.cancelPending(mcpName)
+    await Promise.all([
+      McpAuth.clearCodeVerifier(mcpName).catch(() => undefined),
+      McpAuth.clearOAuthState(mcpName).catch(() => undefined),
+    ])
+  }
+
   export async function startAuth(mcpName: string): Promise<{ authorizationUrl: string }> {
     ensureStarted()
     const cfg = await Config.current()
@@ -336,6 +350,7 @@ export namespace MCP {
     if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
     if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
 
+    await PendingOAuth.dispose(mcpName, "OAuth restarted")
     await McpOAuthCallback.ensureRunning()
 
     const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
@@ -361,17 +376,29 @@ export namespace MCP {
     )
 
     const transport = new StreamableHTTPClientTransport(new URL(mcpConfig.url), { authProvider })
+    const client = new Client({ name: "synergy", version: Installation.VERSION })
 
     try {
-      const client = new Client({ name: "synergy", version: Installation.VERSION })
       const connectTimeout = await resolveMcpTimeout(mcpName)
       await withTimeout(client.connect(transport), connectTimeout)
+      await client.close().catch((closeError) => {
+        log.warn("failed to close MCP client after OAuth probe", { mcpName, closeError })
+      })
+      await clearPendingOAuthState(mcpName)
       return { authorizationUrl: "" }
     } catch (error) {
       if (error instanceof UnauthorizedError && capturedUrl) {
-        pendingOAuthTransports.set(mcpName, transport)
+        await PendingOAuth.register(mcpName, {
+          client,
+          transport,
+          onDispose: () => clearPendingOAuthState(mcpName),
+        })
         return { authorizationUrl: capturedUrl.toString() }
       }
+      await client.close().catch((closeError) => {
+        log.warn("failed to close MCP client after OAuth probe", { mcpName, closeError })
+      })
+      await clearPendingOAuthState(mcpName)
       throw error
     }
   }
@@ -383,30 +410,32 @@ export namespace MCP {
       return status().then((s) => s[mcpName] ?? { status: "connected" })
     }
 
-    const oauthState = await McpAuth.getOAuthState(mcpName)
-    if (!oauthState) throw new Error("OAuth state not found - this should not happen")
+    try {
+      const oauthState = await McpAuth.getOAuthState(mcpName)
+      if (!oauthState) throw new Error("OAuth state not found - this should not happen")
 
-    log.info("opening browser for oauth", { mcpName, host: new URL(authorizationUrl).hostname })
-    await open(authorizationUrl)
+      log.info("opening browser for oauth", { mcpName, host: new URL(authorizationUrl).hostname })
+      await open(authorizationUrl)
 
-    const code = await McpOAuthCallback.waitForCallback(oauthState)
-    const storedState = await McpAuth.getOAuthState(mcpName)
-    if (storedState !== oauthState) {
-      await McpAuth.clearOAuthState(mcpName)
-      throw new Error("OAuth state mismatch - potential CSRF attack")
+      const code = await McpOAuthCallback.waitForCallback(oauthState, mcpName)
+      const storedState = await McpAuth.getOAuthState(mcpName)
+      if (storedState !== oauthState) {
+        throw new Error("OAuth state mismatch - potential CSRF attack")
+      }
+      return await finishAuth(mcpName, code)
+    } finally {
+      await PendingOAuth.dispose(mcpName, "OAuth interaction ended")
+      await clearPendingOAuthState(mcpName)
     }
-    await McpAuth.clearOAuthState(mcpName)
-    return finishAuth(mcpName, code)
   }
 
   export async function finishAuth(mcpName: string, authorizationCode: string): Promise<Status> {
     ensureStarted()
-    const transport = pendingOAuthTransports.get(mcpName)
-    if (!transport) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
+    const pending = PendingOAuth.get(mcpName)
+    if (!pending) throw new Error(`No pending OAuth flow for MCP server: ${mcpName}`)
 
     try {
-      await transport.finishAuth(authorizationCode)
-      await McpAuth.clearCodeVerifier(mcpName)
+      await pending.transport.finishAuth(authorizationCode)
 
       const cfg = await Config.current()
       const mcpConfig = cfg.mcp?.[mcpName]
@@ -415,7 +444,7 @@ export namespace MCP {
         throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
       }
 
-      pendingOAuthTransports.delete(mcpName)
+      await PendingOAuth.dispose(mcpName, "OAuth completed")
       const server = Config.normalizeMcp(mcpConfig as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
       McpSupervisor.add(mcpName, { ...server, enabled: true })
       const handle = await McpSupervisor.connect(mcpName)
@@ -423,14 +452,16 @@ export namespace MCP {
     } catch (error) {
       log.error("failed to finish oauth", { mcpName, error })
       return { status: "failed", error: error instanceof Error ? error.message : String(error) }
+    } finally {
+      await PendingOAuth.dispose(mcpName, "OAuth finished")
+      await clearPendingOAuthState(mcpName)
     }
   }
 
   export async function removeAuth(mcpName: string): Promise<void> {
+    await PendingOAuth.dispose(mcpName, "OAuth removed")
+    await clearPendingOAuthState(mcpName)
     await McpAuth.remove(mcpName)
-    McpOAuthCallback.cancelPending(mcpName)
-    pendingOAuthTransports.delete(mcpName)
-    await McpAuth.clearOAuthState(mcpName)
     log.info("removed oauth credentials", { mcpName })
   }
 

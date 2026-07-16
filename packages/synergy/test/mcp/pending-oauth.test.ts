@@ -1,0 +1,57 @@
+import { afterEach, describe, expect, mock, test } from "bun:test"
+import { PendingOAuth } from "../../src/mcp/pending-oauth"
+import { Log } from "../../src/util/log"
+
+Log.init({ print: false })
+
+function connection() {
+  const close = mock(async () => {})
+  const finishAuth = mock(async (_authorizationCode: string) => {})
+  return {
+    close,
+    finishAuth,
+    value: {
+      client: { close },
+      transport: { finishAuth },
+    },
+  }
+}
+
+afterEach(async () => {
+  await PendingOAuth.disposeAll("test cleanup")
+})
+
+describe.serial("PendingOAuth", () => {
+  test("replacing a pending connection closes the previous owner", async () => {
+    const first = connection()
+    const second = connection()
+
+    await PendingOAuth.register("demo", first.value)
+    await PendingOAuth.register("demo", second.value)
+
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(PendingOAuth.get("demo")?.transport).toBe(second.value.transport)
+  })
+
+  test("dispose closes a pending connection exactly once", async () => {
+    const pending = connection()
+    await PendingOAuth.register("demo", pending.value)
+
+    await PendingOAuth.dispose("demo", "cancelled")
+    await PendingOAuth.dispose("demo", "cancelled again")
+
+    expect(pending.close).toHaveBeenCalledTimes(1)
+    expect(PendingOAuth.get("demo")).toBeUndefined()
+  })
+
+  test("expired pending connections close their owner", async () => {
+    const pending = connection()
+    await PendingOAuth.register("demo", pending.value, { timeoutMs: 5 })
+
+    await Bun.sleep(25)
+
+    expect(pending.close).toHaveBeenCalledTimes(1)
+    expect(PendingOAuth.get("demo")).toBeUndefined()
+  })
+})
