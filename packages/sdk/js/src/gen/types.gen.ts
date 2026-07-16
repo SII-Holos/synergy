@@ -3648,6 +3648,8 @@ export type SessionCortexDelegation = {
     modelID: string
   }
   error?: string
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
   visibility?: "visible" | "hidden"
   tools?: {
     [key: string]: boolean
@@ -4077,6 +4079,7 @@ export type SessionInboxItem = {
   id: string
   sessionID: string
   mode: "task" | "steer" | "context"
+  deliveryKey?: string
   message?: {
     role?: "user" | "assistant"
     parts: Array<

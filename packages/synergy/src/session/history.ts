@@ -99,10 +99,7 @@ export namespace SessionHistory {
   )
 
   function getCutMessageID(event: { cutMessageID?: string; droppedMessageIDs: string[] }): string | undefined {
-    return (
-      event.cutMessageID ??
-      (event.droppedMessageIDs.length ? event.droppedMessageIDs.reduce((a, b) => (a < b ? a : b)) : undefined)
-    )
+    return event.cutMessageID ?? event.droppedMessageIDs[0]
   }
 
   export const rollback = fn(
@@ -128,7 +125,7 @@ export namespace SessionHistory {
       if (input.cutMessageID) {
         // cutMessageID mode: drop everything from cutMessageID onward
         cutMessageID = input.cutMessageID
-        const cutIndex = effective.findIndex((msg) => msg.info.id >= cutMessageID!)
+        const cutIndex = effective.findIndex((msg) => msg.info.id === cutMessageID)
         if (cutIndex >= 0) {
           dropped = effective.slice(cutIndex)
         }
@@ -342,19 +339,22 @@ export namespace SessionHistory {
     const rollbacks = activeRollbacks(events)
     if (rollbacks.length === 0) return messages
 
-    const cuts: string[] = []
+    const cutIndexes: number[] = []
     const hidden = new Set<string>()
     for (const event of rollbacks) {
       const cut = getCutMessageID(event)
       if (cut && canUnrollback(messages, event)) {
-        cuts.push(cut)
-        continue
+        const cutIndex = messages.findIndex((message) => message.info.id === cut)
+        if (cutIndex >= 0) {
+          cutIndexes.push(cutIndex)
+          continue
+        }
       }
       for (const id of event.droppedMessageIDs) hidden.add(id)
     }
 
-    return messages.filter((msg) => {
-      if (cuts.some((cut) => msg.info.id >= cut)) return false
+    return messages.filter((msg, index) => {
+      if (cutIndexes.some((cutIndex) => index >= cutIndex)) return false
       return !hidden.has(msg.info.id)
     })
   }

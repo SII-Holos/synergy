@@ -51,6 +51,8 @@ const CortexDelegationInfoInner = z.object({
     })
     .optional(),
   error: z.string().optional(),
+  notifyParentOnComplete: z.boolean().optional(),
+  deliveryNotifiedAt: z.number().optional(),
   visibility: z.enum(["visible", "hidden"]).optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
   outputConfig: CortexTypes.OutputConfig.optional(),

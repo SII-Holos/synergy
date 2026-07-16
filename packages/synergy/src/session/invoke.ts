@@ -247,6 +247,7 @@ export namespace SessionInvoke {
         let RParts: MessageV2.Part[] | undefined
         let lastFinished: MessageV2.Assistant | undefined
         let lastFinishedParts: MessageV2.Part[] | undefined
+        let lastFinishedIndex = -1
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
@@ -264,6 +265,7 @@ export namespace SessionInvoke {
             if (!lastFinished && SessionProgress.isTerminalAssistant(msg.info as MessageV2.Assistant)) {
               lastFinished = msg.info as MessageV2.Assistant
               lastFinishedParts = msg.parts
+              lastFinishedIndex = i
             }
           }
           if (R && lastFinished) break
@@ -487,8 +489,9 @@ export namespace SessionInvoke {
         // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
         // steer messages carry their own structured text and should not be wrapped.
         if (step > 1 && lastFinished) {
-          for (const msg of sessionMessages) {
-            if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
+          for (let index = lastFinishedIndex + 1; index < sessionMessages.length; index++) {
+            const msg = sessionMessages[index]
+            if (msg.info.role !== "user") continue
             const user = msg.info as MessageV2.User
             const isRoot = user.isRoot === true
             const originType = user.origin?.type
@@ -1787,6 +1790,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
   export async function resumePending(): Promise<void> {
     await reconcileInterruptedCortexDelegations()
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.reconcileParentNotifications()
 
     const sessionIDs = await SessionManager.listPendingReply()
     for (const sessionID of sessionIDs) {

@@ -22,13 +22,15 @@ import { CortexOutput } from "./output"
 import { ScopeContext } from "../scope/context"
 import { Observability } from "../observability"
 import { pluginTaskSnapshotFromTask } from "./plugin-task"
+import { SessionInbox } from "../session/inbox"
+import { SessionDrive } from "../session/drive"
+import { Lock } from "../util/lock"
 
 export namespace Cortex {
   const log = Log.create({ service: "cortex" })
 
   const tasks: Map<string, CortexTypes.Task> = new Map()
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
-  const deferredParentNotifications = new Map<string, Set<string>>()
   const taskRuns: Map<string, Promise<void>> = new Map()
   const acquiredTasks = new Set<string>()
   const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
@@ -89,6 +91,7 @@ export namespace Cortex {
   export const launch = fn(CortexTypes.LaunchInput, async (input) => {
     const taskID = Identifier.short("cortex")
     const executionRole = input.executionRole ?? "primary"
+    const notifyParentOnComplete = input.notifyParentOnComplete ?? input.visibility !== "hidden"
     log.info("launching", {
       taskID,
       description: input.description,
@@ -149,6 +152,7 @@ export namespace Cortex {
           executionRole,
           status: "queued",
           startedAt: Date.now(),
+          notifyParentOnComplete,
           visibility: input.visibility,
           tools: input.tools,
           outputConfig: input.output,
@@ -201,7 +205,7 @@ export namespace Cortex {
         lastUpdate: Date.now(),
         recentTools: [],
       },
-      notifyParentOnComplete: input.notifyParentOnComplete ?? (input.visibility === "hidden" ? false : undefined),
+      notifyParentOnComplete,
       visibility: input.visibility,
       tools: input.tools,
       outputConfig: input.output,
@@ -218,11 +222,13 @@ export namespace Cortex {
       draft.cortex.agent = input.agent
       draft.cortex.model = input.model
       draft.cortex.executionRole = input.executionRole
+      draft.cortex.notifyParentOnComplete = notifyParentOnComplete
       draft.cortex.status = "queued"
       draft.cortex.startedAt = task.startedAt
       draft.cortex.completedAt = undefined
       draft.cortex.error = undefined
       draft.cortex.output = undefined
+      draft.cortex.deliveryNotifiedAt = undefined
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
     })
@@ -569,6 +575,9 @@ export namespace Cortex {
       }
       if (error) terminalTask.error = error
       if (output) terminalTask.output = output
+      const waiters = taskWaiters.get(taskID)
+      const shouldNotifyParent = !waiters?.size && terminalTask.notifyParentOnComplete !== false
+      terminalTask.notifyParentOnComplete = shouldNotifyParent
 
       const timeout = taskTimeouts.get(taskID)
       if (timeout) {
@@ -584,6 +593,7 @@ export namespace Cortex {
           if (error) draft.cortex.error = error
           if (output) draft.cortex.output = output
           draft.cortex.usage = terminalTask.usage
+          draft.cortex.notifyParentOnComplete = shouldNotifyParent
         }
       }).catch((error) => {
         log.error("failed to persist terminal task fields", { taskID, error })
@@ -611,14 +621,7 @@ export namespace Cortex {
         CortexConcurrency.release(terminalTask.agent)
       }
 
-      const waiters = taskWaiters.get(taskID)
-      const shouldNotifyParent = !waiters?.size && terminalTask.notifyParentOnComplete !== false
-      if (shouldNotifyParent) {
-        // Register the pending delivery before publishing terminal state so a
-        // concurrent parent release cannot miss it. The inbox notification is
-        // flushed only after task readers can observe the terminal result.
-        deferParentNotification(terminalTask)
-      } else {
+      if (!shouldNotifyParent) {
         if (waiters?.size) {
           log.info("task result has waiters, skipping mail", { taskID, waiterCount: waiters.size })
         } else {
@@ -637,8 +640,14 @@ export namespace Cortex {
       if (terminalTask.visibility !== "hidden") {
         Bus.publish(Event.TaskCompleted, { task: terminalTask })
       }
-      if (shouldNotifyParent && !SessionManager.isRunning(terminalTask.parentSessionID)) {
-        await flushDeferredParentNotifications(terminalTask.parentSessionID)
+      if (shouldNotifyParent) {
+        await notifyParentSession(terminalTask).catch((error) => {
+          log.error("failed to notify parent session", {
+            taskID,
+            parentSessionID: terminalTask.parentSessionID,
+            error,
+          })
+        })
       }
       const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
       if (pluginSnapshot) {
@@ -715,60 +724,96 @@ export namespace Cortex {
     }
   }
 
-  function deferParentNotification(task: CortexTypes.Task): void {
-    const parentSessionID = task.parentSessionID
-    const pending = deferredParentNotifications.get(parentSessionID) ?? new Set<string>()
-    if (pending.has(task.id)) return
-    pending.add(task.id)
-    deferredParentNotifications.set(parentSessionID, pending)
-    log.info("deferred parent notification until parent turn ends", {
-      taskID: task.id,
-      parentSessionID,
-    })
+  function parentNotificationKey(taskID: string): string {
+    return `cortex:taskNotification:${taskID}`
   }
 
-  export function acknowledgeParentCompletion(input: { taskID: string; parentSessionID: string }): boolean {
-    const task = tasks.get(input.taskID)
-    if (!task || task.parentSessionID !== input.parentSessionID || !isTerminal(task.status)) return false
+  function parentNotificationLock(taskID: string): string {
+    return `cortex-parent-notification:${taskID}`
+  }
 
-    const pending = deferredParentNotifications.get(input.parentSessionID)
-    if (!pending?.delete(input.taskID)) return false
-    if (pending.size === 0) deferredParentNotifications.delete(input.parentSessionID)
+  export async function acknowledgeParentCompletion(input: {
+    taskID: string
+    parentSessionID: string
+  }): Promise<boolean> {
+    const task = tasks.get(input.taskID)
+    if (task && (task.parentSessionID !== input.parentSessionID || !isTerminal(task.status))) return false
+
+    using _ = await Lock.write(parentNotificationLock(input.taskID))
+    let session = task ? await Session.get(task.sessionID).catch(() => undefined) : undefined
+    if (!session?.cortex || session.cortex.taskID !== input.taskID) {
+      const children = await Session.children(input.parentSessionID).catch(() => [])
+      session = children.find((child) => child.cortex?.taskID === input.taskID)
+    }
+    const delegation = session?.cortex
+    if (
+      !session ||
+      !delegation ||
+      delegation.parentSessionID !== input.parentSessionID ||
+      !isTerminal(delegation.status)
+    ) {
+      return false
+    }
+
+    if (!task) log.warn("acknowledging parent completion from durable delegation", input)
+    if (task) task.notifyParentOnComplete = false
+    await Session.update(session.id, (draft) => {
+      if (!draft.cortex || draft.cortex.taskID !== input.taskID) return
+      draft.cortex.notifyParentOnComplete = false
+    })
+    const deliveryKey = parentNotificationKey(input.taskID)
+    const pending = (await SessionInbox.list(input.parentSessionID)).find((item) => item.deliveryKey === deliveryKey)
+    if (pending) await SessionInbox.remove({ sessionID: input.parentSessionID, itemID: pending.id })
     log.info("acknowledged parent task completion", input)
     return true
   }
 
-  export async function flushDeferredParentNotifications(parentSessionID: string): Promise<void> {
-    const pending = deferredParentNotifications.get(parentSessionID)
-    if (!pending || pending.size === 0) return
-    deferredParentNotifications.delete(parentSessionID)
+  export async function reconcileParentNotifications(): Promise<void> {
+    const sessionIDs = await SessionManager.listCortexDelegationsForParentDelivery()
+    for (const sessionID of sessionIDs) {
+      const session = await Session.get(sessionID).catch(() => undefined)
+      const delegation = session?.cortex
+      if (!session || !delegation || !isTerminal(delegation.status)) continue
+      if (delegation.notifyParentOnComplete !== true || delegation.visibility === "hidden") continue
 
-    for (const taskID of pending) {
-      const task = tasks.get(taskID)
-      if (!task) {
-        log.info("skipped deferred parent notification for missing task", { taskID, parentSessionID })
+      if (delegation.deliveryNotifiedAt) {
+        const deliveryKey = parentNotificationKey(delegation.taskID)
+        const pending = (await SessionInbox.list(delegation.parentSessionID)).some(
+          (item) => item.deliveryKey === deliveryKey,
+        )
+        if (pending) await SessionDrive.request(delegation.parentSessionID, "cortex-completion-recovery")
         continue
       }
-      if (task.notifyParentOnComplete === false) {
-        log.info("skipped deferred parent notification: notifyParentOnComplete is false", {
-          taskID,
-          parentSessionID,
+
+      await notifyParentSession({
+        id: delegation.taskID,
+        sessionID: session.id,
+        parentSessionID: delegation.parentSessionID,
+        description: delegation.description,
+        status: delegation.status,
+        startedAt: delegation.startedAt,
+        completedAt: delegation.completedAt,
+        error: delegation.error,
+      }).catch((error) => {
+        log.error("failed to reconcile parent notification", {
+          taskID: delegation.taskID,
+          parentSessionID: delegation.parentSessionID,
+          error,
         })
-        continue
-      }
-      if (!isTerminal(task.status)) {
-        log.info("skipped deferred parent notification for non-terminal task", {
-          taskID,
-          parentSessionID,
-          status: task.status,
-        })
-        continue
-      }
-      await notifyParentSession(task)
+      })
     }
   }
 
-  async function notifyParentSession(task: CortexTypes.Task): Promise<void> {
+  async function notifyParentSession(task: {
+    id: string
+    sessionID: string
+    parentSessionID: string
+    description: string
+    status: CortexTypes.TaskStatus
+    startedAt: number
+    completedAt?: number
+    error?: string
+  }): Promise<void> {
     const statusText =
       task.status === "error"
         ? "FAILED"
@@ -789,28 +834,29 @@ export namespace Cortex {
     ]
       .filter(Boolean)
       .join("\n")
+    const deliveryKey = parentNotificationKey(task.id)
+    using _ = await Lock.write(parentNotificationLock(task.id))
+    const session = await Session.get(task.sessionID).catch(() => undefined)
+    if (!session?.cortex || session.cortex.taskID !== task.id) return
+    if (session.cortex.notifyParentOnComplete !== true) return
 
-    try {
-      await SessionManager.deliver({
-        target: task.parentSessionID,
-        waitForProcessing: false,
-        mail: {
-          type: "user",
-          metadata: { source: "cortex", sourceSessionID: task.sessionID },
-          parts: [
-            {
-              id: Identifier.ascending("part"),
-              sessionID: task.parentSessionID,
-              messageID: Identifier.ascending("message"),
-              type: "text",
-              text: notification,
-            },
-          ],
-        },
-      })
-    } catch (error) {
-      log.error("failed to notify parent session", { taskID: task.id, parentSessionID: task.parentSessionID, error })
-    }
+    const delivery = await SessionInbox.deliverUnique({
+      sessionID: task.parentSessionID,
+      deliveryKey,
+      mode: "steer",
+      message: {
+        role: "user",
+        metadata: { source: "cortex", sourceSessionID: task.sessionID },
+        parts: [{ type: "text", text: notification }],
+      },
+    })
+    await Session.update(task.sessionID, (draft) => {
+      if (!draft.cortex || draft.cortex.taskID !== task.id) return
+      draft.cortex.deliveryNotifiedAt ??= Date.now()
+    })
+
+    const pending = await SessionInbox.getStored(task.parentSessionID, delivery.itemID).catch(() => undefined)
+    if (pending) await SessionDrive.request(task.parentSessionID, "cortex-completion")
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
@@ -819,7 +865,7 @@ export namespace Cortex {
 
   export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"
 
-  function formatDuration(task: CortexTypes.Task): string {
+  function formatDuration(task: { startedAt: number; completedAt?: number }): string {
     const start = task.startedAt
     const end = task.completedAt ?? Date.now()
     const seconds = Math.floor((end - start) / 1000)
@@ -1069,7 +1115,6 @@ export namespace Cortex {
     acquiredTasks.clear()
     finalizingTasks.clear()
     cancellationRequests.clear()
-    deferredParentNotifications.clear()
     for (const timeout of taskTimeouts.values()) clearTimeout(timeout)
     taskTimeouts.clear()
     if (progressUpdateTimer) {

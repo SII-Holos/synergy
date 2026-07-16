@@ -165,6 +165,6 @@ task_output(task_id: "ctx_abc123", block: true)
     const status = result.metadata.status
     if (status !== "completed" && status !== "error" && status !== "cancelled" && status !== "interrupted") return
     const { Cortex } = await import("../cortex")
-    Cortex.acknowledgeParentCompletion({ taskID: params.task_id, parentSessionID: ctx.sessionID })
+    await Cortex.acknowledgeParentCompletion({ taskID: params.task_id, parentSessionID: ctx.sessionID })
   },
 })

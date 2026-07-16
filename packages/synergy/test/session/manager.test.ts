@@ -5,6 +5,7 @@ import { SessionManager } from "../../src/session/manager"
 import { Session } from "../../src/session"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionInbox } from "../../src/session/inbox"
+import { SessionDrive } from "../../src/session/drive"
 import { tmpdir } from "../fixture/fixture"
 import { Channel } from "../../src/channel"
 import { Bus } from "../../src/bus"
@@ -201,69 +202,16 @@ describe("SessionManager.getSession", () => {
       })
     })
 
-    test("release flushes deferred cortex parent notifications before scheduling wake", async () => {
+    test("release schedules persisted inbox work after the active turn", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const { Cortex } = await import("../../src/cortex/manager")
           const { SessionInvoke } = await import("../../src/session/invoke")
-          const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const originalIsRunning = SessionManager.isRunning
           const originalLoop = SessionInvoke.loop
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           const wakes: string[] = []
           let parentSessionID = ""
-
-          ;(SessionInvoke.invokeInternal as any) = mock(
-            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              const parentID = "msg_cortex_parent"
-              const message = await Session.updateMessage({
-                id: "msg_cortex_assistant",
-                role: "assistant",
-                parentID,
-                rootID: parentID,
-                mode: "test",
-                agent: "developer",
-                path: {
-                  cwd: ScopeContext.current.directory,
-                  root: ScopeContext.current.directory,
-                },
-                cost: 0,
-                tokens: {
-                  input: 0,
-                  output: 0,
-                  reasoning: 0,
-                  cache: { read: 0, write: 0 },
-                },
-                modelID: "test-model",
-                providerID: "test-provider",
-                time: {
-                  created: Date.now(),
-                  completed: Date.now(),
-                },
-                sessionID: input.sessionID,
-              })
-              const part = await Session.updatePart({
-                id: "prt_cortex_assistant",
-                messageID: message.id,
-                sessionID: input.sessionID,
-                type: "text",
-                text: "completed",
-              })
-              return { info: message, parts: [part] }
-            },
-          )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-            if (typeof input.target === "string") {
-              await SessionInbox.enqueueMail({
-                sessionID: input.target,
-                mail: input.mail as any,
-              })
-            }
-          })
+          let parentLease: SessionManager.LoopLease | undefined
           ;(SessionInvoke.loop as any) = mock(async (sessionID: string) => {
             wakes.push(sessionID)
           })
@@ -289,45 +237,86 @@ describe("SessionManager.getSession", () => {
               type: "text",
               text: "parent root",
             })
-            const parentLease = SessionManager.acquire(parentSession.id)
+            parentLease = SessionManager.acquire(parentSession.id)
             expect(parentLease).toBeDefined()
-            ;(SessionManager.isRunning as any) = mock((sessionID: string) => {
-              if (sessionID !== parentSession.id) return originalIsRunning(sessionID)
-              return SessionManager.getRuntime(sessionID)?.owner !== undefined
+
+            await SessionInbox.deliverUnique({
+              sessionID: parentSession.id,
+              deliveryKey: "cortex:taskNotification:ctx_release_test",
+              mode: "steer",
+              message: {
+                role: "user",
+                metadata: { source: "cortex" },
+                parts: [{ type: "text", text: "Cortex task completed" }],
+              },
             })
 
-            const task = await Cortex.launch({
-              description: "Flush deferred parent notification",
-              prompt: "Do something",
-              agent: "developer",
-              parentSessionID: parentSession.id,
-              parentMessageID: rootID,
-              model: { providerID: "test-provider", modelID: "test-model" },
-            })
-
-            for (let i = 0; i < 50; i++) {
-              const current = Cortex.get(task.id)
-              if (current?.status === "completed" || current?.status === "error") break
-              await Bun.sleep(10)
-            }
-
-            expect(deliveries).toHaveLength(0)
             expect(SessionManager.isRunning(parentSession.id)).toBe(true)
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
+            expect(wakes).toHaveLength(0)
 
             await SessionManager.release(parentLease!)
-            await Bun.sleep(20)
+            parentLease = undefined
+            for (let i = 0; i < 20 && wakes.length === 0; i++) await Bun.sleep(5)
 
-            expect(deliveries).toHaveLength(1)
-            expect(deliveries[0].target).toBe(parentSession.id)
-            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
-            expect(wakes).toContain(parentSession.id)
+            expect(wakes).toEqual([parentSession.id])
           } finally {
-            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
-            ;(SessionManager.isRunning as any) = originalIsRunning
+            if (parentLease) await SessionManager.release(parentLease)
             ;(SessionInvoke.loop as any) = originalLoop
             if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
-            Cortex.reset()
+            SessionDrive.reset()
+          }
+        },
+      })
+    })
+
+    test("wait-for-processing wake can release without reentrant drive deadlock", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { SessionInvoke } = await import("../../src/session/invoke")
+          const originalLoop = SessionInvoke.loop
+          let sessionID = ""
+          let loopCount = 0
+          ;(SessionInvoke.loop as any) = mock(async (wokenSessionID: string) => {
+            loopCount++
+            const lease = SessionManager.acquire(wokenSessionID)
+            expect(lease).toBeDefined()
+            expect(SessionManager.activate(lease!)).toBe(true)
+            await SessionInbox.drainReady(wokenSessionID)
+            await SessionManager.release(lease!)
+          })
+
+          try {
+            const session = await Session.create({})
+            sessionID = session.id
+            await SessionInbox.deliverUnique({
+              sessionID,
+              deliveryKey: "agenda:reentrant-test:once:0",
+              mode: "task",
+              message: {
+                role: "user",
+                metadata: { source: "agenda" },
+                parts: [{ type: "text", text: "Agenda task ready" }],
+              },
+            })
+
+            const handled = await Promise.race([
+              SessionDrive.request(sessionID, "reentrant-test", { waitForProcessing: true }),
+              Bun.sleep(1_000).then(() => {
+                throw new Error("Reentrant session drive did not settle")
+              }),
+            ])
+
+            expect(handled).toBe(true)
+            expect(loopCount).toBe(1)
+            expect(await SessionInbox.list(sessionID)).toHaveLength(0)
+            expect(SessionManager.isRunning(sessionID)).toBe(false)
+          } finally {
+            ;(SessionInvoke.loop as any) = originalLoop
+            if (sessionID) SessionManager.unregisterRuntime(sessionID)
+            SessionDrive.reset()
           }
         },
       })
