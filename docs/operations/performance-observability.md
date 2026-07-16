@@ -76,6 +76,8 @@ After each model/tool turn, the session runtime samples process memory and may r
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES` (default `8 GiB`)
 - `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default cgroup `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
 
+Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
+
 ## Performance and diagnostics APIs
 
 The server exposes local-first endpoints under `/global/performance`:

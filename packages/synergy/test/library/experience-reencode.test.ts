@@ -305,6 +305,60 @@ describe("ExperienceReencode worker primitives", () => {
     expect(started).toEqual([1])
   })
 
+  test("pauses before claiming new work under pressure and stops waiting after cancellation", async () => {
+    const abort = new AbortController()
+    const started: number[] = []
+    let critical = false
+    let gateCalls = 0
+
+    const pending = ExperienceReencode.runPool({
+      items: [1, 2, 3],
+      concurrency: 1,
+      signal: abort.signal,
+      pressurePollMs: 5,
+      pressureGate() {
+        gateCalls++
+        return critical
+      },
+      async process(item) {
+        started.push(item)
+        critical = true
+      },
+    })
+
+    await Bun.sleep(20)
+    expect(started).toEqual([1])
+    expect(gateCalls).toBeGreaterThan(0)
+
+    abort.abort()
+    await pending
+    expect(started).toEqual([1])
+  })
+
+  test("resumes claiming work after memory pressure clears", async () => {
+    const started: number[] = []
+    let critical = false
+
+    const pending = ExperienceReencode.runPool({
+      items: [1, 2, 3],
+      concurrency: 1,
+      signal: new AbortController().signal,
+      pressurePollMs: 5,
+      pressureGate: () => critical,
+      async process(item) {
+        started.push(item)
+        if (item === 1) critical = true
+      },
+    })
+
+    await Bun.sleep(20)
+    expect(started).toEqual([1])
+
+    critical = false
+    await pending
+    expect(started).toEqual([1, 2, 3])
+  })
+
   test("retries only classified transient stage failures", async () => {
     let transientAttempts = 0
     const transient = await ExperienceReencode.withStageRetry({
