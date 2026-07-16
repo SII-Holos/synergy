@@ -34,6 +34,13 @@ test("plugins domain merges by default so imported plugin arrays replace stale s
   expect(ConfigDomain.byId.get("plugins")?.mergePolicy).toBe("merge")
 })
 
+test("cortex task concurrency is owned by the runtime domain", () => {
+  expect(ConfigDomain.domainForKey("cortex")?.id).toBe("runtime")
+  expect(ConfigDomain.extract({ cortex: { maxConcurrentTasks: 6 } }, "runtime")).toEqual({
+    cortex: { maxConcurrentTasks: 6 },
+  })
+})
+
 test("product update mode is not part of server config", async () => {
   expect(ConfigDomain.domainForKey("autoupdate")).toBeUndefined()
   expect(Object.keys(Config.Info.shape)).not.toContain("autoupdate")

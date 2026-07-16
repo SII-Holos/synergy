@@ -1,18 +1,7 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { LightLoopContinuationPolicy } from "../../src/session/light-loop-continuation"
-import { SessionManager } from "../../src/session/manager"
 import type { ContinuationKernel } from "../../src/session/continuation-kernel"
 import type { Info as SessionInfo } from "../../src/session/types"
-
-let originalDeliver: typeof SessionManager.deliver
-
-beforeEach(() => {
-  originalDeliver = SessionManager.deliver
-})
-
-afterEach(() => {
-  ;(SessionManager.deliver as any) = originalDeliver
-})
 
 function gate(session: Partial<SessionInfo>): ContinuationKernel.Gate {
   return {
@@ -24,155 +13,76 @@ function gate(session: Partial<SessionInfo>): ContinuationKernel.Gate {
 }
 
 describe("LightLoopContinuationPolicy", () => {
-  test("handle returns true and delivers continuation when Light Loop workflow is active", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
+  test("proposes a system continuation when Light Loop is active", async () => {
+    const proposal = await LightLoopContinuationPolicy.handle(
+      gate({
+        id: "ses_light_loop",
+        workflow: { kind: "lightloop", taskDescription: "Write unit tests" },
+      }),
+    )
 
-    const g = gate({
-      id: "ses_light_loop",
-      workflow: { kind: "lightloop", taskDescription: "Write unit tests" },
-    })
-
-    const handled = await LightLoopContinuationPolicy.handle(g)
-
-    expect(handled).toBe(true)
-    expect(deliveries).toHaveLength(1)
-    expect(deliveries[0].target).toBe("ses_light_loop")
-
-    const mail = deliveries[0].mail
-    expect(mail.type).toBe("user")
-    if (mail.type !== "user") throw new Error("expected user mail")
-    expect(mail.summary?.title).toBe("Continue light loop")
-    expect(mail.metadata?.source).toBe("light_loop_continuation")
-    expect(mail.parts).toHaveLength(1)
-    expect(mail.parts[0].type).toBe("text")
-    if (mail.parts[0].type === "text") {
-      expect(mail.parts[0].origin).toBe("system")
-      expect("synthetic" in mail.parts[0]).toBe(false)
-      expect(mail.parts[0].text).toContain("Task: Write unit tests")
-      expect(mail.parts[0].text).toContain("loop_stop()")
-    }
-  })
-
-  test("handle returns false when another workflow is active", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
-
-    const g = gate({
-      id: "ses_not_active",
-      workflow: { kind: "plan" },
-    })
-
-    const handled = await LightLoopContinuationPolicy.handle(g)
-
-    expect(handled).toBe(false)
-    expect(deliveries).toHaveLength(0)
-  })
-
-  test("handle returns false when no workflow is active", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
-
-    const g = gate({
-      id: "ses_no_loop",
-    })
-
-    const handled = await LightLoopContinuationPolicy.handle(g)
-
-    expect(handled).toBe(false)
-    expect(deliveries).toHaveLength(0)
-  })
-
-  test("handle returns false when a stop request is pending", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
-
-    const g = gate({
-      id: "ses_review_pending",
-      workflow: {
-        kind: "lightloop" as const,
-        taskDescription: "Write unit tests",
-        stopRequest: {
-          summary: "done",
-          requestedAt: Date.now(),
-          requesterSessionID: "ses_review_pending",
-          requesterMessageID: "msg_123",
-          reviewSessionID: "ses_reviewer",
-        },
-      },
-    })
-
-    const handled = await LightLoopContinuationPolicy.handle(g)
-
-    expect(handled).toBe(false)
-    expect(deliveries).toHaveLength(0)
-  })
-
-  test("handle continues when stop request has no reviewer session (legacy or migration robustness)", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
-
-    const g = gate({
-      id: "ses_partial_review",
-      workflow: {
-        kind: "lightloop" as const,
-        taskDescription: "Write unit tests",
-        stopRequest: {
-          summary: "done",
-          requestedAt: Date.now(),
-          requesterSessionID: "ses_partial_review",
-          requesterMessageID: "msg_123",
-          reviewTaskID: "ctx_partial",
-        },
-      },
-    })
-
-    const handled = await LightLoopContinuationPolicy.handle(g)
-
-    expect(handled).toBe(true)
-    expect(deliveries).toHaveLength(1)
-  })
-
-  test("delivered mail is a system-origin user message with continuation prompt", async () => {
-    const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-    ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-      deliveries.push(input)
-    })
-
-    const g = gate({
-      id: "ses_delivery",
-      workflow: { kind: "lightloop", taskDescription: "Refactor the login flow" },
-    })
-
-    await LightLoopContinuationPolicy.handle(g)
-
-    const mail = deliveries[0].mail
-    expect(mail.type).toBe("user")
-    if (mail.type !== "user") throw new Error("expected user mail")
-
-    const part = mail.parts[0]
+    if (!proposal || proposal.kind !== "inbox") throw new Error("expected inbox proposal")
+    expect(proposal.kind).toBe("inbox")
+    expect(proposal.mode).toBe("steer")
+    expect(proposal.message.summary?.title).toBe("Continue light loop")
+    expect(proposal.message.origin).toEqual({ type: "system" })
+    expect(proposal.message.metadata?.source).toBe("light_loop_continuation")
+    expect(proposal.message.parts).toHaveLength(1)
+    const part = proposal.message.parts[0]
     expect(part.type).toBe("text")
-    if (part.type === "text") {
-      expect(part.origin).toBe("system")
-      expect("synthetic" in part).toBe(false)
-      expect(part.text).toBe(`Task: Refactor the login flow
+    if (part.type !== "text") throw new Error("expected text part")
+    expect(part.origin).toBe("system")
+    expect(part.synthetic).toBeUndefined()
+    expect(part.text).toContain("Task: Write unit tests")
+    expect(part.text).toContain("loop_stop()")
+  })
 
-Review the task against the current work:
-- Are all requested deliverables complete?
-- Is the result verified with appropriate evidence?
-- Are there unresolved errors, missing edge cases, or implied follow-up steps?
+  test.each([
+    { name: "another workflow", workflow: { kind: "plan" as const } },
+    { name: "no workflow", workflow: undefined },
+  ])("does not propose for $name", async ({ workflow }) => {
+    expect(await LightLoopContinuationPolicy.handle(gate({ workflow }))).toBeUndefined()
+  })
 
-If anything remains, continue working now. If the task is complete and verified, call loop_stop() to request a completion review. Do not claim completion without evidence.`)
-    }
+  test("does not propose while a completion review is pending", async () => {
+    const proposal = await LightLoopContinuationPolicy.handle(
+      gate({
+        id: "ses_review_pending",
+        workflow: {
+          kind: "lightloop",
+          taskDescription: "Write unit tests",
+          stopRequest: {
+            summary: "done",
+            requestedAt: Date.now(),
+            requesterSessionID: "ses_review_pending",
+            requesterMessageID: "msg_123",
+            reviewSessionID: "ses_reviewer",
+          },
+        },
+      }),
+    )
+
+    expect(proposal).toBeUndefined()
+  })
+
+  test("continues a partially persisted stop request without a reviewer session", async () => {
+    const proposal = await LightLoopContinuationPolicy.handle(
+      gate({
+        id: "ses_partial_review",
+        workflow: {
+          kind: "lightloop",
+          taskDescription: "Write unit tests",
+          stopRequest: {
+            summary: "done",
+            requestedAt: Date.now(),
+            requesterSessionID: "ses_partial_review",
+            requesterMessageID: "msg_123",
+            reviewTaskID: "ctx_partial",
+          },
+        },
+      }),
+    )
+
+    expect(proposal && proposal.kind).toBe("inbox")
   })
 })

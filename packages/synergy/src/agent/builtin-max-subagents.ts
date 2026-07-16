@@ -9,7 +9,6 @@ import { createDocumentationEngineerAgent } from "./prompt/documentation-enginee
 import { createDocumentationReviewerAgent } from "./prompt/documentation-reviewer/builder"
 import { createFixtureBuilderAgent } from "./prompt/fixture-builder/builder"
 import { createImplementationEngineerAgent } from "./prompt/implementation-engineer/builder"
-import { createIntentAnalystAgent } from "./prompt/intent-analyst/builder"
 import { createIntegrationEngineerAgent } from "./prompt/integration-engineer/builder"
 import { createLiteratureAnalystAgent } from "./prompt/literature-analyst/builder"
 import { createLiteratureSearcherAgent } from "./prompt/literature-searcher/builder"
@@ -34,7 +33,6 @@ import { createTypeTestEngineerAgent } from "./prompt/type-test-engineer/builder
 import { createTypescriptQualityEngineerAgent } from "./prompt/typescript-quality-engineer/builder"
 
 const FACTORIES = [
-  createIntentAnalystAgent,
   createRequirementsEngineerAgent,
   createCodeCartographerAgent,
   createDependencyTracerAgent,

@@ -6,6 +6,7 @@ import { BlueprintContinuation } from "../../src/session/blueprint-continuation"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
+import { SessionInbox } from "../../src/session/inbox"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
 
@@ -96,28 +97,22 @@ describe("BlueprintContinuation", () => {
         const user = await writeUser(session.id)
         await writeAssistant(session.id, user.id)
 
-        const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
-        ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-          deliveries.push(input)
-        })
-
         const delivered = await BlueprintContinuation.handleIdle(session.id)
 
         expect(delivered).toBe(true)
-        expect(deliveries).toHaveLength(1)
-        expect(deliveries[0].target).toBe(session.id)
-        const mail = deliveries[0].mail
-        expect(mail.type).toBe("user")
-        if (mail.type !== "user") throw new Error("expected user mail")
-        expect(mail.summary?.title).toBe(`Continue ${loop.title} blueprint`)
-        expect(mail.metadata?.source).toBe("blueprint_loop_continuation")
-        expect(mail.metadata?.loopID).toBe(loop.id)
-        expect(mail.metadata?.noteID).toBe(loop.noteID)
-        expect(mail.metadata?.title).toBe(loop.title)
-        expect(mail.metadata?.status).toBe("running")
-        expect(mail.metadata?.mailbox).toBeUndefined()
-        expect(mail.metadata?.channelPush).toBeUndefined()
-        const part = mail.parts[0] as MessageV2.TextPart
+        const items = await SessionInbox.list(session.id)
+        expect(items).toHaveLength(1)
+        const item = items[0]
+        expect(item.mode).toBe("steer")
+        expect(item.deliveryKey).toContain("continuation:blueprint_loop:")
+        expect(item.message?.summary?.title).toBe(`Continue ${loop.title} blueprint`)
+        expect(item.message?.metadata?.source).toBe("blueprint_loop_continuation")
+        expect(item.message?.metadata?.loopID).toBe(loop.id)
+        expect(item.message?.metadata?.noteID).toBe(loop.noteID)
+        expect(item.message?.metadata?.title).toBe(loop.title)
+        expect(item.message?.metadata?.status).toBe("running")
+        expect(item.message?.origin?.type).toBe("blueprint")
+        const part = item.message?.parts[0] as MessageV2.TextPart
         expect(part.synthetic).toBe(true)
         expect(part.text).toContain(`BlueprintLoop ${loop.id} status is \`running\``)
         expect(part.text).toContain("current delivered state")

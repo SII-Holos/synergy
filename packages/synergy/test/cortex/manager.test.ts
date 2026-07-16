@@ -7,6 +7,8 @@ import { Session } from "../../src/session"
 import { SessionInbox } from "../../src/session/inbox"
 import { SessionInvoke } from "../../src/session/invoke"
 import { SessionManager } from "../../src/session/manager"
+import { SessionDrive } from "../../src/session/drive"
+import { ContinuationWait } from "../../src/session/continuation-wait"
 import { Identifier } from "../../src/id/id"
 import { CortexOutput } from "../../src/cortex/output"
 import { TaskOutputTool } from "../../src/tool/task-output"
@@ -185,6 +187,8 @@ async function waitUntilTerminal(taskID: string) {
 describe.serial("Cortex", () => {
   beforeEach(() => {
     Cortex.reset()
+    SessionDrive.reset()
+    ContinuationWait.reset()
   })
 
   describe("get", () => {
@@ -1179,22 +1183,29 @@ describe.serial("Cortex", () => {
       return result
     }
 
-    test("notifies parent by default when no waiter consumes the result", async () => {
+    async function waitForNotification(parentSessionID: string, taskID: string) {
+      const deliveryKey = `cortex:taskNotification:${taskID}`
+      for (let i = 0; i < 50; i++) {
+        const item = (await SessionInbox.list(parentSessionID)).find(
+          (candidate) => candidate.deliveryKey === deliveryKey,
+        )
+        if (item) return item
+        await Bun.sleep(10)
+      }
+      return (await SessionInbox.list(parentSessionID)).find((candidate) => candidate.deliveryKey === deliveryKey)
+    }
+
+    test("persists one parent notification by default when no waiter consumes the result", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-          })
           try {
             const parentSession = await Session.create({})
             const task = await Cortex.launch({
@@ -1207,15 +1218,21 @@ describe.serial("Cortex", () => {
             })
 
             const completed = await waitUntilCompleted(task.id)
+            const notification = await waitForNotification(parentSession.id, task.id)
 
             expect(completed?.status).toBe("completed")
-            expect(deliveries).toHaveLength(1)
-            expect(deliveries[0].target).toBe(parentSession.id)
-            expect(deliveries[0].mail.type).toBe("user")
-            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
+            expect(notification).toBeDefined()
+            expect(notification?.deliveryKey).toBe(`cortex:taskNotification:${task.id}`)
+            expect(notification?.mode).toBe("steer")
+            expect(notification?.source.type).toBe("cortex")
+            expect(notification?.message?.metadata?.source).toBe("cortex")
+            expect((await Session.get(task.sessionID)).cortex?.deliveryNotifiedAt).toBeNumber()
+
+            await Cortex.reconcileParentNotifications()
+
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
           }
         },
       })
@@ -1384,28 +1401,26 @@ describe.serial("Cortex", () => {
       })
     })
 
-    test("defers parent notification until the mid-turn parent releases", async () => {
+    test("persists the parent notification while the parent is mid-turn", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const originalIsRunning = SessionManager.isRunning
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+          let parentLease: SessionManager.LoopLease | undefined
+          let parentSessionID = ""
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-          })
           try {
             const parentSession = await Session.create({})
-            ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
+            parentSessionID = parentSession.id
+            parentLease = SessionManager.acquire(parentSession.id)
+            expect(parentLease).toBeDefined()
             const task = await Cortex.launch({
-              description: "Defer mid-turn parent notification",
+              description: "Persist mid-turn parent notification",
               prompt: "Do something",
               agent: "developer",
               parentSessionID: parentSession.id,
@@ -1413,45 +1428,38 @@ describe.serial("Cortex", () => {
               model: { providerID: "test-provider", modelID: "test-model" },
             })
 
-            const completed = await waitUntilCompleted(task.id)
+            expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
+            const notification = await waitForNotification(parentSession.id, task.id)
 
-            expect(completed?.status).toBe("completed")
-            expect(deliveries).toHaveLength(0)
+            expect(SessionManager.isRunning(parentSession.id)).toBe(true)
+            expect(notification?.deliveryKey).toBe(`cortex:taskNotification:${task.id}`)
 
-            await Cortex.flushDeferredParentNotifications(parentSession.id)
+            await SessionManager.release(parentLease!)
+            parentLease = undefined
 
-            expect(deliveries).toHaveLength(1)
-            expect(deliveries[0].target).toBe(parentSession.id)
-            expect(deliveries[0].mail.metadata?.source).toBe("cortex")
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
           } finally {
+            if (parentLease) await SessionManager.release(parentLease)
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
-            ;(SessionManager.isRunning as any) = originalIsRunning
+            if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
           }
         },
       })
     })
 
-    test("does not notify parent after terminal task output is persisted", async () => {
+    test("removes a terminal notification after task output is persisted", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const originalIsRunning = SessionManager.isRunning
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-          })
           try {
             const parentSession = await Session.create({})
-            ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
             const taskOutput = await TaskOutputTool.init()
             const ctx = taskOutputContext(parentSession.id)
             for (const mode of ["summary", "progress", "tail", "full"] as const) {
@@ -1465,48 +1473,81 @@ describe.serial("Cortex", () => {
                 output: { mode: "final_response" },
               })
 
-              const completed = await waitUntilCompleted(task.id)
-              expect(completed?.status).toBe("completed")
+              expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
+              expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
+
               const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+
               expect(result.metadata.status).toBe("completed")
+              expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
+              expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
             }
-
-            expect(deliveries).toHaveLength(0)
-
-            await Cortex.flushDeferredParentNotifications(parentSession.id)
-
-            expect(deliveries).toHaveLength(0)
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
-            ;(SessionManager.isRunning as any) = originalIsRunning
           }
         },
       })
     })
 
-    test("still notifies after task output observes only a running task", async () => {
+    test("acknowledges a persisted result after in-memory task eviction", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const originalIsRunning = SessionManager.isRunning
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Consume evicted task result",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              output: { mode: "final_response" },
+            })
+            expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
+            expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
+
+            const taskOutput = await TaskOutputTool.init()
+            const params: TaskOutputParams = { task_id: task.id, mode: "full" }
+            const ctx = taskOutputContext(parentSession.id)
+            const result = await taskOutput.execute(params, ctx)
+            expect(result.metadata.status).toBe("completed")
+
+            Cortex.reset()
+            expect(Cortex.get(task.id)).toBeUndefined()
+            await taskOutput.afterPersist?.(params, ctx, result)
+
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
+            expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("keeps notification enabled when task output observes only a running task", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
           const childMayFinish = Promise.withResolvers<void>()
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               await childMayFinish.promise
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-          })
           try {
             const parentSession = await Session.create({})
-            ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
             const task = await Cortex.launch({
               description: "Observe running task",
               prompt: "Do something",
@@ -1526,39 +1567,29 @@ describe.serial("Cortex", () => {
             childMayFinish.resolve()
             expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
 
-            await Cortex.flushDeferredParentNotifications(parentSession.id)
-
-            expect(deliveries).toHaveLength(1)
+            expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
+            expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(true)
           } finally {
             childMayFinish.resolve()
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
-            ;(SessionManager.isRunning as any) = originalIsRunning
           }
         },
       })
     })
 
-    test("only suppresses the completion notification for the task that was observed", async () => {
+    test("only acknowledges the completion notification for the task that was observed", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
-          const originalDeliver = SessionManager.deliver
-          const originalIsRunning = SessionManager.isRunning
-          const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = mock(async (input: Parameters<typeof SessionManager.deliver>[0]) => {
-            deliveries.push(input)
-          })
           try {
             const parentSession = await Session.create({})
-            ;(SessionManager.isRunning as any) = mock((sessionID: string) => sessionID === parentSession.id)
             const first = await Cortex.launch({
               description: "Observed task",
               prompt: "Do something",
@@ -1577,6 +1608,8 @@ describe.serial("Cortex", () => {
             })
             expect((await waitUntilCompleted(first.id))?.status).toBe("completed")
             expect((await waitUntilCompleted(second.id))?.status).toBe("completed")
+            expect(await waitForNotification(parentSession.id, first.id)).toBeDefined()
+            expect(await waitForNotification(parentSession.id, second.id)).toBeDefined()
 
             const taskOutput = await TaskOutputTool.init()
             await persistTaskOutput(
@@ -1584,15 +1617,14 @@ describe.serial("Cortex", () => {
               { task_id: first.id, mode: "full" },
               taskOutputContext(parentSession.id),
             )
-            await Cortex.flushDeferredParentNotifications(parentSession.id)
 
-            expect(deliveries).toHaveLength(1)
-            expect(JSON.stringify(deliveries[0])).toContain(second.id)
-            expect(JSON.stringify(deliveries[0])).not.toContain(first.id)
+            const items = await SessionInbox.list(parentSession.id)
+            expect(items).toHaveLength(1)
+            expect(items[0].deliveryKey).toBe(`cortex:taskNotification:${second.id}`)
+            expect((await Session.get(first.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
+            expect((await Session.get(second.sessionID)).cortex?.notifyParentOnComplete).toBe(true)
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
-            ;(SessionManager.deliver as any) = originalDeliver
-            ;(SessionManager.isRunning as any) = originalIsRunning
           }
         },
       })
@@ -1603,15 +1635,12 @@ describe.serial("Cortex", () => {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const originalInvokeInternal2 = SessionInvoke.invokeInternal
-          const originalDeliver2 = SessionManager.deliver
-          const deliverMock = mock(async () => {})
+          const originalInvokeInternal = SessionInvoke.invokeInternal
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
               return writeAssistantText(input.sessionID, "completed")
             },
           )
-          ;(SessionManager.deliver as any) = deliverMock
           try {
             const parentSession = await Session.create({})
             const task = await Cortex.launch({
@@ -1624,13 +1653,14 @@ describe.serial("Cortex", () => {
               notifyParentOnComplete: false,
             })
 
-            const completed = await waitUntilCompleted(task.id)
+            expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
 
-            expect(completed?.status).toBe("completed")
-            expect(deliverMock).not.toHaveBeenCalled()
+            await Cortex.reconcileParentNotifications()
+
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
+            expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
           } finally {
-            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal2
-            ;(SessionManager.deliver as any) = originalDeliver2
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }
         },
       })

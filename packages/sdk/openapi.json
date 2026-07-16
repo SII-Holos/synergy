@@ -3045,7 +3045,7 @@
           }
         ],
         "summary": "Plan config import",
-        "description": "Create a dry-run plan for importing selected config domains.",
+        "description": "Create a dry-run plan for importing selected config domains into global or project config.",
         "responses": {
           "200": {
             "description": "Config import plan",
@@ -3058,11 +3058,31 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid import or missing project scope",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
                 }
               }
             }
@@ -3105,24 +3125,61 @@
           }
         ],
         "summary": "Apply config import",
-        "description": "Apply a selected-domain config import plan.",
+        "description": "Atomically apply a selected-domain config import plan and reload affected runtime state.",
         "responses": {
           "200": {
-            "description": "Applied config import plan",
+            "description": "Applied config import result",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
+                  "$ref": "#/components/schemas/ConfigDomainImportApplyResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid import or missing project scope",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale plan or concurrent import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConfigImportRevisionConflictError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportLockedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
                 }
               }
             }
@@ -3132,41 +3189,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "config": {
-                    "$ref": "#/components/schemas/Config"
-                  },
-                  "only": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "general",
-                        "models",
-                        "providers",
-                        "library",
-                        "mcp",
-                        "plugins",
-                        "agents",
-                        "commands",
-                        "permissions",
-                        "channels",
-                        "holos",
-                        "email",
-                        "runtime"
-                      ]
-                    }
-                  },
-                  "mode": {
-                    "type": "string",
-                    "enum": ["merge", "replace-domain", "append"]
-                  },
-                  "yes": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["config"]
+                "$ref": "#/components/schemas/ConfigDomainImportApplyInput"
               }
             }
           }
@@ -7706,6 +7729,47 @@
         ]
       }
     },
+    "/cortex/tasks/concurrency": {
+      "get": {
+        "operationId": "cortex.concurrency",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Cortex concurrency status",
+        "description": "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+        "responses": {
+          "200": {
+            "description": "Cortex concurrency status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CortexConcurrencyStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.concurrency({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/cortex/tasks/{taskID}": {
       "get": {
         "operationId": "cortex.get",
@@ -9790,6 +9854,200 @@
         ]
       }
     },
+    "/library/experience/reencode/jobs": {
+      "post": {
+        "operationId": "library.experience.startReencodeJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Start an experience reencode job",
+        "description": "Create a durable server-owned reencode job and return its initial state.",
+        "responses": {
+          "200": {
+            "description": "Reencode job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A reencode job is already running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobConflict"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "description": "What to re-encode",
+                    "type": "string",
+                    "enum": ["intent", "script"]
+                  },
+                  "reason": {
+                    "description": "Filter to one detection reason; omit for all",
+                    "type": "string"
+                  }
+                },
+                "required": ["type"]
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.startReencodeJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/experience/reencode/jobs/current": {
+      "get": {
+        "operationId": "library.experience.getReencodeJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get the current experience reencode job",
+        "description": "Return the most recently created reencode job with durable aggregate progress.",
+        "responses": {
+          "200": {
+            "description": "Current reencode job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No reencode job exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.getReencodeJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/experience/reencode/jobs/current/cancel": {
+      "post": {
+        "operationId": "library.experience.cancelReencodeJob",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Cancel the current experience reencode job",
+        "description": "Cancel the active server-owned job without discarding completed item results.",
+        "responses": {
+          "200": {
+            "description": "Cancelled reencode job state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobState"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No reencode job exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The current job is not running",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReencodeJobConflict"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.experience.cancelReencodeJob({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/library/experience/reencode": {
       "post": {
         "operationId": "library.experience.reencode",
@@ -9809,11 +10067,11 @@
             }
           }
         ],
-        "summary": "Re-encode experience records",
-        "description": "Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.",
+        "summary": "Observe experience reencoding",
+        "description": "Compatibility SSE observer for the durable reencode job. Disconnecting closes only the observer; the server-owned job continues.",
         "responses": {
           "200": {
-            "description": "SSE stream of re-encode progress events",
+            "description": "SSE stream of reencode job progress",
             "content": {
               "text/event-stream": {
                 "schema": {
@@ -22891,6 +23149,12 @@
                   },
                   "required": ["input", "output"]
                 },
+                "supported_image_media_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
@@ -23207,6 +23471,24 @@
             "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
             "type": "integer",
             "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "reencodeConcurrency": {
+            "description": "Maximum concurrent experience reencode workers (default: 5)",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 32
+          },
+          "reencodeRetries": {
+            "description": "Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "reencodeRetryBackoffMs": {
+            "description": "Initial backoff for transient reencode stage retries in milliseconds (default: 1000)",
+            "type": "integer",
+            "minimum": 0,
             "maximum": 9007199254740991
           },
           "digestToolOutputBudget": {
@@ -24279,6 +24561,19 @@
               }
             }
           },
+          "cortex": {
+            "description": "Cortex task scheduling configuration",
+            "type": "object",
+            "properties": {
+              "maxConcurrentTasks": {
+                "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -24896,64 +25191,115 @@
         },
         "required": ["success", "error", "message"]
       },
+      "ConfigImportScope": {
+        "type": "string",
+        "enum": ["global", "project"]
+      },
+      "ConfigImportDiagnostic": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["warning", "info"]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["severity", "code", "message"]
+      },
       "ConfigDomainImportChange": {
         "type": "object",
         "properties": {
           "key": {
             "type": "string"
           },
+          "type": {
+            "type": "string",
+            "enum": ["add", "modify", "remove"]
+          },
           "before": {},
           "after": {},
           "conflict": {
             "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigImportDiagnostic"
+            }
           }
         },
-        "required": ["key", "conflict"]
+        "required": ["key", "type", "conflict", "diagnostics"]
+      },
+      "ConfigDomainImportDomainPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "library",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
+          }
+        },
+        "required": ["id", "filename", "path", "mode", "revision", "changes"]
       },
       "ConfigDomainImportPlan": {
         "type": "object",
         "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
           "domains": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "enum": [
-                    "general",
-                    "models",
-                    "providers",
-                    "library",
-                    "mcp",
-                    "plugins",
-                    "agents",
-                    "commands",
-                    "permissions",
-                    "channels",
-                    "holos",
-                    "email",
-                    "runtime"
-                  ]
-                },
-                "filename": {
-                  "type": "string"
-                },
-                "path": {
-                  "type": "string"
-                },
-                "mode": {
-                  "type": "string",
-                  "enum": ["merge", "replace-domain", "append"]
-                },
-                "changes": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ConfigDomainImportChange"
-                  }
-                }
-              },
-              "required": ["id", "filename", "path", "mode", "changes"]
+              "$ref": "#/components/schemas/ConfigDomainImportDomainPlan"
             }
           },
           "conflicts": {
@@ -24963,7 +25309,77 @@
             }
           }
         },
-        "required": ["domains", "conflicts"]
+        "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
+      },
+      "ConfigImportProjectScopeRequiredError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportProjectScopeRequiredError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportInvalidConfigError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array",
+                "items": {}
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportSourceTooLargeError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportSourceTooLargeError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "maxBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["message", "source", "maxBytes"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "ConfigDomainImportPlanInput": {
         "type": "object",
@@ -24995,6 +25411,293 @@
           "mode": {
             "type": "string",
             "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["config"]
+      },
+      "RuntimeReloadTarget": {
+        "type": "string",
+        "enum": [
+          "config",
+          "skill",
+          "provider",
+          "agent",
+          "plugin",
+          "mcp",
+          "lsp",
+          "formatter",
+          "watcher",
+          "channel",
+          "holos",
+          "command",
+          "tool_registry",
+          "all"
+        ]
+      },
+      "RuntimeReloadFailure": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["target", "message"]
+      },
+      "RuntimeReloadDiagnostic": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["target", "severity", "message"]
+      },
+      "RuntimeReloadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "executed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "cascaded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restartRequired": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "liveApplied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadFailure"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "requested",
+          "executed",
+          "cascaded",
+          "changedFields",
+          "restartRequired",
+          "liveApplied",
+          "warnings",
+          "failed",
+          "failures",
+          "diagnostics"
+        ]
+      },
+      "ConfigDomainImportApplyResult": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/ConfigDomainImportPlan"
+          },
+          "reload": {
+            "$ref": "#/components/schemas/RuntimeReloadResult"
+          }
+        },
+        "required": ["plan", "reload"]
+      },
+      "ConfigImportRevisionConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportRevisionConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "library",
+                    "mcp",
+                    "plugins",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "runtime"
+                  ]
+                }
+              }
+            },
+            "required": ["message", "domains"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ConfigImportScope"
+              }
+            },
+            "required": ["message", "scope"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigDomainImportApplyInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "yes": {
+            "type": "boolean"
+          },
+          "force": {
+            "type": "boolean"
           }
         },
         "required": ["config"]
@@ -25067,6 +25770,12 @@
                   },
                   "pdf": {
                     "type": "boolean"
+                  },
+                  "supportedImageMediaTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
                   }
                 },
                 "required": ["text", "audio", "image", "video", "pdf"]
@@ -25266,164 +25975,6 @@
           }
         },
         "required": ["id", "name", "source", "env", "options", "models"]
-      },
-      "RuntimeReloadTarget": {
-        "type": "string",
-        "enum": [
-          "config",
-          "skill",
-          "provider",
-          "agent",
-          "plugin",
-          "mcp",
-          "lsp",
-          "formatter",
-          "watcher",
-          "channel",
-          "holos",
-          "command",
-          "tool_registry",
-          "all"
-        ]
-      },
-      "RuntimeReloadFailure": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "recoverable": {
-            "type": "boolean"
-          }
-        },
-        "required": ["target", "message"]
-      },
-      "RuntimeReloadDiagnostic": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["error", "warning", "info"]
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": ["target", "severity", "message"]
-      },
-      "RuntimeReloadResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "requested": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "executed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "cascaded": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "changedFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "restartRequired": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "liveApplied": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "failed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "failures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadFailure"
-            }
-          },
-          "diagnostics": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
-            }
-          }
-        },
-        "required": [
-          "success",
-          "requested",
-          "executed",
-          "cascaded",
-          "changedFields",
-          "restartRequired",
-          "liveApplied",
-          "warnings",
-          "failed",
-          "failures",
-          "diagnostics"
-        ]
       },
       "RuntimeReloadScope": {
         "type": "string",
@@ -26033,6 +26584,12 @@
           },
           "error": {
             "type": "string"
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
+          },
+          "deliveryNotifiedAt": {
+            "type": "number"
           },
           "visibility": {
             "type": "string",
@@ -27194,6 +27751,9 @@
           "mode": {
             "type": "string",
             "enum": ["task", "steer", "context"]
+          },
+          "deliveryKey": {
+            "type": "string"
           },
           "message": {
             "type": "object",
@@ -29303,6 +29863,79 @@
           "startedAt"
         ]
       },
+      "CortexConcurrencyStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommended": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommendationReason": {
+            "type": "string",
+            "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["default", "config", "environment"]
+          },
+          "perAgentLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "configured",
+          "environment",
+          "effective",
+          "recommended",
+          "recommendationReason",
+          "source",
+          "perAgentLimit",
+          "running",
+          "queued"
+        ]
+      },
       "Command": {
         "type": "object",
         "properties": {
@@ -30729,6 +31362,124 @@
           }
         },
         "required": ["scannedAt", "intent", "script"]
+      },
+      "ReencodeJobStatus": {
+        "type": "string",
+        "enum": ["running", "completed", "failed", "cancelled", "interrupted"]
+      },
+      "ReencodeJobState": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReencodeJobStatus"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["intent", "script"]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "totalCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "okCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "skippedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "failedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "completedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "type",
+          "reason",
+          "totalCount",
+          "okCount",
+          "skippedCount",
+          "failedCount",
+          "completedCount",
+          "startedAt",
+          "completedAt",
+          "error"
+        ]
+      },
+      "ReencodeJobConflict": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "job": {
+            "$ref": "#/components/schemas/ReencodeJobState"
+          }
+        },
+        "required": ["code", "message", "job"]
+      },
+      "ReencodeJobError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
       },
       "MemoryStats": {
         "type": "object",

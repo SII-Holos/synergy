@@ -52,7 +52,6 @@ export namespace SessionProgress {
    */
   export async function pendingReplyFor(input: { scopeID: string; sessionID: string }): Promise<boolean> {
     const messages = await MessageV2.filterCompacted(MessageV2.stream(input)).catch(() => [] as MessageV2.WithParts[])
-    messages.sort((a, b) => a.info.id.localeCompare(b.info.id))
     return pendingReply(messages)
   }
 
@@ -62,23 +61,19 @@ export namespace SessionProgress {
    * (or U itself if root) that does NOT have a terminal assistant after it.
    */
   export function needsModelCall(msgs: MessageV2.WithParts[], rootID: string): boolean {
-    const rootUsers = msgs.filter(
-      (m) =>
-        m.info.role === "user" &&
-        ((m.info as MessageV2.User).rootID === rootID || (m.info.isRoot === true && m.info.id === rootID)),
-    )
-    if (rootUsers.length === 0) return false
+    let latestUserIndex = -1
+    for (let index = 0; index < msgs.length; index++) {
+      const info = msgs[index].info
+      if (info.role !== "user") continue
+      const user = info as MessageV2.User
+      if (user.rootID === rootID || (user.isRoot === true && user.id === rootID)) latestUserIndex = index
+    }
+    if (latestUserIndex < 0) return false
 
-    const latestUser = rootUsers[rootUsers.length - 1]
-
-    const terminalAssistant = msgs.find((m) => {
-      if (m.info.role !== "assistant") return false
-      const assistant = m.info as MessageV2.Assistant
-      if (assistant.rootID !== rootID) return false
-      if (assistant.id <= latestUser.info.id) return false
-      return isTerminalAssistant(assistant)
+    return !msgs.slice(latestUserIndex + 1).some((message) => {
+      if (message.info.role !== "assistant") return false
+      const assistant = message.info as MessageV2.Assistant
+      return assistant.rootID === rootID && isTerminalAssistant(assistant)
     })
-
-    return !terminalAssistant
   }
 }

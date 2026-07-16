@@ -36,7 +36,6 @@ const VISUALS: Record<string, AgentVisual> = {
   scribe: { emoji: "🤭", label: "Scribe", color: COLORS.test },
   scholar: { emoji: "🤓", label: "Scholar", color: COLORS.research },
 
-  "intent-analyst": { emoji: "🤔", label: "Intent Analyst", color: COLORS.analysis },
   "requirements-engineer": { emoji: "😥", label: "Requirements", color: COLORS.analysis },
   "code-cartographer": { emoji: "😶‍🌫️", label: "Code Map", color: COLORS.analysis },
   "dependency-tracer": { emoji: "🙄", label: "Dependency Trace", color: COLORS.analysis },

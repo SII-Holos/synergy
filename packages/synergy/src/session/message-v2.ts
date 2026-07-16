@@ -1112,6 +1112,18 @@ export namespace MessageV2 {
     return convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")))
   }
 
+  function isLegacyStableDeliveryMessageID(id: string): boolean {
+    return /^msg_[0-9a-f]{26}$/.test(id)
+  }
+
+  export function compareStorageOrder(a: Info, b: Info): number {
+    if (isLegacyStableDeliveryMessageID(a.id) || isLegacyStableDeliveryMessageID(b.id)) {
+      const created = a.time.created - b.time.created
+      if (created !== 0) return created
+    }
+    return a.id.localeCompare(b.id)
+  }
+
   export const stream = fn(
     z.object({
       scopeID: z.string().optional(),
@@ -1122,18 +1134,37 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
-      for (let i = messageIDs.length - 1; i >= 0; i--) {
-        const messageID = messageIDs[i]
-        try {
-          yield await get({
-            scopeID: scopeID,
-            sessionID: input.sessionID,
-            messageID,
-          })
-        } catch (error) {
-          log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+      const readMessage = (messageID: string) =>
+        get({
+          scopeID,
+          sessionID: input.sessionID,
+          messageID,
+        })
+
+      if (!messageIDs.some(isLegacyStableDeliveryMessageID)) {
+        for (let index = messageIDs.length - 1; index >= 0; index--) {
+          const messageID = messageIDs[index]
+          try {
+            yield await readMessage(messageID)
+          } catch (error) {
+            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+          }
         }
+        return
       }
+
+      const messages = await Promise.all(
+        messageIDs.map((messageID) =>
+          readMessage(messageID).catch((error) => {
+            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+            return undefined
+          }),
+        ),
+      )
+      const ordered = messages
+        .filter((message): message is MessageV2.WithParts => message !== undefined)
+        .sort((a, b) => compareStorageOrder(b.info, a.info))
+      yield* ordered
     },
   )
 

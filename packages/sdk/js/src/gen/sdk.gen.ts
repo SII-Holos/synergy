@@ -111,6 +111,7 @@ import type {
   Config as Config2,
   ConfigDomainGetErrors,
   ConfigDomainGetResponses,
+  ConfigDomainImportApplyInput,
   ConfigDomainImportPlanInput,
   ConfigDomainListResponses,
   ConfigDomainOpenErrors,
@@ -132,6 +133,7 @@ import type {
   ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
+  CortexConcurrencyResponses,
   CortexGetErrors,
   CortexGetResponses,
   CortexListErrors,
@@ -218,9 +220,13 @@ import type {
   LatticeSessionGetRunResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
+  LibraryExperienceCancelReencodeJobErrors,
+  LibraryExperienceCancelReencodeJobResponses,
   LibraryExperienceDetectErrors,
   LibraryExperienceDetectResponses,
   LibraryExperienceGetErrors,
+  LibraryExperienceGetReencodeJobErrors,
+  LibraryExperienceGetReencodeJobResponses,
   LibraryExperienceGetResponses,
   LibraryExperienceListResponses,
   LibraryExperiencePageErrors,
@@ -231,6 +237,8 @@ import type {
   LibraryExperienceRemoveResponses,
   LibraryExperienceSearchErrors,
   LibraryExperienceSearchResponses,
+  LibraryExperienceStartReencodeJobErrors,
+  LibraryExperienceStartReencodeJobResponses,
   LibraryGetErrors,
   LibraryGetResponses,
   LibraryListResponses,
@@ -4949,7 +4957,7 @@ export class Import extends HeyApiClient {
   /**
    * Plan config import
    *
-   * Create a dry-run plan for importing selected config domains.
+   * Create a dry-run plan for importing selected config domains into global or project config.
    */
   public plan<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -4986,30 +4994,13 @@ export class Import extends HeyApiClient {
   /**
    * Apply config import
    *
-   * Apply a selected-domain config import plan.
+   * Atomically apply a selected-domain config import plan and reload affected runtime state.
    */
   public apply<ThrowOnError extends boolean = false>(
     parameters?: {
       directory?: string
       scopeID?: string
-      config?: Config2
-      only?: Array<
-        | "general"
-        | "models"
-        | "providers"
-        | "library"
-        | "mcp"
-        | "plugins"
-        | "agents"
-        | "commands"
-        | "permissions"
-        | "channels"
-        | "holos"
-        | "email"
-        | "runtime"
-      >
-      mode?: "merge" | "replace-domain" | "append"
-      yes?: boolean
+      configDomainImportApplyInput?: ConfigDomainImportApplyInput
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -5020,10 +5011,7 @@ export class Import extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
-            { in: "body", key: "config" },
-            { in: "body", key: "only" },
-            { in: "body", key: "mode" },
-            { in: "body", key: "yes" },
+            { key: "configDomainImportApplyInput", map: "body" },
           ],
         },
       ],
@@ -5935,6 +5923,36 @@ export class Cortex extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<CortexListResponses, CortexListErrors, ThrowOnError>({
       url: "/cortex/tasks",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Cortex concurrency status
+   *
+   * Get the configured, effective, and memory-recommended Cortex task concurrency limits.
+   */
+  public concurrency<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CortexConcurrencyResponses, unknown, ThrowOnError>({
+      url: "/cortex/tasks/concurrency",
       ...options,
       ...params,
     })
@@ -6992,9 +7010,120 @@ export class Experience extends HeyApiClient {
   }
 
   /**
-   * Re-encode experience records
+   * Start an experience reencode job
    *
-   * Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.
+   * Create a durable server-owned reencode job and return its initial state.
+   */
+  public startReencodeJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      type?: "intent" | "script"
+      reason?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "type" },
+            { in: "body", key: "reason" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      LibraryExperienceStartReencodeJobResponses,
+      LibraryExperienceStartReencodeJobErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/reencode/jobs",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get the current experience reencode job
+   *
+   * Return the most recently created reencode job with durable aggregate progress.
+   */
+  public getReencodeJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<
+      LibraryExperienceGetReencodeJobResponses,
+      LibraryExperienceGetReencodeJobErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/reencode/jobs/current",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel the current experience reencode job
+   *
+   * Cancel the active server-owned job without discarding completed item results.
+   */
+  public cancelReencodeJob<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      LibraryExperienceCancelReencodeJobResponses,
+      LibraryExperienceCancelReencodeJobErrors,
+      ThrowOnError
+    >({
+      url: "/library/experience/reencode/jobs/current/cancel",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Observe experience reencoding
+   *
+   * Compatibility SSE observer for the durable reencode job. Disconnecting closes only the observer; the server-owned job continues.
    */
   public reencode<ThrowOnError extends boolean = false>(
     parameters?: {
