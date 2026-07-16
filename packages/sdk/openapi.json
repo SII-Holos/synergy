@@ -24906,6 +24906,24 @@
               }
             ]
           },
+          "lspWriteDiagnostics": {
+            "description": "Include LSP diagnostics after file-writing tools complete (default: true)",
+            "type": "boolean"
+          },
+          "lspDiagnostics": {
+            "description": "Severity and scope policy for diagnostics returned after file-writing tools",
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning"]
+              },
+              "scope": {
+                "type": "string",
+                "enum": ["delta", "file", "project"]
+              }
+            }
+          },
           "instructions": {
             "description": "Additional instruction files or patterns to include",
             "type": "array",
@@ -36514,6 +36532,25 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
@@ -36546,25 +36583,6 @@
           "properties": {
             "type": "object",
             "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": ["file"]
           }
         },
         "required": ["type", "properties"]
@@ -37360,13 +37378,13 @@
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
           },
           {
             "$ref": "#/components/schemas/Event.dag.updated"

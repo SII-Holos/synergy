@@ -6,18 +6,15 @@
 import z from "zod"
 import * as path from "path"
 import { Tool } from "./tool"
-import { LSP } from "../lsp"
 import { createTwoFilesPatch, diffLines } from "diff"
 import DESCRIPTION from "./edit.txt"
 import { File } from "../file"
 import { Bus } from "../bus"
 import { FileTime } from "../file/time"
-import { Filesystem } from "../util/filesystem"
 import { ScopeContext } from "../scope/context"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { RuntimeReload } from "../runtime/reload"
-
-const MAX_DIAGNOSTICS_PER_FILE = 20
+import { captureWriteDiagnosticsBefore, collectWriteDiagnostics, type WriteDiagnosticsSnapshot } from "./write-quality"
 
 function normalizeLineEndings(text: string): string {
   return text.replaceAll("\r\n", "\n")
@@ -48,6 +45,7 @@ export const EditTool = Tool.define("edit", {
     let diff = ""
     let contentOld = ""
     let contentNew = ""
+    let beforeDiagnostics: WriteDiagnosticsSnapshot | undefined
 
     await FileTime.withLock(
       filePath,
@@ -63,6 +61,7 @@ export const EditTool = Tool.define("edit", {
               diff,
             },
           })
+          beforeDiagnostics = await captureWriteDiagnosticsBefore()
           await Bun.write(filePath, params.newString)
           await Bus.publish(File.Event.Edited, {
             file: filePath,
@@ -90,6 +89,7 @@ export const EditTool = Tool.define("edit", {
             diff,
           },
         })
+        beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
         await file.write(contentNew)
         await Bus.publish(File.Event.Edited, {
@@ -139,18 +139,8 @@ export const EditTool = Tool.define("edit", {
           })
         : undefined
 
-    let output = ""
-    await LSP.touchFile(filePath, true)
-    const diagnostics = await LSP.diagnostics()
-    const normalizedFilePath = Filesystem.normalizePath(filePath)
-    const issues = diagnostics[normalizedFilePath] ?? []
-    const errors = issues.filter((item) => item.severity === 1)
-    if (errors.length > 0) {
-      const limited = errors.slice(0, MAX_DIAGNOSTICS_PER_FILE)
-      const suffix =
-        errors.length > MAX_DIAGNOSTICS_PER_FILE ? `\n... and ${errors.length - MAX_DIAGNOSTICS_PER_FILE} more` : ""
-      output += `\nThis file has errors, please fix\n<file_diagnostics>\n${limited.map(LSP.Diagnostic.pretty).join("\n")}${suffix}\n</file_diagnostics>\n`
-    }
+    const diagnostics = await collectWriteDiagnostics(filePath, { before: beforeDiagnostics })
+    let output = diagnostics.output
 
     if (runtimeReload) {
       output += `\n${RuntimeReload.formatCompactResult(runtimeReload)}\n`
@@ -161,7 +151,7 @@ export const EditTool = Tool.define("edit", {
 
     return {
       metadata: {
-        diagnostics,
+        diagnostics: diagnostics.diagnostics,
         diff,
         filediff,
         runtimeReload,

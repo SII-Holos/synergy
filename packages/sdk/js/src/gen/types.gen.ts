@@ -3027,6 +3027,17 @@ export type Config = {
             }
       }
   /**
+   * Include LSP diagnostics after file-writing tools complete (default: true)
+   */
+  lspWriteDiagnostics?: boolean
+  /**
+   * Severity and scope policy for diagnostics returned after file-writing tools
+   */
+  lspDiagnostics?: {
+    severity?: "error" | "warning"
+    scope?: "delta" | "file" | "project"
+  }
+  /**
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
@@ -6934,6 +6945,13 @@ export type EventSessionCompacted = {
   }
 }
 
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -6946,13 +6964,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
   }
 }
 
@@ -7233,9 +7244,9 @@ export type Event =
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventSessionCompacted
+  | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileEdited
   | EventDagUpdated
   | EventTodoUpdated
   | EventAgendaItemCreated
