@@ -143,12 +143,9 @@ export function useSettingsSave(ctx: SaveContext) {
     }
   })
 
-  async function saveServerChanges(options?: { close?: boolean }) {
+  async function saveServerChanges() {
     const patch = ctx.serverPatch()
-    if (Object.keys(patch).length === 0) {
-      if (options?.close) ctx.closeDialog()
-      return
-    }
+    if (Object.keys(patch).length === 0) return true
 
     ctx.setSaving(true)
     try {
@@ -160,9 +157,10 @@ export function useSettingsSave(ctx: SaveContext) {
         title: `Saved ${ctx.editingLabel()}`,
         description: `Changed: ${Object.keys(patch).join(", ")}`,
       })
-      if (options?.close) ctx.closeDialog()
+      return true
     } catch (error: any) {
       showToast({ type: "error", title: "Failed to save", description: error.message })
+      return false
     } finally {
       ctx.setSaving(false)
     }
