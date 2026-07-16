@@ -6,8 +6,9 @@ export namespace Turn {
     assistants: MessageV2.WithParts[]
   }
 
-  function isSummaryAssistant(msg: MessageV2.WithParts): boolean {
+  function isSyntheticAssistant(msg: MessageV2.WithParts): boolean {
     if (msg.info.role !== "assistant") return false
+    if (!MessageV2.isPromptVisible(msg)) return true
     return (msg.info as MessageV2.Assistant).summary === true
   }
 
@@ -22,7 +23,7 @@ export namespace Turn {
         if (current) turns.push(current)
         current = { user: msg, assistants: [] }
       } else if (msg.info.role === "assistant" && current) {
-        if (skip && isSummaryAssistant(msg)) continue
+        if (skip && isSyntheticAssistant(msg)) continue
         if (skip || msg.info.parentID === current.user.info.id) {
           current.assistants.push(msg)
         }
@@ -51,7 +52,7 @@ export namespace Turn {
         break
       }
       if (msg.info.role === "assistant") {
-        if (skip && isSummaryAssistant(msg)) continue
+        if (skip && isSyntheticAssistant(msg)) continue
         if (skip || msg.info.parentID === userMessageID) {
           assistants.push(msg)
         }

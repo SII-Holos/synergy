@@ -4,8 +4,8 @@ import type { MessageV2 } from "../../src/session/message-v2"
 
 const SID = "ses_cache"
 
-function userMsg(id: string): MessageV2.WithParts {
-  return { info: { id, sessionID: SID, role: "user" } as any, parts: [] }
+function userMsg(id: string, created = 0): MessageV2.WithParts {
+  return { info: { id, sessionID: SID, role: "user", time: { created } } as any, parts: [] }
 }
 function part(id: string, messageID: string, text = ""): MessageV2.Part {
   return { id, sessionID: SID, messageID, type: "text", text } as any
@@ -36,6 +36,17 @@ describe("SessionMessageCache", () => {
     // replace existing
     SessionMessageCache.upsertMessage(SID, { id: "msg_2", sessionID: SID, role: "assistant" } as any)
     expect(SessionMessageCache.get(SID)!.find((m) => m.info.id === "msg_2")!.info.role).toBe("assistant")
+  })
+
+  test("upsertMessage preserves creation order around legacy stable delivery ids", () => {
+    SessionMessageCache.enable(SID)
+    const legacyID = `msg_${"f".repeat(26)}`
+    const currentID = "msg_f667e6d9d001JelluOI960TfF4"
+    SessionMessageCache.set(SID, [userMsg(legacyID, 1)])
+
+    SessionMessageCache.upsertMessage(SID, userMsg(currentID, 2).info)
+
+    expect(SessionMessageCache.get(SID)!.map((message) => message.info.id)).toEqual([legacyID, currentID])
   })
 
   test("upsertPart inserts and replaces within the target message", () => {

@@ -19,6 +19,7 @@ import { Identifier } from "../../src/id/id"
 import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
 import { Worktree } from "../../src/project/worktree"
+import { SessionMessageCache } from "../../src/session/message-cache"
 
 const sessionID = "ses_test"
 
@@ -73,7 +74,11 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
 
 function installBasicLoopMocks(options?: {
   onBuildPlan?: (input: any) => void
-  onProcess?: (input: any, assistant: MessageV2.Assistant, callIndex: number) => Promise<void> | void
+  onProcess?: (
+    input: any,
+    assistant: MessageV2.Assistant,
+    callIndex: number,
+  ) => Promise<void | "stop" | "continue"> | void | "stop" | "continue"
   config?: Record<string, unknown>
 }) {
   const originalGetModel = Provider.getModel
@@ -142,11 +147,11 @@ function installBasicLoopMocks(options?: {
     trackExecution: () => {},
     process: mock(async (processInput: any) => {
       callIndex++
-      await options?.onProcess?.(processInput, input.assistantMessage, callIndex)
-      input.assistantMessage.finish = "stop"
+      const result = (await options?.onProcess?.(processInput, input.assistantMessage, callIndex)) ?? "stop"
+      input.assistantMessage.finish = result === "continue" ? "tool-calls" : "stop"
       input.assistantMessage.time.completed = Date.now()
       await Session.updateMessage(input.assistantMessage)
-      return "stop" as const
+      return result
     }),
   }))
   ;(Cortex.list as any) = mock(() => [])
@@ -831,6 +836,179 @@ describe("SessionInvoke inbox boundaries", () => {
     }
   })
 
+  test("stable-key task delivery starts a new turn after prior history", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const processedUsers: string[] = []
+    const restore = installBasicLoopMocks({
+      onProcess: (input) => {
+        processedUsers.push(input.user.id)
+      },
+    })
+
+    let sessionID = ""
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          sessionID = session.id
+          const oldRootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: oldRootID,
+            role: "user",
+            sessionID,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID: oldRootID,
+            time: { created: Date.now() - 2 },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: oldRootID,
+            sessionID,
+            type: "text",
+            text: "completed prior task",
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            sessionID,
+            parentID: oldRootID,
+            rootID: oldRootID,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now() - 1, completed: Date.now() - 1 },
+            finish: "stop",
+          })
+
+          const delivered = await SessionInbox.deliverUnique({
+            sessionID,
+            deliveryKey: "agenda:stable-key:once:1",
+            mode: "task",
+            message: {
+              role: "user",
+              parts: [{ type: "text", text: "scheduled follow-up" }],
+              origin: { type: "agenda" },
+            },
+          })
+          expect(delivered.messageID > oldRootID).toBe(true)
+
+          await SessionInvoke.loop.force(sessionID)
+
+          expect(processedUsers).toEqual([delivered.messageID])
+        },
+      })
+    } finally {
+      restore()
+      if (sessionID) SessionManager.unregisterRuntime(sessionID)
+    }
+  })
+
+  test("wraps a chronological legacy-id steer after the last finished reply", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let activeSessionID = ""
+    let activeRootID = ""
+    const promptPayloads: string[] = []
+    const legacySteerID = `msg_${"0".repeat(26)}`
+    const restore = installBasicLoopMocks({
+      onProcess: async (input, _assistant, callIndex) => {
+        promptPayloads.push(JSON.stringify(input.messages))
+        if (callIndex !== 1) return "stop"
+        await Session.updateMessage({
+          id: legacySteerID,
+          role: "user",
+          sessionID: activeSessionID,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          isRoot: false,
+          rootID: activeRootID,
+          origin: { type: "user" },
+          time: { created: Date.now() + 1 },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: legacySteerID,
+          sessionID: activeSessionID,
+          type: "text",
+          text: "legacy steer after finished reply",
+        })
+        return "continue"
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          activeSessionID = session.id
+          const completedRootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: completedRootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID: completedRootID,
+            time: { created: Date.now() - 3 },
+          })
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "assistant",
+            sessionID: session.id,
+            parentID: completedRootID,
+            rootID: completedRootID,
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            modelID: "test-model",
+            providerID: "test-provider",
+            time: { created: Date.now() - 2, completed: Date.now() - 2 },
+            finish: "stop",
+          })
+          activeRootID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: activeRootID,
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            isRoot: true,
+            rootID: activeRootID,
+            time: { created: Date.now() - 1 },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: activeRootID,
+            sessionID: session.id,
+            type: "text",
+            text: "active task",
+          })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect(promptPayloads).toHaveLength(2)
+          expect(promptPayloads[1]).toContain("<system-reminder>")
+          expect(promptPayloads[1]).toContain("legacy steer after finished reply")
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
   test("guided inbox input steers the next model call without scheduling another turn", async () => {
     await using tmp = await tmpdir({ git: true })
 
@@ -1064,6 +1242,129 @@ describe("SessionInvoke completion notices", () => {
         },
       })
     } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+})
+
+describe("SessionInvoke turn lifecycle", () => {
+  test("keeps the loop message cache populated across pre-jobs", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let cacheVisibleToProcessor = false
+    const restore = installBasicLoopMocks({
+      onProcess() {
+        cacheVisibleToProcessor = SessionMessageCache.get(activeSessionID) !== undefined
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(cacheVisibleToProcessor).toBe(true)
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("removes the per-turn listener from the session abort signal", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalAcquire = SessionManager.acquire
+    const added: EventListenerOrEventListenerObject[] = []
+    const removed: EventListenerOrEventListenerObject[] = []
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+
+    ;(SessionManager.acquire as any) = mock((id: string) => {
+      const lease = originalAcquire(id)
+      if (!lease) return lease
+      const signal = lease.signal
+      const addEventListener = signal.addEventListener.bind(signal)
+      const removeEventListener = signal.removeEventListener.bind(signal)
+      Object.defineProperties(signal, {
+        addEventListener: {
+          configurable: true,
+          value(
+            type: string,
+            listener: EventListenerOrEventListenerObject,
+            options?: AddEventListenerOptions | boolean,
+          ) {
+            if (type === "abort") added.push(listener)
+            return addEventListener(type, listener, options)
+          },
+        },
+        removeEventListener: {
+          configurable: true,
+          value(type: string, listener: EventListenerOrEventListenerObject, options?: EventListenerOptions | boolean) {
+            if (type === "abort") removed.push(listener)
+            return removeEventListener(type, listener, options)
+          },
+        },
+      })
+      return lease
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(added.length).toBeGreaterThan(0)
+      expect(added.every((listener) => removed.includes(listener))).toBe(true)
+    } finally {
+      ;(SessionManager.acquire as any) = originalAcquire
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("closes the combined turn signal after normal processor completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalParts = MessageV2.parts
+    let activeSessionID = ""
+    let processReturned = false
+    let turnSignal: AbortSignal | undefined
+    let observedAfterTurn: boolean | undefined
+    const restore = installBasicLoopMocks({
+      onProcess(input) {
+        turnSignal = input.abort
+        processReturned = true
+      },
+    })
+
+    ;(MessageV2.parts as any) = mock(async (input: Parameters<typeof MessageV2.parts>[0]) => {
+      const parts = await originalParts(input)
+      if (processReturned && observedAfterTurn === undefined) observedAfterTurn = turnSignal?.aborted
+      return parts
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(observedAfterTurn).toBe(true)
+    } finally {
+      ;(MessageV2.parts as any) = originalParts
       restore()
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }

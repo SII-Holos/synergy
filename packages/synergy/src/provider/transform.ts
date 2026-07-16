@@ -4,6 +4,7 @@ import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
 import { PromptCachePolicy } from "./prompt-cache-policy"
+import { supportsImageMediaType } from "./image-capability"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -24,6 +25,8 @@ export namespace ProviderTransform {
 
   interface MessageOptions {
     systemCacheBreakpoint?: number
+    lookAtAvailable?: boolean
+    viewImageAvailable?: boolean
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -230,7 +233,7 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
+  function unsupportedParts(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions): ModelMessage[] {
     return msgs.map((msg) => {
       if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
@@ -250,22 +253,52 @@ export namespace ProviderTransform {
             decodedByteLength(attachment.base64) > BEDROCK_MAX_IMAGE_BYTES
           ) {
             const name = attachment.filename ? `"${attachment.filename}"` : "image"
+            const alternatives = [
+              options?.viewImageAvailable
+                ? "use view_image with a smaller local image when the active model supports image input"
+                : undefined,
+              options?.lookAtAvailable ? "use look_at for separate vision-model analysis" : undefined,
+              "attach a smaller image",
+            ].filter((item): item is string => !!item)
+            const guidance =
+              alternatives.length === 1
+                ? alternatives[0]
+                : `${alternatives.slice(0, -1).join(", ")}, or ${alternatives.at(-1)}`
             return {
               type: "text" as const,
-              text: `[${name} was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use view_image with a smaller local image when the active model supports image input, use look_at for separate vision-model analysis, or attach a smaller image.]`,
+              text: `[${name} was attached but not sent to Bedrock because it exceeds the 5MB image limit. ${guidance.charAt(0).toUpperCase()}${guidance.slice(1)}.]`,
             }
           }
         }
 
+        if (
+          attachment.modality === "image" &&
+          model.capabilities.input.image &&
+          !supportsImageMediaType(model, attachment.mime)
+        ) {
+          const name = attachment.filename ? `"${attachment.filename}"` : "image"
+          const supported = model.capabilities.input.supportedImageMediaTypes?.join(", ") ?? ""
+          const guidance = options?.lookAtAvailable
+            ? " Use the look_at tool with the file's local path to analyze it."
+            : ""
+          return {
+            type: "text" as const,
+            text: `[${name} was attached as ${attachment.mime}, but this model only supports these image formats: ${supported}.${guidance}]`,
+          }
+        }
         if (model.capabilities.input[attachment.modality]) {
           hasSupportedImage = true
           return part
         }
 
         const name = attachment.filename ? `"${attachment.filename}"` : attachment.modality
+        const guidance =
+          attachment.modality === "image" && options?.lookAtAvailable
+            ? " Use the look_at tool with the file's local path to analyze it."
+            : ""
         return {
           type: "text" as const,
-          text: `[${name} was attached but this model does not support ${attachment.modality} input. Use the look_at tool with the file's local path to analyze it.]`,
+          text: `[${name} was attached but this model does not support ${attachment.modality} input.${guidance}]`,
         }
       })
 
@@ -337,7 +370,7 @@ export namespace ProviderTransform {
   }
 
   export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
-    msgs = unsupportedParts(msgs, model)
+    msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
     if (
       model.providerID === "anthropic" ||

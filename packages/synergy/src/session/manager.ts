@@ -34,6 +34,7 @@ export namespace SessionManager {
       model?: Model
       metadata?: Record<string, any>
       inboxItemID?: string
+      tools?: Record<string, boolean>
     }
 
     export interface Assistant {
@@ -438,12 +439,8 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    const { Cortex } = await import("../cortex/manager")
-    await Cortex.flushDeferredParentNotifications(lease.sessionID)
-
-    if (await SessionInbox.hasRunnableItem(lease.sessionID)) {
-      scheduleWake(lease.sessionID, "release")
-    }
+    const { SessionDrive } = await import("./drive")
+    await SessionDrive.request(lease.sessionID, "release")
     return true
   }
 
@@ -467,6 +464,18 @@ export namespace SessionManager {
     if (!runtime) return
     runtime.status = status
     emitStatus(runtime, status)
+  }
+
+  export async function publishStatusOnly(sessionID: string, status: StatusInfo): Promise<void> {
+    const session = await requireSession(sessionID)
+    const scope = session.scope as Scope
+    const properties = { sessionID, status }
+    const publish = () => Bus.publish(SessionEvent.Status, properties)
+    if (ScopeContext.tryScope()?.id === scope.id) {
+      await publish()
+      return
+    }
+    await ScopeContext.provide({ scope, fn: publish })
   }
 
   export function isRunning(sessionID: string): boolean {
@@ -614,6 +623,33 @@ export namespace SessionManager {
         ).catch(() => undefined)
         if (!info || !info.time || info.time.archived) continue
         if (info.cortex?.status !== "queued" && info.cortex?.status !== "running") continue
+        sessionIDs.add(info.id)
+      }
+    }
+
+    return Array.from(sessionIDs)
+  }
+
+  export async function listCortexDelegationsForParentDelivery(): Promise<string[]> {
+    const scopeRoots = await Storage.scan(["sessions"])
+    const sessionIDs = new Set<string>()
+
+    for (const scopeID of scopeRoots) {
+      const ids = await Storage.scan(StoragePath.sessionsRoot(Identifier.asScopeID(scopeID)))
+      for (const sessionID of ids) {
+        const info = await Storage.read<Info>(
+          StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID)),
+        ).catch(() => undefined)
+        if (!info || !info.time || info.time.archived || !info.cortex) continue
+        if (
+          info.cortex.status !== "completed" &&
+          info.cortex.status !== "error" &&
+          info.cortex.status !== "cancelled" &&
+          info.cortex.status !== "interrupted"
+        ) {
+          continue
+        }
+        if (info.cortex.notifyParentOnComplete !== true || info.cortex.visibility === "hidden") continue
         sessionIDs.add(info.id)
       }
     }

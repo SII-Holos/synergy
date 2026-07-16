@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Auth } from "../../src/provider/api-key"
 import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { CopilotProvider } from "../../src/provider/copilot"
+import { ProviderCatalog } from "../../src/provider/catalog"
 import { MiniMaxProvider } from "../../src/provider/minimax"
 import { GitHubProvider } from "../../src/provider/github"
 
@@ -211,6 +212,98 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
   )
 
   expect(models).toEqual(["gpt-5.4-mini", "claude-sonnet-4.6"])
+})
+
+test("github copilot model catalog preserves API vision capabilities", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  const catalog = await CopilotProvider.fetchModelCatalog(
+    CopilotProvider.PROVIDER_ID,
+    asFetch(async (input) => {
+      const url = String(input)
+      if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+        return jsonResponse({ token: "copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      if (url === `${CopilotProvider.BASE_URL}/models`) {
+        return jsonResponse({
+          data: [
+            {
+              id: "vision-model",
+              capabilities: {
+                supports: { vision: true },
+                limits: { vision: { supported_media_types: ["image/png", "image/jpeg"] } },
+              },
+            },
+            { id: "text-model", capabilities: { supports: { vision: false } } },
+            {
+              id: "unrestricted-vision-model",
+              capabilities: {
+                supports: { vision: true },
+                limits: { vision: { supported_media_types: [] } },
+              },
+            },
+          ],
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+
+  expect(catalog).toEqual([
+    {
+      id: "vision-model",
+      inputImage: true,
+      supportedImageMediaTypes: ["image/png", "image/jpeg"],
+    },
+    {
+      id: "text-model",
+      inputImage: false,
+    },
+    {
+      id: "unrestricted-vision-model",
+      inputImage: true,
+      supportedImageMediaTypes: [],
+    },
+  ])
+})
+
+test("github copilot live catalog changes only image capability and preserves other modalities", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  ProviderCatalog.reset()
+  globalThis.fetch = asFetch(async (input) => {
+    const url = String(input)
+    if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      return jsonResponse({ token: "copilot-api-token", expires_at: nowSeconds() + 3600 })
+    }
+    if (url === `${CopilotProvider.BASE_URL}/models`) {
+      return jsonResponse({
+        data: [
+          {
+            id: "gemini-2.5-pro",
+            capabilities: {
+              supports: { vision: true },
+              limits: { vision: { supported_media_types: ["image/png", "image/jpeg"] } },
+            },
+          },
+          {
+            id: "gemini-2.0-flash-001",
+            capabilities: { supports: { vision: false } },
+          },
+        ],
+      })
+    }
+    throw new Error(`unexpected URL ${url}`)
+  })
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const models = catalog[CopilotProvider.PROVIDER_ID].models
+
+  expect(models["gemini-2.5-pro"].modalities?.input).toEqual(["text", "image", "audio", "video"])
+  expect(models["gemini-2.5-pro"].supported_image_media_types).toEqual(["image/png", "image/jpeg"])
+  expect(models["gemini-2.0-flash-001"].modalities?.input).toEqual(["text", "audio", "video"])
 })
 
 test("github provider device login resolves managed token and reports account status", async () => {

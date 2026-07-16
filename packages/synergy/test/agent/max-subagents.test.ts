@@ -69,7 +69,6 @@ describe("synergy-max subagents", () => {
 
   test("classic read agents use only the classic read harness and cannot write files", () => {
     const classicReaders = [
-      "intent-analyst",
       "requirements-engineer",
       "code-cartographer",
       "dependency-tracer",

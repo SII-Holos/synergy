@@ -552,6 +552,7 @@ export namespace CodexProvider {
   ): ModelsDev.Model {
     return {
       ...model,
+      modalities: TEXT_ONLY_MODELS.has(modelID) ? { input: ["text"], output: ["text"] } : model.modalities,
       id: modelID,
       limit: codexModelLimit(modelID, model, input),
       provider: {
@@ -652,13 +653,9 @@ export namespace CodexProvider {
       models.push({
         id,
         rank: typeof entry.priority === "number" ? entry.priority : 10_000,
-        ...(contextWindow
-          ? {
-              model: {
-                limit: codexModelLimit(id, undefined, { contextWindow }),
-              },
-            }
-          : {}),
+        model: {
+          limit: codexModelLimit(id, undefined, { contextWindow }),
+        },
       })
     }
     return models.sort((a, b) => a.rank - b.rank || a.id.localeCompare(b.id))

@@ -158,6 +158,38 @@ describe("OpenAPI spec generation", () => {
     expect(spec.paths["/cortex/tasks/concurrency"]?.get?.operationId).toBe("cortex.concurrency")
   })
 
+  test("config import routes expose all structured error variants", async () => {
+    const spec = await Server.openapi()
+    const plan = spec.paths["/config/import/plan"]?.post
+    const apply = spec.paths["/config/import/apply"]?.post
+    const responseSchema = (operation: typeof plan, status: string) => {
+      const response = operation?.responses?.[status] as { content?: Record<string, { schema?: unknown }> } | undefined
+      return response?.content?.["application/json"]?.schema
+    }
+
+    expect(plan?.operationId).toBe("config.import.plan")
+    expect(apply?.operationId).toBe("config.import.apply")
+    const planBadRequest = JSON.stringify(responseSchema(plan, "400"))
+    expect(planBadRequest).toContain("BadRequestError")
+    expect(planBadRequest).toContain("ConfigImportProjectScopeRequiredError")
+    expect(planBadRequest).toContain("ConfigImportInvalidConfigError")
+
+    const applyBadRequest = JSON.stringify(responseSchema(apply, "400"))
+    expect(applyBadRequest).toContain("BadRequestError")
+    expect(applyBadRequest).toContain("ConfigImportProjectScopeRequiredError")
+    expect(applyBadRequest).toContain("ConfigImportInvalidConfigError")
+
+    const planPayloadTooLarge = JSON.stringify(responseSchema(plan, "413"))
+    expect(planPayloadTooLarge).toContain("ConfigImportSourceTooLargeError")
+
+    const applyPayloadTooLarge = JSON.stringify(responseSchema(apply, "413"))
+    expect(applyPayloadTooLarge).toContain("ConfigImportSourceTooLargeError")
+
+    const conflict = JSON.stringify(responseSchema(apply, "409"))
+    expect(conflict).toContain("ConfigImportRevisionConflictError")
+    expect(conflict).toContain("ConfigImportLockedError")
+  })
+
   test("does not expose legacy file or find routes", async () => {
     const spec = await Server.openapi()
     const paths = Object.keys(spec.paths)

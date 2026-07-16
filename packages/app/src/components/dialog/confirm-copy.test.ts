@@ -3,6 +3,7 @@ import {
   agendaActionConfirm,
   archiveProjectConfirm,
   archiveSessionConfirm,
+  cancelReencodeConfirm,
   deleteLibraryItemsConfirm,
   deleteNoteConfirm,
   deleteSkillConfirm,
@@ -96,6 +97,17 @@ describe("confirm copy", () => {
     expect(experiences.title).toBe("Delete 4 experiences?")
     expect(experiences.confirmLabel).toBe("Delete 4")
     expect(experiences.tone).toBe("danger")
+  })
+
+  test("confirms re-encode cancellation without discarding completed updates", () => {
+    const copy = cancelReencodeConfirm(3, 10)
+
+    expect(copy.title).toBe("Cancel re-encoding?")
+    expect(copy.description).toContain("3 of 10")
+    expect(copy.description).toContain("Completed updates will be kept")
+    expect(copy.confirmLabel).toBe("Cancel re-encoding")
+    expect(copy.cancelLabel).toBe("Keep running")
+    expect(copy.tone).toBe("warning")
   })
 
   test("separates agenda cancel and delete semantics", () => {

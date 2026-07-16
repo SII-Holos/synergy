@@ -845,6 +845,28 @@ export const Learning = z
       .min(1)
       .optional()
       .describe("Maximum characters collected from one encoder model stream before abort (default: 16000)"),
+    reencodeConcurrency: z
+      .number()
+      .int()
+      .min(1)
+      .max(32)
+      .optional()
+      .describe("Maximum concurrent experience reencode workers (default: 5)"),
+    reencodeRetries: z
+      .number()
+      .int()
+      .min(0)
+      .max(10)
+      .optional()
+      .describe(
+        "Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)",
+      ),
+    reencodeRetryBackoffMs: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Initial backoff for transient reencode stage retries in milliseconds (default: 1000)"),
     digestToolOutputBudget: z
       .number()
       .int()
@@ -928,6 +950,9 @@ export const LEARNING_DEFAULTS = {
   encoderRetries: 3,
   encoderTimeoutMs: 60_000,
   encoderMaxOutputChars: 16_000,
+  reencodeConcurrency: 5,
+  reencodeRetries: 3,
+  reencodeRetryBackoffMs: 1_000,
   digestToolOutputBudget: 800,
   encoderToolFieldBudget: 500,
   encoderToolOutputBudget: 300,
