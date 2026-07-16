@@ -10,6 +10,16 @@ export const PI = {
     id: "prompt.submit.pending.description",
     message: "Wait for the worktree setup to finish before sending another prompt.",
   },
+  submitTransitionPendingTitle: {
+    id: "prompt.submit.transitionPending.title",
+    message: "Session transition in progress",
+  },
+  submitTransitionPendingDesc: {
+    id: "prompt.submit.transitionPending.description",
+    message: "Wait for the current session transition to finish before sending another message.",
+  },
+  submitQueued: { id: "prompt.submit.queued", message: "Message queued" },
+  submitMessageAria: { id: "prompt.submit.messageAria", message: "Submit message" },
   submitInProgress: { id: "prompt.submit.inProgress", message: "Session start in progress" },
   submitInProgressDesc: {
     id: "prompt.submit.inProgress.description",
@@ -41,6 +51,7 @@ export const PI = {
   submitFailedBlueprint: { id: "prompt.submit.failedBlueprint", message: "Failed to start Blueprint" },
   submitFailedShell: { id: "prompt.submit.failedShell", message: "Failed to send shell command" },
   submitFailedCommand: { id: "prompt.submit.failedCommand", message: "Failed to send command" },
+  submitFailedExitWorkflow: { id: "prompt.submit.failedExitWorkflow", message: "Failed to exit {workflow}" },
   submitFailedSend: { id: "prompt.submit.failedSend", message: "Failed to send prompt" },
   submitFailedLightLoop: { id: "prompt.submit.failedLightLoop", message: "Failed to enable Light Loop" },
   submitFailedTogglePlan: { id: "prompt.submit.failedTogglePlan", message: "Failed to toggle Plan" },
