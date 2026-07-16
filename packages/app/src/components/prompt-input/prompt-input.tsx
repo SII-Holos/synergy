@@ -460,8 +460,8 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const promptText = createMemo(() => inlineText(prompt.current()))
-  const workspaceTransitionPending = createMemo(() => props.workspaceTransitionPending === true)
-  const submitPending = createMemo(() => newSessionSubmitPending() || workspaceTransitionPending())
+  const sessionTransitionPending = createMemo(() => props.sessionTransitionPending === true)
+  const submitPending = createMemo(() => newSessionSubmitPending() || sessionTransitionPending())
   const canSubmit = createMemo(() => {
     if (submitPending()) return false
     return canSubmitPrompt({
@@ -1894,7 +1894,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     <Show
                       when={!submitPending()}
                       fallback={
-                        <span>{workspaceTransitionPending() ? "Workspace setup in progress" : "Starting session"}</span>
+                        <span>
+                          {sessionTransitionPending() ? "Session transition in progress" : "Starting session"}
+                        </span>
                       }
                     >
                       <Switch>

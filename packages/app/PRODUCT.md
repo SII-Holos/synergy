@@ -181,7 +181,7 @@ Loaded file context in the composer should appear as quiet removable chips insid
 
 New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
 
-New-session initialization must use a blocking workbench progress surface whenever workspace or session setup can take visible time. The user should see compact step progress for worktree creation, session preparation, and prompt dispatch, and should not be able to operate the half-initialized session until setup completes or fails cleanly.
+Ordinary and worktree-backed new sessions should publish compact transition progress into the target session conversation before navigation exposes that route. A half-initialized session must never appear as an actionable empty page: preparation and first-message dispatch stay visible in the conversation, successful transitions remain for three seconds and then fade out, and errors remain until retry or dismissal. The session transition card is distinct from the composer’s DAG/Todo progress island and the two product layers must not be merged.
 
 Session Inbox should read as a transient queue surface, not a debug overlay. Use explicit text actions for queue promotion, keep destructive actions behind secondary menus plus confirmation, make after-turn batching visible as one reply cycle, and let inbox items fill the popover width with quiet row rhythm instead of nested icon-heavy cards.
 

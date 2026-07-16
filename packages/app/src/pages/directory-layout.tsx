@@ -4,6 +4,7 @@ import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
 import { FileProvider } from "@/context/file"
+import { SessionTransitionProvider } from "@/context/session-transition"
 
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
@@ -38,7 +39,9 @@ export default function Layout(props: ParentProps) {
                 onNavigateToSession={navigateToSession}
               >
                 <LocalProvider>
-                  <FileProvider>{props.children}</FileProvider>
+                  <SessionTransitionProvider>
+                    <FileProvider>{props.children}</FileProvider>
+                  </SessionTransitionProvider>
                 </LocalProvider>
               </DataProvider>
             )

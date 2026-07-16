@@ -44,9 +44,13 @@ import {
   createNewSessionWorkspaceSuccessProgress,
   isWorktreeWorkspaceSelection,
   worktreeSetupFailureMessage,
-  type SessionWorkspaceProgressActions,
-  type SessionWorkspaceProgress,
 } from "@/components/session/worktree-session"
+import {
+  createNewSessionTransitionProgress,
+  createNewSessionTransitionSuccessProgress,
+  type SessionTransitionActions,
+  type SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -54,8 +58,8 @@ type PromptSubmitInput = {
     | "newSessionWorkspaceSelection"
     | "newSessionCanonicalDirectory"
     | "onNewSessionWorkspaceSelectionReset"
-    | "onNewSessionStartProgress"
-    | "workspaceTransitionPending"
+    | "onNewSessionTransitionChange"
+    | "sessionTransitionPending"
   >
   uploadedAttachments: Accessor<UploadedAttachmentPart[]>
   noteAttachments: Accessor<NoteAttachmentPart[]>
@@ -96,11 +100,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     event.preventDefault()
     const isNewSession = !params.id
 
-    if (input.props.workspaceTransitionPending) {
+    if (input.props.sessionTransitionPending) {
       showToast({
         type: "warning",
-        title: "Workspace setup in progress",
-        description: "Wait for the worktree setup to finish before sending another prompt.",
+        title: "Session transition in progress",
+        description: "Wait for the current session transition to finish before sending another message.",
       })
       return
     }
@@ -264,16 +268,16 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (armedLightLoop && blueprintSlot) input.clearPendingLightLoop()
     const workspaceSelection = input.props.newSessionWorkspaceSelection ?? { mode: "current" as const }
     const worktreeWorkspaceSelection = isWorktreeWorkspaceSelection(workspaceSelection) ? workspaceSelection : undefined
-    const setNewSessionProgress = (
+    const publishNewSessionTransition = (
       sessionID: string,
-      progress: SessionWorkspaceProgress | null,
-      actions?: SessionWorkspaceProgressActions,
+      progress: SessionTransitionProgress | null,
+      actions?: SessionTransitionActions,
     ) => {
-      input.props.onNewSessionStartProgress?.({ sessionID, progress, actions })
+      input.props.onNewSessionTransitionChange?.({ sessionID, progress, actions })
     }
-    const updateNewSessionWorkspaceProgress = (sessionID: string, stage: "workspace" | "session" | "prompt") => {
+    const updateNewSessionWorktreeProgress = (sessionID: string, stage: "workspace" | "message") => {
       if (!worktreeWorkspaceSelection) return
-      setNewSessionProgress(
+      publishNewSessionTransition(
         sessionID,
         createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage }),
       )
@@ -306,7 +310,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     let createdSessionForSubmit = false
     const rollbackCreatedSessionByID = async (sessionID: string) => {
       if (!createdSessionForSubmit) return
-      setNewSessionProgress(sessionID, null)
+      publishNewSessionTransition(sessionID, null)
       await client.session.delete({ sessionID }).catch(() => undefined)
       navigate(`/${base64Encode(currentScopeKey)}/session`, { replace: true })
     }
@@ -343,10 +347,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         createdSessionForSubmit = true
         client = resolveSessionClient(sessionCreateScopeKey)
         input.props.onNewSessionWorkspaceSelectionReset?.()
+        publishNewSessionTransition(
+          session.id,
+          worktreeWorkspaceSelection
+            ? createNewSessionWorkspaceProgress({ selection: worktreeWorkspaceSelection, stage: "workspace" })
+            : createNewSessionTransitionProgress(),
+        )
         navigate(`/${base64Encode(sessionScopeKey)}/session/${session.id}`)
 
         if (worktreeWorkspaceSelection) {
-          updateNewSessionWorkspaceProgress(session.id, "workspace")
           try {
             if (worktreeWorkspaceSelection.mode === "create") {
               const result = await client.worktree.create({
@@ -365,7 +374,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
                 worktreeEnterInput: { target: worktreeWorkspaceSelection.target },
               })
             }
-            updateNewSessionWorkspaceProgress(session.id, "prompt")
+            updateNewSessionWorktreeProgress(session.id, "message")
           } catch (err) {
             const message = errorMessage(err)
             showToast({
@@ -519,18 +528,15 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         .catch(() => undefined)
     }
 
-    const finishNewSessionWorkspaceProgress = () => {
-      if (!worktreeWorkspaceSelection) return
-      setNewSessionProgress(
-        activeSession.id,
-        createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection }),
-        {
-          dismiss: () => setNewSessionProgress(activeSession.id, null),
-        },
-      )
+    const finishNewSessionTransition = () => {
+      if (!createdSessionForSubmit) return
+      const progress = worktreeWorkspaceSelection
+        ? createNewSessionWorkspaceSuccessProgress({ selection: worktreeWorkspaceSelection })
+        : createNewSessionTransitionSuccessProgress()
+      publishNewSessionTransition(activeSession.id, progress, {
+        dismiss: () => publishNewSessionTransition(activeSession.id, null),
+      })
     }
-
-    if (worktreeWorkspaceSelection) updateNewSessionWorkspaceProgress(activeSession.id, "prompt")
 
     if (blueprintSlot && mode === "normal") {
       input.setBlueprintLoading(true)
@@ -559,7 +565,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
 
         clearInput()
         await sdk.client.blueprint.loop.start({ id: loopID, userPrompt: userText || undefined })
-        finishNewSessionWorkspaceProgress()
+        finishNewSessionTransition()
         releaseNewSessionSubmit()
       } catch (err) {
         const message = errorMessage(err)
@@ -590,7 +596,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           command: text,
         })
         .then(() => {
-          finishNewSessionWorkspaceProgress()
+          finishNewSessionTransition()
           releaseNewSessionSubmit()
         })
         .catch(async (err) => {
@@ -622,7 +628,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         sessions,
       })
         .then(() => {
-          finishNewSessionWorkspaceProgress()
+          finishNewSessionTransition()
           releaseNewSessionSubmit()
           if (armedLightLoop) input.clearPendingLightLoop()
         })
@@ -875,7 +881,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         metadata: { promptDraft: draftSnapshot },
       })
       .then((result) => {
-        finishNewSessionWorkspaceProgress()
+        finishNewSessionTransition()
         releaseNewSessionSubmit()
         if (armedLightLoop) input.clearPendingLightLoop()
         if (result.data?.status === "queued" && optimisticAdded) {
