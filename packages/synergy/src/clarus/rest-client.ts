@@ -12,6 +12,7 @@ import {
   MAX_WIRE_METADATA_RECURSION_DEPTH,
   MAX_WIRE_FILE_REFS,
   MAX_WIRE_FILE_REF_RECURSION_DEPTH,
+  MAX_WIRE_VALUE_STRING_LENGTH,
   MAX_WIRE_STRING_ERROR_MESSAGE,
   MAX_WIRE_STRING_USER_QUERY,
   MAX_USER_CANDIDATES,
@@ -68,8 +69,6 @@ function parseResponseBody(body: string, maxBytes: number): unknown {
 
 // ── Recursive bounds validators for metadata / fileRefs ─────
 
-const MAX_VALIDATOR_STRING_LENGTH = 1024
-
 function validateMetadata(
   raw: unknown,
   depth: number,
@@ -91,7 +90,7 @@ function validateMetadata(
   for (const key of keys) {
     if (key.length > maxKeyLength) throw new Error("Clarus metadata key exceeds its limit")
     const value = obj[key]
-    if (typeof value === "string" && value.length > MAX_VALIDATOR_STRING_LENGTH)
+    if (typeof value === "string" && value.length > MAX_WIRE_VALUE_STRING_LENGTH)
       throw new Error("Clarus metadata string exceeds its length limit")
     if (value !== null && typeof value === "object" && !Array.isArray(value)) {
       validateMetadata(value, depth + 1, maxKeys, maxKeyLength, maxDepth, visited)
@@ -113,7 +112,7 @@ function validateFileRefs(raw: unknown, depth: number, maxDepth: number, visited
   }
   if (raw.length > MAX_WIRE_FILE_REFS) throw new Error("Clarus fileRefs item count exceeds its limit")
   for (const item of raw) {
-    if (typeof item === "string" && item.length > MAX_VALIDATOR_STRING_LENGTH)
+    if (typeof item === "string" && item.length > MAX_WIRE_VALUE_STRING_LENGTH)
       throw new Error("Clarus fileRefs string exceeds its length limit")
     if (item !== null && typeof item === "object" && !Array.isArray(item)) {
       validateMetadata(
@@ -217,9 +216,9 @@ export class ClarusRestClient implements ClarusRestPort.Interface {
     if (cursor !== undefined) query.set("cursor", cursor)
     const data = await this.get(`/api/v1/holos/clarus/projects/${encodeURIComponent(projectId)}/messages`, query)
     const parsed = ClarusRestPort.WireMessageListData.parse(data)
-    if (parsed.messages.length > MAX_MESSAGES_PER_RESPONSE) throw new Error("Clarus message page exceeds its limit")
+    if (parsed.items.length > MAX_MESSAGES_PER_RESPONSE) throw new Error("Clarus message page exceeds its limit")
     return {
-      messages: parsed.messages.map((item) => ({
+      messages: parsed.items.map((item) => ({
         messageId: item.message_id,
         ...(item.message_type === undefined ? {} : { messageType: item.message_type }),
         ...(item.content === undefined ? {} : { content: item.content }),

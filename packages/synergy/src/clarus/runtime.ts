@@ -1665,20 +1665,60 @@ async function backfillProjectMessages(
   return "complete"
 }
 
-async function backfillAssignment(binding: ClarusProjectBindingV3, message: ClarusRestPort.MessageDto): Promise<void> {
+function backfilledAssignment(
+  binding: ClarusProjectBindingV3,
+  message: ClarusRestPort.MessageDto,
+): RuntimeTaskAssignedEvent | null {
   const metadata = message.metadata
-  if (!isRecord(metadata) || metadata.event_type !== "clarus.runtime.task.assigned") return
+  if (!isRecord(metadata) || metadata.event_type !== "runtime.task.dispatched") return null
+  if (metadata.assigned_agent_id !== binding.agentId) return null
   const payload = metadata.payload
-  if (!isRecord(payload) || typeof payload.task_id !== "string") return
+  if (!isRecord(payload)) return null
+  if (
+    typeof payload.project_id !== "string" ||
+    payload.project_id !== binding.projectId ||
+    typeof payload.run_id !== "string" ||
+    !payload.run_id.trim() ||
+    typeof payload.task_id !== "string" ||
+    !payload.task_id.trim() ||
+    typeof payload.phase !== "string" ||
+    !payload.phase.trim() ||
+    typeof payload.subtask_id !== "string" ||
+    !payload.subtask_id.trim() ||
+    typeof payload.attempt !== "number" ||
+    !Number.isInteger(payload.attempt) ||
+    (payload.deadline_at !== null && typeof payload.deadline_at !== "string")
+  )
+    return null
+  const taskInput = isRecord(payload.task_input) ? { ...payload.task_input } : {}
+  if (Array.isArray(payload.input_refs)) taskInput.input_refs = payload.input_refs
+  return {
+    kind: "known",
+    type: "runtimeTaskAssigned",
+    agentID: binding.agentId,
+    requestID: null,
+    projectID: binding.projectId,
+    runID: payload.run_id,
+    taskID: payload.task_id,
+    phase: payload.phase,
+    subtaskID: payload.subtask_id,
+    attempt: payload.attempt,
+    deadlineAt: payload.deadline_at,
+    goal: typeof payload.goal === "string" ? payload.goal : null,
+    instructions: typeof payload.instructions === "string" ? payload.instructions : null,
+    input: isRecord(payload.input) ? payload.input : null,
+    context: isRecord(payload.context) ? payload.context : null,
+    taskInput: Object.keys(taskInput).length > 0 ? taskInput : null,
+    epoch: connectedEpoch,
+    generation: connectedGeneration,
+  }
+}
+
+async function backfillAssignment(binding: ClarusProjectBindingV3, message: ClarusRestPort.MessageDto): Promise<void> {
+  const assignment = backfilledAssignment(binding, message)
+  if (!assignment) return
   try {
-    await deliverTaskMessage({
-      agentId: binding.agentId,
-      projectId: binding.projectId,
-      taskId: payload.task_id,
-      messageId: message.messageId,
-      text: message.content ?? "Task assigned",
-      extraMetadata: { clarusMessage: { messageID: message.messageId, metadata } },
-    })
+    await handleTaskAssigned(assignment)
     await ClarusBindingStore.touchLastActivity(binding.agentId, binding.projectId, Date.now())
   } catch (error) {
     log.info("Clarus assignment backfill deferred", { projectId: binding.projectId, error: errorMessage(error) })
