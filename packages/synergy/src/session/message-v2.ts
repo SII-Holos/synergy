@@ -479,6 +479,16 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
+        diffState: z
+          .discriminatedUnion("status", [
+            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
+            z.object({ status: z.literal("ready") }),
+            z.object({
+              status: z.literal("error"),
+              code: z.enum(["timeout", "git_failure", "unknown"]),
+            }),
+          ])
+          .optional(),
       })
       .optional(),
     agent: z.string(),

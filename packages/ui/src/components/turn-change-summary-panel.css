@@ -8,6 +8,46 @@
   overflow: hidden;
 }
 
+[data-component="turn-change-summary-panel"].turn-change-summary-entering {
+  animation: turn-change-summary-enter var(--motion-duration-slow) var(--motion-ease-standard) both;
+}
+
+[data-component="turn-change-summary-panel"][data-diff-state="pending"] [data-slot="turn-change-summary-icon"] {
+  color: var(--icon-weak-base);
+  animation: turn-change-summary-pulse 1.4s var(--motion-ease-standard) infinite;
+}
+
+[data-component="turn-change-summary-panel"][data-diff-state="pending"] [data-slot="turn-change-summary-title"],
+[data-component="turn-change-summary-panel"][data-diff-state="error"] [data-slot="turn-change-summary-title"] {
+  color: var(--text-weak);
+  font-weight: var(--font-weight-regular);
+}
+
+[data-component="turn-change-summary-panel"][data-diff-state="error"] [data-slot="turn-change-summary-icon"] {
+  color: var(--icon-weak-base);
+}
+
+@keyframes turn-change-summary-enter {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes turn-change-summary-pulse {
+  0%,
+  100% {
+    opacity: 0.48;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-header"] {
   display: flex;
   align-items: center;
@@ -185,4 +225,12 @@
 [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-toggle"]:hover {
   background: var(--surface-base-hover);
   color: var(--text-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-component="turn-change-summary-panel"],
+  [data-component="turn-change-summary-panel"] [data-slot="turn-change-summary-icon"] {
+    animation: none;
+    transform: none;
+  }
 }

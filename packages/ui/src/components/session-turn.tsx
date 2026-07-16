@@ -11,11 +11,15 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
+import {
+  resolveTurnDiffPanelState,
+  TURN_DIFF_PENDING_DELAY_MS,
+  type TurnDiffPanelState,
+} from "./turn-change-summary-panel-model"
 import { Message, Part } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -199,12 +203,18 @@ export function collectUserCompactionTimelineItems(
 
 export function shouldShowTurnDiffs(
   message: Pick<UserMessage, "metadata" | "summary"> | undefined,
-  options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean } = {},
-): boolean {
-  if (!message) return false
-  if (options.isCompactedParent) return false
-  if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return false
-  return (message.summary?.diffs?.length ?? 0) > 0
+  options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean; now?: number } = {},
+): TurnDiffPanelState {
+  if (!message) return "hidden"
+  if (options.isCompactedParent) return "hidden"
+  if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return "hidden"
+
+  const summary = message.summary
+  const diffState = summary?.diffState
+  if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
+  if (diffState.status === "pending") return (options.now ?? Date.now()) >= diffState.deadlineAt ? "error" : "pending"
+  if (diffState.status === "error") return "error"
+  return summary.diffs.length > 0 ? "ready" : "hidden"
 }
 
 export function shouldShowTurnUserChrome(
@@ -774,12 +784,45 @@ export function SessionTurn(
     timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
   )
   const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
-  const hasDiffs = createMemo(() => {
+  const [diffNow, setDiffNow] = createSignal(Date.now())
+  const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
+  const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
+  const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
+  const pendingDeadlineAt = createMemo(() => {
+    const diffState = message()?.summary?.diffState
+    return diffState?.status === "pending" ? diffState.deadlineAt : undefined
+  })
+
+  createEffect(
+    on(pendingDeadlineAt, (deadlineAt) => {
+      const now = Date.now()
+      setDiffNow(now)
+      setPendingDelayElapsed(false)
+      if (deadlineAt === undefined) return
+
+      const pendingTimer = setTimeout(() => setPendingDelayElapsed(true), TURN_DIFF_PENDING_DELAY_MS)
+      const deadlineTimer = setTimeout(() => setDiffNow(Date.now()), Math.max(0, deadlineAt - now + 1))
+      onCleanup(() => {
+        clearTimeout(pendingTimer)
+        clearTimeout(deadlineTimer)
+      })
+    }),
+  )
+
+  createEffect(on(diffSettlementStatus, (status) => setAnimateReadyDiffPanel(status === "ready"), { defer: true }))
+
+  const diffPanelState = createMemo(() => {
     const msg = message()
-    return shouldShowTurnDiffs(msg, {
+    const projected = shouldShowTurnDiffs(msg, {
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
+      now: diffNow(),
     })
+    return resolveTurnDiffPanelState(projected, pendingDelayElapsed())
+  })
+  const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
+    const state = diffPanelState()
+    return state === "hidden" ? undefined : state
   })
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
@@ -956,7 +999,7 @@ export function SessionTurn(
                         hasTimelineItems() ||
                         showProviderPrelude() ||
                         completedTurnStats() ||
-                        (!working() && hasDiffs())
+                        (!working() && !!visibleDiffPanelState())
                       }
                     >
                       <div data-slot="session-turn-timeline">
@@ -1040,12 +1083,16 @@ export function SessionTurn(
                             </div>
                           </div>
                         </Show>
-                        <Show when={!working() && hasDiffs()}>
-                          <TurnChangeSummaryPanel
-                            diffs={msg().summary?.diffs ?? []}
-                            onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
-                            onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
-                          />
+                        <Show when={!working() ? visibleDiffPanelState() : undefined}>
+                          {(state) => (
+                            <TurnChangeSummaryPanel
+                              diffs={msg().summary?.diffs ?? []}
+                              state={state()}
+                              animateReady={animateReadyDiffPanel()}
+                              onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
+                              onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
+                            />
+                          )}
                         </Show>
                       </div>
                     </Show>

@@ -148,13 +148,24 @@ Current loop-level behavior includes:
 
 - compaction processing
 - asynchronous old-tool-output pruning
-- title and summary generation
+- title, body, and turn diff summary generation
 - Library experience chronicling
 - repeated successful tool-call warnings
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs cannot hold the critical execution path.
+
+### Turn diff settlement
+
+The `summarize` post-step job computes file diffs and derives title/body for each completed turn without joining the blocking loop path:
+
+1. The job writes `diffState: { status: "pending", deadlineAt }` immediately so the frontend sees the pending state.
+2. It computes diffs from the turn's snapshot range (`step-start` → `step-finish` part snapshots).
+3. On success, it writes `{ diffs, diffState: { status: "ready" } }` atomically. On failure, it writes `{ diffState: { status: "error", code } }` with a safe error code while preserving existing summary fields.
+4. Title generation may proceed after either outcome. Body generation runs only after a successful non-empty diff settlement, and the applicable LLM calls run in parallel.
+
+Concurrent summarizations for the same session are coalesced into a FIFO queue. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
 ## Prompt Budget
 

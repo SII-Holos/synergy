@@ -108,6 +108,17 @@ Message-flow errors should remain compact by default: show a single-line error p
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 Turn-level file changes summarize in the message flow; detailed file diff inspection belongs in the session Review workbench surface.
 
+### Turn diff panel states
+
+The turn diff panel appears below each completed turn and follows the `diffState` lifecycle from the message summary:
+
+- **pending**: The panel shows a quiet "Calculating file changes…" label with a pulsing icon. The state is hidden for the first 150 ms to avoid flashing on fast completions. If the deadline (`deadlineAt`) expires before the server resolves, the pending state automatically promotes to **error**.
+- **ready**: The panel displays the file list with per-file add/delete bars and a "Review changes" button. The panel enters with a subtle slide-and-fade animation (`turn-change-summary-entering`). Empty diffs (`summary.diffs` with zero length) render as hidden — only non-empty diff sets are visible.
+- **error**: The panel shows "Couldn't calculate file changes" with a weak icon. No inline error details or retry action; the error state is informational only.
+- **legacy (no diffState)**: A message without `diffState` but with non-empty `summary.diffs` inherits `ready` treatment to preserve backward compatibility with older histories.
+
+Motion under `prefers-reduced-motion: reduce` disables all panel entrance transitions and the pulsing pending icon animation.
+
 Special user-message renderers should keep workflow prompts lightweight in the message stream. Plan, Lattice, Light Loop, BlueprintLoop starts, and workflow continuation controls may use the same compact right-aligned prompt-bubble treatment with a small source badge; control messages should show a short human-readable summary by default rather than raw loop IDs, internal prompt text, or heavy centered event cards.
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
