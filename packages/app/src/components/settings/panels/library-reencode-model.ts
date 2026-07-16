@@ -11,6 +11,11 @@ export function isReencodeJobNotFound(error: unknown): boolean {
   return Boolean(error && typeof error === "object" && "code" in error && error.code === "REENCODE_JOB_NOT_FOUND")
 }
 
+export function reencodeJobPercent(job: ReencodeJobState): number {
+  if (job.totalCount === 0) return 0
+  return Math.min(100, Math.round((job.completedCount / job.totalCount) * 100))
+}
+
 export function reencodeJobSummary(job: ReencodeJobState): string {
   const counts = `${job.okCount} updated, ${job.skippedCount} skipped, ${job.failedCount} failed`
   if (job.status === "completed") return `Complete: ${counts}`

@@ -19,6 +19,7 @@ import {
   reencodeConflictJob,
   reencodeJobSummary,
 } from "./library-reencode-model"
+import { LibraryReencodeProgress } from "./library-reencode-progress"
 
 const similarityOptions: SettingsStepOption[] = [
   { value: "0.5", label: "Broad", tickLabel: "0.5", detail: "Loose context match" },
@@ -350,31 +351,8 @@ function EncodingHealthSection() {
         </div>
       </div>
 
-      {/* Re-encode progress bar */}
       <Show when={reencoding()}>
-        {(reenc) => {
-          const pct = reenc().totalCount > 0 ? Math.round((reenc().completedCount / reenc().totalCount) * 100) : 0
-          return (
-            <SettingsSubsection title={`Re-encoding ${reenc().type} records…`}>
-              <div class="usage-window-meter" style="margin-bottom: 8px;">
-                <span style={{ width: `${pct}%` }} />
-              </div>
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="gap:12px; display:flex;">
-                  <span class="usage-overview-label">
-                    {reenc().completedCount} / {reenc().totalCount}
-                  </span>
-                  <span class="usage-overview-label">Updated: {reenc().okCount}</span>
-                  <span class="usage-overview-label">Skipped: {reenc().skippedCount}</span>
-                  <span class="usage-overview-label">Failed: {reenc().failedCount}</span>
-                </div>
-                <Button type="button" variant="ghost" size="small" disabled={cancelling()} onClick={handleCancel}>
-                  {cancelling() ? "Cancelling…" : "Cancel"}
-                </Button>
-              </div>
-            </SettingsSubsection>
-          )
-        }}
+        {(reenc) => <LibraryReencodeProgress job={reenc} cancelling={cancelling()} onCancel={handleCancel} />}
       </Show>
 
       {/* Re-encode done message */}
