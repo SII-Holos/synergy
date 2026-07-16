@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import { readLegacyQuickSwitcherPreferences } from "./useSettingsForm"
+import type { Config } from "@ericsanchezok/synergy-sdk/client"
+import { createStore } from "solid-js/store"
+import { ensureInit, readLegacyQuickSwitcherPreferences } from "./useSettingsForm"
+import { defaultSettingsState } from "../types"
 
 describe("settings form legacy quick switcher migration", () => {
   test("reads current quick switcher preferences from the legacy localStorage key", () => {
@@ -29,6 +32,26 @@ describe("settings form legacy quick switcher migration", () => {
       { providerID: "openai", modelID: "gpt-5.5", state: "add" },
       { providerID: "anthropic", modelID: "claude-sonnet", state: "remove" },
     ])
+  })
+})
+
+describe("settings form Cortex concurrency", () => {
+  test("hydrates the configured global maximum", () => {
+    const [settings, setSettings] = createStore(defaultSettingsState("enter"))
+
+    ensureInit({
+      cfg: { cortex: { maxConcurrentTasks: 6 } } as Config,
+      setName: "global",
+      refreshing: () => false,
+      initialized: () => false,
+      initializedForSet: undefined,
+      sendShortcut: () => "enter",
+      setSettings,
+      setInitialized: () => undefined,
+      originalMcpsRef: { current: {} },
+    })
+
+    expect(settings.runtime.cortexConcurrency).toBe("6")
   })
 })
 

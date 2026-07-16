@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { TOAST_DURATION_STOPS, snapToastDuration } from "./types"
+import { TOAST_DURATION_STOPS, defaultSettingsState, snapToastDuration } from "./types"
 
 describe("settings types", () => {
   test("snaps toast durations to the discrete settings stops", () => {
@@ -8,5 +8,9 @@ describe("settings types", () => {
     expect(snapToastDuration(5000)).toBe(4000)
     expect(snapToastDuration(7000)).toBe(8000)
     expect(snapToastDuration(0)).toBe(4000)
+  })
+
+  test("defaults Cortex concurrency to the stable runtime limit", () => {
+    expect(defaultSettingsState("enter").runtime.cortexConcurrency).toBe("8")
   })
 })

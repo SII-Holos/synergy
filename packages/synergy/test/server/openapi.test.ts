@@ -153,6 +153,11 @@ describe("OpenAPI spec generation", () => {
     expect(diagnosticsSchema).toContain("DiagnosticsSummary")
   })
 
+  test("includes Cortex concurrency status with a stable operation ID", async () => {
+    const spec = await Server.openapi()
+    expect(spec.paths["/cortex/tasks/concurrency"]?.get?.operationId).toBe("cortex.concurrency")
+  })
+
   test("config import routes expose all structured error variants", async () => {
     const spec = await Server.openapi()
     const plan = spec.paths["/config/import/plan"]?.post
