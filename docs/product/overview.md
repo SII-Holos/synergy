@@ -159,6 +159,10 @@ After authentication, Synergy opens a persistent WebSocket agent tunnel to Holos
 
 The same tunnel provides the transport for Synergy Link. A connected Synergy instance can open an explicit Link session with a target Holos agent, manage that remote session's lifecycle, and route supported shell and process operations to the associated Synergy Link host. Link state is tied to the live Holos connection; disconnecting removes the remote execution client and clears its active Link sessions.
 
+### Clarus
+
+When Holos is connected, Clarus lets Synergy manage remote projects, task assignments, and project activity through the same authenticated agent tunnel used for identity and messaging. It provides a dedicated navigation surface for active and inactive projects, priority-ordered task views, and an explicit continue-locally workflow. Clarus project activity, task bindings, and composer state are all persisted locally.
+
 Holos does not replace local sessions, model providers, project configuration, Library, Channels, or their stored data. Only capabilities that explicitly use the Holos network depend on the connection.
 
 ### Plugins
@@ -236,6 +240,7 @@ The following principles should remain true as individual features evolve:
 - Plan produces a Blueprint; BlueprintLoop executes and audits it; Light Loop persists on one task; Lattice coordinates a Pathway of Blueprint-backed steps.
 - Library stores reusable memory and experience; Notes store authored documents.
 - Channels adapt external messaging into sessions; Holos provides optional identity and agent-network connectivity.
+- Clarus projects and tasks use the existing Holos agent tunnel; there is no separate Clarus daemon or transport.
 - Browser is a session workspace with one shared page, not a separate tab or screenshot-stream automation system.
 
 For implementation-level invariants, continue with the [architecture documentation](../architecture/README.md). For durable Web interaction and visual rules, see the [Web product contract](../../packages/app/PRODUCT.md). Plugin authors should begin with the [plugin documentation](../plugins/README.md).
