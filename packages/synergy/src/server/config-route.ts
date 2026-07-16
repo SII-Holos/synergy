@@ -1,15 +1,17 @@
-import { Hono } from "hono"
+import { type Context, Hono, type Next } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import { mapValues } from "remeda"
 import z from "zod"
 import { Config } from "../config/config"
 import { ConfigDomain } from "../config/domain"
+import { ConfigImport } from "../config/import"
 import { ConfigDomainOpen } from "../config/domain-open"
 import { ConfigInstructions } from "../config/instructions"
 import { Provider } from "../provider/provider"
 import { RuntimeReload } from "../runtime/reload"
 import { Log } from "../util/log"
-import { errors } from "./error"
+import { BadRequestError, errors } from "./error"
+import { requestWithinLimit } from "./request-body-limit"
 
 const log = Log.create({ service: "config-route" })
 
@@ -39,13 +41,52 @@ const DomainOpenError = z
     path: z.string().optional(),
   })
   .meta({ ref: "ConfigDomainOpenError" })
+const ConfigImportInvalidConfigError = z
+  .object({
+    name: z.literal("ConfigInvalidError"),
+    data: z.object({
+      path: z.string(),
+      issues: z.array(z.any()).optional(),
+      message: z.string().optional(),
+    }),
+  })
+  .meta({ ref: "ConfigImportInvalidConfigError" })
 
-function domainOpenError(error: unknown) {
+const ConfigImportBadRequestError = z.union([
+  BadRequestError,
+  ConfigImport.ProjectScopeRequiredError.Schema,
+  ConfigImportInvalidConfigError,
+])
+
+const ConfigImportConflictError = z.union([ConfigImport.RevisionConflictError.Schema, ConfigImport.LockedError.Schema])
+
+function limitConfigImportBody(maxBytes: number) {
+  return async (c: Context, next: Next) => {
+    const declared = Number(c.req.header("content-length") ?? 0)
+    if ((Number.isFinite(declared) && declared > maxBytes) || !(await requestWithinLimit(c.req.raw, maxBytes))) {
+      const error = new ConfigImport.SourceTooLargeError({
+        source: c.req.path,
+        maxBytes,
+        message: `CONFIG_TOO_LARGE: Config import request exceeds ${maxBytes} bytes`,
+      })
+      return c.json(error.toObject(), 413)
+    }
+    await next()
+  }
+}
+
+export function domainOpenError(error: unknown) {
   if (error instanceof ConfigDomainOpen.UnsupportedPlatformError) {
-    return { status: 400 as const, body: { success: false as const, error: error.name, message: error.message } }
+    return {
+      status: 400 as const,
+      body: { success: false as const, error: error.name, message: error.message, path: error.filepath },
+    }
   }
   if (error instanceof ConfigDomainOpen.OpenerMissingError) {
-    return { status: 500 as const, body: { success: false as const, error: error.name, message: error.message } }
+    return {
+      status: 500 as const,
+      body: { success: false as const, error: error.name, message: error.message, path: error.filepath },
+    }
   }
   if (error instanceof ConfigDomainOpen.OpenFailedError) {
     return {
@@ -257,40 +298,55 @@ export const ConfigRoute = new Hono()
     "/import/plan",
     describeRoute({
       summary: "Plan config import",
-      description: "Create a dry-run plan for importing selected config domains.",
+      description: "Create a dry-run plan for importing selected config domains into global or project config.",
       operationId: "config.import.plan",
       responses: {
         200: {
           description: "Config import plan",
-          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
+          content: { "application/json": { schema: resolver(ConfigImport.Plan) } },
         },
-        ...errors(400),
+        400: {
+          description: "Invalid import or missing project scope",
+          content: { "application/json": { schema: resolver(ConfigImportBadRequestError) } },
+        },
+        413: {
+          description: "Config import request is too large",
+          content: { "application/json": { schema: resolver(ConfigImport.SourceTooLargeError.Schema) } },
+        },
       },
     }),
-    validator("json", Config.DomainImportPlanInput),
-    async (c) => c.json(await Config.domainImportPlan(c.req.valid("json"))),
+    limitConfigImportBody(ConfigImport.MAX_REQUEST_BYTES),
+    validator("json", ConfigImport.PlanInput),
+    async (c) => c.json(await ConfigImport.plan(c.req.valid("json"))),
   )
   .post(
     "/import/apply",
     describeRoute({
       summary: "Apply config import",
-      description: "Apply a selected-domain config import plan.",
+      description: "Atomically apply a selected-domain config import plan and reload affected runtime state.",
       operationId: "config.import.apply",
       responses: {
         200: {
-          description: "Applied config import plan",
-          content: { "application/json": { schema: resolver(Config.DomainImportPlan) } },
+          description: "Applied config import result",
+          content: { "application/json": { schema: resolver(ConfigImport.ApplyResult) } },
         },
-        ...errors(400),
+        400: {
+          description: "Invalid import or missing project scope",
+          content: { "application/json": { schema: resolver(ConfigImportBadRequestError) } },
+        },
+        409: {
+          description: "Stale plan or concurrent import",
+          content: { "application/json": { schema: resolver(ConfigImportConflictError) } },
+        },
+        413: {
+          description: "Config import request is too large",
+          content: { "application/json": { schema: resolver(ConfigImport.SourceTooLargeError.Schema) } },
+        },
       },
     }),
-    validator("json", Config.DomainImportPlanInput.extend({ yes: z.boolean().optional() })),
-    async (c) => {
-      const plan = await Config.domainImportApply(c.req.valid("json"))
-      const changedFields = new Set(plan.domains.flatMap((domain) => domain.changes.map((change) => change.key)))
-      await reloadAfterConfigChange(changedFields, "config.import.apply")
-      return c.json(plan)
-    },
+    limitConfigImportBody(ConfigImport.MAX_REQUEST_BYTES),
+    validator("json", ConfigImport.ApplyInput),
+    async (c) => c.json(await ConfigImport.apply(c.req.valid("json"))),
   )
   .get(
     "/providers",
@@ -335,7 +391,7 @@ async function reloadAfterConfigChange(changedFields: Set<string>, reason: strin
     log.info("config updated (client-side only, skipping reload)", { changedFields: [...changedFields] })
     return
   }
-  if (allLiveNoCascade) {
+  if (allLiveNoCascade && !changedFields.has("cortex")) {
     await Config.reload("global")
     log.info("config updated (live-applied, no cascade)", { changedFields: [...changedFields] })
     return

@@ -7,6 +7,7 @@ import {
   desktopStartupIconPath,
   desktopUsesSystemTray,
   desktopWindowChromeOptions,
+  desktopEmitsWindowStateEvents,
   desktopWindowState,
 } from "../src/window-chrome.js"
 
@@ -184,6 +185,12 @@ describe("desktop window chrome", () => {
         isUpdateQuit: true,
       }),
     ).toBe(false)
+  })
+
+  test("does not broadcast native macOS fullscreen transitions to the renderer", () => {
+    expect(desktopEmitsWindowStateEvents("darwin")).toBe(false)
+    expect(desktopEmitsWindowStateEvents("win32")).toBe(true)
+    expect(desktopEmitsWindowStateEvents("linux")).toBe(true)
   })
 
   test("returns the safe renderer-facing window state", () => {

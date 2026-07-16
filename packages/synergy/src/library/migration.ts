@@ -318,5 +318,14 @@ export const migrations: Migration[] = [
       if (removed > 0) log.info("purged assistant-reasoning intents", { removed, scanned: rows.length })
     },
   },
+  {
+    id: "20260715-library-reencode-job-tables",
+    description: "Add durable experience reencode job and item tables",
+    async up(progress) {
+      progress(0, 1)
+      LibraryDB.ReencodeJob.ensureSchema()
+      progress(1, 1)
+    },
+  },
 ]
 MigrationRegistry.register("library", migrations)

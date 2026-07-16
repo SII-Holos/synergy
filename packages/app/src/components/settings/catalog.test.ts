@@ -56,8 +56,17 @@ describe("settings catalog", () => {
     expect(general.rowLabels).toContain("Product Updates")
     const timeouts = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "timeouts")!
     expect(timeouts.keywords).toContain("agent")
+    expect(timeouts.keywords).toContain("concurrency")
+    expect(timeouts.rowLabels).toContain("Max Concurrent Subagents")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
+    const codeChecks = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "code-checks")!
+    expect(codeChecks.keywords).toContain("diagnostics")
+    expect(codeChecks.rowLabels).toContain("Diagnostic Scope")
+    expect(codeChecks.domainIds).toEqual(["runtime"])
+    expect(codeChecks.visibility).not.toBe("developer")
+    expect(FIELD_SAVE_STRATEGY.lspWriteDiagnostics).toBe("background")
+    expect(FIELD_SAVE_STRATEGY.lspDiagnostics).toBe("background")
   })
   test("places Personalize in the Personal group with custom instruction search terms", () => {
     const personalize = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "personalize")
@@ -82,6 +91,7 @@ describe("settings catalog", () => {
     expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
     expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.cortex).toBe("background")
     for (const role of MODEL_ROLES) {
       expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
     }

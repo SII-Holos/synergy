@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  resolveVariantDisplay,
   resolveModel,
   resolveAgent,
   sessionDefaultModel,
@@ -121,6 +122,24 @@ describe("sessionDefaultVariant", () => {
 
   test("undefined when the last root message has no variant", () => {
     expect(sessionDefaultVariant(A, [{ role: "user", isRoot: true, model: A }])).toBeUndefined()
+  })
+})
+
+describe("resolveVariantDisplay", () => {
+  test("prefers the explicit or historical variant", () => {
+    expect(resolveVariantDisplay("low", "high", "xhigh")).toBe("low")
+  })
+
+  test("falls back to the agent default variant", () => {
+    expect(resolveVariantDisplay(undefined, "high", "xhigh")).toBe("high")
+  })
+
+  test("falls back to the model role default variant", () => {
+    expect(resolveVariantDisplay(undefined, undefined, "xhigh")).toBe("xhigh")
+  })
+
+  test("returns undefined when no variant is configured", () => {
+    expect(resolveVariantDisplay(undefined, undefined, undefined)).toBeUndefined()
   })
 })
 

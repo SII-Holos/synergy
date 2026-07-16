@@ -4,6 +4,8 @@ import path from "path"
 import { Tool } from "./tool"
 import { ScopeContext } from "../scope/context"
 import { Attachment } from "../attachment"
+import type { Provider } from "../provider/provider"
+import { supportsImageMediaType } from "../provider/image-capability"
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -18,9 +20,9 @@ const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
 
 const DESCRIPTION = `Load a local image file into the current model context for direct visual inspection.
 
-Use this when the active model supports image input and you need to inspect an image yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step.
+Use this when the active model supports the image's format and you need to inspect it yourself, such as a generated plot, screenshot, diagram, rendered page, or visual artifact. The tool does not analyze the image with a separate model; it attaches the image so the current model can see it on the next model step.
 
-Use look_at instead when view_image is unavailable because the current model does not support image input. Use attach only when the user should receive or inspect the file.`
+Use look_at instead when view_image is unavailable or the active model does not support the image's format. Use attach only when the user should receive or inspect the file.`
 
 const parameters = z.object({
   filePath: z.string().describe("Absolute path to the local image file to load into the current model context"),
@@ -35,6 +37,7 @@ interface ViewImageMetadata {
   truncated?: boolean
   preview?: string
   error?: string
+  supportedMimeTypes?: string[]
 }
 
 export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>("view_image", {
@@ -65,6 +68,25 @@ export const ViewImageTool = Tool.define<typeof parameters, ViewImageMetadata>("
           filename,
           mimeType,
           error: "unsupported_file_type",
+        },
+      }
+    }
+
+    const model = ctx.extra?.model as Provider.Model | undefined
+    if (model && !supportsImageMediaType(model, mimeType)) {
+      const supportedMimeTypes = model.capabilities.input.supportedImageMediaTypes ?? []
+      const fallback = ctx.extra?.lookAtAvailable
+        ? " Use look_at for separate vision-model analysis or convert the image to a supported format."
+        : " Convert the image to a supported format."
+      return {
+        title: "Unsupported image format",
+        output: `${filename}: ${mimeType} is not supported by the active model. Supported formats: ${supportedMimeTypes.join(", ")}.${fallback}`,
+        metadata: {
+          filePath: filepath,
+          filename,
+          mimeType,
+          supportedMimeTypes,
+          error: "unsupported_model_image_type",
         },
       }
     }

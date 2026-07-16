@@ -5,7 +5,7 @@ import { SettingsPage, SettingsPathRow, SettingsSection } from "../components/Se
 export function ConfigFilesPanel(props: {
   domains: ConfigDomainSummary[]
   openingDomain?: string
-  onOpenDomain: (domain: ConfigDomainSummary["id"]) => void
+  onOpenDomain?: (domain: ConfigDomainSummary["id"]) => void
 }) {
   return (
     <SettingsPage title="Config Files" description="Canonical config domains and their backing files.">
@@ -18,7 +18,7 @@ export function ConfigFilesPanel(props: {
               status={domainStatus(domain)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
-              onOpen={() => props.onOpenDomain(domain.id)}
+              onOpen={props.onOpenDomain ? () => props.onOpenDomain?.(domain.id) : undefined}
               opening={props.openingDomain === domain.id}
             />
           )}
@@ -36,7 +36,7 @@ export function ConfigReferencePanel(props: {
   description: string
   domains: ConfigDomainSummary[]
   openingDomain?: string
-  onOpenDomain: (domain: ConfigDomainSummary["id"]) => void
+  onOpenDomain?: (domain: ConfigDomainSummary["id"]) => void
 }) {
   return (
     <SettingsPage title={props.title} description={props.description}>
@@ -50,7 +50,7 @@ export function ConfigReferencePanel(props: {
               status={domainStatus(domain)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
-              onOpen={() => props.onOpenDomain(domain.id)}
+              onOpen={props.onOpenDomain ? () => props.onOpenDomain?.(domain.id) : undefined}
               opening={props.openingDomain === domain.id}
             />
           )}

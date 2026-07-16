@@ -22,12 +22,14 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type {
   ConfigDomainSummary,
   ControlProfileSummary,
+  CortexConcurrencyStatus,
   ModelRoleSummary,
   SandboxStatus,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
+import { usePlatform } from "@/context/platform"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -58,9 +60,11 @@ import { ArchivedSessionsPanel } from "./panels/ArchivedSessionsPanel"
 import { WorktreesPanel } from "./panels/WorktreesPanel"
 import { ControlProfilePanel, PermissionsPanel, SandboxPanel } from "./panels/SafetyPanels"
 import { CompactionPanel, QuestionsPanel, TimeoutsPanel, ObservabilityPanel } from "./panels/RuntimePanels"
+import { CodeChecksPanel } from "./panels/CodeChecksPanel"
 import { SettingsPage, SettingsSection } from "./components/SettingsPrimitives"
 import { filterSettingsSections, SETTINGS_DEVELOPER_MODE_STORAGE_KEY } from "./settings-visibility"
 import { SaveIndicator } from "./components/SaveIndicator"
+import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 
 const legacyInitialTabs: Record<string, string> = {
   advanced: "control-profile",
@@ -89,6 +93,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const input = useInput()
+  const platform = usePlatform()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
     update: async (content) =>
@@ -117,10 +122,22 @@ export function SettingsPanel(props: SettingsPanelProps) {
     return res.data!
   })
 
+  const [cortexConcurrencyStatus, { refetch: refetchCortexConcurrencyStatus }] = createResource(async () => {
+    const res = await globalSDK.client.cortex.concurrency()
+    return res.data as CortexConcurrencyStatus | undefined
+  })
+
   const [domainSummaries, { refetch: refetchDomains }] = createResource(async () => {
     const res = await globalSDK.client.config.domain.list()
     return res.data ?? []
   })
+
+  const [desktopServerStatus] = createResource(async () => {
+    if (platform.platform !== "desktop" || !platform.desktopServer) return null
+    return platform.desktopServer.status().catch(() => null)
+  })
+
+  const canOpenConfigFiles = createMemo(() => canUseConfigFileOpen(platform, desktopServerStatus()))
 
   const [modelRoleSummaries, { refetch: refetchModelRoleSummaries }] = createResource(async () => {
     const res = await globalSDK.client.app.agentModelRoles()
@@ -235,7 +252,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
     setRefreshing(true)
     resetEditor()
     await globalSync.refreshAllConfigs()
-    await Promise.all([refetchConfig(), refetchDomains(), refetchModelRoleSummaries(), refetchAgents()])
+    await Promise.all([
+      refetchConfig(),
+      refetchDomains(),
+      refetchModelRoleSummaries(),
+      refetchAgents(),
+      refetchCortexConcurrencyStatus(),
+    ])
     setRefreshing(false)
     doEnsureInit()
   }
@@ -304,6 +327,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   }
 
   async function openDomain(domain: ConfigDomainSummary["id"]) {
+    if (!canOpenConfigFiles()) return
     setOpeningDomain(domain)
     try {
       const res = await globalSDK.client.config.domain.open({ domain })
@@ -313,8 +337,9 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description: res.data?.path ?? domain,
       })
       await refetchDomains()
-    } catch (error: any) {
-      showToast({ type: "error", title: "Open file failed", description: error.message })
+    } catch (error) {
+      const filepath = domainSummaries()?.find((item) => item.id === domain)?.path ?? domain
+      showToast({ type: "error", ...configFileOpenFailure(error, filepath) })
     } finally {
       setOpeningDomain(undefined)
     }
@@ -467,6 +492,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         availableAgents={(agents() ?? []).filter((a) => a.mode === "primary" && !a.hidden)}
         defaultAgent={settings.agents.defaultAgent}
         onDefaultAgentChange={(agent) => setSettings("agents", "defaultAgent", agent)}
+        concurrencyStatus={cortexConcurrencyStatus()}
+      />
+    ),
+    "code-checks": () => (
+      <CodeChecksPanel
+        runtime={settings.runtime}
+        onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
     formatter: () => referencePanel("Formatter", "Formatter configuration file access.", ["runtime"]),
@@ -477,12 +509,18 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
-    import: () => <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />,
+    import: () => (
+      <ImportPanel
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        onImported={refreshAfterConfigChange}
+      />
+    ),
     "config-files": () => (
       <ConfigFilesPanel
         domains={domainSummaries() ?? []}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     ),
     "archived-sessions": ArchivedSessionsPanel,
@@ -663,7 +701,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         description={description}
         domains={domainsFor(domainIds)}
         openingDomain={openingDomain()}
-        onOpenDomain={(domain) => void openDomain(domain)}
+        onOpenDomain={canOpenConfigFiles() ? (domain) => void openDomain(domain) : undefined}
       />
     )
   }

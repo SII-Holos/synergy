@@ -35,6 +35,14 @@ export function resolveAgent(
   }
   return undefined
 }
+/** Variant shown by the composer: session intent first, then configured defaults. */
+export function resolveVariantDisplay(
+  sessionVariant: string | undefined,
+  agentDefaultVariant: string | undefined,
+  roleDefaultVariant: string | undefined,
+): string | undefined {
+  return sessionVariant ?? agentDefaultVariant ?? roleDefaultVariant
+}
 
 type RootMessageLike = { role: string; isRoot?: boolean; model?: ModelKey; agent?: string; variant?: string }
 

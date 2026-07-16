@@ -6,7 +6,7 @@ import { errors } from "./error"
 import { LibraryDB } from "../library/database"
 import { MemoryRecall } from "../library/memory-recall"
 import { ExperienceRecall } from "../library/experience-recall"
-import { ExperienceEncoder } from "../library/experience-encoder"
+import { ExperienceReencode } from "../library/experience-reencode"
 import { detect } from "../library/experience-detect"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
@@ -142,6 +142,39 @@ const ExperienceDetectResult = z
     }),
   })
   .meta({ ref: "ExperienceDetectResult" })
+
+const ReencodeJobStatus = z
+  .enum(["running", "completed", "failed", "cancelled", "interrupted"])
+  .meta({ ref: "ReencodeJobStatus" })
+const ReencodeJobState = z
+  .object({
+    id: z.string(),
+    status: ReencodeJobStatus,
+    type: z.enum(["intent", "script"]),
+    reason: z.string().nullable(),
+    totalCount: z.number().int().min(0),
+    okCount: z.number().int().min(0),
+    skippedCount: z.number().int().min(0),
+    failedCount: z.number().int().min(0),
+    completedCount: z.number().int().min(0),
+    startedAt: z.number(),
+    completedAt: z.number().nullable(),
+    error: z.string().nullable(),
+  })
+  .meta({ ref: "ReencodeJobState" })
+const ReencodeJobInput = z.object({
+  type: z.enum(["intent", "script"]).meta({ description: "What to re-encode" }),
+  reason: z.string().optional().meta({ description: "Filter to one detection reason; omit for all" }),
+})
+const ReencodeJobError = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+  })
+  .meta({ ref: "ReencodeJobError" })
+const ReencodeJobConflict = ReencodeJobError.extend({ job: ReencodeJobState }).meta({
+  ref: "ReencodeJobConflict",
+})
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -548,15 +581,132 @@ export const LibraryRoute = new Hono()
   )
 
   .post(
+    "/experience/reencode/jobs",
+    describeRoute({
+      summary: "Start an experience reencode job",
+      description: "Create a durable server-owned reencode job and return its initial state.",
+      operationId: "library.experience.startReencodeJob",
+      responses: {
+        200: {
+          description: "Reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        409: {
+          description: "A reencode job is already running",
+          content: { "application/json": { schema: resolver(ReencodeJobConflict) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", ReencodeJobInput),
+    async (c) => {
+      const active = ExperienceReencode.currentSummary()
+      if (active?.status === "running") {
+        return c.json(
+          {
+            code: "REENCODE_JOB_ALREADY_RUNNING",
+            message: "An experience reencode job is already running",
+            job: active,
+          },
+          409,
+        )
+      }
+
+      try {
+        return c.json(ExperienceReencode.start(c.req.valid("json")))
+      } catch (error) {
+        const current = ExperienceReencode.currentSummary()
+        if (current?.status === "running") {
+          return c.json(
+            {
+              code: "REENCODE_JOB_ALREADY_RUNNING",
+              message: "An experience reencode job is already running",
+              job: current,
+            },
+            409,
+          )
+        }
+        throw error
+      }
+    },
+  )
+
+  .get(
+    "/experience/reencode/jobs/current",
+    describeRoute({
+      summary: "Get the current experience reencode job",
+      description: "Return the most recently created reencode job with durable aggregate progress.",
+      operationId: "library.experience.getReencodeJob",
+      responses: {
+        200: {
+          description: "Current reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        404: {
+          description: "No reencode job exists",
+          content: { "application/json": { schema: resolver(ReencodeJobError) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = ExperienceReencode.currentSummary()
+      if (!current) {
+        return c.json({ code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" }, 404)
+      }
+      return c.json(current)
+    },
+  )
+
+  .post(
+    "/experience/reencode/jobs/current/cancel",
+    describeRoute({
+      summary: "Cancel the current experience reencode job",
+      description: "Cancel the active server-owned job without discarding completed item results.",
+      operationId: "library.experience.cancelReencodeJob",
+      responses: {
+        200: {
+          description: "Cancelled reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        404: {
+          description: "No reencode job exists",
+          content: { "application/json": { schema: resolver(ReencodeJobError) } },
+        },
+        409: {
+          description: "The current job is not running",
+          content: { "application/json": { schema: resolver(ReencodeJobConflict) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = ExperienceReencode.currentSummary()
+      if (!current) {
+        return c.json({ code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" }, 404)
+      }
+      if (current.status !== "running") {
+        return c.json(
+          {
+            code: "REENCODE_JOB_NOT_RUNNING",
+            message: "The current experience reencode job is not running",
+            job: current,
+          },
+          409,
+        )
+      }
+      return c.json(await ExperienceReencode.cancel(current.id))
+    },
+  )
+
+  .post(
     "/experience/reencode",
     describeRoute({
-      summary: "Re-encode experience records",
+      summary: "Observe experience reencoding",
       description:
-        "Stream re-encode progress via SSE. Re-generates intent or script for detected candidates, updates the experience database, and reports per-candidate status.",
+        "Compatibility SSE observer for the durable reencode job. Disconnecting closes only the observer; the server-owned job continues.",
       operationId: "library.experience.reencode",
       responses: {
         200: {
-          description: "SSE stream of re-encode progress events",
+          description: "SSE stream of reencode job progress",
           content: {
             "text/event-stream": {
               schema: resolver(
@@ -579,181 +729,62 @@ export const LibraryRoute = new Hono()
         ...errors(400),
       },
     }),
-    validator(
-      "json",
-      z.object({
-        type: z.enum(["intent", "script"]).meta({ description: "What to re-encode" }),
-        reason: z.string().optional().meta({ description: "Filter to one detection reason; omit for all" }),
-      }),
-    ),
+    validator("json", ReencodeJobInput),
     async (c) => {
-      const { type, reason } = c.req.valid("json")
-      const dbPath = Global.Path.libraryDB
-      const raw = detect(dbPath)
-      const MAX_CONCURRENCY = 5
-
-      const candidates = (type === "intent" ? raw.intent : raw.script).filter((c) => !reason || c.reason === reason)
+      const input = c.req.valid("json")
+      let job = ExperienceReencode.currentSummary()
+      if (!job || job.status !== "running") job = ExperienceReencode.start(input)
 
       c.header("X-Accel-Buffering", "no")
       c.header("Cache-Control", "no-cache, no-transform")
 
       return streamSSE(c, async (stream) => {
-        let ok = 0
-        let skipped = 0
-        let failed = 0
-        let completed = 0
+        const emitted = new Set<string>()
+        let updatedAt = 0
 
-        await stream.writeSSE({
-          data: JSON.stringify({ type: "start", total: candidates.length }),
-        })
+        await stream.writeSSE({ data: JSON.stringify({ type: "start", total: job.totalCount }) })
 
-        for (let i = 0; i < candidates.length; i += MAX_CONCURRENCY) {
-          // Client disconnect check — stop processing if the client went away
-          if (stream.aborted) break
+        while (true) {
+          if (stream.aborted) return
+          const latest = ExperienceReencode.getSummary(job.id)
+          if (!latest) {
+            await stream.writeSSE({ data: JSON.stringify({ type: "error", message: "Reencode job disappeared" }) })
+            return
+          }
 
-          const batch = candidates.slice(i, i + MAX_CONCURRENCY)
-          await Promise.all(
-            batch.map(async (candidate) => {
-              try {
-                // Load session — skip sub-sessions
-                const session = await (
-                  await import("../session")
-                ).Session.get(candidate.sessionID).catch(() => undefined)
-                if (!session || session.parentID) {
-                  skipped++
-                  completed++
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      type: "progress",
-                      id: candidate.id,
-                      status: "skipped",
-                      reason: "session-gone",
-                      completed,
-                    }),
-                  })
-                  return
-                }
+          const updates = ExperienceReencode.terminalItemsSince(job.id, updatedAt)
+          for (const item of updates) {
+            updatedAt = Math.max(updatedAt, item.updatedAt)
+            if (emitted.has(item.id)) continue
+            emitted.add(item.id)
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "progress",
+                id: item.id,
+                status: item.status,
+                reason: item.reason,
+                completed: emitted.size,
+              }),
+            })
+          }
 
-                // Load messages
-                const msgs = await (await import("../session")).Session.messages({ sessionID: candidate.sessionID })
-                if (!msgs || msgs.length === 0) {
-                  skipped++
-                  completed++
-                  await stream.writeSSE({
-                    data: JSON.stringify({
-                      type: "progress",
-                      id: candidate.id,
-                      status: "skipped",
-                      reason: "msg-missing",
-                      completed,
-                    }),
-                  })
-                  return
-                }
+          if (latest.status !== "running") {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "done",
+                status: latest.status,
+                total: latest.totalCount,
+                ok: latest.okCount,
+                skipped: latest.skippedCount,
+                failed: latest.failedCount,
+                message: latest.error ?? undefined,
+              }),
+            })
+            return
+          }
 
-                const exp = LibraryDB.Experience.get(candidate.id)
-                const scopeID = exp?.scope_id ?? candidate.scopeID
-                const learning = await ExperienceEncoder.loadLearning()
-
-                let intentEmbedding:
-                  | Awaited<ReturnType<typeof ExperienceEncoder.reencodeIntent>>["embedding"]
-                  | undefined
-                let scriptEmbedding:
-                  | Awaited<ReturnType<typeof ExperienceEncoder.reencodeScript>>["embedding"]
-                  | undefined
-                let intent = ""
-                let script = ""
-
-                if (type === "intent") {
-                  const result = await ExperienceEncoder.reencodeIntent(candidate.sessionID, candidate.id, msgs)
-                  intent = result.intent
-                  intentEmbedding = result.embedding
-                  LibraryDB.Experience.updateIntent(candidate.id, intent, intentEmbedding)
-                } else {
-                  const content = LibraryDB.Experience.getContent(candidate.id)
-                  if (!content?.raw) {
-                    skipped++
-                    completed++
-                    await stream.writeSSE({
-                      data: JSON.stringify({
-                        type: "progress",
-                        id: candidate.id,
-                        status: "skipped",
-                        reason: "no-raw-content",
-                        completed,
-                      }),
-                    })
-                    return
-                  }
-                  const result = await ExperienceEncoder.reencodeScript(candidate.sessionID, candidate.id, content.raw)
-                  script = result.script
-                  scriptEmbedding = result.embedding
-                  LibraryDB.Experience.updateScript(candidate.id, script, scriptEmbedding, content.raw)
-                }
-
-                // Dedup: check if the re-encoded content duplicates an existing experience
-                // that is NOT the same record we just re-encoded (the updated vector
-                // embedding would match itself), and if the existing record is lower
-                // quality, supersede it.
-                if (intentEmbedding) {
-                  const duplicate = LibraryDB.Experience.findSimilar(
-                    scopeID,
-                    intentEmbedding.vector,
-                    learning.dedupIntentThreshold,
-                    scriptEmbedding?.vector,
-                    learning.dedupScriptThreshold,
-                    learning.rewardWeights,
-                  )
-                  // Skip self-match: after updateIntent/updateScript the updated
-                  // embedding is the nearest neighbor of itself (distance ≈ 0).
-                  if (
-                    duplicate &&
-                    duplicate.id !== candidate.id &&
-                    ExperienceEncoder.shouldSupersede(duplicate, learning.qInit)
-                  ) {
-                    LibraryDB.Experience.supersede(duplicate.id, {
-                      sessionID: candidate.sessionID,
-                      scopeID,
-                      intent,
-                      intentEmbedding,
-                      scriptEmbedding,
-                      content: {
-                        script,
-                        raw: type === "script" ? (LibraryDB.Experience.getContent(candidate.id)?.raw ?? "") : "",
-                      },
-                      metadata: { reencoded: type },
-                      retrievedExperienceIDs: [],
-                    })
-                    log.info("reencode: superseded duplicate", { id: candidate.id, duplicateID: duplicate.id })
-                  }
-                }
-
-                ok++
-                completed++
-                await stream.writeSSE({
-                  data: JSON.stringify({ type: "progress", id: candidate.id, status: "ok", completed }),
-                })
-              } catch (err: any) {
-                failed++
-                completed++
-                await stream.writeSSE({
-                  data: JSON.stringify({
-                    type: "progress",
-                    id: candidate.id,
-                    status: "failed",
-                    reason: err?.message ?? String(err),
-                    completed,
-                  }),
-                })
-              }
-            }),
-          )
+          await Bun.sleep(500)
         }
-
-        await stream.writeSSE({
-          data: JSON.stringify({ type: "done", total: candidates.length, ok, skipped, failed }),
-        })
-        stream.close()
       })
     },
   )

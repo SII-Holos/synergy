@@ -26,6 +26,7 @@ export function diffDiagnostics(
   before: Awaited<ReturnType<typeof LSP.diagnostics>> | undefined,
   after: Awaited<ReturnType<typeof LSP.diagnostics>> | undefined,
   filePath: string,
+  include: (diagnostic: LSPClient.Diagnostic) => boolean = () => true,
 ): DiagnosticDelta {
   const normalizedPath = Filesystem.normalizePath(filePath)
 
@@ -33,8 +34,8 @@ export function diffDiagnostics(
     return { added: [], resolved: [], unchanged: 0, errored: true }
   }
 
-  const beforeForFile = before[normalizedPath] ?? []
-  const afterForFile = after[normalizedPath] ?? []
+  const beforeForFile = (before[normalizedPath] ?? []).filter(include)
+  const afterForFile = (after[normalizedPath] ?? []).filter(include)
 
   const beforeKeys = new Map<string, LSPClient.Diagnostic>()
   for (const d of beforeForFile) {

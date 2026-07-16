@@ -1,4 +1,4 @@
-import type { Agent } from "@ericsanchezok/synergy-sdk/client"
+import type { Agent, CortexConcurrencyStatus } from "@ericsanchezok/synergy-sdk/client"
 import { For } from "solid-js"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -111,7 +111,30 @@ export function TimeoutsPanel(props: {
   availableAgents: Agent[]
   defaultAgent: string
   onDefaultAgentChange: (agent: string) => void
+  concurrencyStatus?: CortexConcurrencyStatus
 }) {
+  const environmentConcurrency = () => props.concurrencyStatus?.environment
+  const managedByEnvironment = () => environmentConcurrency() !== null && environmentConcurrency() !== undefined
+  const displayedConcurrency = () =>
+    managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
+  const concurrencyStateLabel = () => {
+    if (managedByEnvironment()) return "Managed by environment"
+    const recommended = props.concurrencyStatus?.recommended
+    if (recommended !== undefined && recommended !== Number(props.runtime.cortexConcurrency)) {
+      return `Recommended: ${recommended}`
+    }
+    return undefined
+  }
+
+  const resetInvalidConcurrency = () => {
+    const parsed = Number(props.runtime.cortexConcurrency)
+    if (Number.isInteger(parsed) && parsed > 0) return
+    props.onRuntimeChange(
+      "cortexConcurrency",
+      String(props.concurrencyStatus?.configured ?? props.concurrencyStatus?.effective ?? 8),
+    )
+  }
+
   return (
     <SettingsPage title="Agents" description="Agent prompt behavior, provider timeouts, and tool timeout controls.">
       <SettingsSection title="Agent">
@@ -148,6 +171,24 @@ export function TimeoutsPanel(props: {
               placeholder="900"
               class="settings-row-control-text"
               onChange={(value) => props.onRuntimeChange("invokeTimeout", value)}
+            />
+          }
+        />
+        <SettingRow
+          title="Max Concurrent Subagents"
+          description="Maximum Cortex subagent tasks running at once. Memory pressure recommendations never override this value."
+          stateLabel={concurrencyStateLabel()}
+          trailing={
+            <TextField
+              type="number"
+              min="1"
+              step="1"
+              value={displayedConcurrency()}
+              placeholder="8"
+              disabled={managedByEnvironment()}
+              class="settings-row-control-text"
+              onBlur={resetInvalidConcurrency}
+              onChange={(value) => props.onRuntimeChange("cortexConcurrency", value)}
             />
           }
         />

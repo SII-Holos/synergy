@@ -11,6 +11,7 @@ import { AgendaPrompt } from "./prompt"
 import { AgendaTypes } from "./types"
 import { Plugin } from "../plugin"
 import { Log } from "../util/log"
+import { AgendaSessionWakeup } from "./session-wakeup"
 
 export namespace AgendaReactor {
   const log = Log.create({ service: "agenda.reactor" })
@@ -88,7 +89,8 @@ export namespace AgendaReactor {
         itemID: item.id,
         consecutiveErrors: item.state.consecutiveErrors,
       })
-      await AgendaStore.update(scopeID, item.id, { status: "paused" })
+      const paused = await AgendaStore.update(scopeID, item.id, { status: "paused" })
+      await AgendaSessionWakeup.resumeIfReleased({ before: item, after: paused })
       return { nextRunAt: undefined, sessionID: undefined, deactivated: true }
     }
 
@@ -178,6 +180,7 @@ export namespace AgendaReactor {
     })
 
     let nextRunAt: number | undefined
+    let updatedItem: AgendaTypes.Item | undefined
     try {
       const result = await AgendaStore.updateRunState(
         scopeID,
@@ -193,6 +196,7 @@ export namespace AgendaReactor {
         signal.type,
       )
       nextRunAt = result.nextRunAt
+      updatedItem = result.item
     } catch (err) {
       log.error("failed to update item state", {
         itemID: item.id,
@@ -224,10 +228,16 @@ export namespace AgendaReactor {
 
     if (!error) {
       const sourceSessionID = sessionID ?? item.origin.sessionID ?? ""
-      await AgendaDelivery.deliver({ item, sessionID: sourceSessionID, lastMessage }).catch((err) => {
+      await AgendaDelivery.deliver({
+        item,
+        sessionID: sourceSessionID,
+        deliveryKey: `agenda:${item.id}:${signal.type}:${signal.timestamp}`,
+        lastMessage,
+      }).catch((err) => {
         log.error("delivery failed", { itemID: item.id, error: err instanceof Error ? err : new Error(String(err)) })
       })
     }
+    if (updatedItem) await AgendaSessionWakeup.resumeIfReleased({ before: item, after: updatedItem })
 
     return { nextRunAt, sessionID }
   }

@@ -91,6 +91,7 @@ describe("SessionImport", () => {
               status: "completed",
               deps: [],
               session_id: child.id,
+              assign: "intent-analyst",
             },
           ],
         })
@@ -132,6 +133,7 @@ describe("SessionImport", () => {
 
         const dag = await Dag.get(importedRoot.id)
         expect(dag[0].session_id).toBe(importedChild!.id)
+        expect(dag[0].assign).toBe("self")
         expect(await Todo.get(importedRoot.id)).toEqual([
           { id: "todo-1", content: "Check import", status: "completed", priority: "high" },
         ])

@@ -26,7 +26,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 
 **Precedence** (low → high): remote/well-known → global → `SYNERGY_CONFIG` file → `SYNERGY_CONFIG_CONTENT` inline JSON → project → `SYNERGY_CONFIG_DIR` fragments/markdown → `SYNERGY_PERMISSION` overlay.
 
-Web Settings uses these same canonical domains. Common fields are editable in forms, and complex domains can be opened from Settings with the system default editor.
+Web Settings shows each canonical domain path with a Copy Path action. Managed-local Desktop may also offer Open File through the server host's default editor; Web and external-server Desktop do not expose that action.
 
 **Note:** If the `SYNERGY_HOME` environment variable is set, the base directory for all data and config paths below is `$SYNERGY_HOME/.synergy/`. Otherwise, use `~/.synergy/`. Always check `echo $SYNERGY_HOME` first.
 
