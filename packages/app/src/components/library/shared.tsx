@@ -3,7 +3,6 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-
 export type View = "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"

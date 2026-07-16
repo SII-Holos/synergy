@@ -1,5 +1,7 @@
 import { For, Show, createMemo } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type AssetEntry } from "./browser-store"
+import { assetsPanel as P } from "@/locales/messages"
 
 const TYPE_LABELS: Record<string, string> = {
   image: "Images",
@@ -52,6 +54,7 @@ function shortenUrl(url: string, max = 60): string {
 
 export function AssetsPanel() {
   const { pageId: currentPageId, pageAssets } = useBrowser()
+  const lingui = useLingui()
 
   const entries = createMemo((): AssetEntry[] => {
     const pageId = currentPageId()
@@ -76,7 +79,9 @@ export function AssetsPanel() {
       <Show
         when={totalCount() > 0}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">No page assets</div>
+          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
+          </div>
         }
       >
         <div class="flex-1 overflow-y-auto">

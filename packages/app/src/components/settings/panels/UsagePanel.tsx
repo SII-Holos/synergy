@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import type { AccountUsageSnapshot, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -26,7 +27,64 @@ import {
 
 const USAGE_FIRST_PROVIDER_IDS = ["openai-codex", "anthropic", "github-copilot", "openrouter", "openai"]
 
+const pageTitle = { id: "settings.usage.page.title", message: "Usage" }
+const pageDescription = {
+  id: "settings.usage.page.description",
+  message: "Review quota windows, credits, and provider account health.",
+}
+const connectedLabel = { id: "settings.usage.connected", message: "Connected accounts" }
+const availableLabel = { id: "settings.usage.available", message: "Available to connect" }
+const needsLabel = { id: "settings.usage.needs", message: "Needs attention" }
+const nextResetLabel = { id: "settings.usage.nextReset", message: "Next reset" }
+const lastRefreshedLabel = { id: "settings.usage.lastRefreshed", message: "Last refreshed" }
+const refreshLabel = { id: "settings.usage.refresh", message: "Refresh" }
+const errorTitle = { id: "settings.usage.error.title", message: "Usage data could not be loaded." }
+const retryLabel = { id: "settings.usage.retry", message: "Retry" }
+const attentionTitle = { id: "settings.usage.attention.title", message: "Needs attention" }
+const attentionDescription = {
+  id: "settings.usage.attention.description",
+  message: "These accounts were rejected and remain here until their credentials are recovered.",
+}
+const attentionEmptyTitle = { id: "settings.usage.attention.empty", message: "No provider accounts need attention" }
+const attentionEmptyDescription = {
+  id: "settings.usage.attention.emptyDesc",
+  message: "Credential recovery actions will appear here when a provider rejects a request.",
+}
+const connectableTitle = { id: "settings.usage.connectable.title", message: "Connectable providers" }
+const connectableDescription = {
+  id: "settings.usage.connectable.description",
+  message: "Providers not connected yet stay here until credentials are added.",
+}
+const connectableEmptyTitle = { id: "settings.usage.connectable.empty", message: "Every tracked provider is connected" }
+const connectableEmptyDescription = {
+  id: "settings.usage.connectable.emptyDesc",
+  message: "Usage-capable providers will appear below as account panels.",
+}
+const connectedUsageTitle = { id: "settings.usage.connectedUsage.title", message: "Connected usage" }
+const connectedUsageDescription = {
+  id: "settings.usage.connectedUsage.description",
+  message: "Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account.",
+}
+const loadingLabel = { id: "settings.usage.loading", message: "Loading usage..." }
+const connectedEmptyTitle = { id: "settings.usage.connectedUsage.empty", message: "No connected usage providers" }
+const connectedEmptyDescription = {
+  id: "settings.usage.connectedUsage.emptyDesc",
+  message: "Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here.",
+}
+const unavailableLabel = { id: "settings.usage.unavailable", message: "Usage unavailable for this provider." }
+
+function cooldownText(date: string) {
+  return { id: "settings.usage.cooldown", message: "Cooldown until {date}", values: { date } }
+}
+function providerRenewsText(date: string) {
+  return { id: "settings.usage.providerRenews", message: "Provider renews {date}", values: { date } }
+}
+function planText(plan: string) {
+  return { id: "settings.usage.plan", message: "Plan: {plan}", values: { plan } }
+}
+
 export function UsagePanel(props: { onConnectProvider: (providerID?: string) => void }) {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const [usage, { refetch }] = createResource(async () => {
@@ -80,29 +138,29 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
   }
 
   return (
-    <SettingsPage title="Usage" description="Review quota windows, credits, and provider account health.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
       <div class="usage-page-shell">
         <div class="usage-overview">
           <div class="usage-overview-metrics">
             <div class="usage-overview-metric">
               <span class="usage-overview-value">{connectedUsage().length}</span>
-              <span class="usage-overview-label">Connected accounts</span>
+              <span class="usage-overview-label">{_(connectedLabel)}</span>
             </div>
             <div class="usage-overview-metric">
               <span class="usage-overview-value">{unconnected().length}</span>
-              <span class="usage-overview-label">Available to connect</span>
+              <span class="usage-overview-label">{_(availableLabel)}</span>
             </div>
             <Show when={needsAttention().length > 0}>
               <div class="usage-overview-metric">
                 <span class="usage-overview-value">{needsAttention().length}</span>
-                <span class="usage-overview-label">Needs attention</span>
+                <span class="usage-overview-label">{_(needsLabel)}</span>
               </div>
             </Show>
             <Show when={nextReset()}>
               {(reset) => (
                 <div class="usage-overview-metric" title={reset().title}>
                   <span class="usage-overview-value usage-overview-date">{reset().value}</span>
-                  <span class="usage-overview-label">Next reset</span>
+                  <span class="usage-overview-label">{_(nextResetLabel)}</span>
                 </div>
               )}
             </Show>
@@ -110,7 +168,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
               {(value) => (
                 <div class="usage-overview-metric">
                   <span class="usage-overview-value usage-overview-date">{value()}</span>
-                  <span class="usage-overview-label">Last refreshed</span>
+                  <span class="usage-overview-label">{_(lastRefreshedLabel)}</span>
                 </div>
               )}
             </Show>
@@ -124,7 +182,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
               disabled={usage.loading}
               onClick={() => void refetch()}
             >
-              Refresh
+              {_(refreshLabel)}
             </Button>
           </div>
         </div>
@@ -132,21 +190,18 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
         <Show when={usage.error}>
           <div class="usage-request-error" role="alert">
             <Icon name={getSemanticIcon("state.error")} size="small" />
-            <span>Usage data could not be loaded.</span>
+            <span>{_(errorTitle)}</span>
             <Button type="button" variant="secondary" size="small" onClick={() => void refetch()}>
-              Retry
+              {_(retryLabel)}
             </Button>
           </div>
         </Show>
 
-        <SettingsSection
-          title="Needs attention"
-          description="These accounts were rejected and remain here until their credentials are recovered."
-        >
+        <SettingsSection title={_(attentionTitle)} description={_(attentionDescription)}>
           <SettingsEntityList
             isEmpty={needsAttention().length === 0}
-            emptyTitle="No provider accounts need attention"
-            emptyDescription="Credential recovery actions will appear here when a provider rejects a request."
+            emptyTitle={_(attentionEmptyTitle)}
+            emptyDescription={_(attentionEmptyDescription)}
           >
             <div class="usage-panel-list">
               <For each={needsAttention()}>
@@ -165,14 +220,11 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
           </SettingsEntityList>
         </SettingsSection>
 
-        <SettingsSection
-          title="Connectable providers"
-          description="Providers not connected yet stay here until credentials are added."
-        >
+        <SettingsSection title={_(connectableTitle)} description={_(connectableDescription)}>
           <SettingsEntityList
             isEmpty={unconnected().length === 0}
-            emptyTitle="Every tracked provider is connected"
-            emptyDescription="Usage-capable providers will appear below as account panels."
+            emptyTitle={_(connectableEmptyTitle)}
+            emptyDescription={_(connectableEmptyDescription)}
           >
             <div class="usage-connect-grid">
               <For each={unconnected()}>
@@ -193,23 +245,20 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
           </SettingsEntityList>
         </SettingsSection>
 
-        <SettingsSection
-          title="Connected usage"
-          description="Quota data is provider-specific; unavailable means Synergy has no reliable endpoint for that account."
-        >
+        <SettingsSection title={_(connectedUsageTitle)} description={_(connectedUsageDescription)}>
           <Show
             when={!usage.loading}
             fallback={
               <div class="usage-loading">
                 <Spinner />
-                <span>Loading usage...</span>
+                <span>{_(loadingLabel)}</span>
               </div>
             }
           >
             <SettingsEntityList
               isEmpty={connectedUsage().length === 0}
-              emptyTitle="No connected usage providers"
-              emptyDescription="Connect Codex, Anthropic, Copilot, or OpenRouter to see account usage here."
+              emptyTitle={_(connectedEmptyTitle)}
+              emptyDescription={_(connectedEmptyDescription)}
             >
               <div class="usage-panel-list">
                 <For each={connectedUsage()}>
@@ -241,8 +290,9 @@ function UsageProviderPanel(props: {
   environment?: string[]
   onConnect: () => void
 }) {
+  const { _ } = useLingui()
   const needsAction = createMemo(() => providerNeedsAction(props.health, props.snapshot))
-  const badge = createMemo(() => providerUsageStatusLabel(props.health, props.snapshot))
+  const badge = createMemo(() => _(providerUsageStatusLabel(props.health, props.snapshot)))
   return (
     <div class="usage-provider-panel">
       <div class="usage-provider-panel-head">
@@ -261,25 +311,25 @@ function UsageProviderPanel(props: {
       <Show when={needsAction()}>
         <div class="usage-warning-row">
           <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
-          <span>{providerRecoveryCopy(props.providerName, props.health, props.environment)}</span>
+          <span>{_(providerRecoveryCopy(props.providerName, props.health, props.environment))}</span>
           <Button type="button" variant="secondary" size="small" onClick={props.onConnect}>
-            {providerRecoveryActionLabel(props.health)}
+            {_(providerRecoveryActionLabel(props.health))}
           </Button>
         </div>
       </Show>
 
       <Show when={props.health?.cooldownUntil}>
-        {(value) => <div class="usage-muted-row">Cooldown until {formatUnix(value())}</div>}
+        {(value) => <div class="usage-muted-row">{_(cooldownText(formatUnix(value())))}</div>}
       </Show>
       <Show when={props.health?.resetAt}>
-        {(value) => <div class="usage-muted-row">Provider renews {formatUnix(value())}</div>}
+        {(value) => <div class="usage-muted-row">{_(providerRenewsText(formatUnix(value())))}</div>}
       </Show>
 
-      <Show when={props.snapshot} fallback={<div class="usage-muted-row">Usage unavailable for this provider.</div>}>
+      <Show when={props.snapshot} fallback={<div class="usage-muted-row">{_(unavailableLabel)}</div>}>
         {(snapshot) => (
           <>
             <Show when={snapshot().plan}>
-              <div class="usage-muted-row">Plan: {snapshot().plan}</div>
+              <div class="usage-muted-row">{_(planText(snapshot().plan!))}</div>
             </Show>
             <Show when={snapshot().unavailableReason}>
               <div class="usage-muted-row">{snapshot().unavailableReason}</div>

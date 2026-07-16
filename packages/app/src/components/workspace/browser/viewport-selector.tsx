@@ -1,5 +1,8 @@
 import { createSignal, createEffect } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
 import { useBrowser } from "./browser-store"
+import { browser as B } from "@/locales/messages"
+import type { AppMessageDescriptor } from "@/locales/messages"
 
 interface Preset {
   label: string
@@ -13,8 +16,15 @@ const PRESETS: Preset[] = [
   { label: "Mobile", width: 375, height: 667 },
 ]
 
+const PRESET_I18N: Record<string, AppMessageDescriptor> = {
+  Desktop: { id: B.presetDesktop.id, message: B.presetDesktop.message },
+  Tablet: { id: B.presetTablet.id, message: B.presetTablet.message },
+  Mobile: { id: B.presetMobile.id, message: B.presetMobile.message },
+}
+
 export function ViewportSelector() {
   const { viewportWidth, viewportHeight, setViewport } = useBrowser()
+  const lingui = useLingui()
 
   const [localWidth, setLocalWidth] = createSignal(String(viewportWidth()))
   const [localHeight, setLocalHeight] = createSignal(String(viewportHeight()))
@@ -52,24 +62,30 @@ export function ViewportSelector() {
 
   return (
     <div class="flex items-center gap-1.5 h-9 shrink-0 px-2 border-b border-border-weak-base bg-surface-raised-base">
-      <span class="text-11 text-text-subtle shrink-0 select-none font-medium tracking-wide uppercase">Viewport</span>
+      <span class="text-11 text-text-subtle shrink-0 select-none font-medium tracking-wide uppercase">
+        <Trans id={B.viewport.id} message={B.viewport.message} />
+      </span>
 
       <div class="flex items-center gap-0.5">
-        {PRESETS.map((preset) => (
-          <button
-            type="button"
-            class="px-1.5 h-6 rounded text-11 transition-colors shrink-0"
-            classList={{
-              "workbench-selected-surface text-text-strong": selectedPreset() === preset.label,
-              "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
-                selectedPreset() !== preset.label,
-            }}
-            onClick={() => selectPreset(preset)}
-            aria-label={`${preset.label} ${preset.width}x${preset.height}`}
-          >
-            {preset.label}
-          </button>
-        ))}
+        {PRESETS.map((preset) => {
+          const i18n = PRESET_I18N[preset.label]
+          const translated = i18n ? lingui._(i18n.id) : preset.label
+          return (
+            <button
+              type="button"
+              class="px-1.5 h-6 rounded text-11 transition-colors shrink-0"
+              classList={{
+                "workbench-selected-surface text-text-strong": selectedPreset() === preset.label,
+                "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
+                  selectedPreset() !== preset.label,
+              }}
+              onClick={() => selectPreset(preset)}
+              aria-label={`${translated} ${preset.width}x${preset.height}`}
+            >
+              {translated}
+            </button>
+          )
+        })}
       </div>
 
       <span class="w-px h-4 bg-border-weak-base/60 shrink-0" />
@@ -81,7 +97,7 @@ export function ViewportSelector() {
         onInput={(e) => setLocalWidth(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
         placeholder="W"
-        aria-label="Viewport width"
+        aria-label={lingui._(B.viewportWidth.id)}
       />
 
       <span class="text-11 text-text-subtle shrink-0">×</span>
@@ -93,16 +109,16 @@ export function ViewportSelector() {
         onInput={(e) => setLocalHeight(e.currentTarget.value)}
         onKeyDown={handleKeyDown}
         placeholder="H"
-        aria-label="Viewport height"
+        aria-label={lingui._(B.viewportHeight.id)}
       />
 
       <button
         type="button"
         class="flex items-center justify-center h-6 px-2 rounded text-11 text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors shrink-0"
         onClick={apply}
-        aria-label="Apply viewport size"
+        aria-label={lingui._(B.applyViewport.id)}
       >
-        Apply
+        <Trans id={B.apply.id} message={B.apply.message} />
       </button>
     </div>
   )

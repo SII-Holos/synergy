@@ -1,10 +1,12 @@
 import type { Ghostty, Terminal as Term, FitAddon } from "ghostty-web"
 import { ComponentProps, Show, createEffect, createSignal, onCleanup, onMount, splitProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useSDK } from "@/context/sdk"
 import { SerializeAddon } from "@/addons/serialize"
 import { LocalPTY } from "@/context/terminal"
 import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
+import { terminal as T } from "@/locales/messages"
 import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
 
 export interface TerminalProps extends ComponentProps<"div"> {
@@ -36,6 +38,7 @@ export const Terminal = (props: TerminalProps) => {
   let reconnectAttempts = 0
   const [connected, setConnected] = createSignal(false)
   const [gone, setGone] = createSignal(false)
+  const lingui = useLingui()
 
   const getTerminalColors = (): TerminalTheme => {
     const mode = theme.mode()
@@ -290,7 +293,9 @@ export const Terminal = (props: TerminalProps) => {
       <div ref={container} class="size-full px-6 py-3" />
       <Show when={!connected()}>
         <div class="absolute inset-0 z-50 flex items-center justify-center bg-background-base/80 pointer-events-none">
-          <span class="text-muted-foreground text-sm">{gone() ? "Session lost" : "Reconnecting..."}</span>
+          <span class="text-muted-foreground text-sm">
+            {gone() ? lingui._(T.sessionLost.id) : lingui._(T.reconnecting.id)}
+          </span>
         </div>
       </Show>
     </div>

@@ -1,4 +1,6 @@
-import { createSignal, type JSXElement } from "solid-js"
+import { createSignal } from "solid-js"
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
@@ -12,10 +14,10 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 export type { ConfirmTone } from "./confirm-copy"
 
 export interface ConfirmOptions {
-  title: JSXElement
-  description: JSXElement
-  confirmLabel: string
-  cancelLabel?: string
+  title: MessageDescriptor
+  description: MessageDescriptor
+  confirmLabel: MessageDescriptor
+  cancelLabel?: MessageDescriptor
   tone: ConfirmTone
   onConfirm: () => void | Promise<void>
   onConfirmed?: () => void
@@ -29,6 +31,7 @@ function errorDescription(error: unknown) {
 }
 
 export function ConfirmDialog(props: ConfirmOptions) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const [pending, setPending] = createSignal(false)
   let settled = false
@@ -60,8 +63,8 @@ export function ConfirmDialog(props: ConfirmOptions) {
 
   return (
     <Dialog
-      title={props.title}
-      description={props.description}
+      title={_(props.title)}
+      description={_(props.description)}
       class="confirm-dialog"
       action={
         <button
@@ -80,7 +83,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
     >
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
         <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dismiss()}>
-          {props.cancelLabel ?? "Cancel"}
+          {props.cancelLabel ? _(props.cancelLabel) : "Cancel"}
         </Button>
         <Button
           type="button"
@@ -94,10 +97,10 @@ export function ConfirmDialog(props: ConfirmOptions) {
           {pending() ? (
             <>
               <Spinner class="confirm-dialog-spinner" />
-              {props.confirmLabel}
+              {_(props.confirmLabel)}
             </>
           ) : (
-            props.confirmLabel
+            _(props.confirmLabel)
           )}
         </Button>
       </div>

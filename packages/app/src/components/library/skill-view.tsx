@@ -1,4 +1,5 @@
 import { createMemo, createResource, createSignal, For, Show, type JSXElement } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Popover } from "@kobalte/core/popover"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -87,6 +88,7 @@ function compatibilityLabel(level?: SkillCompatibilityLevel) {
 }
 
 export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search: string; directory?: string }) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const platform = usePlatform()
   const scopedClient = createMemo(() => {
@@ -113,9 +115,16 @@ export function SkillView(props: { sdk: ReturnType<typeof useGlobalSDK>; search:
     try {
       await scopedClient().skill.reload()
       await refetch()
-      showToast({ type: "success", title: "Skills reloaded", description: "Skill directories rescanned" })
+      showToast({
+        type: "success",
+        title: _({ id: "app.library.skills.reloaded", message: "Skills reloaded" }),
+        description: _({ id: "app.library.skills.reloadedDesc", message: "Skill directories rescanned" }),
+      })
     } catch {
-      showToast({ type: "error", title: "Failed to reload skills" })
+      showToast({
+        type: "error",
+        title: _({ id: "app.library.skills.reloadFailed", message: "Failed to reload skills" }),
+      })
     }
     setReloading(false)
   }

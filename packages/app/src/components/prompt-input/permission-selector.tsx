@@ -7,7 +7,9 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
 import { PERMISSION_MODES } from "./permission-modes"
+import { PI } from "./prompt-input-i18n"
 import type { PermissionModeVisual } from "./types"
 
 export function PermissionModeSelector(props: {
@@ -17,12 +19,15 @@ export function PermissionModeSelector(props: {
   selectedProfile: Accessor<ControlProfileId>
   updateProfile: (profile: ControlProfileId, close?: () => void) => void
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
+
   return (
     <ToolbarSelectorPopover
       trigger={
         <button
           type="button"
-          aria-label={`${props.activeMode().label} permission mode`}
+          aria-label={i18n._({ ...PI.permissionModeAria, values: { mode: props.activeMode().label } })}
           aria-disabled={props.working() || props.switching()}
           onClick={(event) => {
             if (!props.working() && !props.switching()) return
@@ -31,8 +36,8 @@ export function PermissionModeSelector(props: {
             if (props.switching()) return
             showToast({
               type: "warning",
-              title: "Session is running",
-              description: "Stop the session before changing its permission mode.",
+              title: _(PI.permissionRunning),
+              description: _(PI.permissionStopBefore),
             })
           }}
           class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
@@ -62,7 +67,7 @@ export function PermissionModeSelector(props: {
           </Show>
         </button>
       }
-      title="Permission mode"
+      title={_(PI.permissionMode)}
       contentClass="w-80"
       placement="top-start"
     >
@@ -89,9 +94,7 @@ export function PermissionModeSelector(props: {
             )}
           </List>
           <Show when={props.working()}>
-            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">
-              Stop the session before changing permission mode.
-            </div>
+            <div class="px-3 pb-2 text-11-regular text-text-on-warning-base">{_(PI.permissionStopBeforeInline)}</div>
           </Show>
         </>
       )}

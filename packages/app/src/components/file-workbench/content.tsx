@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
@@ -11,7 +12,7 @@ import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-p
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
 import { FileSourceView } from "./source-view"
-import "./styles.css"
+import { fileWorkbench as F } from "@/locales/messages"
 
 function selectionLabel(range: { start: number; end: number }) {
   const start = Math.min(range.start, range.end)

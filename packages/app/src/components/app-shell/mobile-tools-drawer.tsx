@@ -3,18 +3,35 @@ import { useNavigate, useLocation } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLayout } from "@/context/layout"
+import { useLingui } from "@lingui/solid"
 
-const DRAWER_TOOLS: Array<{ id: string; label: string; icon: SemanticIconTokenName; href: string }> = [
-  { id: "agenda", label: "Agenda", icon: "agenda.main", href: "/agenda" },
-  { id: "library", label: "Library", icon: "library.main", href: "/library" },
-  { id: "performance", label: "Performance", icon: "performance.main", href: "/performance" },
-  { id: "plugins", label: "Plugins", icon: "plugins.main", href: "/plugins/marketplace" },
+const DRAWER_TOOLS: Array<{
+  id: string
+  label: { id: string; message: string }
+  icon: SemanticIconTokenName
+  href: string
+}> = [
+  { id: "agenda", label: { id: "nav.tools.agenda", message: "Agenda" }, icon: "agenda.main", href: "/agenda" },
+  { id: "library", label: { id: "nav.tools.library", message: "Library" }, icon: "library.main", href: "/library" },
+  {
+    id: "performance",
+    label: { id: "nav.tools.performance", message: "Performance" },
+    icon: "performance.main",
+    href: "/performance",
+  },
+  {
+    id: "plugins",
+    label: { id: "nav.tools.plugins", message: "Plugins" },
+    icon: "plugins.main",
+    href: "/plugins/marketplace",
+  },
 ]
 
 export function MobileToolsDrawer() {
   const layout = useLayout()
   const navigate = useNavigate()
   const location = useLocation()
+  const { _ } = useLingui()
 
   function close() {
     layout.rightSidebar.hide()
@@ -28,20 +45,17 @@ export function MobileToolsDrawer() {
   return (
     <Show when={layout.rightSidebar.opened()}>
       <div class="fixed inset-0 z-[100] flex md:hidden justify-end">
-        {/* Backdrop */}
         <div
           class="absolute inset-0 bg-surface-overlay"
           style={{ animation: "mobileDrawerFadeIn 200ms ease-out both" }}
           onClick={close}
         />
-        {/* Drawer panel — slides from the right */}
         <div
           class="relative w-[85vw] max-w-80 h-full bg-background-stronger flex flex-col shadow-2xl safe-right"
           style={{ animation: "mobileDrawerSlideInRight 250ms cubic-bezier(0.16, 1, 0.3, 1) both" }}
         >
-          {/* Header */}
           <div class="flex items-center justify-between px-4 h-12 shrink-0 border-b border-border-weaker-base/60 safe-top">
-            <span class="text-14-medium text-text-strong">Tools</span>
+            <span class="text-14-medium text-text-strong">{_({ id: "nav.tools.title", message: "Tools" })}</span>
             <button
               type="button"
               class="flex items-center justify-center size-8 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
@@ -51,11 +65,11 @@ export function MobileToolsDrawer() {
             </button>
           </div>
 
-          {/* Body */}
           <div class="flex-1 min-h-0 overflow-y-auto safe-bottom py-2">
-            {/* Tools */}
             <div class="px-4 pb-1.5">
-              <span class="text-11-medium text-text-weak uppercase tracking-wider">Tools</span>
+              <span class="text-11-medium text-text-weak uppercase tracking-wider">
+                {_({ id: "nav.tools.section", message: "Tools" })}
+              </span>
             </div>
             <div class="flex flex-col gap-0.5 px-3">
               {DRAWER_TOOLS.map((tool) => {
@@ -73,7 +87,7 @@ export function MobileToolsDrawer() {
                     onClick={() => navigateAndClose(tool.href)}
                   >
                     <Icon name={getSemanticIcon(tool.icon)} size="normal" class="shrink-0" />
-                    <span class="text-14-medium">{tool.label}</span>
+                    <span class="text-14-medium">{_(tool.label)}</span>
                   </button>
                 )
               })}

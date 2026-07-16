@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -29,11 +30,54 @@ import {
   type ImportDomainID,
 } from "./import-panel-model"
 
+const pageTitle = { id: "settings.import.page.title", message: "Import" }
+const pageDescription = {
+  id: "settings.import.page.description",
+  message: "Review and import selected configuration domains.",
+}
+const targetTitle = { id: "settings.import.target.title", message: "Target" }
+const targetDescription = {
+  id: "settings.import.target.description",
+  message: "Choose whether imported values apply globally or to one project.",
+}
+const sourceTitle = { id: "settings.import.source.title", message: "Source" }
+const sourceDescription = {
+  id: "settings.import.source.description",
+  message: "Load JSON or JSONC from a file, a URL, or pasted text.",
+}
+const planTitle = { id: "settings.import.plan.title", message: "Plan" }
+const resultTitle = { id: "settings.import.result.title", message: "Result" }
+const importFailedTitle = { id: "settings.import.failed", message: "Import failed" }
+const configImportedTitle = { id: "settings.import.configImported", message: "Config imported" }
+const configImportedWarnTitle = { id: "settings.import.configImportedWarn", message: "Config imported with warnings" }
+const planRefreshedTitle = { id: "settings.import.planRefreshed", message: "Import plan refreshed" }
+const planRefreshedDesc = {
+  id: "settings.import.planRefreshedDesc",
+  message: "Configuration changed after review. Check the refreshed plan before applying again.",
+}
+const runtimeUpdatedText = { id: "settings.import.runtimeUpdated", message: "Runtime updated" }
+const runtimeNeedsAttentionText = {
+  id: "settings.import.runtimeNeedsAttention",
+  message: "Files imported; runtime needs attention",
+}
+
+function updatedDomainsDesc(count: number) {
+  return {
+    id: "settings.import.updatedDomains",
+    message: "Updated {count, plural, one {# domain} other {# domains}}.",
+    values: { count },
+  }
+}
+function detectedDomains(count: number) {
+  return { id: "settings.import.detectedDomains", message: "{count} detected domain(s)", values: { count } }
+}
+
 export function ImportPanel(props: {
   domains: ConfigDomainSummary[]
   scopes: Scope[]
   onImported: () => Promise<void>
 }) {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
   const [sourceLabel, setSourceLabel] = createSignal("")
@@ -94,7 +138,7 @@ export function ImportPanel(props: {
       setResult(undefined)
       return response.data
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -105,7 +149,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(await file.text(), file.name), file.name)
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
   }
 
@@ -117,7 +161,7 @@ export function ImportPanel(props: {
       const loaded = await loadImportUrl(value)
       await createPlan(loaded, value)
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -127,7 +171,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(pasted(), "pasted"), "pasted")
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
   }
 
@@ -165,8 +209,8 @@ export function ImportPanel(props: {
       setResult(response.data)
       showToast({
         type: response.data.reload.success ? "success" : "warning",
-        title: response.data.reload.success ? "Config imported" : "Config imported with warnings",
-        description: `Updated ${response.data.plan.domains.length} domain(s).`,
+        title: response.data.reload.success ? _(configImportedTitle) : _(configImportedWarnTitle),
+        description: _(updatedDomainsDesc(response.data.plan.domains.length)),
       })
       await props.onImported()
     } catch (error) {
@@ -175,12 +219,12 @@ export function ImportPanel(props: {
         if (!refreshed) return
         showToast({
           type: "warning",
-          title: "Import plan refreshed",
-          description: "Configuration changed after review. Check the refreshed plan before applying again.",
+          title: _(planRefreshedTitle),
+          description: _(planRefreshedDesc),
         })
         return
       }
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setApplying(false)
     }
@@ -209,8 +253,8 @@ export function ImportPanel(props: {
   }
 
   return (
-    <SettingsPage title="Import" description="Review and import selected configuration domains.">
-      <SettingsSection title="Target" description="Choose whether imported values apply globally or to one project.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(targetTitle)} description={_(targetDescription)}>
         <div class="ds-import-target-row">
           <label class="ds-import-field">
             <span>Scope</span>
@@ -261,7 +305,7 @@ export function ImportPanel(props: {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Source" description="Load JSON or JSONC from a file, a URL, or pasted text.">
+      <SettingsSection title={_(sourceTitle)} description={_(sourceDescription)}>
         <div class="ds-import-source-row">
           <label class="ds-import-file-button">
             <Icon name={getSemanticIcon("settings.import")} size="small" />
@@ -311,12 +355,12 @@ export function ImportPanel(props: {
       </SettingsSection>
 
       <Show when={plan()}>
-        <SettingsSection title="Plan">
+        <SettingsSection title={_(planTitle)}>
           <div class="ds-import-plan-header">
             <div>
               <div class="settings-import-source-title">{sourceLabel()}</div>
               <div class="settings-import-source-meta">
-                {plan()!.scope === "project" ? "Project" : "Global"} · {plan()!.domains.length} detected domain(s)
+                {plan()!.scope === "project" ? "Project" : "Global"} · {_(detectedDomains(plan()!.domains.length))}
                 {!reviewedSelection() ? " · Selection changed" : ""}
               </div>
             </div>
@@ -407,10 +451,10 @@ export function ImportPanel(props: {
 
       <Show when={result()}>
         {(applied) => (
-          <SettingsSection title="Result">
+          <SettingsSection title={_(resultTitle)}>
             <div class="ds-import-result" data-success={applied().reload.success}>
               <div class="settings-import-source-title">
-                {applied().reload.success ? "Runtime updated" : "Files imported; runtime needs attention"}
+                {applied().reload.success ? _(runtimeUpdatedText) : _(runtimeNeedsAttentionText)}
               </div>
               <div class="settings-import-source-meta">
                 Changed {applied().reload.changedFields.length} field(s) · Reloaded{" "}

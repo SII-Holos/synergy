@@ -1,12 +1,39 @@
 import { For, Show, createMemo } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type DownloadEntry } from "./browser-store"
+import { downloadsPanel as P } from "@/locales/messages"
 
-const STATE_META: Record<DownloadEntry["state"], { label: string; color: string; bg: string }> = {
-  in_progress: { label: "Downloading", color: "text-text-on-info-base", bg: "bg-surface-info-weak" },
-  completed: { label: "Complete", color: "text-text-on-success-base", bg: "bg-surface-success-weak" },
-  cancelled: { label: "Cancelled", color: "text-text-weaker", bg: "bg-surface-inset-base" },
-  interrupted: { label: "Interrupted", color: "text-text-on-warning-base", bg: "bg-surface-warning-weak" },
-  blocked: { label: "Blocked", color: "text-text-on-critical-base", bg: "bg-surface-critical-weak" },
+const STATE_META: Record<DownloadEntry["state"], { labelKey: string; labelMsg: string; color: string; bg: string }> = {
+  in_progress: {
+    labelKey: P.stateDownloading.id,
+    labelMsg: P.stateDownloading.message,
+    color: "text-text-on-info-base",
+    bg: "bg-surface-info-weak",
+  },
+  completed: {
+    labelKey: P.stateComplete.id,
+    labelMsg: P.stateComplete.message,
+    color: "text-text-on-success-base",
+    bg: "bg-surface-success-weak",
+  },
+  cancelled: {
+    labelKey: P.stateCancelled.id,
+    labelMsg: P.stateCancelled.message,
+    color: "text-text-weaker",
+    bg: "bg-surface-inset-base",
+  },
+  interrupted: {
+    labelKey: P.stateInterrupted.id,
+    labelMsg: P.stateInterrupted.message,
+    color: "text-text-on-warning-base",
+    bg: "bg-surface-warning-weak",
+  },
+  blocked: {
+    labelKey: P.stateBlocked.id,
+    labelMsg: P.stateBlocked.message,
+    color: "text-text-on-critical-base",
+    bg: "bg-surface-critical-weak",
+  },
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const
@@ -31,6 +58,7 @@ function formatTime(ts: number): string {
 
 export function DownloadsPanel() {
   const { pageId: currentPageId, downloads } = useBrowser()
+  const lingui = useLingui()
 
   const entries = createMemo((): DownloadEntry[] => {
     const pageId = currentPageId()
@@ -43,16 +71,18 @@ export function DownloadsPanel() {
       <Show
         when={entries().length > 0}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">No downloads</div>
+          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
+          </div>
         }
       >
         <div class="flex-1 overflow-y-auto font-mono">
           <div class="sticky top-0 z-10 flex gap-2 px-3 py-1.5 bg-surface-raised-base border-b border-border-weak-base text-11-medium text-text-weak uppercase tracking-wider">
-            <span class="w-20 shrink-0">State</span>
-            <span class="w-32 shrink-0">File</span>
-            <span class="w-16 shrink-0">Size</span>
-            <span class="flex-1">URL</span>
-            <span class="w-16 shrink-0 text-right">Time</span>
+            <span class="w-20 shrink-0">{lingui._({ id: P.stateCol.id, message: P.stateCol.message })}</span>
+            <span class="w-32 shrink-0">{lingui._({ id: P.fileCol.id, message: P.fileCol.message })}</span>
+            <span class="w-16 shrink-0">{lingui._({ id: P.sizeCol.id, message: P.sizeCol.message })}</span>
+            <span class="flex-1">{lingui._({ id: P.urlCol.id, message: P.urlCol.message })}</span>
+            <span class="w-16 shrink-0 text-right">{lingui._({ id: P.timeCol.id, message: P.timeCol.message })}</span>
           </div>
           <For each={entries()}>
             {(entry) => {
@@ -62,7 +92,7 @@ export function DownloadsPanel() {
                 <div class="flex gap-2 px-3 py-1.5 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
                   <span class="w-20 shrink-0">
                     <span class={`inline-flex items-center px-1.5 rounded text-10-medium ${meta.color} ${meta.bg}`}>
-                      {meta.label}
+                      {lingui._({ id: meta.labelKey, message: meta.labelMsg })}
                     </span>
                   </span>
                   <span

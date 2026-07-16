@@ -6,6 +6,7 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
+import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
@@ -34,7 +35,6 @@ import {
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
-
 const PAGE_SIZE = 50
 const LOAD_MORE_THRESHOLD = 800
 
@@ -81,6 +81,7 @@ export function ExperienceView(props: {
   currentScopeID: string | undefined
   currentSessionID: string | undefined
 }) {
+  const { _ } = useLingui()
   const confirm = useConfirm()
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
@@ -213,22 +214,31 @@ export function ExperienceView(props: {
     base.push("reward", "qvalue", "visits")
     return base
   })
-
   const statusText = createMemo(() => {
-    if (pageError()) return "Failed to load more experiences"
-    if (loadingMore()) return "Loading more experiences..."
-    if (hasMore()) return `Showing ${pagedItems().length} of ${total()} experiences`
-    if (pagedItems().length > 0) return `Showing all ${total()} experiences`
+    if (pageError()) return _({ id: "app.library.experience.loadFailed", message: "Failed to load more experiences" })
+    if (loadingMore()) return _({ id: "app.library.experience.loadingMore", message: "Loading more experiences..." })
+    if (hasMore())
+      return _({
+        id: "app.library.experience.showingOf",
+        message: "Showing {shown} of {total} experiences",
+        values: { shown: String(pagedItems().length), total: String(total()) },
+      })
+    if (pagedItems().length > 0)
+      return _({
+        id: "app.library.experience.showingAll",
+        message: "Showing all {total} experiences",
+        values: { total: String(total()) },
+      })
     return ""
   })
   const filterLabel = createMemo(() => {
     switch (effectiveFilter()) {
       case "scope":
-        return "Current scope"
+        return _({ id: "app.library.experience.filter.currentScope", message: "Current scope" })
       case "session":
-        return "Current session"
+        return _({ id: "app.library.experience.filter.currentSession", message: "Current session" })
       default:
-        return "All experiences"
+        return _({ id: "app.library.experience.filter.all", message: "All experiences" })
     }
   })
 

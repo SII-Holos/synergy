@@ -5,7 +5,7 @@ import { useTerminal } from "@/context/terminal"
 import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
-
+import { panels as P } from "@/locales/messages"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
   const file = useFile()
@@ -15,7 +15,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
     disposers.push(
       registerWorkbenchPanel({
         id: "notes",
-        label: "Notes",
+        label: P.notes.message,
         icon: getSemanticIcon("notes.main"),
         surface: "side",
         cardinality: "singleton",
@@ -25,7 +25,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "session-review",
-        label: "Review",
+        label: P.review.message,
         icon: getSemanticIcon("command.review"),
         surface: "side",
         cardinality: "singleton",
@@ -33,11 +33,11 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         pluginId: "builtin",
         order: 15,
         loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
-        title: () => "Review",
+        title: () => P.review.message,
       }),
       registerWorkbenchPanel({
         id: "file",
-        label: "Files",
+        label: P.files.message,
         icon: getSemanticIcon("workspace.files"),
         surface: "side",
         cardinality: "multi",
@@ -48,7 +48,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
         createTab() {
           file.explorer.setOpen(true)
-          return { title: "Open file", source: "explorer" }
+          return { title: P.openFile.message, source: "explorer" }
         },
         title(tab, siblings) {
           if (!tab.resourceId) return tab.title
@@ -65,7 +65,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "browser",
-        label: "Browser",
+        label: P.browser.message,
         icon: getSemanticIcon("browser.main"),
         surface: "side",
         cardinality: "singleton",
@@ -76,7 +76,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "terminal",
-        label: "Terminal",
+        label: P.terminal.message,
         icon: getSemanticIcon("terminal.main"),
         surface: "bottom",
         cardinality: "multi",

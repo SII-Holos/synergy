@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test"
 import type { ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { selectAppAttention } from "./app-attention"
 
+function msg(d: { message?: string }): string {
+  return d.message ?? ""
+}
+
 const hiddenUpdate = {
   visible: false,
   title: "",
@@ -51,7 +55,7 @@ describe("app attention selector", () => {
       authHealth: { github: auth("github"), anthropic: auth("anthropic"), "openai-codex": auth("openai-codex") },
       providerNames: {},
     })
-    expect(notice?.title).toBe("3 providers need attention")
+    expect(msg(notice!.title)).toBe("3 providers need attention")
     expect(notice?.action).toEqual({ type: "open-settings", section: "providers" })
   })
 

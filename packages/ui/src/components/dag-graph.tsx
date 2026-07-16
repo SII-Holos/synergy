@@ -1,3 +1,5 @@
+import type { I18n } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, createUniqueId, on, onCleanup, onMount } from "solid-js"
 import { Portal } from "solid-js/web"
 import { Icon, type IconName } from "./icon"
@@ -169,20 +171,20 @@ function averageDepOrder(node: DagNode, layerOrder: Map<string, number>, fallbac
   return values.reduce((sum, value) => sum + value, 0) / values.length
 }
 
-function statusLabel(status: string) {
+function statusLabel(status: string, i18n?: I18n) {
   switch (status) {
     case "completed":
-      return "DONE"
+      return i18n?._({ id: "dag.status.completed", message: "DONE" }) ?? "DONE"
     case "running":
-      return "RUNNING"
+      return i18n?._({ id: "dag.status.running", message: "RUNNING" }) ?? "RUNNING"
     case "failed":
-      return "FAILED"
+      return i18n?._({ id: "dag.status.failed", message: "FAILED" }) ?? "FAILED"
     case "blocked":
-      return "BLOCKED"
+      return i18n?._({ id: "dag.status.blocked", message: "BLOCKED" }) ?? "BLOCKED"
     case "cancelled":
-      return "SKIP"
+      return i18n?._({ id: "dag.status.cancelled", message: "SKIP" }) ?? "SKIP"
     default:
-      return "PENDING"
+      return i18n?._({ id: "dag.status.pending", message: "PENDING" }) ?? "PENDING"
   }
 }
 
@@ -231,6 +233,7 @@ export function DagGraph(props: {
      the ResizeObserver storm doesn't thrash layout + focus every frame. */
   frozen?: boolean
 }) {
+  const { i18n: linguiI18n } = useLingui()
   const [containerWidth, setContainerWidth] = createSignal(0)
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
@@ -593,7 +596,7 @@ export function DagGraph(props: {
                 >
                   <div data-slot="dag-graph-card-header">
                     <span data-slot="dag-graph-status-dot" />
-                    <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status)}</span>
+                    <span data-slot="dag-graph-status-label">{statusLabel(ln.node.status, linguiI18n())}</span>
                     <Show when={nodeBadges(ln.node).length > 0}>
                       <div data-slot="dag-graph-node-badges" aria-label="Node metadata">
                         <For each={nodeBadges(ln.node)}>
@@ -646,7 +649,7 @@ export function DagGraph(props: {
               >
                 <div data-slot="dag-node-preview-header">
                   <span data-slot="dag-node-preview-status" data-status={node.status}>
-                    {statusLabel(node.status)}
+                    {statusLabel(node.status, linguiI18n())}
                   </span>
                   <Show keyed when={node.assign}>
                     {(assign) => <span data-slot="dag-node-preview-agent">@{assign}</span>}

@@ -1,3 +1,5 @@
+import type { I18n, MessageDescriptor } from "@lingui/core"
+
 export type TurnChangeSummaryDiff = {
   file: string
   additions: number
@@ -5,7 +7,22 @@ export type TurnChangeSummaryDiff = {
   binary?: boolean
 }
 
-export function turnChangeSummaryTitle(fileCount: number) {
+function defineDescriptor(id: string, message: string): MessageDescriptor {
+  return { id, message }
+}
+
+const TITLE_DESC = defineDescriptor(
+  "turn-change-summary.title",
+  "Changed {fileCount, plural, one {# file} other {# files}}",
+)
+const HIDE_DESC = defineDescriptor("turn-change-summary.hide-files", "Hide files")
+const SHOW_DESC = defineDescriptor(
+  "turn-change-summary.show-more",
+  "Show {count} more {count, plural, one {file} other {files}}",
+)
+
+export function turnChangeSummaryTitle(fileCount: number, i18n?: I18n) {
+  if (i18n) return i18n._({ id: TITLE_DESC.id, message: TITLE_DESC.message!, values: { fileCount } })
   return `Changed ${fileCount} ${fileCount === 1 ? "file" : "files"}`
 }
 
@@ -20,7 +37,11 @@ export function turnChangeSummaryVisibleDiffs(
   return input?.expanded ? diffs : diffs.slice(0, input?.previewLimit ?? 3)
 }
 
-export function turnChangeSummaryToggleLabel(input: { expanded: boolean; hiddenCount: number }) {
-  if (input.expanded) return "Hide files"
+export function turnChangeSummaryToggleLabel(input: { expanded: boolean; hiddenCount: number }, i18n?: I18n) {
+  if (input.expanded) {
+    if (i18n) return i18n._({ id: HIDE_DESC.id, message: HIDE_DESC.message! })
+    return "Hide files"
+  }
+  if (i18n) return i18n._({ id: SHOW_DESC.id, message: SHOW_DESC.message!, values: { count: input.hiddenCount } })
   return `Show ${input.hiddenCount} more ${input.hiddenCount === 1 ? "file" : "files"}`
 }

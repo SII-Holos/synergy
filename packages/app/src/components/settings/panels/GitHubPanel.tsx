@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import type { GitHubAuthStatus, ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -14,7 +15,23 @@ import {
   providerStatusLabel,
 } from "@/components/provider/provider-auth-presentation"
 
+const pageTitle = { id: "settings.github.page.title", message: "GitHub" }
+const pageDescription = {
+  id: "settings.github.page.description",
+  message: "Connect GitHub credentials for issue, pull request, release, and GitHub CLI-backed actions.",
+}
+const refreshLabel = { id: "settings.github.refresh", message: "Refresh" }
+const loadingLabel = { id: "settings.github.loading", message: "Loading" }
+const connectedLabel = { id: "settings.github.connected", message: "Connected" }
+const invalidLabel = { id: "settings.github.invalid", message: "Invalid" }
+const unverifiedLabel = { id: "settings.github.unverified", message: "Unverified" }
+const notConnectedLabel = { id: "settings.github.notConnected", message: "Not connected" }
+const envCredentialsTitle = { id: "settings.github.envCredentials", message: "Environment credentials" }
+const actionRequiredTitle = { id: "settings.github.actionRequired", message: "Action required" }
+const accountTitle = { id: "settings.github.account", message: "Account" }
+
 export function GitHubPanel() {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const [status, { refetch }] = createResource(async () => {
@@ -37,7 +54,7 @@ export function GitHubPanel() {
   })
   const needsAction = createMemo(() => providerNeedsAction(effectiveHealth()))
   const statusLabel = createMemo(() =>
-    needsAction() ? providerStatusLabel(effectiveHealth()) : githubStatusLabel(status()),
+    needsAction() ? _(providerStatusLabel(effectiveHealth())) : githubStatusLabel(status(), _),
   )
 
   async function refreshStatus() {
@@ -52,8 +69,8 @@ export function GitHubPanel() {
 
   return (
     <SettingsPage
-      title="GitHub"
-      description="Connect GitHub credentials for issue, pull request, release, and GitHub CLI-backed actions."
+      title={_(pageTitle)}
+      description={_(pageDescription)}
       actions={
         <Button
           type="button"
@@ -62,7 +79,7 @@ export function GitHubPanel() {
           icon={getSemanticIcon("action.refresh")}
           onClick={refreshStatus}
         >
-          Refresh
+          {_(refreshLabel)}
         </Button>
       }
     >
@@ -84,17 +101,17 @@ export function GitHubPanel() {
       </SettingsSection>
 
       <Show when={needsAction()}>
-        <SettingsSection title="Action required">
+        <SettingsSection title={_(actionRequiredTitle)}>
           <div class="providers-auth-warning" role="status">
             <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
-            <span>{providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"])}</span>
+            <span>{_(providerRecoveryCopy("GitHub", effectiveHealth(), ["GH_TOKEN", "GITHUB_TOKEN"]))}</span>
           </div>
         </SettingsSection>
       </Show>
 
       <Show when={status()?.account}>
         {(account) => (
-          <SettingsSection title="Account">
+          <SettingsSection title={_(accountTitle)}>
             <div class="providers-connect-section">
               <div class="min-w-0 flex-1">
                 <div class="providers-connect-title">{account().login}</div>
@@ -126,7 +143,7 @@ export function GitHubPanel() {
       <Show
         when={status()?.source !== "env"}
         fallback={
-          <SettingsSection title="Environment credentials">
+          <SettingsSection title={_(envCredentialsTitle)}>
             <p class="providers-connect-copy">
               {needsAction()
                 ? "Update GH_TOKEN or GITHUB_TOKEN in the Synergy server environment, then restart the server and refresh this page."
@@ -151,10 +168,10 @@ export function GitHubPanel() {
   )
 }
 
-function githubStatusLabel(status: GitHubAuthStatus | undefined) {
-  if (!status) return "Loading"
-  if (status.status === "connected") return "Connected"
-  if (status.status === "invalid") return "Invalid"
-  if (status.status === "unverified") return "Unverified"
-  return "Not connected"
+function githubStatusLabel(status: GitHubAuthStatus | undefined, _: ReturnType<typeof useLingui>["_"]) {
+  if (!status) return _(loadingLabel)
+  if (status.status === "connected") return _(connectedLabel)
+  if (status.status === "invalid") return _(invalidLabel)
+  if (status.status === "unverified") return _(unverifiedLabel)
+  return _(notConnectedLabel)
 }

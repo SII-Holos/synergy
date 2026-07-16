@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, Match, Show, Switch, type JSX } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Collapsible } from "./collapsible"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
@@ -7,6 +8,8 @@ import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
+
+const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
 
 /** Legacy trigger value shape (pre-ToolTriggerProps). */
 interface LegacyTriggerValue {
@@ -88,6 +91,7 @@ function fromTrigger(
 }
 
 export function BasicTool(props: BasicToolProps) {
+  const { _ } = useLingui()
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
@@ -97,7 +101,7 @@ export function BasicTool(props: BasicToolProps) {
 
   const charsLabel = createMemo(() => {
     if (props.status !== "generating" || !props.charsReceived) return null
-    return `${props.charsReceived.toLocaleString()} chars`
+    return _({ ...charsLabelDescriptor, values: { count: props.charsReceived.toLocaleString() } })
   })
   const countdown = createMemo(() => {
     if (props.countdown !== undefined) {

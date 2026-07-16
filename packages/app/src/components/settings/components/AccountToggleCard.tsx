@@ -1,10 +1,19 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import type { AccountToggle, ProviderGroup } from "../types"
 import { SettingRow } from "./SettingRow"
+
+const useDefaultLabel = { id: "settings.accountToggle.useDefault", message: "Use default" }
+const inheritDesc = { id: "settings.accountToggle.inherit", message: "Inherit from global model config" }
+const modelOverrideTitle = { id: "settings.accountToggle.modelOverride", message: "Model override" }
+const modelOverrideDesc = {
+  id: "settings.accountToggle.modelOverrideDesc",
+  message: "Select a model for messages from this account.",
+}
 
 type ModelPickOption = {
   kind: "fallback" | "model"
@@ -24,13 +33,14 @@ export function AccountToggleCard(props: {
   onToggle: (index: number, value: boolean) => void
   onModelChange: (index: number, model: string) => void
 }) {
+  const { _ } = useLingui()
   const modelOptions = createMemo<ModelPickOption[]>(() => [
     {
       kind: "fallback",
       key: "fallback",
       group: "Default",
-      label: "Use default",
-      description: "Inherit from global model config",
+      label: _(useDefaultLabel),
+      description: _(inheritDesc),
       value: "",
     },
     ...props.providers.flatMap((provider) =>
@@ -65,7 +75,7 @@ export function AccountToggleCard(props: {
               () => modelOptions().find((o) => o.value === account.model) ?? modelOptions()[0],
             )
             const displayText = createMemo(() =>
-              account.model ? (selectedLabel().get(account.model) ?? account.model) : "Use default",
+              account.model ? (selectedLabel().get(account.model) ?? account.model) : _(useDefaultLabel),
             )
 
             return (
@@ -78,9 +88,9 @@ export function AccountToggleCard(props: {
                 <div class="settings-model-row">
                   <div class="settings-model-copy">
                     <div class="settings-model-title-line">
-                      <span class="settings-model-title">Model override</span>
+                      <span class="settings-model-title">{_(modelOverrideTitle)}</span>
                     </div>
-                    <span class="settings-model-description">Select a model for messages from this account.</span>
+                    <span class="settings-model-description">{_(modelOverrideDesc)}</span>
                   </div>
                   <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
                     <KobaltePopover.Trigger

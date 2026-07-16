@@ -50,13 +50,13 @@ export function providerAuthTone(health?: ProviderAuthHealth) {
   return "muted" as const
 }
 
-export function providerRecoveryActionLabel(health?: ProviderAuthHealth) {
+export function providerRecoveryActionLabel(health?: ProviderAuthHealth): string {
   if (health?.recovery === "update_environment") return "View setup"
   if (health?.authKind === "api_key") return "Replace credentials"
   return "Reconnect"
 }
 
-export function providerUsageStatusLabel(health?: ProviderAuthHealth, snapshot?: AccountUsageSnapshot) {
+export function providerUsageStatusLabel(health?: ProviderAuthHealth, snapshot?: AccountUsageSnapshot): string {
   if (providerNeedsAction(health, snapshot)) return health ? providerStatusLabel(health) : "Sign-in required"
   if (health?.status === "exhausted") return "Temporarily unavailable"
   if (snapshot?.status === "error") return "Retry"

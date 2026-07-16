@@ -78,7 +78,6 @@ export type SessionTurnTimelineVisualKind =
   | "tool-attachments"
   | "compaction"
 
-const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
 export type TurnCompletionStats = {
   duration: string
   segments: string[]
@@ -412,7 +411,7 @@ export function providerPreludeText(status: SessionStatus | undefined): string {
     const description = status.description?.trim()
     if (description) return description
   }
-  return DEFAULT_PROVIDER_PRELUDE_TEXT
+  return "Awaiting response\u2026"
 }
 
 export function shouldShowProviderPrelude(input: {

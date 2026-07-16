@@ -1,11 +1,13 @@
 import { For, Show, type JSX } from "solid-js"
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { Icon, type IconName } from "../icon"
 import { DiffChanges } from "../diff-changes"
 
 export interface ToolTriggerProps {
   icon: IconName
-  title: string
+  title: string | MessageDescriptor
   titleClass?: string
   subtitle?: string
   subtitleClass?: string
@@ -24,7 +26,15 @@ function directoryLabel(path: string): string {
   return path.slice(0, idx).replace(/\/$/, "")
 }
 
+/** Resolve a title prop — MessageDescriptor or plain string — through i18n. */
+function resolveTitle(title: string | MessageDescriptor, _: (desc: MessageDescriptor) => string): string {
+  if (typeof title === "string") return title
+  return _({ id: title.id, message: title.message! })
+}
+
 export function ToolTrigger(props: ToolTriggerProps) {
+  const { _ } = useLingui()
+  const title = () => resolveTitle(props.title, _)
   return (
     <div data-component="tool-trigger">
       <div data-slot="tool-trigger-left">
@@ -37,7 +47,7 @@ export function ToolTrigger(props: ToolTriggerProps) {
                 [props.titleClass ?? ""]: !!props.titleClass,
               }}
             >
-              {props.title}
+              {title()}
             </span>
             <Show when={props.subtitlePath}>
               <div data-slot="tool-trigger-path">

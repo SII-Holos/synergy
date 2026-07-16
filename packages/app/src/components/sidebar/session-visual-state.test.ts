@@ -3,6 +3,10 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
 import { resolveSessionVisualState, scopeKeyForNavEntry, type SessionVisualStore } from "./session-visual-state"
 
+function msg(d: { message?: string }): string {
+  return d.message ?? ""
+}
+
 function entry(input: Partial<NavEntry> = {}): NavEntry {
   return {
     id: "ses_test",
@@ -73,7 +77,7 @@ describe("resolveSessionVisualState", () => {
 
     expect(visual.icon).toBe(getSemanticIcon("navigation.home"))
     expect(visual.completionUnread).toBe(true)
-    expect(visual.label).toBe("Home session; response ready")
+    expect(msg(visual.label)).toBe("Home session; response ready")
   })
 
   test("suppresses completion unread while running", () => {
@@ -151,7 +155,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Blueprint session")
+    expect(msg(visual.label)).toBe("Blueprint session")
     expect(visual.tone).toBe("blueprint")
     expect(visual.pulse).toBeUndefined()
   })
@@ -166,7 +170,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Running Blueprint")
+    expect(msg(visual.label)).toBe("Running Blueprint")
     expect(visual.tone).toBe("blueprint-running")
     expect(visual.pulse).toBe(true)
   })
@@ -181,7 +185,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
 
@@ -195,7 +199,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Blueprint waiting for you")
+    expect(msg(visual.label)).toBe("Blueprint waiting for you")
     expect(visual.tone).toBe("blueprint-waiting")
     expect(visual.pulse).toBe(true)
   })
@@ -207,7 +211,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
 
@@ -221,7 +225,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
     expect(visual.pulse).toBe(true)
   })

@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
@@ -8,6 +9,12 @@ import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
 import { createProviderModelIndex, fieldLabel, resolveModelRoleDraftDisplay } from "../model-role-draft"
+
+const fallbackLabel = { id: "settings.modelRole.fallback", message: "Use fallback" }
+const variantDefault = { id: "settings.modelRole.variant.default", message: "Default" }
+const variantDesc = { id: "settings.modelRole.variant.desc", message: "Use the role default" }
+const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Role variant" }
+const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
 
 type ModelRef = {
   providerID: string
@@ -52,6 +59,7 @@ export function ModelRoleRow(props: {
   onChange: (key: ModelKey, value: string) => void
   onVariantChange?: (variant: string) => void
 }) {
+  const { _ } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
   const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
 
@@ -72,7 +80,7 @@ export function ModelRoleRow(props: {
       kind: "fallback",
       key: "fallback",
       group: "Default",
-      label: "Use fallback",
+      label: _(fallbackLabel),
       description: display().fallbackDescription,
       value: "",
     },
@@ -95,11 +103,11 @@ export function ModelRoleRow(props: {
   })
 
   const variantOptions = createMemo<ModelVariantOption[]>(() => [
-    { key: "default", label: "Default", description: "Use the role default", value: "" },
+    { key: "default", label: _(variantDefault), description: _(variantDesc), value: "" },
     ...props.availableVariants.map((variant) => ({
       key: variant,
       label: variant,
-      description: "Role variant",
+      description: _(variantRoleDesc),
       value: variant,
     })),
   ])
@@ -137,7 +145,7 @@ export function ModelRoleRow(props: {
                   <div class="settings-model-detail-label">Used by</div>
                   <Show
                     when={props.summary.usedBy.length > 0}
-                    fallback={<div class="settings-model-detail-muted">No agents directly use this role.</div>}
+                    fallback={<div class="settings-model-detail-muted">{_(noAgentsUse)}</div>}
                   >
                     <div class="settings-model-agent-list">
                       <For each={props.summary.usedBy.slice(0, 8)}>
@@ -230,7 +238,7 @@ export function ModelRoleRow(props: {
             gutter={8}
           >
             <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label="Select model variant">
-              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? "Default"}</span>
+              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? _(variantDefault)}</span>
               <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
             </KobaltePopover.Trigger>
             <Show when={props.popoverLayer}>

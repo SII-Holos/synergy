@@ -2,6 +2,10 @@ import { describe, expect, test } from "bun:test"
 import type { ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { requestPluginHostConfirm } from "./host-confirm"
 
+function msg(d: { message?: string }): string {
+  return d.message ?? ""
+}
+
 describe("requestPluginHostConfirm", () => {
   test("resolves true after the shared confirm dialog confirms", async () => {
     let shown: ConfirmOptions | undefined
@@ -16,13 +20,11 @@ describe("requestPluginHostConfirm", () => {
       },
     )
 
-    expect(shown).toMatchObject({
-      title: "Delete node",
-      description: "This removes the research node from the map.",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      tone: "neutral",
-    })
+    expect(msg(shown!.title)).toBe("Delete node")
+    expect(msg(shown!.description)).toBe("This removes the research node from the map.")
+    expect(msg(shown!.confirmLabel)).toBe("Delete")
+    expect(msg(shown!.cancelLabel!)).toBe("Cancel")
+    expect(shown!.tone).toBe("neutral")
 
     await shown?.onConfirm()
     shown?.onConfirmed?.()
@@ -41,7 +43,7 @@ describe("requestPluginHostConfirm", () => {
       },
     )
 
-    expect(shown?.confirmLabel).toBe("Confirm")
+    expect(msg(shown!.confirmLabel)).toBe("Confirm")
     shown?.onDismiss?.()
     await expect(result).resolves.toBe(false)
   })

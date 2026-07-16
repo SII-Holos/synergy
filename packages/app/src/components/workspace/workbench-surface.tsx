@@ -9,8 +9,9 @@ import {
   onCleanup,
   onMount,
 } from "solid-js"
-import { createStore } from "solid-js/store"
+import { Trans, useLingui } from "@lingui/solid"
 import type { Component } from "solid-js"
+import { createStore } from "solid-js/store"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
@@ -26,6 +27,7 @@ import type {
 } from "@/plugin/registries/workbench-panel-registry"
 import "./workbench-surface.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { workspace as W } from "@/locales/messages"
 import {
   DragDropProvider,
   DragDropSensors,
@@ -66,7 +68,14 @@ function WorkbenchPanelContent(props: {
         </div>
       }
     >
-      <Show when={comp()} fallback={<div class="workbench-surface-empty">Panel unavailable</div>}>
+      <Show
+        when={comp()}
+        fallback={
+          <div class="workbench-surface-empty">
+            <Trans id={W.panelUnavailable.id} message={W.panelUnavailable.message} />
+          </div>
+        }
+      >
         {(component) => (
           <ErrorBoundary fallback={(error) => <div class="workbench-surface-error">{error.message}</div>}>
             <Suspense

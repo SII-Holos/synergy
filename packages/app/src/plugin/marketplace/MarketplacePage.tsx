@@ -3,10 +3,12 @@ import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { useLingui } from "@lingui/solid"
 import { AppPanel } from "@/components/app-panel"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import { useGlobalSDK } from "@/context/global-sdk"
+
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
 import type { RegistryPluginSummary } from "@ericsanchezok/synergy-sdk/client"
@@ -23,23 +25,12 @@ type MarketplacePageProps = Partial<RouteSectionProps> & {
   initialSource?: RegistrySource
 }
 
-function timeAgo(ts: number | string): string {
-  const timestamp = typeof ts === "number" ? ts : Date.parse(ts)
-  const delta = Date.now() - (Number.isFinite(timestamp) ? timestamp : Date.now())
-  const mins = Math.floor(delta / 60000)
-  if (mins < 60) return mins <= 1 ? "just now" : `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return new Date(timestamp).toLocaleDateString()
-}
-
 export function MarketplacePage(props: MarketplacePageProps) {
   const globalSDK = useGlobalSDK()
   const dialog = useDialog()
   const navigate = useNavigate()
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
+  const { _ } = useLingui()
   const [query, setQuery] = createSignal("")
   const [debouncedQuery, setDebouncedQuery] = createSignal("")
   const [view, setView] = createSignal<MarketplaceView>("discover")
@@ -134,7 +125,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
         <AppPanel.Header class="plugin-marketplace-header">
           <div class="plugin-marketplace-header-inner">
             <AppPanel.HeaderRow>
-              <AppPanel.Title>Plugins</AppPanel.Title>
+              <AppPanel.Title>{_({ id: "app.plugin.marketplace.title", message: "Plugins" })}</AppPanel.Title>
             </AppPanel.HeaderRow>
             <div class="plugin-marketplace-header-controls">
               <div class="plugin-marketplace-nav">
@@ -150,10 +141,14 @@ export function MarketplacePage(props: MarketplacePageProps) {
                   type="text"
                   value={query()}
                   onInput={(event) => handleInput(event.currentTarget.value)}
-                  placeholder="Search plugins"
+                  placeholder={_({ id: "app.plugin.marketplace.searchPlaceholder", message: "Search plugins" })}
                 />
                 <Show when={query()}>
-                  <button type="button" aria-label="Clear search" onClick={() => handleInput("")}>
+                  <button
+                    type="button"
+                    aria-label={_({ id: "app.plugin.marketplace.clearSearch", message: "Clear search" })}
+                    onClick={() => handleInput("")}
+                  >
                     <Icon name={getSemanticIcon("action.close")} size="small" />
                   </button>
                 </Show>
@@ -169,21 +164,37 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <div>
                   <h2>{currentLabel()} plugins</h2>
                   <p>
-                    <Show when={!searchResults.loading && !installedPlugins.loading} fallback="Checking plugins">
-                      {resultCount()} {resultCount() === 1 ? "plugin" : "plugins"}
-                      <Show when={debouncedQuery()}> matching "{debouncedQuery()}"</Show>
+                    <Show
+                      when={!searchResults.loading && !installedPlugins.loading}
+                      fallback={_({ id: "app.plugin.marketplace.checkingPlugins", message: "Checking plugins" })}
+                    >
+                      {resultCount()}{" "}
+                      {resultCount() === 1
+                        ? _({ id: "app.plugin.marketplace.plugin.singular", message: "plugin" })
+                        : _({ id: "app.plugin.marketplace.plugin.plural", message: "plugins" })}
+                      <Show when={debouncedQuery()}>
+                        {" "}
+                        {_({
+                          id: "app.plugin.marketplace.matchingQuery",
+                          message: `matching "{query}"`,
+                          values: { query: debouncedQuery() },
+                        })}
+                      </Show>
                     </Show>
                   </p>
                 </div>
                 <Show when={view() === "discover"}>
-                  <div class="plugin-marketplace-source-filter" aria-label="Plugin catalog source">
+                  <div
+                    class="plugin-marketplace-source-filter"
+                    aria-label={_({ id: "app.plugin.marketplace.catalogSource", message: "Plugin catalog source" })}
+                  >
                     <button
                       type="button"
                       aria-pressed={catalogSource() === "official"}
                       classList={{ active: catalogSource() === "official" }}
                       onClick={() => setCatalogSource("official")}
                     >
-                      Official
+                      {_({ id: "app.plugin.marketplace.source.official", message: "Official" })}
                     </button>
                     <button
                       type="button"
@@ -191,7 +202,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
                       classList={{ active: catalogSource() === "local" }}
                       onClick={() => setCatalogSource("local")}
                     >
-                      Local registry
+                      {_({ id: "app.plugin.marketplace.source.localRegistry", message: "Local registry" })}
                     </button>
                   </div>
                 </Show>
@@ -207,13 +218,27 @@ export function MarketplacePage(props: MarketplacePageProps) {
 
               <Show when={view() === "discover" && !searchResults.loading && (searchResults()?.length ?? 0) === 0}>
                 <EmptyState
-                  title={debouncedQuery() ? "No plugins found" : "No plugins available"}
+                  title={
+                    debouncedQuery()
+                      ? _({ id: "app.plugin.marketplace.empty.noPluginsFound", message: "No plugins found" })
+                      : _({ id: "app.plugin.marketplace.empty.noPluginsAvailable", message: "No plugins available" })
+                  }
                   description={
                     debouncedQuery()
-                      ? `No results for "${debouncedQuery()}".`
+                      ? _({
+                          id: "app.plugin.marketplace.empty.noResultsFor",
+                          message: `No results for "{query}".`,
+                          values: { query: debouncedQuery() },
+                        })
                       : catalogSource() === "official"
-                        ? "The official plugin registry has not returned any plugins yet."
-                        : "No packages have been published to the local registry."
+                        ? _({
+                            id: "app.plugin.marketplace.empty.officialEmpty",
+                            message: "The official plugin registry has not returned any plugins yet.",
+                          })
+                        : _({
+                            id: "app.plugin.marketplace.empty.localEmpty",
+                            message: "No packages have been published to the local registry.",
+                          })
                   }
                 />
               </Show>
@@ -222,17 +247,37 @@ export function MarketplacePage(props: MarketplacePageProps) {
                 <EmptyState
                   title={
                     debouncedQuery()
-                      ? `No ${view() === "development" ? "development" : "installed"} plugins found`
+                      ? _({
+                          id: "app.plugin.marketplace.empty.noInstalledPluginsFound",
+                          message:
+                            view() === "development" ? "No development plugins found" : "No installed plugins found",
+                        })
                       : view() === "development"
-                        ? "No development plugins"
-                        : "No plugins installed"
+                        ? _({
+                            id: "app.plugin.marketplace.empty.noDevelopmentPlugins",
+                            message: "No development plugins",
+                          })
+                        : _({
+                            id: "app.plugin.marketplace.empty.noPluginsInstalled",
+                            message: "No plugins installed",
+                          })
                   }
                   description={
                     debouncedQuery()
-                      ? `No plugins match "${debouncedQuery()}".`
+                      ? _({
+                          id: "app.plugin.marketplace.empty.noMatchQuery",
+                          message: `No plugins match "{query}".`,
+                          values: { query: debouncedQuery() },
+                        })
                       : view() === "development"
-                        ? "Directory plugins registered with file:// or plugin-kit dev will appear here."
-                        : "Installed plugins will appear here regardless of where they came from."
+                        ? _({
+                            id: "app.plugin.marketplace.empty.developmentHint",
+                            message: "Directory plugins registered with file:// or plugin-kit dev will appear here.",
+                          })
+                        : _({
+                            id: "app.plugin.marketplace.empty.installedHint",
+                            message: "Installed plugins will appear here regardless of where they came from.",
+                          })
                   }
                 />
               </Show>
@@ -290,12 +335,24 @@ function PluginRow(props: {
   installedVersion: string | null
   onClick: () => void
 }) {
-  const installStatusLabel = () =>
-    props.state === "update"
-      ? `Update available${props.installedVersion ? ` from v${props.installedVersion}` : ""}`
-      : props.installedVersion
-        ? `Installed v${props.installedVersion}`
-        : "Installed"
+  const { _ } = useLingui()
+  const installStatusLabel = () => {
+    if (props.state === "update") {
+      return props.installedVersion
+        ? _({
+            id: "app.plugin.marketplace.row.updateAvailable",
+            message: `Update available from v${props.installedVersion}`,
+          })
+        : _({ id: "app.plugin.marketplace.row.updateAvailable.generic", message: "Update available" })
+    }
+    if (props.installedVersion) {
+      return _({
+        id: "app.plugin.marketplace.row.installedVersion",
+        message: `Installed v${props.installedVersion}`,
+      })
+    }
+    return _({ id: "app.plugin.marketplace.row.installed", message: "Installed" })
+  }
 
   return (
     <button type="button" class="plugin-marketplace-row group" onClick={props.onClick}>
@@ -310,20 +367,39 @@ function PluginRow(props: {
 
       <span class="plugin-marketplace-row-main">
         <span class="plugin-marketplace-row-title">
+          {/* plugin.name is author content — pass through */}
           <span>{props.plugin.name}</span>
           <Show when={props.plugin.latestVersion}>
             <span class="plugin-marketplace-version">v{props.plugin.latestVersion}</span>
           </Show>
         </span>
+        {/* plugin.description is author content — pass through */}
         <span class="plugin-marketplace-row-description">{props.plugin.description}</span>
         <span class="plugin-marketplace-row-meta">
-          <span>{props.plugin.author?.name ?? "Unknown author"}</span>
+          {/* plugin.author.name is author content — fallback is host chrome */}
+          <span>
+            {props.plugin.author?.name ??
+              _({ id: "app.plugin.marketplace.row.unknownAuthor", message: "Unknown author" })}
+          </span>
           <span aria-hidden="true">·</span>
-          <span>{props.plugin.tools.length} tools</span>
+          <span>
+            {_({
+              id: "app.plugin.marketplace.row.tools",
+              message: "{count} tools",
+              values: { count: props.plugin.tools.length },
+            })}
+          </span>
           <span aria-hidden="true">·</span>
+          {/* plugin.runtimeMode is catalog data — pass through */}
           <span>{props.plugin.runtimeMode}</span>
           <span aria-hidden="true">·</span>
-          <span>Updated {timeAgo(props.plugin.updatedAt)}</span>
+          <span>
+            {_({
+              id: "app.plugin.marketplace.row.updated",
+              message: "Updated {time}",
+              values: { time: timeAgo(props.plugin.updatedAt) },
+            })}
+          </span>
         </span>
       </span>
 
@@ -337,6 +413,7 @@ function PluginRow(props: {
 }
 
 function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boolean; onClick: () => void }) {
+  const { _ } = useLingui()
   const disabled = () => props.plugin.health === "disabled"
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.id,
@@ -348,6 +425,7 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
       <MarketplacePluginIcon plugin={iconSource()} class="plugin-marketplace-plugin-icon" />
       <span class="plugin-marketplace-row-main">
         <span class="plugin-marketplace-row-title">
+          {/* plugin.name is author content; id is catalog identifier */}
           <span>{props.plugin.name ?? props.plugin.id}</span>
           <span class="plugin-marketplace-version">v{props.plugin.version ?? "0.0.0"}</span>
         </span>
@@ -355,20 +433,31 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
           <Show
             when={disabled()}
             fallback={
+              // eslint-disable-next-line solid/prefer-show
               props.development && props.plugin.installation.kind === "directory" ? (
                 props.plugin.installation.path
               ) : (
                 <>
-                  {props.plugin.tools.length} tools · {props.plugin.operations.length} operations ·{" "}
-                  {props.plugin.uiContributions} UI surfaces
+                  {_({
+                    id: "app.plugin.marketplace.row.installedSummary",
+                    message: "{tools} tools · {operations} operations · {ui} UI surfaces",
+                    values: {
+                      tools: props.plugin.tools.length,
+                      operations: props.plugin.operations.length,
+                      ui: props.plugin.uiContributions,
+                    },
+                  })}
                 </>
               )
             }
           >
-            {props.plugin.disabledReason ?? "Plugin disabled"}
+            {/* disabledReason is plugin data — pass through */}
+            {props.plugin.disabledReason ??
+              _({ id: "app.plugin.marketplace.row.pluginDisabled", message: "Plugin disabled" })}
           </Show>
         </span>
         <span class="plugin-marketplace-row-meta">
+          {/* plugin.id is catalog identifier — pass through */}
           <span>{props.plugin.id}</span>
           <span aria-hidden="true">·</span>
           <span>{installationLabel(props.plugin)}</span>
@@ -394,7 +483,11 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
             "plugin-marketplace-state-disabled": disabled(),
           }}
         >
-          {disabled() ? "Disabled" : props.development ? "Development" : "Installed"}
+          {disabled()
+            ? _({ id: "app.plugin.marketplace.row.state.disabled", message: "Disabled" })
+            : props.development
+              ? _({ id: "app.plugin.marketplace.row.state.development", message: "Development" })
+              : _({ id: "app.plugin.marketplace.row.state.installed", message: "Installed" })}
         </span>
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />
@@ -420,4 +513,16 @@ function SkeletonRows() {
       <For each={[0, 1, 2]}>{() => <div class="plugin-marketplace-skeleton-row" />}</For>
     </div>
   )
+}
+
+function timeAgo(ts: number | string): string {
+  const timestamp = typeof ts === "number" ? ts : Date.parse(ts)
+  const delta = Date.now() - (Number.isFinite(timestamp) ? timestamp : Date.now())
+  const mins = Math.floor(delta / 60000)
+  if (mins < 60) return mins <= 1 ? "just now" : `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 30) return `${days}d ago`
+  return new Date(timestamp).toLocaleDateString()
 }

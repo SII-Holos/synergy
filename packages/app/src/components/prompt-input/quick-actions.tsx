@@ -3,6 +3,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { CommandOption } from "@/context/command"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 import "./quick-actions.css"
 
 type QuickActionBase = {
@@ -12,18 +14,10 @@ type QuickActionBase = {
 }
 
 type QuickAction =
-  | (QuickActionBase & {
-      type: "ui"
-      commandId: string
-    })
-  | (QuickActionBase & {
-      type: "runtime"
-      command: string
-    })
+  | (QuickActionBase & { type: "ui"; commandId: string })
+  | (QuickActionBase & { type: "runtime"; command: string })
 
-type QuickActionGroup = {
-  actions: QuickAction[]
-}
+type QuickActionGroup = { actions: QuickAction[] }
 
 const ACTION_GROUPS: QuickActionGroup[] = [
   {
@@ -140,6 +134,8 @@ interface QuickActionsProps {
 }
 
 export function QuickActions(props: QuickActionsProps) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const [open, setOpen] = createSignal(false)
   const commandsDisabled = () => props.commandsDisabled ?? props.disabled
   const runtimeCommandsDisabled = () => props.runtimeCommandsDisabled ?? props.disabled
@@ -166,7 +162,6 @@ export function QuickActions(props: QuickActionsProps) {
     const option = commandOption(action)
     const title = option?.title ?? action.label
     const description = option?.description ?? action.description
-
     return (
       <div class="qa-tooltip">
         <span class="qa-tooltip-title">{title}</span>
@@ -212,7 +207,7 @@ export function QuickActions(props: QuickActionsProps) {
           </div>
         </div>
       </Show>
-      <Tooltip placement="top" value={open() ? "Close quick actions" : "Quick actions"}>
+      <Tooltip placement="top" value={open() ? _(PI.qaClose) : _(PI.qaOpen)}>
         <button
           type="button"
           disabled={props.disabled}

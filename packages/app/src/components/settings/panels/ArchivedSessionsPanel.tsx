@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -20,6 +21,40 @@ type BatchAction = "restore" | "delete"
 
 const PAGE_LIMIT = 50
 
+const loadFailedTitle = { id: "settings.archivedSessions.loadFailed", message: "Archived sessions failed to load" }
+const loadFailedDesc = { id: "settings.archivedSessions.loadFailedDesc", message: "Try again." }
+const restoredSingleTitle = { id: "settings.archivedSessions.restoredSingle", message: "Archived session restored" }
+const restoredMultiTitle = { id: "settings.archivedSessions.restoredMulti", message: "Archived sessions restored" }
+const restoreFailedSingleTitle = {
+  id: "settings.archivedSessions.restoreFailedSingle",
+  message: "Archived session failed to restore",
+}
+const restoreFailedMultiTitle = {
+  id: "settings.archivedSessions.restoreFailedMulti",
+  message: "Archived sessions failed to restore",
+}
+const deletedSingleTitle = { id: "settings.archivedSessions.deletedSingle", message: "Archived session deleted" }
+const deletedMultiTitle = { id: "settings.archivedSessions.deletedMulti", message: "Archived sessions deleted" }
+const deleteFailedSingleTitle = {
+  id: "settings.archivedSessions.deleteFailedSingle",
+  message: "Archived session failed to delete",
+}
+const deleteFailedMultiTitle = {
+  id: "settings.archivedSessions.deleteFailedMulti",
+  message: "Archived sessions failed to delete",
+}
+const unknownArchiveTime = { id: "settings.archivedSessions.unknownTime", message: "Unknown archive time" }
+
+function archivedSessionsCount(total: number) {
+  return { id: "settings.archivedSessions.count", message: "{total} archived sessions", values: { total } }
+}
+function sessionsRestoredDesc(count: number) {
+  return { id: "settings.archivedSessions.restoredDesc", message: "{count} sessions restored", values: { count } }
+}
+function sessionsDeletedDesc(count: number) {
+  return { id: "settings.archivedSessions.deletedDesc", message: "{count} sessions deleted", values: { count } }
+}
+
 function scopeLabel(item: ArchivedSessionItem) {
   return getScopeLabel({ worktree: item.scope.directory, name: item.scope.name }, item.scope.directory)
 }
@@ -40,6 +75,7 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function ArchivedSessionsPanel() {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
   const [search, setSearch] = createSignal("")
@@ -62,7 +98,7 @@ export function ArchivedSessionsPanel() {
   const selectedCount = createMemo(() => selectedIDs().size)
   const hasNextPage = createMemo(() => offset() + items().length < total())
   const pageLabel = createMemo(() => {
-    if (total() === 0) return "0 archived sessions"
+    if (total() === 0) return _(archivedSessionsCount(0))
     return `${offset() + 1}-${offset() + items().length} of ${total()}`
   })
   const busy = createMemo(() => loading() || !!busyID() || !!batchBusy())
@@ -93,8 +129,8 @@ export function ArchivedSessionsPanel() {
       setSelectedIDs(new Set<string>())
       showToast({
         type: "error",
-        title: "Archived sessions failed to load",
-        description: errorMessage(error, "Try again."),
+        title: _(loadFailedTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setLoading(false)
@@ -150,17 +186,17 @@ export function ArchivedSessionsPanel() {
       )
       showToast({
         type: "success",
-        title: targets.length === 1 ? "Archived session restored" : "Archived sessions restored",
+        title: targets.length === 1 ? _(restoredSingleTitle) : _(restoredMultiTitle),
         description:
-          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions restored`,
+          targets.length === 1 ? targets[0]!.title || "Untitled session" : _(sessionsRestoredDesc(targets.length)),
       })
       setSelectedIDs(new Set<string>())
       await load(offset())
     } catch (error) {
       showToast({
         type: "error",
-        title: targets.length === 1 ? "Archived session failed to restore" : "Archived sessions failed to restore",
-        description: errorMessage(error, "Try again."),
+        title: targets.length === 1 ? _(restoreFailedSingleTitle) : _(restoreFailedMultiTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setBusyID(undefined)
@@ -180,17 +216,17 @@ export function ArchivedSessionsPanel() {
       )
       showToast({
         type: "success",
-        title: targets.length === 1 ? "Archived session deleted" : "Archived sessions deleted",
+        title: targets.length === 1 ? _(deletedSingleTitle) : _(deletedMultiTitle),
         description:
-          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions deleted`,
+          targets.length === 1 ? targets[0]!.title || "Untitled session" : _(sessionsDeletedDesc(targets.length)),
       })
       setSelectedIDs(new Set<string>())
       await load(offset())
     } catch (error) {
       showToast({
         type: "error",
-        title: targets.length === 1 ? "Archived session failed to delete" : "Archived sessions failed to delete",
-        description: errorMessage(error, "Try again."),
+        title: targets.length === 1 ? _(deleteFailedSingleTitle) : _(deleteFailedMultiTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setBusyID(undefined)

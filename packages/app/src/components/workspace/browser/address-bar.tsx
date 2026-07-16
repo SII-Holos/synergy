@@ -1,9 +1,11 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
 import { browserDebug } from "./browser-debug"
+import { browser as B } from "@/locales/messages"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -22,14 +24,50 @@ const VIEWPORT_PRESETS = [
   { label: "Mobile", width: 375, height: 667 },
 ] as const
 
+const PRESET_I18N: Record<string, string> = {
+  Desktop: B.presetDesktop.id,
+  Tablet: B.presetTablet.id,
+  Mobile: B.presetMobile.id,
+}
+
 type DiagnosticPanel = Exclude<DevPanel, "closed">
 
-const DEV_PANELS: { id: DiagnosticPanel; label: string; description: string }[] = [
-  { id: "console", label: "Console", description: "Page logs" },
-  { id: "network", label: "Network", description: "Requests" },
-  { id: "elements", label: "Elements", description: "Snapshot" },
-  { id: "assets", label: "Assets", description: "Page files" },
-  { id: "downloads", label: "Downloads", description: "Saved files" },
+const DEV_PANELS: { id: DiagnosticPanel; labelId: string; labelMsg: string; descId: string; descMsg: string }[] = [
+  {
+    id: "console",
+    labelId: B.devConsole.id,
+    labelMsg: B.devConsole.message,
+    descId: B.devConsoleDesc.id,
+    descMsg: B.devConsoleDesc.message,
+  },
+  {
+    id: "network",
+    labelId: B.devNetwork.id,
+    labelMsg: B.devNetwork.message,
+    descId: B.devNetworkDesc.id,
+    descMsg: B.devNetworkDesc.message,
+  },
+  {
+    id: "elements",
+    labelId: B.devElements.id,
+    labelMsg: B.devElements.message,
+    descId: B.devElementsDesc.id,
+    descMsg: B.devElementsDesc.message,
+  },
+  {
+    id: "assets",
+    labelId: B.devAssets.id,
+    labelMsg: B.devAssets.message,
+    descId: B.devAssetsDesc.id,
+    descMsg: B.devAssetsDesc.message,
+  },
+  {
+    id: "downloads",
+    labelId: B.devDownloads.id,
+    labelMsg: B.devDownloads.message,
+    descId: B.devDownloadsDesc.id,
+    descMsg: B.devDownloadsDesc.message,
+  },
 ]
 
 const DEV_SERVER_URLS = [
@@ -45,6 +83,7 @@ function displayUrl(url: string) {
 export function AddressBar(props: AddressBarProps) {
   let inputEl: HTMLInputElement | undefined
   const browser = useBrowser()
+  const lingui = useLingui()
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [draft, setDraft] = createSignal(displayUrl(props.activeUrl()))
   const [editing, setEditing] = createSignal(false)
@@ -59,11 +98,12 @@ export function AddressBar(props: AddressBarProps) {
   })
 
   const selectedViewport = createMemo(() => {
-    if (browser.viewportMode() === "fit") return "Fit"
+    if (browser.viewportMode() === "fit") return lingui._(B.fit.id)
     const current = VIEWPORT_PRESETS.find(
       (preset) => preset.width === browser.viewportWidth() && preset.height === browser.viewportHeight(),
     )
-    return current?.label ?? `${browser.viewportWidth()}x${browser.viewportHeight()}`
+    if (current) return lingui._(PRESET_I18N[current.label] ?? current.label)
+    return `${browser.viewportWidth()}x${browser.viewportHeight()}`
   })
 
   function handleNavigate() {
@@ -110,7 +150,7 @@ export function AddressBar(props: AddressBarProps) {
         <IconButton
           icon={getSemanticIcon("navigation.back")}
           variant="ghost"
-          title="Back"
+          title={lingui._(B.navBack.id)}
           class="browser-nav-button"
           disabled={!props.hasPage()}
           onClick={() => props.onHistory("back")}
@@ -118,7 +158,7 @@ export function AddressBar(props: AddressBarProps) {
         <IconButton
           icon={getSemanticIcon("navigation.forward")}
           variant="ghost"
-          title="Forward"
+          title={lingui._(B.navForward.id)}
           class="browser-nav-button"
           disabled={!props.hasPage()}
           onClick={() => props.onHistory("forward")}
@@ -126,7 +166,7 @@ export function AddressBar(props: AddressBarProps) {
         <IconButton
           icon={props.isLoading() ? getSemanticIcon("action.stop") : getSemanticIcon("action.refresh")}
           variant="ghost"
-          title={props.isLoading() ? "Stop" : "Reload"}
+          title={props.isLoading() ? lingui._(B.stop.id) : lingui._(B.reload.id)}
           class="browser-nav-button"
           disabled={!props.hasPage()}
           onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
@@ -139,7 +179,7 @@ export function AddressBar(props: AddressBarProps) {
           type="text"
           class="browser-address-input h-7 w-full rounded-md px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak"
           value={draft()}
-          placeholder="Enter URL or search"
+          placeholder={lingui._(B.enterUrl.id)}
           onFocus={() => setEditing(true)}
           onBlur={() => {
             setEditing(false)
@@ -173,14 +213,14 @@ export function AddressBar(props: AddressBarProps) {
         <IconButton
           icon={getSemanticIcon("action.more")}
           variant="ghost"
-          title="Browser options"
+          title={lingui._(B.options.id)}
           class="browser-nav-button"
           onClick={() => setMenuOpen((v) => !v)}
         />
         <Show when={menuOpen()}>
           <div
             class="browser-options-menu absolute right-0 top-full z-50 mt-1 w-[280px] max-w-[calc(100vw-16px)] rounded-lg border text-12"
-            aria-label="Browser controls"
+            aria-label={lingui._(B.controls.id)}
             onClick={() => setMenuOpen(false)}
           >
             <div class="browser-menu-section">
@@ -195,8 +235,12 @@ export function AddressBar(props: AddressBarProps) {
                 }}
               >
                 <span class="browser-menu-row-copy">
-                  <span class="browser-menu-row-title">Follow agent</span>
-                  <span class="browser-menu-row-description">Agent navigation</span>
+                  <span class="browser-menu-row-title">
+                    <Trans id={B.followAgent.id} message={B.followAgent.message} />
+                  </span>
+                  <span class="browser-menu-row-description">
+                    <Trans id={B.agentNavigation.id} message={B.agentNavigation.message} />
+                  </span>
                 </span>
                 <span class="browser-toggle" data-checked={browser.followAgent()}>
                   <span class="browser-toggle-thumb" />
@@ -206,10 +250,12 @@ export function AddressBar(props: AddressBarProps) {
 
             <div class="browser-menu-section">
               <div class="browser-menu-heading">
-                <span>Viewport</span>
+                <span>
+                  <Trans id={B.viewport.id} message={B.viewport.message} />
+                </span>
                 <span>{selectedViewport()}</span>
               </div>
-              <div class="browser-segment" aria-label="Viewport size">
+              <div class="browser-segment" aria-label={lingui._(B.viewport.id)}>
                 <button
                   type="button"
                   class="browser-segment-button"
@@ -222,7 +268,7 @@ export function AddressBar(props: AddressBarProps) {
                     browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
                   }}
                 >
-                  Fit
+                  <Trans id={B.fit.id} message={B.fit.message} />
                 </button>
                 <For each={VIEWPORT_PRESETS}>
                   {(preset) => (
@@ -230,15 +276,16 @@ export function AddressBar(props: AddressBarProps) {
                       type="button"
                       class="browser-segment-button"
                       classList={{
-                        "is-active text-text-strong": selectedViewport() === preset.label,
-                        "text-text-weak": selectedViewport() !== preset.label,
+                        "is-active text-text-strong":
+                          selectedViewport() === lingui._(PRESET_I18N[preset.label] ?? preset.label),
+                        "text-text-weak": selectedViewport() !== lingui._(PRESET_I18N[preset.label] ?? preset.label),
                       }}
                       onClick={(e) => {
                         e.stopPropagation()
                         browser.setViewport(preset.width, preset.height)
                       }}
                     >
-                      {preset.label}
+                      {lingui._(PRESET_I18N[preset.label] ?? preset.label)}
                     </button>
                   )}
                 </For>
@@ -247,7 +294,9 @@ export function AddressBar(props: AddressBarProps) {
 
             <div class="browser-menu-section">
               <div class="browser-menu-heading">
-                <span>Panels</span>
+                <span>
+                  <Trans id={B.panels.id} message={B.panels.message} />
+                </span>
               </div>
               <For each={DEV_PANELS}>
                 {(panel) => (
@@ -260,8 +309,12 @@ export function AddressBar(props: AddressBarProps) {
                     onClick={() => requestPanel(panel.id)}
                   >
                     <span class="browser-menu-row-copy">
-                      <span class="browser-menu-row-title">{panel.label}</span>
-                      <span class="browser-menu-row-description">{panel.description}</span>
+                      <span class="browser-menu-row-title">
+                        <Trans id={panel.labelId} message={panel.labelMsg} />
+                      </span>
+                      <span class="browser-menu-row-description">
+                        <Trans id={panel.descId} message={panel.descMsg} />
+                      </span>
                     </span>
                     <Show when={browser.devPanel() === panel.id}>
                       <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />
@@ -271,15 +324,21 @@ export function AddressBar(props: AddressBarProps) {
               </For>
               <button type="button" class="browser-menu-row" onClick={() => props.onRequestDiagnostics("clear")}>
                 <span class="browser-menu-row-copy">
-                  <span class="browser-menu-row-title">Clear diagnostics</span>
-                  <span class="browser-menu-row-description">Captured logs</span>
+                  <span class="browser-menu-row-title">
+                    <Trans id={B.clearDiagnostics.id} message={B.clearDiagnostics.message} />
+                  </span>
+                  <span class="browser-menu-row-description">
+                    <Trans id={B.capturedLogs.id} message={B.capturedLogs.message} />
+                  </span>
                 </span>
               </button>
             </div>
 
             <div class="browser-menu-section">
               <div class="browser-menu-heading">
-                <span>Open local</span>
+                <span>
+                  <Trans id={B.openLocal.id} message={B.openLocal.message} />
+                </span>
               </div>
               <For each={DEV_SERVER_URLS}>
                 {(entry) => (
@@ -289,7 +348,9 @@ export function AddressBar(props: AddressBarProps) {
                     onClick={() => props.onNavigate(entry.url)}
                   >
                     <span class="browser-menu-row-title">{entry.label}</span>
-                    <span class="browser-menu-row-description">Open</span>
+                    <span class="browser-menu-row-description">
+                      <Trans id={B.open.id} message={B.open.message} />
+                    </span>
                   </button>
                 )}
               </For>

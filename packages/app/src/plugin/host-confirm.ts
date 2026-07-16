@@ -8,7 +8,13 @@ export type PluginHostConfirmRequest = {
 
 export type PluginHostConfirmShow = (options: ConfirmOptions) => void
 
-/** Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog. */
+/**
+ * Bridge Plugin API 3 host.confirm(Promise<boolean>) onto the App ConfirmDialog.
+ *
+ * title and message pass through from the plugin — they are plugin author content.
+ * confirmLabel and cancelLabel are host chrome; the plugin may override confirmLabel
+ * with its own content.
+ */
 export function requestPluginHostConfirm(
   show: PluginHostConfirmShow,
   options: PluginHostConfirmRequest,
@@ -22,10 +28,12 @@ export function requestPluginHostConfirm(
     }
 
     show({
-      title: options.title,
-      description: options.message,
-      confirmLabel: options.confirmLabel?.trim() || "Confirm",
-      cancelLabel: "Cancel",
+      title: { id: "host.confirm.plugin.title", message: options.title },
+      description: { id: "host.confirm.plugin.message", message: options.message },
+      confirmLabel: options.confirmLabel?.trim()
+        ? { id: "host.confirm.plugin.confirmLabel", message: options.confirmLabel.trim() }
+        : { id: "app.common.confirm", message: "Confirm" },
+      cancelLabel: { id: "app.common.cancel", message: "Cancel" },
       tone: "neutral",
       onConfirm: () => {
         finish(true)

@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, onCleanup, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 
 const PROLONGED_THRESHOLD_MS = 30_000
@@ -6,9 +7,8 @@ const TICK_INTERVAL_MS = 5000
 
 export function ConnectionBanner() {
   const globalSDK = useGlobalSDK()
+  const { _ } = useLingui()
 
-  // Drive reactive updates while disconnected so the banner can transition
-  // from "Reconnecting…" to the prolonged state after the threshold.
   const [now, setNow] = createSignal(Date.now())
   createEffect(() => {
     if (globalSDK.connected()) return
@@ -43,7 +43,11 @@ export function ConnectionBanner() {
               "bg-icon-critical-base": prolonged(),
             }}
           />
-          <span>{prolonged() ? "Connection lost — check your network" : "Reconnecting…"}</span>
+          <span>
+            {prolonged()
+              ? _({ id: "connection.lost.banner", message: "Connection lost — check your network" })
+              : _({ id: "connection.reconnecting.banner", message: "Reconnecting…" })}
+          </span>
         </div>
       </div>
     </Show>

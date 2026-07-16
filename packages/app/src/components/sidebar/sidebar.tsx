@@ -9,6 +9,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLingui } from "@lingui/solid"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { BRAND_ASSETS, brandAssetPath, holosLogoPath } from "@/utils/brand-assets"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -31,6 +32,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import "./sidebar.css"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
@@ -642,55 +644,6 @@ export function Sidebar(props: SidebarProps) {
   )
 }
 
-function SidebarAttentionNotice(props: {
-  notice?: AppAttentionNotice
-  isExpanded: boolean
-  onAction: (notice: AppAttentionNotice) => void
-}) {
-  return (
-    <Show when={props.notice}>
-      {(notice) => (
-        <div
-          classList={{
-            "sb-attention-notice": true,
-            "sb-attention-notice--collapsed": !props.isExpanded,
-          }}
-          data-tone={notice().tone}
-          aria-live="polite"
-        >
-          <Tooltip value={`${notice().title}${notice().detail ? ` — ${notice().detail}` : ""}`} placement="right">
-            <button
-              type="button"
-              class="sb-attention-button"
-              aria-label={`${notice().title}${notice().detail ? `. ${notice().detail}` : ""}`}
-              disabled={notice().busy}
-              onClick={() => props.onAction(notice())}
-            >
-              <span class="sb-attention-icon">
-                <Icon name={getSemanticIcon(notice().iconToken)} size="small" />
-              </span>
-              <Show when={props.isExpanded}>
-                <span class="sb-attention-copy">
-                  <span class="sb-attention-title">{notice().title}</span>
-                  <span class="sb-attention-detail">{notice().detail}</span>
-                </span>
-                <Show when={notice().actionLabel}>
-                  <span class="sb-attention-action">{notice().busy ? "Working..." : notice().actionLabel}</span>
-                </Show>
-              </Show>
-            </button>
-          </Tooltip>
-          <Show when={notice().progress != null}>
-            <div class="sb-attention-progress" aria-hidden="true">
-              <span style={{ "--sb-attention-progress": `${notice().progress ?? 0}%` }} />
-            </div>
-          </Show>
-        </div>
-      )}
-    </Show>
-  )
-}
-
 function SidebarProjectGroup(props: {
   scope: () => LocalScope | undefined
   activeID?: string
@@ -1045,6 +998,7 @@ function SidebarSessionRow(props: {
   flyout?: boolean
   onClick: (event: MouseEvent) => void
 }) {
+  const { _ } = useLingui()
   const globalSync = useGlobalSync()
 
   const visual = createMemo(() => {
@@ -1076,7 +1030,7 @@ function SidebarSessionRow(props: {
           "sb-session-icon-blueprint-audit-tone": visual()?.tone === "blueprint-audit",
           "sb-session-icon-pulse": !!visual()?.pulse,
         }}
-        title={visual()?.label ?? ""}
+        title={_(visual()?.label ?? "")}
       >
         <Icon
           name={visual()?.icon ?? "loader"}

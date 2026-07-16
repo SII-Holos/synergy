@@ -1,4 +1,5 @@
 import { For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -6,12 +7,16 @@ import type { McpEntry } from "../types"
 import { McpCard } from "../components/McpCard"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
+const emptyTitle = { id: "settings.mcp.empty.title", message: "No MCP servers yet" }
+const emptyCopy = { id: "settings.mcp.empty.copy", message: "Add a server when a workflow needs external tools." }
+
 export function McpPanel(props: {
   entries: McpEntry[]
   onAdd: () => void
   onChange: (index: number, field: string, value: string | boolean) => void
   onRemove: (index: number) => void
 }) {
+  const { _ } = useLingui()
   return (
     <SettingsPage
       title="MCP"
@@ -38,8 +43,8 @@ export function McpPanel(props: {
             <div class="settings-integration-empty">
               <Icon name={getSemanticIcon("mcp.main")} size="normal" />
               <div>
-                <div class="settings-integration-empty-title">No MCP servers yet</div>
-                <div class="settings-integration-empty-copy">Add a server when a workflow needs external tools.</div>
+                <div class="settings-integration-empty-title">{_(emptyTitle)}</div>
+                <div class="settings-integration-empty-copy">{_(emptyCopy)}</div>
               </div>
             </div>
           }

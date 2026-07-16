@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -12,7 +13,35 @@ import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 
+const loadingLabel = { id: "settings.account.loading", message: "Loading" }
+const signedOutLabel = { id: "settings.account.signedOut", message: "Signed out" }
+const profileSavedTitle = { id: "settings.account.profileSaved.title", message: "Profile saved" }
+const profileSavedDesc = { id: "settings.account.profileSaved.description", message: "Holos profile was updated." }
+const profileSaveFailedTitle = { id: "settings.account.profileSaveFailed.title", message: "Profile save failed" }
+const profileSaveFailedDesc = {
+  id: "settings.account.profileSaveFailed.description",
+  message: "Unable to update Holos profile.",
+}
+const profileLoadError = {
+  id: "settings.account.profileLoadError",
+  message: "Holos could not load this profile. Retry, or import the agent again if this keeps failing.",
+}
+const profileUnavailable = { id: "settings.account.profileUnavailable", message: "Profile unavailable" }
+const noDescription = { id: "settings.account.noDescription", message: "No description yet." }
+const noHolosAgent = {
+  id: "settings.account.noHolosAgent",
+  message: "Create or import a Holos agent to use identity features.",
+}
+const noAgentLabel = { id: "settings.account.noAgent", message: "No Holos agent" }
+const nameRequiredError = { id: "settings.account.nameRequired", message: "Name is required" }
+const invalidUrlError = { id: "settings.account.invalidUrl", message: "Enter a valid URL" }
+
+function agentPrefix(id: string) {
+  return { id: "settings.account.agentPrefix", message: "Agent {id}", values: { id } }
+}
+
 export function AccountPanel() {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const actions = useHolosAgentActions(globalSDK)
@@ -37,18 +66,18 @@ export function AccountPanel() {
   const shortAgentId = createMemo(() => activeAgentId()?.slice(0, 8))
   const profile = createMemo(() => holos.state.social.profile)
   const displayName = createMemo(
-    () => profile()?.name || (shortAgentId() ? `Agent ${shortAgentId()}` : "No Holos agent"),
+    () => profile()?.name || (shortAgentId() ? _(agentPrefix(shortAgentId()!)) : _(noAgentLabel)),
   )
   const description = createMemo(() => profile()?.description?.trim())
   const avatarSrc = createMemo(() => profile()?.avatarUrl || brandAssetPath(BRAND_ASSETS.synergy.productIcon))
   const profileErrorMessage = createMemo(() => {
     if (!holos.state.social.profileError) return undefined
-    return "Holos could not load this profile. Retry, or import the agent again if this keeps failing."
+    return _(profileLoadError)
   })
 
   function connectionLabel() {
-    if (!holos.loaded) return "Loading"
-    if (!holos.state.identity.loggedIn) return "Signed out"
+    if (!holos.loaded) return _(loadingLabel)
+    if (!holos.state.identity.loggedIn) return _(signedOutLabel)
     return holos.state.connection.status.replace(/_/g, " ")
   }
 
@@ -59,7 +88,7 @@ export function AccountPanel() {
       new URL(trimmed)
       return undefined
     } catch {
-      return "Enter a valid URL"
+      return _(invalidUrlError)
     }
   }
 
@@ -96,7 +125,7 @@ export function AccountPanel() {
     const avatarUrl = profileForm.avatarUrl.trim()
     const avatarUrlError = validateAvatarUrl(avatarUrl)
 
-    setProfileForm("nameError", name ? undefined : "Name is required")
+    setProfileForm("nameError", name ? undefined : _(nameRequiredError))
     setProfileForm("avatarUrlError", avatarUrlError)
     if (!name || avatarUrlError) return
 
@@ -114,12 +143,12 @@ export function AccountPanel() {
       )
       await holos.refresh()
       setEditingProfile(false)
-      showToast({ type: "success", title: "Profile saved", description: "Holos profile was updated." })
+      showToast({ type: "success", title: _(profileSavedTitle), description: _(profileSavedDesc) })
     } catch (err) {
       showToast({
         type: "error",
-        title: "Profile save failed",
-        description: err instanceof Error ? err.message : "Unable to update Holos profile.",
+        title: _(profileSaveFailedTitle),
+        description: err instanceof Error ? err.message : _(profileSaveFailedDesc),
       })
     } finally {
       setProfileForm("saving", false)
@@ -141,12 +170,9 @@ export function AccountPanel() {
                   <div class="min-w-0 flex-1">
                     <div class="account-identity-name">{displayName()}</div>
                     <div class="account-identity-description">
-                      <Show
-                        when={holos.state.identity.loggedIn}
-                        fallback="Create or import a Holos agent to use identity features."
-                      >
-                        <Show when={!holos.state.social.profileError} fallback="Profile unavailable">
-                          {description() || "No description yet."}
+                      <Show when={holos.state.identity.loggedIn} fallback={_(noHolosAgent)}>
+                        <Show when={!holos.state.social.profileError} fallback={_(profileUnavailable)}>
+                          {description() || _(noDescription)}
                         </Show>
                       </Show>
                     </div>

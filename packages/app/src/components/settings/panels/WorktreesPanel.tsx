@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, Show, untrack } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -27,6 +28,7 @@ function scopeLabel(directory: string, name?: string) {
 }
 
 export function WorktreesPanel() {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const globalSync = useGlobalSync()
   const confirm = useConfirm()
