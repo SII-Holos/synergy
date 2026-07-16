@@ -8,6 +8,7 @@ import { Provider } from "../../src/provider/provider"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
+import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 import type { MessageV2 } from "../../src/session/message-v2"
 import { Embedding } from "../../src/vector/embedding"
 import { tmpdir } from "../fixture/fixture"
@@ -28,6 +29,8 @@ const originalConfigCurrent = Config.current
 const originalEmbeddingGenerate = Embedding.generate
 const originalProviderGetModel = Provider.getModel
 const originalStream = LLM.stream
+const originalMemorySnapshot = SessionMemoryPressure.currentSnapshotWithCgroup
+const originalPressurePollMs = process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS
 
 async function waitForTerminalJob(id: string, timeoutMs = 3_000) {
   const deadline = Date.now() + timeoutMs
@@ -46,6 +49,9 @@ afterEach(() => {
   ;(Embedding.generate as any) = originalEmbeddingGenerate
   ;(Provider.getModel as any) = originalProviderGetModel
   ;(LLM.stream as any) = originalStream
+  ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = originalMemorySnapshot
+  if (originalPressurePollMs === undefined) delete process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS
+  else process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS = originalPressurePollMs
   LibraryDB.Experience.removeAll()
   LibraryDB.ReencodeJob.removeAll()
   closeDB()
@@ -128,7 +134,7 @@ describe.serial("ExperienceReencode persistence", () => {
 })
 
 describe.serial("ExperienceReencode repair integration", () => {
-  test("repairs an encoding_failed experience through the complete encoder pipeline", async () => {
+  test("repairs an encoding_failed experience after cgroup pressure clears", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -231,6 +237,21 @@ describe.serial("ExperienceReencode repair integration", () => {
             text: Promise.resolve(text),
           }
         })
+        let pressureSnapshots = 0
+        ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = mock(async () => {
+          pressureSnapshots++
+          return {
+            rssBytes: 100,
+            heapUsedBytes: 50,
+            heapTotalBytes: 80,
+            externalBytes: 20,
+            arrayBuffersBytes: 10,
+            cgroupCurrentBytes: pressureSnapshots === 1 ? 2_000 : 100,
+            cgroupHighBytes: 1_000,
+            cgroupMaxBytes: 4_000,
+          }
+        })
+        process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS = "1"
 
         const started = ExperienceReencode.start({ type: "intent", reason: "encoding_failed" })
         expect(started).toMatchObject({ status: "running", totalCount: 1 })
@@ -246,6 +267,7 @@ describe.serial("ExperienceReencode repair integration", () => {
         })
         expect(embeddingAttempts).toBe(3)
         expect(llmRetries).toEqual([0, 0, 0])
+        expect(pressureSnapshots).toBeGreaterThanOrEqual(2)
         expect(finished.items).toEqual([expect.objectContaining({ id: user.id, sessionID: session.id, status: "ok" })])
 
         const repaired = LibraryDB.Experience.get(user.id)

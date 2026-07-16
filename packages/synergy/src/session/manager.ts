@@ -309,7 +309,7 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease },
+    options?: { lease?: LoopLease; requestNextWorkOnFailure?: boolean },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
@@ -357,7 +357,7 @@ export namespace SessionManager {
       completed = true
       return result
     } finally {
-      await release(lease, { requestNextWork: completed })
+      await release(lease, { requestNextWork: completed || options?.requestNextWorkOnFailure !== false })
       const runtime = getRuntime(sessionID)
       if (runtime && !occupied(runtime)) unregisterRuntime(sessionID)
     }

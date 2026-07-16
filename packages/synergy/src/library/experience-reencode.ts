@@ -302,8 +302,8 @@ export namespace ExperienceReencode {
         concurrency: learning.reencodeConcurrency,
         signal: controller.signal,
         pressurePollMs: pressurePollMs(),
-        pressureGate() {
-          const snapshot = SessionMemoryPressure.currentSnapshot()
+        async pressureGate() {
+          const snapshot = await SessionMemoryPressure.currentSnapshotWithCgroup()
           const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
           const decision = SessionMemoryPressure.decide({
             snapshot,
