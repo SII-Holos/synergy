@@ -9,18 +9,22 @@ function localConfig(local?: { source?: "huggingface" | "hf-mirror" | "custom"; 
 }
 
 function extractor() {
-  const fn = mock(async () => ({ data: new Float32Array([0.1, 0.2]) }))
-  return fn
+  return Object.assign(
+    mock(async () => ({ data: new Float32Array([0.1, 0.2]) })),
+    {
+      dispose: mock(async () => {}),
+    },
+  )
 }
 
-beforeEach(() => {
-  Embedding.dispose()
+beforeEach(async () => {
+  await Embedding.dispose()
   ;(Config.current as typeof Config.current) = mock(async () => localConfig())
 })
 
-afterEach(() => {
+afterEach(async () => {
   Embedding.setLocalRuntimeControlsForTest()
-  Embedding.dispose()
+  await Embedding.dispose()
   ;(Config.current as typeof Config.current) = originalConfigCurrent
 })
 
@@ -112,10 +116,31 @@ describe("local embedding asset", () => {
     })
   })
 
+  test("falls back to the disk cache after a network load failure", async () => {
+    const ready = extractor()
+    const pipeline = mock(async (_task: string, _model: string, options: { local_files_only?: true }) => {
+      if (!options.local_files_only) throw new Error("hub unavailable")
+      return ready
+    })
+    Embedding.setLocalRuntimeControlsForTest({
+      loadRuntime: async () => ({
+        pipeline,
+        isCached: mock(async () => true),
+        configure() {},
+      }),
+    })
+
+    await expect(Embedding.warmup()).resolves.toBeUndefined()
+
+    expect(pipeline).toHaveBeenCalledTimes(2)
+    expect(pipeline.mock.calls[1]?.[2]).toMatchObject({ local_files_only: true })
+    expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
+  })
+
   test("allows a failed explicit download to retry in the same process", async () => {
     const ready = extractor()
     const pipeline = mock(async () => {
-      if (pipeline.mock.calls.length === 1) throw new Error("hub unavailable")
+      if (pipeline.mock.calls.length <= 2) throw new Error("hub unavailable")
       return ready
     })
     Embedding.setLocalRuntimeControlsForTest({
@@ -135,7 +160,7 @@ describe("local embedding asset", () => {
     })
 
     await expect(Embedding.warmup()).resolves.toBeUndefined()
-    expect(pipeline).toHaveBeenCalledTimes(2)
+    expect(pipeline).toHaveBeenCalledTimes(3)
     expect(await Embedding.status()).toMatchObject({ asset: "cached", runtime: "ready" })
   })
 

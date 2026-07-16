@@ -11,17 +11,20 @@ function app() {
 }
 
 function extractor() {
-  return mock(async () => ({ data: new Float32Array([0.1, 0.2]) }))
+  return Object.assign(
+    mock(async () => ({ data: new Float32Array([0.1, 0.2]) })),
+    { dispose: mock(async () => {}) },
+  )
 }
 
-beforeEach(() => {
-  Embedding.dispose()
+beforeEach(async () => {
+  await Embedding.dispose()
   ;(Config.current as typeof Config.current) = mock(async () => ({}))
 })
 
-afterEach(() => {
+afterEach(async () => {
   Embedding.setLocalRuntimeControlsForTest()
-  Embedding.dispose()
+  await Embedding.dispose()
   ;(Config.current as typeof Config.current) = originalConfigCurrent
 })
 

@@ -85,13 +85,13 @@ jobs:
           git config --global user.email "ci@synergy.dev"
           git config --global user.name "CI Runner"
 
-      - name: Run package tests
-        run: bun turbo test
+      - name: Run non-Synergy package tests
+        run: bun turbo test --filter='!synergy'
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
-      - name: Run Synergy coverage
-        run: bun test --coverage --timeout 30000 --coverage-reporter=lcov
+      - name: Run Synergy tests
+        run: bun test --timeout 30000
         working-directory: packages/synergy
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test

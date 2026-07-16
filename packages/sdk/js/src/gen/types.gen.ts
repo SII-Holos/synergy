@@ -7118,6 +7118,7 @@ export type EventFileWatcherUpdated = {
     oldAbsolute?: string
     parent?: string
     node?: unknown
+    resync?: boolean
   }
 }
 

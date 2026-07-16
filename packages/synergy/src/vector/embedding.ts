@@ -5,6 +5,76 @@ import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 
+export interface LocalExtractor {
+  (input: string, options: { pooling: "mean"; normalize: true }): Promise<{ data: Float32Array }>
+  dispose(): Promise<void>
+}
+
+export class LocalEmbeddingRuntime {
+  private extractor: LocalExtractor | undefined
+  private loading: Promise<LocalExtractor> | undefined
+  private generation = 0
+  private loadError: Error | undefined
+
+  constructor(
+    private readonly load: () => Promise<LocalExtractor>,
+    private readonly onDisposeError: (error: unknown) => void = () => {},
+  ) {}
+
+  get ready(): boolean {
+    return this.extractor !== undefined
+  }
+
+  get error(): Error | undefined {
+    return this.loadError
+  }
+
+  clearError(): void {
+    this.loadError = undefined
+  }
+
+  async get(): Promise<LocalExtractor> {
+    if (this.extractor) return this.extractor
+    if (this.loading) return this.loading
+
+    const generation = this.generation
+    const loading = this.load()
+      .then(async (extractor) => {
+        if (generation !== this.generation) {
+          await this.release(extractor)
+          throw new Error("Local embedding runtime disposed during load")
+        }
+        this.extractor = extractor
+        return extractor
+      })
+      .catch((error) => {
+        if (generation === this.generation) {
+          this.loadError = error instanceof Error ? error : new Error(String(error))
+        }
+        throw error
+      })
+      .finally(() => {
+        if (this.loading === loading) this.loading = undefined
+      })
+    this.loading = loading
+    return loading
+  }
+
+  async dispose(): Promise<void> {
+    this.generation++
+    const extractor = this.extractor
+    const loading = this.loading
+    this.extractor = undefined
+    this.loadError = undefined
+    if (extractor) await this.release(extractor)
+    await loading?.catch(() => undefined)
+  }
+
+  private async release(extractor: LocalExtractor): Promise<void> {
+    await extractor.dispose().catch(this.onDisposeError)
+  }
+}
+
 export namespace Embedding {
   const log = Log.create({ service: "vector.embedding" })
 
@@ -18,7 +88,6 @@ export namespace Embedding {
   const TIMEOUT_MS = 10_000
 
   type LocalSource = "huggingface" | "hf-mirror" | "custom"
-  type LocalExtractor = (text: string, options: { pooling: "mean"; normalize: true }) => Promise<{ data: Float32Array }>
   type ProgressInfo = {
     status?: string
     progress?: number
@@ -28,6 +97,7 @@ export namespace Embedding {
   type PipelineOptions = {
     dtype: "q8"
     progress_callback: (info: ProgressInfo) => void
+    local_files_only?: true
   }
   type LocalRuntime = {
     pipeline(task: string, model: string, options: PipelineOptions): Promise<LocalExtractor>
@@ -61,13 +131,11 @@ export namespace Embedding {
         remoteHost?: string
         asset: "missing" | "downloading" | "cached"
         progress?: ProgressSnapshot
-        promise: Promise<LocalExtractor>
       }
     | {
         phase: "ready"
         source: LocalSource
         remoteHost: string
-        extractor: LocalExtractor
         progress: ProgressSnapshot
       }
 
@@ -90,6 +158,9 @@ export namespace Embedding {
   let loadState: LocalLoadState = { phase: "unloaded" }
   let runtimeControls: LocalRuntimeControls = defaultRuntimeControls()
   let loadGeneration = 0
+  const localRuntime = new LocalEmbeddingRuntime(loadLocalExtractor, (error) => {
+    log.warn("failed to dispose local embedding model", { error })
+  })
 
   function defaultRuntimeControls(): LocalRuntimeControls {
     return {
@@ -144,77 +215,94 @@ export namespace Embedding {
     return { runtime, cached }
   }
 
-  function getLocalExtractor(): Promise<LocalExtractor> {
-    if (loadState.phase === "ready") return Promise.resolve(loadState.extractor)
-    if (loadState.phase === "loading") return loadState.promise
-
-    const retrying = Boolean(loadState.error)
+  async function loadLocalExtractor(): Promise<LocalExtractor> {
+    const retrying = loadState.phase === "unloaded" && Boolean(loadState.error)
     const generation = ++loadGeneration
     const loading: Extract<LocalLoadState, { phase: "loading" }> = {
       phase: "loading",
       asset: "missing",
-      promise: undefined as unknown as Promise<LocalExtractor>,
     }
     loadState = loading
-    loading.promise = (async () => {
-      let source: LocalSource
-      let remoteHost: string
-      try {
-        const config = await Config.current()
-        ;({ source, remoteHost } = resolveLocalSource(config))
-        loading.source = source
-        loading.remoteHost = remoteHost
-      } catch (cause) {
-        const error = cause instanceof Error ? cause : new Error(String(cause))
-        if (loadGeneration === generation) {
-          loadState = {
-            phase: "unloaded",
-            asset: "failed",
-            error: { code: "invalid_source", message: error.message },
-          }
+
+    let source: LocalSource
+    let remoteHost: string
+    try {
+      const config = await Config.current()
+      ;({ source, remoteHost } = resolveLocalSource(config))
+      loading.source = source
+      loading.remoteHost = remoteHost
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      if (loadGeneration === generation) {
+        loadState = {
+          phase: "unloaded",
+          asset: "failed",
+          error: { code: "invalid_source", message: error.message },
         }
-        throw error
+      }
+      throw error
+    }
+
+    if (retrying) log.info("retrying local embedding model load (previous attempt failed)")
+
+    try {
+      const inspected = await inspectLocalAsset(source, remoteHost)
+      loading.asset = inspected.cached ? "cached" : "downloading"
+      const progressCallback = (info: ProgressInfo) => {
+        const progress = progressFrom(info)
+        if (!progress) return
+        loading.asset = "downloading"
+        loading.progress = progress
       }
 
-      if (retrying) log.info("retrying local embedding model load (previous attempt failed)")
-
+      let extractor: LocalExtractor
       try {
-        const inspected = await inspectLocalAsset(source, remoteHost)
-        loading.asset = inspected.cached ? "cached" : "downloading"
-        const extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
+        extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
           dtype: "q8",
-          progress_callback(info) {
-            const progress = progressFrom(info)
-            if (!progress) return
-            loading.asset = "downloading"
-            loading.progress = progress
-          },
+          progress_callback: progressCallback,
         })
-        if (loadGeneration === generation) {
-          loadState = {
-            phase: "ready",
-            source,
-            remoteHost,
-            extractor,
-            progress: completeProgress(loading.progress),
-          }
-        }
-        return extractor
-      } catch (cause) {
-        const error = cause instanceof Error ? cause : new Error(String(cause))
-        if (loadGeneration === generation) {
-          loadState = {
-            phase: "unloaded",
-            source,
-            remoteHost,
-            asset: "failed",
-            error: { code: "load_failed", message: error.message },
-          }
-        }
-        throw error
+      } catch (networkError) {
+        log.warn("local embedding model: network load failed, trying from disk cache", {
+          error: networkError instanceof Error ? networkError.message : String(networkError),
+        })
+        loading.asset = "cached"
+        extractor = await inspected.runtime.pipeline(LOCAL_TASK, LOCAL_MODEL, {
+          dtype: "q8",
+          local_files_only: true,
+          progress_callback: progressCallback,
+        })
+        log.info("local embedding model loaded from disk cache (offline)")
       }
-    })()
-    return loading.promise
+
+      if (loadGeneration === generation) {
+        loadState = {
+          phase: "ready",
+          source,
+          remoteHost,
+          progress: completeProgress(loading.progress),
+        }
+      }
+      return extractor
+    } catch (cause) {
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      if (loadGeneration === generation) {
+        loadState = {
+          phase: "unloaded",
+          source,
+          remoteHost,
+          asset: "failed",
+          error: { code: "load_failed", message: error.message },
+        }
+      }
+      throw error
+    }
+  }
+
+  async function getLocalExtractor(): Promise<LocalExtractor> {
+    if (localRuntime.error) {
+      localRuntime.clearError()
+    }
+    return localRuntime.get()
   }
 
   export const Info = z
@@ -386,9 +474,10 @@ export namespace Embedding {
     }
   }
 
-  export function dispose() {
+  export async function dispose(): Promise<void> {
     loadGeneration++
     loadState = { phase: "unloaded" }
+    await localRuntime.dispose()
   }
 
   export function setLocalRuntimeControlsForTest(controls?: Partial<LocalRuntimeControls>) {
