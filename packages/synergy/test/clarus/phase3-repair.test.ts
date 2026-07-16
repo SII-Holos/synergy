@@ -370,6 +370,7 @@ test("a successful result response remains dispatched until its recorded event",
   const tmp = await tmpdir({ git: true })
   const scope = await tmp.scope()
   const port = new IdlePort()
+  const responseTaskId = "repair_task_response_only"
   port.resultResponse = Promise.resolve({
     kind: "known",
     type: "runtimeTaskResultRecorded",
@@ -379,7 +380,7 @@ test("a successful result response remains dispatched until its recorded event",
     runID: "run_response",
     epoch: 1,
     generation: 1,
-    task: { taskID: taskId, subtaskID: "subtask_response", status: "submitted" },
+    task: { taskID: responseTaskId, subtaskID: "subtask_response", status: "submitted" },
   })
   await ScopeContext.provide({
     scope,
@@ -388,7 +389,7 @@ test("a successful result response remains dispatched until its recorded event",
       await ClarusTaskBindingStore.ensureAssigned(
         agentId,
         projectId,
-        taskId,
+        responseTaskId,
         "ses_response_only",
         "/tmp/ignored-by-home-scope",
         "scope-response",
@@ -396,7 +397,7 @@ test("a successful result response remains dispatched until its recorded event",
       await ClarusTaskBindingStore.updateAssignmentMetadata({
         agentId,
         projectId,
-        taskId,
+        taskId: responseTaskId,
         runID: "run_response",
         phase: "implementation",
         subtaskID: "subtask_response",
@@ -409,12 +410,13 @@ test("a successful result response remains dispatched until its recorded event",
       })
       await ClarusRuntime.attach(port)
       await port.emitConnection(connected())
+      await ClarusTaskBindingStore.markProcessing(agentId, projectId, responseTaskId)
       await ClarusRuntime.recordTaskResult({
         requestID: "response_only",
         agentId,
         projectId,
         runID: "run_response",
-        taskID: taskId,
+        taskID: responseTaskId,
         subtaskID: "subtask_response",
         success: true,
         output: "done",

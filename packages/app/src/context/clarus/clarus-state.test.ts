@@ -11,7 +11,7 @@
 import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createClarusModel } from "./clarus-model"
-import type { ClarusComposerSubmitInput, ClarusContinueLocalResult } from "./clarus-model"
+import type { ClarusComposerSubmitInput } from "./clarus-model"
 import {
   createMockClarusDeps,
   makeNavResponse,
@@ -19,7 +19,6 @@ import {
   makeNavTasks,
   makeNavTask,
   makeSnapWithProjects,
-  makeContinueLocalResult,
   makeComposerUsers,
   makeComposerProjects,
   makeComposerSubmitInput,
@@ -418,63 +417,6 @@ describe("Clarus state model", () => {
   })
 
   // =====================================================================
-  // Continue-local
-  // =====================================================================
-  describe("continue-local", () => {
-    test("continueLocalTask calls generated method exactly once", async () => {
-      const { deps, continueLocalMock } = createMockClarusDeps()
-      const result = makeContinueLocalResult({ taskId: "t-1", status: "ok" })
-      continueLocalMock.mockResolvedValue({ data: result })
-
-      await createRoot(async (dispose) => {
-        const model = createClarusModel(deps)
-        const got: ClarusContinueLocalResult = await model.continueLocalTask("proj-1", "t-1")
-
-        expect(got.taskId).toBe("t-1")
-        expect(continueLocalMock).toHaveBeenCalledTimes(1)
-        expect(continueLocalMock).toHaveBeenCalledWith({
-          projectId: "proj-1",
-          taskId: "t-1",
-        })
-        dispose()
-      })
-    })
-
-    test("continue-local state is keyed per task", async () => {
-      const { deps, continueLocalMock } = createMockClarusDeps()
-      continueLocalMock.mockResolvedValue({
-        data: makeContinueLocalResult({ taskId: "t-1", status: "ok" }),
-      })
-
-      await createRoot(async (dispose) => {
-        const model = createClarusModel(deps)
-        await model.continueLocalTask("proj-1", "t-1")
-
-        // Per-task state should exist for this task.
-        expect(model.store.continueLocalByTask["t-1"]).toBeDefined()
-        dispose()
-      })
-    })
-
-    test("continue-local re-fetches navigation snapshot on success", async () => {
-      const { deps, navigationMock, continueLocalMock } = createMockClarusDeps()
-      continueLocalMock.mockResolvedValue({
-        data: makeContinueLocalResult({ taskId: "t-1", status: "ok" }),
-      })
-      navigationMock.mockResolvedValue({ data: makeNavResponse() })
-
-      await createRoot(async (dispose) => {
-        const model = createClarusModel(deps)
-        await model.continueLocalTask("proj-1", "t-1")
-
-        // After continue-local succeeds, navigation should refresh.
-        expect(navigationMock).toHaveBeenCalled()
-        dispose()
-      })
-    })
-  })
-
-  // =====================================================================
   // Composer lookup caps
   // =====================================================================
   describe("composer lookup", () => {
@@ -615,7 +557,6 @@ describe("Clarus state model", () => {
         expect(model.store.loading).toBe(false)
         expect(model.store.selectedProjectId).toBeUndefined()
         expect(model.store.selectedTaskId).toBeUndefined()
-        expect(model.store.continueLocalByTask).toEqual({})
         expect(model.store.composerUsers).toEqual([])
         expect(model.store.composerProjects).toEqual([])
         dispose()

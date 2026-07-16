@@ -845,6 +845,8 @@ export namespace ClarusTaskBindingStore {
     const updated: ClarusTaskBindingV4 = {
       ...existing,
       status: "needs_attention",
+      resultState: "idle",
+      resultOutboxRequestID: undefined,
       updatedAt: Date.now(),
     }
     await write(updated)

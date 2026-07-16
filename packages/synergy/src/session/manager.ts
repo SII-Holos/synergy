@@ -33,6 +33,7 @@ export namespace SessionManager {
       }
       model?: Model
       metadata?: Record<string, any>
+      tools?: Record<string, boolean>
       inboxItemID?: string
       tools?: Record<string, boolean>
     }
@@ -700,6 +701,7 @@ export namespace SessionManager {
           visible: true,
           metadata: input.mail.metadata,
           summary: userMail.summary,
+          tools: userMail.tools,
         },
         source: { type: "clarus", label: "Clarus Task" },
       })

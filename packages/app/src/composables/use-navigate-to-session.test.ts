@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { createSessionNavigator } from "./session-navigator"
 import {
   isSessionNavigationRequestCurrent,
   navigateResolvedSession,
@@ -16,6 +20,12 @@ function navigationRecorder() {
   }) as SessionNavigate
   return { calls, navigate }
 }
+
+const session = (id: string, scope: Session["scope"]): Session =>
+  ({
+    id,
+    scope,
+  }) as Session
 
 describe("resolved session navigation", () => {
   test("opens a session with the current path as its Back target", () => {
@@ -150,4 +160,59 @@ test("session hash updates preserve the current history state", () => {
   replaceSessionHistoryUrl(history, "/scope/session/ses_child#message-1")
 
   expect(calls).toEqual([[state, "", "/scope/session/ses_child#message-1"]])
+})
+
+describe("global session navigation", () => {
+  test("navigates from a global host using a cached session scope", async () => {
+    const paths: string[] = []
+    const target = session("session-1", { id: "scope-clarus", type: "project", directory: "/workspace/clarus" })
+    const navigate = createSessionNavigator({
+      findCachedSession: (sessionID) => (sessionID === target.id ? target : undefined),
+      getSession: async () => undefined,
+      fallbackDir: base64Encode(HOME_SCOPE_KEY),
+      fallbackScopeKey: HOME_SCOPE_KEY,
+      currentPath: () => "/clarus",
+      navigate: (path) => paths.push(path),
+    })
+
+    await navigate(target.id)
+
+    expect(paths).toEqual([`/${base64Encode("/workspace/clarus")}/session/${target.id}`])
+  })
+
+  test("resolves an uncached session through the global SDK", async () => {
+    const paths: string[] = []
+    const target = session("session-2", { id: "scope-home", type: "home" })
+    const navigate = createSessionNavigator({
+      findCachedSession: () => undefined,
+      getSession: async () => target,
+      fallbackDir: base64Encode(HOME_SCOPE_KEY),
+      fallbackScopeKey: HOME_SCOPE_KEY,
+      currentPath: () => "/clarus",
+      navigate: (path) => paths.push(path),
+    })
+
+    await navigate(target.id)
+
+    expect(paths).toEqual([`/${base64Encode(HOME_SCOPE_KEY)}/session/${target.id}`])
+  })
+
+  test("falls back to the supplied route when lookup fails", async () => {
+    const paths: string[] = []
+    const fallbackDir = base64Encode(HOME_SCOPE_KEY)
+    const navigate = createSessionNavigator({
+      findCachedSession: () => undefined,
+      getSession: async () => {
+        throw new Error("unavailable")
+      },
+      fallbackDir,
+      fallbackScopeKey: HOME_SCOPE_KEY,
+      currentPath: () => "/clarus",
+      navigate: (path) => paths.push(path),
+    })
+
+    await navigate("missing-session")
+
+    expect(paths).toEqual([`/${fallbackDir}/session/missing-session`])
+  })
 })

@@ -244,7 +244,7 @@ describe("SessionNav.deriveCategory", () => {
   })
 
   // ── Type narrowing ────────────────────────────────────────────────────
-  const validCategories = ["project", "home", "channel", "background", "github"] as const
+  const validCategories = ["project", "home", "channel", "background", "github", "clarus"] as const
 
   test("deriveCategory never returns a separate channel category name", () => {
     // Channel sessions must return "channel", never anything else
@@ -291,9 +291,9 @@ describe("SessionNav.deriveCategory", () => {
   })
 })
 
-// ── Clarus endpoint exclusion ─────────────────────────────────────────
+// ── Clarus endpoint category ──────────────────────────────────────────
 
-test("clarus endpoint kind maps to background", () => {
+test("clarus endpoint kind maps to clarus", () => {
   const cat = SessionNav.deriveCategory({
     scopeType: "project",
     endpointKind: "clarus",
@@ -301,7 +301,7 @@ test("clarus endpoint kind maps to background", () => {
     cortex: undefined,
     agenda: undefined,
   })
-  expect(cat).toBe("background")
+  expect(cat).toBe("clarus")
 })
 
 test("clarus sessions are never exposed as channel", () => {
@@ -316,7 +316,7 @@ test("clarus sessions are never exposed as channel", () => {
   expect(cat).not.toBe("channel")
 })
 
-test("clarus with parentID still maps to background", () => {
+test("clarus with parentID remains in the clarus category", () => {
   const cat = SessionNav.deriveCategory({
     scopeType: "project",
     endpointKind: "clarus",
@@ -324,7 +324,7 @@ test("clarus with parentID still maps to background", () => {
     cortex: undefined,
     agenda: undefined,
   })
-  expect(cat).toBe("background")
+  expect(cat).toBe("clarus")
 })
 
 test("clarus endpoint kind is a valid argument to deriveCategory", () => {
@@ -334,5 +334,5 @@ test("clarus endpoint kind is a valid argument to deriveCategory", () => {
     endpointKind: "clarus",
   }
   const cat = SessionNav.deriveCategory(input)
-  expect(cat).toBe("background")
+  expect(cat).toBe("clarus")
 })

@@ -32,6 +32,7 @@ import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
 import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
 import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
 import { LoopStopTool } from "./loop-stop"
+import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
 import { LightLoopApproveTool } from "./light-loop-approve"
 import { LightLoopRejectTool } from "./light-loop-reject"
 import { PathwayReadTool } from "./pathway-read"
@@ -379,6 +380,7 @@ export namespace ToolRegistry {
       BlueprintLoopApproveTool,
       BlueprintLoopRejectTool,
       LoopStopTool,
+      ClarusSubmitTaskResultTool,
       LightLoopApproveTool,
       LightLoopRejectTool,
       PathwayReadTool,

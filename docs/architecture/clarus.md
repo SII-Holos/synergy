@@ -185,23 +185,14 @@ Already-local-only tasks return the existing binding (idempotent). Ambiguous or 
 
 Clarus registers as a sidebar navigation entry immediately after Home and before Agenda, with semantic icon token `clarus.main` and path `/clarus`.
 
-The navigation panel renders:
+The navigation surfaces render:
 
-- A **connection status bar** showing the five public states with contextual actions (connect, retry, sign in).
+- A **connection status bar** showing the five public states.
 - **Active projects** with their tasks sorted by priority.
-- **Inactive projects** with history — only shown when they have durable task records; empty inactive projects are hidden.
-- A **task detail panel** for the selected task, including a task header with status, phase, and composer.
+- **Inactive projects** with history — only when they have durable task records.
+- Task rows that open the native Clarus Task Session in the standard session page.
 
-### Composer Lifecycle
-
-The Clarus task composer has 13 states derived from `composeTaskLifecycle`, which maps task status and result state to:
-
-- Input enabled/disabled
-- Placeholder text (progress, terminal, or compose)
-- Action button visibility and label
-- Continue-locally button visibility (only for `submitted` + `acknowledged`)
-
-The composer submits project messages through the generated SDK and refreshes navigation on success.
+Clarus task sessions use the standard session prompt surface. Clarus-specific completion controls do not gate or replace normal session navigation; the Agent follows its assignment instructions and submits through `clarus_submit_task_result`.
 
 ### Event-Driven Invalidation
 
@@ -233,25 +224,29 @@ All routes use bounded Zod schemas with strict allowlist fields, limit validatio
 
 ## Ownership
 
-| Area                  | Primary implementation                                              |
-| --------------------- | ------------------------------------------------------------------- |
-| Tunnel adapter        | `packages/synergy/src/holos/clarus.ts`                              |
-| Agent tunnel port     | `packages/synergy/src/clarus/agent-tunnel-port.ts`                  |
-| Session router        | `packages/synergy/src/clarus/session-router.ts`                     |
-| Binding persistence   | `packages/synergy/src/clarus/binding.ts`                            |
-| Schemas and migration | `packages/synergy/src/clarus/schemas.ts`, `clarus/migration.ts`     |
-| Navigation DTOs       | `packages/synergy/src/clarus/navigation.ts`                         |
-| Runtime / producer    | `packages/synergy/src/clarus/runtime.ts`                            |
-| REST port             | `packages/synergy/src/clarus/rest-port.ts`, `clarus/rest-client.ts` |
-| Events                | `packages/synergy/src/clarus/event.ts`                              |
-| Server routes         | `packages/synergy/src/server/clarus-route.ts`                       |
-| Frontend model        | `packages/app/src/context/clarus/clarus-model.ts`                   |
-| Frontend components   | `packages/app/src/components/clarus/`                               |
-| Frontend composables  | `packages/app/src/composables/use-clarus-task-meta.ts`              |
-| Generated SDK         | `packages/sdk/js/src/gen/` (types, client operations)               |
+| Area                   | Primary implementation                                              |
+| ---------------------- | ------------------------------------------------------------------- |
+| Tunnel adapter         | `packages/synergy/src/holos/clarus.ts`                              |
+| Agent tunnel port      | `packages/synergy/src/clarus/agent-tunnel-port.ts`                  |
+| Session router         | `packages/synergy/src/clarus/session-router.ts`                     |
+| Binding persistence    | `packages/synergy/src/clarus/binding.ts`                            |
+| Schemas and migration  | `packages/synergy/src/clarus/schemas.ts`, `clarus/migration.ts`     |
+| Navigation DTOs        | `packages/synergy/src/clarus/navigation.ts`                         |
+| Runtime / producer     | `packages/synergy/src/clarus/runtime.ts`                            |
+| Agent result tool      | `packages/synergy/src/tool/clarus-submit-task-result.ts`            |
+| REST port              | `packages/synergy/src/clarus/rest-port.ts`, `clarus/rest-client.ts` |
+| Events                 | `packages/synergy/src/clarus/event.ts`                              |
+| Server routes          | `packages/synergy/src/server/clarus-route.ts`                       |
+| Frontend model         | `packages/app/src/context/clarus/clarus-model.ts`                   |
+| Frontend components    | `packages/app/src/components/clarus/`                               |
+| Frontend session links | `packages/app/src/composables/session-navigator.ts`                 |
+| Generated SDK          | `packages/sdk/js/src/gen/` (types, client operations)               |
 
 ## Cross-Cutting Invariants
 
+- A Clarus assignment creates an autonomous, unattended task session whose Agent loads `clarus-agent-participation` and explicitly submits success or failure through `clarus_submit_task_result`; Session Idle/Error never auto-submits a result.
+- Clarus task sessions use native `SessionNav.category = "clarus"` with project/task metadata and appear only in the dedicated Clarus navigation area.
+- Session navigation indexes are rebuildable V2 caches; reading a legacy V1 index rebuilds it from authoritative Session endpoint data so existing Clarus sessions self-heal into the native `clarus` category.
 - There is exactly one Holos Agent Tunnel WebSocket. Clarus is a native capability on that transport; there is no separate Clarus daemon, adapter process, polling loop, or second WebSocket.
 - Every `clarus.*` wire frame enters through `packages/synergy/src/holos/envelope.ts` native fallthrough and reaches `createClarusAgentTunnelAdapter` for bounded DTO conversion.
 - Ambiguous request outcomes follow Scheme A: no auto-retry; callers inspect persisted state.

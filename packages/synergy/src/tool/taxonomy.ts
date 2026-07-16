@@ -207,6 +207,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
+  clarus_submit_task_result: entry("communication.deliver", { stateful: true, externalIO: true }),
   // browser
   browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),
   browser_snapshot: entry("browser.inspect"),

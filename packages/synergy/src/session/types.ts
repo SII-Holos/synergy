@@ -216,7 +216,7 @@ export const Info = z
           title: z.string().optional(),
         })
         .optional(),
-      category: z.enum(["project", "home", "channel", "background", "github"]).optional(),
+      category: z.enum(["project", "home", "channel", "background", "github", "clarus"]).optional(),
       provenance: z.literal("github").optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z

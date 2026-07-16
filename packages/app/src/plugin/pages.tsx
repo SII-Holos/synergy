@@ -22,6 +22,7 @@ import {
   type NavigationContentProps,
   type NavigationEntry,
 } from "./registries/navigation-registry"
+import { useGlobalNavigateToSession } from "@/composables/use-global-navigate-to-session"
 
 function PluginSurfaceFrame(props: { title: string; children: JSX.Element }) {
   return (
@@ -143,6 +144,7 @@ function NavigationPageContent(props: {
   title: string
   message: () => string
 }) {
+  const navigateToSession = useGlobalNavigateToSession()
   return (
     <Show when={props.entry()} fallback={<PluginSurfaceUnavailable title={props.title} message={props.message()} />}>
       {(navigation) => (
@@ -152,6 +154,7 @@ function NavigationPageContent(props: {
             pluginId: navigation().pluginId,
             navigationId: navigation().navigationId,
             placement: navigation().placement,
+            navigateToSession,
           }}
         />
       )}

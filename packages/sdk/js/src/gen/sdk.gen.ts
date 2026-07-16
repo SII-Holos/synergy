@@ -1580,7 +1580,7 @@ export class Session extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
-      category?: "project" | "home" | "channel" | "background" | "github"
+      category?: "project" | "home" | "channel" | "background" | "github" | "clarus"
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
       limit?: number
@@ -3039,7 +3039,7 @@ export class Nav extends HeyApiClient {
     parameters?: {
       parentOnly?: boolean
       includeArchived?: boolean
-      category?: "project" | "home" | "channel" | "background" | "github"
+      category?: "project" | "home" | "channel" | "background" | "github" | "clarus"
       search?: string
       limit?: number
       cursorLastActivityAt?: number

@@ -8,7 +8,7 @@
 
 import { createEffect } from "solid-js"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
-import { createClarusModel, mapContinueLocalResult, type ClarusModel } from "./clarus/clarus-model"
+import { createClarusModel, type ClarusModel } from "./clarus/clarus-model"
 import { useGlobalSDK } from "./global-sdk"
 import { useGlobalSync } from "./global-sync"
 
@@ -22,10 +22,6 @@ export const { use: useClarus, provider: ClarusProvider } = createSimpleContext(
       navigation: () =>
         sdk.client.global.clarus.navigation<true>().then((res) => ({
           data: res.data,
-        })),
-      continueLocal: (params) =>
-        sdk.client.global.clarus.projects.continueLocal<true>(params).then((res) => ({
-          data: mapContinueLocalResult(res.data),
         })),
       lookupUsers: (params) =>
         sdk.client.global.clarus.composer.lookupUsers<true>(params).then((res) => ({

@@ -192,6 +192,32 @@ describe("local_only irreversibility", () => {
   })
 })
 
+describe("submitting rollback", () => {
+  test("revertSubmitting clears the in-flight result request", async () => {
+    const taskId = "task_revert_submitting"
+    await ClarusTaskBindingStore.ensureAssigned(
+      AGENT_ID,
+      PROJECT_ID,
+      taskId,
+      "ses_revert_submitting",
+      "/tmp/clarus-revert-submitting",
+      "scope_revert_submitting",
+    )
+    await ClarusTaskBindingStore.markSubmitting({
+      agentId: AGENT_ID,
+      projectId: PROJECT_ID,
+      taskId,
+      resultOutboxRequestID: "result_revert_submitting",
+    })
+
+    const reverted = await ClarusTaskBindingStore.revertSubmitting(AGENT_ID, PROJECT_ID, taskId)
+
+    expect(reverted?.status).toBe("needs_attention")
+    expect(reverted?.resultState).toBe("idle")
+    expect(reverted?.resultOutboxRequestID).toBeUndefined()
+  })
+})
+
 // =============================================================================
 // Invariant 3: Exact result identity validation helpers
 // =============================================================================
