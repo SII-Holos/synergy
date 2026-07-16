@@ -2,6 +2,7 @@ import { Session } from "@/session"
 import { SessionEndpoint } from "@/session/endpoint"
 import { SessionManager } from "@/session/manager"
 import { SessionInbox } from "@/session/inbox"
+import { SessionInteraction } from "@/session/interaction"
 import { Identifier } from "@/id/id"
 import { ScopeContext } from "@/scope/context"
 import { Lock } from "@/util/lock"
@@ -20,6 +21,7 @@ function taskMail(input: {
   messageID: string
   text: string
   agent?: string
+  tools?: Record<string, boolean>
   extraMetadata?: Record<string, unknown>
 }): SessionManager.SessionMail.User {
   return {
@@ -34,6 +36,7 @@ function taskMail(input: {
       },
     ],
     ...(input.agent !== undefined ? { agent: input.agent } : {}),
+    ...(input.tools !== undefined ? { tools: input.tools } : {}),
     metadata: { source: "clarus", ...(input.extraMetadata ?? {}) },
   }
 }
@@ -117,6 +120,8 @@ export async function getOrCreateTaskSession(input: {
         title: `Task — ${input.taskId}`,
         endpoint,
         workspace,
+        controlProfile: "autonomous",
+        interaction: SessionInteraction.unattended("clarus"),
       }),
   })
 
@@ -372,6 +377,7 @@ export async function deliverTaskMessage(input: {
   taskId: string
   messageId: string
   text: string
+  tools?: Record<string, boolean>
   extraMetadata?: Record<string, unknown>
 }): Promise<ClarusDelivery> {
   validateSegment(input.agentId)
@@ -431,6 +437,7 @@ export async function deliverTaskMessage(input: {
       text: input.text,
       agent: taskBinding?.frozenAgent,
       extraMetadata: input.extraMetadata,
+      tools: input.tools,
     }),
     inboxItemID: itemID,
     inboxMessageID: deterministicMessageID,
@@ -449,7 +456,14 @@ export async function deliverTaskMessage(input: {
 }
 
 async function recoverPlannedDelivery(
-  input: { agentId: string; projectId: string; taskId: string; messageId: string; text: string },
+  input: {
+    agentId: string
+    projectId: string
+    taskId: string
+    messageId: string
+    text: string
+    tools?: Record<string, boolean>
+  },
   binding: { sessionID: string; assignmentInboxItemID?: string; assignmentMessageID?: string; frozenAgent?: string },
   itemID: string,
   deterministicMessageID: string,
@@ -468,6 +482,7 @@ async function recoverPlannedDelivery(
         messageID: resolvedMessageID,
         text: input.text,
         agent: binding.frozenAgent,
+        tools: input.tools,
       }),
       inboxItemID: resolvedItemID,
       inboxMessageID: resolvedMessageID,

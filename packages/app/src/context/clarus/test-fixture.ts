@@ -10,8 +10,6 @@ import type {
   ClarusModelDeps,
   ClarusNavigationSnapshot,
   ClarusProject,
-  ClarusTaskDetail,
-  ClarusContinueLocalResult,
   ClarusComposerUserItem,
   ClarusComposerProjectItem,
   ClarusComposerSubmitInput,
@@ -122,33 +120,6 @@ export function makeSnapWithProjects(projects: ClarusProject[]): ClarusNavigatio
 }
 
 // ---------------------------------------------------------------------------
-// Task detail / continue-local factories
-// ---------------------------------------------------------------------------
-
-export function makeTaskDetail(overrides: Partial<ClarusTaskDetail> = {}): ClarusTaskDetail {
-  return {
-    taskId: "task-1",
-    projectId: "proj-1",
-    title: "Test Task",
-    status: "waiting",
-    phase: "",
-    assignmentState: "materialized",
-    resultState: "idle",
-    sessionID: "ses-1",
-    workspacePath: "/tmp/clarus/task-1",
-    ...overrides,
-  }
-}
-
-export function makeContinueLocalResult(overrides: Partial<ClarusContinueLocalResult> = {}): ClarusContinueLocalResult {
-  return {
-    taskId: "task-1",
-    status: "ok",
-    ...overrides,
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Composer factories
 // ---------------------------------------------------------------------------
 
@@ -214,8 +185,6 @@ export function createMockClarusDeps(): {
   setReconnectVersion: (v: number) => void
   get eventListenCount(): number
   get navigationMock(): ReturnType<typeof mock>
-  get getDetailMock(): ReturnType<typeof mock>
-  get continueLocalMock(): ReturnType<typeof mock>
   get lookupUsersMock(): ReturnType<typeof mock>
   get lookupProjectsMock(): ReturnType<typeof mock>
   get submitMock(): ReturnType<typeof mock>
@@ -224,15 +193,12 @@ export function createMockClarusDeps(): {
   const reconnectHandlers = new Set<() => void>()
 
   const navigationMock = mock(() => Promise.resolve({ data: makeNavResponse() }))
-  const getDetailMock = mock(() => Promise.resolve({ data: makeTaskDetail() }))
-  const continueLocalMock = mock(() => Promise.resolve({ data: makeContinueLocalResult() }))
   const lookupUsersMock = mock(() => Promise.resolve({ data: makeComposerUsers(0) }))
   const lookupProjectsMock = mock(() => Promise.resolve({ data: makeComposerProjects(0) }))
   const submitMock = mock(() => Promise.resolve({ data: makeComposerSubmitResult() }))
 
   const deps: ClarusModelDeps = {
     navigation: navigationMock,
-    continueLocal: continueLocalMock,
     lookupUsers: lookupUsersMock,
     lookupProjects: lookupProjectsMock,
     submit: submitMock,
@@ -265,8 +231,6 @@ export function createMockClarusDeps(): {
       return eventHandlers.size
     },
     navigationMock,
-    getDetailMock,
-    continueLocalMock,
     lookupUsersMock,
     lookupProjectsMock,
     submitMock,

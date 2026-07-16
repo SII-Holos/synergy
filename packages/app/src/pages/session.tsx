@@ -45,13 +45,6 @@ import { useWorkbenchPanels } from "@/context/workbench"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { ClarusTaskHeader } from "@/components/clarus/task-header"
-import { useClarus } from "@/context/clarus"
-import {
-  deriveClarusTaskComposerState,
-  type ClarusTaskBindingSnapshot,
-  type ClarusTaskComposerState,
-} from "@/composables/use-clarus-task-meta"
 import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   createWorkspaceTransitionErrorProgress,
@@ -614,35 +607,6 @@ function SessionPageContent() {
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
 
-  // ---- Clarus task state ----
-  const clarus = useClarus()
-  const clarusTaskBinding = createMemo((): ClarusTaskBindingSnapshot | undefined => {
-    const session = currentSession()
-    const ep = session?.endpoint
-    if (!ep || ep.kind !== "clarus" || ep.role !== "task" || !ep.taskId) return undefined
-
-    const snapshot = clarus.store.snapshot
-    if (!snapshot) return undefined
-
-    for (const project of snapshot.projects) {
-      const task = project.tasks.find((t) => t.taskId === ep.taskId)
-      if (task) {
-        return {
-          status: task.status as ClarusTaskBindingSnapshot["status"],
-          resultState: task.resultState as ClarusTaskBindingSnapshot["resultState"],
-          title: task.title,
-          phase: task.phase,
-          attempt: task.attempt,
-          localContinuationEnabledAt: task.localContinuationEnabledAt,
-        }
-      }
-    }
-    return undefined
-  })
-
-  const clarusComposerState = createMemo(() =>
-    deriveClarusTaskComposerState(currentSession()?.endpoint, clarusTaskBinding()),
-  )
   const focusedBlueprintWriteParts = new Set<string>()
   const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {
     const sessionID = params.id
@@ -1016,7 +980,6 @@ function SessionPageContent() {
                   onDismiss={() => setRollbackDismissed(true)}
                 />
               </Show>
-              <ClarusTaskHeader endpoint={currentSession()?.endpoint} binding={clarusTaskBinding()} />
               <div class="flex-1 min-h-0 min-w-0 overflow-hidden">
                 <Switch>
                   <Match when={!isNewSession()}>
@@ -1171,7 +1134,6 @@ function SessionPageContent() {
               branch={branch}
               lastModified={lastModified}
               workspaceOpen={sideOpen}
-              clarusComposerState={clarusComposerState()}
               rollbackActive={rollbackActive()}
             />
             <Show when={isDesktop() && showTabs() && !sideOpen()}>

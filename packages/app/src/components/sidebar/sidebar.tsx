@@ -31,6 +31,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { ClarusSidebarSection } from "@/components/clarus/sidebar-section"
 import "./sidebar.css"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
@@ -453,6 +454,9 @@ export function Sidebar(props: SidebarProps) {
               activeID={params.id}
               onSessionClick={handleNavEntryClick}
             />
+
+            {/* Clarus */}
+            <ClarusSidebarSection activeSessionID={params.id} />
 
             {/* Channel */}
             <div class="sb-root-section">

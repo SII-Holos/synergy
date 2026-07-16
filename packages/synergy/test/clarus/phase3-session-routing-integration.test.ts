@@ -8,6 +8,7 @@ import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { SessionInbox } from "../../src/session/inbox"
+import { SessionNav } from "../../src/session/nav"
 import { ClarusBindingStore, ClarusTaskBindingStore } from "../../src/clarus/binding"
 import { ClarusFanoutProgressStore } from "../../src/clarus/activity"
 import { ClarusWorkspace } from "../../src/clarus/workspace"
@@ -44,6 +45,12 @@ describe("durable task-session ownership", () => {
 
         expect(session).toBeDefined()
         expect(session.id).toBeTypeOf("string")
+        expect(session.controlProfile).toBe("autonomous")
+        expect(session.interaction).toEqual({ mode: "unattended", source: "clarus" })
+
+        const homeNav = await SessionNav.readNavIndex("home")
+        const clarusEntry = homeNav.entries.find((entry) => entry.id === session.id)
+        expect(clarusEntry?.category).toBe("clarus")
 
         const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "owned_task")
         expect(binding).toBeDefined()

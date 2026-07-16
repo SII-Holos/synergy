@@ -3,8 +3,6 @@ import { HolosRuntime } from "@/holos/runtime"
 import { createClarusAgentTunnelAdapter } from "@/holos/clarus"
 import { Bus } from "@/bus"
 import { Lock } from "@/util/lock"
-import { GlobalBus } from "@/bus/global"
-import { SessionEvent } from "@/session/event"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { canonicalJSON, canonicalEqual } from "@/util/canonical"
@@ -55,7 +53,6 @@ const MAX_DISCOVERY_BINDINGS_READ = 500
 const BACKFILL_PAGE_BUDGET_PER_CYCLE = 200
 const MAX_RECONCILIATION_TIME_MS = 300_000
 const MAX_NON_PROGRESSING_PAGES = 3
-const MAX_SESSION_BINDING_CACHE = 1000
 const MAX_ROTATION_INDEX = 1_000_000
 
 type AttachedTransport = {
@@ -119,8 +116,6 @@ let periodicReconciliationActive = false
 let connectedAgentId: string | null = null
 let connectedEpoch = 0
 let connectedGeneration = 0
-let globalBusHandler: ((event: { directory?: string; payload: unknown }) => void) | null = null
-const sessionBindings = new Map<string, { agentId: string; projectId: string; taskId: string }>()
 const deadlineTimers = new Map<string, Disposable>()
 const sendInFlight = new Map<
   string,
@@ -218,29 +213,6 @@ function isCurrentObservedEvent(event: ClarusObservedEvent): boolean {
 
 function deadlineKey(agentId: string, projectId: string, taskId: string): string {
   return `${encodeURIComponent(agentId)}:${encodeURIComponent(projectId)}:${encodeURIComponent(taskId)}`
-}
-
-function unsubscribeSessionEvents(): void {
-  if (!globalBusHandler) return
-  GlobalBus.off("event", globalBusHandler)
-  globalBusHandler = null
-}
-
-function subscribeSessionEvents(): void {
-  unsubscribeSessionEvents()
-  const handler = (event: { directory?: string; payload: unknown }) => {
-    if (!isRecord(event.payload)) return
-    const type = event.payload.type
-    const properties = event.payload.properties
-    if (!isRecord(properties) || typeof properties.sessionID !== "string") return
-    if (type === SessionEvent.Idle.type) {
-      void dispatchResultForSession(properties.sessionID, false)
-    } else if (type === SessionEvent.Error.type) {
-      void dispatchResultForSession(properties.sessionID, true)
-    }
-  }
-  globalBusHandler = handler
-  GlobalBus.on("event", handler)
 }
 
 function cancelDeadlineGuard(agentId: string, projectId: string, taskId: string): void {
@@ -367,16 +339,6 @@ function publishNavigationUpdated(): void {
   }
 }
 
-function trackSessionBinding(sessionID: string, agentId: string, projectId: string, taskId: string): void {
-  if (sessionBindings.has(sessionID)) {
-    sessionBindings.delete(sessionID)
-  } else if (sessionBindings.size >= MAX_SESSION_BINDING_CACHE) {
-    const firstKey = sessionBindings.keys().next().value
-    if (firstKey !== undefined) sessionBindings.delete(firstKey)
-  }
-  sessionBindings.set(sessionID, { agentId, projectId, taskId })
-}
-
 function estimateEventBytes(event: ClarusObservedEvent): number {
   return new TextEncoder().encode(canonicalJSON(event)).byteLength
 }
@@ -451,7 +413,6 @@ export namespace ClarusRuntime {
       await handleConnectionEvent(event, port)
     })
     attached = { port, eventUnregister, connectionUnregister, epoch }
-    subscribeSessionEvents()
     return () => {
       if (attached?.epoch === epoch) detach()
     }
@@ -463,8 +424,6 @@ export namespace ClarusRuntime {
       reconciliation.abortController.abort()
       activeReconciliation = null
     }
-    unsubscribeSessionEvents()
-    sessionBindings.clear()
     cancelAllDeadlineGuards()
     periodicTimer?.[Symbol.dispose]()
     periodicTimer = null
@@ -641,11 +600,7 @@ export namespace ClarusRuntime {
     ) {
       throw new Error("Clarus result identity does not match the active task binding")
     }
-    if (
-      binding.resultState === "local_only" ||
-      isStatusTerminal(binding.status) ||
-      binding.resultOutboxRequestID !== undefined
-    ) {
+    if (binding.status !== "running" || binding.resultState !== "idle" || binding.resultOutboxRequestID !== undefined) {
       throw new Error("Clarus task result is already terminal or in flight")
     }
 
@@ -662,6 +617,18 @@ export namespace ClarusRuntime {
       connectionEpoch: String(connectedEpoch),
       generation: connectedGeneration,
     })
+    const claimed = await ClarusTaskBindingStore.markSubmitting({
+      agentId: input.agentId,
+      projectId: input.projectId,
+      taskId: input.taskID,
+      resultOutboxRequestID: requestID,
+    })
+    if (!claimed || claimed.resultOutboxRequestID !== requestID) {
+      await ClarusOutbox.markAmbiguous(requestID, "concurrent result submission lost ownership")
+      throw new Error("Clarus task result is already terminal or in flight")
+    }
+    publishNavigationUpdated()
+
     let request: ReturnType<ClarusAgentTunnelPort["recordTaskResult"]>
     try {
       request = transport.port.recordTaskResult(input)
@@ -684,6 +651,8 @@ export namespace ClarusRuntime {
       if (record?.state !== "ambiguous" && record?.state !== "acknowledged") {
         await settleOutboxFailure(requestID, error)
       }
+      await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskID)
+      publishNavigationUpdated()
       throw error
     }
   }
@@ -1214,7 +1183,6 @@ async function handleTaskAssigned(event: RuntimeTaskAssignedEvent): Promise<void
   const binding = await ClarusBindingStore.readV3(agentId, projectId)
   if (!binding || !isActiveLifecycle(binding.lifecycle)) return
   const session = await getOrCreateTaskSession({ agentId, projectId, taskId })
-  trackSessionBinding(session.id, agentId, projectId, taskId)
   const existing = await ClarusTaskBindingStore.get(agentId, projectId, taskId)
   if (existing?.assignmentInboxItemID && existing.assignmentState !== "planned") return
 
@@ -1245,7 +1213,22 @@ async function handleTaskAssigned(event: RuntimeTaskAssignedEvent): Promise<void
     projectId,
     taskId,
     messageId: `task_assign_${taskId}`,
-    text: `Task assigned: ${title}, phase=${event.phase}, attempt=${event.attempt}`,
+    text: [
+      "## Clarus Task Assignment",
+      "",
+      `Task ID: ${taskId}`,
+      `Phase: ${event.phase}`,
+      `Attempt: ${event.attempt}`,
+      `Goal: ${title}`,
+      `Deadline: ${event.deadlineAt ?? "none"}`,
+      "",
+      '1. Load the participation Skill with `skill(name="clarus-agent-participation")` before doing runtime task work.',
+      "2. Read the runtime context and dependency results described by the Skill, then complete this task.",
+      "3. Agent must actively submit the result with `clarus_submit_task_result` when the work is complete.",
+      "4. If the task cannot be completed, submit `success: false` with a clear error.",
+      "5. Synergy does not monitor or auto-submit missing results; Session Idle/Error does not change the Clarus task state.",
+    ].join("\n"),
+    tools: { skill: true, clarus_submit_task_result: true },
     extraMetadata: { clarusAssignment: { frozenAgent: resolution.agentId, runID: event.runID } },
   })
   if (event.deadlineAt) {
@@ -1330,7 +1313,6 @@ async function handleTaskResultRecorded(event: RuntimeTaskResultRecordedEvent): 
   if (!(await acknowledgeIfPresent(event.requestID, identity))) return
   await ClarusTaskBindingStore.markCompleted({ agentId: event.agentID, projectId: event.projectID, taskId })
   cancelDeadlineGuard(event.agentID, event.projectID, taskId)
-  sessionBindings.delete(binding.sessionID)
   publishNavigationUpdated()
 }
 
@@ -1351,7 +1333,6 @@ async function evictProjectResources(agentId: string, projectId: string): Promis
   const taskBindings = await ClarusTaskBindingStore.listTaskBindings(agentId, projectId)
   for (const task of taskBindings) {
     cancelDeadlineGuard(agentId, projectId, task.taskId)
-    sessionBindings.delete(task.sessionID)
   }
 }
 
@@ -1723,162 +1704,4 @@ async function backfillAssignment(binding: ClarusProjectBindingV3, message: Clar
   } catch (error) {
     log.info("Clarus assignment backfill deferred", { projectId: binding.projectId, error: errorMessage(error) })
   }
-}
-
-async function dispatchResultForSession(sessionID: string, isError: boolean): Promise<void> {
-  const transport = attached
-  if (!transport) return
-  const identity = sessionBindings.get(sessionID) ?? (await findSessionBinding(sessionID))
-  if (!identity) return
-  sessionBindings.set(sessionID, identity)
-  const binding = await ClarusTaskBindingStore.get(identity.agentId, identity.projectId, identity.taskId)
-  if (!binding || binding.sessionID !== sessionID) return
-  if (binding.status !== "running" || binding.resultOutboxRequestID || binding.localContinuationEnabledAt) return
-  if (!isError && binding.contextHydration !== "complete") {
-    await ClarusTaskBindingStore.markNeedsAttention(identity.agentId, identity.projectId, identity.taskId)
-    cancelDeadlineGuard(identity.agentId, identity.projectId, identity.taskId)
-    sessionBindings.delete(sessionID)
-    publishNavigationUpdated()
-    return
-  }
-
-  const requestID = crypto.randomUUID()
-  const content = await deriveResultContent(binding, sessionID, isError)
-  if (!content) {
-    await ClarusTaskBindingStore.markNeedsAttention(identity.agentId, identity.projectId, identity.taskId)
-    cancelDeadlineGuard(identity.agentId, identity.projectId, identity.taskId)
-    sessionBindings.delete(sessionID)
-    publishNavigationUpdated()
-    return
-  }
-  await ClarusOutbox.preallocate({
-    requestID,
-    action: "task_result",
-    agentId: identity.agentId,
-    projectId: identity.projectId,
-    taskId: identity.taskId,
-    runId: binding.runID,
-    subtaskId: binding.subtaskID,
-    connectionEpoch: String(connectedEpoch),
-    generation: connectedGeneration,
-    payload: { output: content.output, success: !isError },
-  })
-  const claimed = await ClarusTaskBindingStore.markSubmitting({
-    agentId: identity.agentId,
-    projectId: identity.projectId,
-    taskId: identity.taskId,
-    resultOutboxRequestID: requestID,
-    lastCompletedAssistantMessageID: binding.lastCompletedAssistantMessageID,
-  })
-  if (!claimed || claimed.resultOutboxRequestID !== requestID) {
-    await ClarusOutbox.markAmbiguous(requestID, "concurrent result dispatch lost ownership")
-    return
-  }
-  publishNavigationUpdated()
-
-  let request: ReturnType<ClarusAgentTunnelPort["recordTaskResult"]>
-  try {
-    request = transport.port.recordTaskResult({
-      requestID,
-      runID: binding.runID,
-      taskID: identity.taskId,
-      subtaskID: binding.subtaskID,
-      success: !isError,
-      output: content.output,
-      artifacts: content.artifacts,
-      evidenceRefs: content.evidenceRefs,
-      notaryRefs: [],
-      error: isError ? `Session ${sessionID} ended with error` : null,
-      payload: { task_id: identity.taskId },
-    })
-    if (request.requestID !== requestID) {
-      await ClarusOutbox.markAmbiguous(requestID, "adapter returned a different request ID")
-      await ClarusTaskBindingStore.revertSubmitting(identity.agentId, identity.projectId, identity.taskId)
-      sessionBindings.delete(sessionID)
-      publishNavigationUpdated()
-      return
-    }
-    await ClarusOutbox.markDispatched(requestID)
-  } catch (error) {
-    await settleResultFailure(identity, requestID, error)
-    return
-  }
-  try {
-    const response = await request.response
-    if (response.requestID !== requestID) {
-      await ClarusOutbox.markAmbiguous(requestID, "result response request ID did not match")
-      await ClarusTaskBindingStore.revertSubmitting(identity.agentId, identity.projectId, identity.taskId)
-      sessionBindings.delete(sessionID)
-      publishNavigationUpdated()
-      return
-    }
-    // The response only confirms dispatch; the recorded event owns acknowledgement.
-  } catch (error) {
-    await settleResultFailure(identity, requestID, error)
-  }
-}
-
-async function settleResultFailure(
-  identity: { agentId: string; projectId: string; taskId: string },
-  requestID: string,
-  error: unknown,
-): Promise<void> {
-  await settleOutboxFailure(requestID, error)
-  await ClarusTaskBindingStore.revertSubmitting(identity.agentId, identity.projectId, identity.taskId)
-  cancelDeadlineGuard(identity.agentId, identity.projectId, identity.taskId)
-  publishNavigationUpdated()
-}
-
-async function findSessionBinding(
-  sessionID: string,
-): Promise<{ agentId: string; projectId: string; taskId: string } | undefined> {
-  const binding = await ClarusTaskBindingStore.findBySessionID(sessionID)
-  if (!binding) return undefined
-  return { agentId: binding.agentId, projectId: binding.projectId, taskId: binding.taskId }
-}
-
-async function deriveResultContent(
-  binding: {
-    scopeID: string
-    taskId: string
-    title: string
-  },
-  sessionID: string,
-  isError: boolean,
-): Promise<{ output: string; artifacts: Array<Record<string, unknown>>; evidenceRefs: string[] } | null> {
-  if (isError) return { output: `Task failed: ${binding.title}`, artifacts: [], evidenceRefs: [] }
-  const output = await readLatestAssistantOutput(binding.scopeID, sessionID)
-  if (!output) return null
-  const artifactID = `result-${binding.taskId}`
-  return {
-    output: output.preview,
-    artifacts: [
-      {
-        artifact_id: artifactID,
-        name: "result.md",
-        parts: [{ type: "text", format: "markdown", role: "specialist_output", content: output.body }],
-      },
-    ],
-    evidenceRefs: [artifactID],
-  }
-}
-
-const MAX_RESULT_BODY_LENGTH = 100_000
-
-async function readLatestAssistantOutput(
-  _scopeID: string,
-  sessionID: string,
-): Promise<{ preview: string; body: string } | null> {
-  const [{ SessionHistory }, { MessageV2 }] = await Promise.all([
-    import("@/session/history"),
-    import("@/session/message-v2"),
-  ])
-  const messages = await SessionHistory.messages({ sessionID, limit: 50 })
-  for (const message of [...messages].reverse()) {
-    if (message.info.role !== "assistant" || !message.info.time.completed) continue
-    const body = MessageV2.extractText(message.parts, { maxLength: MAX_RESULT_BODY_LENGTH })
-    if (!body) continue
-    return { preview: body.slice(0, 500), body }
-  }
-  return null
 }

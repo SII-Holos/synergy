@@ -2,6 +2,7 @@
  * Native Clarus hierarchy model — pure functions for project/task grouping,
  * priority sorting, route construction, and stale-data retention.
  */
+import type { ClarusProject } from "@/context/clarus/clarus-model"
 
 // ---------------------------------------------------------------------------
 // Connection status constants
@@ -86,19 +87,19 @@ export interface ClarusHierarchy {
 }
 
 // ---------------------------------------------------------------------------
-// Build a Home-scope session route
+// Open a task through the standard primary-session navigation path
 // ---------------------------------------------------------------------------
 
-interface TaskRoute {
-  scopeType: "home"
-  sessionID: string
-}
-
-export function buildTaskRoute(sessionID: string): TaskRoute {
-  if (!sessionID) {
-    throw new Error("sessionID must be non-empty")
-  }
-  return { scopeType: "home", sessionID }
+export function activateTaskSession(
+  task: Pick<TaskLike, "taskId" | "sessionID" | "status">,
+  actions: {
+    selectTask(taskId: string): void
+    navigateToSession(sessionID: string): void
+  },
+): void {
+  if (!task.sessionID) throw new Error("sessionID must be non-empty")
+  actions.selectTask(task.taskId)
+  actions.navigateToSession(task.sessionID)
 }
 
 // ---------------------------------------------------------------------------
@@ -151,6 +152,23 @@ export function buildHierarchy(
   }
 
   return { activeProjects, inactiveProjectsWithHistory, connectionStatus }
+}
+
+export function buildClarusProjectHierarchy(
+  projects: ClarusProject[],
+  connectionStatus: ClarusConnectionStatus,
+): ClarusHierarchy {
+  return buildHierarchy(
+    projects.map((project) => ({
+      projectId: project.projectId,
+      projectName: project.projectName ?? project.projectId,
+      lifecycle: project.lifecycle,
+      desiredSubscription: project.activeGroup,
+      lastProjectActivityAt: project.lastProjectActivityAt ?? 0,
+    })),
+    Object.fromEntries(projects.map((project) => [project.projectId, project.tasks])),
+    connectionStatus,
+  )
 }
 
 // ---------------------------------------------------------------------------

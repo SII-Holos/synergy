@@ -235,6 +235,31 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
+  name: "clarus_submit_task_result",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "send",
+          title: "Submit Clarus Result",
+          subtitle: props.input.success === false ? "Failed" : "Completed",
+          tags: props.metadata?.taskID ? [{ label: props.metadata.taskID as string }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
   name: "session_control",
   render(props) {
     const info = createMemo(() => getToolInfo("session_control", props.input, props.metadata))

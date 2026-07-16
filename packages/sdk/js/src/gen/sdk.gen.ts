@@ -1555,7 +1555,7 @@ export class Session extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
-      category?: "project" | "home" | "channel" | "background"
+      category?: "project" | "home" | "channel" | "background" | "clarus"
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
       limit?: number

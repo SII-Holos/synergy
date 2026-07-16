@@ -9,10 +9,11 @@ import { StoragePath } from "../../src/storage/path"
 import { SessionEvent } from "../../src/session/event"
 import { SessionInbox } from "../../src/session/inbox"
 import { ClarusRuntime } from "../../src/clarus/runtime"
-import { Session } from "../../src/session"
 import { Identifier } from "../../src/id/id"
 import { ClarusBindingStore, ClarusTaskBindingStore } from "../../src/clarus/binding"
 import { ClarusOutbox } from "../../src/clarus/outbox"
+import { ClarusSubmitTaskResultTool } from "../../src/tool/clarus-submit-task-result"
+import type { Tool } from "../../src/tool/tool"
 import { ClarusProjectActivityStore } from "../../src/clarus/activity"
 import type {
   ClarusAgentTunnelPort,
@@ -643,6 +644,24 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
     const items = await SessionInbox.list(binding!.sessionID)
     expect(items).toHaveLength(1)
     expect(items[0]?.message?.agent).toBe("synergy")
+    const assignmentText = items[0]?.message?.parts
+      .filter((part) => part.type === "text")
+      .map((part) => part.text)
+      .join("\n")
+    expect(assignmentText).toContain('skill(name="clarus-agent-participation")')
+    expect(assignmentText).toContain("clarus_submit_task_result")
+    expect(assignmentText).toContain("Agent must actively submit")
+    expect(assignmentText).toContain("Synergy does not monitor or auto-submit")
+    expect(assignmentText).toContain("success: false")
+    expect(assignmentText).toContain("Task ID: task_1")
+    expect(assignmentText).toContain("Phase: implementation")
+    expect(assignmentText).toContain("Attempt: 1")
+    expect(assignmentText).toContain("Goal: Implement the assigned feature")
+    expect(assignmentText).toContain("Deadline: none")
+    expect(items[0]?.message?.metadata).toMatchObject({
+      clarusAssignment: { frozenAgent: "synergy", runID: "run_1" },
+    })
+    expect(items[0]?.message?.tools).toEqual({ clarus_submit_task_result: true, skill: true })
   })
 
   test("deadline guard dispatches an extension and records its acknowledged outbox", async () => {
@@ -746,52 +765,7 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
 })
 
 describe("Clarus Phase 3 result and recovery", () => {
-  test("error completion dispatches a result and acknowledges it", async () => {
-    const tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    const port = new FakeClarusPort()
-
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        await prepareProject(scope)
-        await ClarusRuntime.attach(port)
-        await port.connect()
-        await port.emit(taskAssignedEvent({ goal: "Failing task" }))
-        await waitFor(
-          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
-        )
-        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
-        GlobalBus.emit("event", {
-          payload: { type: SessionEvent.Error.type, properties: { sessionID: binding!.sessionID } },
-        })
-        await waitFor(() => port.resultInputs.length === 1)
-        const dispatchedRequestID = port.resultInputs[0]!.requestID
-        await waitFor(async () => (await ClarusOutbox.get(dispatchedRequestID))?.state === "dispatched")
-        expect((await ClarusOutbox.get(dispatchedRequestID))?.state).toBe("dispatched")
-        await port.emit({
-          kind: "known",
-          type: "runtimeTaskResultRecorded",
-          agentID: AGENT_ID,
-          requestID: port.resultInputs[0]!.requestID,
-          projectID: PROJECT_ID,
-          runID: "run_1",
-          epoch: 1,
-          generation: 1,
-          task: { taskID: "task_1", subtaskID: "subtask_1", status: "submitted" },
-        })
-        await waitFor(
-          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "submitted",
-        )
-      },
-    })
-
-    const requestID = port.resultInputs[0]!.requestID
-    expect((await ClarusOutbox.get(requestID))?.state).toBe("acknowledged")
-    expect((await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status).toBe("submitted")
-  })
-
-  test("result extraction uses effective assistant history and excludes later system noise", async () => {
+  test("session idle and error never submit or monitor the Agent result", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const port = new FakeClarusPort()
@@ -804,7 +778,7 @@ describe("Clarus Phase 3 result and recovery", () => {
         await port.connect()
         await port.emit(
           taskAssignedEvent({
-            goal: "Extract canonical output",
+            goal: "Agent-owned result",
             context: { snapshot: true },
             taskInput: { explicit: true },
           }),
@@ -813,111 +787,27 @@ describe("Clarus Phase 3 result and recovery", () => {
           async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
         )
         const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
-        const userMessageID = Identifier.ascending("message")
-        await Session.updateMessage({
-          id: userMessageID,
-          sessionID: binding!.sessionID,
-          role: "user",
-          agent: "synergy",
-          model: { providerID: "openai", modelID: "test" },
-          time: { created: Date.now() },
-        })
-        const outputMessageID = Identifier.ascending("message")
-        await Session.updateMessage({
-          id: outputMessageID,
-          sessionID: binding!.sessionID,
-          role: "assistant",
-          parentID: userMessageID,
-          modelID: "test",
-          providerID: "openai",
-          mode: "codex",
-          agent: "synergy",
-          path: { cwd: "/", root: "/" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: Date.now(), completed: Date.now() },
-          finish: "stop",
-        })
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          sessionID: binding!.sessionID,
-          messageID: outputMessageID,
-          type: "text",
-          text: "durable output",
-          origin: "user",
-        })
-        const systemMessageID = Identifier.ascending("message")
-        await Session.updateMessage({
-          id: systemMessageID,
-          sessionID: binding!.sessionID,
-          role: "assistant",
-          parentID: outputMessageID,
-          modelID: "test",
-          providerID: "openai",
-          mode: "codex",
-          agent: "synergy",
-          path: { cwd: "/", root: "/" },
-          cost: 0,
-          tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
-          time: { created: Date.now(), completed: Date.now() },
-          finish: "stop",
-        })
-        await Session.updatePart({
-          id: Identifier.ascending("part"),
-          sessionID: binding!.sessionID,
-          messageID: systemMessageID,
-          type: "text",
-          text: "hidden system noise",
-          origin: "system",
-        })
         GlobalBus.emit("event", {
           payload: { type: SessionEvent.Idle.type, properties: { sessionID: binding!.sessionID } },
         })
-        await waitFor(() => port.resultInputs.length === 1)
-      },
-    })
-
-    expect(port.resultInputs[0]?.output).toBe("durable output")
-  })
-
-  test("idle completion without complete hydration transitions to needs_attention", async () => {
-    const tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    const port = new FakeClarusPort()
-
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        await prepareProject(scope)
-        await ClarusRuntime.attach(port)
-        await port.connect()
-        await port.emit(taskAssignedEvent({ goal: "Incomplete task" }))
-        await waitFor(
-          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
-        )
-        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
         GlobalBus.emit("event", {
-          payload: { type: SessionEvent.Idle.type, properties: { sessionID: binding!.sessionID } },
+          payload: { type: SessionEvent.Error.type, properties: { sessionID: binding!.sessionID } },
         })
-        await waitFor(
-          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "needs_attention",
-        )
+        await Bun.sleep(20)
       },
     })
 
+    const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
     expect(port.resultInputs).toHaveLength(0)
+    expect(binding?.status).toBe("running")
+    expect(binding?.resultState).toBe("idle")
+    expect(binding?.resultOutboxRequestID).toBeUndefined()
   })
 
-  test("local continuation and concurrent result dispatch prevent duplicate remote results", async () => {
+  test("Agent tool submission transitions from running through submitting to submitted", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const port = new FakeClarusPort()
-    let resolveResult:
-      | ((event: Extract<ClarusObservedEvent, { type: "runtimeTaskResultRecorded" }>) => void)
-      | undefined
-    port.resultResponse = new Promise((resolve) => {
-      resolveResult = resolve
-    })
 
     await ScopeContext.provide({
       scope,
@@ -926,36 +816,77 @@ describe("Clarus Phase 3 result and recovery", () => {
         await ClarusRuntime.attach(port)
         await port.connect()
         await port.emit(
-          taskAssignedEvent({ goal: "Concurrent task", context: { snapshot: true }, taskInput: { input: true } }),
+          taskAssignedEvent({
+            goal: "Submit through the Agent tool",
+            context: { snapshot: true },
+            taskInput: { explicit: true },
+          }),
         )
         await waitFor(
           async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
         )
         const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
-        GlobalBus.emit("event", {
-          payload: { type: SessionEvent.Error.type, properties: { sessionID: binding!.sessionID } },
-        })
-        GlobalBus.emit("event", {
-          payload: { type: SessionEvent.Error.type, properties: { sessionID: binding!.sessionID } },
-        })
-        await waitFor(() => port.resultInputs.length === 1)
-        const requestID = port.resultInputs[0]!.requestID
-        resolveResult?.({
-          kind: "known",
-          type: "runtimeTaskResultRecorded",
-          agentID: AGENT_ID,
-          requestID,
-          projectID: PROJECT_ID,
+        const tool = await ClarusSubmitTaskResultTool.init()
+        expect(Object.keys(tool.parameters.shape)).toEqual([
+          "success",
+          "output",
+          "artifacts",
+          "evidence_refs",
+          "notary_refs",
+          "error",
+        ])
+        const ctx: Tool.Context = {
+          sessionID: binding!.sessionID,
+          messageID: Identifier.ascending("message"),
+          agent: "synergy",
+          abort: new AbortController().signal,
+          metadata() {},
+          async ask() {},
+        }
+        const result = await tool.execute(
+          {
+            success: true,
+            output: "Result ready",
+            artifacts: [
+              {
+                artifact_id: "artifact_1",
+                name: "result.md",
+                description: "Reusable result",
+                parts: [
+                  {
+                    type: "text",
+                    format: "markdown",
+                    role: "specialist_output",
+                    content_kind: "report",
+                    name: "result.md",
+                    content: "# Result\n\nComplete reusable body.",
+                  },
+                ],
+              },
+            ],
+            evidence_refs: ["artifact_1"],
+          },
+          ctx,
+        )
+        expect(result.title).toBe("Clarus task result submitted")
+        expect(port.resultInputs).toHaveLength(1)
+        expect(port.resultInputs[0]).toMatchObject({
           runID: "run_1",
-          epoch: 1,
-          generation: 1,
-          task: { taskID: "task_1", subtaskID: "subtask_1", status: "submitted" },
+          taskID: "task_1",
+          subtaskID: "subtask_1",
+          success: true,
         })
+        const submitting = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+        expect(submitting?.status).toBe("submitting")
+        expect(submitting?.resultState).toBe("prepared")
+        expect(submitting?.resultOutboxRequestID).toBe(result.metadata.requestID)
+        expect((await ClarusOutbox.get(result.metadata.requestID))?.state).toBe("dispatched")
+
         await port.emit({
           kind: "known",
           type: "runtimeTaskResultRecorded",
           agentID: AGENT_ID,
-          requestID,
+          requestID: result.metadata.requestID,
           projectID: PROJECT_ID,
           runID: "run_1",
           epoch: 1,
@@ -968,99 +899,10 @@ describe("Clarus Phase 3 result and recovery", () => {
       },
     })
 
-    const portForContinuation = new FakeClarusPort()
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        await prepareProject(scope)
-        await ClarusRuntime.attach(portForContinuation)
-        await portForContinuation.connect()
-        await portForContinuation.emit(
-          taskAssignedEvent({ taskID: "task_local", runID: "run_local", goal: "Local task" }),
-        )
-        await waitFor(
-          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_local"))?.status === "running",
-        )
-        await ClarusTaskBindingStore.enableLocalContinuation(AGENT_ID, PROJECT_ID, "task_local")
-        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_local")
-        GlobalBus.emit("event", {
-          payload: { type: SessionEvent.Error.type, properties: { sessionID: binding!.sessionID } },
-        })
-        await Bun.sleep(20)
-      },
-    })
-    expect(portForContinuation.resultInputs).toHaveLength(0)
-  })
-
-  test("public result recording owns the outbox lifecycle on success and rejection", async () => {
-    const tmp = await tmpdir({ git: true })
-    const scope = await tmp.scope()
-    const port = new FakeClarusPort()
-
-    await ScopeContext.provide({
-      scope,
-      fn: async () => {
-        await ClarusBindingStore.ensureActive(AGENT_ID, PROJECT_ID)
-        await ClarusTaskBindingStore.ensureAssigned(
-          AGENT_ID,
-          PROJECT_ID,
-          "task_public",
-          "ses_public",
-          "/tmp/ignored-by-home-scope",
-          "scope-public",
-        )
-        await ClarusTaskBindingStore.updateAssignmentMetadata({
-          agentId: AGENT_ID,
-          projectId: PROJECT_ID,
-          taskId: "task_public",
-          runID: "run_public",
-          phase: "implementation",
-          subtaskID: "subtask_public",
-          attempt: 1,
-          deadlineAt: null,
-          frozenAgent: "synergy",
-          title: "Public result task",
-          taskInput: {},
-          contextHydration: "complete",
-        })
-        await ClarusRuntime.attach(port)
-        await port.connect()
-        await ClarusRuntime.recordTaskResult({
-          requestID: "request_public_success",
-          agentId: AGENT_ID,
-          projectId: PROJECT_ID,
-          runID: "run_public",
-          taskID: "task_public",
-          subtaskID: "subtask_public",
-          success: true,
-          output: "done",
-          artifacts: [],
-          evidenceRefs: [],
-          notaryRefs: [],
-          payload: { source: "test" },
-        })
-        expect((await ClarusOutbox.get("request_public_success"))?.state).toBe("dispatched")
-
-        port.failResults = true
-        await expect(
-          ClarusRuntime.recordTaskResult({
-            requestID: "request_public_failure",
-            agentId: AGENT_ID,
-            projectId: PROJECT_ID,
-            runID: "run_public",
-            taskID: "task_public",
-            subtaskID: "subtask_public",
-            success: false,
-            output: "failed",
-            artifacts: [],
-            evidenceRefs: [],
-            notaryRefs: [],
-            payload: {},
-          }),
-        ).rejects.toThrow()
-        expect((await ClarusOutbox.get("request_public_failure"))?.state).toBe("rejected")
-      },
-    })
+    const submitted = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+    expect(submitted?.status).toBe("submitted")
+    expect(submitted?.resultState).toBe("acknowledged")
+    expect((await ClarusOutbox.get(submitted!.resultOutboxRequestID!))?.state).toBe("acknowledged")
   })
 })
 

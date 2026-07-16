@@ -1,9 +1,8 @@
 /**
  * Native Clarus frontend state model.
- *
- * Holds the navigation snapshot, selection state, continue-local task state,
- * and composer lookup results.  Exposes a public action API and manages
- * event subscriptions, reconnect-version reactivity, and disposal.
+ * Holds the navigation snapshot, selection state, and composer lookup results.
+ * Exposes a public action API and manages event subscriptions,
+ * reconnect-version reactivity, and disposal.
  */
 
 import { onCleanup } from "solid-js"
@@ -37,49 +36,6 @@ export interface ClarusProject {
 }
 
 // ---------------------------------------------------------------------------
-// Task detail and continue-local
-//
-// The generated SDK returns `{ [key: string]: unknown }` for these endpoints
-// (safe-bounded responses). The model defines the expected shapes here because
-// the SDK does not provide typed response schemas.
-// ---------------------------------------------------------------------------
-
-export interface ClarusTaskDetail {
-  taskId: string
-  projectId: string
-  title: string
-  status: string
-  phase: string
-  assignmentState: string
-  resultState: string
-  sessionID: string
-  workspacePath: string
-}
-
-export interface ClarusContinueLocalResult {
-  taskId: string
-  status: "ok" | "already_running" | "conflict"
-}
-
-const VALID_CONTINUE_LOCAL_STATUSES: ReadonlySet<ClarusContinueLocalResult["status"]> = new Set([
-  "ok",
-  "already_running",
-  "conflict",
-])
-
-function mapContinueLocalResult(raw: Record<string, unknown>): ClarusContinueLocalResult {
-  const taskId = typeof raw.taskId === "string" ? raw.taskId : ""
-  let status: ClarusContinueLocalResult["status"] = "ok"
-  if (
-    typeof raw.status === "string" &&
-    VALID_CONTINUE_LOCAL_STATUSES.has(raw.status as ClarusContinueLocalResult["status"])
-  ) {
-    status = raw.status as ClarusContinueLocalResult["status"]
-  }
-  return { taskId, status }
-}
-
-// ---------------------------------------------------------------------------
 // Navigation-snapshot shape stored in the reactive store
 // ---------------------------------------------------------------------------
 
@@ -94,7 +50,6 @@ export interface ClarusNavigationSnapshot {
 
 export interface ClarusModelDeps {
   navigation(): Promise<{ data: ClarusNavigationResponse }>
-  continueLocal(params: { projectId: string; taskId: string }): Promise<{ data: ClarusContinueLocalResult }>
   lookupUsers(params?: { search?: string; limit?: number }): Promise<{
     data: ClarusComposerUserItem[]
   }>
@@ -121,7 +76,6 @@ export interface ClarusStore {
   loading: boolean
   selectedProjectId: string | undefined
   selectedTaskId: string | undefined
-  continueLocalByTask: Record<string, { pending: boolean; error?: string }>
   composerUsers: ClarusComposerUserItem[]
   composerProjects: ClarusComposerProjectItem[]
 }
@@ -147,12 +101,6 @@ export interface ClarusModel {
 
   /** Select a task within the current project. */
   selectTask(taskId: string): void
-
-  /**
-   * Continue a task locally.  Calls the generated SDK exactly once per
-   * invocation.  On success, updates/refetches the navigation snapshot.
-   */
-  continueLocalTask(projectId: string, taskId: string): Promise<ClarusContinueLocalResult>
 
   /** Lookup composer users, capped at 5. */
   lookupUsers(search: string): Promise<void>
@@ -220,7 +168,6 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
     loading: false,
     selectedProjectId: undefined,
     selectedTaskId: undefined,
-    continueLocalByTask: {},
     composerUsers: [],
     composerProjects: [],
   })
@@ -309,23 +256,6 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
     setStore("selectedTaskId", taskId)
   }
 
-  async function continueLocalTask(projectId: string, taskId: string): Promise<ClarusContinueLocalResult> {
-    const key = taskId
-    setStore("continueLocalByTask", key, { pending: true })
-    try {
-      const res = await deps.continueLocal({ projectId, taskId })
-      const result = res.data
-      setStore("continueLocalByTask", key, { pending: false })
-      // Refetch navigation on success
-      await invalidateAndRefresh()
-      return result
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      setStore("continueLocalByTask", key, { pending: false, error: msg })
-      throw e
-    }
-  }
-
   async function lookupUsers(search: string): Promise<void> {
     const res = await deps.lookupUsers({ search, limit: 5 })
     setStore("composerUsers", res.data)
@@ -361,7 +291,6 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
     invalidateAndRefresh,
     selectProject,
     selectTask,
-    continueLocalTask,
     lookupUsers,
     lookupProjects,
     submitComposerMessage,
@@ -380,5 +309,4 @@ export type {
   ClarusComposerSubmitResponse,
 }
 
-// Expose lifecycle for tests that need the string label
-export { lifecycle, mapContinueLocalResult }
+export { lifecycle }

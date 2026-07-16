@@ -201,23 +201,36 @@ describe("Clarus hierarchy model: empty project text", () => {
   })
 })
 
-describe("Clarus hierarchy model: task route construction", () => {
-  test("buildTaskRoute uses HOME_SCOPE_KEY and sessionID only — no directory or path", async () => {
-    const { buildTaskRoute } = await import("../clarus/hierarchy")
+describe("Clarus hierarchy model: task activation", () => {
+  test("opens every task status through the standard primary session navigator", async () => {
+    const { activateTaskSession } = await import("../clarus/hierarchy")
+    const statuses = ["waiting", "running", "submitting", "submitted", "failed", "expired", "cancelled"]
 
-    const route = buildTaskRoute("ses_abc123")
+    for (const status of statuses) {
+      const selected: string[] = []
+      const navigated: string[] = []
+      activateTaskSession(
+        { taskId: `task_${status}`, sessionID: `ses_${status}`, status },
+        {
+          selectTask: (taskId) => selected.push(taskId),
+          navigateToSession: (sessionID) => navigated.push(sessionID),
+        },
+      )
 
-    expect(route.scopeType).toBe("home")
-    expect(route.sessionID).toBe("ses_abc123")
-    expect(route).not.toHaveProperty("directory")
-    expect(route).not.toHaveProperty("path")
-    expect(route).not.toHaveProperty("worktree")
+      expect(selected).toEqual([`task_${status}`])
+      expect(navigated).toEqual([`ses_${status}`])
+    }
   })
 
-  test("buildTaskRoute rejects empty sessionID", async () => {
-    const { buildTaskRoute } = await import("../clarus/hierarchy")
+  test("rejects a task without a primary session target", async () => {
+    const { activateTaskSession } = await import("../clarus/hierarchy")
 
-    expect(() => buildTaskRoute("")).toThrow()
+    expect(() =>
+      activateTaskSession(
+        { taskId: "task_missing", sessionID: "", status: "running" },
+        { selectTask: () => {}, navigateToSession: () => {} },
+      ),
+    ).toThrow("sessionID")
   })
 })
 

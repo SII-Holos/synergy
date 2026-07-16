@@ -1152,15 +1152,17 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "clarus"
   lastActivityAt: number
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel"
+  endpointKind?: "channel" | "clarus"
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  clarusProjectId?: string
+  clarusTaskId?: string
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -4076,7 +4078,7 @@ export type Session = {
     messageID?: string
     title?: string
   }
-  category?: "project" | "home" | "channel" | "background"
+  category?: "project" | "home" | "channel" | "background" | "clarus"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -7307,6 +7309,57 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
+export type EventClarusNavigationUpdated = {
+  type: "clarus.navigation.updated"
+  properties: {
+    timestamp?: number
+  }
+}
+
 export type EventAgendaItemCreated = {
   type: "agenda.item.created"
   properties: {
@@ -7463,57 +7516,6 @@ export type EventChannelMessageReceived = {
   }
 }
 
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
-export type EventClarusNavigationUpdated = {
-  type: "clarus.navigation.updated"
-  properties: {
-    timestamp?: number
-  }
-}
-
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -7580,6 +7582,13 @@ export type Event =
   | EventLspUpdated
   | EventDagUpdated
   | EventTodoUpdated
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
+  | EventClarusNavigationUpdated
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
@@ -7598,13 +7607,6 @@ export type Event =
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
-  | EventClarusNavigationUpdated
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -10108,7 +10110,7 @@ export type SessionIndexData = {
   query?: {
     directory?: string
     scopeID?: string
-    category?: "project" | "home" | "channel" | "background"
+    category?: "project" | "home" | "channel" | "background" | "clarus"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number

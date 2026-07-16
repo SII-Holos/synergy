@@ -10,6 +10,7 @@ export interface NavigationContentProps {
   navigationId: string
   placement: NavigationPlacement
   scopeId?: string
+  navigateToSession?(sessionID: string): void
 }
 
 export interface NavigationEntry extends SurfaceEntry {

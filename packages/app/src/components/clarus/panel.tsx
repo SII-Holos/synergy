@@ -5,31 +5,13 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useClarus } from "@/context/clarus"
 import {
-  buildHierarchy,
+  buildClarusProjectHierarchy,
   retainStaleHierarchy,
   EMPTY_PROJECT_TASKS_TEXT,
   type ClarusHierarchy,
   type ClarusConnectionStatus,
+  activateTaskSession,
 } from "./hierarchy"
-import type { ClarusProject, ClarusNavigationTaskDto } from "@/context/clarus/clarus-model"
-
-// ---------------------------------------------------------------------------
-// Map SDK ClarusProject → hierarchy.ts ProjectLike
-// ---------------------------------------------------------------------------
-
-function toProjectLike(project: ClarusProject) {
-  return {
-    projectId: project.projectId,
-    projectName: project.projectName ?? project.projectId,
-    lifecycle: project.lifecycle,
-    desiredSubscription: project.activeGroup,
-    lastProjectActivityAt: project.lastProjectActivityAt ?? 0,
-  }
-}
-
-function mapTasksForHierarchy(project: ClarusProject) {
-  return project.tasks
-}
 
 // ---------------------------------------------------------------------------
 // Connection status helpers
@@ -58,7 +40,7 @@ function connectionStatusLabel(status: ClarusConnectionStatus): string {
 // ClarusPanel
 // ---------------------------------------------------------------------------
 
-export function ClarusPanel() {
+export function ClarusPanel(props: { navigateToSession(sessionID: string): void }) {
   const { store, selectProject, selectTask, refreshNavigation } = useClarus()
 
   // Build hierarchy from snapshot, preserving last-good data across re-fetches
@@ -66,12 +48,7 @@ export function ClarusPanel() {
     (prev: ClarusHierarchy | null) => {
       const snap = store.snapshot
       if (!snap) return prev ?? null
-      const projects = snap.projects.map(toProjectLike)
-      const projectTasks: Record<string, ReturnType<typeof mapTasksForHierarchy>> = {}
-      for (const project of snap.projects) {
-        projectTasks[project.projectId] = mapTasksForHierarchy(project)
-      }
-      return buildHierarchy(projects, projectTasks, snap.connection.status)
+      return buildClarusProjectHierarchy(snap.projects, snap.connection.status)
     },
     null as ClarusHierarchy | null,
   )
@@ -79,12 +56,7 @@ export function ClarusPanel() {
   const hierarchy = createMemo<ClarusHierarchy | null>(() => {
     const snap = store.snapshot
     if (!snap) return retainStaleHierarchy(null, previousHierarchy())
-    const projects = snap.projects.map(toProjectLike)
-    const projectTasks: Record<string, ReturnType<typeof mapTasksForHierarchy>> = {}
-    for (const project of snap.projects) {
-      projectTasks[project.projectId] = mapTasksForHierarchy(project)
-    }
-    const current = buildHierarchy(projects, projectTasks, snap.connection.status)
+    const current = buildClarusProjectHierarchy(snap.projects, snap.connection.status)
     return retainStaleHierarchy(current, previousHierarchy())
   })
 
@@ -99,6 +71,11 @@ export function ClarusPanel() {
     if (!snap) return "Connecting..."
     return connectionStatusLabel(snap.connection.status)
   })
+  const openTask = (task: { taskId: string; sessionID: string; status: string }) =>
+    activateTaskSession(task, {
+      selectTask,
+      navigateToSession: props.navigateToSession,
+    })
 
   return (
     <AppPanel.Root>
@@ -199,7 +176,7 @@ export function ClarusPanel() {
                                       "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
                                         store.selectedTaskId !== task.taskId,
                                     }}
-                                    onClick={() => selectTask(task.taskId)}
+                                    onClick={() => openTask(task)}
                                   >
                                     <Icon name={getSemanticIcon("clarus.task")} size="small" class="shrink-0" />
                                     <span class="flex-1 truncate">{task.title}</span>
@@ -248,7 +225,7 @@ export function ClarusPanel() {
                                       "text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover":
                                         store.selectedTaskId !== task.taskId,
                                     }}
-                                    onClick={() => selectTask(task.taskId)}
+                                    onClick={() => openTask(task)}
                                   >
                                     <Icon name={getSemanticIcon("clarus.task")} size="small" class="shrink-0" />
                                     <span class="flex-1 truncate">{task.title}</span>

@@ -5214,7 +5214,7 @@
             "name": "category",
             "schema": {
               "type": "string",
-              "enum": ["project", "home", "channel", "background"]
+              "enum": ["project", "home", "channel", "background", "clarus"]
             }
           },
           {
@@ -23109,7 +23109,7 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "clarus"]
           },
           "lastActivityAt": {
             "type": "number"
@@ -23125,7 +23125,7 @@
           },
           "endpointKind": {
             "type": "string",
-            "const": "channel"
+            "enum": ["channel", "clarus"]
           },
           "chatId": {
             "type": "string"
@@ -23136,6 +23136,12 @@
           "chatType": {
             "type": "string",
             "enum": ["dm", "group"]
+          },
+          "clarusProjectId": {
+            "type": "string"
+          },
+          "clarusTaskId": {
+            "type": "string"
           },
           "completionNotice": {
             "type": "object",
@@ -29131,7 +29137,7 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "clarus"]
           },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
@@ -38925,6 +38931,146 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.holos.contact.added": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.added"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.contact.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.contact.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "contact": {
+                "$ref": "#/components/schemas/Contact"
+              }
+            },
+            "required": ["contact"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connected": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connected"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              }
+            },
+            "required": ["peerId"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.connection.status_changed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.connection.status_changed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              }
+            },
+            "required": ["status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.holos.presence": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "holos.presence"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "peerId": {
+                "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["online", "offline"]
+              }
+            },
+            "required": ["peerId", "status"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.clarus.navigation.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "clarus.navigation.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "timestamp": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.agenda.item.created": {
         "type": "object",
         "properties": {
@@ -39373,146 +39519,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.holos.contact.added": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.added"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              }
-            },
-            "required": ["id"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.contact.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.contact.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "contact": {
-                "$ref": "#/components/schemas/Contact"
-              }
-            },
-            "required": ["contact"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connected": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connected"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              }
-            },
-            "required": ["peerId"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.connection.status_changed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.connection.status_changed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "status": {
-                "type": "string"
-              },
-              "error": {
-                "type": "string"
-              }
-            },
-            "required": ["status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.holos.presence": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "holos.presence"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "peerId": {
-                "type": "string"
-              },
-              "status": {
-                "type": "string",
-                "enum": ["online", "offline"]
-              }
-            },
-            "required": ["peerId", "status"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.clarus.navigation.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "clarus.navigation.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "timestamp": {
-                "type": "number"
-              }
-            },
-            "additionalProperties": false
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.server.connected": {
         "type": "object",
         "properties": {
@@ -39697,6 +39703,27 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.holos.contact.added"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.contact.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connected"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.holos.presence"
+          },
+          {
+            "$ref": "#/components/schemas/Event.clarus.navigation.updated"
+          },
+          {
             "$ref": "#/components/schemas/Event.agenda.item.created"
           },
           {
@@ -39749,27 +39776,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.channel.message.received"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.added"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.removed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.contact.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connected"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.connection.status_changed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.holos.presence"
-          },
-          {
-            "$ref": "#/components/schemas/Event.clarus.navigation.updated"
           },
           {
             "$ref": "#/components/schemas/Event.server.connected"

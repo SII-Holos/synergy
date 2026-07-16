@@ -636,6 +636,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "message-circle",
         title: "Questions",
       }
+    case "clarus_submit_task_result":
+      return {
+        icon: "send",
+        title: "Submit Clarus Result",
+        subtitle: input.success === false ? "Failed" : "Completed",
+      }
     case "websearch":
       return {
         icon: "globe",

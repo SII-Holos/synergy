@@ -12,7 +12,9 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
     order: 5,
     loader: async () => {
       const clarus = await import("@/components/clarus")
-      const ClarusNavigation: Component<NavigationContentProps> = () => <clarus.ClarusPanel />
+      const ClarusNavigation: Component<NavigationContentProps> = (props) => (
+        <clarus.ClarusPanel navigateToSession={props.navigateToSession!} />
+      )
       return { default: ClarusNavigation }
     },
   },
