@@ -19,6 +19,7 @@ import type {
   ClarusAgentTunnelPort,
   ClarusEventHandler,
   ClarusObservedEvent,
+  ClarusRequestFailure,
   ClarusRequestResult,
   ExtendTaskInput,
   RecordTaskResultInput,
@@ -117,7 +118,7 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
   readonly extendInputs: ExtendTaskInput[] = []
   readonly resultInputs: RecordTaskResultInput[] = []
   failSubscriptions = false
-  failResults = false
+  resultFailure: "rejected" | "ambiguous" | null = null
   resultResponse:
     | Promise<{
         kind: "known"
@@ -247,13 +248,25 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
     input: RecordTaskResultInput,
   ): ClarusRequestResult<Extract<ClarusObservedEvent, { type: "runtimeTaskResultRecorded" }>> {
     this.resultInputs.push(input)
-    if (this.failResults) {
-      throw {
+    if (this.resultFailure === "rejected") {
+      const response = Promise.reject({
         disposition: "rejected",
         requestID: input.requestID,
-        code: "RESULT_REJECTED",
-        message: "result rejected",
-      }
+        code: "RUNTIME_RUN_NOT_FOUND",
+        message: "Runtime run was not found",
+      } satisfies ClarusRequestFailure)
+      void response.catch(() => {})
+      return { requestID: input.requestID, response }
+    }
+    if (this.resultFailure === "ambiguous") {
+      const response = Promise.reject({
+        disposition: "ambiguous",
+        requestID: input.requestID,
+        reason: "timeout",
+        message: "Timed out after dispatch",
+      } satisfies ClarusRequestFailure)
+      void response.catch(() => {})
+      return { requestID: input.requestID, response }
     }
     return {
       requestID: input.requestID,
@@ -903,6 +916,69 @@ describe("Clarus Phase 3 result and recovery", () => {
     expect(submitted?.status).toBe("submitted")
     expect(submitted?.resultState).toBe("acknowledged")
     expect((await ClarusOutbox.get(submitted!.resultOutboxRequestID!))?.state).toBe("acknowledged")
+  })
+  test("Agent tool preserves rejected and ambiguous result failure semantics", async () => {
+    for (const failure of ["rejected", "ambiguous"] as const) {
+      const suffix = `${Date.now()}_${failure}_${Math.random().toString(36).slice(2, 8)}`
+      AGENT_ID = `agent_${suffix}`
+      PROJECT_ID = `project_${suffix}`
+      const tmp = await tmpdir({ git: true })
+      const scope = await tmp.scope()
+      const port = new FakeClarusPort()
+      port.resultFailure = failure
+
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          await prepareProject(scope)
+          await ClarusRuntime.attach(port)
+          await port.connect()
+          await port.emit(taskAssignedEvent({ context: { snapshot: true }, taskInput: { explicit: true } }))
+          await waitFor(
+            async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
+          )
+          const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+          const tool = await ClarusSubmitTaskResultTool.init()
+          const ctx: Tool.Context = {
+            sessionID: binding!.sessionID,
+            messageID: Identifier.ascending("message"),
+            agent: "synergy",
+            abort: new AbortController().signal,
+            metadata() {},
+            async ask() {},
+          }
+
+          let caught: unknown
+          try {
+            await tool.execute({ success: true, output: "Result ready" }, ctx)
+          } catch (error) {
+            caught = error
+          }
+
+          expect(caught).toBeInstanceOf(Error)
+          expect(caught).toMatchObject(
+            failure === "rejected"
+              ? {
+                  code: "RUNTIME_RUN_NOT_FOUND",
+                  disposition: "rejected",
+                  message: expect.stringContaining("Do not retry unless Clarus reassigns the task"),
+                }
+              : {
+                  code: "CLARUS_TOOL_SUBMISSION_AMBIGUOUS",
+                  disposition: "ambiguous",
+                  message: expect.stringContaining("Do not retry this assignment"),
+                },
+          )
+          const requestID = port.resultInputs[0]!.requestID
+          expect(caught).toMatchObject({ requestID })
+          const reverted = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
+          expect(reverted).toMatchObject({ status: "needs_attention", resultState: "idle" })
+          expect(reverted?.resultOutboxRequestID).toBeUndefined()
+          expect((await ClarusOutbox.get(requestID))?.state).toBe(failure)
+        },
+      })
+      ClarusRuntime.detach()
+    }
   })
 })
 

@@ -3,6 +3,8 @@
 
 import type { HolosConnectionEvent } from "../holos/native"
 
+import { isRecord } from "@/util/is-record"
+
 export type ClarusRequestOptions = {
   requestID: string
   timeoutMs?: number
@@ -51,6 +53,34 @@ export type ClarusRequestFailure =
       reason: "timeout" | "aborted_after_dispatch" | "disconnected" | "invalid_response" | "unexpected_response"
       message: string
     }
+
+export function parseClarusRequestFailure(error: unknown): ClarusRequestFailure | undefined {
+  if (!isRecord(error)) return undefined
+  const disposition = error.disposition
+  const requestID = error.requestID
+  const message = error.message
+  if (
+    (disposition !== "rejected" && disposition !== "ambiguous") ||
+    typeof requestID !== "string" ||
+    typeof message !== "string"
+  ) {
+    return undefined
+  }
+  if (disposition === "rejected" && typeof error.code === "string") {
+    return { disposition, requestID, code: error.code, message }
+  }
+  if (
+    disposition === "ambiguous" &&
+    (error.reason === "timeout" ||
+      error.reason === "aborted_after_dispatch" ||
+      error.reason === "disconnected" ||
+      error.reason === "invalid_response" ||
+      error.reason === "unexpected_response")
+  ) {
+    return { disposition, requestID, reason: error.reason, message }
+  }
+  return undefined
+}
 
 export type ProjectSubscribedEvent = {
   kind: "known"

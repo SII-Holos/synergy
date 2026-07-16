@@ -18,11 +18,11 @@ import { bindingKey, payloadHash } from "./keys"
 import { deliverProjectMessage, deliverTaskMessage, getOrCreateTaskSession } from "./session-router"
 import { NavigationUpdated } from "./event"
 
+import { parseClarusRequestFailure } from "./agent-tunnel-port"
 import type {
   ClarusAgentTunnelPort,
   ClarusInvalidEvent,
   ClarusObservedEvent,
-  ClarusRequestFailure,
   ProjectMessageCreatedEvent,
   ProjectSubscribedEvent,
   ProjectSystemEvent,
@@ -135,44 +135,6 @@ let wasConnected = false
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown Clarus request failure"
-}
-
-function requestFailure(error: unknown): ClarusRequestFailure | undefined {
-  if (!isRecord(error)) return undefined
-  const disposition = error.disposition
-  const requestID = error.requestID
-  const message = error.message
-  if (
-    (disposition !== "rejected" && disposition !== "ambiguous") ||
-    typeof requestID !== "string" ||
-    typeof message !== "string"
-  ) {
-    return undefined
-  }
-  if (disposition === "rejected" && typeof error.code === "string") {
-    return {
-      disposition,
-      requestID,
-      code: error.code,
-      message,
-    }
-  }
-  if (
-    disposition === "ambiguous" &&
-    (error.reason === "timeout" ||
-      error.reason === "aborted_after_dispatch" ||
-      error.reason === "disconnected" ||
-      error.reason === "invalid_response" ||
-      error.reason === "unexpected_response")
-  ) {
-    return {
-      disposition,
-      requestID,
-      reason: error.reason,
-      message,
-    }
-  }
-  return undefined
 }
 
 function isActiveLifecycle(lifecycle: ClarusProjectLifecycle): boolean {
@@ -319,7 +281,7 @@ function sanitizeErrorText(text: string): string {
 }
 
 async function settleOutboxFailure(requestID: string, error: unknown): Promise<void> {
-  const failure = requestFailure(error)
+  const failure = parseClarusRequestFailure(error)
   if (failure?.disposition === "rejected") {
     await ClarusOutbox.markRejected(requestID, failure.code, sanitizeErrorText(failure.message))
     return
