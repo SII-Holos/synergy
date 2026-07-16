@@ -209,6 +209,15 @@ describe("app production build contract", () => {
       )
       expect(expandedCompactionBodies.length, "Missing expanded compaction card CSS rule").toBeGreaterThan(0)
       expect(expandedCompactionBodies.join(";")).not.toContain(" both")
+      const runningCompactionShimmerBodies = collectRootRuleBodies(
+        css,
+        "[data-component=compaction-card][data-status=running]:before",
+      )
+      expect(runningCompactionShimmerBodies.length, "Missing running compaction shimmer CSS rule").toBeGreaterThan(1)
+      const runningCompactionShimmer = runningCompactionShimmerBodies.join(";")
+      expect(runningCompactionShimmer).toContain("animation:compaction-card-shimmer")
+      expect(runningCompactionShimmer).toContain("will-change:transform,opacity")
+      expect(runningCompactionShimmer).toContain("animation:none")
 
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
       expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
