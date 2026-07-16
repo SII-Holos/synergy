@@ -3,6 +3,7 @@ import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { chromium, webkit } from "playwright"
 
 const appDir = fileURLToPath(new URL("..", import.meta.url))
 
@@ -170,6 +171,63 @@ async function readBuiltAssets(outDir: string) {
   return readdir(path.join(outDir, "assets"))
 }
 
+async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 800 } })
+    await page.setContent(`
+      <style>
+        html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+        ${css}
+      </style>
+      <main class="relative size-full overflow-hidden flex flex-col contain-[layout_style_paint]">
+        <div class="synergy-workbench-canvas relative size-full overflow-hidden flex flex-col">
+          <div class="flex-1 min-h-0 flex flex-col md:flex-row relative">
+            <div data-pane class="session-workbench-pane relative flex flex-col flex-1">
+              <div data-prompt class="absolute inset-x-0 bottom-0 h-20"></div>
+            </div>
+          </div>
+          <div
+            data-bottom
+            class="workbench-surface workbench-surface--bottom workbench-surface--resizing"
+          ></div>
+        </div>
+      </main>
+    `)
+
+    const bottom = page.locator("[data-bottom]")
+    for (const bottomHeight of [0, 280, 480]) {
+      await bottom.evaluate((element, height) => {
+        element.style.height = `${height}px`
+      }, bottomHeight)
+
+      const layout = await page.evaluate(() => {
+        const pane = document.querySelector<HTMLElement>("[data-pane]")
+        const prompt = document.querySelector<HTMLElement>("[data-prompt]")
+        const bottomSurface = document.querySelector<HTMLElement>("[data-bottom]")
+        if (!pane || !prompt || !bottomSurface) throw new Error("Missing session layout fixture")
+
+        const paneRect = pane.getBoundingClientRect()
+        const promptRect = prompt.getBoundingClientRect()
+        const bottomRect = bottomSurface.getBoundingClientRect()
+        return {
+          paneHeight: paneRect.height,
+          paneBottom: paneRect.bottom,
+          promptBottom: promptRect.bottom,
+          bottomTop: bottomRect.top,
+        }
+      })
+
+      expect(Math.abs(layout.paneHeight - (800 - bottomHeight))).toBeLessThanOrEqual(1)
+      expect(Math.abs(layout.paneBottom - layout.bottomTop)).toBeLessThanOrEqual(1)
+      expect(Math.abs(layout.promptBottom - layout.bottomTop)).toBeLessThanOrEqual(1)
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
@@ -218,6 +276,7 @@ describe("app production build contract", () => {
       ])
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
+      await expectSessionWorkbenchPaneTracksBottomSurface(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })
