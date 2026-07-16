@@ -3,6 +3,7 @@ import { ModelsDev } from "../provider/models"
 import { Provider } from "../provider/provider"
 import { ProviderTransform } from "../provider/transform"
 import { Config } from "./config"
+import { ConfigImport } from "./import"
 import { ConfigDomain } from "./domain"
 import { RuntimeReload } from "../runtime/reload"
 import { Global } from "../global"
@@ -1552,7 +1553,7 @@ export namespace ConfigSetup {
       throw new Error(parsed.error.issues.map(formatIssue).join(", "))
     }
 
-    await Config.domainImportApply({ config: parsed.data, yes: true })
+    await ConfigImport.apply({ config: parsed.data, scope: "global", source: "setup", yes: true })
     return Config.globalPath()
   }
 
@@ -1560,45 +1561,8 @@ export namespace ConfigSetup {
     return Config.globalRaw()
   }
 
-  /**
-   * Download and parse JSON config from a URL.
-   * Used by `synergy config import <url>`.
-   */
+  /** Download and parse a bounded JSONC config source. */
   export async function downloadConfigFromURL(url: string): Promise<unknown> {
-    const TIMEOUT_MS = 15_000 // 15 seconds timeout
-
-    try {
-      const response = await fetch(url, {
-        signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: {
-          Accept: "application/json",
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Config not found at URL (HTTP ${response.status})`)
-      }
-
-      const text = await response.text()
-      try {
-        return JSON.parse(text)
-      } catch {
-        throw new Error("Invalid JSON format in downloaded config")
-      }
-    } catch (error) {
-      if (error instanceof Error) {
-        if (error.name === "TimeoutError" || error.message.includes("timeout")) {
-          throw new Error("Connection timeout while downloading config")
-        }
-        if (error.message.includes("HTTP")) {
-          throw error // Already formatted HTTP error
-        }
-        if (error.message.includes("JSON")) {
-          throw error // Already formatted JSON error
-        }
-        throw new Error(`Failed to download config from URL: ${error.message}`)
-      }
-      throw new Error("Failed to download config from URL: Unknown error")
-    }
+    return ConfigImport.fetchSource(url)
   }
 }

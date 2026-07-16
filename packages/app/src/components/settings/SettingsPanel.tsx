@@ -427,7 +427,13 @@ export function SettingsPanel(props: SettingsPanelProps) {
         onRuntimeChange={(key, value) => setSettings("runtime", key, value)}
       />
     ),
-    import: () => <ImportPanel domains={domainSummaries() ?? []} onImported={refreshAfterConfigChange} />,
+    import: () => (
+      <ImportPanel
+        domains={domainSummaries() ?? []}
+        scopes={globalSync.data.scope}
+        onImported={refreshAfterConfigChange}
+      />
+    ),
     "config-files": () => (
       <ConfigFilesPanel
         domains={domainSummaries() ?? []}

@@ -3045,7 +3045,7 @@
           }
         ],
         "summary": "Plan config import",
-        "description": "Create a dry-run plan for importing selected config domains.",
+        "description": "Create a dry-run plan for importing selected config domains into global or project config.",
         "responses": {
           "200": {
             "description": "Config import plan",
@@ -3058,11 +3058,31 @@
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid import or missing project scope",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
                 }
               }
             }
@@ -3105,24 +3125,61 @@
           }
         ],
         "summary": "Apply config import",
-        "description": "Apply a selected-domain config import plan.",
+        "description": "Atomically apply a selected-domain config import plan and reload affected runtime state.",
         "responses": {
           "200": {
-            "description": "Applied config import plan",
+            "description": "Applied config import result",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ConfigDomainImportPlan"
+                  "$ref": "#/components/schemas/ConfigDomainImportApplyResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid import or missing project scope",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportProjectScopeRequiredError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportInvalidConfigError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale plan or concurrent import",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ConfigImportRevisionConflictError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/ConfigImportLockedError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Config import request is too large",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigImportSourceTooLargeError"
                 }
               }
             }
@@ -3132,41 +3189,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object",
-                "properties": {
-                  "config": {
-                    "$ref": "#/components/schemas/Config"
-                  },
-                  "only": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "general",
-                        "models",
-                        "providers",
-                        "library",
-                        "mcp",
-                        "plugins",
-                        "agents",
-                        "commands",
-                        "permissions",
-                        "channels",
-                        "holos",
-                        "email",
-                        "runtime"
-                      ]
-                    }
-                  },
-                  "mode": {
-                    "type": "string",
-                    "enum": ["merge", "replace-domain", "append"]
-                  },
-                  "yes": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["config"]
+                "$ref": "#/components/schemas/ConfigDomainImportApplyInput"
               }
             }
           }
@@ -24902,64 +24925,115 @@
         },
         "required": ["success", "error", "message"]
       },
+      "ConfigImportScope": {
+        "type": "string",
+        "enum": ["global", "project"]
+      },
+      "ConfigImportDiagnostic": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["warning", "info"]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["severity", "code", "message"]
+      },
       "ConfigDomainImportChange": {
         "type": "object",
         "properties": {
           "key": {
             "type": "string"
           },
+          "type": {
+            "type": "string",
+            "enum": ["add", "modify", "remove"]
+          },
           "before": {},
           "after": {},
           "conflict": {
             "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigImportDiagnostic"
+            }
           }
         },
-        "required": ["key", "conflict"]
+        "required": ["key", "type", "conflict", "diagnostics"]
+      },
+      "ConfigDomainImportDomainPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "library",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
+          }
+        },
+        "required": ["id", "filename", "path", "mode", "revision", "changes"]
       },
       "ConfigDomainImportPlan": {
         "type": "object",
         "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
           "domains": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "id": {
-                  "type": "string",
-                  "enum": [
-                    "general",
-                    "models",
-                    "providers",
-                    "library",
-                    "mcp",
-                    "plugins",
-                    "agents",
-                    "commands",
-                    "permissions",
-                    "channels",
-                    "holos",
-                    "email",
-                    "runtime"
-                  ]
-                },
-                "filename": {
-                  "type": "string"
-                },
-                "path": {
-                  "type": "string"
-                },
-                "mode": {
-                  "type": "string",
-                  "enum": ["merge", "replace-domain", "append"]
-                },
-                "changes": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ConfigDomainImportChange"
-                  }
-                }
-              },
-              "required": ["id", "filename", "path", "mode", "changes"]
+              "$ref": "#/components/schemas/ConfigDomainImportDomainPlan"
             }
           },
           "conflicts": {
@@ -24969,7 +25043,77 @@
             }
           }
         },
-        "required": ["domains", "conflicts"]
+        "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
+      },
+      "ConfigImportProjectScopeRequiredError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportProjectScopeRequiredError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportInvalidConfigError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array",
+                "items": {}
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportSourceTooLargeError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportSourceTooLargeError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "maxBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["message", "source", "maxBytes"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "ConfigDomainImportPlanInput": {
         "type": "object",
@@ -25001,6 +25145,293 @@
           "mode": {
             "type": "string",
             "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["config"]
+      },
+      "RuntimeReloadTarget": {
+        "type": "string",
+        "enum": [
+          "config",
+          "skill",
+          "provider",
+          "agent",
+          "plugin",
+          "mcp",
+          "lsp",
+          "formatter",
+          "watcher",
+          "channel",
+          "holos",
+          "command",
+          "tool_registry",
+          "all"
+        ]
+      },
+      "RuntimeReloadFailure": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["target", "message"]
+      },
+      "RuntimeReloadDiagnostic": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["target", "severity", "message"]
+      },
+      "RuntimeReloadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "executed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "cascaded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restartRequired": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "liveApplied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadFailure"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "requested",
+          "executed",
+          "cascaded",
+          "changedFields",
+          "restartRequired",
+          "liveApplied",
+          "warnings",
+          "failed",
+          "failures",
+          "diagnostics"
+        ]
+      },
+      "ConfigDomainImportApplyResult": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/ConfigDomainImportPlan"
+          },
+          "reload": {
+            "$ref": "#/components/schemas/RuntimeReloadResult"
+          }
+        },
+        "required": ["plan", "reload"]
+      },
+      "ConfigImportRevisionConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportRevisionConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "library",
+                    "mcp",
+                    "plugins",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "runtime"
+                  ]
+                }
+              }
+            },
+            "required": ["message", "domains"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ConfigImportScope"
+              }
+            },
+            "required": ["message", "scope"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigDomainImportApplyInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "yes": {
+            "type": "boolean"
+          },
+          "force": {
+            "type": "boolean"
           }
         },
         "required": ["config"]
@@ -25278,164 +25709,6 @@
           }
         },
         "required": ["id", "name", "source", "env", "options", "models"]
-      },
-      "RuntimeReloadTarget": {
-        "type": "string",
-        "enum": [
-          "config",
-          "skill",
-          "provider",
-          "agent",
-          "plugin",
-          "mcp",
-          "lsp",
-          "formatter",
-          "watcher",
-          "channel",
-          "holos",
-          "command",
-          "tool_registry",
-          "all"
-        ]
-      },
-      "RuntimeReloadFailure": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "recoverable": {
-            "type": "boolean"
-          }
-        },
-        "required": ["target", "message"]
-      },
-      "RuntimeReloadDiagnostic": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["error", "warning", "info"]
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": ["target", "severity", "message"]
-      },
-      "RuntimeReloadResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "requested": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "executed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "cascaded": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "changedFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "restartRequired": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "liveApplied": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "failed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "failures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadFailure"
-            }
-          },
-          "diagnostics": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
-            }
-          }
-        },
-        "required": [
-          "success",
-          "requested",
-          "executed",
-          "cascaded",
-          "changedFields",
-          "restartRequired",
-          "liveApplied",
-          "warnings",
-          "failed",
-          "failures",
-          "diagnostics"
-        ]
       },
       "RuntimeReloadScope": {
         "type": "string",
