@@ -816,6 +816,27 @@ describe("session.compaction.selectPartsToPrune", () => {
     expect(result.some((p) => p.id === "old-big-tool")).toBe(true)
   })
 
+  test("scans past an unfinished legacy compaction summary", () => {
+    const bigOutput = "x".repeat(50_000 * 4)
+    const ghost = assistantMsg("ghost-summary", [])
+    if (ghost.info.role !== "assistant") throw new Error("expected assistant fixture")
+    ghost.info.summary = true
+
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "old-big-tool", output: bigOutput })]),
+      ghost,
+      userMsg("u1"),
+      assistantMsg("a1", []),
+      userMsg("u2"),
+      assistantMsg("a2", []),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+
+    expect(result.some((part) => part.id === "old-big-tool")).toBe(true)
+  })
+
   test("returns empty when total output is below PRUNE_MINIMUM", () => {
     const smallOutput = "x".repeat(100)
     const msgs: MessageV2.WithParts[] = [
