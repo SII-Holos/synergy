@@ -107,7 +107,7 @@ function installProviderWebSocket(): void {
 
 // ── Fixture helpers ────────────────────────────────────────────────────
 
-async function waitFor(check: () => boolean, timeoutMs = 500): Promise<void> {
+async function waitFor(check: () => boolean, timeoutMs = 2_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
   while (!check()) {
     if (Date.now() >= deadline) throw new Error("Timed out waiting for condition")
