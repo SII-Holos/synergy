@@ -1189,11 +1189,15 @@ describe("native error redaction in Outbox", () => {
     const rest = new DummyRest()
     const requestID = freshID("req")
 
+    const fakeToken = [
+      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
+      "eyJzdWIiOiIxMjM0NTY3ODkwIn0",
+      "dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+    ].join(".")
     port.sendMessageBehavior = {
       kind: "reject_sync",
       code: "AUTH_ERR",
-      message:
-        "unauthorized: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+      message: `unauthorized: Bearer ${fakeToken}`,
     }
 
     await catchErr(
