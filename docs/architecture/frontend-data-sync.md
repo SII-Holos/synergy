@@ -84,6 +84,7 @@ type MessageWindowMetadata = {
   total: number
   mode: "latest" | "history"
   pendingLatest: boolean
+  pendingLatestIds: string[]
 }
 ```
 
@@ -111,7 +112,8 @@ When the user requests older messages via "Load earlier", the frontend switches 
 
 - The existing window messages are preserved; older fetched messages are prepended.
 - The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages).
-- A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. This signals that newer messages exist without mixing them into the historical view.
+- A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted.
+- `total` excludes those suppressed live arrivals while history mode remains active. Older-page responses are normalized by `pendingLatestIds`; returning to latest replaces the metadata with the server total and clears the pending IDs.
 
 ### Return to latest
 

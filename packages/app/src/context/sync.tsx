@@ -124,6 +124,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           messages: store.message[sessionID] ?? [],
           mode: currentMetadata?.mode ?? "latest",
           pendingLatest: currentMetadata?.pendingLatest ?? false,
+          pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
         }
         const plan = planMessagePageApply({ page, current, mode: input?.mode })
 
@@ -295,6 +296,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             messages: store.message[input.sessionID] ?? [],
             mode: metadata?.mode ?? "latest",
             pendingLatest: metadata?.pendingLatest ?? false,
+            pendingLatestIds: metadata?.pendingLatestIds ?? [],
           }
           const existing = current.messages.some((item) => item.id === message.id)
           const result = reconcileMessage(current, message)
@@ -323,6 +325,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 }),
                 mode: result.window.mode,
                 pendingLatest: result.window.pendingLatest,
+                pendingLatestIds: result.window.pendingLatestIds,
               }),
             )
           })

@@ -31,10 +31,11 @@ import { describeToolPartApply } from "./session-sync-plan"
 import {
   applyLatestPage,
   reconcileMessage,
+  removeMessageFromWindow,
   type MessageWindowMetadata,
   type MessageWindowState,
 } from "./session-message-window"
-import { nextMessageWindowTotal } from "./session-message-total"
+import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "./session-message-total"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import {
   createPlanBlueprintOfferFromPart,
@@ -1028,6 +1029,7 @@ function createGlobalSync() {
           messages,
           mode: metadata?.mode ?? "latest",
           pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
         }
         const result = reconcileMessage(current, info)
 
@@ -1051,6 +1053,7 @@ function createGlobalSync() {
                 }),
                 mode: result.window.mode,
                 pendingLatest: result.window.pendingLatest,
+                pendingLatestIds: result.window.pendingLatestIds,
               }),
             )
           }
@@ -1062,18 +1065,37 @@ function createGlobalSync() {
         const messageID = event.properties.messageID as string
         const messages = store.message[sessionID]
         if (!messages) break
-        const index = messages.findIndex((message) => message.id === messageID)
+        const metadata = store.messageWindow[sessionID]
+        const current: MessageWindowState<Message> = {
+          messages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        }
+        const pending = current.pendingLatestIds.includes(messageID)
+        const result = removeMessageFromWindow(current, messageID)
+        const removedVisible = result.messages.length !== messages.length
         batch(() => {
-          if (index !== -1) {
+          if (removedVisible) {
             setStore(
               produce((draft) => {
-                draft.message[sessionID]?.splice(index, 1)
                 delete draft.part[messageID]
               }),
             )
+            setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
           }
-          const metadata = store.messageWindow[sessionID]
-          if (metadata) setStore("messageWindow", sessionID, "total", Math.max(0, metadata.total - 1))
+          if (metadata) {
+            setStore(
+              "messageWindow",
+              sessionID,
+              reconcile({
+                ...metadata,
+                total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
+                pendingLatest: result.pendingLatest,
+                pendingLatestIds: result.pendingLatestIds,
+              }),
+            )
+          }
         })
         break
       }
@@ -1355,6 +1377,7 @@ function createGlobalSync() {
                 messages: currentMessages,
                 mode: metadata?.mode ?? "latest",
                 pendingLatest: metadata?.pendingLatest ?? false,
+                pendingLatestIds: metadata?.pendingLatestIds ?? [],
               },
             })
             batch(() => {

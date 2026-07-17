@@ -31,6 +31,7 @@ const window = (messages: TestMessage[], mode: "latest" | "history" = "latest"):
   messages,
   mode,
   pendingLatest: false,
+  pendingLatestIds: [],
 })
 
 describe("planMessagePageApply", () => {
@@ -53,6 +54,7 @@ describe("planMessagePageApply", () => {
       total: 12,
       mode: "latest",
       pendingLatest: false,
+      pendingLatestIds: [],
     })
   })
 
@@ -80,6 +82,42 @@ describe("planMessagePageApply", () => {
     expect(plan.droppedIds).toEqual(["new-1", "new-2"])
     expect(plan.metadata.mode).toBe("history")
     expect(plan.metadata.nextCursor).toBe("cursor-older")
+  })
+
+  test("keeps unseen pending messages out of the history-window total", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "visible", time: { created: 3 } }],
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["pending"],
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("older", 1)], total: 3 }),
+      current,
+      mode: "history",
+    })
+
+    expect(plan.metadata.total).toBe(2)
+    expect(plan.metadata.pendingLatest).toBe(true)
+    expect(plan.metadata.pendingLatestIds).toEqual(["pending"])
+  })
+
+  test("does not subtract a pending ID after the loaded page makes it visible", () => {
+    const current: MessageWindowState<TestMessage> = {
+      messages: [{ id: "visible", time: { created: 3 } }],
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["older"],
+    }
+    const plan = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [message("older", 1)], total: 2 }),
+      current,
+      mode: "history",
+    })
+
+    expect(plan.metadata.total).toBe(2)
+    expect(plan.metadata.pendingLatest).toBe(false)
+    expect(plan.metadata.pendingLatestIds).toEqual([])
   })
 
   test("prepends referenced roots from an older history page", () => {

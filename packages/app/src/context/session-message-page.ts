@@ -31,7 +31,7 @@ export function planMessagePageApply<M extends MessageRef, P extends PartRef>(in
 }): MessagePageApplyPlan<M, P> {
   const items = input.page.items.filter((item) => !!item?.info?.id)
   const referencedRoots = input.page.referencedRoots.filter((item) => !!item?.info?.id)
-  const current = input.current ?? { messages: [], mode: "latest", pendingLatest: false }
+  const current = input.current ?? { messages: [], mode: "latest", pendingLatest: false, pendingLatestIds: [] }
   const result =
     input.mode === "history"
       ? prependOlderPage(
@@ -65,9 +65,13 @@ export function planMessagePageApply<M extends MessageRef, P extends PartRef>(in
     metadata: {
       nextCursor: input.page.nextCursor,
       hasMore: input.page.hasMore,
-      total: input.page.total,
+      total:
+        input.mode === "history"
+          ? Math.max(0, input.page.total - result.window.pendingLatestIds.length)
+          : input.page.total,
       mode: result.window.mode,
       pendingLatest: result.window.pendingLatest,
+      pendingLatestIds: result.window.pendingLatestIds,
     },
     parts,
   }

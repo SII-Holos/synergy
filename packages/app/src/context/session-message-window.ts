@@ -11,6 +11,7 @@ export type MessageWindowState<T extends MessageRef = MessageRef> = {
   messages: T[]
   mode: "latest" | "history"
   pendingLatest: boolean
+  pendingLatestIds: string[]
 }
 
 export type MessageWindowMetadata = {
@@ -19,6 +20,7 @@ export type MessageWindowMetadata = {
   total: number
   mode: MessageWindowState["mode"]
   pendingLatest: boolean
+  pendingLatestIds: string[]
 }
 
 export type MessageWindowResult<T extends MessageRef> = {
@@ -51,6 +53,7 @@ export function applyLatestPage<T extends MessageRef>(
       messages: messages.slice(dropCount),
       mode: "latest",
       pendingLatest: false,
+      pendingLatestIds: [],
     },
     droppedIds,
   }
@@ -63,11 +66,14 @@ export function prependOlderPage<T extends MessageRef>(
 ): MessageWindowResult<T> {
   const messages = mergeMessages([current.messages, older])
   const kept = messages.slice(0, cap)
+  const keptIds = new Set(kept.map((message) => message.id))
+  const pendingLatestIds = current.pendingLatestIds.filter((id) => !keptIds.has(id))
   return {
     window: {
       messages: kept,
       mode: "history",
-      pendingLatest: current.pendingLatest,
+      pendingLatest: pendingLatestIds.length > 0,
+      pendingLatestIds,
     },
     droppedIds: messages.slice(kept.length).map((message) => message.id),
   }
@@ -80,8 +86,11 @@ export function reconcileMessage<T extends MessageRef>(
 ): MessageWindowResult<T> {
   const existing = current.messages.some((item) => item.id === message.id)
   if (current.mode === "history" && !existing) {
+    const pendingLatestIds = current.pendingLatestIds.includes(message.id)
+      ? current.pendingLatestIds
+      : [...current.pendingLatestIds, message.id]
     return {
-      window: { ...current, pendingLatest: true },
+      window: { ...current, pendingLatest: true, pendingLatestIds },
       droppedIds: [],
     }
   }
@@ -100,7 +109,21 @@ export function reconcileMessage<T extends MessageRef>(
       messages: messages.slice(dropCount),
       mode: "latest",
       pendingLatest: false,
+      pendingLatestIds: [],
     },
     droppedIds: messages.slice(0, dropCount).map((item) => item.id),
+  }
+}
+
+export function removeMessageFromWindow<T extends MessageRef>(
+  current: MessageWindowState<T>,
+  messageID: string,
+): MessageWindowState<T> {
+  const pendingLatestIds = current.pendingLatestIds.filter((id) => id !== messageID)
+  return {
+    ...current,
+    messages: current.messages.filter((message) => message.id !== messageID),
+    pendingLatest: pendingLatestIds.length > 0,
+    pendingLatestIds,
   }
 }

@@ -3,6 +3,7 @@ import {
   applyLatestPage,
   prependOlderPage,
   reconcileMessage,
+  removeMessageFromWindow,
   DEFAULT_CAP,
   compareByTimeThenId,
   type MessageRef,
@@ -24,6 +25,7 @@ const window = (messages: MessageRef[], overrides?: Partial<MessageWindowState>)
   messages,
   mode: "latest",
   pendingLatest: false,
+  pendingLatestIds: [],
   ...overrides,
 })
 
@@ -143,6 +145,17 @@ describe("prependOlderPage", () => {
     expect(result.window.messages.map((m) => m.id)).toEqual(["a", "b"])
     expect(result.droppedIds).toEqual(["c", "d"])
   })
+  test("clears pending IDs that become visible in the loaded page", () => {
+    const current = window([msg("visible", 3)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["older"],
+    })
+    const result = prependOlderPage(current, [msg("older", 1)])
+
+    expect(result.window.pendingLatest).toBe(false)
+    expect(result.window.pendingLatestIds).toEqual([])
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -214,6 +227,13 @@ describe("reconcileMessage in history mode", () => {
     expect(result.window.pendingLatest).toBe(true)
   })
 
+  test("deduplicates repeated updates for the same pending message", () => {
+    const first = reconcileMessage(window([msg("a", 1)], { mode: "history" }), msg("z", 99))
+    const repeated = reconcileMessage(first.window, msg("z", 99))
+
+    expect(repeated.window.pendingLatestIds).toEqual(["z"])
+  })
+
   test("maintains existing pendingLatest=true (does not reset it)", () => {
     const w = window([msg("a", 1)], { mode: "history", pendingLatest: true })
     const result = reconcileMessage(w, msg("z", 99))
@@ -238,6 +258,46 @@ describe("reconcileMessage in history mode", () => {
     // a updates but is already in window; cap unchanged, no eviction needed
     expect(result.window.messages.map((m) => m.id)).toEqual(["b", "a"])
     expect(result.droppedIds).toEqual([])
+  })
+})
+
+describe("removeMessageFromWindow", () => {
+  test("clears the pending notice when its unseen live arrival is removed", () => {
+    const current = window([msg("a", 1)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["new"],
+    })
+    const result = removeMessageFromWindow(current, "new")
+
+    expect(result.messages.map((message) => message.id)).toEqual(["a"])
+    expect(result.pendingLatest).toBe(false)
+    expect(result.pendingLatestIds).toEqual([])
+  })
+
+  test("keeps the notice while another unseen live arrival remains", () => {
+    const current = window([msg("a", 1)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["new-1", "new-2"],
+    })
+    const result = removeMessageFromWindow(current, "new-1")
+
+    expect(result.pendingLatest).toBe(true)
+    expect(result.pendingLatestIds).toEqual(["new-2"])
+  })
+
+  test("removes a visible message without clearing unrelated pending arrivals", () => {
+    const current = window([msg("visible", 1)], {
+      mode: "history",
+      pendingLatest: true,
+      pendingLatestIds: ["new"],
+    })
+    const result = removeMessageFromWindow(current, "visible")
+
+    expect(result.messages).toEqual([])
+    expect(result.pendingLatest).toBe(true)
+    expect(result.pendingLatestIds).toEqual(["new"])
   })
 })
 
