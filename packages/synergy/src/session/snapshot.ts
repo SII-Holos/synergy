@@ -217,6 +217,14 @@ export namespace Snapshot {
     }
   }
 
+  async function initializeShadowGit(git: string, cwd: string, signal?: AbortSignal) {
+    for (let attempt = 1; ; attempt++) {
+      const result = await gitSpawn(["git", "init"], cwd, { GIT_DIR: git, GIT_WORK_TREE: cwd }, signal)
+      if (result.exitCode !== 141 || attempt >= GIT_SPAWN_MAX_ATTEMPTS) return result
+      if (!(await waitForGitSpawnRetry(attempt, signal))) return abortedGitResult()
+    }
+  }
+
   export async function track(sessionID: string, signal?: AbortSignal): Promise<string | undefined> {
     if (signal?.aborted) return
     if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") return
@@ -226,12 +234,7 @@ export namespace Snapshot {
     log.debug("track start", { sessionID, cwd: ScopeContext.current.directory })
     const git = gitdir(sessionID)
     if (await fs.mkdir(git, { recursive: true })) {
-      const initResult = await gitSpawn(
-        ["git", "init"],
-        ScopeContext.current.directory,
-        { GIT_DIR: git, GIT_WORK_TREE: ScopeContext.current.directory },
-        signal,
-      )
+      const initResult = await initializeShadowGit(git, ScopeContext.current.directory, signal)
       if (initResult.exitCode !== 0) {
         log.warn("track init failed", { sessionID, exitCode: initResult.exitCode, duration: Date.now() - started })
         return undefined
