@@ -1,10 +1,12 @@
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { DiffChanges } from "./diff-changes"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { getSemanticIcon } from "./semantic-icon"
+import { TURN_CHANGE_DESC } from "./tool-title-descriptors"
 import {
   turnChangeSummaryHiddenCount,
   turnChangeSummaryTitle,
@@ -25,6 +27,7 @@ export type TurnChangeSummaryPanelProps = {
 }
 
 export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
+  const { _, i18n } = useLingui()
   const [store, setStore] = createStore({ expanded: false })
   const state = () => props.state ?? "ready"
   const previewLimit = () => props.previewLimit ?? 3
@@ -32,11 +35,14 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
   const visibleDiffs = createMemo(() =>
     turnChangeSummaryVisibleDiffs(props.diffs, { expanded: store.expanded, previewLimit: previewLimit() }),
   )
-  const title = createMemo(() => turnChangeSummaryTitle(props.diffs.length))
+  const title = createMemo(() => turnChangeSummaryTitle(props.diffs.length, i18n()))
   const statusText = createMemo(() =>
-    state() === "pending" ? "Calculating file changes…" : "Couldn’t calculate file changes",
+    state() === "pending" ? _(TURN_CHANGE_DESC.calculating) : _(TURN_CHANGE_DESC.calculationFailed),
   )
   const label = createMemo(() => (state() === "ready" ? title() : statusText()))
+  const toggleLabel = createMemo(() =>
+    turnChangeSummaryToggleLabel({ expanded: store.expanded, hiddenCount: hiddenCount() }, i18n()),
+  )
 
   return (
     <section
@@ -73,7 +79,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             </div>
           </div>
           <button type="button" data-slot="turn-change-summary-review" onClick={props.onReviewRequested}>
-            Review changes
+            {_(TURN_CHANGE_DESC.reviewChanges)}
           </button>
         </div>
         <div data-slot="turn-change-summary-list">
@@ -91,7 +97,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
                 </span>
                 <span data-slot="turn-change-summary-row-actions">
                   <Show when={diff.binary}>
-                    <span data-slot="turn-change-summary-binary">Binary</span>
+                    <span data-slot="turn-change-summary-binary">{_(TURN_CHANGE_DESC.binary)}</span>
                   </Show>
                   <DiffChanges changes={diff} />
                 </span>
@@ -106,7 +112,7 @@ export function TurnChangeSummaryPanel(props: TurnChangeSummaryPanelProps) {
             aria-expanded={store.expanded}
             onClick={() => setStore("expanded", (value) => !value)}
           >
-            {turnChangeSummaryToggleLabel({ expanded: store.expanded, hiddenCount: hiddenCount() })}
+            {toggleLabel()}
           </button>
         </Show>
       </Show>

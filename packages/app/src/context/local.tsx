@@ -124,6 +124,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               modelID: value.model.modelID,
             })
         },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(store.draft, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === store.draft) return
+          const value = next[sessionID]
+          if (value !== undefined) setStore("draft", sessionID, value)
+        },
       }
     })()
 
@@ -436,6 +442,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
               .catch(() => {})
           }
         },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(draft.model, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === draft.model) return
+          const value = next[sessionID]
+          if (value !== undefined) setDraft("model", sessionID, value)
+        },
         inQuickSwitcher,
         isRecommended(model: ModelKey) {
           return recommendedSet().has(keyOf(model))
@@ -484,6 +496,12 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       slug: createMemo(() => base64Encode(sdk.scopeKey)),
       model,
       agent,
+      handoffNewSessionIntent(sessionID: string) {
+        batch(() => {
+          agent.handoffNewSessionIntent(sessionID)
+          model.handoffNewSessionIntent(sessionID)
+        })
+      },
     }
     return result
   },

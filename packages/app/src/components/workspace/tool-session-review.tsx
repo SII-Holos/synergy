@@ -1,10 +1,12 @@
 import { Show, createEffect, createMemo } from "solid-js"
 import { useParams } from "@solidjs/router"
+import { useLingui } from "@lingui/solid"
 import { SessionReviewTab } from "@/components/session"
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
 import type { FileDiff, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
+import { sessionReview as R } from "@/locales/messages"
 import { useFile } from "@/context/file"
 
 export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps) {
@@ -12,6 +14,7 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
   const sync = useSync()
   const layout = useLayout()
   const file = useFile()
+  const lingui = useLingui()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const view = createMemo(() => layout.view(sessionKey()))
   const turnDiffs = createMemo(() => {
@@ -39,7 +42,9 @@ export function SessionReviewWorkbenchContent(props: WorkbenchPanelContentProps)
     <Show
       when={diffs()}
       fallback={
-        <div class="flex h-full items-center justify-center px-6 text-13-regular text-text-weak">Loading changes…</div>
+        <div class="flex h-full items-center justify-center px-6 text-13-regular text-text-weak">
+          {lingui._({ id: R.loading.id, message: R.loading.message })}
+        </div>
       }
     >
       {(loadedDiffs) => {

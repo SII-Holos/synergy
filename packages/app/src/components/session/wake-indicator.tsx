@@ -4,92 +4,27 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useSDK } from "@/context/sdk"
+import { useLocale } from "@/context/locale"
 import "./wake-indicator.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { W, formatWakeTime, statusLabel, triggerLabel, itemTargetsSession } from "./wake-indicator-model"
+
+export {
+  W,
+  formatWakeTime,
+  formatDuration,
+  statusLabel,
+  triggerLabel,
+  itemTargetsSession,
+} from "./wake-indicator-model"
 
 interface Props {
   sessionID: string
 }
 
-const MINUTE = 60_000
-const HOUR = 60 * MINUTE
-const DAY = 24 * HOUR
-
-function formatWakeTime(nextRunAt: number | null): string {
-  if (nextRunAt === null) return "条件触发"
-
-  const delta = nextRunAt - Date.now()
-  if (delta < MINUTE) return "即将触发"
-  if (delta < HOUR) return `${Math.ceil(delta / MINUTE)} 分钟后`
-  if (delta < DAY) return `${Math.ceil(delta / HOUR)} 小时后`
-
-  const date = new Date(nextRunAt)
-  const now = new Date()
-  const tomorrow = new Date(now)
-  tomorrow.setDate(now.getDate() + 1)
-
-  const sameDay =
-    date.getFullYear() === tomorrow.getFullYear() &&
-    date.getMonth() === tomorrow.getMonth() &&
-    date.getDate() === tomorrow.getDate()
-  const time = date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false })
-  if (sameDay) return `明天 ${time}`
-
-  return date.toLocaleString("zh-CN", {
-    month: "numeric",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  })
-}
-
-function statusLabel(status: SessionAgendaItem["status"]): string {
-  return status === "active" ? "活跃" : "待触发"
-}
-
-function formatDuration(value: string | undefined): string | undefined {
-  const match = value?.match(/^(\d+)(ms|s|m|h|d|w)$/)
-  if (!match) return value
-  const amount = Number(match[1])
-  const unit = match[2]
-  const labels: Record<string, string> = {
-    ms: "毫秒",
-    s: "秒",
-    m: "分钟",
-    h: "小时",
-    d: "天",
-    w: "周",
-  }
-  return `${amount} ${labels[unit] ?? unit}`
-}
-
-function triggerLabel(item: SessionAgendaItem): string {
-  const labels = item.triggers.map((trigger) => {
-    switch (trigger.type) {
-      case "at":
-        return "一次性"
-      case "delay":
-        return `延迟 ${formatDuration(trigger.delay) ?? ""}`.trim()
-      case "every":
-        return `每 ${formatDuration(trigger.interval) ?? ""}`.trim()
-      case "cron":
-        return "定时计划"
-      case "watch":
-        return "条件触发"
-      case "webhook":
-        return "Webhook 触发"
-    }
-  })
-  return labels.length > 0 ? labels.join("、") : "待触发"
-}
-
-function itemTargetsSession(item: { origin?: { sessionID?: string } } | undefined, sessionID: string): boolean {
-  return item?.origin?.sessionID === sessionID
-}
-
 export function SessionAgendaWakeIndicator(props: Props) {
   const sdk = useSDK()
+  const { i18n, fmt } = useLocale()
   const [open, setOpen] = createSignal(false)
   const [showAll, setShowAll] = createSignal(false)
   const [lastResponse, setLastResponse] = createSignal<SessionAgendaResponse>()
@@ -124,7 +59,6 @@ export function SessionAgendaWakeIndicator(props: Props) {
   const unsubUpdated = sdk.event.on("agenda.item.updated", (event) => {
     if (itemTargetsSession(event.properties.item, props.sessionID)) refetch()
   })
-  // Deleted agenda events only include item ID and scope, so refetch conservatively.
   const unsubDeleted = sdk.event.on("agenda.item.deleted", () => refetch())
   onCleanup(() => {
     unsubCreated()
@@ -138,7 +72,7 @@ export function SessionAgendaWakeIndicator(props: Props) {
     const items = agenda()?.items ?? []
     return showAll() ? items : items.slice(0, 3)
   })
-  const nextWakeLabel = createMemo(() => formatWakeTime(agenda()?.items[0]?.nextRunAt ?? null))
+  const nextWakeLabel = createMemo(() => formatWakeTime(agenda()?.items[0]?.nextRunAt ?? null, { i18n, fmt }))
 
   function handleOpenChange(open: boolean) {
     setOpen(open)
@@ -156,12 +90,15 @@ export function SessionAgendaWakeIndicator(props: Props) {
           gutter={8}
           class="session-agenda-wake-panel"
           trigger={
-            <Tooltip placement="top" value={`定时唤醒：${agenda()?.count ?? 0} 项，最近 ${nextWakeLabel()}`}>
+            <Tooltip
+              placement="top"
+              value={i18n._({ ...W.tooltip, values: { count: agenda()?.count ?? 0, time: nextWakeLabel() } })}
+            >
               <button
                 type="button"
                 class="session-agenda-wake-trigger"
                 data-expanded={open() ? "true" : "false"}
-                aria-label={`定时唤醒，${agenda()?.count ?? 0} 项待唤醒，点击查看详情`}
+                aria-label={i18n._({ ...W.ariaLabel, values: { count: agenda()?.count ?? 0 } })}
               >
                 <Icon name={getSemanticIcon("agenda.main")} size="small" />
                 <Show when={(agenda()?.count ?? 0) > 0}>
@@ -175,10 +112,10 @@ export function SessionAgendaWakeIndicator(props: Props) {
             <div class="session-agenda-wake-panel-header">
               <div class="session-agenda-wake-panel-title">
                 <Icon name={getSemanticIcon("agenda.main")} size="small" />
-                <span>定时唤醒</span>
+                <span>{i18n._(W.panelTitle)}</span>
               </div>
               <div class="session-agenda-wake-panel-description">
-                这个会话接下来会被 {agenda()?.count ?? 0} 个任务唤醒
+                {i18n._({ ...W.panelDescription, values: { count: agenda()?.count ?? 0 } })}
               </div>
             </div>
             <div class="session-agenda-wake-list">
@@ -187,12 +124,12 @@ export function SessionAgendaWakeIndicator(props: Props) {
                   <div class="session-agenda-wake-row">
                     <span class="session-agenda-wake-dot" aria-hidden="true" />
                     <div class="session-agenda-wake-row-main">
-                      <div class="session-agenda-wake-time">{formatWakeTime(item.nextRunAt)}</div>
+                      <div class="session-agenda-wake-time">{formatWakeTime(item.nextRunAt, { i18n, fmt })}</div>
                       <div class="session-agenda-wake-title" title={item.title}>
                         {item.title}
                       </div>
                       <div class="session-agenda-wake-meta">
-                        {triggerLabel(item)} · {statusLabel(item.status)}
+                        {triggerLabel(item, { i18n })} · {statusLabel(item.status, { i18n })}
                       </div>
                     </div>
                   </div>
@@ -202,7 +139,9 @@ export function SessionAgendaWakeIndicator(props: Props) {
             <Show when={(agenda()?.items.length ?? 0) > 3}>
               <div class="session-agenda-wake-footer">
                 <button type="button" class="session-agenda-wake-footer-button" onClick={() => setShowAll(!showAll())}>
-                  {showAll() ? "收起" : `查看全部 ${agenda()?.items.length ?? 0} 项`}
+                  {showAll()
+                    ? i18n._(W.collapse)
+                    : i18n._({ ...W.showAll, values: { count: agenda()?.items.length ?? 0 } })}
                 </button>
               </div>
             </Show>

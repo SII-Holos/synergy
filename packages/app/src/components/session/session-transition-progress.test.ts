@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n } from "@lingui/core"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
 import {
   createNewSessionTransitionErrorProgress,
   createNewSessionTransitionProgress,
@@ -7,6 +10,7 @@ import {
   createSessionStartupSteps,
   isSessionTransitionBlocking,
   sessionTransitionPresentation,
+  translateSessionTransitionCopy,
   type SessionTransitionKind,
   type SessionTransitionProgress,
 } from "./session-transition-progress"
@@ -21,28 +25,34 @@ function progress(kind: SessionTransitionKind, phase: SessionTransitionProgress[
   }
 }
 
+function englishI18n() {
+  const i18n = setupI18n({ locale: "en" })
+  i18n.loadAndActivate({
+    locale: "en",
+    messages: Object.fromEntries(Object.values(S).map((descriptor) => [descriptor.id, descriptor.message])),
+  })
+  return i18n
+}
+
 describe("session transition progress model", () => {
   test("models ordinary new-session acceptance and persistent errors", () => {
+    const i18n = englishI18n()
     const loading = createNewSessionTransitionProgress()
-    expect(loading).toMatchObject({
-      kind: "new-session",
-      phase: "loading",
-      title: "Starting session",
-      description: "Submitting your first message.",
-    })
-    expect(loading.steps.map((step) => [step.id, step.label, step.state])).toEqual([
+    expect(loading).toMatchObject({ kind: "new-session", phase: "loading" })
+    expect(translateSessionTransitionCopy(loading.title, i18n)).toBe("Starting session")
+    expect(translateSessionTransitionCopy(loading.description, i18n)).toBe("Submitting your first message.")
+    expect(loading.steps.map((step) => [step.id, translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["session", "Prepare session", "complete"],
       ["message", "Submit message", "active"],
     ])
 
     const success = createNewSessionTransitionSuccessProgress()
-    expect(success).toMatchObject({
-      kind: "new-session",
-      phase: "success",
-      title: "Session request accepted",
-      description: "Your first message is queued for processing.",
-    })
-    expect(success.steps.map((step) => [step.id, step.label, step.state])).toEqual([
+    expect(success).toMatchObject({ kind: "new-session", phase: "success" })
+    expect(translateSessionTransitionCopy(success.title, i18n)).toBe("Session request accepted")
+    expect(translateSessionTransitionCopy(success.description, i18n)).toBe(
+      "Your first message is queued for processing.",
+    )
+    expect(success.steps.map((step) => [step.id, translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["session", "Prepare session", "complete"],
       ["message", "Submit message", "complete"],
     ])
@@ -65,9 +75,9 @@ describe("session transition progress model", () => {
 
   test("shares startup step ordering across ordinary and worktree sessions", () => {
     const workspace = {
-      label: "Create checkout",
-      activeDetail: "Preparing a new git worktree.",
-      completeDetail: "Workspace setup complete.",
+      label: { id: "test.session.workspace.label", message: "Create checkout" },
+      activeDetail: { id: "test.session.workspace.active", message: "Preparing a new git worktree." },
+      completeDetail: { id: "test.session.workspace.complete", message: "Workspace setup complete." },
     }
 
     expect(createSessionStartupSteps({ stage: "workspace", workspace }).map((step) => [step.id, step.state])).toEqual([
@@ -88,6 +98,7 @@ describe("session transition progress model", () => {
   })
 
   test("maps every transition kind and terminal phase to semantic presentation", () => {
+    const i18n = englishI18n()
     const expected = [
       ["new-session", "session.new", "New session"],
       ["new-worktree-session", "workspace.worktree", "Worktree session"],
@@ -96,12 +107,30 @@ describe("session transition progress model", () => {
     ] as const
 
     for (const [kind, icon, kicker] of expected) {
-      expect(sessionTransitionPresentation(progress(kind, "loading"))).toEqual({
-        icon: getSemanticIcon(icon),
-        kicker,
-      })
+      const presentation = sessionTransitionPresentation(progress(kind, "loading"))
+      expect(presentation.icon).toBe(getSemanticIcon(icon))
+      expect(translateDescriptor(presentation.kicker, i18n)).toBe(kicker)
       expect(sessionTransitionPresentation(progress(kind, "success")).icon).toBe(getSemanticIcon("state.success"))
       expect(sessionTransitionPresentation(progress(kind, "error")).icon).toBe(getSemanticIcon("state.error"))
     }
+  })
+
+  test("re-resolves stored descriptors after the active locale changes", () => {
+    const progress = createNewSessionTransitionProgress()
+    const i18n = englishI18n()
+    expect(translateSessionTransitionCopy(progress.title, i18n)).toBe("Starting session")
+
+    i18n.loadAndActivate({
+      locale: "zh-CN",
+      messages: {
+        [S.transitionTitleStarting.id]: "正在启动会话",
+        [S.transitionStepSubmitMessage.id]: "提交消息",
+      },
+    })
+
+    expect(translateSessionTransitionCopy(progress.title, i18n)).toBe("正在启动会话")
+    expect(translateDescriptor(progress.steps[1]!.label, i18n)).toBe("提交消息")
+    const raw = createNewSessionTransitionErrorProgress({ title: "Provider failed", message: "Connection closed." })
+    expect(translateSessionTransitionCopy(raw.title, i18n)).toBe("Provider failed")
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { I18n } from "@lingui/core"
 import {
   normalizeSubsessionSearch,
   resolveSubsessionStatus,
@@ -6,12 +7,27 @@ import {
   subsessionRangeLabel,
 } from "./subsession"
 
+function mockI18n(): I18n {
+  return {
+    _: (descriptor: { id: string; message: string; values?: Record<string, unknown> }) => {
+      let msg = descriptor.message
+      if (descriptor.values) {
+        for (const [key, value] of Object.entries(descriptor.values)) {
+          msg = msg.replace(`{${key}}`, String(value))
+        }
+      }
+      return msg
+    },
+  } as unknown as I18n
+}
+
 describe("status bar subsession helpers", () => {
   test("formats paginated ranges", () => {
-    expect(subsessionRangeLabel(0, 8, 8, 23)).toBe("1-8 of 23")
-    expect(subsessionRangeLabel(1, 8, 8, 23)).toBe("9-16 of 23")
-    expect(subsessionRangeLabel(2, 8, 7, 23)).toBe("17-23 of 23")
-    expect(subsessionRangeLabel(0, 8, 0, 0)).toBe("0 of 0")
+    const i18n = mockI18n()
+    expect(subsessionRangeLabel(0, 8, 8, 23, i18n)).toBe("1–8 of 23")
+    expect(subsessionRangeLabel(1, 8, 8, 23, i18n)).toBe("9–16 of 23")
+    expect(subsessionRangeLabel(2, 8, 7, 23, i18n)).toBe("17–23 of 23")
+    expect(subsessionRangeLabel(0, 8, 0, 0, i18n)).toBe("0 of 0")
   })
 
   test("serializes cursor query params only when a cursor exists", () => {

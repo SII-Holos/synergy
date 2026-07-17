@@ -1,5 +1,6 @@
 import DOMPurify from "dompurify"
 import { For, Match, Show, Switch, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
@@ -11,7 +12,8 @@ import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-p
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
 import { FileSourceView } from "./source-view"
-import "./styles.css"
+import { fileWorkbench as F } from "@/locales/messages"
+import { useLocale } from "@/context/locale"
 
 function selectionLabel(range: { start: number; end: number }) {
   const start = Math.min(range.start, range.end)
@@ -115,7 +117,12 @@ function SvgPreview(props: { path: string; content: string }) {
   return <Show when={url()}>{(src) => <img class="file-svg-preview" src={src()} alt={props.path} />}</Show>
 }
 
-function ImagePreview(props: { path: string; mimeType: string; content: string }) {
+function ImagePreview(props: {
+  path: string
+  mimeType: string
+  content: string
+  lingui: ReturnType<typeof useLingui>
+}) {
   const file = useFile()
   const [scale, setScale] = createSignal(file.view.imageScaleMode(props.path) === "actual" ? 1 : 0)
   const [pan, setPan] = createSignal({ x: 0, y: 0 })
@@ -136,7 +143,7 @@ function ImagePreview(props: { path: string; mimeType: string; content: string }
             file.view.setImageScaleMode(props.path, "fit")
           }}
         >
-          Fit
+          {props.lingui._({ id: F.fit.id, message: F.fit.message })}
         </button>
         <button
           type="button"
@@ -151,14 +158,14 @@ function ImagePreview(props: { path: string; mimeType: string; content: string }
         </button>
         <button
           type="button"
-          aria-label="Zoom out"
+          aria-label={props.lingui._({ id: F.zoomOut.id, message: F.zoomOut.message })}
           onClick={() => setScale((value) => Math.max(0.25, (value || 1) - 0.25))}
         >
           −
         </button>
         <button
           type="button"
-          aria-label="Zoom in"
+          aria-label={props.lingui._({ id: F.zoomIn.id, message: F.zoomIn.message })}
           onClick={() => setScale((value) => Math.min(8, (value || 1) + 0.25))}
         >
           +
@@ -200,6 +207,8 @@ function ImagePreview(props: { path: string; mimeType: string; content: string }
 export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   const file = useFile()
   const prompt = usePrompt()
+  const { fmt } = useLocale()
+  const lingui = useLingui()
   const path = createMemo(() => props.tab.resourceId ?? "")
   const documentState = createMemo(() => file.get(path()))
   const content = createMemo(() => documentState()?.content)
@@ -246,7 +255,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
   return (
     <div class="file-workbench">
       <div class="file-workbench-toolbar">
-        <nav class="file-breadcrumb" aria-label="File path">
+        <nav class="file-breadcrumb" aria-label={lingui._({ id: F.filePath.id, message: F.filePath.message })}>
           <Show when={breadcrumb().length === 0}>
             <span class="file-breadcrumb-root">/</span>
           </Show>
@@ -298,25 +307,29 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
                 }
               >
                 <span>{selectionLabel(range())}</span>
-                <span>Add to context</span>
+                <span>{lingui._({ id: F.addToContext.id, message: F.addToContext.message })}</span>
               </button>
             )}
           </Show>
           <Show when={capability().dual}>
-            <div class="file-view-toggle" role="group" aria-label="File view mode">
+            <div
+              class="file-view-toggle"
+              role="group"
+              aria-label={lingui._({ id: F.viewMode.id, message: F.viewMode.message })}
+            >
               <button
                 type="button"
                 aria-pressed={mode() === "source"}
                 onClick={() => file.view.setMode(path(), "source")}
               >
-                Source
+                {lingui._({ id: F.source.id, message: F.source.message })}
               </button>
               <button
                 type="button"
                 aria-pressed={mode() === "preview"}
                 onClick={() => file.view.setMode(path(), "preview")}
               >
-                Preview
+                {lingui._({ id: F.preview.id, message: F.preview.message })}
               </button>
             </div>
           </Show>
@@ -324,7 +337,7 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
             icon={getSemanticIcon("workspace.files")}
             variant="ghost"
             class="file-tree-toggle"
-            aria-label="Toggle file tree"
+            aria-label={lingui._({ id: F.toggleFileTree.id, message: F.toggleFileTree.message })}
             aria-pressed={file.explorer.open()}
             onClick={() => file.explorer.setOpen(!file.explorer.open())}
           />
@@ -334,40 +347,42 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
         <main class="file-viewer">
           <Show when={documentState()?.deleted}>
             <div class="file-state-banner">
-              <span>File was deleted. Showing the last available content.</span>
+              <span>{lingui._({ id: F.fileDeleted.id, message: F.fileDeleted.message })}</span>
               <button type="button" onClick={() => file.load(path(), { force: true })}>
-                Retry
+                {lingui._({ id: F.retry.id, message: F.retry.message })}
               </button>
               <button type="button" onClick={props.onRequestClose}>
-                Close
+                {lingui._({ id: F.close.id, message: F.close.message })}
               </button>
             </div>
           </Show>
           <Show when={textContent()?.truncationReason === "size"}>
-            <div class="file-state-banner">Showing the first 512 KiB of this file.</div>
+            <div class="file-state-banner">
+              {lingui._({ id: F.fileTruncated.id, message: F.fileTruncated.message })}
+            </div>
           </Show>
           <Switch>
             <Match when={!path()}>
               <div class="file-workbench-state file-workbench-empty">
                 <FileIcon node={{ path: "workspace", type: "directory" }} expanded class="size-10" />
-                <strong>Open a file</strong>
-                <span>Choose a file from the workspace tree.</span>
+                <strong>{lingui._({ id: F.openAFile.id, message: F.openAFile.message })}</strong>
+                <span>{lingui._({ id: F.chooseFromTree.id, message: F.chooseFromTree.message })}</span>
               </div>
             </Match>
             <Match when={documentState()?.loading && !content()}>
               <div class="file-workbench-loading">
                 <Spinner class="size-5" />
-                <span>Loading {path()}…</span>
+                <span>{lingui._({ id: F.loading.id, message: F.loading.message, values: { path: path() } })}</span>
               </div>
             </Match>
             <Match when={documentState()?.error && !content()}>
               {(error) => (
                 <div class="file-workbench-state">
                   <FileIcon node={{ path: path(), type: "file" }} class="size-10" />
-                  <strong>Unable to open file</strong>
+                  <strong>{lingui._({ id: F.unableToOpen.id, message: F.unableToOpen.message })}</strong>
                   <span>{error()}</span>
                   <button type="button" onClick={() => file.load(path(), { force: true })}>
-                    Retry
+                    {lingui._({ id: F.retry.id, message: F.retry.message })}
                   </button>
                 </div>
               )}
@@ -382,7 +397,9 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
               {(value) => <SvgPreview path={path()} content={value().content} />}
             </Match>
             <Match when={imageContent()}>
-              {(value) => <ImagePreview path={path()} mimeType={value().mimeType} content={value().content} />}
+              {(value) => (
+                <ImagePreview path={path()} mimeType={value().mimeType} content={value().content} lingui={lingui} />
+              )}
             </Match>
             <Match when={binaryContent()}>
               {(value) => (
@@ -390,7 +407,14 @@ export function FileWorkbenchContent(props: WorkbenchPanelContentProps) {
                   <FileIcon node={{ path: path(), type: "file" }} class="size-12" />
                   <strong>{path().split("/").at(-1)}</strong>
                   <span>
-                    {value().mimeType ?? "Unknown file type"} · {value().totalBytes.toLocaleString()} bytes
+                    {lingui._({
+                      id: F.binaryInfo.id,
+                      message: F.binaryInfo.message,
+                      values: {
+                        mimeType: value().mimeType ?? "Unknown file type",
+                        bytes: fmt.number(value().totalBytes),
+                      },
+                    })}
                   </span>
                   <p>{value().unsupportedReason}</p>
                 </div>

@@ -1,10 +1,25 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import type { AccountToggle, ProviderGroup } from "../types"
 import { SettingRow } from "./SettingRow"
+
+const useDefaultLabel = { id: "settings.accountToggle.useDefault", message: "Use default" }
+const inheritDesc = { id: "settings.accountToggle.inherit", message: "Inherit from global model config" }
+const modelOverrideTitle = { id: "settings.accountToggle.modelOverride", message: "Model override" }
+const modelOverrideDesc = {
+  id: "settings.accountToggle.modelOverrideDesc",
+  message: "Select a model for messages from this account.",
+}
+const accountLabel = { id: "settings.accountToggle.account", message: "Account" }
+const searchModelsPlaceholder = { id: "settings.accountToggle.searchModels", message: "Search models" }
+const noModelResults = { id: "settings.accountToggle.noModelResults", message: "No model results" }
+function selectModelAria(key: string) {
+  return { id: "settings.accountToggle.selectModelFor", message: "Select model for {key}", values: { key } }
+}
 
 type ModelPickOption = {
   kind: "fallback" | "model"
@@ -24,13 +39,14 @@ export function AccountToggleCard(props: {
   onToggle: (index: number, value: boolean) => void
   onModelChange: (index: number, model: string) => void
 }) {
+  const { _ } = useLingui()
   const modelOptions = createMemo<ModelPickOption[]>(() => [
     {
       kind: "fallback",
       key: "fallback",
       group: "Default",
-      label: "Use default",
-      description: "Inherit from global model config",
+      label: _(useDefaultLabel),
+      description: _(inheritDesc),
       value: "",
     },
     ...props.providers.flatMap((provider) =>
@@ -65,28 +81,28 @@ export function AccountToggleCard(props: {
               () => modelOptions().find((o) => o.value === account.model) ?? modelOptions()[0],
             )
             const displayText = createMemo(() =>
-              account.model ? (selectedLabel().get(account.model) ?? account.model) : "Use default",
+              account.model ? (selectedLabel().get(account.model) ?? account.model) : _(useDefaultLabel),
             )
 
             return (
               <div class="ds-setting-subsection">
                 <SettingRow
                   title={account.key}
-                  description="Account"
+                  description={_(accountLabel)}
                   trailing={<Switch checked={account.enabled} onChange={(value) => props.onToggle(index(), value)} />}
                 />
                 <div class="settings-model-row">
                   <div class="settings-model-copy">
                     <div class="settings-model-title-line">
-                      <span class="settings-model-title">Model override</span>
+                      <span class="settings-model-title">{_(modelOverrideTitle)}</span>
                     </div>
-                    <span class="settings-model-description">Select a model for messages from this account.</span>
+                    <span class="settings-model-description">{_(modelOverrideDesc)}</span>
                   </div>
                   <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
                     <KobaltePopover.Trigger
                       type="button"
                       class="settings-model-trigger"
-                      aria-label={`Select model for ${account.key}`}
+                      aria-label={_(selectModelAria(account.key))}
                     >
                       <span class="settings-model-trigger-text">
                         <span class="settings-model-trigger-title">{displayText()}</span>
@@ -94,11 +110,11 @@ export function AccountToggleCard(props: {
                       <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
                     </KobaltePopover.Trigger>
                     <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                      <KobaltePopover.Title class="sr-only">Select model for {account.key}</KobaltePopover.Title>
+                      <KobaltePopover.Title class="sr-only">{_(selectModelAria(account.key))}</KobaltePopover.Title>
                       <List<ModelPickOption>
                         class="settings-model-picker-list"
-                        search={{ placeholder: "Search models", autofocus: true }}
-                        emptyMessage="No model results"
+                        search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+                        emptyMessage={_(noModelResults)}
                         key={(option) => option.key}
                         items={modelOptions}
                         current={currentOption()}

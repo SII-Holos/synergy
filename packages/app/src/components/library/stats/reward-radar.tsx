@@ -11,17 +11,9 @@ import {
   Filler,
   Tooltip,
 } from "chart.js"
+import { useLingui } from "@lingui/solid"
+import { getDimensionFullLabel } from "../shared"
 import { useChartTheme } from "../../visualization/use-chart-theme"
-
-ChartJS.register(RadialLinearScale, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Tooltip)
-
-const DIMENSION_LABELS: Record<string, string> = {
-  outcome: "Outcome",
-  intent: "Intent",
-  execution: "Execution",
-  orchestration: "Orchestration",
-  expression: "Expression",
-}
 
 function formatR(v: number) {
   return v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)
@@ -35,18 +27,18 @@ type DimStats = {
 }
 
 export function RewardRadar(props: { dimensions: DimStats[] }) {
+  const { _ } = useLingui()
   const theme = useChartTheme()
   const dims = () => props.dimensions
 
-  // Radar chart: uses avg per dimension
   const radarData = createMemo(() => {
     const d = dims()
     if (d.length === 0) return null
     return {
-      labels: d.map((dim) => DIMENSION_LABELS[dim.dimension] ?? dim.dimension),
+      labels: d.map((dim) => getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension),
       datasets: [
         {
-          label: "Average",
+          label: _({ id: "app.library.stats.reward.average", message: "Average" }),
           data: d.map((dim) => dim.avg),
           borderColor: theme().series[0],
           backgroundColor: theme().alpha("chart-series-1", 0.12),
@@ -98,14 +90,12 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     animation: { duration: 600, easing: "easeOutQuart" as const },
   }))
 
-  // Stacked bar chart: shows distribution of -1/0/1 per dimension
   const barData = createMemo(() => {
     const d = dims()
     if (d.length === 0) return null
 
-    const labels = d.map((dim) => DIMENSION_LABELS[dim.dimension] ?? dim.dimension)
+    const labels = d.map((dim) => getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension)
 
-    // For each dimension, get counts for -1, 0, 1
     const getCount = (dim: DimStats, val: number) => dim.distribution.find((v) => v.value === val)?.count ?? 0
 
     const totals = d.map((dim) => dim.distribution.reduce((s, v) => s + v.count, 0))
@@ -114,7 +104,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
       labels,
       datasets: [
         {
-          label: "Positive (+1)",
+          label: _({ id: "app.library.stats.reward.positiveLabel", message: "Positive (+1)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 1) / t) * 100 : 0
@@ -123,7 +113,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
           borderRadius: 2,
         },
         {
-          label: "Neutral (0)",
+          label: _({ id: "app.library.stats.reward.neutralLabel", message: "Neutral (0)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 0) / t) * 100 : 0
@@ -132,7 +122,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
           borderRadius: 2,
         },
         {
-          label: "Negative (−1)",
+          label: _({ id: "app.library.stats.reward.negativeLabel", message: "Negative (−1)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, -1) / t) * 100 : 0
@@ -183,23 +173,30 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
+        <h3 class="text-13-medium text-text-strong">
+          {_({ id: "app.library.stats.reward.dimensions", message: "Reward dimensions" })}
+        </h3>
       </div>
 
-      <Show when={dims().length > 0} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
+      <Show
+        when={dims().length > 0}
+        fallback={
+          <div class="library-empty-row">
+            {_({ id: "app.library.stats.reward.noData", message: "No evaluated experiences yet" })}
+          </div>
+        }
+      >
         <div class="flex gap-4">
-          {/* Radar chart — left */}
           <div class="shrink-0" style={{ width: "280px" }}>
             <Show keyed when={radarData()}>
               {(data) => <Radar data={data} options={radarOptions()} />}
             </Show>
           </div>
 
-          {/* Stats column — right */}
           <div class="flex-1 min-w-0 flex flex-col gap-1.5 justify-center">
             <For each={dims()}>
               {(dim) => {
-                const label = DIMENSION_LABELS[dim.dimension] ?? dim.dimension
+                const label = getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension
                 const total = dim.distribution.reduce((s, v) => s + v.count, 0)
                 const pos = dim.distribution.find((v) => v.value === 1)?.count ?? 0
                 const neg = dim.distribution.find((v) => v.value === -1)?.count ?? 0
@@ -221,12 +218,13 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
                         {total > 0 ? `${((neg / total) * 100).toFixed(0)}%` : "—"}
                       </span>
                     </div>
-                    <span class="shrink-0 text-9-regular text-text-weaker tabular-nums">σ {dim.std.toFixed(2)}</span>
+                    <span class="shrink-0 text-9-regular text-text-weaker tabular-nums">
+                      {_({ id: "app.library.stats.reward.sigma", message: "σ" })} {dim.std.toFixed(2)}
+                    </span>
                   </div>
                 )
               }}
             </For>
-            {/* Legend for percentages */}
             <div class="flex items-center gap-3 px-2.5 pt-1 text-8-regular text-text-weaker">
               <span class="text-text-on-success-base/70">■ +1</span>
               <span>■ 0</span>
@@ -235,29 +233,30 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
           </div>
         </div>
 
-        {/* Stacked bar chart below */}
         <div class="library-chart-inner mt-3">
           <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-2">
-            Reward Distribution by Dimension
+            {_({
+              id: "app.library.stats.reward.distributionByDimension",
+              message: "Reward Distribution by Dimension",
+            })}
           </div>
           <div class="h-36">
             <Show keyed when={barData()}>
               {(data) => <Bar data={data} options={barOptions()} />}
             </Show>
           </div>
-          {/* Legend */}
           <div class="flex items-center gap-4 mt-2 text-9-regular text-text-weaker">
             <div class="flex items-center gap-1.5">
               <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-success-base" />
-              <span>Positive (+1)</span>
+              <span>{_({ id: "app.library.stats.reward.positiveLabel", message: "Positive (+1)" })}</span>
             </div>
             <div class="flex items-center gap-1.5">
               <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-weak-base" />
-              <span>Neutral (0)</span>
+              <span>{_({ id: "app.library.stats.reward.neutralLabel", message: "Neutral (0)" })}</span>
             </div>
             <div class="flex items-center gap-1.5">
               <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-critical-base" />
-              <span>Negative (−1)</span>
+              <span>{_({ id: "app.library.stats.reward.negativeLabel", message: "Negative (−1)" })}</span>
             </div>
           </div>
         </div>

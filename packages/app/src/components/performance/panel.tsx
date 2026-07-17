@@ -1,10 +1,13 @@
+import { useLingui } from "@lingui/solid"
 import { AppPanel } from "@/components/app-panel"
 import { PerformanceDashboard } from "./PerformanceDashboard"
+import { P } from "./performance-i18n"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { useWorkspaceMobileHeaderClose } from "@/components/workspace/mobile-header-close"
 import "./performance-panel.css"
 
 export function PerformancePanel() {
+  const { _ } = useLingui()
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   return (
     <AppPanel.Root class="performance-workbench">
@@ -13,11 +16,9 @@ export function PerformancePanel() {
         <AppPanel.Header class="performance-header">
           <div class="performance-header-inner">
             <AppPanel.HeaderRow>
-              <AppPanel.Title>Performance</AppPanel.Title>
+              <AppPanel.Title>{_(P.panelTitle)}</AppPanel.Title>
             </AppPanel.HeaderRow>
-            <AppPanel.Subtitle>
-              Live runtime resource usage, trace latency, browser metrics, and performance issues.
-            </AppPanel.Subtitle>
+            <AppPanel.Subtitle>{_(P.panelSubtitle)}</AppPanel.Subtitle>
           </div>
         </AppPanel.Header>
         <AppPanel.Body padding={false} class="performance-body">

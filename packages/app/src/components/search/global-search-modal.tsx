@@ -4,6 +4,8 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
 import type { GlobalSessionSearchResponse } from "@ericsanchezok/synergy-sdk/client"
@@ -23,6 +25,8 @@ function scopeLabel(itemScope: SessionItem["scope"]) {
 }
 
 export function GlobalSearchModal(props: GlobalSearchModalProps) {
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
   const navigate = useNavigate()
   const [query, setQuery] = createSignal("")
@@ -143,7 +147,7 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
             ref={inputRef}
             type="text"
             class="gsm-input"
-            placeholder="Search sessions..."
+            placeholder={_({ id: "app.search.sessions.placeholder", message: "Search sessions..." })}
             value={query()}
             onInput={(e) => handleInput(e.currentTarget.value)}
           />
@@ -159,7 +163,13 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
             <div class="gsm-empty">
               <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
               <span class="text-13-medium text-text-weak">
-                {query().length > 0 ? `No sessions matching "${query()}"` : "No sessions found"}
+                {query().length > 0
+                  ? _({
+                      id: "app.search.sessions.noMatch",
+                      message: 'No sessions matching "{query}"',
+                      values: { query: query() },
+                    })
+                  : _({ id: "app.search.sessions.none", message: "No sessions found" })}
               </span>
             </div>
           </Show>
@@ -180,17 +190,25 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
                 <div class="gsm-item-content">
                   <div class="gsm-item-title">
                     <Show when={item.time.archived}>
-                      <span class="gsm-archived-tag">[Archived]</span>{" "}
+                      <span class="gsm-archived-tag">
+                        [{_({ id: "app.search.sessions.archived", message: "Archived" })}]
+                      </span>{" "}
                     </Show>
                     {item.title}
                   </div>
                   <div class="gsm-item-meta">
                     {scopeLabel(item.scope)}
                     <span class="gsm-item-sep">·</span>
-                    {relativeTime(item.time.updated)}
+                    {relativeTime(fmt, item.time.updated)}
                     <Show when={item.lastExchange?.user}>
                       <span class="gsm-item-sep">·</span>
-                      <span class="gsm-item-preview truncate">You: {item.lastExchange!.user}</span>
+                      <span class="gsm-item-preview truncate">
+                        {_({
+                          id: "app.search.sessions.youSaid",
+                          message: "You: {text}",
+                          values: { text: item.lastExchange!.user },
+                        })}
+                      </span>
                     </Show>
                   </div>
                 </div>
@@ -206,10 +224,16 @@ export function GlobalSearchModal(props: GlobalSearchModalProps) {
               fetchResults()
             }}
           >
-            Include archived
+            {_({ id: "app.search.sessions.includeArchived", message: "Include archived" })}
           </Switch>
           <Show when={total() > 0}>
-            <span class="text-11-regular text-text-subtle">{total()} sessions</span>
+            <span class="text-11-regular text-text-subtle">
+              {_({
+                id: "app.search.sessions.total",
+                message: "{total} sessions",
+                values: { total: String(total()) },
+              })}
+            </span>
           </Show>
         </div>
       </div>

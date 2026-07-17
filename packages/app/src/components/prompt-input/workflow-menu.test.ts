@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { resolveLatticeWorkflowMenuState } from "./workflow-menu"
+import { PI } from "./prompt-input-i18n"
 
 const baseInput = {
   blueprintModeLocked: false,
@@ -14,7 +15,7 @@ describe("Lattice workflow menu state", () => {
     expect(resolveLatticeWorkflowMenuState(baseInput)).toEqual({
       action: "open",
       ariaDisabled: false,
-      description: "Run a goal as a recursive Blueprint",
+      description: PI.wmRunGoal,
     })
   })
 
@@ -22,8 +23,8 @@ describe("Lattice workflow menu state", () => {
     expect(resolveLatticeWorkflowMenuState({ ...baseInput, latticeActive: true })).toEqual({
       action: "cancel",
       ariaDisabled: false,
-      description: "Click to exit Lattice",
-      title: "Exit Lattice",
+      description: PI.wmClickExitLattice,
+      title: PI.wmExitLattice,
     })
   })
 
@@ -31,8 +32,8 @@ describe("Lattice workflow menu state", () => {
     expect(resolveLatticeWorkflowMenuState({ ...baseInput, latticeActive: true, working: true })).toEqual({
       action: "none",
       ariaDisabled: true,
-      description: "Recursive Blueprint run active",
-      title: "Stop the session before changing workflow modes.",
+      description: PI.wmRecursiveBpActive,
+      title: PI.wmStopSessionBeforeWorkflow,
     })
   })
 
@@ -40,13 +41,13 @@ describe("Lattice workflow menu state", () => {
     expect(resolveLatticeWorkflowMenuState({ ...baseInput, planActive: true })).toMatchObject({
       action: "none",
       ariaDisabled: true,
-      title: "Lattice is unavailable while Plan is active",
+      title: PI.wmLatticeUnavailablePlan,
     })
 
     expect(resolveLatticeWorkflowMenuState({ ...baseInput, lightLoopActive: true })).toMatchObject({
       action: "none",
       ariaDisabled: true,
-      title: "Lattice is unavailable while Light Loop is active",
+      title: PI.wmLatticeUnavailableLl,
     })
   })
 
@@ -54,8 +55,8 @@ describe("Lattice workflow menu state", () => {
     expect(resolveLatticeWorkflowMenuState({ ...baseInput, blueprintModeLocked: true, latticeActive: true })).toEqual({
       action: "cancel",
       ariaDisabled: false,
-      description: "Click to exit Lattice",
-      title: "Exit Lattice",
+      description: PI.wmClickExitLattice,
+      title: PI.wmExitLattice,
     })
   })
 })
