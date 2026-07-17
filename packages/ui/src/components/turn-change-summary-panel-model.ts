@@ -1,14 +1,10 @@
-import type { I18n, MessageDescriptor } from "@lingui/core"
+import type { I18n } from "@lingui/core"
 
 export type TurnChangeSummaryDiff = {
   file: string
   additions: number
   deletions: number
   binary?: boolean
-}
-
-function d(id: string, message: string): MessageDescriptor {
-  return { id, message }
 }
 
 const TITLE_DESC = /** i18n */ {
@@ -19,6 +15,15 @@ const HIDE_DESC = /** i18n */ { id: "ui.turnChangeSummary.hideFiles", message: "
 const SHOW_DESC = /** i18n */ {
   id: "ui.turnChangeSummary.showMore",
   message: "Show {count} more {count, plural, one {file} other {files}}",
+}
+
+export type TurnDiffPanelState = "hidden" | "pending" | "ready" | "error"
+
+export const TURN_DIFF_PENDING_DELAY_MS = 150
+
+export function resolveTurnDiffPanelState(state: TurnDiffPanelState, pendingDelayElapsed: boolean): TurnDiffPanelState {
+  if (state === "pending" && !pendingDelayElapsed) return "hidden"
+  return state
 }
 
 export function turnChangeSummaryTitle(fileCount: number, i18n?: I18n) {

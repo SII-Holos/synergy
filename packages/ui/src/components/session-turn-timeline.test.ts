@@ -394,7 +394,7 @@ describe("session turn assistant collection", () => {
         { metadata: compactionUser.metadata, summary: { diffs: [{ file: "file.ts", additions: 1, deletions: 0 }] } },
         { hasCompactionEvent: true },
       ),
-    ).toBe(false)
+    ).toBe("hidden")
   })
 
   test("manual compaction root: suppresses chrome and renders the card during the wait (#326)", () => {
@@ -437,7 +437,25 @@ describe("session turn assistant collection", () => {
     const compactedParents = collectCompactionParentIDs([parent, boundary] as MessageType[])
 
     expect(compactedParents.has(parent.id)).toBe(true)
-    expect(shouldShowTurnDiffs(parent, { isCompactedParent: compactedParents.has(parent.id) })).toBe(false)
+    expect(shouldShowTurnDiffs(parent, { isCompactedParent: compactedParents.has(parent.id) })).toBe("hidden")
+  })
+
+  test("projects persisted diff settlement state without guessing from diff presence", () => {
+    const diff = { file: "file.ts", additions: 1, deletions: 0 }
+
+    expect(shouldShowTurnDiffs({ summary: { diffs: [diff] } })).toBe("ready")
+    expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "pending", deadlineAt: 301_000 } } })).toBe(
+      "pending",
+    )
+    expect(
+      shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "pending", deadlineAt: -299_000 } } }),
+    ).toBe("pending")
+    expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "error", code: "unknown" } } })).toBe(
+      "error",
+    )
+    expect(shouldShowTurnDiffs({ summary: { diffs: [diff], diffState: { status: "ready" } } })).toBe("ready")
+    expect(shouldShowTurnDiffs({ summary: { diffs: [], diffState: { status: "ready" } } })).toBe("hidden")
+    expect(shouldShowTurnDiffs({ summary: { diffs: [] } })).toBe("hidden")
   })
 })
 

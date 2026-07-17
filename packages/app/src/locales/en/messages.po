@@ -1631,15 +1631,15 @@ msgstr "Export file"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.session.import.hint"
-msgstr "Imported sessions get new IDs and use this project workspace."
+msgstr "Imported sessions get new IDs and use the current scope."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.session.import.importing"
 msgstr "Importing..."
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
-msgid "app.dialog.session.import.intoProject"
-msgstr "Import into current project"
+msgid "app.dialog.session.import.intoScope"
+msgstr "Import into current scope"
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
 msgid "app.dialog.session.import.summary"
@@ -15417,6 +15417,14 @@ msgstr "Write Note"
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.binary"
 msgstr "Binary"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.calculating"
+msgstr "Calculating file changes…"
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.calculation-failed"
+msgstr "Couldn’t calculate file changes"
 
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.review-changes"

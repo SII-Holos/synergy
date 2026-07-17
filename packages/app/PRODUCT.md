@@ -90,6 +90,7 @@ Desktop cold start should show a native Synergy shell immediately instead of a b
 Desktop managed-local project selection should use native OS folder picking for Add/Open Project because the Electron shell and managed server share local filesystem authority. Web, remote-server, and desktop external-server project selection must browse the server filesystem instead of exposing local desktop paths; that server browser should use an explicit search action, clear base/query state, and bounded server-side browse rather than keystroke-driven recursive scanning.
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+Session import and export are session-level portability actions. Keep them available for every open session regardless of Scope type, while Scope-specific workspace and lifecycle actions may remain limited to project sessions.
 Performance and Diagnostics are developer diagnostic workbench surfaces. Organize them around evidence, current health, inflight or stale work, and recovery actions; keep raw trace IDs, span IDs, correlation IDs, and debug tables in detail or copy areas instead of making them default primary labels.
 
 Performance should separate server process resources from registered tool child process resources. Main RSS, heap, CPU, and event-loop signals belong in the primary resource cards and charts; tool child process count, aggregate RSS, and top child memory contributors should be visible as support-oriented diagnostics without crowding the main time-series model.
@@ -111,6 +112,17 @@ Message-flow errors should remain compact by default: show a single-line error p
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 Turn-level file changes summarize in the message flow; detailed file diff inspection belongs in the session Review workbench surface.
+
+### Turn diff panel states
+
+The turn diff panel appears below each completed turn and follows the `diffState` lifecycle from the message summary:
+
+- **pending**: The panel shows a quiet "Calculating file changes…" label with a pulsing icon. The state is hidden for the first 150 ms to avoid flashing on fast completions. The server owns timeout and restart recovery and publishes the terminal **error** state; the client does not compare `deadlineAt` with its local clock.
+- **ready**: The panel displays the file list with per-file add/delete bars and a "Review changes" button. The panel enters with a subtle slide-and-fade animation (`turn-change-summary-entering`). Empty diffs (`summary.diffs` with zero length) render as hidden — only non-empty diff sets are visible.
+- **error**: The panel shows "Couldn't calculate file changes" with a weak icon. No inline error details or retry action; the error state is informational only.
+- **legacy (no diffState)**: A message without `diffState` but with non-empty `summary.diffs` inherits `ready` treatment to preserve backward compatibility with older histories.
+
+Motion under `prefers-reduced-motion: reduce` disables all panel entrance transitions and the pulsing pending icon animation.
 
 Special user-message renderers should keep workflow prompts lightweight in the message stream. Plan, Lattice, Light Loop, BlueprintLoop starts, and workflow continuation controls may use the same compact right-aligned prompt-bubble treatment with a small source badge; control messages should show a short human-readable summary by default rather than raw loop IDs, internal prompt text, or heavy centered event cards.
 

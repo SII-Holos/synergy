@@ -7,8 +7,7 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useLingui } from "@lingui/solid"
 import { dialog } from "@/locales/messages"
-import { useGlobalSDK } from "@/context/global-sdk"
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { useSDK } from "@/context/sdk"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionImportResult } from "@ericsanchezok/synergy-sdk/client"
 import "./dialog-session-export.css"
@@ -23,24 +22,18 @@ export function DialogSessionImport() {
   const params = useParams()
   const navigate = useNavigate()
   const dialogContext = useDialog()
-  const globalSDK = useGlobalSDK()
+  const sdk = useSDK()
   const { _ } = useLingui()
   const [file, setFile] = createSignal<File>()
   const [importing, setImporting] = createSignal(false)
 
-  const directory = () => (params.dir ? base64Decode(params.dir) : "")
-
   async function handleImport() {
     const selected = file()
-    const dir = directory()
-    if (!selected || !dir) return
+    if (!selected) return
 
     setImporting(true)
     try {
-      const response = await globalSDK.client.session.import({
-        directory: dir,
-        file: selected,
-      })
+      const response = await sdk.client.session.import({ file: selected })
       const result = response.data as SessionImportResult | undefined
       if (!result) throw new Error("No import result returned")
       const descParts = [
@@ -77,7 +70,7 @@ export function DialogSessionImport() {
         <section class="session-export-summary" aria-label={_(dialog.importTargetAria)}>
           <div class="session-export-summary-title">
             <Icon name={getSemanticIcon("action.import")} size="small" class="session-export-summary-icon" />
-            <span>{_(dialog.importIntoProject)}</span>
+            <span>{_(dialog.importIntoScope)}</span>
           </div>
           <div class="session-export-meta">
             <span>{_(dialog.importAcceptedFormats)}</span>

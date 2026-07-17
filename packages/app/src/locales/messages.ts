@@ -670,7 +670,7 @@ export const dialog = {
   },
   // Session import
   importSessionData: { id: "app.dialog.session.import.title", message: "Import session data" },
-  importIntoProject: { id: "app.dialog.session.import.intoProject", message: "Import into current project" },
+  importIntoScope: { id: "app.dialog.session.import.intoScope", message: "Import into current scope" },
   importAcceptedFormats: {
     id: "app.dialog.session.import.acceptedFormats",
     message: "Accepts .json and .json.gz session exports",
@@ -679,7 +679,7 @@ export const dialog = {
   chooseFile: { id: "app.dialog.session.import.chooseFile", message: "Choose session export file" },
   importHint: {
     id: "app.dialog.session.import.hint",
-    message: "Imported sessions get new IDs and use this project workspace.",
+    message: "Imported sessions get new IDs and use the current scope.",
   },
   importing: { id: "app.dialog.session.import.importing", message: "Importing..." },
   importAction: { id: "app.dialog.session.import.action", message: "Import session" },

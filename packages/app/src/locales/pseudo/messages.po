@@ -1638,7 +1638,7 @@ msgid "app.dialog.session.import.importing"
 msgstr ""
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
-msgid "app.dialog.session.import.intoProject"
+msgid "app.dialog.session.import.intoScope"
 msgstr ""
 
 #. ── Dialogs ──────────────────────────────────────────────────────────────────
@@ -15416,6 +15416,14 @@ msgstr ""
 
 #. ── Turn change summary chrome ──────────────────────────────────────
 msgid "turn-change.binary"
+msgstr ""
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.calculating"
+msgstr ""
+
+#. ── Turn change summary chrome ──────────────────────────────────────
+msgid "turn-change.calculation-failed"
 msgstr ""
 
 #. ── Turn change summary chrome ──────────────────────────────────────

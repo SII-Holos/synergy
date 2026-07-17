@@ -24,9 +24,11 @@ import {
   isSessionRunningForWorkspaceChange,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
+import { sessionActionVisibility } from "@/components/session/session-actions"
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
+  scopeSpecific: boolean
   isWorktree: () => boolean
   worktreeDisabled: () => boolean
   onRename: () => void
@@ -65,24 +67,26 @@ function SessionActionMenu(props: {
       }
     >
       <div class="stb-menu-list" role="menu">
-        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
-          <Icon name={getSemanticIcon("action.rename")} size="small" />
-          <span>{_(topBar.rename)}</span>
-        </button>
-        <button
-          type="button"
-          class="stb-menu-item"
-          role="menuitem"
-          disabled={props.worktreeDisabled()}
-          title={props.worktreeDisabled() ? _(topBar.worktreeDisabledHint) : undefined}
-          onClick={() => run(props.onWorktreeToggle)}
-        >
-          <Icon
-            name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
-            size="small"
-          />
-          <span>{props.isWorktree() ? _(topBar.exitWorktree) : _(topBar.enterWorktree)}</span>
-        </button>
+        <Show when={props.scopeSpecific}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
+            <Icon name={getSemanticIcon("action.rename")} size="small" />
+            <span>{_(topBar.rename)}</span>
+          </button>
+          <button
+            type="button"
+            class="stb-menu-item"
+            role="menuitem"
+            disabled={props.worktreeDisabled()}
+            title={props.worktreeDisabled() ? _(topBar.worktreeDisabledHint) : undefined}
+            onClick={() => run(props.onWorktreeToggle)}
+          >
+            <Icon
+              name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
+              size="small"
+            />
+            <span>{props.isWorktree() ? _(topBar.exitWorktree) : _(topBar.enterWorktree)}</span>
+          </button>
+        </Show>
         <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
           <Icon name={getSemanticIcon("action.export")} size="small" />
           <span>{_(topBar.exportSessionData)}</span>
@@ -91,15 +95,17 @@ function SessionActionMenu(props: {
           <Icon name={getSemanticIcon("action.import")} size="small" />
           <span>{_(topBar.importSessionData)}</span>
         </button>
-        <button
-          type="button"
-          class="stb-menu-item stb-menu-item--danger"
-          role="menuitem"
-          onClick={() => run(props.onArchive)}
-        >
-          <Icon name={getSemanticIcon("action.archive")} size="small" />
-          <span>{_(topBar.archive)}</span>
-        </button>
+        <Show when={props.scopeSpecific}>
+          <button
+            type="button"
+            class="stb-menu-item stb-menu-item--danger"
+            role="menuitem"
+            onClick={() => run(props.onArchive)}
+          >
+            <Icon name={getSemanticIcon("action.archive")} size="small" />
+            <span>{_(topBar.archive)}</span>
+          </button>
+        </Show>
       </div>
     </Popover>
   )
@@ -125,6 +131,7 @@ export function SessionTopBar(props: {
 
   const directory = () => (params.dir ? base64Decode(params.dir) : "")
   const isGlobal = () => (params.dir ? isHomeScope(directory()) : false)
+  const actionVisibility = createMemo(() => sessionActionVisibility({ sessionID: params.id, scopeKey: directory() }))
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
@@ -277,8 +284,9 @@ export function SessionTopBar(props: {
           >
             <Icon name={getSemanticIcon("action.add")} size="normal" />
           </button>
-          <Show when={!!params.id && !isGlobal()}>
+          <Show when={actionVisibility().menu}>
             <SessionActionMenu
+              scopeSpecific={actionVisibility().scopeSpecific}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}
@@ -302,8 +310,9 @@ export function SessionTopBar(props: {
           <VariantSelectorButton />
         </div>
         <div class="stb-right">
-          <Show when={!!params.id && !isGlobal()}>
+          <Show when={actionVisibility().menu}>
             <SessionActionMenu
+              scopeSpecific={actionVisibility().scopeSpecific}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}
