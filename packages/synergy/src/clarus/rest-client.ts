@@ -1,4 +1,5 @@
 import { validateHolosEndpoint } from "@/holos/security"
+import { normalizePublicHttpsOrigin } from "@/util/public-https-origin"
 import { createFallbackFetcher } from "./fallback-transport"
 import { ClarusIdSchema } from "./schemas"
 import {
@@ -16,6 +17,7 @@ import {
   MAX_WIRE_STRING_ERROR_MESSAGE,
   MAX_WIRE_STRING_USER_QUERY,
   MAX_USER_CANDIDATES,
+  MAX_PAYLOAD_SNAPSHOT_BYTES,
 } from "./rest-port"
 import { validateSegment } from "./keys"
 import type { ClarusCredentialSupplier } from "./config-reader"
@@ -65,6 +67,31 @@ function parseResponseBody(body: string, maxBytes: number): unknown {
   } catch {
     throw new Error("Clarus response body is not valid JSON")
   }
+}
+
+async function readBoundedBody(response: Response, maxBytes: number): Promise<Uint8Array> {
+  if (!response.body) throw new Error("Clarus payload snapshot body is missing")
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      totalBytes += value.byteLength
+      if (totalBytes > maxBytes) throw new Error("Clarus payload snapshot exceeds its limit")
+      chunks.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  const body = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return body
 }
 
 // ── Recursive bounds validators for metadata / fileRefs ─────
@@ -117,10 +144,10 @@ function validateFileRefs(raw: unknown, depth: number, maxDepth: number, visited
     if (item !== null && typeof item === "object" && !Array.isArray(item)) {
       validateMetadata(
         item as Record<string, unknown>,
-        2,
+        depth + 1,
         MAX_WIRE_METADATA_KEYS,
         MAX_WIRE_METADATA_KEY_LENGTH,
-        MAX_WIRE_METADATA_RECURSION_DEPTH,
+        maxDepth,
         visited,
       )
     } else if (Array.isArray(item)) {
@@ -153,6 +180,8 @@ export class ClarusRestClient implements ClarusRestPort.Interface {
   private readonly baseUrl: URL
   private readonly credentials: ClarusCredentialSupplier
   private readonly fetcher: Fetcher
+  private readonly snapshotFetcher: Fetcher
+  private readonly objectFetcher: Fetcher
   private readonly timeoutMs: number
   private readonly maxResponseBytes: number
 
@@ -161,7 +190,12 @@ export class ClarusRestClient implements ClarusRestPort.Interface {
     if (baseUrl.pathname !== "/" || baseUrl.search || baseUrl.hash) throw new Error("Clarus API URL must be an origin")
     this.baseUrl = baseUrl
     this.credentials = input.credentials
-    this.fetcher = input.fetch ?? createFallbackFetcher(fetch, { connectTimeoutMs: input.timeoutMs })
+    const baseFetch = input.fetch ?? fetch
+    this.fetcher = input.fetch ?? createFallbackFetcher(baseFetch, { connectTimeoutMs: input.timeoutMs })
+    this.snapshotFetcher = input.fetch
+      ? baseFetch
+      : createFallbackFetcher(baseFetch, { connectTimeoutMs: input.timeoutMs, acceptedStatuses: [307] })
+    this.objectFetcher = baseFetch
     this.timeoutMs = Math.min(Math.max(input.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1), DEFAULT_TIMEOUT_MS)
     this.maxResponseBytes = Math.min(
       Math.max(input.maxResponseBytes ?? MAX_WIRE_RESPONSE_BYTES, 1),
@@ -242,6 +276,72 @@ export class ClarusRestClient implements ClarusRestPort.Interface {
         ...(item.created_at === undefined ? {} : { createdAt: item.created_at }),
       })),
       nextCursor: parsed.next_cursor ?? null,
+    }
+  }
+
+  async resolvePayloadSnapshot(params: ClarusRestPort.PayloadSnapshotRequest): Promise<Record<string, unknown>> {
+    if (
+      params.contentType !== "application/json" ||
+      params.contentEncoding !== "gzip" ||
+      !Number.isInteger(params.expectedBytes) ||
+      params.expectedBytes < 1 ||
+      params.expectedBytes > MAX_PAYLOAD_SNAPSHOT_BYTES ||
+      !/^[0-9a-f]{64}$/i.test(params.expectedSha256)
+    )
+      throw new Error("Clarus payload snapshot reference is invalid")
+    const credential = await this.credentials()
+    if (!credential) throw new Error("Clarus credentials are unavailable")
+    ClarusIdSchema.parse(credential.agentId)
+    if (!credential.agentSecret || credential.agentSecret.length > 4096) throw new Error("Clarus credential is invalid")
+    const downloadUrl = new URL(params.downloadUrl, this.baseUrl)
+    if (downloadUrl.origin !== this.baseUrl.origin) throw new Error("Clarus payload snapshot URL changed origin")
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs)
+    try {
+      const redirect = await this.snapshotFetcher(
+        new Request(downloadUrl, {
+          method: "GET",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${credential.agentSecret}`,
+            "X-Agent-Id": credential.agentId,
+          },
+        }),
+      )
+      if (redirect.url && new URL(redirect.url).origin !== this.baseUrl.origin)
+        throw new Error("Clarus payload snapshot URL changed origin")
+      if (redirect.status !== 307) throw new Error("Clarus payload snapshot redirect is invalid")
+      const location = redirect.headers.get("location")
+      if (!location) throw new Error("Clarus payload snapshot redirect is missing")
+      const objectUrl = new URL(location, downloadUrl)
+      normalizePublicHttpsOrigin(objectUrl.origin)
+      const response = await this.objectFetcher(
+        new Request(objectUrl, {
+          method: "GET",
+          redirect: "error",
+          signal: controller.signal,
+          headers: { Accept: "application/json" },
+        }),
+      )
+      if (!response.ok) throw new Error("Clarus payload snapshot download failed")
+      if (response.url && new URL(response.url).origin !== objectUrl.origin)
+        throw new Error("Clarus payload snapshot object redirect changed origin")
+      const body = await readBoundedBody(response, MAX_PAYLOAD_SNAPSHOT_BYTES)
+      if (body.byteLength !== params.expectedBytes) throw new Error("Clarus payload snapshot byte count mismatch")
+      const hash = new Bun.CryptoHasher("sha256").update(body).digest("hex")
+      if (hash.toLowerCase() !== params.expectedSha256.toLowerCase())
+        throw new Error("Clarus payload snapshot checksum mismatch")
+      const parsed = parseResponseBody(new TextDecoder().decode(body), MAX_PAYLOAD_SNAPSHOT_BYTES)
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+        throw new Error("Clarus payload snapshot is not a record")
+      return parsed as Record<string, unknown>
+    } catch (error) {
+      if (error instanceof Error && error.message.startsWith("Clarus")) throw error
+      throw new Error("Clarus payload snapshot request failed")
+    } finally {
+      clearTimeout(timer)
     }
   }
 

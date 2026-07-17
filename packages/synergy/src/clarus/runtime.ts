@@ -35,8 +35,7 @@ import type {
   RecordTaskResultInput,
 } from "./agent-tunnel-port"
 import type { HolosConnectionEvent } from "@/holos/native"
-import { MAX_WIRE_STRING_USER_QUERY, MAX_USER_CANDIDATES } from "./rest-port"
-import type { ClarusRestPort } from "./rest-port"
+import { ClarusRestPort, MAX_WIRE_STRING_USER_QUERY, MAX_USER_CANDIDATES } from "./rest-port"
 import type {
   ClarusOutboxAction,
   ClarusProjectBindingV3,
@@ -78,7 +77,7 @@ type ActiveReconciliation = {
 /** API-safe status contract for /global/clarus/status. */
 export type ClarusRuntimeStatus = {
   agentId: string | null
-  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked"
+  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked" | "sync_failed"
   epoch: number
   generation: number
   isReconciling: boolean
@@ -500,6 +499,19 @@ export namespace ClarusRuntime {
     if (hs.status === "connected") {
       if (!attached || !connectedAgentId) {
         return { agentId: null, status: "disconnected", epoch: 0, generation: 0, isReconciling: false }
+      }
+      const reconciliation = await Storage.read<ClarusReconciliationState>(
+        StoragePath.clarusReconciliation(connectedAgentId),
+      ).catch(() => undefined)
+      if (reconciliation?.needsReconciliation && reconciliation.lastError) {
+        return {
+          agentId: connectedAgentId,
+          status: "sync_failed",
+          epoch: connectedEpoch,
+          generation: connectedGeneration,
+          isReconciling: false,
+          error: reconciliation.lastError,
+        }
       }
       return {
         agentId: connectedAgentId,
@@ -950,8 +962,8 @@ export namespace ClarusRuntime {
         recoverable: true,
       })
     }
-    if (s.status === "blocked") {
-      throw Object.assign(new Error(s.error ?? "Clarus connection is blocked."), {
+    if (s.status === "blocked" || s.status === "sync_failed") {
+      throw Object.assign(new Error(s.error ?? "Clarus synchronization is blocked."), {
         code: "CLARUS_BLOCKED",
         recoverable: false,
       })
@@ -1680,31 +1692,39 @@ async function backfillProjectMessages(
   return "complete"
 }
 
-function backfilledAssignment(
+function assignmentFromPayloads(
   binding: ClarusProjectBindingV3,
-  message: ClarusRestPort.MessageDto,
+  routing: Record<string, unknown>,
+  payload: Record<string, unknown>,
+  hydrated: boolean,
 ): RuntimeTaskAssignedEvent | null {
-  const metadata = message.metadata
-  if (!isRecord(metadata) || metadata.event_type !== "runtime.task.dispatched") return null
-  if (metadata.assigned_agent_id !== binding.agentId) return null
-  const payload = metadata.payload
-  if (!isRecord(payload)) return null
   if (
-    typeof payload.project_id !== "string" ||
-    payload.project_id !== binding.projectId ||
-    typeof payload.run_id !== "string" ||
-    !payload.run_id.trim() ||
-    typeof payload.task_id !== "string" ||
-    !payload.task_id.trim() ||
-    typeof payload.phase !== "string" ||
-    !payload.phase.trim() ||
-    typeof payload.subtask_id !== "string" ||
-    !payload.subtask_id.trim() ||
-    typeof payload.attempt !== "number" ||
-    !Number.isInteger(payload.attempt) ||
-    (payload.deadline_at !== null && typeof payload.deadline_at !== "string")
+    typeof routing.project_id !== "string" ||
+    routing.project_id !== binding.projectId ||
+    typeof routing.run_id !== "string" ||
+    !routing.run_id.trim() ||
+    typeof routing.task_id !== "string" ||
+    !routing.task_id.trim() ||
+    typeof routing.phase !== "string" ||
+    !routing.phase.trim() ||
+    typeof routing.subtask_id !== "string" ||
+    !routing.subtask_id.trim() ||
+    typeof routing.attempt !== "number" ||
+    !Number.isInteger(routing.attempt) ||
+    (routing.deadline_at !== null && typeof routing.deadline_at !== "string")
   )
     return null
+  if (
+    hydrated &&
+    (payload.project_id !== routing.project_id ||
+      payload.run_id !== routing.run_id ||
+      payload.task_id !== routing.task_id ||
+      payload.phase !== routing.phase ||
+      payload.subtask_id !== routing.subtask_id ||
+      payload.attempt !== routing.attempt ||
+      payload.deadline_at !== routing.deadline_at)
+  )
+    throw new Error("Clarus payload snapshot assignment identity mismatch")
   const taskInput = isRecord(payload.task_input) ? { ...payload.task_input } : {}
   if (Array.isArray(payload.input_refs)) taskInput.input_refs = payload.input_refs
   return {
@@ -1713,12 +1733,12 @@ function backfilledAssignment(
     agentID: binding.agentId,
     requestID: null,
     projectID: binding.projectId,
-    runID: payload.run_id,
-    taskID: payload.task_id,
-    phase: payload.phase,
-    subtaskID: payload.subtask_id,
-    attempt: payload.attempt,
-    deadlineAt: payload.deadline_at,
+    runID: routing.run_id,
+    taskID: routing.task_id,
+    phase: routing.phase,
+    subtaskID: routing.subtask_id,
+    attempt: routing.attempt,
+    deadlineAt: routing.deadline_at,
     goal: typeof payload.goal === "string" ? payload.goal : null,
     instructions: typeof payload.instructions === "string" ? payload.instructions : null,
     input: isRecord(payload.input) ? payload.input : null,
@@ -1729,13 +1749,40 @@ function backfilledAssignment(
   }
 }
 
+async function backfilledAssignment(
+  binding: ClarusProjectBindingV3,
+  message: ClarusRestPort.MessageDto,
+): Promise<RuntimeTaskAssignedEvent | null> {
+  const metadata = message.metadata
+  if (!isRecord(metadata) || metadata.event_type !== "runtime.task.dispatched") return null
+  if (metadata.assigned_agent_id !== binding.agentId) return null
+  const payload = metadata.payload
+  if (!isRecord(payload)) return null
+  if (payload.payload_ref === undefined) return assignmentFromPayloads(binding, payload, payload, false)
+  const snapshotRef = ClarusRestPort.WirePayloadSnapshotRef.safeParse(payload.payload_ref)
+  if (!snapshotRef.success) throw new Error("Clarus payload snapshot reference is invalid")
+  const rest = restPort
+  if (!rest?.resolvePayloadSnapshot) throw new Error("Clarus payload snapshot resolver is unavailable")
+  const snapshot = await rest.resolvePayloadSnapshot({
+    downloadUrl: snapshotRef.data.download_url,
+    expectedBytes: snapshotRef.data.bytes,
+    expectedSha256: snapshotRef.data.sha256,
+    contentType: snapshotRef.data.content_type,
+    contentEncoding: snapshotRef.data.content_encoding,
+  })
+  const assignment = assignmentFromPayloads(binding, metadata, snapshot, true)
+  if (!assignment) throw new Error("Clarus payload snapshot routing metadata is invalid")
+  return assignment
+}
+
 async function backfillAssignment(binding: ClarusProjectBindingV3, message: ClarusRestPort.MessageDto): Promise<void> {
-  const assignment = backfilledAssignment(binding, message)
-  if (!assignment) return
   try {
+    const assignment = await backfilledAssignment(binding, message)
+    if (!assignment) return
     await handleTaskAssigned(assignment)
     await ClarusBindingStore.touchLastActivity(binding.agentId, binding.projectId, Date.now())
   } catch (error) {
     log.info("Clarus assignment backfill deferred", { projectId: binding.projectId, error: errorMessage(error) })
+    throw error
   }
 }

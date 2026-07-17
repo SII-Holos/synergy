@@ -39,6 +39,7 @@ const ClarusConnectionStatusSchema = z.enum([
   "connected",
   "reconnecting",
   "blocked",
+  "sync_failed",
 ])
 
 const ClarusStatusResponse = z
@@ -347,8 +348,8 @@ function requireConnectedAgent(status: Awaited<ReturnType<typeof ClarusRuntime.s
   if (status.status === "connecting") {
     throw createError("CLARUS_CONNECTING", "Clarus connection is still being established. Retry shortly.", true)
   }
-  if (status.status === "blocked") {
-    throw createError("CLARUS_BLOCKED", status.error ?? "Clarus connection is blocked.", false)
+  if (status.status === "blocked" || status.status === "sync_failed") {
+    throw createError("CLARUS_BLOCKED", status.error ?? "Clarus synchronization is blocked.", false)
   }
   // connected or reconnecting — proceed
   return status.agentId ?? ""

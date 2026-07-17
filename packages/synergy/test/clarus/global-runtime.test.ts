@@ -7,6 +7,8 @@ import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { ClarusRuntime } from "../../src/clarus/runtime"
 import { ClarusConfigReader } from "../../src/clarus/config-reader"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import type {
   ClarusAgentTunnelPort,
   ClarusEventHandler,
@@ -461,6 +463,44 @@ describe("ClarusRuntime.status() mappings", () => {
     expect(result.generation).toBe(1)
   })
 
+  test("returns sync_failed when connected reconciliation has a persistent error", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+    const rest = new DummyRest()
+
+    const result = await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect(AGENT_ID, 1, 100)
+        for (let attempt = 0; attempt < 100; attempt++) {
+          const state = await Storage.read<{ needsReconciliation?: boolean }>(
+            StoragePath.clarusReconciliation(AGENT_ID),
+          )
+          if (state.needsReconciliation === false) break
+          await Bun.sleep(10)
+        }
+        await Storage.write(StoragePath.clarusReconciliation(AGENT_ID), {
+          schemaVersion: 1,
+          agentId: AGENT_ID,
+          generation: 1,
+          needsReconciliation: true,
+          lastError: "Clarus response body is not valid JSON",
+        })
+        return ClarusRuntime.status()
+      },
+    })
+
+    expect(result).toMatchObject({
+      status: "sync_failed",
+      agentId: AGENT_ID,
+      error: "Clarus response body is not valid JSON",
+      isReconciling: false,
+    })
+  })
+
   test("returns disconnected after disconnect event", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
@@ -632,7 +672,15 @@ describe("ClarusRuntime lifecycle", () => {
 
 describe("ClarusRuntime status integrity", () => {
   test("status always returns a valid status union value", async () => {
-    const validStatuses = ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+    const validStatuses = [
+      "disabled",
+      "disconnected",
+      "connecting",
+      "connected",
+      "reconnecting",
+      "blocked",
+      "sync_failed",
+    ]
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -915,7 +963,15 @@ describe("ClarusRuntime init/reconnect lifecycle", () => {
     expect(result).toHaveProperty("epoch")
     expect(result).toHaveProperty("generation")
     expect(result).toHaveProperty("isReconciling")
-    const validStatuses = ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+    const validStatuses = [
+      "disabled",
+      "disconnected",
+      "connecting",
+      "connected",
+      "reconnecting",
+      "blocked",
+      "sync_failed",
+    ]
     expect(validStatuses).toContain(result.status)
   })
 

@@ -1188,7 +1188,7 @@ export type PinnedResponse = {
 
 export type ClarusStatusResponse = {
   agentId: string | null
-  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked"
+  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked" | "sync_failed"
   epoch: number
   generation: number
   isReconciling: boolean
@@ -1197,7 +1197,7 @@ export type ClarusStatusResponse = {
 
 export type ClarusReconnectResponse = {
   agentId: string | null
-  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked"
+  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked" | "sync_failed"
   epoch: number
   generation: number
   isReconciling: boolean

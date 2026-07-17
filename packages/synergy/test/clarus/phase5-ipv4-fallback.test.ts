@@ -155,6 +155,45 @@ describe("happy eyeballs race", () => {
     expect((await resp.json()).data.from).toBe("native")
   })
 
+  test("non-2xx IPv4 response loses to a slower successful native response", async () => {
+    const baseFetch = async () => {
+      await Bun.sleep(40)
+      return jsonResponse({ code: 0, message: "ok", data: { from: "native" } })
+    }
+    const fetcher = createFallbackFetcher(baseFetch, {
+      _ipv4Branch: async () => {
+        await Bun.sleep(5)
+        return new Response("<html>Forbidden</html>", { status: 403, headers: { "content-type": "text/html" } })
+      },
+    })
+
+    const response = await fetcher("https://example.com/api")
+
+    expect(response.status).toBe(200)
+    expect((await response.json()).data.from).toBe("native")
+  })
+
+  test("non-2xx native response loses to a slower successful IPv4 response", async () => {
+    const baseFetch = async () => {
+      await Bun.sleep(5)
+      return new Response("<html>Unavailable</html>", { status: 503, headers: { "content-type": "text/html" } })
+    }
+    const fetcher = createFallbackFetcher(baseFetch, { _ipv4Branch: successBranch("ipv4", 40) })
+
+    const response = await fetcher("https://example.com/api")
+
+    expect(response.status).toBe(200)
+    expect((await response.json()).data.from).toBe("ipv4")
+  })
+
+  test("fails when neither transport returns a successful response", async () => {
+    const fetcher = createFallbackFetcher(async () => new Response("forbidden", { status: 403 }), {
+      _ipv4Branch: async () => new Response("not found", { status: 404 }),
+    })
+
+    await expect(fetcher("https://example.com/api")).rejects.toThrow("Clarus REST request failed")
+  })
+
   test("IPv4 wins, native loser cleaned up", async () => {
     const ctrl = new AbortController()
     const fetcher = createFallbackFetcher(hangingBaseFetch(), { _ipv4Branch: successBranch("ipv4", 10) })

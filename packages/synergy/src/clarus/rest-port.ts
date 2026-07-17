@@ -14,7 +14,7 @@ export const MAX_WIRE_STRING_CURSOR = 1024
 export const MAX_WIRE_PAGE_SIZE = 100
 export const MAX_WIRE_METADATA_KEYS = 50
 export const MAX_WIRE_METADATA_KEY_LENGTH = 128
-export const MAX_WIRE_METADATA_RECURSION_DEPTH = 8
+export const MAX_WIRE_METADATA_RECURSION_DEPTH = 9
 export const MAX_WIRE_FILE_REFS = 50
 export const MAX_WIRE_FILE_REF_RECURSION_DEPTH = 8
 export const MAX_WIRE_VALUE_STRING_LENGTH = 8192
@@ -22,6 +22,7 @@ export const MAX_WIRE_RESPONSE_BYTES = 2 * 1024 * 1024
 export const MAX_WIRE_STRING_ERROR_MESSAGE = 500
 export const MAX_WIRE_STRING_USER_QUERY = 256
 export const MAX_USER_CANDIDATES = 5
+export const MAX_PAYLOAD_SNAPSHOT_BYTES = 16 * 1024 * 1024
 
 export namespace ClarusRestPort {
   // ── Wire schemas (snake_case) for adapter validation ──────────
@@ -117,6 +118,15 @@ export namespace ClarusRestPort {
     limit: z.number().int().positive().max(MAX_WIRE_PAGE_SIZE).optional(),
   })
 
+  export const WirePayloadSnapshotRef = z.object({
+    type: z.literal("clarus_payload_snapshot"),
+    download_url: z.string().max(4096),
+    bytes: z.number().int().positive().max(MAX_PAYLOAD_SNAPSHOT_BYTES),
+    sha256: z.string().regex(/^[0-9a-f]{64}$/i),
+    content_type: z.literal("application/json"),
+    content_encoding: z.literal("gzip"),
+  })
+
   export const StandardResponse = z.object({
     code: z.number().int(),
     message: z.string().max(MAX_WIRE_STRING_ERROR_MESSAGE).optional(),
@@ -169,6 +179,14 @@ export namespace ClarusRestPort {
     agentId: string
   }
 
+  export interface PayloadSnapshotRequest {
+    downloadUrl: string
+    expectedBytes: number
+    expectedSha256: string
+    contentType: "application/json"
+    contentEncoding: "gzip"
+  }
+
   // ── Narrow interface (agent identity is server-derived) ──────
 
   export interface Interface {
@@ -183,6 +201,7 @@ export namespace ClarusRestPort {
       cursor?: string
       limit?: number
     }): Promise<{ messages: MessageDto[]; nextCursor: string | null }>
+    resolvePayloadSnapshot?(params: PayloadSnapshotRequest): Promise<Record<string, unknown>>
     listUsers(params: { query: string; limit?: number }): Promise<{ users: UserCandidateDto[] }>
   }
 }

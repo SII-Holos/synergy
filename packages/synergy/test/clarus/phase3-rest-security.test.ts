@@ -3,7 +3,11 @@ import { isolateClarusHome } from "../helpers/clarus-isolation"
 await isolateClarusHome(import.meta.url)
 
 import { ClarusRestClient } from "../../src/clarus/rest-client"
-import { MAX_WIRE_FILE_REF_RECURSION_DEPTH, MAX_WIRE_METADATA_RECURSION_DEPTH } from "../../src/clarus/rest-port"
+import {
+  ClarusRestPort,
+  MAX_WIRE_FILE_REF_RECURSION_DEPTH,
+  MAX_WIRE_METADATA_RECURSION_DEPTH,
+} from "../../src/clarus/rest-port"
 
 // ── Helpers ───────────────────────────────────────────────────
 
@@ -81,6 +85,49 @@ function wireLiveMessageList(items: unknown[], nextCursor: string | null = null)
 // ── Tests ─────────────────────────────────────────────────────
 
 describe("ClarusRestClient security", () => {
+  test("accepts production snapshot metadata while retaining only trusted download fields", () => {
+    const result = ClarusRestPort.WirePayloadSnapshotRef.parse({
+      type: "clarus_payload_snapshot",
+      snapshot_id: "snapshot_1",
+      project_id: "project_1",
+      run_id: "run_1",
+      kind: "runtime_task.input",
+      object_key: "clarus-resource/projects/project_1/internal/payload-snapshots/snapshot.json.gz",
+      download_url: "/api/v1/holos/clarus/payload-snapshots/token/download",
+      bytes: 512,
+      sha256: "a".repeat(64),
+      content_type: "application/json",
+      content_encoding: "gzip",
+      created_at: "2026-07-17T00:00:00+00:00",
+    })
+
+    expect(result).toEqual({
+      type: "clarus_payload_snapshot",
+      download_url: "/api/v1/holos/clarus/payload-snapshots/token/download",
+      bytes: 512,
+      sha256: "a".repeat(64),
+      content_type: "application/json",
+      content_encoding: "gzip",
+    })
+  })
+
+  test("rejects production snapshot references with invalid trusted download fields", () => {
+    const reference = {
+      type: "clarus_payload_snapshot",
+      download_url: "/api/v1/holos/clarus/payload-snapshots/token/download",
+      bytes: 512,
+      sha256: "a".repeat(64),
+      content_type: "application/json",
+      content_encoding: "gzip",
+    }
+
+    expect(ClarusRestPort.WirePayloadSnapshotRef.safeParse({ ...reference, bytes: 0 }).success).toBe(false)
+    expect(ClarusRestPort.WirePayloadSnapshotRef.safeParse({ ...reference, sha256: "invalid" }).success).toBe(false)
+    expect(
+      ClarusRestPort.WirePayloadSnapshotRef.safeParse({ ...reference, content_encoding: "identity" }).success,
+    ).toBe(false)
+  })
+
   // ── Credential rotation ──────────────────────────────────
 
   test("reads credentials dynamically on every request", async () => {
@@ -326,6 +373,19 @@ describe("ClarusRestClient security", () => {
     await expect(client.listMessages({ projectId: "proj_1" })).rejects.toThrow(
       "Clarus metadata exceeds its recursion limit",
     )
+  })
+
+  test("rejects metadata arrays exceeding recursion depth", async () => {
+    let nested: Record<string, unknown> = { leaf: "too deep" }
+    for (let i = 0; i < MAX_WIRE_METADATA_RECURSION_DEPTH + 1; i++) nested = { nested: [nested] }
+
+    const client = new ClarusRestClient({
+      apiUrl: "https://localhost:8443",
+      credentials: async () => makeCredential(),
+      fetch: fakeFetch(() => jsonResponse(standardEnvelope(wireMessageList([wireMessageItem({ metadata: nested })])))),
+    })
+
+    await expect(client.listMessages({ projectId: "proj_1" })).rejects.toThrow("recursion limit")
   })
 
   test("accepts bounded nested fileRefs from the live API", async () => {

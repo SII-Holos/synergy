@@ -401,7 +401,7 @@ describe("payload bound constants", () => {
   test("MAX_FILE_REF_RECURSION_DEPTH is 8", () => expect(MAX_FILE_REF_RECURSION_DEPTH).toBe(8))
   test("MAX_METADATA_KEYS is 50", () => expect(MAX_METADATA_KEYS).toBe(50))
   test("MAX_METADATA_KEY_LENGTH is 128", () => expect(MAX_METADATA_KEY_LENGTH).toBe(128))
-  test("MAX_METADATA_RECURSION_DEPTH is 8", () => expect(MAX_METADATA_RECURSION_DEPTH).toBe(8))
+  test("MAX_METADATA_RECURSION_DEPTH is 9", () => expect(MAX_METADATA_RECURSION_DEPTH).toBe(9))
   test("MAX_PAYLOAD_STRING_LENGTH is 8192", () => expect(MAX_PAYLOAD_STRING_LENGTH).toBe(8192))
   test("MAX_PAYLOAD_AGGREGATE_BYTES is 65536", () => expect(MAX_PAYLOAD_AGGREGATE_BYTES).toBe(65536))
 })

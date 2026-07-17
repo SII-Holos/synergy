@@ -16,7 +16,7 @@ import { isIP } from "node:net"
 // Security invariants:
 //   - TLS hostname verification via servername + rejectUnauthorized
 //   - DNS-rebound addresses filtered (no private/loopback/link-local/CGNAT)
-//   - All 3xx responses rejected
+//   - Only successful responses participate in the race; redirects are rejected
 //   - Connection: close sent; response collected via Content-Length,
 //     chunked, or end-of-stream with bounded total bytes
 //   - Abort signals propagate; one shared deadline
@@ -42,11 +42,14 @@ export function createFallbackFetcher(
     connectTimeoutMs?: number
     rejectUnauthorized?: boolean
     _ipv4Branch?: Ipv4BranchFn
+    acceptedStatuses?: readonly number[]
   },
 ): Fetcher {
   const connectTimeoutMs = options?.connectTimeoutMs ?? MAX_CONNECT_MS
   const rejectUnauthorized = options?.rejectUnauthorized ?? true
   const ipv4Branch = options?._ipv4Branch ?? defaultIpv4Branch
+  const acceptedStatuses = new Set(options?.acceptedStatuses ?? [])
+  const acceptsResponse = (response: Response) => response.ok || acceptedStatuses.has(response.status)
 
   return async (input, init) => {
     const request = new Request(input, init)
@@ -68,9 +71,15 @@ export function createFallbackFetcher(
       method: request.method,
       headers: request.headers,
     }
-    const nativePromise = baseFetch(nativeRequest).then((response) => ({ source: "native" as const, response }))
+    const nativePromise = baseFetch(nativeRequest).then((response) => {
+      if (!acceptsResponse(response)) throw new Error("Clarus REST request failed")
+      return { source: "native" as const, response }
+    })
     const ipv4Promise = ipv4Branch(url, fallbackInit, ipv4Controller.signal, rejectUnauthorized, connectTimeoutMs).then(
-      (response) => ({ source: "ipv4" as const, response }),
+      (response) => {
+        if (!acceptsResponse(response)) throw new Error("Clarus REST request failed")
+        return { source: "ipv4" as const, response }
+      },
     )
     try {
       const result = await Promise.any([nativePromise, ipv4Promise])
@@ -291,12 +300,6 @@ function connectIpv4Tls(
       const statusLine = rawHeaders[0] ?? "HTTP/1.1 502 Bad Gateway"
       const [, statusCode = "502", ...statusTextParts] = statusLine.split(" ")
       const statusNum = Number(statusCode)
-
-      // Reject all 3xx redirects
-      if (statusNum >= 300 && statusNum < 400) {
-        reject(new Error("Clarus REST request failed"))
-        return
-      }
 
       const responseHeaders = new Headers()
       for (let i = 1; i < rawHeaders.length; i++) {
