@@ -35,6 +35,7 @@ const originalSessionMessages = Session.messages
 const originalMemorySnapshot = SessionMemoryPressure.currentSnapshotWithCgroup
 const originalMaybeCollect = SessionMemoryPressure.maybeCollect
 const originalStream = LLM.stream
+const originalPressurePollMs = process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS
 
 async function waitForTerminalJob(id: string, timeoutMs = 3_000) {
   const deadline = Date.now() + timeoutMs
@@ -165,6 +166,8 @@ afterEach(() => {
   ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = originalMemorySnapshot
   ;(SessionMemoryPressure.maybeCollect as any) = originalMaybeCollect
   ;(LLM.stream as any) = originalStream
+  if (originalPressurePollMs === undefined) delete process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS
+  else process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS = originalPressurePollMs
   LibraryDB.Experience.removeAll()
   LibraryDB.ReencodeJob.removeAll()
   closeDB()
@@ -247,7 +250,7 @@ describe.serial("ExperienceReencode persistence", () => {
 })
 
 describe.serial("ExperienceReencode repair integration", () => {
-  test("repairs an encoding_failed experience through the complete encoder pipeline", async () => {
+  test("repairs an encoding_failed experience after cgroup pressure clears", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -350,6 +353,21 @@ describe.serial("ExperienceReencode repair integration", () => {
             text: Promise.resolve(text),
           }
         })
+        let pressureSnapshots = 0
+        ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = mock(async () => {
+          pressureSnapshots++
+          return {
+            rssBytes: 100,
+            heapUsedBytes: 50,
+            heapTotalBytes: 80,
+            externalBytes: 20,
+            arrayBuffersBytes: 10,
+            cgroupCurrentBytes: pressureSnapshots === 1 ? 2_000 : 100,
+            cgroupHighBytes: 1_000,
+            cgroupMaxBytes: 4_000,
+          }
+        })
+        process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS = "1"
 
         let sessionMessageReads = 0
         ;(Session.messages as any) = mock(async (input: Parameters<typeof Session.messages>[0]) => {
@@ -370,6 +388,7 @@ describe.serial("ExperienceReencode repair integration", () => {
         })
         expect(embeddingAttempts).toBe(3)
         expect(llmRetries).toEqual([0, 0, 0])
+        expect(pressureSnapshots).toBeGreaterThanOrEqual(2)
         expect(finished.items).toEqual([expect.objectContaining({ id: user.id, sessionID: session.id, status: "ok" })])
 
         const repaired = LibraryDB.Experience.get(user.id)
@@ -614,7 +633,7 @@ describe.serial("ExperienceReencode bounded session loading", () => {
     })
   })
 
-  test("stops before the next session when critical memory cannot be collected", async () => {
+  test("waits before the next session when critical memory cannot be collected", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
 
@@ -639,29 +658,49 @@ describe.serial("ExperienceReencode bounded session loading", () => {
           })
         }
         installReencodeModelMocks()
+        process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS = "1"
 
-        const critical = {
-          rssBytes: Number.MAX_SAFE_INTEGER,
-          heapUsedBytes: 0,
-          heapTotalBytes: 0,
-          externalBytes: 0,
-          arrayBuffersBytes: 0,
+        const healthy = {
+          rssBytes: 100,
+          heapUsedBytes: 50,
+          heapTotalBytes: 80,
+          externalBytes: 20,
+          arrayBuffersBytes: 10,
         }
-        ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = mock(async () => critical)
-        ;(SessionMemoryPressure.maybeCollect as any) = mock(async () => ({
+        const critical = { ...healthy, rssBytes: Number.MAX_SAFE_INTEGER }
+        let pressureCritical = false
+        let snapshots = 0
+        let resolvePaused: (() => void) | undefined
+        const paused = new Promise<void>((resolve) => {
+          resolvePaused = resolve
+        })
+        ;(SessionMemoryPressure.currentSnapshotWithCgroup as any) = mock(async () => {
+          snapshots++
+          if (snapshots === 2) {
+            pressureCritical = true
+            resolvePaused?.()
+          }
+          return pressureCritical ? critical : healthy
+        })
+        const collect = mock(async () => ({
           decision: { action: "unavailable", reason: "gc_unavailable", critical: true },
           before: critical,
         }))
+        ;(SessionMemoryPressure.maybeCollect as any) = collect
 
         const started = ExperienceReencode.start({ type: "intent", reason: "empty" })
+        await paused
+        expect(ExperienceReencode.get(started.id)).toMatchObject({
+          status: "running",
+          completedCount: 1,
+          items: [expect.objectContaining({ status: "ok" }), expect.objectContaining({ status: "pending" })],
+        })
+
+        pressureCritical = false
         const finished = await waitForTerminalJob(started.id)
 
-        expect(finished).toMatchObject({
-          status: "failed",
-          completedCount: 1,
-          error: "reencode stopped because memory is critical and garbage collection is unavailable",
-        })
-        expect(finished.items.map((item) => item.status)).toEqual(["ok", "pending"])
+        expect(finished).toMatchObject({ status: "completed", completedCount: 2, okCount: 2, failedCount: 0 })
+        expect(collect).toHaveBeenCalledTimes(1)
       },
     })
   })
@@ -706,6 +745,60 @@ describe("ExperienceReencode worker primitives", () => {
     })
 
     expect(started).toEqual([1])
+  })
+
+  test("pauses before claiming new work under pressure and stops waiting after cancellation", async () => {
+    const abort = new AbortController()
+    const started: number[] = []
+    let critical = false
+    let gateCalls = 0
+
+    const pending = ExperienceReencode.runPool({
+      items: [1, 2, 3],
+      concurrency: 1,
+      signal: abort.signal,
+      pressurePollMs: 5,
+      pressureGate() {
+        gateCalls++
+        return critical
+      },
+      async process(item) {
+        started.push(item)
+        critical = true
+      },
+    })
+
+    await Bun.sleep(20)
+    expect(started).toEqual([1])
+    expect(gateCalls).toBeGreaterThan(0)
+
+    abort.abort()
+    await pending
+    expect(started).toEqual([1])
+  })
+
+  test("resumes claiming work after memory pressure clears", async () => {
+    const started: number[] = []
+    let critical = false
+
+    const pending = ExperienceReencode.runPool({
+      items: [1, 2, 3],
+      concurrency: 1,
+      signal: new AbortController().signal,
+      pressurePollMs: 5,
+      pressureGate: () => critical,
+      async process(item) {
+        started.push(item)
+        if (item === 1) critical = true
+      },
+    })
+
+    await Bun.sleep(20)
+    expect(started).toEqual([1])
+
+    critical = false
+    await pending
+    expect(started).toEqual([1, 2, 3])
   })
 
   test("retries only classified transient stage failures", async () => {

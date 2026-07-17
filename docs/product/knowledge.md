@@ -63,7 +63,7 @@ Experience encoding can degrade over time — an intent may be too long, empty, 
 
 A re-encode job processes each candidate experience and updates its intent or script embedding. The job is owned by the server, not the frontend: closing the settings panel or disconnecting the browser does not cancel it. At most one job is active at a time. Starting a new job when one is already running returns the existing job state with a 409 conflict.
 
-The worker bounds maintenance memory by separating candidates that already have stored raw content from candidates that need session history. Ordinary script repairs use the stored Library content without loading session messages. Intent repairs and complete failed-pipeline repairs are grouped by session: the server loads one session history, processes that session's candidates, releases it, and only then advances to the next session. Cancelling a job also propagates to in-flight encoder and remote embedding requests. Between session groups, critical process or cgroup memory pressure triggers collection; if collection is unavailable or pressure remains critical, the job fails before loading another history.
+The worker bounds maintenance memory by separating candidates that already have stored raw content from candidates that need session history. Ordinary script repairs use the stored Library content without loading session messages. Intent repairs and complete failed-pipeline repairs are grouped by session: the server loads one session history, processes that session's candidates, releases it, and only then advances to the next session. Cancelling a job also propagates to in-flight encoder and remote embedding requests. Between session groups, critical process or cgroup memory pressure triggers collection before the worker waits for pressure to subside and then resumes with the next history.
 
 REST endpoints support the full lifecycle:
 
@@ -72,6 +72,8 @@ REST endpoints support the full lifecycle:
 - `POST /library/experience/reencode/jobs/current/cancel` — cancel the active job without discarding already-completed results
 
 Items transition through `pending` → `processing` → `ok | skipped | failed`. A job finishes as `completed`, `failed`, or `cancelled`. If the server restarts while a job is running, startup reconciliation resets in-flight `processing` items to `pending` and marks the job `interrupted`; the user can start a new job to continue where it left off. Explicit cancel keeps completed results and only resets unprocessed items. The legacy SSE `POST /library/experience/reencode` endpoint remains as a compatible observer stream that starts or attaches to a running job.
+
+While process memory is above the canonical session memory-pressure thresholds, workers finish items already in flight but stop claiming new candidates. The server keeps the job running, polls for relief, and resumes the remaining pending items automatically; cancellation also interrupts this wait.
 
 Three `library.experience.learning` configuration fields control the job runtime:
 
