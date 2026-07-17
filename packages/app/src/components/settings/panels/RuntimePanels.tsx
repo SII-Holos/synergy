@@ -101,7 +101,7 @@ const invokeRowDesc = {
 const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message: "Maximum Cortex subagent tasks running at once. Memory pressure recommendations never override this value.",
+  message: "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
 const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }
@@ -246,15 +246,22 @@ export function TimeoutsPanel(props: {
   const displayedConcurrency = () =>
     managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
   const concurrencyStateLabel = () => {
-    if (managedByEnvironment()) return _(managedByEnvLabel)
-    const recommended = props.concurrencyStatus?.recommended
-    if (recommended !== undefined && recommended !== Number(props.runtime.cortexConcurrency)) {
+    const memoryPressureLimit = props.concurrencyStatus?.memoryPressureLimit
+    if (memoryPressureLimit !== null && memoryPressureLimit !== undefined) {
+      if (managedByEnvironment()) {
+        return _({
+          id: "settings.runtime.agents.concurrency.memorySafetyManaged",
+          message: "Managed by environment · Memory safety limit: {value}",
+          values: { value: String(memoryPressureLimit) },
+        })
+      }
       return _({
-        id: "settings.runtime.agents.concurrency.recommended",
-        message: "Recommended: {value}",
-        values: { value: String(recommended) },
+        id: "settings.runtime.agents.concurrency.memorySafety",
+        message: "Memory safety limit: {value}",
+        values: { value: String(memoryPressureLimit) },
       })
     }
+    if (managedByEnvironment()) return _(managedByEnvLabel)
     return undefined
   }
 

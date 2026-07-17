@@ -3654,6 +3654,9 @@ export type SessionWorkflowInfo =
       terminalError?: string
       terminalHookDeliveredAt?: number
       terminalHookError?: string
+      reviewTools?: {
+        [key: string]: boolean
+      }
       stopRequest?: {
         summary: string
         completed?: Array<string>
@@ -5301,8 +5304,8 @@ export type CortexConcurrencyStatus = {
   configured: number | null
   environment: number | null
   effective: number
-  recommended: number
-  recommendationReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  memoryPressureLimit: number | null
+  memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
   source: "default" | "config" | "environment"
   perAgentLimit: number
   running: number
@@ -6028,6 +6031,12 @@ export type BlueprintLoopInfo = {
     lastReason?: string
     lastAuditedAt?: number
     attempts: number
+  }
+  executionTools?: {
+    [key: string]: boolean
+  }
+  auditTools?: {
+    [key: string]: boolean
   }
   time: {
     created: number

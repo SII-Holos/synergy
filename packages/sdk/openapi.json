@@ -8242,7 +8242,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+        "description": "Get the configured, effective, and memory-pressure Cortex task concurrency limits.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -27649,8 +27649,74 @@
                 "type": "string",
                 "const": "lightloop"
               },
-              "taskDescription": {
+              "instructions": {
                 "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
+              },
+              "executionAgent": {
+                "type": "string"
+              },
+              "reviewAgent": {
+                "type": "string"
+              },
+              "pluginOwner": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "pluginGeneration": {
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "correlationId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["pluginId", "pluginGeneration", "scopeId"]
+              },
+              "budget": {
+                "type": "object",
+                "properties": {
+                  "maxRuntimeMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxIterations": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["maxRuntimeMs", "maxIterations"]
+              },
+              "deadlineAt": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "terminalError": {
+                "type": "string"
+              },
+              "terminalHookDeliveredAt": {
+                "type": "number"
+              },
+              "terminalHookError": {
+                "type": "string"
+              },
+              "reviewTools": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                }
               },
               "stopRequest": {
                 "type": "object",
@@ -27710,7 +27776,7 @@
                 "required": ["attempts"]
               }
             },
-            "required": ["kind", "taskDescription"]
+            "required": ["kind", "instructions"]
           },
           {
             "type": "object",
@@ -32389,12 +32455,19 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "recommended": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "memoryPressureLimit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "recommendationReason": {
+          "memoryPressureReason": {
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
@@ -32422,8 +32495,8 @@
           "configured",
           "environment",
           "effective",
-          "recommended",
-          "recommendationReason",
+          "memoryPressureLimit",
+          "memoryPressureReason",
           "source",
           "perAgentLimit",
           "running",
@@ -34660,6 +34733,21 @@
             "type": "string",
             "enum": ["user", "lattice", "plugin"]
           },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "maxRuntimeMs": {
+                "type": "number"
+              },
+              "maxIterations": {
+                "type": "number"
+              }
+            },
+            "required": ["maxRuntimeMs", "maxIterations"]
+          },
           "pluginOwner": {
             "type": "object",
             "properties": {
@@ -34693,6 +34781,24 @@
             },
             "required": ["attempts"]
           },
+          "executionTools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "auditTools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
           "time": {
             "type": "object",
             "properties": {
@@ -34722,6 +34828,12 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "terminalHookDeliveredAt": {
+            "type": "number"
+          },
+          "terminalHookError": {
+            "type": "string"
           }
         },
         "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "source", "time"]
@@ -35090,12 +35202,12 @@
                 "type": "string",
                 "const": "lightloop"
               },
-              "taskDescription": {
-                "description": "Task description for Light Loop",
+              "instructions": {
+                "description": "Instructions for Light Loop",
                 "type": "string"
               }
             },
-            "required": ["kind", "taskDescription"]
+            "required": ["kind", "instructions"]
           },
           {
             "type": "object",
