@@ -958,6 +958,110 @@
         ]
       }
     },
+    "/global/performance/analysis": {
+      "post": {
+        "operationId": "performance.analysis.start",
+        "summary": "Start AI performance analysis",
+        "description": "Snapshot redacted runtime telemetry and analyze it in a durable Cortex child session.",
+        "responses": {
+          "202": {
+            "description": "Performance analysis started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerformanceAnalysisRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/analysis/{sessionID}": {
+      "get": {
+        "operationId": "performance.analysis.get",
+        "summary": "Get AI performance analysis",
+        "description": "Read live or durable analysis state from its Cortex child session.",
+        "responses": {
+          "200": {
+            "description": "Performance analysis state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/analysis/{sessionID}/cancel": {
+      "post": {
+        "operationId": "performance.analysis.cancel",
+        "summary": "Cancel AI performance analysis",
+        "description": "Cancel a queued or running Performance Cortex child and return its durable state.",
+        "responses": {
+          "200": {
+            "description": "Performance analysis state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/performance/inflight": {
       "get": {
         "operationId": "performance.inflight",
@@ -20556,6 +20660,48 @@
           "top",
           "issues"
         ]
+      },
+      "PerformanceAnalysisView": {
+        "type": "object",
+        "properties": {
+          "taskID": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "parentSessionID": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["taskID", "sessionID", "parentSessionID", "status", "startedAt"]
+      },
+      "PerformanceAnalysisRequest": {
+        "type": "object",
+        "properties": {
+          "windowMs": {
+            "default": 900000,
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 86400000
+          }
+        }
       },
       "PerfSource": {
         "type": "string",

@@ -1,5 +1,6 @@
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilitySchema } from "@/observability/schema"
+import { CortexTypes } from "@/cortex/types"
 import z from "zod"
 
 export namespace PerformanceSchema {
@@ -404,6 +405,27 @@ export namespace PerformanceSchema {
     .object({ generatedAt: z.string(), spans: z.array(InflightSpan) })
     .meta({ ref: "PerfInflight" })
   export type Inflight = z.infer<typeof Inflight>
+
+  export const AnalysisRequest = z
+    .object({
+      windowMs: z.coerce.number().int().min(1000).max(86_400_000).default(900_000),
+    })
+    .meta({ ref: "PerformanceAnalysisRequest" })
+  export type AnalysisRequest = z.infer<typeof AnalysisRequest>
+
+  export const AnalysisView = z
+    .object({
+      taskID: z.string(),
+      sessionID: z.string(),
+      parentSessionID: z.string(),
+      status: CortexTypes.TaskStatus,
+      startedAt: z.number(),
+      completedAt: z.number().optional(),
+      result: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .meta({ ref: "PerformanceAnalysisView" })
+  export type AnalysisView = z.infer<typeof AnalysisView>
 
   export const TraceEvent = z
     .object({

@@ -4,9 +4,12 @@ import { Chart as ChartJS, CategoryScale, Filler, LinearScale, LineElement, Poin
 import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { HexColor } from "@ericsanchezok/synergy-ui/theme"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { useChartTheme } from "../visualization/use-chart-theme"
+import { isPerformanceAnalysisActive, performanceAnalysisStatusLabel } from "./analysis-model"
 import {
   browserMetricPoints,
   buildLineChartModel,
@@ -28,6 +31,7 @@ import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories, type ToolFailureItem } from "./tool-failure-model"
 import type {
   BrowserMetricSample,
+  PerformanceAnalysis,
   PerformanceIssue,
   PerformanceMetricPoint,
   PerformanceSummary,
@@ -112,6 +116,16 @@ export function PerformanceDashboard() {
             type="button"
             variant="secondary"
             size="small"
+            icon={getSemanticIcon("performance.analysis")}
+            disabled={perf.analysisStarting() || isPerformanceAnalysisActive(perf.analysis()?.status)}
+            onClick={() => void perf.startAnalysis()}
+          >
+            {perf.analysisStarting() || isPerformanceAnalysisActive(perf.analysis()?.status) ? "Analyzing…" : "Analyze"}
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
             icon={getSemanticIcon("action.refresh")}
             disabled={perf.loading}
             onClick={() => void perf.refresh()}
@@ -126,6 +140,12 @@ export function PerformanceDashboard() {
       </Show>
 
       <SummaryQualityNotice summary={summary()} />
+      <PerformanceAnalysisCard
+        analysis={perf.analysis()}
+        error={perf.analysisError()}
+        starting={perf.analysisStarting()}
+        onCancel={() => void perf.cancelAnalysis()}
+      />
       <SummaryCards summary={summary()} issues={issues()} />
       <RuntimeSupport summary={summary()} />
 
@@ -238,6 +258,101 @@ export function PerformanceDashboard() {
         }}
       />
     </div>
+  )
+}
+
+function PerformanceAnalysisCard(props: {
+  analysis: PerformanceAnalysis | null
+  error: string | null
+  starting: boolean
+  onCancel: () => void
+}) {
+  const navigateToSession = useNavigateToSession()
+  const analysis = () => props.analysis
+  const active = () => isPerformanceAnalysisActive(analysis()?.status)
+  const statusTone = () => {
+    switch (analysis()?.status) {
+      case "completed":
+        return "text-text-on-success-base"
+      case "error":
+        return "text-text-on-critical-base"
+      case "interrupted":
+        return "text-text-on-warning-base"
+      case "running":
+        return "text-text-interactive-base"
+      default:
+        return "text-text-subtle"
+    }
+  }
+
+  return (
+    <Show when={props.starting || props.error || analysis()}>
+      <section class="performance-card rounded-xl px-4 py-4" aria-live="polite">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <div class="flex min-w-0 items-center gap-2">
+            <Icon name={getSemanticIcon("performance.analysis")} size="small" class="text-icon-weak-base" />
+            <div class="min-w-0">
+              <div class="text-13-medium text-text-strong">AI performance analysis</div>
+              <div class="text-11-regular text-text-subtle">
+                {analysis()
+                  ? "Bounded, redacted telemetry analyzed in a durable Cortex session"
+                  : "Preparing a bounded, redacted telemetry snapshot"}
+              </div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <Show when={analysis()}>
+              {(item) => (
+                <span class={`text-12-medium ${statusTone()}`}>{performanceAnalysisStatusLabel(item().status)}</span>
+              )}
+            </Show>
+            <Show when={active()}>
+              <Button
+                type="button"
+                variant="secondary"
+                size="small"
+                icon={getSemanticIcon("action.stop")}
+                onClick={props.onCancel}
+              >
+                Cancel
+              </Button>
+            </Show>
+            <Show when={analysis()}>
+              {(item) => (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="small"
+                  icon={getSemanticIcon("action.open")}
+                  onClick={() => navigateToSession(item().sessionID)}
+                >
+                  Open session
+                </Button>
+              )}
+            </Show>
+          </div>
+        </div>
+
+        <Show when={props.starting || active()}>
+          <p class="mt-3 text-12-regular text-text-weak">
+            The analyst is correlating current health, latency, resource, session, storage, and frontend signals.
+          </p>
+        </Show>
+        <Show when={props.error}>
+          {(message) => <p class="mt-3 text-12-regular text-text-on-critical-base">{message()}</p>}
+        </Show>
+        <Show when={analysis()?.error}>
+          {(message) => <p class="mt-3 text-12-regular text-text-on-critical-base">{message()}</p>}
+        </Show>
+        <Show when={analysis()?.result}>
+          {(result) => (
+            <div class="mt-4 border-t border-border-base pt-4">
+              <Markdown text={result()} cacheKey={`performance-analysis:${analysis()?.sessionID}`} />
+            </div>
+          )}
+        </Show>
+      </section>
+    </Show>
   )
 }
 

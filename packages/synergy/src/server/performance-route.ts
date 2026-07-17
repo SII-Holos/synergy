@@ -6,6 +6,7 @@ import { Config } from "@/config/config"
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilityLiveEvents } from "@/observability/live-events"
 import { PerformanceError } from "@/performance/error"
+import { PerformanceAnalysis } from "@/performance/analysis"
 import { ObservabilityBrowserMetrics } from "@/observability/browser-metrics"
 import { ObservabilityIssues } from "@/observability/issues"
 import { ObservabilityResources } from "@/observability/resources"
@@ -178,6 +179,61 @@ export const PerformanceRoute = new Hono()
           c.json(await PerformanceDashboard.summary(c.req.valid("query")))
         )
       }),
+  )
+  .post(
+    "/performance/analysis",
+    describeRoute({
+      summary: "Start AI performance analysis",
+      description: "Snapshot redacted runtime telemetry and analyze it in a durable Cortex child session.",
+      operationId: "performance.analysis.start",
+      responses: {
+        202: {
+          description: "Performance analysis started",
+          content: { "application/json": { schema: resolver(PerformanceSchema.AnalysisView) } },
+        },
+      },
+    }),
+    performanceValidator("json", PerformanceSchema.AnalysisRequest, "PERF_INVALID_QUERY"),
+    async (c) =>
+      handlePerformanceError(c, async () => {
+        ensureStorageAvailable()
+        const limited = rateLimit(c, "analysis", ObservabilityConfig.current().rateLimits.analysisPerMinute)
+        if (limited) return limited
+        return c.json(await PerformanceAnalysis.start(c.req.valid("json")), 202)
+      }),
+  )
+  .get(
+    "/performance/analysis/:sessionID",
+    describeRoute({
+      summary: "Get AI performance analysis",
+      description: "Read live or durable analysis state from its Cortex child session.",
+      operationId: "performance.analysis.get",
+      responses: {
+        200: {
+          description: "Performance analysis state",
+          content: { "application/json": { schema: resolver(PerformanceSchema.AnalysisView) } },
+        },
+      },
+    }),
+    performanceValidator("param", z.object({ sessionID: z.string() }), "PERF_INVALID_QUERY"),
+    (c) => handlePerformanceError(c, async () => c.json(await PerformanceAnalysis.get(c.req.valid("param").sessionID))),
+  )
+  .post(
+    "/performance/analysis/:sessionID/cancel",
+    describeRoute({
+      summary: "Cancel AI performance analysis",
+      description: "Cancel a queued or running Performance Cortex child and return its durable state.",
+      operationId: "performance.analysis.cancel",
+      responses: {
+        200: {
+          description: "Performance analysis state",
+          content: { "application/json": { schema: resolver(PerformanceSchema.AnalysisView) } },
+        },
+      },
+    }),
+    performanceValidator("param", z.object({ sessionID: z.string() }), "PERF_INVALID_QUERY"),
+    (c) =>
+      handlePerformanceError(c, async () => c.json(await PerformanceAnalysis.cancel(c.req.valid("param").sessionID))),
   )
   .get(
     "/performance/inflight",

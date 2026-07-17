@@ -49,6 +49,11 @@ describe("performance refresh", () => {
             },
             detail: async () => ({ data: null }),
           },
+          analysis: {
+            start: async () => ({ data: null }),
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
         },
       },
     }
@@ -82,6 +87,135 @@ describe("performance refresh", () => {
       window.clearTimeout = originalClearTimeout
       window.clearInterval = originalClearInterval
       globalThis.EventSource = originalEventSource
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("continues polling an active analysis after a transient read failure", async () => {
+    const scheduledTimeouts: Array<{ callback: () => void; delay: number }> = []
+    const originalSetTimeout = window.setTimeout
+    const originalClearTimeout = window.clearTimeout
+    const originalHydrationContext = sharedConfig.context
+    let analysisReads = 0
+
+    window.setTimeout = ((handler: TimerHandler, delay?: number) => {
+      if (typeof handler === "function") scheduledTimeouts.push({ callback: handler as () => void, delay: delay ?? 0 })
+      return scheduledTimeouts.length
+    }) as typeof window.setTimeout
+    window.clearTimeout = (() => undefined) as typeof window.clearTimeout
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+
+    const queued = {
+      taskID: "ctx_analysis",
+      sessionID: "ses_analysis",
+      parentSessionID: "ses_parent",
+      status: "queued" as const,
+      startedAt: 1,
+    }
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => ({ data: queued }),
+            get: async () => {
+              analysisReads++
+              if (analysisReads === 1) throw new Error("temporary network failure")
+              return { data: { ...queued, status: "completed" as const, completedAt: 2, result: "Healthy" } }
+            },
+            cancel: async () => ({ data: { ...queued, status: "cancelled" as const } }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      await perf!.startAnalysis()
+      expect(scheduledTimeouts).toHaveLength(1)
+      expect(scheduledTimeouts[0]?.delay).toBe(1_000)
+
+      scheduledTimeouts.shift()!.callback()
+      await settle()
+      expect(perf!.analysisError()).toBe("temporary network failure")
+      expect(perf!.analysis()?.status).toBe("queued")
+      expect(scheduledTimeouts).toHaveLength(1)
+      expect(scheduledTimeouts[0]?.delay).toBe(2_000)
+
+      scheduledTimeouts.shift()!.callback()
+      await settle()
+      expect(perf!.analysisError()).toBeNull()
+      expect(perf!.analysis()).toMatchObject({ status: "completed", result: "Healthy" })
+      expect(scheduledTimeouts).toHaveLength(0)
+    } finally {
+      dispose?.()
+      window.setTimeout = originalSetTimeout
+      window.clearTimeout = originalClearTimeout
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
+  test("prevents concurrent analysis starts", async () => {
+    const originalHydrationContext = sharedConfig.context
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+    let startCalls = 0
+    let releaseStart: () => void = () => undefined
+    const pendingStart = new Promise<void>((resolve) => {
+      releaseStart = resolve
+    })
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => {
+              startCalls++
+              await pendingStart
+              return { data: null }
+            },
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      const first = perf!.startAnalysis()
+      const second = perf!.startAnalysis()
+      expect(startCalls).toBe(1)
+      releaseStart()
+      await Promise.all([first, second])
+      expect(startCalls).toBe(1)
+    } finally {
+      dispose?.()
       sharedConfig.context = originalHydrationContext
     }
   })
