@@ -1,5 +1,6 @@
 import solidPlugin from "vite-plugin-solid"
 import tailwindcss from "@tailwindcss/vite"
+import { lingui } from "@lingui/vite-plugin"
 import path from "node:path"
 import fs from "node:fs"
 import { createRequire } from "node:module"
@@ -97,4 +98,5 @@ export default [
   },
   tailwindcss(),
   solidPlugin(),
+  ...lingui(),
 ]

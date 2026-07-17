@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
+import { CODE_COPY_DESC } from "./tool-title-descriptors"
 import { useMarked } from "../context/marked"
 import {
   markdownFallbackHtml,
@@ -34,7 +37,7 @@ function formatLanguage(language: string) {
   return normalized.replaceAll(/[-_]+/g, " ")
 }
 
-function enhanceMarkdown(root: HTMLDivElement) {
+function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => string) {
   const disposers: Array<() => void> = []
 
   for (const table of root.querySelectorAll<HTMLTableElement>("table")) {
@@ -58,15 +61,15 @@ function enhanceMarkdown(root: HTMLDivElement) {
     if (!source) continue
 
     katexEl.dataset.katexCopy = "true"
-    katexEl.title = "Click to copy LaTeX"
+    katexEl.title = _(CODE_COPY_DESC.copyLaTeX)
 
     let resetTimer: number | undefined
 
     const handleKatexClick = async (e: MouseEvent) => {
       e.stopPropagation()
       const result = await copyTextToClipboard(source, {
-        label: "Copy LaTeX",
-        failureDescription: "Unable to copy the LaTeX source.",
+        label: _(CODE_COPY_DESC.copyLaTeX),
+        failureDescription: _(CODE_COPY_DESC.copyLaTeXFail),
       })
       if (!result.ok) return
       const tooltip = document.createElement("span")
@@ -118,13 +121,12 @@ function enhanceMarkdown(root: HTMLDivElement) {
 
     const button = document.createElement("button")
     button.type = "button"
-    button.dataset.slot = "markdown-code-copy"
-    button.setAttribute("aria-label", languageLabel ? `Copy ${languageLabel} code` : "Copy code")
-    button.title = "Copy code"
+    button.setAttribute("aria-label", languageLabel ? `Copy ${languageLabel} code` : _(CODE_COPY_DESC.copyCode))
+    button.title = _(CODE_COPY_DESC.copyCode)
 
     const text = document.createElement("span")
     text.dataset.slot = "markdown-code-copy-text"
-    text.textContent = "Copy"
+    text.textContent = _(CODE_COPY_DESC.copy)
     button.append(text)
 
     header.append(button)
@@ -134,16 +136,26 @@ function enhanceMarkdown(root: HTMLDivElement) {
 
     const setCopyState = (state: CopyState) => {
       button.dataset.copyState = state
-      button.title = state === "copied" ? "Copied" : state === "failed" ? "Copy failed" : "Copy code"
-      text.textContent = state === "copied" ? "Copied" : state === "failed" ? "Failed" : "Copy"
+      button.title =
+        state === "copied"
+          ? _(CODE_COPY_DESC.copied)
+          : state === "failed"
+            ? _(CODE_COPY_DESC.copyFailed)
+            : _(CODE_COPY_DESC.copyCode)
+      text.textContent =
+        state === "copied"
+          ? _(CODE_COPY_DESC.copied)
+          : state === "failed"
+            ? _(CODE_COPY_DESC.failed)
+            : _(CODE_COPY_DESC.copy)
     }
 
     setCopyState("idle")
 
     const handleClick = async () => {
       const result = await copyTextToClipboard(source, {
-        label: "Copy code",
-        failureDescription: "Unable to copy the code block.",
+        label: _(CODE_COPY_DESC.copyCode),
+        failureDescription: _(CODE_COPY_DESC.copyCodeFail),
       })
       window.clearTimeout(resetTimer)
       setCopyState(result.ok ? "copied" : "failed")
@@ -185,6 +197,7 @@ export function Markdown(
 
   const [local, others] = splitProps(props, ["text", "streaming", "cacheKey", "class", "classList"])
   const marked = useMarked()
+  const { _ } = useLingui()
 
   // Terminal (full-fidelity) HTML. Only computed when not streaming; a null
   // source short-circuits the resource so no marked work happens mid-stream.
@@ -252,7 +265,7 @@ export function Markdown(
       hash: rendered.hash,
       container,
       html: rendered.html,
-      enhance: (root) => enhanceMarkdown(root as HTMLDivElement),
+      enhance: (root) => enhanceMarkdown(root as HTMLDivElement, _),
       prefersReducedMotion,
       markdownLength: local.text.length,
       hadStreamContent,

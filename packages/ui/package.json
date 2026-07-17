@@ -29,12 +29,17 @@
     "generate:theme": "bun run script/theme.ts",
     "generate:tailwind": "bun run generate:theme"
   },
+  "peerDependencies": {
+    "@lingui/core": "catalog:",
+    "@lingui/solid": "catalog:"
+  },
   "devDependencies": {
+    "@lingui/core": "catalog:",
+    "@lingui/solid": "catalog:",
     "@tailwindcss/vite": "catalog:",
     "@tsconfig/node22": "catalog:",
     "@types/bun": "catalog:",
     "@types/jsdom": "21.1.7",
-    "@types/luxon": "catalog:",
     "jsdom": "25.0.1",
     "playwright": "1.61.0",
     "tailwindcss": "catalog:",
@@ -58,7 +63,6 @@
     "fuzzysort": "catalog:",
     "katex": "catalog:",
     "lucide-solid": "0.577.0",
-    "luxon": "catalog:",
     "marked": "catalog:",
     "marked-katex-extension": "5.1.6",
     "marked-shiki": "catalog:",

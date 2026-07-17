@@ -1,4 +1,5 @@
 import type { ControlProfileId } from "@/context/input"
+import type { MessageDescriptor } from "@lingui/core"
 import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
 import type {
   SessionTransitionActions,
@@ -85,9 +86,9 @@ export type PromptPopoverMode = "at" | "slash" | null
 
 export type PermissionModeVisual = {
   id: ControlProfileId
-  label: string
-  shortLabel: string
-  description: string
+  label: MessageDescriptor
+  shortLabel: MessageDescriptor
+  description: MessageDescriptor
   icon: import("@ericsanchezok/synergy-ui/semantic-icon").SemanticIconTokenName
   iconClass: string
 }

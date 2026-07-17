@@ -2844,6 +2844,10 @@ export type Config = {
    */
   $schema?: string
   /**
+   * UI locale (system = follow OS, default: system)
+   */
+  locale?: "system" | "en" | "zh-CN"
+  /**
    * Theme name to use for the interface
    */
   theme?: string

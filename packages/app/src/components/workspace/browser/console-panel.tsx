@@ -1,5 +1,7 @@
 import { For, Show, createEffect, on } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type ConsoleEntry } from "./browser-store"
+import { consolePanel as P } from "@/locales/messages"
 
 const LEVEL_CLASSES: Record<string, string> = {
   log: "text-text-subtle bg-surface-base",
@@ -18,8 +20,8 @@ function formatTime(ts: number): string {
 export function ConsolePanel() {
   let scrollEl: HTMLDivElement | undefined
   const { pageId: currentPageId, consoleEntries } = useBrowser()
+  const lingui = useLingui()
 
-  // Auto-scroll to bottom when entries change
   createEffect(
     on(
       () => {
@@ -47,7 +49,9 @@ export function ConsolePanel() {
       <Show
         when={entries().length > 0}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">No console entries</div>
+          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
+          </div>
         }
       >
         <div ref={scrollEl} class="flex-1 overflow-y-auto font-mono">

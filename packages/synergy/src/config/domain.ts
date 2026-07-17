@@ -47,6 +47,7 @@ export namespace ConfigDomain {
       "logLevel",
       "snapshot",
       "username",
+      "locale",
       "layout",
       "embedding",
       "rerank",

@@ -1,6 +1,6 @@
 import { createEffect, createMemo, createSignal, For } from "solid-js"
-import { startOfDay, startOfWeek, addDays, addMonths, MONTH_NAMES_SHORT, DAY_LABELS_MINI } from "./date"
-
+import { startOfDay, startOfWeek, addDays, addMonths, getMonthNamesShort, getDayLabelsMini } from "./date"
+import { useLocale } from "@/context/locale"
 import type { ViewMode } from "./calendar"
 
 interface MiniCalendarProps {
@@ -10,7 +10,11 @@ interface MiniCalendarProps {
 }
 
 export function MiniCalendar(props: MiniCalendarProps) {
+  const { fmt } = useLocale()
   const [displayMonth, setDisplayMonth] = createSignal(startOfDay(props.anchor))
+
+  const monthNames = createMemo(() => getMonthNamesShort(fmt))
+  const dayLabels = createMemo(() => getDayLabelsMini(fmt))
 
   createEffect(() => {
     setDisplayMonth(startOfDay(props.anchor))
@@ -18,7 +22,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
 
   const headerLabel = createMemo(() => {
     const d = new Date(displayMonth())
-    return `${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getFullYear()}`
+    return `${monthNames()[d.getMonth()]} ${d.getFullYear()}`
   })
 
   const today = createMemo(() => startOfDay(Date.now()))
@@ -115,7 +119,7 @@ export function MiniCalendar(props: MiniCalendarProps) {
 
       <div class="agenda-inner-surface flex flex-col gap-1.5 p-2.5">
         <div class="grid grid-cols-7">
-          <For each={DAY_LABELS_MINI}>
+          <For each={dayLabels()}>
             {(label) => (
               <div class="flex h-7 w-10 items-center justify-center text-11-medium text-text-weaker">{label}</div>
             )}

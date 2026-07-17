@@ -134,6 +134,13 @@ bun run --cwd packages/app test
 bun run --cwd packages/ui test
 ```
 
+Frontend product copy is extracted into English and Simplified Chinese catalogs, plus a development-only pseudo catalog. Changes to visible text or locale formatting also run:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run localization:check
+```
+
 When developing Synergy while using Synergy itself, start an isolated second instance with a separate `SYNERGY_HOME` and explicit ports. Never stop or replace the instance hosting your active session. The [development reference](docs/reference/development.md) contains the complete workflow.
 
 ## Develop Plugins

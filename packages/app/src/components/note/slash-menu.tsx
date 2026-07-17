@@ -3,7 +3,9 @@ import { PluginKey } from "@tiptap/pm/state"
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion"
 import { createSignal, For, Show, type Accessor } from "solid-js"
 import { render as solidRender } from "solid-js/web"
+import { useLingui } from "@lingui/solid"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
+import { slashMenu as S } from "@/locales/messages"
 
 interface CommandItem {
   id: string
@@ -17,34 +19,36 @@ interface CommandItem {
 
 interface SlashCommandsOptions {
   onUploadFile?: (file: File) => Promise<string>
+  lingui: ReturnType<typeof useLingui>
 }
 
-function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
+function buildSlashCommands(options: SlashCommandsOptions): CommandItem[] {
+  const L = options.lingui
   return [
     {
       id: "h1",
-      title: "H1",
+      title: L._({ id: S.h1.id, message: S.h1.message }),
       icon: "H1",
       section: "grid",
       command: (editor) => editor.chain().focus().setHeading({ level: 1 }).run(),
     },
     {
       id: "h2",
-      title: "H2",
+      title: L._({ id: S.h2.id, message: S.h2.message }),
       icon: "H2",
       section: "grid",
       command: (editor) => editor.chain().focus().setHeading({ level: 2 }).run(),
     },
     {
       id: "h3",
-      title: "H3",
+      title: L._({ id: S.h3.id, message: S.h3.message }),
       icon: "H3",
       section: "grid",
       command: (editor) => editor.chain().focus().setHeading({ level: 3 }).run(),
     },
     {
       id: "bullet",
-      title: "List",
+      title: L._({ id: S.list.id, message: S.list.message }),
       icon: "•—",
       iconName: "list",
       section: "grid",
@@ -52,14 +56,14 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "ordered",
-      title: "Num",
+      title: L._({ id: S.num.id, message: S.num.message }),
       icon: "1.",
       section: "grid",
       command: (editor) => editor.chain().focus().toggleOrderedList().run(),
     },
     {
       id: "task",
-      title: "Task",
+      title: L._({ id: S.task.id, message: S.task.message }),
       icon: "☑",
       iconName: "list-checks",
       section: "grid",
@@ -67,7 +71,7 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "code",
-      title: "Code",
+      title: L._({ id: S.code.id, message: S.code.message }),
       icon: "{ }",
       iconName: "code",
       section: "grid",
@@ -75,7 +79,7 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "quote",
-      title: "Quote",
+      title: L._({ id: S.quote.id, message: S.quote.message }),
       icon: "❝",
       iconName: "quote",
       section: "grid",
@@ -83,25 +87,25 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "hr",
-      title: "Line",
+      title: L._({ id: S.line.id, message: S.line.message }),
       icon: "—",
       section: "grid",
       command: (editor) => editor.chain().focus().setHorizontalRule().run(),
     },
     {
       id: "image",
-      title: "Image",
+      title: L._({ id: S.image.id, message: S.image.message }),
       icon: "🖼",
       iconName: "image",
       section: "list",
-      category: "Insert",
+      category: L._({ id: S.insert.id, message: S.insert.message }),
       command: (editor) => {
         const input = document.createElement("input")
         input.type = "file"
         input.accept = "image/*"
         input.onchange = async () => {
           const file = input.files?.[0]
-          if (!file || !options?.onUploadFile) return
+          if (!file || !options.onUploadFile) return
           try {
             const url = await options.onUploadFile(file)
             editor.chain().focus().setImage({ src: url }).run()
@@ -114,18 +118,18 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "video",
-      title: "Video",
+      title: L._({ id: S.video.id, message: S.video.message }),
       icon: "▶",
       iconName: "square-play",
       section: "list",
-      category: "Insert",
+      category: L._({ id: S.insert.id, message: S.insert.message }),
       command: (editor) => {
         const input = document.createElement("input")
         input.type = "file"
         input.accept = "video/*"
         input.onchange = async () => {
           const file = input.files?.[0]
-          if (!file || !options?.onUploadFile) return
+          if (!file || !options.onUploadFile) return
           try {
             const url = await options.onUploadFile(file)
             editor
@@ -142,76 +146,76 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "table",
-      title: "Table",
+      title: L._({ id: S.table.id, message: S.table.message }),
       icon: "⊞",
       iconName: "table",
       section: "list",
-      category: "Insert",
+      category: L._({ id: S.insert.id, message: S.insert.message }),
       command: (editor) => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
     },
     {
       id: "table-delete",
-      title: "Delete Table",
+      title: L._({ id: S.deleteTable.id, message: S.deleteTable.message }),
       icon: "✕",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().deleteTable().run(),
     },
     {
       id: "table-add-row",
-      title: "Add Row Below",
+      title: L._({ id: S.addRowBelow.id, message: S.addRowBelow.message }),
       icon: "↓+",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().addRowAfter().run(),
     },
     {
       id: "table-add-col",
-      title: "Add Column Right",
+      title: L._({ id: S.addColumnRight.id, message: S.addColumnRight.message }),
       icon: "→+",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().addColumnAfter().run(),
     },
     {
       id: "table-del-row",
-      title: "Delete Row",
+      title: L._({ id: S.deleteRow.id, message: S.deleteRow.message }),
       icon: "−⃗",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().deleteRow().run(),
     },
     {
       id: "table-del-col",
-      title: "Delete Column",
+      title: L._({ id: S.deleteColumn.id, message: S.deleteColumn.message }),
       icon: "−⃖",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().deleteColumn().run(),
     },
     {
       id: "table-merge",
-      title: "Merge Cells",
+      title: L._({ id: S.mergeCells.id, message: S.mergeCells.message }),
       icon: "⊞",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().mergeCells().run(),
     },
     {
       id: "table-split",
-      title: "Split Cell",
+      title: L._({ id: S.splitCell.id, message: S.splitCell.message }),
       icon: "⊟",
       section: "list",
-      category: "Table",
+      category: L._({ id: S.tableCategory.id, message: S.tableCategory.message }),
       command: (editor) => editor.chain().focus().splitCell().run(),
     },
     {
       id: "math",
-      title: "Math",
+      title: L._({ id: S.math.id, message: S.math.message }),
       icon: "∑",
       iconName: "sigma",
       section: "list",
-      category: "Insert",
+      category: L._({ id: S.insert.id, message: S.insert.message }),
       command: (editor) =>
         editor
           .chain()
@@ -221,11 +225,11 @@ function buildSlashCommands(options?: SlashCommandsOptions): CommandItem[] {
     },
     {
       id: "mermaid",
-      title: "Diagram",
+      title: L._({ id: S.diagram.id, message: S.diagram.message }),
       icon: "◇",
       iconName: "diamond",
       section: "list",
-      category: "Insert",
+      category: L._({ id: S.insert.id, message: S.insert.message }),
       command: (editor) =>
         editor
           .chain()
@@ -485,7 +489,7 @@ function createSlashMenuRenderer() {
   }
 }
 
-export function createSlashCommands(options?: SlashCommandsOptions) {
+export function createSlashCommands(options: SlashCommandsOptions) {
   const commands = buildSlashCommands(options)
 
   return Extension.create({
