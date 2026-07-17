@@ -22,8 +22,8 @@ export interface DesktopUnreadAssetOptions {
   resourcesPath: string
 }
 
-function unreadSessionsLabel(count: number): string {
-  return `${count} unread Synergy session${count === 1 ? "" : "s"}`
+function unreadCompletionsLabel(count: number): string {
+  return `${count} unread Synergy completion${count === 1 ? "" : "s"}`
 }
 
 export function desktopUnreadPresentation(
@@ -32,7 +32,7 @@ export function desktopUnreadPresentation(
   windowTitle: string,
 ): DesktopUnreadPresentation {
   const unread = count > 0
-  const description = unread ? unreadSessionsLabel(count) : ""
+  const description = unread ? unreadCompletionsLabel(count) : ""
   return {
     dockBadge: platform === "darwin" ? (unread ? (count > 99 ? "99+" : String(count)) : "") : undefined,
     launcherBadgeCount: platform === "linux" ? count : undefined,
@@ -41,7 +41,7 @@ export function desktopUnreadPresentation(
     trayUnread: platform === "linux" && unread,
     trayTooltip:
       platform === "linux" && unread
-        ? `${windowTitle} — ${count} unread session${count === 1 ? "" : "s"}`
+        ? `${windowTitle} — ${count} unread completion${count === 1 ? "" : "s"}`
         : windowTitle,
   }
 }

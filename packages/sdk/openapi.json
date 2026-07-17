@@ -21781,9 +21781,14 @@
             "properties": {
               "unread": {
                 "type": "boolean"
+              },
+              "unreadCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
-            "required": ["unread"]
+            "required": ["unread", "unreadCount"]
           }
         },
         "required": [
@@ -26391,6 +26396,7 @@
       "SessionCompletionNotice": {
         "default": {
           "unread": false,
+          "unreadCount": 0,
           "silent": false
         },
         "type": "object",
@@ -26398,11 +26404,16 @@
           "unread": {
             "type": "boolean"
           },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "silent": {
             "type": "boolean"
           }
         },
-        "required": ["unread", "silent"]
+        "required": ["unread", "unreadCount", "silent"]
       },
       "SessionInteractionMode": {
         "type": "string",
@@ -26535,6 +26546,12 @@
           },
           "error": {
             "type": "string"
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
+          },
+          "deliveryNotifiedAt": {
+            "type": "number"
           },
           "visibility": {
             "type": "string",
@@ -27721,6 +27738,9 @@
           "mode": {
             "type": "string",
             "enum": ["task", "steer", "context"]
+          },
+          "deliveryKey": {
+            "type": "string"
           },
           "message": {
             "type": "object",

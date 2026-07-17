@@ -1138,6 +1138,7 @@ export type SessionNavEntry = {
   chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
+    unreadCount: number
   }
 }
 
@@ -3618,6 +3619,7 @@ export type PermissionRuleset = Array<PermissionRule>
 
 export type SessionCompletionNotice = {
   unread: boolean
+  unreadCount: number
   silent: boolean
 }
 

@@ -158,6 +158,7 @@ export type WorkingInfo = z.infer<typeof WorkingInfo>
 export const CompletionNotice = z
   .object({
     unread: z.boolean(),
+    unreadCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
     silent: z.boolean(),
   })
   .meta({ ref: "SessionCompletionNotice" })
@@ -170,6 +171,12 @@ export const Info = z
         if (data.projectID && !data.scopeID) {
           data.scopeID = data.projectID
           delete data.projectID
+        }
+        if (data.completionNotice && typeof data.completionNotice === "object") {
+          const notice = data.completionNotice as Record<string, unknown>
+          if (notice.unreadCount === undefined) {
+            notice.unreadCount = notice.unread === true && notice.silent !== true ? 1 : 0
+          }
         }
       }
       return data
@@ -218,7 +225,7 @@ export const Info = z
           activatedTools: z.array(z.string()).optional(),
         })
         .optional(),
-      completionNotice: CompletionNotice.default(() => ({ unread: false, silent: false })),
+      completionNotice: CompletionNotice.default(() => ({ unread: false, unreadCount: 0, silent: false })),
       modelOverride: z
         .object({
           providerID: z.string(),

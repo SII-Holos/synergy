@@ -194,7 +194,7 @@ describe("session migrations", () => {
     })
   })
 
-  test("normalizes completion notices and rebuilds nav entries", async () => {
+  test("backfills completion counts idempotently and rebuilds nav entries", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()
 
@@ -203,6 +203,7 @@ describe("session migrations", () => {
       fn: async () => {
         const legacy = await Session.create({ title: "Legacy Notice" })
         const preserved = await Session.create({ title: "Preserved Notice" })
+        const counted = await Session.create({ title: "Counted Notice" })
         const silent = await Session.create({ title: "Silent Notice" })
         const scope = Identifier.asScopeID(tmpScope.id)
 
@@ -217,10 +218,16 @@ describe("session migrations", () => {
           completionNotice: { unread: true, silent: false },
         })
 
+        const countedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(counted.id))
+        await Storage.write(countedKey, {
+          ...(await Storage.read<any>(countedKey)),
+          completionNotice: { unread: true, unreadCount: 3, silent: false },
+        })
+
         const silentKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(silent.id))
         await Storage.write(silentKey, {
           ...(await Storage.read<any>(silentKey)),
-          completionNotice: { unread: true, silent: true },
+          completionNotice: { unread: true, unreadCount: 4, silent: true },
         })
 
         await Storage.write(StoragePath.sessionNavIndex(scope), {
@@ -241,20 +248,49 @@ describe("session migrations", () => {
           ],
         })
 
-        const migration = migrations.find((entry) => entry.id === "20260703-session-completion-notice")
+        const migration = migrations.find((entry) => entry.id === "20260717-session-completion-unread-count")
         expect(migration).toBeDefined()
         await migration!.up(() => {})
+        await migration!.up(() => {})
 
-        expect((await Storage.read<any>(legacyKey)).completionNotice).toEqual({ unread: false, silent: false })
-        expect((await Storage.read<any>(preservedKey)).completionNotice).toEqual({ unread: true, silent: false })
-        expect((await Storage.read<any>(silentKey)).completionNotice).toEqual({ unread: false, silent: true })
+        expect((await Storage.read<any>(legacyKey)).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+          silent: false,
+        })
+        expect((await Storage.read<any>(preservedKey)).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 1,
+          silent: false,
+        })
+        expect((await Storage.read<any>(countedKey)).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 3,
+          silent: false,
+        })
+        expect((await Storage.read<any>(silentKey)).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+          silent: true,
+        })
 
         const nav = await Storage.read<any>(StoragePath.sessionNavIndex(scope))
-        expect(nav.entries.find((entry: any) => entry.id === legacy.id).completionNotice).toEqual({ unread: false })
-        expect(nav.entries.find((entry: any) => entry.id === preserved.id).completionNotice).toEqual({ unread: true })
+        expect(nav.entries.find((entry: any) => entry.id === legacy.id).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+        })
+        expect(nav.entries.find((entry: any) => entry.id === preserved.id).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 1,
+        })
+        expect(nav.entries.find((entry: any) => entry.id === counted.id).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 3,
+        })
 
         await Session.remove(legacy.id)
         await Session.remove(preserved.id)
+        await Session.remove(counted.id)
         await Session.remove(silent.id)
       },
     })

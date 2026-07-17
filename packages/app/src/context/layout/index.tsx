@@ -85,6 +85,7 @@ export interface NavEntry {
   chatType?: string
   completionNotice: {
     unread: boolean
+    unreadCount: number
   }
 }
 
@@ -965,9 +966,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
-    function setNavEntryCompletionUnread(scopeKey: string, sessionID: string, unread: boolean) {
-      const updateEntry = (entry: NavEntry) =>
-        entry.id === sessionID ? { ...entry, completionNotice: { unread } } : entry
+    function setNavEntryCompletionNotice(
+      scopeKey: string,
+      sessionID: string,
+      completionNotice: NavEntry["completionNotice"],
+    ) {
+      const updateEntry = (entry: NavEntry) => (entry.id === sessionID ? { ...entry, completionNotice } : entry)
       const projectEntry = navEntries[scopeKey]
       if (projectEntry) {
         setNavEntries(scopeKey, "items", (items) => items.map(updateEntry) as NavEntry[])
@@ -991,7 +995,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     async function clearCompletionNotice(directory: string, sessionID: string) {
       const entry = navEntryForSession(directory, sessionID)
       if (!entry?.completionNotice.unread) return
-      setNavEntryCompletionUnread(directory, sessionID, false)
+      setNavEntryCompletionNotice(directory, sessionID, { unread: false, unreadCount: 0 })
       try {
         await globalSdk.client.session.update({
           ...scopeRequest(directory),
@@ -1000,7 +1004,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       } catch (err) {
         console.warn("Failed to clear session completion notice", err)
-        if (entry) setNavEntryCompletionUnread(directory, sessionID, true)
+        if (entry) setNavEntryCompletionNotice(directory, sessionID, entry.completionNotice)
       }
     }
 

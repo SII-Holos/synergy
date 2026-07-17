@@ -11,7 +11,7 @@ describe("desktop unread indicator", () => {
       dockBadge: "7",
       launcherBadgeCount: undefined,
       overlayVisible: false,
-      overlayDescription: "7 unread Synergy sessions",
+      overlayDescription: "7 unread Synergy completions",
       trayUnread: false,
       trayTooltip: "Synergy",
     })
@@ -24,7 +24,7 @@ describe("desktop unread indicator", () => {
       dockBadge: undefined,
       launcherBadgeCount: undefined,
       overlayVisible: true,
-      overlayDescription: "1 unread Synergy session",
+      overlayDescription: "1 unread Synergy completion",
       trayUnread: false,
       trayTooltip: "Synergy",
     })
@@ -36,9 +36,9 @@ describe("desktop unread indicator", () => {
       dockBadge: undefined,
       launcherBadgeCount: 12,
       overlayVisible: false,
-      overlayDescription: "12 unread Synergy sessions",
+      overlayDescription: "12 unread Synergy completions",
       trayUnread: true,
-      trayTooltip: "Synergy — 12 unread sessions",
+      trayTooltip: "Synergy — 12 unread completions",
     })
     expect(desktopUnreadPresentation("linux", 0, "Synergy").trayTooltip).toBe("Synergy")
   })

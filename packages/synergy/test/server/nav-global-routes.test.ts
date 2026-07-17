@@ -37,19 +37,16 @@ describe("GET /global/recent", () => {
       scope,
       fn: async () => {
         const unread = await Session.create({ title: "Unread Outside Page" })
-        await Session.update(unread.id, (draft) => {
-          draft.completionNotice.unread = true
-        })
+        await Session.recordCompletionNotice(unread.id)
+        await Session.recordCompletionNotice(unread.id)
 
         const parent = await Session.create({ title: "Parent" })
         const child = await Session.create({ title: "Unread Child", parentID: parent.id })
-        await Session.update(child.id, (draft) => {
-          draft.completionNotice.unread = true
-        })
+        await Session.recordCompletionNotice(child.id)
 
         const archived = await Session.create({ title: "Archived Unread" })
+        await Session.recordCompletionNotice(archived.id)
         await Session.update(archived.id, (draft) => {
-          draft.completionNotice.unread = true
           draft.time.archived = Date.now()
         })
 
@@ -64,7 +61,7 @@ describe("GET /global/recent", () => {
         expect(body.items).toHaveLength(1)
         expect(body.items[0]?.id).toBe(newest.id)
         expect(body.items[0]?.id).not.toBe(unread.id)
-        expect(body.unreadCompletionCount).toBe(1)
+        expect(body.unreadCompletionCount).toBe(2)
 
         await Session.remove(child.id)
         await Session.remove(parent.id)

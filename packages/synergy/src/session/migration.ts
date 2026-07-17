@@ -1387,11 +1387,20 @@ async function migrateSessionChildIndex(progress: (current: number, total: numbe
   log.info("session child index migration complete", { scopes: scopeIDs.length })
 }
 
-function normalizeCompletionNotice(value: unknown): { unread: boolean; silent: boolean } {
+function normalizeCompletionNotice(value: unknown): { unread: boolean; unreadCount: number; silent: boolean } {
   const current = asRecord(value)
   const silent = current?.silent === true
+  const unread = !silent && current?.unread === true
+  const storedCount = current?.unreadCount
+  const unreadCount =
+    unread && typeof storedCount === "number" && Number.isSafeInteger(storedCount) && storedCount > 0
+      ? storedCount
+      : unread
+        ? 1
+        : 0
   return {
-    unread: silent ? false : current?.unread === true,
+    unread,
+    unreadCount,
     silent,
   }
 }
@@ -2195,6 +2204,13 @@ export const migrations: Migration[] = [
     description: "Migrate retired intent-analyst DAG assignments to the primary orchestrator",
     async up(progress) {
       await migrateRetiredIntentAnalystDagAssignments(progress)
+    },
+  },
+  {
+    id: "20260717-session-completion-unread-count",
+    description: "Backfill unread completion counts and rebuild session navigation indexes",
+    async up(progress) {
+      await migrateSessionCompletionNotice(progress)
     },
   },
 ]

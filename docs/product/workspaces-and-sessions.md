@@ -49,9 +49,9 @@ Only one LLM loop writes a session at a time. New reply-requiring work waits as 
 
 ### Completion notices
 
-When background or unattended work finishes, the root session can retain an unread completion notice until that session is viewed. The global session navigation response reports the total unread completion count across non-archived root sessions in every Scope; the count is independent of navigation pagination.
+When background or unattended work finishes, the session records a completion. Each unacknowledged completion increments the session's cumulative unread count, and the global session navigation response sums those counts across non-archived root sessions in every Scope. Viewing the session clears its accumulated completions. The aggregated count is independent of navigation pagination.
 
-Desktop mirrors this state with platform-native indicators. macOS shows a numeric Dock badge (capped visually at `99+`), Windows shows an accessible taskbar overlay dot, and Linux uses the launcher badge where supported plus an unread tray icon and count in its tooltip. Hiding or focusing the window does not clear the indicator; acknowledging the completion notice in its session does.
+Desktop mirrors this state with platform-native indicators. macOS shows a numeric Dock badge (capped visually at `99+`), Windows shows an accessible taskbar overlay dot, and Linux uses the launcher badge where supported plus an unread tray icon and count in its tooltip. Hiding or focusing the window does not clear the indicator; acknowledging the completions in their sessions does.
 
 ## Tasks and Messages
 
