@@ -67,6 +67,7 @@ Settings typography should use the global semantic UI type tokens, not local pix
 Worktree settings should aggregate only Git projects, preserve readable project results when another repository fails, and keep main or external worktrees informational. Managed deletion is a confirmed lifecycle action: show dirty and bound-session consequences, refuse active use, and refresh the list after the backend has migrated idle bindings or cleaned a stale record.
 
 Library settings should explain learning, memory recall, and experience reuse as product preferences. Use switch controls for binary learning behavior and discrete guided scales for recall or exploration thresholds; do not present cosine similarity, top-k, or epsilon choices as raw debug parameters.
+Library settings should always identify the effective embedding model. A user-configured remote model takes precedence and should be labeled as configured; the bundled local model is the visible default fallback only when no remote embedding API key is configured. Keep local download-source and file-status controls subordinate to that effective-model row, and do not expose API keys or private connection details in the summary.
 
 Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
 
