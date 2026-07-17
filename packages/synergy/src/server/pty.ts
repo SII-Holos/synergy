@@ -150,6 +150,7 @@ export const PtyRoute = new Hono()
     validator("param", z.object({ ptyID: z.string() })),
     upgradeWebSocket((c) => {
       const id = c.req.param("ptyID")
+      if (!id) throw new Error("Session ID required")
       let handler: ReturnType<typeof Pty.connect>
       if (!Pty.get(id)) throw new Error("Session not found")
       return {
