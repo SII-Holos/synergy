@@ -305,6 +305,59 @@ async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
   }
 }
 
+async function expectSessionInboxBadgePreservesIconCenter(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 320, height: 160 } })
+    await page.setContent(`
+      <style>${css}</style>
+      <button
+        data-trigger="empty"
+        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+      >
+        <span data-icon></span>
+      </button>
+      <button
+        data-trigger="active"
+        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+      >
+        <span data-icon></span>
+        <span data-badge class="session-inbox-badge">1</span>
+      </button>
+      <style>[data-icon] { display: block; width: 16px; height: 16px; }</style>
+    `)
+
+    const layout = await page.evaluate(() => {
+      const centerOffset = (trigger: Element, icon: Element) => {
+        const triggerRect = trigger.getBoundingClientRect()
+        const iconRect = icon.getBoundingClientRect()
+        return iconRect.left + iconRect.width / 2 - (triggerRect.left + triggerRect.width / 2)
+      }
+      const emptyTrigger = document.querySelector('[data-trigger="empty"]')
+      const emptyIcon = emptyTrigger?.querySelector("[data-icon]")
+      const activeTrigger = document.querySelector('[data-trigger="active"]')
+      const activeIcon = activeTrigger?.querySelector("[data-icon]")
+      const badge = document.querySelector("[data-badge]")
+      if (!emptyTrigger || !emptyIcon || !activeTrigger || !activeIcon || !badge) {
+        throw new Error("Missing session inbox fixture")
+      }
+
+      return {
+        emptyIconOffset: centerOffset(emptyTrigger, emptyIcon),
+        activeIconOffset: centerOffset(activeTrigger, activeIcon),
+        badgePosition: getComputedStyle(badge).position,
+      }
+    })
+
+    expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
+    expect(layout.badgePosition).toBe("absolute")
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
@@ -373,6 +426,7 @@ describe("app production build contract", () => {
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
+      await expectSessionInboxBadgePreservesIconCenter(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })
