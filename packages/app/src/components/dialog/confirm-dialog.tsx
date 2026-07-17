@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js"
-import type { MessageDescriptor } from "@lingui/core"
+import type { I18n, MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -8,17 +8,20 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { dialog } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import type { ConfirmTone } from "./confirm-copy"
 import "./confirm-dialog.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type { ConfirmTone } from "./confirm-copy"
 
+export type ConfirmContent = string | MessageDescriptor
+
 export interface ConfirmOptions {
-  title: MessageDescriptor
-  description: MessageDescriptor
-  confirmLabel: MessageDescriptor
-  cancelLabel?: MessageDescriptor
+  title: ConfirmContent
+  description: ConfirmContent
+  confirmLabel: ConfirmContent
+  cancelLabel?: ConfirmContent
   tone: ConfirmTone
   onConfirm: () => void | Promise<void>
   onConfirmed?: () => void
@@ -28,6 +31,9 @@ function errorDescription(error: unknown, _: (descriptor: { id: string; message:
   if (error instanceof Error && error.message) return error.message
   if (typeof error === "string" && error) return error
   return _(dialog.actionNotCompleted)
+}
+function resolveContent(content: ConfirmContent, translate: I18n["_"]): string {
+  return typeof content === "string" ? content : translateDescriptor(content, { _: translate })
 }
 
 export function ConfirmDialog(props: ConfirmOptions) {
@@ -63,8 +69,8 @@ export function ConfirmDialog(props: ConfirmOptions) {
 
   return (
     <Dialog
-      title={_(props.title)}
-      description={_(props.description)}
+      title={resolveContent(props.title, _)}
+      description={resolveContent(props.description, _)}
       class="confirm-dialog"
       action={
         <button
@@ -83,7 +89,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
     >
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
         <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dismiss()}>
-          {props.cancelLabel ? _(props.cancelLabel) : _(dialog.cancel)}
+          {props.cancelLabel ? resolveContent(props.cancelLabel, _) : _(dialog.cancel)}
         </Button>
         <Button
           type="button"
@@ -97,10 +103,10 @@ export function ConfirmDialog(props: ConfirmOptions) {
           {pending() ? (
             <>
               <Spinner class="confirm-dialog-spinner" />
-              {_(props.confirmLabel)}
+              {resolveContent(props.confirmLabel, _)}
             </>
           ) : (
-            _(props.confirmLabel)
+            resolveContent(props.confirmLabel, _)
           )}
         </Button>
       </div>

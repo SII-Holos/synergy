@@ -167,8 +167,10 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
             </Show>
             <Show when={nextReset()}>
               {(reset) => (
-                <div class="usage-overview-metric" title={reset().title}>
-                  <span class="usage-overview-value usage-overview-date">{reset().value}</span>
+                <div class="usage-overview-metric" title={translateDescriptor(reset().descriptor, { _ })}>
+                  <span class="usage-overview-value usage-overview-date">
+                    {translateDescriptor(reset().valueDescriptor, { _ })}
+                  </span>
                   <span class="usage-overview-label">{_(nextResetLabel)}</span>
                 </div>
               )}
@@ -361,8 +363,8 @@ function UsageProviderPanel(props: {
                     <div class="usage-window-value">{formatUsageWindowValue(window)}</div>
                     <Show when={formatUsageResetSentence(window.resetAt, fmt)}>
                       {(reset) => (
-                        <div class="usage-window-reset" title={reset().title}>
-                          {reset().value}
+                        <div class="usage-window-reset" title={translateDescriptor(reset().descriptor, { _ })}>
+                          {translateDescriptor(reset().descriptor, { _ })}
                         </div>
                       )}
                     </Show>

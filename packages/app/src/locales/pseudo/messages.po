@@ -6653,6 +6653,14 @@ msgstr ""
 msgid "attention.providerAuth.detail.single"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.single"
+msgstr ""
+
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.conflict-detail"
 msgstr ""
@@ -6842,6 +6850,10 @@ msgid "confirm.agendaAction.cancel.confirm"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.cancel.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.title"
 msgstr ""
 
@@ -6850,7 +6862,15 @@ msgid "confirm.agendaAction.delete.confirm"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.delete.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.delete.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.confirm.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6858,7 +6878,15 @@ msgid "confirm.archiveNote.confirm.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveNote.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveNote.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.title.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6870,11 +6898,19 @@ msgid "confirm.archiveProject.confirm"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveProject.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveProject.title"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveSession.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveSession.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6890,7 +6926,15 @@ msgid "confirm.cancelReencode.confirm"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.cancelReencode.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.cancelReencode.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.confirm.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6898,7 +6942,15 @@ msgid "confirm.deleteArchivedNote.confirm.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.title.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6906,7 +6958,23 @@ msgid "confirm.deleteArchivedNote.title.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.confirm.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedSession.confirm.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.title.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6914,11 +6982,35 @@ msgid "confirm.deleteArchivedSession.title.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.confirm.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteLibrary.confirm.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.single"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteNote.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteNote.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6927,6 +7019,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteSkill.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteSkill.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6939,6 +7035,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteWorktree.confirm.dirty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteWorktree.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6974,6 +7074,10 @@ msgid "confirm.leaveWorktree.confirm"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.leaveWorktree.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.title"
 msgstr ""
 
@@ -6986,7 +7090,23 @@ msgid "confirm.overwriteImport.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.overwriteImport.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.reencodeExperience.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.confirm.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -6994,7 +7114,23 @@ msgid "confirm.restoreArchivedSession.confirm.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.title.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.restoreArchivedSession.title.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.confirm.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -7002,7 +7138,15 @@ msgid "confirm.unarchiveNote.confirm.single"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.desc.plural"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.desc.single"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.title.plural"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -7011,6 +7155,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "confirm.uninstallPlugin.confirm"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "confirm.uninstallPlugin.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -8967,6 +9115,50 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session-status.managing-tasks"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.0"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.1"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.2"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.3"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.4"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.5"
+msgstr ""
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.0"
+msgstr ""
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.1"
+msgstr ""
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.2"
+msgstr ""
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.3"
+msgstr ""
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.4"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -14640,6 +14832,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.usage.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt.compact"
 msgstr ""
 
 #. js-lingui-explicit-id

@@ -154,43 +154,55 @@ const TEXT_DESC = defineDescriptor("session-status.gathering-thoughts", "Gatheri
 
 // ── Working-phrase descriptor IDs ───────────────────────────────────
 
-const WAITING_PHRASE_IDS = [
-  "session-status.phrase.waiting.0",
-  "session-status.phrase.waiting.1",
-  "session-status.phrase.waiting.2",
-  "session-status.phrase.waiting.3",
-  "session-status.phrase.waiting.4",
+const WAITING_PHRASE_DESCRIPTORS = [
+  defineDescriptor(
+    "session-status.phrase.waiting.0",
+    "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…",
+  ),
+  defineDescriptor(
+    "session-status.phrase.waiting.1",
+    "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…",
+  ),
+  defineDescriptor(
+    "session-status.phrase.waiting.2",
+    "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight",
+  ),
+  defineDescriptor(
+    "session-status.phrase.waiting.3",
+    "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running",
+  ),
+  defineDescriptor(
+    "session-status.phrase.waiting.4",
+    "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…",
+  ),
 ] as const
 
-const THINKING_PHRASE_IDS = [
-  "session-status.phrase.thinking.0",
-  "session-status.phrase.thinking.1",
-  "session-status.phrase.thinking.2",
-  "session-status.phrase.thinking.3",
-  "session-status.phrase.thinking.4",
-  "session-status.phrase.thinking.5",
+const THINKING_PHRASE_DESCRIPTORS = [
+  defineDescriptor("session-status.phrase.thinking.0", "{agentName} is cooking…"),
+  defineDescriptor("session-status.phrase.thinking.1", "{agentName} putting it together…"),
+  defineDescriptor("session-status.phrase.thinking.2", "{agentName} connecting the dots…"),
+  defineDescriptor("session-status.phrase.thinking.3", "{agentName} on it…"),
+  defineDescriptor("session-status.phrase.thinking.4", "{agentName} brewing something up…"),
+  defineDescriptor("session-status.phrase.thinking.5", "{agentName} weaving things together…"),
 ] as const
 
 /** Default English messages for the phrase catalogue, keyed by descriptor ID. */
-export const PHRASE_DEFAULTS: Record<string, string> = {
-  "session-status.phrase.waiting.0":
-    "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…",
-  "session-status.phrase.waiting.1":
-    "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…",
-  "session-status.phrase.waiting.2":
-    "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight",
-  "session-status.phrase.waiting.3":
-    "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running",
-  "session-status.phrase.waiting.4":
-    "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…",
+export const PHRASE_DEFAULTS = Object.fromEntries(
+  [...WAITING_PHRASE_DESCRIPTORS, ...THINKING_PHRASE_DESCRIPTORS].map((descriptor) => [
+    descriptor.id,
+    descriptor.message!,
+  ]),
+)
 
-  "session-status.phrase.thinking.0": "{agentName} is cooking…",
-  "session-status.phrase.thinking.1": "{agentName} putting it together…",
-  "session-status.phrase.thinking.2": "{agentName} connecting the dots…",
-  "session-status.phrase.thinking.3": "{agentName} on it…",
-  "session-status.phrase.thinking.4": "{agentName} brewing something up…",
-  "session-status.phrase.thinking.5": "{agentName} weaving things together…",
-}
+/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
+export const WAITING_TASKS_PHRASES = WAITING_PHRASE_DESCRIPTORS.map(
+  (descriptor) => (name: string, count: number) => resolveMsg(undefined, descriptor, { agentName: name, count }),
+)
+
+/** @deprecated Use computeWorkingPhrase so the active catalog is respected. */
+export const THINKING_PHRASES = THINKING_PHRASE_DESCRIPTORS.map(
+  (descriptor) => (name: string) => resolveMsg(undefined, descriptor, { agentName: name }),
+)
 
 // ── Public API ──────────────────────────────────────────────────────
 
@@ -237,13 +249,11 @@ export function computeWorkingPhrase(
   i18n?: I18n,
 ): string {
   if (params.cortexRunning > 0) {
-    const id = pickStatusPhrase(WAITING_PHRASE_IDS, params.seed)
-    const msg = PHRASE_DEFAULTS[id]!
-    return resolveMsg(i18n, { id, message: msg }, { agentName: params.agentName, count: params.cortexRunning })
+    const descriptor = pickStatusPhrase(WAITING_PHRASE_DESCRIPTORS, params.seed)
+    return resolveMsg(i18n, descriptor, { agentName: params.agentName, count: params.cortexRunning })
   }
-  const id = pickStatusPhrase(THINKING_PHRASE_IDS, params.seed)
-  const msg = PHRASE_DEFAULTS[id]!
-  return resolveMsg(i18n, { id, message: msg }, { agentName: params.agentName })
+  const descriptor = pickStatusPhrase(THINKING_PHRASE_DESCRIPTORS, params.seed)
+  return resolveMsg(i18n, descriptor, { agentName: params.agentName })
 }
 
 export function extractRunningTaskSessionID(part: ToolPart | undefined): string | undefined {

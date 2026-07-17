@@ -28,10 +28,10 @@ export function requestPluginHostConfirm(
     }
 
     show({
-      title: { id: "host.confirm.plugin.title", message: options.title },
-      description: { id: "host.confirm.plugin.message", message: options.message },
+      title: options.title,
+      description: options.message,
       confirmLabel: options.confirmLabel?.trim()
-        ? { id: "host.confirm.plugin.confirmLabel", message: options.confirmLabel.trim() }
+        ? options.confirmLabel.trim()
         : { id: "app.common.confirm", message: "Confirm" },
       cancelLabel: { id: "app.common.cancel", message: "Cancel" },
       tone: "neutral",

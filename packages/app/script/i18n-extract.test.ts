@@ -86,6 +86,23 @@ describe("runtime descriptor extraction", () => {
     ])
   })
 
+  test("rejects descriptor-shaped objects with static IDs and dynamic messages", () => {
+    const result = extractFromFile(
+      source(`
+        function archiveConfirm(name: string) {
+          return {
+            id: "confirm.archive.description",
+            message: \`Archive \${name}?\`,
+            values: { name },
+          }
+        }
+      `),
+    )
+
+    expect(result.entries).toEqual([])
+    expect(result.errors.map((error) => error.message)).toEqual(["Message must resolve to a static string"])
+  })
+
   test("preserves comments and line locations", () => {
     const result = extractFromFile(
       source(`

@@ -6653,6 +6653,14 @@ msgstr "Review rejected credentials in Settings."
 msgid "attention.providerAuth.detail.single"
 msgstr "Reconnect to restore models and usage."
 
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.plural"
+msgstr "{count} providers need attention"
+
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.single"
+msgstr "{providerName} needs sign-in"
+
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.conflict-detail"
 msgstr "{count} file or region{count, plural, one {} other {s}} may need resolution before anchored edits."
@@ -6842,6 +6850,10 @@ msgid "confirm.agendaAction.cancel.confirm"
 msgstr "Cancel agenda"
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.cancel.desc"
+msgstr "Cancel {name}? It will stop future runs and preserve its history."
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.title"
 msgstr "Cancel agenda?"
 
@@ -6850,16 +6862,32 @@ msgid "confirm.agendaAction.delete.confirm"
 msgstr "Delete"
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.delete.desc"
+msgstr "Delete {name} and its run history? This cannot be undone."
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.delete.title"
 msgstr "Delete agenda?"
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.confirm.plural"
+msgstr "Archive {count}"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveNote.confirm.single"
 msgstr "Archive"
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveNote.desc.plural"
+msgstr "These {count} notes will be hidden from the active list. You can restore them from the Archived view."
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveNote.desc.single"
 msgstr "This note will be hidden from the active list. You can restore it from the Archived view."
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.title.plural"
+msgstr "Archive {count} notes?"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveNote.title.single"
@@ -6870,12 +6898,20 @@ msgid "confirm.archiveProject.confirm"
 msgstr "Archive"
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveProject.desc"
+msgstr "Archive {name}? The project will be hidden from the sidebar and its data preserved."
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveProject.title"
 msgstr "Archive project"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveSession.confirm"
 msgstr "Archive"
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveSession.desc"
+msgstr "Archive {name}? The session will be hidden from active lists and its data preserved."
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveSession.title"
@@ -6890,36 +6926,92 @@ msgid "confirm.cancelReencode.confirm"
 msgstr "Cancel re-encoding"
 
 #. js-lingui-explicit-id
+msgid "confirm.cancelReencode.desc"
+msgstr "Cancel after {completed} of {total} records? Completed updates will be kept and unfinished records can be retried later."
+
+#. js-lingui-explicit-id
 msgid "confirm.cancelReencode.title"
 msgstr "Cancel re-encoding?"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.confirm.plural"
+msgstr "Delete {count}"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.confirm.single"
 msgstr "Delete"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.desc.plural"
+msgstr "These {count} notes will be removed permanently. This cannot be undone."
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.desc.single"
 msgstr "This note will be removed permanently. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.title.plural"
+msgstr "Delete {count} archived notes?"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.title.single"
 msgstr "Delete archived note?"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.confirm.plural"
+msgstr "Delete {count} permanently"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedSession.confirm.single"
 msgstr "Delete permanently"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.plural"
+msgstr "Delete these {count} archived sessions permanently? This removes their messages, history, and associated data. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.single"
+msgstr "Delete {name} permanently? This removes the session, messages, history, and associated data. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.title.plural"
+msgstr "Delete {count} archived sessions?"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedSession.title.single"
 msgstr "Delete archived session?"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.confirm.plural"
+msgstr "Delete {count}"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteLibrary.confirm.single"
 msgstr "Delete"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.plural"
+msgstr "These {count} {kind, select, memory {memories} experience {experiences} other {items}} will be removed from the library. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.single"
+msgstr "This {kind, select, memory {memory} experience {experience} other {item}} will be removed from the library. This cannot be undone."
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.plural"
+msgstr "Delete {count} {kind, select, memory {memories} experience {experiences} other {items}}?"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.single"
+msgstr "Delete {kind, select, memory {memory} experience {experience} other {item}}?"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteNote.confirm"
 msgstr "Delete"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteNote.desc"
+msgstr "Delete {name}? This note will be removed permanently."
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteNote.title"
@@ -6928,6 +7020,10 @@ msgstr "Delete note?"
 #. js-lingui-explicit-id
 msgid "confirm.deleteSkill.confirm"
 msgstr "Delete"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteSkill.desc"
+msgstr "Delete {name} from disk? This cannot be undone."
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteSkill.title"
@@ -6940,6 +7036,10 @@ msgstr "Delete"
 #. js-lingui-explicit-id
 msgid "confirm.deleteWorktree.confirm.dirty"
 msgstr "Force remove"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteWorktree.desc"
+msgstr "Delete {name}? {bindingCount, plural, =0 {No sessions are currently bound.} one {Bound session {bindingNames} will be moved back to the main checkout first.} other {# bound sessions ({bindingNames}) will be moved back to the main checkout first.}}{dirty, select, yes { This worktree has uncommitted changes; force remove will discard them.} other {}} The worktree directory on disk will be removed. This cannot be undone."
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteWorktree.title.clean"
@@ -6974,6 +7074,10 @@ msgid "confirm.leaveWorktree.confirm"
 msgstr "Leave worktree"
 
 #. js-lingui-explicit-id
+msgid "confirm.leaveWorktree.desc"
+msgstr "Return {name} to the main checkout? The worktree will stay on disk and can be re-entered later."
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.title"
 msgstr "Leave worktree?"
 
@@ -6986,24 +7090,64 @@ msgid "confirm.overwriteImport.desc"
 msgstr "Existing config values for the selected domains will be replaced by the import."
 
 #. js-lingui-explicit-id
+msgid "confirm.overwriteImport.title"
+msgstr "Overwrite {conflictCount, plural, one {# conflicting key} other {# conflicting keys}}?"
+
+#. js-lingui-explicit-id
 msgid "confirm.reencodeExperience.confirm"
 msgstr "Re-encode"
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.desc"
+msgstr "Re-encode all {count} {kind, select, intent {intent} script {script} other {experience}} records? This will make LLM calls and may take several minutes."
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.title"
+msgstr "Re-encode {kind, select, intent {intent} script {script} other {experience}} records?"
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.confirm.plural"
+msgstr "Restore {count}"
 
 #. js-lingui-explicit-id
 msgid "confirm.restoreArchivedSession.confirm.single"
 msgstr "Restore"
 
 #. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.plural"
+msgstr "These {count} sessions will be moved back to active session lists."
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.single"
+msgstr "{name} will be moved back to active session lists."
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.title.plural"
+msgstr "Restore {count} archived sessions?"
+
+#. js-lingui-explicit-id
 msgid "confirm.restoreArchivedSession.title.single"
 msgstr "Restore archived session?"
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.confirm.plural"
+msgstr "Restore {count}"
 
 #. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.confirm.single"
 msgstr "Restore"
 
 #. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.desc.plural"
+msgstr "These {count} notes will be moved back to the active list."
+
+#. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.desc.single"
 msgstr "This note will be moved back to the active list."
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.title.plural"
+msgstr "Restore {count} notes?"
 
 #. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.title.single"
@@ -7012,6 +7156,10 @@ msgstr "Restore note?"
 #. js-lingui-explicit-id
 msgid "confirm.uninstallPlugin.confirm"
 msgstr "Uninstall"
+
+#. js-lingui-explicit-id
+msgid "confirm.uninstallPlugin.desc"
+msgstr "Uninstall {name}? It will be removed from this Synergy install."
 
 #. js-lingui-explicit-id
 msgid "confirm.uninstallPlugin.title"
@@ -8968,6 +9116,50 @@ msgstr "Managing schedule"
 #. js-lingui-explicit-id
 msgid "session-status.managing-tasks"
 msgstr "Managing tasks"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.0"
+msgstr "{agentName} is cooking…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.1"
+msgstr "{agentName} putting it together…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.2"
+msgstr "{agentName} connecting the dots…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.3"
+msgstr "{agentName} on it…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.4"
+msgstr "{agentName} brewing something up…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.5"
+msgstr "{agentName} weaving things together…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.0"
+msgstr "{agentName} waiting on {count, plural, one {# background task} other {# background tasks}}…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.1"
+msgstr "{count, plural, one {# task} other {# tasks}} still cooking — {agentName} standing by…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.2"
+msgstr "{agentName} hanging tight — {count, plural, one {# task} other {# tasks}} in flight"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.3"
+msgstr "{agentName} sitting tight — {count, plural, one {# task} other {# tasks}} running"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.4"
+msgstr "{count, plural, one {# agent} other {# agents}} at work — {agentName} on standby…"
 
 #. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
@@ -14641,6 +14833,14 @@ msgstr "Provider renews {date}"
 #. js-lingui-explicit-id
 msgid "settings.usage.refresh"
 msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt"
+msgstr "Resets {day, select, today {today} tomorrow {tomorrow} other {{date}}} at {time}"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt.compact"
+msgstr "{day, select, today {Today} tomorrow {Tomorrow} other {{date}}} at {time}"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.retry"

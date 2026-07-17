@@ -1,4 +1,12 @@
-import { createContext, useContext, createEffect, onMount, type ParentProps, type JSXElement } from "solid-js"
+import {
+  createContext,
+  useContext,
+  createEffect,
+  onCleanup,
+  onMount,
+  type ParentProps,
+  type JSXElement,
+} from "solid-js"
 import { setupI18n as coreSetupI18n, type I18n } from "@lingui/core"
 import { I18nProvider as LinguiI18nProvider } from "@lingui/solid"
 import { createLocaleController } from "./controller"
@@ -6,6 +14,7 @@ import { createIntlFormatter, type IntlFormatter } from "./formatter"
 import type { ActiveLocale, LocaleController } from "./types"
 import { shouldUsePseudoLocale } from "./pseudo"
 import { applyDocumentLanguage } from "./document-language"
+import { createReactiveI18n } from "./reactive-i18n"
 
 import { messages as enMessages } from "@/locales/en/messages.po?lingui"
 
@@ -41,6 +50,7 @@ export function LocaleProvider(props: ParentProps): JSXElement {
     locales: pseudoEnabled ? ["en", "zh-CN", "pseudo"] : ["en", "zh-CN"],
     messages: { en: enMessages },
   })
+  const reactiveI18n = createReactiveI18n(i18n, controller.generation)
 
   const fmt = createIntlFormatter(() => controller.activeLocale())
 
@@ -63,6 +73,12 @@ export function LocaleProvider(props: ParentProps): JSXElement {
   }
 
   controller.setActivation(prepareCatalogActivation)
+  const refreshSystemLanguages = () => void controller.refreshSystemLanguages(getNavigatorLanguages())
+
+  if (typeof window !== "undefined") {
+    window.addEventListener("languagechange", refreshSystemLanguages)
+    onCleanup(() => window.removeEventListener("languagechange", refreshSystemLanguages))
+  }
 
   onMount(async () => {
     await controller.bootstrap()
@@ -77,7 +93,7 @@ export function LocaleProvider(props: ParentProps): JSXElement {
   })
 
   return (
-    <LocaleContext.Provider value={{ controller, i18n, fmt }}>
+    <LocaleContext.Provider value={{ controller, i18n: reactiveI18n, fmt }}>
       <LinguiI18nProvider i18n={i18n}>{controller.ready() ? props.children : null}</LinguiI18nProvider>
     </LocaleContext.Provider>
   )

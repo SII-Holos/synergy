@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import type { ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { selectAppAttention } from "./app-attention"
 
-function msg(d: { message?: string }): string {
-  return d.message ?? ""
+const i18n = setupI18n({ locale: "en" })
+
+function msg(d: MessageDescriptor): string {
+  return i18n._(d)
 }
 
 const hiddenUpdate = {
@@ -62,6 +65,8 @@ describe("app attention selector", () => {
       providerNames: {},
     })
     expect(msg(notice!.title)).toBe("3 providers need attention")
+    expect(notice!.title.message).toContain("{count}")
+    expect(notice!.title.values).toEqual({ count: 3 })
     expect(notice?.action).toEqual({ type: "open-settings", section: "providers" })
   })
 
@@ -71,6 +76,9 @@ describe("app attention selector", () => {
       authHealth: { "openai-codex": auth("openai-codex") },
       providerNames: { "openai-codex": "OpenAI Codex" },
     })
+    expect(codex!.title.message).toContain("{providerName}")
+    expect(codex!.title.values).toEqual({ providerName: "OpenAI Codex" })
+    expect(msg(codex!.title)).toBe("OpenAI Codex needs sign-in")
     expect(codex?.action).toEqual({
       type: "open-settings",
       section: "providers",

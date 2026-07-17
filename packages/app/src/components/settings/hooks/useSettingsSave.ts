@@ -29,6 +29,7 @@ export type SaveContext = {
   editingLabel: () => string
   setSaving: (value: boolean) => void
   refreshAfterConfigChange: () => Promise<void>
+  onPatchFailed: (patch: Record<string, unknown>) => void | Promise<void>
   closeDialog: () => void
   showConfirm: ShowConfirmFn
 }
@@ -90,6 +91,7 @@ export function useSettingsSave(ctx: SaveContext) {
         if (saveGen === gen) setAutoStatus("idle")
       }, 2000)
     } catch (error) {
+      await ctx.onPatchFailed(patch)
       if (saveGen !== gen) return
       setAutoStatus("error")
       showToast({
@@ -121,6 +123,7 @@ export function useSettingsSave(ctx: SaveContext) {
         })
       }
     } catch (error) {
+      await ctx.onPatchFailed(patch)
       if (saveGen !== gen) return
       setBgStatus("error")
       showToast({
@@ -180,6 +183,7 @@ export function useSettingsSave(ctx: SaveContext) {
       })
       return true
     } catch (error) {
+      await ctx.onPatchFailed(patch)
       showToast({
         type: "error",
         title: _(copy.saveFailed),

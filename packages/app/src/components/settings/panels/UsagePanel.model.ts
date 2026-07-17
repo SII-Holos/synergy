@@ -4,6 +4,7 @@ import type { MessageDescriptor } from "@lingui/core"
 
 export type UsageResetCopy = {
   value: string
+  valueDescriptor: MessageDescriptor
   descriptor: MessageDescriptor
   title: string
 }
@@ -62,14 +63,23 @@ export function formatUsageResetCompact(
   const title = `Resets ${day} at ${time}`
   return {
     value,
-    descriptor: { id: "settings.usage.resetAt", message: title },
+    valueDescriptor: {
+      id: "settings.usage.resetAt.compact",
+      message: "{day, select, today {Today} tomorrow {Tomorrow} other {{date}}} at {time}",
+      values: { day, date: sentenceCase(day), time },
+    },
+    descriptor: {
+      id: "settings.usage.resetAt",
+      message: "Resets {day, select, today {today} tomorrow {tomorrow} other {{date}}} at {time}",
+      values: { day, date: day, time },
+    },
     title,
   }
 }
 
 export function formatUsageResetSentence(resetAt: string | undefined, fmt: LocaleLike, now = Date.now()) {
   const reset = formatUsageResetCompact(resetAt, fmt, now)
-  return reset ? { value: reset.title, title: reset.title } : undefined
+  return reset ? { value: reset.title, descriptor: reset.descriptor, title: reset.title } : undefined
 }
 
 export function nextUsageReset(

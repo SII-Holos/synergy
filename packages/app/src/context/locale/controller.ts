@@ -7,38 +7,56 @@ import type {
   LocaleSource,
   LocaleStorage,
   ActivationFn,
+  LocaleSwitchResult,
 } from "./types"
+import { isLocalePreference } from "./types"
 
 const STORAGE_KEY = "synergy-locale"
-const VALID_PREFERENCES: ReadonlyArray<LocalePreference> = ["system", "en", "zh-CN"]
 
-function isValidPreference(value: string): value is LocalePreference {
-  return (VALID_PREFERENCES as readonly string[]).includes(value)
+function activeLocaleForLanguage(language: string): ActiveLocale | undefined {
+  const normalized = language.toLowerCase()
+  if (normalized === "zh" || normalized.startsWith("zh-")) return "zh-CN"
+  if (normalized === "en" || normalized.startsWith("en-")) return "en"
+  return undefined
 }
 
 function deriveActiveLocale(source: LocalePreference, navigatorLanguages: readonly string[]): ActiveLocale {
   if (source !== "system") return source
-  for (const lang of navigatorLanguages) {
-    if (lang.toLowerCase().startsWith("zh")) return "zh-CN"
+  for (const language of navigatorLanguages) {
+    const locale = activeLocaleForLanguage(language)
+    if (locale) return locale
   }
   return "en"
+}
+
+function toError(error: unknown, fallback: string): Error {
+  return error instanceof Error ? error : new Error(fallback)
 }
 
 export function createLocaleController(
   storage: LocaleStorage = localStorage,
   navigatorLanguages: readonly string[] = [],
 ): LocaleController {
-  let activationFn: ActivationFn | undefined = undefined
+  let activationFn: ActivationFn | undefined
+  let systemLanguages = [...navigatorLanguages]
   let ticketId = 0
 
-  const rawMirror = storage.getItem(STORAGE_KEY)
+  function readMirror(): string | null {
+    try {
+      return storage.getItem(STORAGE_KEY)
+    } catch {
+      return null
+    }
+  }
+
+  const rawMirror = readMirror()
   const initialPreference: LocalePreference =
-    rawMirror !== null && rawMirror !== "" && isValidPreference(rawMirror) ? rawMirror : "system"
+    rawMirror !== null && rawMirror !== "" && isLocalePreference(rawMirror) ? rawMirror : "system"
 
   const [_generation, setGeneration] = createSignal(0)
   const [preference, setPreferenceState] = createSignal<LocalePreference>(initialPreference)
   const [activeLocale, setActiveLocaleState] = createSignal<ActiveLocale>(
-    deriveActiveLocale(initialPreference, navigatorLanguages),
+    deriveActiveLocale(initialPreference, systemLanguages),
   )
   const [source, setSource] = createSignal<LocaleSource>("bootstrap-mirror")
   const [pendingPreference, setPendingPreference] = createSignal<LocalePreference | undefined>(undefined)
@@ -50,54 +68,67 @@ export function createLocaleController(
   }
 
   function persistMirror(pref: LocalePreference): void {
-    storage.setItem(STORAGE_KEY, pref)
+    try {
+      storage.setItem(STORAGE_KEY, pref)
+    } catch {
+      // The mirror is a best-effort bootstrap hint; global config remains authoritative.
+    }
   }
 
   function isAborted(ticket: number): boolean {
     return ticket !== ticketId
   }
 
-  async function commitActivation(locale: ActiveLocale, ticket: number): Promise<boolean> {
-    if (!activationFn) return false
+  async function commitActivation(locale: ActiveLocale, ticket: number): Promise<LocaleSwitchResult> {
+    if (!activationFn) return { status: "failed", error: new Error("Locale activation is not configured") }
     try {
       const commit = await activationFn(locale)
-      if (isAborted(ticket)) return false
+      if (isAborted(ticket)) return { status: "superseded" }
       commit?.()
-      return true
-    } catch {
-      return false
+      return { status: "applied" }
+    } catch (cause) {
+      if (isAborted(ticket)) return { status: "superseded" }
+      return { status: "failed", error: toError(cause, `Failed to activate locale: ${locale}`) }
     }
   }
 
-  async function setPreference(pref: LocalePreference): Promise<boolean> {
-    if (!isValidPreference(pref)) return false
-    const ticket = ++ticketId
-    const targetLocale = deriveActiveLocale(pref, navigatorLanguages)
-
-    setPendingPreference(pref)
-
-    const ok = await commitActivation(targetLocale, ticket)
-    if (!ok) {
-      if (isAborted(ticket)) return false
-      setPendingPreference(undefined)
-      setError(new Error(`Failed to activate locale: ${pref}`))
-      return false
-    }
-    if (isAborted(ticket)) return false
-
+  function commitPreferenceState(pref: LocalePreference, locale: ActiveLocale, nextSource: LocaleSource): void {
     persistMirror(pref)
     setPreferenceState(pref)
-    setActiveLocaleState(targetLocale)
-    if (pendingPreference() !== undefined) setSource("user")
+    setActiveLocaleState(locale)
+    setSource(nextSource)
     setError(undefined)
-    setGeneration((g) => g + 1)
+    setGeneration((generation) => generation + 1)
     if (!ready()) setReady(true)
-    return true
+  }
+
+  async function setPreference(pref: LocalePreference): Promise<LocaleSwitchResult> {
+    if (!isLocalePreference(pref)) {
+      const failure = new Error(`Unsupported locale preference: ${String(pref)}`)
+      setError(failure)
+      return { status: "failed", error: failure }
+    }
+
+    const ticket = ++ticketId
+    const targetLocale = deriveActiveLocale(pref, systemLanguages)
+    setPendingPreference(pref)
+
+    const activation = await commitActivation(targetLocale, ticket)
+    if (activation.status === "superseded") return activation
+    if (activation.status === "failed") {
+      if (pendingPreference() === pref) setPendingPreference(undefined)
+      setError(activation.error)
+      return activation
+    }
+
+    const nextSource = pendingPreference() === pref ? "user" : source()
+    commitPreferenceState(pref, targetLocale, nextSource)
+    return { status: "applied" }
   }
 
   async function reconcileGlobalPreference(pref: LocalePreference | undefined): Promise<void> {
     const effectivePreference = pref ?? "system"
-    if (!isValidPreference(effectivePreference)) return
+    if (!isLocalePreference(effectivePreference)) return
     const authoritativeSource: LocaleSource = pref === undefined ? "system" : "global-config"
     const pending = pendingPreference()
 
@@ -107,44 +138,82 @@ export function createLocaleController(
       return
     }
 
-    if (pending !== undefined && pending !== effectivePreference) return
+    if (pending !== undefined) return
 
     const ticket = ++ticketId
-    const targetLocale = deriveActiveLocale(effectivePreference, navigatorLanguages)
-    const ok = await commitActivation(targetLocale, ticket)
-    if (!ok) {
-      if (isAborted(ticket)) return
-      setError(new Error(`Failed to activate global config locale: ${effectivePreference}`))
+    const targetLocale = deriveActiveLocale(effectivePreference, systemLanguages)
+    const activation = await commitActivation(targetLocale, ticket)
+    if (activation.status === "superseded") return
+    if (activation.status === "failed") {
+      setError(activation.error)
       return
     }
-    if (isAborted(ticket)) return
 
-    persistMirror(effectivePreference)
-    setPreferenceState(effectivePreference)
-    setActiveLocaleState(targetLocale)
-    setSource(authoritativeSource)
-    setError(undefined)
-    setGeneration((g) => g + 1)
-    if (!ready()) setReady(true)
+    commitPreferenceState(effectivePreference, targetLocale, authoritativeSource)
+  }
+
+  async function rejectPendingPreference(
+    expected: LocalePreference,
+    authoritative: LocalePreference | undefined,
+  ): Promise<boolean> {
+    if (!isLocalePreference(expected) || pendingPreference() !== expected) return false
+    const effectivePreference = authoritative ?? "system"
+    if (!isLocalePreference(effectivePreference)) return false
+
+    setPendingPreference(undefined)
+    const authoritativeSource: LocaleSource = authoritative === undefined ? "system" : "global-config"
+    const targetLocale = deriveActiveLocale(effectivePreference, systemLanguages)
+    const ticket = ++ticketId
+    const activation = await commitActivation(targetLocale, ticket)
+    if (activation.status === "superseded") return false
+    if (activation.status === "failed") {
+      setError(activation.error)
+      return false
+    }
+
+    commitPreferenceState(effectivePreference, targetLocale, authoritativeSource)
+    return true
+  }
+
+  async function refreshSystemLanguages(languages: readonly string[]): Promise<void> {
+    systemLanguages = [...languages]
+    if (preference() !== "system") return
+
+    const targetLocale = deriveActiveLocale("system", systemLanguages)
+    if (targetLocale === activeLocale()) return
+
+    const ticket = ++ticketId
+    const activation = await commitActivation(targetLocale, ticket)
+    if (activation.status === "superseded") return
+    if (activation.status === "failed") {
+      setError(activation.error)
+      return
+    }
+
+    commitPreferenceState("system", targetLocale, "system")
   }
 
   async function bootstrap(): Promise<void> {
     const initialLocale = activeLocale()
-    const ok = await commitActivation(initialLocale, ++ticketId)
-    if (ok) {
+    const activation = await commitActivation(initialLocale, ++ticketId)
+    if (activation.status === "applied") {
       setReady(true)
       return
     }
-    const fallbackOk = await commitActivation("en", ++ticketId)
-    if (fallbackOk) {
+    if (activation.status === "superseded") return
+
+    const fallback = await commitActivation("en", ++ticketId)
+    if (fallback.status === "applied") {
       setActiveLocaleState("en")
       setSource("fallback")
       setError(new Error("Bootstrap zh-CN catalog unavailable; falling back to en"))
       setReady(true)
+      return
     }
+    if (fallback.status === "failed") setError(fallback.error)
   }
 
-  const ctrl: LocaleController = {
+  return {
     generation: _generation,
     epoch,
     preference,
@@ -158,8 +227,8 @@ export function createLocaleController(
     },
     setPreference,
     reconcileGlobalPreference,
+    rejectPendingPreference,
+    refreshSystemLanguages,
     bootstrap,
   }
-
-  return ctrl
 }

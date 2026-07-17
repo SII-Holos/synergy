@@ -13,9 +13,9 @@ import { decodePoString } from "./po-string"
  *  - Const identifier references (single binding in same file)
  *  - Property access into const object declarations (e.g. options.title)
  *
- * Dynamic IDs (id is not statically resolvable to a string) → hard error.
- * Dynamic messages that can't be resolved → silently skipped (valid runtime pattern).
- *
+ * Dynamic descriptors passed directly to translation calls → hard error.
+ * Descriptor-shaped objects with a static ID and an unresolved local message → hard error.
+ * Imported descriptors remain external and are skipped for their owning module to extract.
  * Preserves zh-CN translations, translator comments, and file/line locations.
  */
 
@@ -294,7 +294,16 @@ function recordDescriptor(
     return
   }
 
-  if (!translationCall) return
+  if (!translationCall) {
+    if (id.kind === "value" && properties.message && message.kind === "dynamic") {
+      errors.push({
+        file: context.sourceFile.fileName,
+        line: lineOf(object, context.sourceFile),
+        message: "Message must resolve to a static string",
+      })
+    }
+    return
+  }
   if (id.kind === "external" && message.kind === "external") return
 
   if (!properties.id) {

@@ -1,5 +1,6 @@
 import { createIntlFormatter } from "@/context/locale/formatter"
 
+import { setupI18n } from "@lingui/core"
 import { describe, expect, test } from "bun:test"
 import {
   formatUsageResetCompact,
@@ -46,8 +47,21 @@ describe("Usage panel model", () => {
     const compact = formatUsageResetCompact(resetAt, fmt, now)
     expect(sentence?.value).toMatch(/^Resets today at /)
     expect(sentence?.title).toBe(sentence?.value)
+    expect(sentence?.descriptor).toEqual(compact?.descriptor)
     expect(compact?.value).toMatch(/^Today at /)
     expect(compact?.title).toBe(sentence?.value)
+    const time = compact?.title.replace("Resets today at ", "")
+    expect(compact?.descriptor.message).toBe(
+      "Resets {day, select, today {today} tomorrow {tomorrow} other {{date}}} at {time}",
+    )
+    expect(compact?.descriptor.values).toEqual({ day: "today", date: "today", time })
+    expect(compact?.valueDescriptor.message).toBe(
+      "{day, select, today {Today} tomorrow {Tomorrow} other {{date}}} at {time}",
+    )
+    expect(compact?.valueDescriptor.values).toEqual({ day: "today", date: "Today", time })
+    const i18n = setupI18n({ locale: "en" })
+    expect(compact && i18n._(compact.descriptor)).toBe(compact?.title)
+    expect(compact && i18n._(compact.valueDescriptor)).toBe(compact?.value)
     expect(formatUsageResetSentence(undefined, fmt, now)).toBeUndefined()
     expect(formatUsageResetSentence("not-a-date", fmt, now)).toBeUndefined()
   })

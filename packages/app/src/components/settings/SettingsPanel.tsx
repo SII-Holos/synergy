@@ -31,6 +31,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { useInput } from "@/context/input"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
+import { useLocale } from "@/context/locale"
 import { useConfirm, type ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { getSettingsSections, type SettingsSection as RegisteredSettingsSection } from "@/plugin"
 import { DeclarativeSettingsForm } from "@/plugin/components/declarative-settings-form"
@@ -45,6 +46,7 @@ import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
 import { GeneralPanel } from "./panels/GeneralPanel"
+import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
 import { AccountPanel } from "./panels/AccountPanel"
@@ -160,6 +162,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
   const globalSync = useGlobalSync()
   const input = useInput()
   const platform = usePlatform()
+  const locale = useLocale()
   const personalizeController = createPersonalizeController({
     get: async () => (await globalSDK.client.config.instructions.get()).data!,
     update: async (content) =>
@@ -353,6 +356,15 @@ export function SettingsPanel(props: SettingsPanelProps) {
     editingLabel,
     setSaving,
     refreshAfterConfigChange,
+    onPatchFailed: async (patch) => {
+      const authoritativePreference = config()?.locale
+      const rolledBack = await rollbackFailedLocalePatch({
+        patch,
+        authoritativePreference,
+        controller: locale.controller,
+      })
+      if (rolledBack) setSettings("general", "locale", authoritativePreference ?? "system")
+    },
     closeDialog: () => props.onClose?.() ?? dialog.close(),
     showConfirm,
   })

@@ -70,8 +70,16 @@ function providerAuthAttention(input: {
     priority: 300,
     tone: "warning",
     title: single
-      ? { id: "attention.providerAuth.title.single", message: `${firstName} needs sign-in` }
-      : { id: "attention.providerAuth.title.plural", message: `${affected.length} providers need attention` },
+      ? {
+          id: "attention.providerAuth.title.single",
+          message: "{providerName} needs sign-in",
+          values: { providerName: firstName },
+        }
+      : {
+          id: "attention.providerAuth.title.plural",
+          message: "{count} providers need attention",
+          values: { count: affected.length },
+        },
     detail: single
       ? { id: "attention.providerAuth.detail.single", message: "Reconnect to restore models and usage." }
       : { id: "attention.providerAuth.detail.plural", message: "Review rejected credentials in Settings." },

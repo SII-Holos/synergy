@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import {
   agendaActionConfirm,
   archiveProjectConfirm,
@@ -14,11 +15,22 @@ import {
   uninstallPluginConfirm,
 } from "./confirm-copy"
 
-function msg(d: { message?: string }): string {
-  return d.message ?? ""
+const i18n = setupI18n({ locale: "en" })
+
+function msg(d: MessageDescriptor): string {
+  return i18n._(d)
 }
 
 describe("confirm copy", () => {
+  test("renders dynamic copy from static ICU descriptors", () => {
+    const copy = archiveSessionConfirm("Blueprint creation request")
+
+    expect(copy.description.message).toContain("{name}")
+    expect(copy.description.values).toEqual({ name: '"Blueprint creation request"' })
+    expect(msg(copy.description)).toBe(
+      'Archive "Blueprint creation request"? The session will be hidden from active lists and its data preserved.',
+    )
+  })
   test("uses warning tone for archive confirmations", () => {
     const session = archiveSessionConfirm("Blueprint creation request")
     const project = archiveProjectConfirm("Synergy")

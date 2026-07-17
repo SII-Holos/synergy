@@ -177,12 +177,12 @@ export function GeneralPanel(props: {
   }
 
   async function setLocalePreference(preference: LocalePreference) {
-    const changed = await applyLocalePreference({
+    const result = await applyLocalePreference({
       preference,
       controller: locale.controller,
       onChange: (next) => props.onGeneralChange("locale", next),
     })
-    if (changed) return
+    if (result.status !== "failed") return
     showToast({
       type: "error",
       title: _(copy.languageFailedTitle),

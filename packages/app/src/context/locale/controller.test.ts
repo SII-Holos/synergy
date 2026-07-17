@@ -90,13 +90,50 @@ describe("createLocaleController", () => {
     })
   })
 
+  describe("storage failures", () => {
+    test("falls back to system when reading the mirror throws", () => {
+      const ctrl = createLocaleController({
+        getItem() {
+          throw new DOMException("blocked", "SecurityError")
+        },
+        setItem() {},
+        removeItem() {},
+      })
+
+      expect(ctrl.preference()).toBe("system")
+      expect(ctrl.activeLocale()).toBe("en")
+    })
+
+    test("commits controller state when writing the mirror throws", async () => {
+      const ctrl = createLocaleController({
+        getItem: () => "en",
+        setItem() {
+          throw new DOMException("full", "QuotaExceededError")
+        },
+        removeItem() {},
+      })
+      ctrl.setActivation(succeedActivation())
+
+      const result = await ctrl.setPreference("zh-CN")
+
+      expect(result.status).toBe("applied")
+      expect(ctrl.preference()).toBe("zh-CN")
+      expect(ctrl.activeLocale()).toBe("zh-CN")
+    })
+  })
+
   describe("navigatorLanguages", () => {
     test("zh-Hans maps to zh-CN activeLocale", () => {
       const ctrl = createLocaleController(makeStorage(), ["zh-Hans"])
       expect(ctrl.activeLocale()).toBe("zh-CN")
     })
 
-    test("uses first zh match from languages array", () => {
+    test("honors the first supported language in preference order", () => {
+      const ctrl = createLocaleController(makeStorage(), ["en-US", "zh-TW"])
+      expect(ctrl.activeLocale()).toBe("en")
+    })
+
+    test("skips unsupported languages before the first supported language", () => {
       const ctrl = createLocaleController(makeStorage(), ["de-DE", "zh-TW", "en-US"])
       expect(ctrl.activeLocale()).toBe("zh-CN")
     })
@@ -105,6 +142,28 @@ describe("createLocaleController", () => {
       const ctrl = createLocaleController(makeStorage(), ["de-DE", "fr-FR"])
       expect(ctrl.activeLocale()).toBe("en")
     })
+  })
+
+  test("refreshes the active catalog when system languages change", async () => {
+    const ctrl = createLocaleController(makeStorage(), ["en-US"])
+    ctrl.setActivation(succeedActivation())
+    await ctrl.bootstrap()
+
+    await ctrl.refreshSystemLanguages(["zh-CN", "en-US"])
+
+    expect(ctrl.preference()).toBe("system")
+    expect(ctrl.activeLocale()).toBe("zh-CN")
+  })
+
+  test("records system language changes without overriding an explicit preference", async () => {
+    const ctrl = createLocaleController(makeStorage(), ["en-US"])
+    ctrl.setActivation(succeedActivation())
+    await ctrl.setPreference("en")
+
+    await ctrl.refreshSystemLanguages(["zh-CN"])
+
+    expect(ctrl.preference()).toBe("en")
+    expect(ctrl.activeLocale()).toBe("en")
   })
 
   describe("source tracking", () => {
@@ -124,11 +183,11 @@ describe("createLocaleController", () => {
   })
 
   describe("setPreference async activation", () => {
-    test("returns true when activation succeeds", async () => {
+    test("returns an applied result when activation succeeds", async () => {
       const ctrl = createLocaleController(makeStorage())
       ctrl.setActivation(succeedActivation())
-      const ok = await ctrl.setPreference("zh-CN")
-      expect(ok).toBe(true)
+      const result = await ctrl.setPreference("zh-CN")
+      expect(result.status).toBe("applied")
       expect(ctrl.preference()).toBe("zh-CN")
       expect(ctrl.activeLocale()).toBe("zh-CN")
       expect(ctrl.pendingPreference()).toBe("zh-CN")
@@ -140,8 +199,8 @@ describe("createLocaleController", () => {
       ctrl.setActivation(async (_locale) => {
         throw new Error("catalog load failed")
       })
-      const ok = await ctrl.setPreference("zh-CN")
-      expect(ok).toBe(false)
+      const result = await ctrl.setPreference("zh-CN")
+      expect(result.status).toBe("failed")
       expect(ctrl.preference()).toBe("en")
       expect(ctrl.activeLocale()).toBe("en")
       expect(ctrl.pendingPreference()).toBeUndefined()
@@ -155,9 +214,9 @@ describe("createLocaleController", () => {
         activations += 1
       })
 
-      const ok = await ctrl.setPreference("fr" as Parameters<typeof ctrl.setPreference>[0])
+      const result = await ctrl.setPreference("fr" as Parameters<typeof ctrl.setPreference>[0])
 
-      expect(ok).toBe(false)
+      expect(result.status).toBe("failed")
       expect(activations).toBe(0)
       expect(ctrl.preference()).toBe("system")
       expect(store.has("synergy-locale")).toBe(false)
@@ -171,6 +230,24 @@ describe("createLocaleController", () => {
       await Promise.all([p1, p2])
       expect(ctrl.preference()).toBe("en")
       expect(ctrl.activeLocale()).toBe("en")
+    })
+
+    test("reports an older rapid switch as superseded instead of failed", async () => {
+      const ctrl = createLocaleController(makeStorage())
+      let releaseZh!: () => void
+      const zhReady = new Promise<void>((resolve) => {
+        releaseZh = resolve
+      })
+      ctrl.setActivation(async (locale) => {
+        if (locale === "zh-CN") await zhReady
+      })
+
+      const stale = ctrl.setPreference("zh-CN")
+      const current = await ctrl.setPreference("en")
+      releaseZh()
+
+      expect(current.status).toBe("applied")
+      expect((await stale).status).toBe("superseded")
     })
   })
 
@@ -224,6 +301,32 @@ describe("createLocaleController", () => {
       expect(ctrl.pendingPreference()).toBe("en")
       await ctrl.reconcileGlobalPreference("zh-CN")
       await prefPromise
+      expect(ctrl.preference()).toBe("en")
+    })
+
+    test("rejects a failed pending save and restores the authoritative preference", async () => {
+      const ctrl = createLocaleController(makeStorage(), ["en-US"])
+      ctrl.setActivation(succeedActivation())
+      await ctrl.reconcileGlobalPreference("en")
+      await ctrl.setPreference("zh-CN")
+
+      await ctrl.rejectPendingPreference("zh-CN", "en")
+
+      expect(ctrl.pendingPreference()).toBeUndefined()
+      expect(ctrl.preference()).toBe("en")
+      expect(ctrl.activeLocale()).toBe("en")
+      expect(ctrl.source()).toBe("global-config")
+    })
+
+    test("does not let an older failed save reject a newer pending preference", async () => {
+      const ctrl = createLocaleController(makeStorage())
+      ctrl.setActivation(succeedActivation())
+      await ctrl.setPreference("zh-CN")
+      await ctrl.setPreference("en")
+
+      await ctrl.rejectPendingPreference("zh-CN", "system")
+
+      expect(ctrl.pendingPreference()).toBe("en")
       expect(ctrl.preference()).toBe("en")
     })
 

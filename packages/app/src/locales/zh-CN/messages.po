@@ -6653,6 +6653,14 @@ msgstr "请在设置中查看被拒绝的凭据。"
 msgid "attention.providerAuth.detail.single"
 msgstr "重新连接以恢复模型和用量。"
 
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.plural"
+msgstr "{count} 个提供商需要处理"
+
+#. js-lingui-explicit-id
+msgid "attention.providerAuth.title.single"
+msgstr "{providerName} 需要登录"
+
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.conflict-detail"
 msgstr "{count} 个文件或区域{count, plural, one {} other {}}可能需要先解决冲突，才能进行锚定编辑。"
@@ -6842,6 +6850,10 @@ msgid "confirm.agendaAction.cancel.confirm"
 msgstr "取消日程"
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.cancel.desc"
+msgstr "取消 {name}？这将停止后续运行并保留其历史记录。"
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.title"
 msgstr "取消日程？"
 
@@ -6850,16 +6862,32 @@ msgid "confirm.agendaAction.delete.confirm"
 msgstr "删除"
 
 #. js-lingui-explicit-id
+msgid "confirm.agendaAction.delete.desc"
+msgstr "删除 {name} 及其运行历史？此操作无法撤销。"
+
+#. js-lingui-explicit-id
 msgid "confirm.agendaAction.delete.title"
 msgstr "删除日程？"
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.confirm.plural"
+msgstr "归档 {count} 篇"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveNote.confirm.single"
 msgstr "归档"
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveNote.desc.plural"
+msgstr "{count} 篇笔记将从活动列表中隐藏。你可以从已归档视图中恢复它们。"
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveNote.desc.single"
 msgstr "此笔记将从活动列表中隐藏。你可以从已归档视图中恢复它。"
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveNote.title.plural"
+msgstr "归档 {count} 篇笔记？"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveNote.title.single"
@@ -6870,12 +6898,20 @@ msgid "confirm.archiveProject.confirm"
 msgstr "归档"
 
 #. js-lingui-explicit-id
+msgid "confirm.archiveProject.desc"
+msgstr "归档 {name}？该项目将从侧边栏中隐藏，其数据会被保留。"
+
+#. js-lingui-explicit-id
 msgid "confirm.archiveProject.title"
 msgstr "归档项目"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveSession.confirm"
 msgstr "归档"
+
+#. js-lingui-explicit-id
+msgid "confirm.archiveSession.desc"
+msgstr "归档 {name}？该会话将从活动列表中隐藏，其数据会被保留。"
 
 #. js-lingui-explicit-id
 msgid "confirm.archiveSession.title"
@@ -6890,36 +6926,92 @@ msgid "confirm.cancelReencode.confirm"
 msgstr "取消重新编码"
 
 #. js-lingui-explicit-id
+msgid "confirm.cancelReencode.desc"
+msgstr "已完成 {completed}/{total} 条记录，是否取消？已完成的更新会被保留，未完成的记录可稍后重试。"
+
+#. js-lingui-explicit-id
 msgid "confirm.cancelReencode.title"
 msgstr "取消重新编码？"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.confirm.plural"
+msgstr "删除 {count} 篇"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.confirm.single"
 msgstr "删除"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.desc.plural"
+msgstr "这 {count} 篇笔记将被永久移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.desc.single"
 msgstr "此笔记将被永久移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedNote.title.plural"
+msgstr "删除 {count} 篇已归档笔记？"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedNote.title.single"
 msgstr "删除已归档笔记？"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.confirm.plural"
+msgstr "永久删除 {count} 个"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteArchivedSession.confirm.single"
 msgstr "永久删除"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.plural"
+msgstr "永久删除这 {count} 个已归档会话？其消息、历史记录和关联数据也会被移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.desc.single"
+msgstr "永久删除 {name}？会话、消息、历史记录和关联数据都会被移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteArchivedSession.title.plural"
+msgstr "删除 {count} 个已归档会话？"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteArchivedSession.title.single"
 msgstr "删除已归档会话？"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.confirm.plural"
+msgstr "删除 {count} 项"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteLibrary.confirm.single"
 msgstr "删除"
 
 #. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.plural"
+msgstr "这 {count} 个{kind, select, memory {记忆} experience {经验} other {项目}}将从资料库中移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.desc.single"
+msgstr "此{kind, select, memory {记忆} experience {经验} other {项目}}将从资料库中移除。此操作无法撤销。"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.plural"
+msgstr "删除 {count} 个{kind, select, memory {记忆} experience {经验} other {项目}}？"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteLibrary.title.single"
+msgstr "删除{kind, select, memory {记忆} experience {经验} other {项目}}？"
+
+#. js-lingui-explicit-id
 msgid "confirm.deleteNote.confirm"
 msgstr "删除"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteNote.desc"
+msgstr "删除 {name}？此笔记将被永久移除。"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteNote.title"
@@ -6928,6 +7020,10 @@ msgstr "删除笔记？"
 #. js-lingui-explicit-id
 msgid "confirm.deleteSkill.confirm"
 msgstr "删除"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteSkill.desc"
+msgstr "从磁盘删除 {name}？此操作无法撤销。"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteSkill.title"
@@ -6940,6 +7036,10 @@ msgstr "删除"
 #. js-lingui-explicit-id
 msgid "confirm.deleteWorktree.confirm.dirty"
 msgstr "强制移除"
+
+#. js-lingui-explicit-id
+msgid "confirm.deleteWorktree.desc"
+msgstr "删除 {name}？{bindingCount, plural, =0 {当前没有绑定的会话。} one {绑定的会话 {bindingNames} 将先移回主检出。} other {# 个绑定的会话（{bindingNames}）将先移回主检出。}}{dirty, select, yes { 此工作树有未提交的更改；强制移除将丢弃这些更改。} other {}} 磁盘上的工作树目录将被移除。此操作无法撤销。"
 
 #. js-lingui-explicit-id
 msgid "confirm.deleteWorktree.title.clean"
@@ -6974,6 +7074,10 @@ msgid "confirm.leaveWorktree.confirm"
 msgstr "离开工作树"
 
 #. js-lingui-explicit-id
+msgid "confirm.leaveWorktree.desc"
+msgstr "将 {name} 返回主检出？工作树将保留在磁盘上，之后可以重新进入。"
+
+#. js-lingui-explicit-id
 msgid "confirm.leaveWorktree.title"
 msgstr "离开工作树？"
 
@@ -6986,24 +7090,64 @@ msgid "confirm.overwriteImport.desc"
 msgstr "所选域的现有配置值将被导入内容替换。"
 
 #. js-lingui-explicit-id
+msgid "confirm.overwriteImport.title"
+msgstr "覆盖 {conflictCount, plural, one {# 个冲突键} other {# 个冲突键}}？"
+
+#. js-lingui-explicit-id
 msgid "confirm.reencodeExperience.confirm"
 msgstr "重新编码"
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.desc"
+msgstr "重新编码全部 {count} 条{kind, select, intent {意图} script {脚本} other {经验}}记录？这将调用 LLM，可能需要几分钟。"
+
+#. js-lingui-explicit-id
+msgid "confirm.reencodeExperience.title"
+msgstr "重新编码{kind, select, intent {意图} script {脚本} other {经验}}记录？"
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.confirm.plural"
+msgstr "恢复 {count} 个"
 
 #. js-lingui-explicit-id
 msgid "confirm.restoreArchivedSession.confirm.single"
 msgstr "恢复"
 
 #. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.plural"
+msgstr "这 {count} 个会话将移回活动会话列表。"
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.desc.single"
+msgstr "{name} 将移回活动会话列表。"
+
+#. js-lingui-explicit-id
+msgid "confirm.restoreArchivedSession.title.plural"
+msgstr "恢复 {count} 个已归档会话？"
+
+#. js-lingui-explicit-id
 msgid "confirm.restoreArchivedSession.title.single"
 msgstr "恢复已归档会话？"
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.confirm.plural"
+msgstr "恢复 {count} 篇"
 
 #. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.confirm.single"
 msgstr "恢复"
 
 #. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.desc.plural"
+msgstr "这 {count} 篇笔记将移回活动列表。"
+
+#. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.desc.single"
 msgstr "此笔记将移回活动列表。"
+
+#. js-lingui-explicit-id
+msgid "confirm.unarchiveNote.title.plural"
+msgstr "恢复 {count} 篇笔记？"
 
 #. js-lingui-explicit-id
 msgid "confirm.unarchiveNote.title.single"
@@ -7012,6 +7156,10 @@ msgstr "恢复笔记？"
 #. js-lingui-explicit-id
 msgid "confirm.uninstallPlugin.confirm"
 msgstr "卸载"
+
+#. js-lingui-explicit-id
+msgid "confirm.uninstallPlugin.desc"
+msgstr "卸载 {name}？它将从此 Synergy 安装中移除。"
 
 #. js-lingui-explicit-id
 msgid "confirm.uninstallPlugin.title"
@@ -8968,6 +9116,50 @@ msgstr "正在管理日程"
 #. js-lingui-explicit-id
 msgid "session-status.managing-tasks"
 msgstr "正在管理任务"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.0"
+msgstr "{agentName} 正在酝酿…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.1"
+msgstr "{agentName} 正在整理思路…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.2"
+msgstr "{agentName} 正在串联线索…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.3"
+msgstr "{agentName} 正在处理…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.4"
+msgstr "{agentName} 正在构思…"
+
+#. js-lingui-explicit-id
+msgid "session-status.phrase.thinking.5"
+msgstr "{agentName} 正在整合内容…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.0"
+msgstr "{agentName} 正在等待 {count, plural, one {# 个后台任务} other {# 个后台任务}}…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.1"
+msgstr "{count, plural, one {# 个任务} other {# 个任务}}仍在处理中——{agentName} 正在待命…"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.2"
+msgstr "{agentName} 正在等待——{count, plural, one {# 个任务} other {# 个任务}}进行中"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.3"
+msgstr "{agentName} 正在待命——{count, plural, one {# 个任务} other {# 个任务}}运行中"
+
+#. ── Working-phrase descriptor IDs ───────────────────────────────────
+msgid "session-status.phrase.waiting.4"
+msgstr "{count, plural, one {# 个代理} other {# 个代理}}正在工作——{agentName} 待命中…"
 
 #. js-lingui-explicit-id
 msgid "session-status.planning-next-steps"
@@ -14641,6 +14833,14 @@ msgstr "提供商将于 {date} 续期"
 #. js-lingui-explicit-id
 msgid "settings.usage.refresh"
 msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt"
+msgstr "将于{day, select, today {今天} tomorrow {明天} other {{date}}} {time} 重置"
+
+#. js-lingui-explicit-id
+msgid "settings.usage.resetAt.compact"
+msgstr "{day, select, today {今天} tomorrow {明天} other {{date}}} {time}"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.retry"
