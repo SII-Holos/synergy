@@ -433,9 +433,10 @@ export namespace ProviderTransform {
     const ids = modelIdentityTokens(model)
     const isMiniMax = ids.some((id) => id.includes("minimax"))
     const isKimi = ids.some((id) => id.includes("kimi"))
+    const isKimiK3 = ids.some((id) => id === "k3" || id.includes("kimi-k3"))
 
     if (model.api.npm === "@ai-sdk/anthropic") {
-      if (isKimi) return {}
+      if (isKimi && (!isKimiK3 || model.capabilities.reasoningEfforts === undefined)) return {}
       if (isMiniMax && ids.some((id) => id.includes("minimax-m3"))) {
         return { max: { thinking: { type: "adaptive" } } }
       }

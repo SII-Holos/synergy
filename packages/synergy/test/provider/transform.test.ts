@@ -946,16 +946,61 @@ describe("ProviderTransform.variants", () => {
     const result = ProviderTransform.variants(model)
     expect(result).toEqual({})
   })
-  test("Kimi Coding Plan leaves K3 reasoning effort provider-managed", () => {
+  test("Kimi K3 exposes catalog reasoning efforts on Anthropic-compatible endpoints", () => {
     const model = createMockModel({
-      id: "kimi-k3",
+      id: "k3",
+      family: "kimi-k3",
       providerID: "kimi-for-coding",
       api: {
-        id: "kimi-k3",
+        id: "k3",
         url: "https://api.kimi.com/coding/v1",
         npm: "@ai-sdk/anthropic",
       },
-      capabilities: { reasoningEfforts: ["max"] },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: { effort: "max" },
+    })
+
+    const variants = ProviderTransform.variants(model)
+    expect(ProviderTransform.providerOptions(model, variants.high)).toEqual({
+      anthropic: { effort: "high" },
+    })
+  })
+
+  test("custom Kimi K3 aliases retain catalog reasoning efforts", () => {
+    const model = createMockModel({
+      id: "custom-kimi-k3",
+      family: "kimi-k3",
+      providerID: "custom-provider",
+      api: {
+        id: "k3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: { effort: "max" },
+    })
+  })
+
+  test("Kimi K3 without catalog efforts does not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
     })
 
     expect(ProviderTransform.variants(model)).toEqual({})

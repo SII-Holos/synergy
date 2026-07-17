@@ -53,7 +53,7 @@ test("catalog reasoning efforts survive unrelated future option types", () => {
   expect(Object.keys(model.variants ?? {})).toEqual(["low", "max"])
 })
 
-test("Kimi catalog efforts remain capabilities without automatic Anthropic variants", () => {
+test("Kimi K3 catalog efforts become Anthropic-compatible variants", () => {
   const catalog = ModelsDev.Provider.parse({
     id: "kimi-for-coding",
     name: "Kimi For Coding",
@@ -65,22 +65,26 @@ test("Kimi catalog efforts remain capabilities without automatic Anthropic varia
         id: "k3",
         name: "Kimi K3",
         family: "kimi-k3",
-        release_date: "2026-07-01",
+        release_date: "2026-07-16",
         attachment: false,
         reasoning: true,
-        reasoning_options: [{ type: "effort", values: ["max"] }],
+        reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
         temperature: true,
         tool_call: true,
-        modalities: { input: ["text"], output: ["text"] },
-        limit: { context: 262_144, output: 65_536 },
+        modalities: { input: ["text", "image", "video"], output: ["text"] },
+        limit: { context: 1_048_576, output: 131_072 },
         options: {},
       },
     },
   })
 
   const model = Provider.fromModelsDevProvider(catalog).models.k3
-  expect(model.capabilities.reasoningEfforts).toEqual(["max"])
-  expect(model.variants).toEqual({})
+  expect(model.capabilities.reasoningEfforts).toEqual(["low", "high", "max"])
+  expect(model.variants).toEqual({
+    low: { effort: "low" },
+    high: { effort: "high" },
+    max: { effort: "max" },
+  })
 })
 
 test.each([
@@ -1897,7 +1901,7 @@ test("model variants are generated for reasoning models", async () => {
   })
 })
 
-test("Kimi config variants remain explicit without generated Anthropic variants", async () => {
+test("Kimi K2 config variants remain explicit without generated Anthropic variants", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
       await Bun.write(
