@@ -3,6 +3,7 @@ import { Document } from "../../src/util/document"
 import path from "path"
 import os from "os"
 import { Filesystem } from "../../src/util/filesystem"
+import { createPptx, declarePptxSlideSizes } from "../fixture/pptx"
 
 describe("Document.supported", () => {
   test("does not load the conversion engine for extension checks", () => {
@@ -67,6 +68,71 @@ describe("Document.supported", () => {
 })
 
 describe("Document.extract", () => {
+  test("extracts slide text from a valid .pptx file", async () => {
+    const dir = Filesystem.sanitizePath(
+      path.join(os.tmpdir(), "synergy-test-pptx-" + Math.random().toString(36).slice(2)),
+    )
+    const filepath = path.join(dir, "slides.pptx")
+    await Bun.write(filepath, await createPptx(["First & <slide>", "Second slide"]))
+
+    try {
+      const result = await Document.extract(filepath)
+      expect(result).not.toBeNull()
+      expect(result!.markdown).toBe("[Slide 1]\nFirst & <slide>\n\n[Slide 2]\nSecond slide")
+      expect(result!.totalLines).toBe(5)
+      expect(result!.totalBytes).toBe(Buffer.byteLength(result!.markdown, "utf-8"))
+    } finally {
+      await Bun.$`rm -rf ${dir}`.quiet()
+    }
+  })
+
+  test("rejects a PPTX with an oversized slide entry before decompression", async () => {
+    const dir = Filesystem.sanitizePath(
+      path.join(os.tmpdir(), "synergy-test-pptx-entry-limit-" + Math.random().toString(36).slice(2)),
+    )
+    const filepath = path.join(dir, "oversized-slide.pptx")
+    const bytes = declarePptxSlideSizes(await createPptx(["Slide text"]), [10 * 1024 * 1024 + 1])
+    await Bun.write(filepath, bytes)
+
+    try {
+      await expect(Document.extract(filepath)).rejects.toThrow("PPTX slide entry exceeds the extraction limit")
+    } finally {
+      await Bun.$`rm -rf ${dir}`.quiet()
+    }
+  })
+
+  test("rejects a PPTX whose slide XML exceeds the aggregate extraction limit", async () => {
+    const dir = Filesystem.sanitizePath(
+      path.join(os.tmpdir(), "synergy-test-pptx-total-limit-" + Math.random().toString(36).slice(2)),
+    )
+    const filepath = path.join(dir, "oversized-total.pptx")
+    const bytes = declarePptxSlideSizes(
+      await createPptx(Array.from({ length: 6 }, (_, index) => `Slide ${index + 1}`)),
+      Array.from({ length: 6 }, () => 10 * 1024 * 1024),
+    )
+    await Bun.write(filepath, bytes)
+
+    try {
+      await expect(Document.extract(filepath)).rejects.toThrow("PPTX slide content exceeds the extraction limit")
+    } finally {
+      await Bun.$`rm -rf ${dir}`.quiet()
+    }
+  })
+
+  test("rejects a PPTX with too many slides before decompression", async () => {
+    const dir = Filesystem.sanitizePath(
+      path.join(os.tmpdir(), "synergy-test-pptx-slide-limit-" + Math.random().toString(36).slice(2)),
+    )
+    const filepath = path.join(dir, "too-many-slides.pptx")
+    await Bun.write(filepath, await createPptx(Array.from({ length: 201 }, (_, index) => `Slide ${index + 1}`)))
+
+    try {
+      await expect(Document.extract(filepath)).rejects.toThrow("PPTX contains too many slides")
+    } finally {
+      await Bun.$`rm -rf ${dir}`.quiet()
+    }
+  })
+
   test("extracts a .csv file as markdown", async () => {
     const dir = Filesystem.sanitizePath(
       path.join(os.tmpdir(), "synergy-test-csv-" + Math.random().toString(36).slice(2)),
