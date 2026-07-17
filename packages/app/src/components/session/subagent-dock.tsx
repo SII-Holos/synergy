@@ -42,7 +42,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
   const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
-  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false))
+  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false, i18n))
   const isRetrying = () => sessionStatus()?.type === "retry"
   const [elapsed, setElapsed] = createSignal(formatElapsed(props.task.startedAt))
   const [holdProgress, setHoldProgress] = createSignal(0)
