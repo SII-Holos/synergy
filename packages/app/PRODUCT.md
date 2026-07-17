@@ -98,6 +98,8 @@ Performance support cards should surface runtime retention counters plainly: ses
 
 Performance is a user-controlled snapshot. Load it when the panel opens or the user changes the selected range, then keep it stable until the user selects Refresh; do not poll, refresh on visibility changes, subscribe the panel to live Performance events, or refetch charts as they enter the viewport.
 
+Performance AI analysis should be an explicit action over the selected time window, not a continuous background opinion. Send only a bounded, redacted telemetry read model to a hidden tool-free Cortex child, show its lifecycle and Markdown conclusion in the Performance surface, and keep cancel plus durable session navigation available for control and auditability.
+
 Session turns should render as one persisted message-part timeline. Text, reasoning while running, tool calls, media results, attachments, and render previews must stay anchored to their original part order rather than being regrouped into separate steps or response summaries.
 
 Streaming text and reasoning should follow the model's actual deltas through frame-bounded incremental rendering; do not add an independent character-rate playback backlog that falls behind long responses.
