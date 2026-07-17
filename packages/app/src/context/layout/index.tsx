@@ -5,6 +5,7 @@ import { createMediaQuery } from "@solid-primitives/media"
 import { useGlobalSync } from "../global-sync"
 import { useGlobalSDK } from "../global-sdk"
 import { useServer } from "../server"
+import { usePlatform } from "../platform"
 import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
@@ -23,6 +24,7 @@ import {
   orderNavEntries,
   removeScopeFromIndex,
 } from "./nav"
+import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
@@ -83,6 +85,7 @@ export interface NavEntry {
   chatType?: string
   completionNotice: {
     unread: boolean
+    unreadCount: number
   }
 }
 
@@ -121,6 +124,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const globalSdk = useGlobalSDK()
     const globalSync = useGlobalSync()
     const server = useServer()
+    const platform = usePlatform()
     const [store, setStore, _, ready] = persisted(
       { ...Persist.global("layout", ["layout.v8", "layout.v9"]), migrate: migrateWorkbenchLayout },
       createStore({
@@ -277,6 +281,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nextCursor: null,
       total: 0,
     })
+    const [unreadCompletionCount, setUnreadCompletionCount] = createSignal<number>()
+    const syncDesktopBadge = createDesktopBadgeSync(platform.desktopBadge?.setState)
+    createEffect(() => {
+      void syncDesktopBadge(unreadCompletionCount())
+    })
     const navPending = new Set<string>()
     const [scopeIndexLoaded, setScopeIndexLoaded] = createSignal(false)
 
@@ -384,6 +393,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
         if (!res.data) return
         const data = res.data
+        setUnreadCompletionCount(data.unreadCompletionCount)
         if (cursor) {
           const existing = recentEntries.items
           const merged = [...existing, ...data.items.filter((e) => !existing.some((x) => x.id === e.id))] as NavEntry[]
@@ -429,6 +439,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
         if (!res.data) return
         const data = res.data
+        setUnreadCompletionCount(data.unreadCompletionCount)
         setRecentEntries(
           mergeNavListByID(recentEntries, {
             items: data.items as NavEntry[],
@@ -955,9 +966,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
-    function setNavEntryCompletionUnread(scopeKey: string, sessionID: string, unread: boolean) {
-      const updateEntry = (entry: NavEntry) =>
-        entry.id === sessionID ? { ...entry, completionNotice: { unread } } : entry
+    function setNavEntryCompletionNotice(
+      scopeKey: string,
+      sessionID: string,
+      completionNotice: NavEntry["completionNotice"],
+    ) {
+      const updateEntry = (entry: NavEntry) => (entry.id === sessionID ? { ...entry, completionNotice } : entry)
       const projectEntry = navEntries[scopeKey]
       if (projectEntry) {
         setNavEntries(scopeKey, "items", (items) => items.map(updateEntry) as NavEntry[])
@@ -981,7 +995,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     async function clearCompletionNotice(directory: string, sessionID: string) {
       const entry = navEntryForSession(directory, sessionID)
       if (!entry?.completionNotice.unread) return
-      setNavEntryCompletionUnread(directory, sessionID, false)
+      setNavEntryCompletionNotice(directory, sessionID, { unread: false, unreadCount: 0 })
       try {
         await globalSdk.client.session.update({
           ...scopeRequest(directory),
@@ -990,7 +1004,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         })
       } catch (err) {
         console.warn("Failed to clear session completion notice", err)
-        if (entry) setNavEntryCompletionUnread(directory, sessionID, true)
+        if (entry) setNavEntryCompletionNotice(directory, sessionID, entry.completionNotice)
       }
     }
 

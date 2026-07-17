@@ -24,6 +24,7 @@ export const SessionNavEntry = z
     chatType: z.enum(["dm", "group"]).optional(),
     completionNotice: z.object({
       unread: z.boolean(),
+      unreadCount: z.number().int().nonnegative(),
     }),
   })
   .meta({ ref: "SessionNavEntry" })
@@ -95,6 +96,7 @@ export interface SessionNavEntry {
   chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
+    unreadCount: number
   }
 }
 export interface ScopeNavEntry {
@@ -191,6 +193,7 @@ export namespace SessionNav {
           chatType: channelEndpoint?.chatType,
           completionNotice: {
             unread: session.completionNotice.unread,
+            unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
           },
         })
       }
@@ -261,7 +264,12 @@ export namespace SessionNav {
     search?: string
     cursor?: NavCursor
     limit?: number
-  }): Promise<{ items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number }> {
+  }): Promise<{
+    items: SessionNavEntry[]
+    nextCursor: NavCursor | null
+    total: number
+    unreadCompletionCount: number
+  }> {
     // Includes Home sessions alongside project scopes for a cross-scope overview.
     const scopeIDs = await getAllScopeIDs()
     const allEntries: SessionNavEntry[] = []
@@ -278,7 +286,14 @@ export namespace SessionNav {
       const term = opts.search.toLowerCase()
       entries = entries.filter((e) => e.title.toLowerCase().includes(term))
     }
-    return paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit })
+    const unreadCompletionCount = entries.reduce(
+      (total, entry) => total + (entry.completionNotice.unreadCount ?? (entry.completionNotice.unread ? 1 : 0)),
+      0,
+    )
+    return {
+      ...paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit }),
+      unreadCompletionCount,
+    }
   }
 
   export async function queryPinned(opts?: { limit?: number }): Promise<{ items: SessionNavEntry[]; total: number }> {

@@ -1867,7 +1867,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionNavResponse"
+                  "$ref": "#/components/schemas/GlobalRecentResponse"
                 }
               }
             }
@@ -22245,9 +22245,14 @@
             "properties": {
               "unread": {
                 "type": "boolean"
+              },
+              "unreadCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
-            "required": ["unread"]
+            "required": ["unread", "unreadCount"]
           }
         },
         "required": [
@@ -22274,7 +22279,7 @@
         },
         "required": ["lastActivityAt", "id"]
       },
-      "SessionNavResponse": {
+      "GlobalRecentResponse": {
         "type": "object",
         "properties": {
           "items": {
@@ -22295,9 +22300,14 @@
           },
           "total": {
             "type": "number"
+          },
+          "unreadCompletionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
-        "required": ["items", "nextCursor", "total"]
+        "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
       },
       "PinnedResponse": {
         "type": "object",
@@ -26946,6 +26956,7 @@
       "SessionCompletionNotice": {
         "default": {
           "unread": false,
+          "unreadCount": 0,
           "silent": false
         },
         "type": "object",
@@ -26953,11 +26964,16 @@
           "unread": {
             "type": "boolean"
           },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "silent": {
             "type": "boolean"
           }
         },
-        "required": ["unread", "silent"]
+        "required": ["unread", "unreadCount", "silent"]
       },
       "SessionInteractionMode": {
         "type": "string",
@@ -27688,6 +27704,31 @@
           }
         },
         "required": ["branch"]
+      },
+      "SessionNavResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NavCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
       },
       "SessionStatus": {
         "anyOf": [
