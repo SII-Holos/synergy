@@ -24501,7 +24501,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked", "sync_failed"]
           },
           "epoch": {
             "type": "number"
@@ -24533,7 +24533,7 @@
           },
           "status": {
             "type": "string",
-            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked"]
+            "enum": ["disabled", "disconnected", "connecting", "connected", "reconnecting", "blocked", "sync_failed"]
           },
           "epoch": {
             "type": "number"

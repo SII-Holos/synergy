@@ -95,6 +95,7 @@ export function toNavigationConnectionStatus(runtimeStatus: ClarusRuntimeStatus)
       return "reconnecting"
     case "disconnected":
       return "sign_in_required"
+    case "sync_failed":
     case "blocked":
       return "sync_failed"
   }

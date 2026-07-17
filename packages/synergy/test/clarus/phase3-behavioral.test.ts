@@ -53,6 +53,7 @@ class FakeRest implements ClarusRestPort.Interface {
   constructor(
     readonly projectPages: ProjectPage[],
     readonly messagePages: Map<string, MessagePage[]> = new Map(),
+    readonly snapshots: Map<string, Record<string, unknown> | Error> = new Map(),
   ) {}
 
   async listProjects(params: { status?: string; limit?: number; cursor?: string }) {
@@ -77,6 +78,18 @@ class FakeRest implements ClarusRestPort.Interface {
     if (!page) return { messages: [], nextCursor: null }
     const messages = params.limit === undefined ? page.messages : page.messages.slice(0, params.limit)
     return { messages, nextCursor: page.nextCursor }
+  }
+  async resolvePayloadSnapshot(params: {
+    downloadUrl: string
+    expectedBytes: number
+    expectedSha256: string
+    contentType: string
+    contentEncoding: string
+  }) {
+    const snapshot = this.snapshots.get(params.downloadUrl)
+    if (snapshot instanceof Error) throw snapshot
+    if (!snapshot) throw new Error(`Unknown payload snapshot ${params.downloadUrl}`)
+    return snapshot
   }
   async listUsers(_params: { query: string; limit?: number }) {
     return { users: [] }
@@ -542,6 +555,236 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
       },
     })
     expect(await SessionInbox.list(binding!.sessionID)).toHaveLength(1)
+  })
+
+  test("REST backfill hydrates production payload snapshots before assignment ingestion", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const taskId = "snapshot_task"
+    const downloadUrl = "/api/v1/holos/clarus/payload-snapshots/token/download"
+    const snapshot = {
+      project_id: PROJECT_ID,
+      run_id: "snapshot_run",
+      task_id: taskId,
+      phase: "GROUND",
+      subtask_id: "snapshot_subtask",
+      attempt: 2,
+      deadline_at: null,
+      goal: "Recover snapshot task",
+      context: { current_task: { id: "snapshot_subtask" } },
+      input_refs: ["file_1"],
+    }
+    const rest = new FakeRest(
+      [{ projects: [project(PROJECT_ID)], nextCursor: null }],
+      new Map([
+        [
+          PROJECT_ID,
+          [
+            {
+              messages: [
+                {
+                  messageId: "snapshot_dispatch",
+                  messageType: "system",
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: AGENT_ID,
+                    project_id: PROJECT_ID,
+                    run_id: "snapshot_run",
+                    task_id: taskId,
+                    phase: "GROUND",
+                    subtask_id: "snapshot_subtask",
+                    attempt: 2,
+                    deadline_at: null,
+                    payload: {
+                      summary: { task_id: taskId, phase: "GROUND" },
+                      payload_ref: {
+                        type: "clarus_payload_snapshot",
+                        snapshot_id: "snapshot_1",
+                        project_id: PROJECT_ID,
+                        run_id: "snapshot_run",
+                        kind: "runtime_task.input",
+                        object_key: "clarus-resource/projects/project/internal/payload-snapshots/snapshot.json.gz",
+                        download_url: downloadUrl,
+                        bytes: 512,
+                        sha256: "a".repeat(64),
+                        content_type: "application/json",
+                        content_encoding: "gzip",
+                        created_at: "2026-07-17T00:00:00+00:00",
+                      },
+                    },
+                  },
+                },
+              ],
+              nextCursor: null,
+            },
+          ],
+        ],
+      ]),
+      new Map([[downloadUrl, snapshot]]),
+    )
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId))?.assignmentState === "enqueued",
+        )
+      },
+    })
+
+    const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId)
+    expect(binding).toMatchObject({
+      runID: "snapshot_run",
+      phase: "GROUND",
+      subtaskID: "snapshot_subtask",
+      attempt: 2,
+      title: "Recover snapshot task",
+      contextHydration: "complete",
+      taskInput: {
+        goal: "Recover snapshot task",
+        context: { current_task: { id: "snapshot_subtask" } },
+        input_refs: ["file_1"],
+      },
+    })
+  })
+
+  test("REST backfill accepts production assignment metadata with nested artifact parts", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const taskId = "nested_assignment_task"
+    const rest = new FakeRest(
+      [{ projects: [project(PROJECT_ID)], nextCursor: null }],
+      new Map([
+        [
+          PROJECT_ID,
+          [
+            {
+              messages: [
+                {
+                  messageId: "nested_assignment_dispatch",
+                  messageType: "system",
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: AGENT_ID,
+                    payload: {
+                      project_id: PROJECT_ID,
+                      run_id: "nested_assignment_run",
+                      task_id: taskId,
+                      phase: "GROUND",
+                      subtask_id: "nested_assignment_subtask",
+                      attempt: 1,
+                      deadline_at: null,
+                      goal: "Recover nested assignment",
+                      context: {
+                        dependency_results: [
+                          {
+                            artifacts: [
+                              {
+                                parts: [{ type: "text", format: "markdown", content: "bounded evidence" }],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                },
+              ],
+              nextCursor: null,
+            },
+          ],
+        ],
+      ]),
+    )
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId))?.assignmentState === "enqueued",
+        )
+      },
+    })
+
+    expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, taskId)).toMatchObject({
+      runID: "nested_assignment_run",
+      subtaskID: "nested_assignment_subtask",
+      title: "Recover nested assignment",
+      contextHydration: "partial",
+      assignmentState: "enqueued",
+    })
+  })
+
+  test("snapshot hydration failure preserves the message cursor for retry", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const downloadUrl = "/api/v1/holos/clarus/payload-snapshots/bad/download"
+    const rest = new FakeRest(
+      [{ projects: [project(PROJECT_ID)], nextCursor: null }],
+      new Map([
+        [
+          PROJECT_ID,
+          [
+            {
+              messages: [
+                {
+                  messageId: "bad_snapshot_dispatch",
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: AGENT_ID,
+                    project_id: PROJECT_ID,
+                    run_id: "snapshot_run",
+                    task_id: "bad_snapshot_task",
+                    phase: "GROUND",
+                    subtask_id: "bad_snapshot_subtask",
+                    attempt: 1,
+                    deadline_at: null,
+                    payload: {
+                      summary: { task_id: "bad_snapshot_task" },
+                      payload_ref: {
+                        type: "clarus_payload_snapshot",
+                        download_url: downloadUrl,
+                        bytes: 512,
+                        sha256: "b".repeat(64),
+                        content_type: "application/json",
+                        content_encoding: "gzip",
+                      },
+                    },
+                  },
+                },
+              ],
+              nextCursor: "cursor_after_snapshot",
+            },
+          ],
+        ],
+      ]),
+      new Map([[downloadUrl, new Error("snapshot checksum mismatch")]]),
+    )
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(async () => {
+          const state = await Storage.read<{ lastError?: string }>(StoragePath.clarusReconciliation(AGENT_ID))
+          return state.lastError?.includes("snapshot checksum mismatch") === true
+        })
+      },
+    })
+
+    expect((await ClarusBindingStore.readV3(AGENT_ID, PROJECT_ID))?.messageCursor).toBeNull()
+    expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "bad_snapshot_task")).toBeUndefined()
   })
 
   test("REST backfill rejects tasks assigned to another agent", async () => {
