@@ -83,7 +83,7 @@ test("Kimi K3 catalog efforts become Anthropic-compatible variants", () => {
   expect(model.variants).toEqual({
     low: { effort: "low" },
     high: { effort: "high" },
-    max: { effort: "max" },
+    max: {},
   })
 })
 

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createAnthropic } from "@ai-sdk/anthropic"
 import { ProviderTransform } from "../../src/provider/transform"
 import type { Provider } from "../../src/provider/provider"
 
@@ -962,13 +963,55 @@ describe("ProviderTransform.variants", () => {
     expect(ProviderTransform.variants(model)).toEqual({
       low: { effort: "low" },
       high: { effort: "high" },
-      max: { effort: "max" },
+      max: {},
     })
 
     const variants = ProviderTransform.variants(model)
     expect(ProviderTransform.providerOptions(model, variants.high)).toEqual({
       anthropic: { effort: "high" },
     })
+    expect(ProviderTransform.providerOptions(model, variants.max)).toEqual({ anthropic: {} })
+  })
+
+  test("Kimi K3 effort variants pass the locked Anthropic SDK validator", async () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    for (const [variant, options] of Object.entries(ProviderTransform.variants(model))) {
+      let requestBody: Record<string, unknown> | undefined
+      const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        })
+      }) as unknown as typeof fetch
+      const anthropic = createAnthropic({
+        apiKey: "test",
+        baseURL: "https://example.invalid",
+        fetch: fetchFn,
+      })
+
+      try {
+        await anthropic("k3").doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+          maxOutputTokens: 16,
+          providerOptions: ProviderTransform.providerOptions(model, options),
+        })
+      } catch {}
+
+      expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+      expect(requestBody?.output_config).toEqual(variant === "max" ? undefined : { effort: variant })
+    }
   })
 
   test("custom Kimi K3 aliases retain catalog reasoning efforts", () => {
@@ -987,7 +1030,7 @@ describe("ProviderTransform.variants", () => {
     expect(ProviderTransform.variants(model)).toEqual({
       low: { effort: "low" },
       high: { effort: "high" },
-      max: { effort: "max" },
+      max: {},
     })
   })
 
