@@ -315,6 +315,10 @@ import type {
   PerfIssueSeverity,
   PerfIssueStatus,
   PerfModule,
+  PerformanceAnalysisCancelResponses,
+  PerformanceAnalysisGetResponses,
+  PerformanceAnalysisRequest,
+  PerformanceAnalysisStartResponses,
   PerformanceBrowserMetricsIngestResponses,
   PerformanceConfigPatch,
   PerformanceEventsStreamResponses,
@@ -2931,6 +2935,70 @@ export class Observability extends HeyApiClient {
   diagnostics = new Diagnostics({ client: this.client })
 }
 
+export class Analysis extends HeyApiClient {
+  /**
+   * Start AI performance analysis
+   *
+   * Snapshot redacted runtime telemetry and analyze it in one durable top-level Session.
+   */
+  public start<ThrowOnError extends boolean = false>(
+    parameters?: {
+      performanceAnalysisRequest?: PerformanceAnalysisRequest
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "performanceAnalysisRequest", map: "body" }] }])
+    return (options?.client ?? this.client).post<PerformanceAnalysisStartResponses, unknown, ThrowOnError>({
+      url: "/global/performance/analysis",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Get AI performance analysis
+   *
+   * Read live or durable analysis state from its Session messages and runtime.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).get<PerformanceAnalysisGetResponses, unknown, ThrowOnError>({
+      url: "/global/performance/analysis/{sessionID}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Cancel AI performance analysis
+   *
+   * Cancel a queued or running Performance analysis Session and return its durable state.
+   */
+  public cancel<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "sessionID" }] }])
+    return (options?.client ?? this.client).post<PerformanceAnalysisCancelResponses, unknown, ThrowOnError>({
+      url: "/global/performance/analysis/{sessionID}/cancel",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Traces extends HeyApiClient {
   /**
    * List performance traces
@@ -3281,6 +3349,8 @@ export class Performance extends HeyApiClient {
       ...params,
     })
   }
+
+  analysis = new Analysis({ client: this.client })
 
   traces = new Traces({ client: this.client })
 
