@@ -4345,7 +4345,7 @@ msgstr "日程"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
-msgstr "Library"
+msgstr "资料库"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.performance"
@@ -5292,7 +5292,7 @@ msgstr "浏览器"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.library"
-msgstr "Library"
+msgstr "资料库"
 
 #. ── App Shell ────────────────────────────────────────────────────────────────
 msgid "app.shell.mobile.tool.notes"
@@ -13708,6 +13708,10 @@ msgid "settings.modelRole.creativeModel.label"
 msgstr "创意模型"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.customValue"
+msgstr "自定义值"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.details.ariaLabel"
 msgstr "{label} 详情"
 
@@ -13718,6 +13722,14 @@ msgstr "使用后备模型"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallbackChain"
 msgstr "回退"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.group.default"
+msgstr "默认"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.imageAnalysisDisabled"
+msgstr "图像分析已禁用"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.longContextModel.description"
@@ -13752,6 +13764,10 @@ msgid "settings.modelRole.model.label"
 msgstr "默认模型"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.modelViaRole"
+msgstr "{model}，经由{role}"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.nanoModel.description"
 msgstr "用于标题生成等琐碎任务的最低成本模型"
 
@@ -13764,8 +13780,16 @@ msgid "settings.modelRole.noAgentsUse"
 msgstr "没有 Agent 直接使用这个角色。"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.noModelConfigured"
+msgstr "未为此角色配置模型。"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.noModelResults"
 msgstr "没有模型结果"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.notConfigured"
+msgstr "未配置"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.override"
@@ -13774,6 +13798,14 @@ msgstr "覆盖"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.resolution"
 msgstr "解析"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.resolvesTo"
+msgstr "解析为 {model}"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.runtimeDefault"
+msgstr "运行时默认值"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.searchModels"
@@ -13822,6 +13854,22 @@ msgstr "图像、PDF 和文件分析"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.visionModel.label"
 msgstr "视觉模型"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.visionModelRequired"
+msgstr "配置视觉模型以启用图像分析。"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveAfterSaving"
+msgstr "保存后将解析"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveToVia"
+msgstr "将解析为 {model}，经由{role}"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willUseAfterSaving"
+msgstr "保存后将使用 {model}"
 
 #. js-lingui-explicit-id
 msgid "settings.models.connectProvider"

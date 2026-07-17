@@ -147,6 +147,10 @@ export const MODEL_ROLES: ModelRoleDefinition[] = [
     description: { id: "settings.modelRole.creativeModel.description", message: "Writing, design, and artistry" },
   },
 ]
+
+export function getModelRoleDefinition(key: string): ModelRoleDefinition | undefined {
+  return MODEL_ROLES.find((role) => role.key === key)
+}
 export type PluginEntry = {
   value: string
 }

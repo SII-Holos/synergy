@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { readFile } from "node:fs/promises"
-import { changedCatalogPaths, missingTranslationIds } from "./i18n-check"
+import { catalogTranslations, changedCatalogPaths, missingTranslationIds } from "./i18n-check"
 
 describe("i18n catalog drift check", () => {
   test("reports changed, added, and removed catalogs in stable order", () => {
@@ -61,5 +61,13 @@ msgstr ""
     const source = await readFile(new URL("../src/locales/en/messages.po", import.meta.url), "utf-8")
 
     expect(missingTranslationIds(source, source)).toEqual([])
+  })
+
+  test("translates built-in Library navigation in Simplified Chinese", async () => {
+    const chinese = await readFile(new URL("../src/locales/zh-CN/messages.po", import.meta.url), "utf-8")
+    const translations = catalogTranslations(chinese)
+
+    expect(translations.get("app.plugin.builtin.library")).toBe("资料库")
+    expect(translations.get("app.shell.mobile.tool.library")).toBe("资料库")
   })
 })

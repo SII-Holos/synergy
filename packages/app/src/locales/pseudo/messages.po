@@ -13708,6 +13708,10 @@ msgid "settings.modelRole.creativeModel.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.customValue"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.details.ariaLabel"
 msgstr ""
 
@@ -13717,6 +13721,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallbackChain"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.group.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.imageAnalysisDisabled"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13752,6 +13764,10 @@ msgid "settings.modelRole.model.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.modelViaRole"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.nanoModel.description"
 msgstr ""
 
@@ -13764,7 +13780,15 @@ msgid "settings.modelRole.noAgentsUse"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.noModelConfigured"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.noModelResults"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.notConfigured"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13773,6 +13797,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.resolution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.resolvesTo"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.runtimeDefault"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -13821,6 +13853,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.visionModel.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.visionModelRequired"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveAfterSaving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveToVia"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willUseAfterSaving"
 msgstr ""
 
 #. js-lingui-explicit-id

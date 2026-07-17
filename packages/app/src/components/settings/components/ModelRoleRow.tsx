@@ -8,9 +8,8 @@ import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
-import { createProviderModelIndex, fieldLabel, resolveModelRoleDraftDisplay } from "../model-role-draft"
+import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
 
-const fallbackLabel = { id: "settings.modelRole.fallback", message: "Use fallback" }
 const variantDefault = { id: "settings.modelRole.variant.default", message: "Default" }
 const variantDesc = { id: "settings.modelRole.variant.desc", message: "Use the role default" }
 const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Role variant" }
@@ -28,6 +27,7 @@ const selectVariantLabel = { id: "settings.modelRole.selectVariant", message: "S
 const detailsAriaLabel = { id: "settings.modelRole.details.ariaLabel", message: "{label} details" }
 const systemAgentLabel = { id: "settings.modelRole.system", message: "system" }
 const overrideAgentLabel = { id: "settings.modelRole.override", message: "override" }
+const defaultGroupLabel = { id: "settings.modelRole.group.default", message: "Default" }
 type ModelRef = {
   providerID: string
   modelID: string
@@ -37,7 +37,7 @@ type ModelPickerOption =
   | {
       kind: "fallback"
       key: "fallback"
-      group: "Default"
+      group: string
       label: string
       description: string
       value: ""
@@ -76,23 +76,27 @@ export function ModelRoleRow(props: {
   const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
+  const roleCopy = createMemo(() => modelRoleCopy(props.summary, _))
 
   const display = createMemo(() =>
-    resolveModelRoleDraftDisplay({
-      summary: props.summary,
-      value: props.value,
-      draftModels: props.draftModels,
-      savedModels: props.savedModels,
-      providerIndex: providerIndex(),
-    }),
+    resolveModelRoleDraftDisplay(
+      {
+        summary: props.summary,
+        value: props.value,
+        draftModels: props.draftModels,
+        savedModels: props.savedModels,
+        providerIndex: providerIndex(),
+      },
+      _,
+    ),
   )
 
   const options = createMemo<ModelPickerOption[]>(() => [
     {
       kind: "fallback",
       key: "fallback",
-      group: "Default",
-      label: _(fallbackLabel),
+      group: _(defaultGroupLabel),
+      label: display().triggerLabel,
       description: display().fallbackDescription,
       value: "",
     },
@@ -144,14 +148,14 @@ export function ModelRoleRow(props: {
     <div class="settings-model-row">
       <div class="settings-model-copy">
         <div class="settings-model-title-line">
-          <span class="settings-model-title">{props.summary.label}</span>
+          <span class="settings-model-title">{roleCopy().label}</span>
           <Tooltip
             placement="right"
             value={
               <div class="settings-model-detail-popover">
                 <div>
-                  <div class="settings-model-detail-title">{props.summary.label}</div>
-                  <div class="settings-model-detail-muted">{props.summary.summary}</div>
+                  <div class="settings-model-detail-title">{roleCopy().label}</div>
+                  <div class="settings-model-detail-muted">{roleCopy().description}</div>
                 </div>
                 <div class="settings-model-detail-block">
                   <div class="settings-model-detail-label">{_(usedByLabel)}</div>
@@ -182,7 +186,7 @@ export function ModelRoleRow(props: {
                 <div class="settings-model-detail-block">
                   <div class="settings-model-detail-label">{_(fallbackChainLabel)}</div>
                   <div class="settings-model-fallback-chain">
-                    <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field)}</span>}</For>
+                    <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field, _)}</span>}</For>
                   </div>
                 </div>
                 <div class="settings-model-detail-block">
@@ -195,13 +199,13 @@ export function ModelRoleRow(props: {
             <button
               type="button"
               class="settings-model-info-button"
-              aria-label={_({ ...detailsAriaLabel, values: { label: props.summary.label } })}
+              aria-label={_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
             >
               <Icon name={getSemanticIcon("action.info")} size="small" />
             </button>
           </Tooltip>
         </div>
-        <span class="settings-model-description">{props.summary.summary}</span>
+        <span class="settings-model-description">{roleCopy().description}</span>
       </div>
 
       <div class="settings-model-selector">
@@ -209,7 +213,7 @@ export function ModelRoleRow(props: {
           <KobaltePopover.Trigger
             type="button"
             class="settings-model-trigger"
-            aria-label={`${_(selectModelLabel)} ${props.summary.label}`}
+            aria-label={`${_(selectModelLabel)} ${roleCopy().label}`}
           >
             <span class="settings-model-trigger-text">
               <span class="settings-model-trigger-title">{display().triggerLabel}</span>
@@ -222,7 +226,7 @@ export function ModelRoleRow(props: {
               <Portal mount={layer()}>
                 <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
                   <KobaltePopover.Title class="sr-only">
-                    {_(selectModelLabel)} {props.summary.label}
+                    {_(selectModelLabel)} {roleCopy().label}
                   </KobaltePopover.Title>
                   <List<ModelPickerOption>
                     class="settings-model-picker-list"
@@ -294,7 +298,8 @@ function sortModelGroups(
   a: { category: string; items: ModelPickerOption[] },
   b: { category: string; items: ModelPickerOption[] },
 ) {
-  if (a.category === "Default") return -1
-  if (b.category === "Default") return 1
+  const aIsDefault = a.items.some((option) => option.kind === "fallback")
+  const bIsDefault = b.items.some((option) => option.kind === "fallback")
+  if (aIsDefault !== bIsDefault) return aIsDefault ? -1 : 1
   return a.category.localeCompare(b.category)
 }

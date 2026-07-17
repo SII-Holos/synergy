@@ -13,7 +13,7 @@ export function changedCatalogPaths(before: ReadonlyMap<string, string>, after: 
   return [...paths].filter((file) => before.get(file) !== after.get(file)).toSorted()
 }
 
-function catalogTranslations(catalog: string): Map<string, string> {
+export function catalogTranslations(catalog: string): Map<string, string> {
   const translations = new Map<string, string>()
   const entries = /^msgid "((?:[^"\\]|\\.)*)"\nmsgstr "((?:[^"\\]|\\.)*)"$/gm
 

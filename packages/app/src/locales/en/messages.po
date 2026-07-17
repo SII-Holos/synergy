@@ -13708,6 +13708,10 @@ msgid "settings.modelRole.creativeModel.label"
 msgstr "Creative Model"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.customValue"
+msgstr "Custom value"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.details.ariaLabel"
 msgstr "{label} details"
 
@@ -13718,6 +13722,14 @@ msgstr "Use fallback"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.fallbackChain"
 msgstr "Fallback"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.group.default"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.imageAnalysisDisabled"
+msgstr "Image analysis disabled"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.longContextModel.description"
@@ -13752,6 +13764,10 @@ msgid "settings.modelRole.model.label"
 msgstr "Default Model"
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.modelViaRole"
+msgstr "{model} via {role}"
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.nanoModel.description"
 msgstr "Cheapest model for trivial tasks like title generation"
 
@@ -13764,8 +13780,16 @@ msgid "settings.modelRole.noAgentsUse"
 msgstr "No agents directly use this role."
 
 #. js-lingui-explicit-id
+msgid "settings.modelRole.noModelConfigured"
+msgstr "No model is configured for this role."
+
+#. js-lingui-explicit-id
 msgid "settings.modelRole.noModelResults"
 msgstr "No model results"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.notConfigured"
+msgstr "Not configured"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.override"
@@ -13774,6 +13798,14 @@ msgstr "override"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.resolution"
 msgstr "Resolution"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.resolvesTo"
+msgstr "Resolves to {model}"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.runtimeDefault"
+msgstr "Runtime default"
 
 #. js-lingui-explicit-id
 msgid "settings.modelRole.searchModels"
@@ -13822,6 +13854,22 @@ msgstr "Image, PDF, and file analysis"
 #. js-lingui-explicit-id
 msgid "settings.modelRole.visionModel.label"
 msgstr "Vision Model"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.visionModelRequired"
+msgstr "Configure a vision model to enable image analysis."
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveAfterSaving"
+msgstr "Will resolve after saving"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willResolveToVia"
+msgstr "Will resolve to {model} via {role}"
+
+#. js-lingui-explicit-id
+msgid "settings.modelRole.willUseAfterSaving"
+msgstr "Will use {model} after saving"
 
 #. js-lingui-explicit-id
 msgid "settings.models.connectProvider"
