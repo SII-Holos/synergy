@@ -35,7 +35,6 @@ export namespace SessionManager {
       metadata?: Record<string, any>
       tools?: Record<string, boolean>
       inboxItemID?: string
-      tools?: Record<string, boolean>
     }
 
     export interface Assistant {
