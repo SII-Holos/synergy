@@ -36,25 +36,26 @@ describe("GET /global/recent", () => {
     await ScopeContext.provide({
       scope,
       fn: async () => {
-        const unread = await Session.create({ title: "Unread Outside Page" })
+        const marker = `Unread Count ${scope.id}`
+        const unread = await Session.create({ title: `${marker} Unread Outside Page` })
         await Session.recordCompletionNotice(unread.id)
         await Session.recordCompletionNotice(unread.id)
 
-        const parent = await Session.create({ title: "Parent" })
-        const child = await Session.create({ title: "Unread Child", parentID: parent.id })
+        const parent = await Session.create({ title: `${marker} Parent` })
+        const child = await Session.create({ title: `${marker} Unread Child`, parentID: parent.id })
         await Session.recordCompletionNotice(child.id)
 
-        const archived = await Session.create({ title: "Archived Unread" })
+        const archived = await Session.create({ title: `${marker} Archived Unread` })
         await Session.recordCompletionNotice(archived.id)
         await Session.update(archived.id, (draft) => {
           draft.time.archived = Date.now()
         })
 
         await Bun.sleep(50)
-        const newest = await Session.create({ title: "Newest Read Session" })
+        const newest = await Session.create({ title: `${marker} Newest Read Session` })
 
         const app = Server.App()
-        const res = await app.request("/global/recent?limit=1")
+        const res = await app.request(`/global/recent?limit=1&search=${encodeURIComponent(marker)}`)
         expect(res.status).toBe(200)
         const body = await res.json()
 
