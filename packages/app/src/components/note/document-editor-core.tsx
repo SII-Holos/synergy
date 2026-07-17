@@ -13,6 +13,8 @@ import TaskItem from "@tiptap/extension-task-item"
 import CodeBlockShiki from "tiptap-extension-code-block-shiki"
 import MathExtension from "@aarkue/tiptap-math-extension"
 
+import { useLingui } from "@lingui/solid"
+import { docEditor as D } from "@/locales/messages"
 import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
@@ -409,6 +411,8 @@ export interface DocumentEditorExtensionsConfig {
   onUploadFile: (file: File) => Promise<string>
   /** Ref to the bubble menu container element. */
   bubbleRef: HTMLDivElement
+  /** Lingui i18n context for localized command titles. */
+  lingui: ReturnType<typeof useLingui>
 }
 
 export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig) {
@@ -418,7 +422,7 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       link: false,
     }),
     Placeholder.configure({
-      placeholder: "Type / for commands...",
+      placeholder: config.lingui._({ id: D.slashHint.id, message: D.slashHint.message }),
     }),
     Link.configure({
       openOnClick: false,
@@ -447,7 +451,7 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
     Video,
     Mermaid,
     createFileUpload(config.sdkClient, config.sdkUrl),
-    createSlashCommands({ onUploadFile: config.onUploadFile }),
+    createSlashCommands({ onUploadFile: config.onUploadFile, lingui: config.lingui }),
     createBubbleMenu(config.bubbleRef),
   ]
 }
@@ -485,6 +489,7 @@ export interface DocumentEditorCoreProps {
  * autosave/conflict, toolbar, tags, and metadata logic.
  */
 export function DocumentEditorCore(props: DocumentEditorCoreProps) {
+  const lingui = useLingui()
   let editorRef!: HTMLDivElement
   let bubbleRef!: HTMLDivElement
   const [editorInstance, setEditorInstance] = createSignal<Editor>()
@@ -497,6 +502,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
         sdkUrl: props.sdkUrl,
         onUploadFile: props.uploadFile,
         bubbleRef,
+        lingui,
       }),
       content: untrack(() => props.content) as any,
       onUpdate: ({ editor }) => {
@@ -547,7 +553,7 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
       </div>
       <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
         <Show when={props.saving} fallback="Saved">
-          Saving...
+          {lingui._({ id: D.saving.id, message: D.saving.message })}
         </Show>
       </div>
     </div>

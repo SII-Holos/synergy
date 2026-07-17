@@ -5,9 +5,11 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useParams } from "@solidjs/router"
 import { AssistantMessage } from "@ericsanchezok/synergy-sdk/client"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { useLocale } from "@/context/locale"
 
 import { useLayout } from "@/context/layout"
 import { useSync } from "@/context/sync"
+import { S } from "./session-i18n"
 
 interface SessionContextUsageProps {
   variant?: "button" | "indicator"
@@ -17,6 +19,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
   const sync = useSync()
   const params = useParams()
   const layout = useLayout()
+  const { i18n, fmt } = useLocale()
 
   const variant = createMemo(() => props.variant ?? "button")
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
@@ -25,10 +28,7 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
 
   const cost = createMemo(() => {
     const total = messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(total)
+    return fmt.currency(total, "USD")
   })
 
   const context = createMemo(() => {
@@ -41,10 +41,10 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
     const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
     const limit = model?.limit
-    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    if (!limit || limit.context === 0) return { tokens: fmt.number(total), percentage: null }
     const usable = ModelLimit.usableInput(limit)
     return {
-      tokens: total.toLocaleString(),
+      tokens: fmt.number(total),
       percentage: Math.round((total / usable) * 100),
     }
   })
@@ -68,21 +68,21 @@ export function SessionContextUsage(props: SessionContextUsageProps) {
           <>
             <div class="flex items-center gap-2">
               <span class="text-text-invert-strong">{ctx().tokens}</span>
-              <span class="text-text-invert-base">Tokens</span>
+              <span class="text-text-invert-base">{i18n._(S.contextTokens)}</span>
             </div>
             <div class="flex items-center gap-2">
               <span class="text-text-invert-strong">{ctx().percentage ?? 0}%</span>
-              <span class="text-text-invert-base">Usage</span>
+              <span class="text-text-invert-base">{i18n._(S.contextUsage)}</span>
             </div>
           </>
         )}
       </Show>
       <div class="flex items-center gap-2">
         <span class="text-text-invert-strong">{cost()}</span>
-        <span class="text-text-invert-base">Cost</span>
+        <span class="text-text-invert-base">{i18n._(S.contextCost)}</span>
       </div>
       <Show when={variant() === "button"}>
-        <div class="text-11-regular text-text-invert-base mt-1">Click to view context</div>
+        <div class="text-11-regular text-text-invert-base mt-1">{i18n._(S.contextClickToView)}</div>
       </Show>
     </div>
   )

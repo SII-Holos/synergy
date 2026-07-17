@@ -1,4 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
@@ -8,6 +9,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteArchivedSessionConfirm, restoreArchivedSessionConfirm } from "@/components/dialog/confirm-copy"
 import { SelectionCheckbox } from "@/components/library/shared"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useLocale, type IntlFormatter } from "@/context/locale"
 import { relativeTime } from "@/utils/time"
 import { getScopeLabel } from "@/utils/scope"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
@@ -20,6 +22,96 @@ type BatchAction = "restore" | "delete"
 
 const PAGE_LIMIT = 50
 
+const loadFailedTitle = { id: "settings.archivedSessions.loadFailed", message: "Archived sessions failed to load" }
+const loadFailedDesc = { id: "settings.archivedSessions.loadFailedDesc", message: "Try again." }
+const restoredSingleTitle = { id: "settings.archivedSessions.restoredSingle", message: "Archived session restored" }
+const restoredMultiTitle = { id: "settings.archivedSessions.restoredMulti", message: "Archived sessions restored" }
+const restoreFailedSingleTitle = {
+  id: "settings.archivedSessions.restoreFailedSingle",
+  message: "Archived session failed to restore",
+}
+const restoreFailedMultiTitle = {
+  id: "settings.archivedSessions.restoreFailedMulti",
+  message: "Archived sessions failed to restore",
+}
+const deletedSingleTitle = { id: "settings.archivedSessions.deletedSingle", message: "Archived session deleted" }
+const deletedMultiTitle = { id: "settings.archivedSessions.deletedMulti", message: "Archived sessions deleted" }
+const deleteFailedSingleTitle = {
+  id: "settings.archivedSessions.deleteFailedSingle",
+  message: "Archived session failed to delete",
+}
+const deleteFailedMultiTitle = {
+  id: "settings.archivedSessions.deleteFailedMulti",
+  message: "Archived sessions failed to delete",
+}
+const unknownArchiveTime = { id: "settings.archivedSessions.unknownTime", message: "Unknown archive time" }
+
+const pageTitle = { id: "settings.archivedSessions.page.title", message: "Archived Sessions" }
+const pageDescription = {
+  id: "settings.archivedSessions.page.description",
+  message: "Browse, restore, and permanently delete archived sessions across projects.",
+}
+const sectionTitle = { id: "settings.archivedSessions.section.title", message: "Archive browser" }
+const sectionDescription = {
+  id: "settings.archivedSessions.section.description",
+  message:
+    "Search by title, sort by project or archive time, restore sessions, or delete sessions that are no longer needed.",
+}
+const searchPlaceholder = {
+  id: "settings.archivedSessions.search.placeholder",
+  message: "Search archived sessions...",
+}
+const sortNewestLabel = { id: "settings.archivedSessions.sort.newest", message: "Archive time: newest" }
+const sortOldestLabel = { id: "settings.archivedSessions.sort.oldest", message: "Archive time: oldest" }
+const sortProjectAZ = { id: "settings.archivedSessions.sort.projectAZ", message: "Project: A-Z" }
+const sortProjectZA = { id: "settings.archivedSessions.sort.projectZA", message: "Project: Z-A" }
+const refreshLabel = { id: "settings.archivedSessions.refresh", message: "Refresh" }
+const selectVisibleLabel = { id: "settings.archivedSessions.select.visible", message: "Select visible" }
+const selectedCountLabel = {
+  id: "settings.archivedSessions.select.count",
+  message: "{count} selected",
+}
+const restoreHint = {
+  id: "settings.archivedSessions.restore.hint",
+  message: "Restore keeps data; permanent deletion cannot be undone.",
+}
+const untitledSessionLabel = { id: "settings.archivedSessions.untitled", message: "Untitled session" }
+const noResultsTitle = {
+  id: "settings.archivedSessions.empty.search",
+  message: "No archived sessions match your search",
+}
+const noResultsFallback = {
+  id: "settings.archivedSessions.empty.fallback",
+  message: "No archived sessions",
+}
+const noResultsDescription = {
+  id: "settings.archivedSessions.empty.description",
+  message: "Archived sessions will appear here after they are hidden from active lists.",
+}
+const restoreSelectedLabel = { id: "settings.archivedSessions.action.restore", message: "Restore selected" }
+const restoringLabel = { id: "settings.archivedSessions.action.restoring", message: "Restoring..." }
+const deleteSelectedLabel = { id: "settings.archivedSessions.action.delete", message: "Delete selected" }
+const deletingLabel = { id: "settings.archivedSessions.action.deleting", message: "Deleting..." }
+const previousLabel = { id: "settings.archivedSessions.pagination.previous", message: "Previous" }
+const nextLabel = { id: "settings.archivedSessions.pagination.next", message: "Next" }
+const singleRestoreLabel = { id: "settings.archivedSessions.action.restore.single", message: "Restore" }
+const singleRestoringLabel = { id: "settings.archivedSessions.action.restoring.single", message: "Restoring..." }
+const singleDeleteLabel = { id: "settings.archivedSessions.action.delete.single", message: "Delete permanently" }
+const singleDeletingLabel = { id: "settings.archivedSessions.action.deleting.single", message: "Deleting..." }
+const deselectLabel = { id: "settings.archivedSessions.select.deselect", message: "Deselect" }
+const selectLabel = { id: "settings.archivedSessions.select.select", message: "Select" }
+const archivedAtLabel = { id: "settings.archivedSessions.archivedAt", message: "Archived {time}" }
+const youLabel = { id: "settings.archivedSessions.you", message: "You: {text}" }
+function archivedSessionsCount(total: number) {
+  return { id: "settings.archivedSessions.count", message: "{total} archived sessions", values: { total } }
+}
+function sessionsRestoredDesc(count: number) {
+  return { id: "settings.archivedSessions.restoredDesc", message: "{count} sessions restored", values: { count } }
+}
+function sessionsDeletedDesc(count: number) {
+  return { id: "settings.archivedSessions.deletedDesc", message: "{count} sessions deleted", values: { count } }
+}
+
 function scopeLabel(item: ArchivedSessionItem) {
   return getScopeLabel({ worktree: item.scope.directory, name: item.scope.name }, item.scope.directory)
 }
@@ -28,9 +120,9 @@ function sessionDirectory(item: ArchivedSessionItem) {
   return item.scope.type === "home" ? "home" : item.scope.directory
 }
 
-function formatArchivedAt(value: number | undefined) {
-  if (!value) return "Unknown archive time"
-  return new Date(value).toLocaleString()
+function formatArchivedAt(fmt: IntlFormatter, value: number | undefined, unknownLabel: string) {
+  if (!value) return unknownLabel
+  return fmt.dateTime(value, { dateStyle: "medium", timeStyle: "short" })
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -40,6 +132,8 @@ function errorMessage(error: unknown, fallback: string) {
 }
 
 export function ArchivedSessionsPanel() {
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
   const [search, setSearch] = createSignal("")
@@ -62,7 +156,7 @@ export function ArchivedSessionsPanel() {
   const selectedCount = createMemo(() => selectedIDs().size)
   const hasNextPage = createMemo(() => offset() + items().length < total())
   const pageLabel = createMemo(() => {
-    if (total() === 0) return "0 archived sessions"
+    if (total() === 0) return _(archivedSessionsCount(0))
     return `${offset() + 1}-${offset() + items().length} of ${total()}`
   })
   const busy = createMemo(() => loading() || !!busyID() || !!batchBusy())
@@ -93,8 +187,8 @@ export function ArchivedSessionsPanel() {
       setSelectedIDs(new Set<string>())
       showToast({
         type: "error",
-        title: "Archived sessions failed to load",
-        description: errorMessage(error, "Try again."),
+        title: _(loadFailedTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setLoading(false)
@@ -150,17 +244,17 @@ export function ArchivedSessionsPanel() {
       )
       showToast({
         type: "success",
-        title: targets.length === 1 ? "Archived session restored" : "Archived sessions restored",
+        title: targets.length === 1 ? _(restoredSingleTitle) : _(restoredMultiTitle),
         description:
-          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions restored`,
+          targets.length === 1 ? targets[0]!.title || _(untitledSessionLabel) : _(sessionsRestoredDesc(targets.length)),
       })
       setSelectedIDs(new Set<string>())
       await load(offset())
     } catch (error) {
       showToast({
         type: "error",
-        title: targets.length === 1 ? "Archived session failed to restore" : "Archived sessions failed to restore",
-        description: errorMessage(error, "Try again."),
+        title: targets.length === 1 ? _(restoreFailedSingleTitle) : _(restoreFailedMultiTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setBusyID(undefined)
@@ -180,17 +274,17 @@ export function ArchivedSessionsPanel() {
       )
       showToast({
         type: "success",
-        title: targets.length === 1 ? "Archived session deleted" : "Archived sessions deleted",
+        title: targets.length === 1 ? _(deletedSingleTitle) : _(deletedMultiTitle),
         description:
-          targets.length === 1 ? targets[0]!.title || "Untitled session" : `${targets.length} sessions deleted`,
+          targets.length === 1 ? targets[0]!.title || _(untitledSessionLabel) : _(sessionsDeletedDesc(targets.length)),
       })
       setSelectedIDs(new Set<string>())
       await load(offset())
     } catch (error) {
       showToast({
         type: "error",
-        title: targets.length === 1 ? "Archived session failed to delete" : "Archived sessions failed to delete",
-        description: errorMessage(error, "Try again."),
+        title: targets.length === 1 ? _(deleteFailedSingleTitle) : _(deleteFailedMultiTitle),
+        description: errorMessage(error, _(loadFailedDesc)),
       })
     } finally {
       setBusyID(undefined)
@@ -218,14 +312,8 @@ export function ArchivedSessionsPanel() {
   })
 
   return (
-    <SettingsPage
-      title="Archived Sessions"
-      description="Browse, restore, and permanently delete archived sessions across projects."
-    >
-      <SettingsSection
-        title="Archive browser"
-        description="Search by title, sort by project or archive time, restore sessions, or delete sessions that are no longer needed."
-      >
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(sectionTitle)} description={_(sectionDescription)}>
         <div class="flex flex-col gap-3">
           <div class="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
             <div class="flex min-w-0 flex-1 items-center gap-2 rounded-xl border border-border-weaker-base bg-surface-raised-base px-3 py-2">
@@ -233,7 +321,7 @@ export function ArchivedSessionsPanel() {
               <input
                 type="search"
                 class="settings-archive-control-text min-w-0 flex-1 bg-transparent text-text-base outline-none placeholder:text-text-weaker"
-                placeholder="Search archived sessions..."
+                placeholder={_(searchPlaceholder)}
                 value={search()}
                 onInput={(event) => scheduleSearch(event.currentTarget.value)}
               />
@@ -250,10 +338,10 @@ export function ArchivedSessionsPanel() {
                   updateSort(nextSortBy, nextSortDir)
                 }}
               >
-                <option value="archived:desc">Archive time: newest</option>
-                <option value="archived:asc">Archive time: oldest</option>
-                <option value="scope:asc">Project: A-Z</option>
-                <option value="scope:desc">Project: Z-A</option>
+                <option value="archived:desc">{_(sortNewestLabel)}</option>
+                <option value="archived:asc">{_(sortOldestLabel)}</option>
+                <option value="scope:asc">{_(sortProjectAZ)}</option>
+                <option value="scope:desc">{_(sortProjectZA)}</option>
               </select>
               <Button
                 type="button"
@@ -263,7 +351,7 @@ export function ArchivedSessionsPanel() {
                 disabled={busy()}
                 onClick={() => void load(offset())}
               >
-                Refresh
+                {_(refreshLabel)}
               </Button>
             </div>
           </div>
@@ -276,7 +364,11 @@ export function ArchivedSessionsPanel() {
               onClick={toggleSelectVisible}
             >
               <SelectionCheckbox selected={allVisibleSelected()} />
-              <span>{selectedCount() > 0 ? `${selectedCount()} selected` : "Select visible"}</span>
+              <span>
+                {selectedCount() > 0
+                  ? _({ ...selectedCountLabel, values: { count: selectedCount() } })
+                  : _(selectVisibleLabel)}
+              </span>
             </button>
             <div class="flex flex-wrap items-center gap-2">
               <Button
@@ -287,7 +379,7 @@ export function ArchivedSessionsPanel() {
                 disabled={selectedCount() === 0 || busy()}
                 onClick={() => confirmRestore(selectedItems())}
               >
-                {batchBusy() === "restore" ? "Restoring..." : "Restore selected"}
+                {batchBusy() === "restore" ? _(restoringLabel) : _(restoreSelectedLabel)}
               </Button>
               <Button
                 type="button"
@@ -297,21 +389,21 @@ export function ArchivedSessionsPanel() {
                 disabled={selectedCount() === 0 || busy()}
                 onClick={() => confirmDelete(selectedItems())}
               >
-                {batchBusy() === "delete" ? "Deleting..." : "Delete selected"}
+                {batchBusy() === "delete" ? _(deletingLabel) : _(deleteSelectedLabel)}
               </Button>
             </div>
           </div>
 
           <div class="settings-archive-caption flex items-center justify-between text-text-weak">
             <span>{pageLabel()}</span>
-            <span>Restore keeps data; permanent deletion cannot be undone.</span>
+            <span>{_(restoreHint)}</span>
           </div>
 
           <SettingsEntityList
             isEmpty={!loading() && items().length === 0}
             emptyIcon={getSemanticIcon("session.archive")}
-            emptyTitle={search().trim() ? "No archived sessions match your search" : "No archived sessions"}
-            emptyDescription="Archived sessions will appear here after they are hidden from active lists."
+            emptyTitle={search().trim() ? _(noResultsTitle) : _(noResultsFallback)}
+            emptyDescription={_(noResultsDescription)}
           >
             <div class="flex flex-col overflow-hidden rounded-xl border border-border-weaker-base bg-surface-base/50">
               <For each={items()}>
@@ -326,7 +418,7 @@ export function ArchivedSessionsPanel() {
                         <button
                           type="button"
                           class="mt-0.5 shrink-0"
-                          aria-label={`${selected() ? "Deselect" : "Select"} ${item.title || "Untitled session"}`}
+                          aria-label={`${selected() ? "Deselect" : "Select"} ${item.title || _(untitledSessionLabel)}`}
                           disabled={busy()}
                           onClick={() => toggleSelected(item)}
                         >
@@ -336,17 +428,22 @@ export function ArchivedSessionsPanel() {
                           <Icon name={getSemanticIcon("session.archive")} size="small" />
                         </div>
                         <div class="min-w-0">
-                          <div class="settings-row-title truncate">{item.title || "Untitled session"}</div>
+                          <div class="settings-row-title truncate">{item.title || _(untitledSessionLabel)}</div>
                           <div class="settings-archive-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-text-weak">
                             <span class="ds-inline-badge ds-inline-badge-muted">{scopeLabel(item)}</span>
-                            <span>Archived {relativeTime(item.time.archived ?? item.time.updated)}</span>
-                            <span title={formatArchivedAt(item.time.archived)}>
-                              {formatArchivedAt(item.time.archived)}
+                            <span>
+                              {_({
+                                ...archivedAtLabel,
+                                values: { time: relativeTime(fmt, item.time.archived ?? item.time.updated) },
+                              })}
+                            </span>
+                            <span title={formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}>
+                              {formatArchivedAt(fmt, item.time.archived, _(unknownArchiveTime))}
                             </span>
                           </div>
                           <Show when={item.lastExchange?.user}>
                             <div class="settings-archive-caption mt-1 line-clamp-1 text-text-weaker">
-                              You: {item.lastExchange!.user}
+                              {_({ ...youLabel, values: { text: item.lastExchange!.user } })}
                             </div>
                           </Show>
                         </div>
@@ -360,7 +457,7 @@ export function ArchivedSessionsPanel() {
                           disabled={busy()}
                           onClick={() => confirmRestore([item])}
                         >
-                          {busyID() === item.id ? "Restoring..." : "Restore"}
+                          {busyID() === item.id ? _(singleRestoringLabel) : _(singleRestoreLabel)}
                         </Button>
                         <Button
                           type="button"
@@ -370,7 +467,7 @@ export function ArchivedSessionsPanel() {
                           disabled={busy()}
                           onClick={() => confirmDelete([item])}
                         >
-                          {busyID() === item.id ? "Deleting..." : "Delete permanently"}
+                          {busyID() === item.id ? _(singleDeletingLabel) : _(singleDeleteLabel)}
                         </Button>
                       </div>
                     </div>
@@ -388,7 +485,7 @@ export function ArchivedSessionsPanel() {
               disabled={busy() || offset() === 0}
               onClick={() => void load(Math.max(0, offset() - PAGE_LIMIT))}
             >
-              Previous
+              {_(previousLabel)}
             </Button>
             <Button
               type="button"
@@ -397,7 +494,7 @@ export function ArchivedSessionsPanel() {
               disabled={busy() || !hasNextPage()}
               onClick={() => void load(offset() + PAGE_LIMIT)}
             >
-              Next
+              {_(nextLabel)}
             </Button>
           </div>
         </div>

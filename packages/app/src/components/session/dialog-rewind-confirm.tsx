@@ -7,15 +7,15 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLocale } from "@/context/locale"
 import "./dialog-rewind-confirm.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { S } from "./session-i18n"
 
 interface DialogRewindConfirmProps {
-  /** The target user message to rewind to (cut = this message and everything after) */
   cutMessage: UserMessage
   /** All messages in canonical session order */
   allMessages: { id: string; role: string }[]
-  /** Parts records keyed by message id */
   partsByMessage: Record<string, PartType[] | undefined>
   onRewind: (cutMessageID: string, restoreFiles: boolean) => Promise<void>
 }
@@ -32,11 +32,9 @@ function computeCounts(props: {
   const { allMessages, cutId, partsByMessage } = props
   const idx = activeMessageIndex(allMessages, cutId)
   if (idx < 0) return { droppedUserMessages: 0, assistantReplies: 0, affectedFiles: 0 }
-
   const dropped = allMessages.slice(idx)
   const droppedUser = dropped.filter((m) => m.role === "user")
   const assistantReplies = dropped.filter((m) => m.role === "assistant").length
-
   const affectedFileSet = new Set<string>()
   for (const m of dropped) {
     const parts = partsByMessage[m.id]
@@ -48,12 +46,7 @@ function computeCounts(props: {
       }
     }
   }
-
-  return {
-    droppedUserMessages: droppedUser.length,
-    assistantReplies,
-    affectedFiles: affectedFileSet.size,
-  }
+  return { droppedUserMessages: droppedUser.length, assistantReplies, affectedFiles: affectedFileSet.size }
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -81,11 +74,13 @@ function displaySummary(value: string | undefined) {
   const trimmed = value?.trim()
   if (!trimmed) return undefined
   if (trimmed.length <= 96) return trimmed
-  return `${trimmed.slice(0, 95)}…`
+  return `${trimmed.slice(0, 95)}\u2026`
 }
 
 export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
   const dialog = useDialog()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const [state, setState] = createStore({ pending: false, restoreFiles: false })
 
   const summary = createMemo(() =>
@@ -93,20 +88,16 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
   )
 
   const counts = createMemo(() =>
-    computeCounts({
-      allMessages: props.allMessages,
-      cutId: props.cutMessage.id,
-      partsByMessage: props.partsByMessage,
-    }),
+    computeCounts({ allMessages: props.allMessages, cutId: props.cutMessage.id, partsByMessage: props.partsByMessage }),
   )
 
   const description = createMemo(() => {
     const title = summary()
-    if (title) return `Return to before “${title}”. Hidden work can be redone until you start a new task.`
-    return "Return to before this message. Hidden work can be redone until you start a new task."
+    if (title) return i18n._({ ...S.rewindBefore, values: { title } })
+    return _(S.rewindBeforeUntitled)
   })
 
-  const confirmLabel = createMemo(() => (state.restoreFiles ? "Rewind and restore files" : "Rewind"))
+  const confirmLabel = createMemo(() => (state.restoreFiles ? _(S.rewindConfirmRestore) : _(S.rewindConfirm)))
 
   const handleRewind = async () => {
     if (state.pending) return
@@ -117,8 +108,8 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
     } catch (error) {
       showToast({
         type: "error",
-        title: "Rewind failed",
-        description: error instanceof Error ? error.message : "Request failed",
+        title: _(S.rewindFailed),
+        description: error instanceof Error ? error.message : _(S.rewindRequestFailed),
       })
       setState("pending", false)
     }
@@ -126,7 +117,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
 
   return (
     <Dialog
-      title="Rewind to this point"
+      title={_(S.rewindTitle)}
       description={description()}
       size="compact"
       class="rewind-confirm-dialog"
@@ -146,18 +137,19 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
       }
     >
       <div class="rewind-confirm-impact">
-        <span class="rewind-confirm-impact-label">This will hide</span>
-        <span class="rewind-confirm-impact-value">{hiddenItemText(counts())} starting here.</span>
+        <span class="rewind-confirm-impact-label">{_(S.rewindThisHides)}</span>
+        <span class="rewind-confirm-impact-value">
+          {hiddenItemText(counts())} {_(S.rewindStartingHere)}
+        </span>
         <Show when={counts().affectedFiles > 0}>
           <span class="rewind-confirm-impact-note">
-            {fileChangeText(counts().affectedFiles)} associated with the hidden work.
+            {fileChangeText(counts().affectedFiles)} {_(S.rewindAssociatedWork)}
           </span>
         </Show>
       </div>
-
       <Show when={counts().affectedFiles > 0}>
         <div class="rewind-confirm-option-group">
-          <div class="rewind-confirm-section-label">Optional</div>
+          <div class="rewind-confirm-section-label">{_(S.rewindOptional)}</div>
           <label
             class="rewind-confirm-file-option"
             data-selected={state.restoreFiles ? "true" : "false"}
@@ -170,19 +162,17 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
               disabled={state.pending}
             />
             <span class="rewind-confirm-file-option-copy">
-              <span class="rewind-confirm-file-option-title">Also restore file changes</span>
+              <span class="rewind-confirm-file-option-title">{_(S.rewindAlsoRestore)}</span>
               <span class="rewind-confirm-file-option-hint">
-                Revert on-disk edits made after this point across {fileChangeText(counts().affectedFiles)}. If you leave
-                this off, you can still restore files later from the banner.
+                {i18n._({ ...S.rewindAlsoRestoreHint, values: { files: fileChangeText(counts().affectedFiles) } })}
               </span>
             </span>
           </label>
         </div>
       </Show>
-
       <div data-slot="dialog-actions" class="rewind-confirm-actions">
         <Button type="button" variant="ghost" size="large" disabled={state.pending} onClick={() => dialog.close()}>
-          Cancel
+          {_(S.rewindCancel)}
         </Button>
         <Button
           type="button"
@@ -195,7 +185,7 @@ export function DialogRewindConfirm(props: DialogRewindConfirmProps) {
           {state.pending ? (
             <>
               <Spinner class="rewind-confirm-spinner" />
-              {"Rewinding…"}
+              {_(S.rewindRewinding)}
             </>
           ) : (
             confirmLabel()

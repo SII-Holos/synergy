@@ -25002,6 +25002,11 @@
             "description": "JSON schema reference for configuration validation",
             "type": "string"
           },
+          "locale": {
+            "description": "UI locale (system = follow OS, default: system)",
+            "type": "string",
+            "enum": ["system", "en", "zh-CN"]
+          },
           "theme": {
             "description": "Theme name to use for the interface",
             "type": "string"

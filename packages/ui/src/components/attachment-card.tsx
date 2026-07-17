@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Match, Show, Switch, type JSX } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useDialog } from "../context/dialog"
 import { useResourceOpen } from "../context/resource-open"
 import { FileIcon } from "./file-icon"
@@ -29,11 +30,15 @@ export {
   resolveImagePreviewImage,
 } from "./attachment-card-utils"
 
+const previewImageDescriptor = { id: "ui.attachment.previewImage", message: "Preview {filename}" }
+const openAttachmentDescriptor = { id: "ui.attachment.openAttachment", message: "Open {filename}" }
+
 export function AttachmentCard(props: {
   file: AttachmentFile
   serverUrl: string
   imagePreview?: { images: ImagePreviewImage[]; index: number }
 }) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const resourceOpen = useResourceOpen()
   const [imageFailed, setImageFailed] = createSignal(false)
@@ -77,7 +82,7 @@ export function AttachmentCard(props: {
           data-type="image"
           data-size={size()}
           data-crop={crop()}
-          aria-label={`Preview ${filename()}`}
+          aria-label={_({ ...previewImageDescriptor, values: { filename: filename() } })}
           title={filename()}
           onClick={openAttachment}
         >
@@ -108,7 +113,7 @@ export function AttachmentCard(props: {
           data-type="thumbnail"
           data-size={size()}
           data-crop={crop()}
-          aria-label={`Open ${filename()}`}
+          aria-label={_({ ...openAttachmentDescriptor, values: { filename: filename() } })}
           title={filename()}
           onClick={openAttachment}
         >

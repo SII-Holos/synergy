@@ -1,5 +1,6 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Icon } from "./icon"
 import {
   clampImageIndex,
@@ -18,6 +19,25 @@ export interface ImagePreviewProps {
   initialIndex?: number
 }
 
+const noImageSelectedDescriptor = { id: "ui.imagePreview.noImageSelected", message: "No image selected" }
+const imagePreviewUnavailableDescriptor = {
+  id: "ui.imagePreview.unavailable",
+  message: "Image preview is unavailable.",
+}
+const closeImagePreviewDescriptor = { id: "ui.imagePreview.close", message: "Close image preview" }
+const zoomControlsDescriptor = { id: "ui.imagePreview.zoomControls", message: "Zoom controls" }
+const imageActionsDescriptor = { id: "ui.imagePreview.imageActions", message: "Image actions" }
+const zoomOutDescriptor = { id: "ui.imagePreview.zoomOut", message: "Zoom out" }
+const zoomInDescriptor = { id: "ui.imagePreview.zoomIn", message: "Zoom in" }
+const resetViewDescriptor = { id: "ui.imagePreview.resetView", message: "Reset image view" }
+const rotateClockwiseDescriptor = { id: "ui.imagePreview.rotateClockwise", message: "Rotate image clockwise" }
+const downloadImageDescriptor = { id: "ui.imagePreview.download", message: "Download image" }
+const openNewWindowDescriptor = { id: "ui.imagePreview.openNewWindow", message: "Open image in new window" }
+const previousImageDescriptor = { id: "ui.imagePreview.previous", message: "Previous image" }
+const nextImageDescriptor = { id: "ui.imagePreview.next", message: "Next image" }
+const loadingImageDescriptor = { id: "ui.imagePreview.loading", message: "Loading image…" }
+const imageLoadFailedDescriptor = { id: "ui.imagePreview.loadFailed", message: "Image failed to load" }
+
 type LoadStatus = "loading" | "loaded" | "error"
 
 interface PanOffset {
@@ -33,6 +53,7 @@ interface DragState {
 }
 
 export function ImagePreview(props: ImagePreviewProps) {
+  const { _ } = useLingui()
   const [index, setIndex] = createSignal(clampImageIndex(props.initialIndex, props.images.length))
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal<PanOffset>({ x: 0, y: 0 })
@@ -167,8 +188,8 @@ export function ImagePreview(props: ImagePreviewProps) {
               when={current()}
               fallback={
                 <div data-slot="image-preview-title-group">
-                  <div data-slot="image-preview-title">No image selected</div>
-                  <div data-slot="image-preview-meta">Image preview is unavailable.</div>
+                  <div data-slot="image-preview-title">{_(noImageSelectedDescriptor)}</div>
+                  <div data-slot="image-preview-meta">{_(imagePreviewUnavailableDescriptor)}</div>
                 </div>
               }
             >
@@ -188,8 +209,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                 data-slot="image-preview-close"
                 data-component="icon-button"
                 data-variant="ghost"
-                aria-label="Close image preview"
-                title="Close image preview"
+                aria-label={_(closeImagePreviewDescriptor)}
+                title={_(closeImagePreviewDescriptor)}
               >
                 <Icon name="x" size="small" />
               </Kobalte.CloseButton>
@@ -201,20 +222,20 @@ export function ImagePreview(props: ImagePreviewProps) {
               fallback={
                 <div data-slot="image-preview-fallback">
                   <Icon name="image" size="normal" />
-                  <span>No image selected</span>
+                  <span>{_(noImageSelectedDescriptor)}</span>
                 </div>
               }
             >
               {(image) => (
                 <>
-                  <div data-slot="image-preview-actions" role="group" aria-label="Image actions">
-                    <div data-slot="image-preview-zoom-group" role="group" aria-label="Zoom controls">
+                  <div data-slot="image-preview-actions" role="group" aria-label={_(imageActionsDescriptor)}>
+                    <div data-slot="image-preview-zoom-group" role="group" aria-label={_(zoomControlsDescriptor)}>
                       <button
                         type="button"
                         data-component="icon-button"
                         data-variant="ghost"
-                        aria-label="Zoom out"
-                        title="Zoom out"
+                        aria-label={_(zoomOutDescriptor)}
+                        title={_(zoomOutDescriptor)}
                         disabled={!canZoomOut()}
                         onClick={() => zoom("out")}
                       >
@@ -223,8 +244,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                       <button
                         type="button"
                         data-component="image-preview-zoom"
-                        aria-label="Reset image view"
-                        title="Reset image view"
+                        aria-label={_(resetViewDescriptor)}
+                        title={_(resetViewDescriptor)}
                         onClick={resetTransform}
                       >
                         {Math.round(scale() * 100)}%
@@ -233,8 +254,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                         type="button"
                         data-component="icon-button"
                         data-variant="ghost"
-                        aria-label="Zoom in"
-                        title="Zoom in"
+                        aria-label={_(zoomInDescriptor)}
+                        title={_(zoomInDescriptor)}
                         disabled={!canZoomIn()}
                         onClick={() => zoom("in")}
                       >
@@ -245,8 +266,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                       type="button"
                       data-component="icon-button"
                       data-variant="ghost"
-                      aria-label="Rotate image clockwise"
-                      title="Rotate image clockwise"
+                      aria-label={_(rotateClockwiseDescriptor)}
+                      title={_(rotateClockwiseDescriptor)}
                       onClick={rotate}
                     >
                       <Icon name="rotate-cw" size="small" />
@@ -254,8 +275,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                     <a
                       data-component="icon-button"
                       data-variant="ghost"
-                      aria-label="Download image"
-                      title="Download image"
+                      aria-label={_(downloadImageDescriptor)}
+                      title={_(downloadImageDescriptor)}
                       href={image().downloadUrl ?? image().src}
                       download={image().filename}
                       rel="noopener noreferrer"
@@ -266,8 +287,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                       type="button"
                       data-component="icon-button"
                       data-variant="ghost"
-                      aria-label="Open image in new window"
-                      title="Open image in new window"
+                      aria-label={_(openNewWindowDescriptor)}
+                      title={_(openNewWindowDescriptor)}
                       onClick={openExternal}
                     >
                       <Icon name="arrow-up-right" size="small" />
@@ -280,8 +301,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                       data-side="left"
                       data-component="icon-button"
                       data-variant="ghost"
-                      aria-label="Previous image"
-                      title="Previous image"
+                      aria-label={_(previousImageDescriptor)}
+                      title={_(previousImageDescriptor)}
                       disabled={!canPrevious()}
                       onClick={() => navigate("previous")}
                     >
@@ -299,7 +320,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                     onLostPointerCapture={endDrag}
                   >
                     <Show when={loadStatus() === "loading"}>
-                      <div data-slot="image-preview-loading">Loading image…</div>
+                      <div data-slot="image-preview-loading">{_(loadingImageDescriptor)}</div>
                     </Show>
                     <Show
                       when={loadStatus() !== "error"}
@@ -309,7 +330,7 @@ export function ImagePreview(props: ImagePreviewProps) {
                           <span data-slot="image-preview-fallback-title" title={image().filename}>
                             {image().filename}
                           </span>
-                          <span>Image failed to load</span>
+                          <span>{_(imageLoadFailedDescriptor)}</span>
                         </div>
                       }
                     >
@@ -334,8 +355,8 @@ export function ImagePreview(props: ImagePreviewProps) {
                       data-side="right"
                       data-component="icon-button"
                       data-variant="ghost"
-                      aria-label="Next image"
-                      title="Next image"
+                      aria-label={_(nextImageDescriptor)}
+                      title={_(nextImageDescriptor)}
                       disabled={!canNext()}
                       onClick={() => navigate("next")}
                     >

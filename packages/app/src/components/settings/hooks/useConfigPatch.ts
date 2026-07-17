@@ -39,6 +39,9 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const theme = general.theme.trim()
   if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
 
+  const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
+  if (general.locale !== resolvedLocale) patch.locale = general.locale
+
   const toast = toastPatchFromPreferences(general.mutedToasts, general.toastDurations)
   const current = normalizeServerToast(cfg.toast) ?? { muted: [] }
   // Always include muted so domain mergeDeep can replace/clear the array.
