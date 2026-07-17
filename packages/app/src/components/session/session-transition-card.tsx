@@ -3,6 +3,7 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import {
   sessionTransitionPresentation,
   translateSessionTransitionCopy,
@@ -74,7 +75,7 @@ export function SessionTransitionCard(props: {
           <Icon name={presentation().icon} size="small" />
         </span>
         <div class="session-transition-card-heading">
-          <span class="session-transition-card-kicker">{i18n._(presentation().kicker)}</span>
+          <span class="session-transition-card-kicker">{translateDescriptor(presentation().kicker, i18n)}</span>
           <span class="session-transition-card-title">
             {translateSessionTransitionCopy(props.progress.title, i18n)}
           </span>
@@ -90,7 +91,7 @@ export function SessionTransitionCard(props: {
             class="session-transition-card-dismiss"
             onClick={handleDismiss}
             aria-label={_(S.transitionCardDismissAria)}
-            title={_(S.worktreeCardDismissTitle)}
+            title={_(S.transitionCardDismissTitle)}
           />
         </Show>
       </div>

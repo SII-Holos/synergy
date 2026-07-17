@@ -111,8 +111,11 @@ function WorkflowChip(props: {
   working: () => boolean
   onCancel: () => void | Promise<void>
 }) {
-  const { i18n } = useLocale()
-  const blockedTooltip = i18n._(PI.stopBeforeChange)
+  const { controller, i18n } = useLocale()
+  const blockedTooltip = () => {
+    controller.activeLocale()
+    return i18n._(PI.stopBeforeChange)
+  }
   const handleClick = (event: MouseEvent) => {
     if (!props.working()) {
       void props.onCancel()
@@ -124,12 +127,12 @@ function WorkflowChip(props: {
     showToast({
       type: "warning",
       title: i18n._(PI.sessionRunning),
-      description: blockedTooltip,
+      description: blockedTooltip(),
     })
   }
 
   return (
-    <Tooltip placement="top" value={props.working() ? blockedTooltip : props.tooltip}>
+    <Tooltip placement="top" value={props.working() ? blockedTooltip() : props.tooltip}>
       <button
         type="button"
         aria-label={props.ariaLabel}
@@ -1805,7 +1808,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             />
             <ComposerSlotOutlet slot="composer.toolbar.right" sessionId={params.id} class="contents" />
             <Show when={!sdk.connected()}>
-              <Tooltip placement="top" value={`${i18n._(PI.connectionLost)} — responses may be delayed`}>
+              <Tooltip placement="top" value={i18n._(PI.connectionLost)}>
                 <div class="flex items-center justify-center size-5">
                   <Icon
                     name={getSemanticIcon("prompt.signal")}

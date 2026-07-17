@@ -416,6 +416,7 @@ export const S = {
 
   // session-transition-card.tsx — generic transition card
   transitionCardDismissAria: { id: "session.transition.card.dismissAria", message: "Dismiss session progress" },
+  transitionCardDismissTitle: { id: "session.transition.card.dismissTitle", message: "Dismiss" },
   transitionCardRetry: { id: "session.transition.card.retry", message: "Retry" },
 
   // session-transition-progress.ts — general session startup factory
