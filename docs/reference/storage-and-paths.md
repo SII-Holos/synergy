@@ -49,7 +49,12 @@ data/lattice/events/<scope>/
 data/holos/contacts/
 data/holos/mailbox/
 data/stats/
+data/github/deliveries/
+data/github/ci/
+data/github/runtime.json
 ```
+
+GitHub shadow deliveries, CI failure state, and runtime anchor live under `data/github/`. Each delivery is keyed by its `x-github-delivery` GUID.
 
 Inside a session, `info.json`, `summary.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 

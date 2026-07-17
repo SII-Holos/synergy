@@ -39,7 +39,7 @@ async function launchAndCaptureCreatedTask(
   return { createdTask, launchPromise }
 }
 
-async function writeAssistantText(sessionID: string, text: string) {
+async function writeAssistantText(sessionID: string, text: string, cost = 0) {
   const parentID = Identifier.ascending("message")
   const message = await Session.updateMessage({
     id: Identifier.ascending("message"),
@@ -52,7 +52,7 @@ async function writeAssistantText(sessionID: string, text: string) {
       cwd: ScopeContext.current.directory,
       root: ScopeContext.current.directory,
     },
-    cost: 0,
+    cost,
     tokens: {
       input: 0,
       output: 0,
@@ -1117,6 +1117,42 @@ describe.serial("Cortex", () => {
             const completed = await waitUntilTerminal(task.id)
             expect(completed?.status).toBe("completed")
             expect(completed?.output).toEqual({ mode: "final_response", value: "final prose" })
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+    test("discards task output when actual usage exceeds the cost budget", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "over budget", 0.02)
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Cost bounded response",
+              prompt: "Answer",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              notifyParentOnComplete: false,
+              output: { mode: "final_response" },
+              maxCost: 0.01,
+            })
+
+            const completed = await waitUntilTerminal(task.id)
+            expect(completed?.status).toBe("error")
+            expect(completed?.output).toBeUndefined()
+            expect(completed?.usage?.cost).toBe(0.02)
+            expect(completed?.error).toContain("cost budget")
           } finally {
             ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
           }

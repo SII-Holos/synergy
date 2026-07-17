@@ -22,21 +22,22 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                                         |
-| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                    |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                      |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                   |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                 |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                     |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                          |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                              |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                          |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                  |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                           |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                         |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental and observability settings |
+| File                   | Domain      | Owned configuration                                                                                                                     |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                                |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                  |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                               |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                             |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                            |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                 |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                      |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                          |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                      |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                              |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                       |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                     |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings            |
+| `130-github.jsonc`     | GitHub      | GitHub App webhook shadow integration (enabled, watched repositories, event types, CI thresholds, classifier/proposal toggles, budgets) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -219,6 +220,44 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 Memory pressure may recommend a lower value, shown in Settings and the Cortex concurrency status API, but the recommendation never overrides the effective maximum. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
 
+## GitHub Shadow Integration
+
+Synergy can receive GitHub App webhooks and process them into shadow-only diagnostic proposals. The configuration is owned by the GitHub domain (`130-github.jsonc`) and is disabled by default.
+
+```jsonc
+{
+  "github": {
+    "enabled": true,
+    "watchedRepositories": ["owner/repo"],
+    "eventTypes": ["issues.opened", "workflow_run.completed"],
+    "ciFailureThreshold": 3,
+    "ciFailureWindowHours": 24,
+    "classifierEnabled": false,
+    "proposalEnabled": false,
+    "modelBudgetNano": { "maxTokens": 256, "maxCost": 0.001 },
+    "modelBudgetProposal": { "maxTokens": 2048, "maxCost": 0.02 },
+  },
+}
+```
+
+| Field                         | Required | Default                                       | Description                                                                               |
+| ----------------------------- | -------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `github.enabled`              | no       | `false`                                       | Enable the GitHub webhook shadow integration                                              |
+| `github.watchedRepositories`  | no       | —                                             | Repository full-name allowlist (e.g. `["owner/repo"]`). Absent = any repository accepted. |
+| `github.eventTypes`           | no       | `["issues.opened", "workflow_run.completed"]` | GitHub event types to process                                                             |
+| `github.ciFailureThreshold`   | no       | `3`                                           | Consecutive workflow failures before triggering a CI proposal                             |
+| `github.ciFailureWindowHours` | no       | `24`                                          | Sliding window in hours for counting CI failures                                          |
+| `github.classifierEnabled`    | no       | `false`                                       | Enable the sessionless nano classifier for ambiguous issues                               |
+| `github.proposalEnabled`      | no       | `false`                                       | Enable Cortex-based proposal generation for gated events and classified bugs              |
+| `github.modelBudgetNano`      | no       | `{ "maxTokens": 256, "maxCost": 0.001 }`      | Token and cost budget for the classifier model call                                       |
+| `github.modelBudgetProposal`  | no       | `{ "maxTokens": 2048, "maxCost": 0.02 }`      | Token and cost budget for each proposal Cortex task                                       |
+
+The `modelBudgetNano.maxTokens` cap is passed as `maxOutputTokens` to the classifier LLM call. The `modelBudgetProposal.maxTokens` cap is passed as `maxOutputTokens` to the proposal Cortex task. After the call completes, actual usage is measured against both the token and cost limits; exceeding either discards the result.
+
+The webhook secret is configured through the environment variable `SYNERGY_GITHUB_WEBHOOK_SECRET`. It is never a config field. The route returns 503 when the secret is absent.
+
+See [GitHub Shadow Integration](../architecture/github-shadow.md) for the processing pipeline and architecture invariants.
+
 ## Config Import
 
 `synergy config import <source>` imports JSON or JSONC configuration from a local file, a URL, or pasted text in the Web Settings UI. Sources are limited to 1 MiB; URL fetches time out after 15 seconds and reject redirects. Direct plan/apply API requests are limited to a 2 MiB JSON envelope.
@@ -260,16 +299,17 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Location and merge inputs
 
-| Variable                 | Effect                                                                          |
-| ------------------------ | ------------------------------------------------------------------------------- |
-| `SYNERGY_HOME`           | Change the parent of the complete `.synergy/` installation home                 |
-| `SYNERGY_CONFIG`         | Merge one additional config file after global config                            |
-| `SYNERGY_CONFIG_CONTENT` | Merge inline JSON after `SYNERGY_CONFIG`                                        |
-| `SYNERGY_CONFIG_DIR`     | Add a high-precedence config/agent/command/skill/instruction root               |
-| `SYNERGY_PERMISSION`     | Merge a final JSON permission overlay                                           |
-| `SYNERGY_CWD`            | Override the launch/current directory used by source and embedded flows         |
-| `SYNERGY_CLIENT`         | Identify the client in the runtime user agent and client-specific tool exposure |
-| `SYNERGY_GIT_BASH_PATH`  | Select Git Bash on Windows when automatic shell discovery is unsuitable         |
+| Variable                        | Effect                                                                                          |
+| ------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `SYNERGY_HOME`                  | Change the parent of the complete `.synergy/` installation home                                 |
+| `SYNERGY_CONFIG`                | Merge one additional config file after global config                                            |
+| `SYNERGY_CONFIG_CONTENT`        | Merge inline JSON after `SYNERGY_CONFIG`                                                        |
+| `SYNERGY_CONFIG_DIR`            | Add a high-precedence config/agent/command/skill/instruction root                               |
+| `SYNERGY_PERMISSION`            | Merge a final JSON permission overlay                                                           |
+| `SYNERGY_CWD`                   | Override the launch/current directory used by source and embedded flows                         |
+| `SYNERGY_CLIENT`                | Identify the client in the runtime user agent and client-specific tool exposure                 |
+| `SYNERGY_GIT_BASH_PATH`         | Select Git Bash on Windows when automatic shell discovery is unsuitable                         |
+| `SYNERGY_GITHUB_WEBHOOK_SECRET` | Required webhook signature secret for the GitHub shadow integration; absent → route returns 503 |
 
 ### Network and discovery overrides
 

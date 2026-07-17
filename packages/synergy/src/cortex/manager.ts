@@ -254,7 +254,7 @@ export namespace Cortex {
 
     setTaskStatus(taskID, "running")
 
-    const run = runTask(current, input.model)
+    const run = runTask(current, input.model, input.maxOutputTokens, input.maxCost)
       .catch(async (error) => {
         log.error("task error", { taskID, error })
         await updateTaskStatus(taskID, "error", String(error))
@@ -333,7 +333,12 @@ export namespace Cortex {
     }, PROGRESS_UPDATE_EVENT_DELAY_MS)
   }
 
-  async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
+  async function runTask(
+    task: CortexTypes.Task,
+    model?: { providerID: string; modelID: string },
+    maxOutputTokens?: number,
+    maxCost?: number,
+  ): Promise<void> {
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
 
     const initial = tasks.get(task.id)
@@ -423,6 +428,7 @@ export namespace Cortex {
         parts,
         tools: invokeTools,
         ephemeralTools,
+        maxOutputTokens,
       })
 
       let outputResolution = await CortexOutput.resolve({
@@ -445,6 +451,7 @@ export namespace Cortex {
             parts: repairParts,
             tools: CortexOutput.repairTools(),
             ephemeralTools,
+            maxOutputTokens,
           })
           outputResolution = await CortexOutput.resolve({
             sessionID: task.sessionID,
@@ -468,6 +475,13 @@ export namespace Cortex {
       unsub()
       unsub = undefined
 
+      if (maxCost !== undefined) {
+        const usage = await taskUsage(task.sessionID)
+        if (usage.cost > maxCost) {
+          await updateTaskStatus(task.id, "error", `Task exceeded its ${maxCost} cost budget.`)
+          return
+        }
+      }
       const completedOutput = await completedTaskOutput(task, agent, outputConfig, outputResolution)
       await updateTaskStatus(task.id, "completed", undefined, completedOutput)
     } catch (error) {

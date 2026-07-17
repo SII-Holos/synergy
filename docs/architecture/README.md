@@ -30,6 +30,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                   |
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                   |
 | [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                          |
+| [GitHub shadow](github-shadow.md)                | Webhook receipt, L0 gate, L1 sessionless classification, L2 hidden Cortex proposals, and worker lifecycle.             |
 
 ## Cross-Cutting Invariants
 
@@ -60,7 +61,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | Knowledge                | `packages/synergy/src/library/`, `note/`                                           |
 | Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components           |
 | Automation               | `packages/synergy/src/agenda/`                                                     |
-| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `remote/`, `mcp/`             |
+| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `remote/`, `mcp/`, `github/`  |
 | External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                     |
 | Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules            |
 | Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes      |

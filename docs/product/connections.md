@@ -81,6 +81,10 @@ Email is an optional direct integration configured in `110-email.jsonc`. SMTP ow
 
 The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
 
+## GitHub Webhooks
+
+Synergy can receive GitHub App webhooks for shadow-only diagnostic processing. The integration is configured in `130-github.jsonc` and uses the `SYNERGY_GITHUB_WEBHOOK_SECRET` environment variable for signature verification. It is an inbound-only observer: it classifies issues and CI failures, then optionally produces hidden Cortex structured proposals, but never performs GitHub API writes. See [GitHub Shadow Integration](../architecture/github-shadow.md) for the full pipeline.
+
 ## Boundaries
 
 - Channels translate external conversations into endpoint sessions.
@@ -88,4 +92,5 @@ The `email_send` and `email_read` tools share the `communication.email` taxonomy
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
+- GitHub webhooks are a read-only shadow integration, not a Channel endpoint.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

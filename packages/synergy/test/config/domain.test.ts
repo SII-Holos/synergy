@@ -27,6 +27,7 @@ test("config domain filenames are stable and ordered", () => {
     "100-holos.jsonc",
     "110-email.jsonc",
     "120-runtime.jsonc",
+    "130-github.jsonc",
   ])
 })
 
@@ -44,6 +45,12 @@ test("cortex task concurrency is owned by the runtime domain", () => {
   expect(ConfigDomain.extract({ cortex: { maxConcurrentTasks: 6 } }, "runtime")).toEqual({
     cortex: { maxConcurrentTasks: 6 },
   })
+})
+
+test("GitHub shadow integration has its own canonical config domain", () => {
+  const github = Config.GitHubIntegrationConfig.parse({ enabled: true })
+  expect(ConfigDomain.domainForKey("github")?.id).toBe("github")
+  expect(ConfigDomain.extract({ github }, "github")).toEqual({ github })
 })
 
 test("product update mode is not part of server config", async () => {

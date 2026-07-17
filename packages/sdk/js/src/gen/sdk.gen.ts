@@ -152,6 +152,8 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
+  GithubWebhookReceiveErrors,
+  GithubWebhookReceiveResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -3363,6 +3365,25 @@ export class Performance extends HeyApiClient {
   events = new Events({ client: this.client })
 }
 
+export class Webhook extends HeyApiClient {
+  /**
+   * Receive a GitHub App webhook
+   *
+   * Verify, deduplicate, and durably enqueue a GitHub App webhook for shadow processing.
+   */
+  public receive<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).post<
+      GithubWebhookReceiveResponses,
+      GithubWebhookReceiveErrors,
+      ThrowOnError
+    >({ url: "/integrations/github/webhook", ...options })
+  }
+}
+
+export class Github extends HeyApiClient {
+  webhook = new Webhook({ client: this.client })
+}
+
 export class Credentials extends HeyApiClient {
   /**
    * Import provider credentials
@@ -5012,6 +5033,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5057,6 +5079,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -5109,6 +5132,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
     },
@@ -10335,6 +10359,8 @@ export class SynergyClient extends HeyApiClient {
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
+
+  github = new Github({ client: this.client })
 
   holos = new Holos({ client: this.client })
 

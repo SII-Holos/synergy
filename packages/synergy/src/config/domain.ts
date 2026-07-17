@@ -19,6 +19,7 @@ export namespace ConfigDomain {
     "holos",
     "email",
     "runtime",
+    "github",
   ])
   export type Id = z.infer<typeof Id>
 
@@ -112,6 +113,7 @@ export namespace ConfigDomain {
       "experimental",
       "observability",
     ]),
+    def("github", "130-github.jsonc", "GitHub", ["github"]),
   ] as const satisfies Definition[]
 
   function def(

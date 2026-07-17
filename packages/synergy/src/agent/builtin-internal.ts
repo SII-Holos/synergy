@@ -14,6 +14,8 @@ import PROMPT_SCRIPT from "./prompt/script.txt"
 import PROMPT_SMART_ALLOW from "./prompt/smart-allow.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_GITHUB_CLASSIFIER from "./prompt/github-classifier.txt"
+import PROMPT_GITHUB_PROPOSER from "./prompt/github-proposer.txt"
 
 export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const performanceAnalyst = createPerformanceAnalystAgent(ctx)
@@ -158,6 +160,28 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_AGENT_GENERATE,
       ...resolveAgentModelRole(ctx, "mini"),
+    },
+    "github-shadow-classifier": {
+      name: "github-shadow-classifier",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_CLASSIFIER,
+      ...resolveAgentModelRole(ctx, "nano"),
+    },
+    "github-shadow-proposer": {
+      name: "github-shadow-proposer",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_PROPOSER,
+      ...resolveAgentModelRole(ctx, "mid"),
     },
     anima: {
       name: "anima",

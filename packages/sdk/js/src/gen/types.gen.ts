@@ -878,6 +878,11 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
+export type GitHubWebhookResponse = {
+  accepted: true
+  duplicate: boolean
+}
+
 export type HolosLoginResponse = {
   url: string
 }
@@ -1600,6 +1605,27 @@ export type ServerConfig = {
    * Additional domains to allow for CORS
    */
   cors?: Array<string>
+}
+
+/**
+ * GitHub App webhook shadow integration configuration
+ */
+export type GitHubIntegrationConfig = {
+  enabled?: boolean
+  watchedRepositories?: Array<string>
+  eventTypes?: Array<string>
+  ciFailureThreshold?: number
+  ciFailureWindowHours?: number
+  modelBudgetNano?: {
+    maxTokens: number
+    maxCost: number
+  }
+  modelBudgetProposal?: {
+    maxTokens: number
+    maxCost: number
+  }
+  classifierEnabled?: boolean
+  proposalEnabled?: boolean
 }
 
 /**
@@ -2911,6 +2937,7 @@ export type Config = {
      */
     maxConcurrentTasks?: number
   }
+  github?: GitHubIntegrationConfig
   watcher?: {
     ignore?: Array<string>
   }
@@ -3205,6 +3232,7 @@ export type ConfigDomainSummary = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   label: string
   path: string
@@ -3266,6 +3294,7 @@ export type ConfigDomainImportDomainPlan = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -3323,6 +3352,7 @@ export type ConfigDomainImportPlanInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -3403,6 +3433,7 @@ export type ConfigImportRevisionConflictError = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
     >
   }
 }
@@ -3431,6 +3462,7 @@ export type ConfigDomainImportApplyInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -8020,6 +8052,51 @@ export type PerformanceEventsStreamResponses = {
   200: unknown
 }
 
+export type GithubWebhookReceiveData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/integrations/github/webhook"
+}
+
+export type GithubWebhookReceiveErrors = {
+  /**
+   * Malformed webhook
+   */
+  400: {
+    error: string
+  }
+  /**
+   * Invalid webhook signature
+   */
+  401: {
+    error: string
+  }
+  /**
+   * Webhook payload too large
+   */
+  413: {
+    error: string
+  }
+  /**
+   * Webhook secret unavailable
+   */
+  503: {
+    error: string
+  }
+}
+
+export type GithubWebhookReceiveError = GithubWebhookReceiveErrors[keyof GithubWebhookReceiveErrors]
+
+export type GithubWebhookReceiveResponses = {
+  /**
+   * Webhook accepted
+   */
+  202: GitHubWebhookResponse
+}
+
+export type GithubWebhookReceiveResponse = GithubWebhookReceiveResponses[keyof GithubWebhookReceiveResponses]
+
 export type GlobalDisposeData = {
   body?: never
   path?: never
@@ -8805,6 +8882,7 @@ export type ConfigDomainGetData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8848,6 +8926,7 @@ export type ConfigDomainUpdateData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8891,6 +8970,7 @@ export type ConfigDomainOpenData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string

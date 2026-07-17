@@ -143,6 +143,8 @@ export namespace CortexTypes {
     output: OutputConfig.optional(),
     owner: PluginTaskOwner.optional(),
     timeoutMs: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    maxCost: z.number().nonnegative().optional(),
   })
   export type LaunchInput = z.infer<typeof LaunchInput>
 }
