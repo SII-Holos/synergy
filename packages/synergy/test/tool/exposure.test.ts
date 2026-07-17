@@ -319,6 +319,7 @@ describe("tool exposure", () => {
         const processor = {
           message: { id: "message_test" },
           partFromToolCall: () => undefined,
+          updateToolCallState: async () => {},
           executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
             const existing = callbacks.get(callID)
             if (existing) return existing as Promise<T>
