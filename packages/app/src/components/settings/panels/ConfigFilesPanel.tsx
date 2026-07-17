@@ -1,21 +1,41 @@
 import { For, Show } from "solid-js"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
+import { useLingui } from "@lingui/solid"
 import { SettingsPage, SettingsPathRow, SettingsSection } from "../components/SettingsPrimitives"
+
+const configuredStatus = { id: "settings.configFiles.configured", message: "Configured" }
+const emptyStatus = { id: "settings.configFiles.empty", message: "Empty" }
+const noDomainsLabel = { id: "settings.configFiles.noDomains", message: "No config domains found" }
+const configSourceTitle = { id: "settings.configFiles.source", message: "Configuration source" }
+const pageTitle = { id: "settings.configFiles.page.title", message: "Config Files" }
+const pageDescription = {
+  id: "settings.configFiles.page.description",
+  message: "Canonical config domains and their backing files.",
+}
+
+function ownedKeysSummary(count: number) {
+  return {
+    id: "settings.configFiles.ownedKeys",
+    message: "{count, plural, one {# owned key} other {# owned keys}}",
+    values: { count },
+  }
+}
 
 export function ConfigFilesPanel(props: {
   domains: ConfigDomainSummary[]
   openingDomain?: string
   onOpenDomain?: (domain: ConfigDomainSummary["id"]) => void
 }) {
+  const { _ } = useLingui()
   return (
-    <SettingsPage title="Config Files" description="Canonical config domains and their backing files.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
       <SettingsSection>
         <For each={props.domains}>
           {(domain) => (
             <SettingsPathRow
               label={domain.filename}
               path={domain.path}
-              status={domainStatus(domain)}
+              status={domainStatus(domain, _)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
               onOpen={props.onOpenDomain ? () => props.onOpenDomain?.(domain.id) : undefined}
@@ -24,7 +44,7 @@ export function ConfigFilesPanel(props: {
           )}
         </For>
         <Show when={props.domains.length === 0}>
-          <div class="ds-empty-state">No config domains found</div>
+          <div class="ds-empty-state">{_(noDomainsLabel)}</div>
         </Show>
       </SettingsSection>
     </SettingsPage>
@@ -38,16 +58,17 @@ export function ConfigReferencePanel(props: {
   openingDomain?: string
   onOpenDomain?: (domain: ConfigDomainSummary["id"]) => void
 }) {
+  const { _ } = useLingui()
   return (
     <SettingsPage title={props.title} description={props.description}>
-      <SettingsSection title="Configuration source">
+      <SettingsSection title={_(configSourceTitle)}>
         <For each={props.domains}>
           {(domain) => (
             <SettingsPathRow
               label={domain.label}
               path={domain.path}
-              description={summary(domain)}
-              status={domainStatus(domain)}
+              description={_(ownedKeysSummary(domain.ownedKeys.length))}
+              status={domainStatus(domain, _)}
               ownedKeys={domain.ownedKeys}
               mergePolicy={domain.mergePolicy}
               onOpen={props.onOpenDomain ? () => props.onOpenDomain?.(domain.id) : undefined}
@@ -60,10 +81,6 @@ export function ConfigReferencePanel(props: {
   )
 }
 
-function domainStatus(domain: ConfigDomainSummary) {
-  return Object.keys(domain.config ?? {}).length ? "Configured" : "Empty"
-}
-
-function summary(domain: ConfigDomainSummary) {
-  return `${domain.ownedKeys.length} owned key${domain.ownedKeys.length === 1 ? "" : "s"}`
+function domainStatus(domain: ConfigDomainSummary, _: ReturnType<typeof useLingui>["_"]) {
+  return Object.keys(domain.config ?? {}).length ? _(configuredStatus) : _(emptyStatus)
 }

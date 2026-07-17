@@ -3,8 +3,12 @@ import type { ToastRootProps, ToastCloseButtonProps, ToastTitleProps, ToastDescr
 import type { ComponentProps, JSX } from "solid-js"
 import { createSignal, onCleanup, Show, splitProps } from "solid-js"
 import { Portal } from "solid-js/web"
+import { useLingui } from "@lingui/solid"
 import { createCopyController, type CopyState } from "./clipboard"
 import { Icon, type IconName } from "./icon"
+
+const toastCopyLabelDescriptor = { id: "ui.toast.copyLabel", message: "Copy toast" }
+const toastCopyFailureDescriptor = { id: "ui.toast.copyFailure", message: "Unable to copy the toast." }
 
 export interface ToastRegionProps extends ComponentProps<typeof Kobalte.Region> {}
 
@@ -164,6 +168,7 @@ export function showToast(options: ToastOptions): number {
   const resolvedDuration = options.duration ?? toastConfig?.durationOverrides?.[type]
   const iconName = options.icon ?? defaultIconForType(type)
   return toaster.show((props) => {
+    const { _ } = useLingui()
     const [countdown, setCountdown] = createSignal("")
     const duration = resolvedDuration ?? DEFAULT_TOAST_DURATION_MS
     const hasCountdown = !options.persistent && duration !== 0
@@ -178,9 +183,9 @@ export function showToast(options: ToastOptions): number {
     }
     const copy = createCopyController({
       text: copyText,
-      copyLabel: "Copy toast",
+      copyLabel: _(toastCopyLabelDescriptor),
       copiedIcon: "clipboard-check",
-      failureDescription: "Unable to copy the toast.",
+      failureDescription: _(toastCopyFailureDescriptor),
     })
     let isPaused = false
 

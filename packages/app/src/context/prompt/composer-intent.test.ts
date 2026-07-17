@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  handoffNewSessionDraft,
   resolveVariantDisplay,
   resolveModel,
   resolveAgent,
@@ -18,6 +19,37 @@ const validOnly =
   (...keys: ModelKey[]) =>
   (m: ModelKey) =>
     keys.some((k) => k.providerID === m.providerID && k.modelID === m.modelID)
+
+describe("handoffNewSessionDraft", () => {
+  test("copies explicit new-session intent to the created session", () => {
+    const draft = { __new__: A, existing: B }
+
+    expect(handoffNewSessionDraft(draft, "__new__", "created")).toEqual({
+      __new__: A,
+      existing: B,
+      created: A,
+    })
+  })
+
+  test("does not inject an effective fallback when no explicit draft exists", () => {
+    const draft = { existing: B }
+
+    expect(handoffNewSessionDraft(draft, "__new__", "created")).toBe(draft)
+  })
+
+  test("keeps the explicit model selected across the route key transition", () => {
+    const draft = handoffNewSessionDraft({ __new__: A }, "__new__", "created")
+
+    expect(resolveModel([draft.created, undefined, B], validAll)).toBe(A)
+  })
+
+  test("supports agent drafts without changing the handoff semantics", () => {
+    expect(handoffNewSessionDraft({ __new__: "build" }, "__new__", "created")).toEqual({
+      __new__: "build",
+      created: "build",
+    })
+  })
+})
 
 describe("resolveModel", () => {
   test("returns the first valid candidate in priority order", () => {

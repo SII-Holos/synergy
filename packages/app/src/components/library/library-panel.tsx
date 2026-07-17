@@ -2,6 +2,8 @@ import { createMemo, createResource, createSignal, Show } from "solid-js"
 import { useParams } from "@solidjs/router"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { AppPanel } from "@/components/app-panel"
@@ -15,13 +17,13 @@ import { MemoryView } from "./memory-view"
 import { ExperienceView } from "./experience-view"
 import { SkillView } from "./skill-view"
 import "./library-panel.css"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export function LibraryPanel() {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
   const params = useParams()
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
+  const { _ } = useLingui()
   const [view, setView] = createSignal<View>("stats")
   const [search, setSearch] = createSignal("")
   const [searchError, setSearchError] = createSignal(false)
@@ -66,10 +68,30 @@ export function LibraryPanel() {
 
   const showSearch = () => view() !== "stats"
   const navItems = createMemo(() => [
-    { id: "stats", label: "Overview" },
-    { id: "memory", label: memoryCount() > 0 ? `Memories ${memoryCount()}` : "Memories" },
-    { id: "experience", label: experienceCount() > 0 ? `Experiences ${experienceCount()}` : "Experiences" },
-    { id: "skill", label: "Skills" },
+    { id: "stats", label: _({ id: "app.library.nav.overview", message: "Overview" }) },
+    {
+      id: "memory",
+      label:
+        memoryCount() > 0
+          ? _({
+              id: "app.library.nav.memoriesCount",
+              message: "Memories {count}",
+              values: { count: "" + memoryCount() },
+            })
+          : _({ id: "app.library.nav.memories", message: "Memories" }),
+    },
+    {
+      id: "experience",
+      label:
+        experienceCount() > 0
+          ? _({
+              id: "app.library.nav.experiencesCount",
+              message: "Experiences {count}",
+              values: { count: "" + experienceCount() },
+            })
+          : _({ id: "app.library.nav.experiences", message: "Experiences" }),
+    },
+    { id: "skill", label: _({ id: "app.library.nav.skills", message: "Skills" }) },
   ])
   const storageLabel = createMemo(() => {
     const snapshot = stats()
@@ -96,7 +118,7 @@ export function LibraryPanel() {
         <AppPanel.Header class="library-header">
           <div class="library-header-inner">
             <AppPanel.HeaderRow>
-              <AppPanel.Title>Library</AppPanel.Title>
+              <AppPanel.Title>{_({ id: "app.library.title", message: "Library" })}</AppPanel.Title>
               <AppPanel.Actions>
                 <button
                   type="button"
@@ -104,12 +126,18 @@ export function LibraryPanel() {
                   disabled={isSyncing()}
                   onClick={() => void syncAll()}
                 >
-                  {isSyncing() ? "Syncing..." : "Sync"}
+                  {isSyncing()
+                    ? _({ id: "app.library.syncing", message: "Syncing..." })
+                    : _({ id: "app.library.sync", message: "Sync" })}
                 </button>
               </AppPanel.Actions>
             </AppPanel.HeaderRow>
             <div class="library-header-controls">
-              <AppPanel.SegmentedNav items={navItems()} active={view()} onChange={(id) => setView(id as View)} />
+              <AppPanel.SegmentedNav
+                items={navItems().map((item) => ({ id: item.id, label: item.label as string }))}
+                active={view()}
+                onChange={(id) => setView(id as View)}
+              />
               <Show when={showSearch()}>
                 <div class="library-search-field">
                   <Icon name={getSemanticIcon("action.search")} size="small" class="text-icon-weak-base shrink-0" />
@@ -117,10 +145,10 @@ export function LibraryPanel() {
                     type="text"
                     placeholder={
                       view() === "memory"
-                        ? "Search memories..."
+                        ? _({ id: "app.library.search.memories", message: "Search memories..." })
                         : view() === "experience"
-                          ? "Search experiences..."
-                          : "Search skills..."
+                          ? _({ id: "app.library.search.experiences", message: "Search experiences..." })
+                          : _({ id: "app.library.search.skills", message: "Search skills..." })
                     }
                     class="flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
                     value={search()}
@@ -129,7 +157,7 @@ export function LibraryPanel() {
                   <Show when={search()}>
                     <button
                       type="button"
-                      aria-label="Clear search"
+                      aria-label={_({ id: "app.library.clearSearch", message: "Clear search" })}
                       class="library-icon-button"
                       onClick={() => onSearchInput("")}
                     >
@@ -144,7 +172,10 @@ export function LibraryPanel() {
         <Show when={searchError()}>
           <div class="shrink-0 px-6 pb-1">
             <span class="text-11-regular text-text-diff-delete-base">
-              Search unavailable — embedding API may not be configured
+              {_({
+                id: "app.library.search.unavailable",
+                message: "Search unavailable — embedding API may not be configured",
+              })}
             </span>
           </div>
         </Show>
@@ -153,7 +184,7 @@ export function LibraryPanel() {
             <Show when={view() === "stats"}>
               <div class="library-section-block">
                 <div class="library-section-heading">
-                  <span class="library-section-title">Usage</span>
+                  <span class="library-section-title">{_({ id: "app.library.stats.usage", message: "Usage" })}</span>
                 </div>
                 <StatsSection registerSync={setWorkspaceStatsSync} />
               </div>

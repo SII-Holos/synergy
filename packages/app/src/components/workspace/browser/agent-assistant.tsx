@@ -1,5 +1,7 @@
 import { Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser } from "./browser-store"
+import { browser as B } from "@/locales/messages"
 
 function hostLabel(url: string | null): string {
   if (!url) return "page"
@@ -13,6 +15,7 @@ function hostLabel(url: string | null): string {
 export function AgentAssistant() {
   const browser = useBrowser()
   const activity = browser.agentActivity
+  const lingui = useLingui()
 
   return (
     <Show when={activity().kind !== "idle" && activity().label}>
@@ -33,7 +36,11 @@ export function AgentAssistant() {
             }}
           />
           <span class="truncate">
-            Agent {activity().kind} {hostLabel(activity().url)}
+            {lingui._({
+              id: B.agentActivity.id,
+              message: B.agentActivity.message,
+              values: { kind: activity().kind, host: hostLabel(activity().url) },
+            })}
           </span>
           <Show when={!browser.followAgent() && activity().pageId}>
             <button
@@ -41,7 +48,7 @@ export function AgentAssistant() {
               class="ml-1 text-text-base hover:text-text-strong"
               onClick={() => browser.followAgentNow()}
             >
-              Follow
+              {lingui._(B.follow.id)}
             </button>
           </Show>
         </div>

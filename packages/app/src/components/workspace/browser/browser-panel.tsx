@@ -3,6 +3,7 @@ import { BROWSER_PROTOCOL_VERSION, type BrowserAPISessionState } from "@ericsanc
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createMemo, createResource, lazy, Show } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
 import { useParams } from "@solidjs/router"
 import { BrowserStoreProvider, createBrowserStore } from "./browser-store"
 import { createBrowserWebSocket } from "./browser-ws"
@@ -14,6 +15,7 @@ import { browserDebug } from "./browser-debug"
 import { useSDK } from "@/context/sdk"
 import { createBrowserCommandId, shouldResumeBrowserSession } from "./browser-command"
 import { normalizeBrowserError } from "./browser-error"
+import { browser as B } from "@/locales/messages"
 
 const ConsolePanel = lazy(() => import("./console-panel").then((module) => ({ default: module.ConsolePanel })))
 const NetworkPanel = lazy(() => import("./network-panel").then((module) => ({ default: module.NetworkPanel })))
@@ -24,6 +26,7 @@ const AssetsPanel = lazy(() => import("./assets-panel").then((module) => ({ defa
 export function BrowserPanel() {
   const params = useParams()
   const sdk = useSDK()
+  const lingui = useLingui()
   const route = createMemo(() => {
     const sessionID = params.id
     const pathDirectory = params.dir ?? sdk.directory ?? sdk.scopeID ?? sdk.scopeKey
@@ -54,12 +57,12 @@ export function BrowserPanel() {
           </div>
           <span class="text-14-medium text-text-strong">
             {initial.error
-              ? normalizeBrowserError(initial.error, "Browser session could not be loaded").message
-              : "Connecting to Browser"}
+              ? normalizeBrowserError(initial.error, lingui._(B.bootstrapFailed.id)).message
+              : lingui._(B.connecting.id)}
           </span>
           <Show when={initial.error}>
             <Button size="small" variant="primary" onClick={() => void refetch()}>
-              Retry
+              <Trans id={B.retry.id} message={B.retry.message} />
             </Button>
           </Show>
         </div>
@@ -213,9 +216,11 @@ function BrowserPanelInner(props: {
           <div class="browser-empty-mark">
             <Icon name={getSemanticIcon("browser.main")} class="size-4" />
           </div>
-          <span class="text-14-medium text-text-strong">Browser disconnected</span>
+          <span class="text-14-medium text-text-strong">
+            <Trans id={B.disconnected.id} message={B.disconnected.message} />
+          </span>
           <Button size="small" variant="primary" onClick={() => ws.connect()}>
-            Retry
+            <Trans id={B.retry.id} message={B.retry.message} />
           </Button>
         </div>
       }
@@ -243,8 +248,12 @@ function BrowserPanelInner(props: {
                       <div class="browser-empty-mark">
                         <Icon name={getSemanticIcon("browser.main")} class="size-4" />
                       </div>
-                      <div class="browser-empty-title">No page open</div>
-                      <div class="browser-empty-text">The next navigation will appear here.</div>
+                      <div class="browser-empty-title">
+                        <Trans id={B.noPage.id} message={B.noPage.message} />
+                      </div>
+                      <div class="browser-empty-text">
+                        <Trans id={B.nextNavigation.id} message={B.nextNavigation.message} />
+                      </div>
                       <div class="browser-status-pill">{browser.session.connectionStatus}</div>
                     </div>
                   }

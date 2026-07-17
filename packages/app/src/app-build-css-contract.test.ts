@@ -247,6 +247,19 @@ async function readBuiltIndex(outDir: string) {
 async function readBuiltAssets(outDir: string) {
   return readdir(path.join(outDir, "assets"))
 }
+async function readBuiltJavaScript(outDir: string) {
+  const assets = await readBuiltAssets(outDir)
+  const javascriptFiles = assets.filter((file) => file.endsWith(".js"))
+  return new Map(
+    await Promise.all(
+      javascriptFiles.map(async (file) => [file, await readFile(path.join(outDir, "assets", file), "utf8")] as const),
+    ),
+  )
+}
+
+function initialJavaScriptAssets(index: string) {
+  return [...index.matchAll(/(?:src|href)="(?:\.\/)?assets\/([^"?]+\.js)(?:\?[^"]*)?"/g)].map((match) => match[1]!)
+}
 
 async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
@@ -305,13 +318,66 @@ async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
   }
 }
 
+async function expectSessionInboxBadgePreservesIconCenter(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 320, height: 160 } })
+    await page.setContent(`
+      <style>${css}</style>
+      <button
+        data-trigger="empty"
+        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+      >
+        <span data-icon></span>
+      </button>
+      <button
+        data-trigger="active"
+        class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full"
+      >
+        <span data-icon></span>
+        <span data-badge class="session-inbox-badge">1</span>
+      </button>
+      <style>[data-icon] { display: block; width: 16px; height: 16px; }</style>
+    `)
+
+    const layout = await page.evaluate(() => {
+      const centerOffset = (trigger: Element, icon: Element) => {
+        const triggerRect = trigger.getBoundingClientRect()
+        const iconRect = icon.getBoundingClientRect()
+        return iconRect.left + iconRect.width / 2 - (triggerRect.left + triggerRect.width / 2)
+      }
+      const emptyTrigger = document.querySelector('[data-trigger="empty"]')
+      const emptyIcon = emptyTrigger?.querySelector("[data-icon]")
+      const activeTrigger = document.querySelector('[data-trigger="active"]')
+      const activeIcon = activeTrigger?.querySelector("[data-icon]")
+      const badge = document.querySelector("[data-badge]")
+      if (!emptyTrigger || !emptyIcon || !activeTrigger || !activeIcon || !badge) {
+        throw new Error("Missing session inbox fixture")
+      }
+
+      return {
+        emptyIconOffset: centerOffset(emptyTrigger, emptyIcon),
+        activeIconOffset: centerOffset(activeTrigger, activeIcon),
+        badgePosition: getComputedStyle(badge).position,
+      }
+    })
+
+    expect(Math.abs(layout.emptyIconOffset)).toBeLessThanOrEqual(0.5)
+    expect(Math.abs(layout.activeIconOffset)).toBeLessThanOrEqual(0.5)
+    expect(layout.badgePosition).toBe("absolute")
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
     cwd: appDir,
     stdout: "pipe",
     stderr: "pipe",
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NODE_ENV: "production", NO_COLOR: "1" },
   })
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(proc.stdout).text(),
@@ -328,10 +394,11 @@ describe("app production build contract", () => {
     const outDir = await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-"))
     try {
       await runAppBuild(outDir)
-      const [css, index, assets] = await Promise.all([
+      const [css, index, assets, javascript] = await Promise.all([
         readBuiltCss(outDir),
         readBuiltIndex(outDir),
         readBuiltAssets(outDir),
+        readBuiltJavaScript(outDir),
       ])
 
       for (const contract of rootRuleContracts) {
@@ -365,6 +432,26 @@ describe("app production build contract", () => {
       expect(css).toContain("@keyframes compaction-card-shimmer{")
 
       expect(index).not.toMatch(/rel="modulepreload"[^>]+vendor-(?:mermaid|tiptap)/)
+      const initialAssets = initialJavaScriptAssets(index)
+      expect(initialAssets.length, "Production index must reference an initial JavaScript entry").toBeGreaterThan(0)
+      const initialJavaScript = initialAssets.map((asset) => javascript.get(asset) ?? "").join("\n")
+      const simplifiedChineseChunks = [...javascript.entries()].filter(
+        ([asset, source]) =>
+          asset.startsWith("messages-") && source.includes('"ui.list.loading"') && source.includes("正在加载"),
+      )
+      expect(simplifiedChineseChunks, "Simplified Chinese must be emitted as one lazy catalog chunk").toHaveLength(1)
+      const [simplifiedChineseAsset] = simplifiedChineseChunks[0]!
+      expect(index).not.toContain(simplifiedChineseAsset)
+      expect(initialJavaScript).toContain("Loading...")
+      expect(initialJavaScript).not.toContain("正在加载")
+      expect([...javascript.keys()].filter((asset) => /pseudo/i.test(asset))).toEqual([])
+      expect(
+        [...javascript.entries()]
+          .filter(([asset]) => asset.startsWith("messages-"))
+          .some(([, source]) => source.includes("⟦") || source.includes("⟧")),
+      ).toBe(false)
+      expect([...javascript.values()].some((source) => source.includes("pseudoLocale"))).toBe(false)
+
       expect(assets.filter((asset) => asset.includes("NerdFont")).toSorted()).toEqual([
         expect.stringMatching(/^BlexMonoNerdFontMono-Bold-/),
         expect.stringMatching(/^BlexMonoNerdFontMono-Medium-/),
@@ -373,6 +460,7 @@ describe("app production build contract", () => {
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
+      await expectSessionInboxBadgePreservesIconCenter(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })

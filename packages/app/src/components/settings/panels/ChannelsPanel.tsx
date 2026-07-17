@@ -1,6 +1,20 @@
+import { useLingui } from "@lingui/solid"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import { AccountToggleCard } from "../components/AccountToggleCard"
 import type { ChannelSettings, ProviderGroup } from "../types"
+
+const pageTitle = { id: "settings.channels.page.title", message: "Channels" }
+const pageDescription = {
+  id: "settings.channels.page.description",
+  message: "External messaging channel accounts.",
+}
+const feishuSectionTitle = { id: "settings.channels.feishu.title", message: "Feishu" }
+const feishuAccountsTitle = { id: "settings.channels.feishu.accounts", message: "Feishu accounts" }
+const feishuAccountsDescription = {
+  id: "settings.channels.feishu.description",
+  message: "Enable or disable existing Feishu channel accounts. Optionally override the model for each account.",
+}
+const emptyFeishuLabel = { id: "settings.channels.feishu.empty", message: "No Feishu accounts configured yet." }
 
 export function ChannelsPanel(props: {
   channels: ChannelSettings
@@ -8,14 +22,15 @@ export function ChannelsPanel(props: {
   onChannelToggle: (index: number, value: boolean) => void
   onChannelModelChange: (index: number, model: string) => void
 }) {
+  const { _ } = useLingui()
   return (
-    <SettingsPage title="Channels" description="External messaging channel accounts.">
-      <SettingsSection title="Feishu">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(feishuSectionTitle)}>
         <AccountToggleCard
-          title="Feishu accounts"
-          description="Enable or disable existing Feishu channel accounts. Optionally override the model for each account."
+          title={_(feishuAccountsTitle)}
+          description={_(feishuAccountsDescription)}
           accounts={props.channels.feishuAccounts}
-          emptyLabel="No Feishu accounts configured yet."
+          emptyLabel={_(emptyFeishuLabel)}
           providers={props.providers}
           onToggle={props.onChannelToggle}
           onModelChange={props.onChannelModelChange}

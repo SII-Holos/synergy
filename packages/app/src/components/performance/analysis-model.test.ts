@@ -2,8 +2,9 @@ import { describe, expect, test } from "bun:test"
 import {
   isPerformanceAnalysisActive,
   performanceAnalysisSessionPath,
-  performanceAnalysisStatusLabel,
+  performanceAnalysisStatusDescriptor,
 } from "./analysis-model"
+import { P } from "./performance-i18n"
 
 describe("performance analysis state", () => {
   test("only polls queued and running analyses", () => {
@@ -16,12 +17,12 @@ describe("performance analysis state", () => {
   })
 
   test("presents every durable analysis status", () => {
-    expect(performanceAnalysisStatusLabel("queued")).toBe("Queued")
-    expect(performanceAnalysisStatusLabel("running")).toBe("Running")
-    expect(performanceAnalysisStatusLabel("completed")).toBe("Completed")
-    expect(performanceAnalysisStatusLabel("error")).toBe("Failed")
-    expect(performanceAnalysisStatusLabel("cancelled")).toBe("Cancelled")
-    expect(performanceAnalysisStatusLabel("interrupted")).toBe("Interrupted")
+    expect(performanceAnalysisStatusDescriptor("queued")).toBe(P.analysisStatusQueued)
+    expect(performanceAnalysisStatusDescriptor("running")).toBe(P.analysisStatusRunning)
+    expect(performanceAnalysisStatusDescriptor("completed")).toBe(P.analysisStatusCompleted)
+    expect(performanceAnalysisStatusDescriptor("error")).toBe(P.analysisStatusFailed)
+    expect(performanceAnalysisStatusDescriptor("cancelled")).toBe(P.analysisStatusCancelled)
+    expect(performanceAnalysisStatusDescriptor("interrupted")).toBe(P.analysisStatusInterrupted)
   })
 
   test("routes durable analysis sessions from the global Performance panel", () => {

@@ -1,4 +1,8 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n } from "@lingui/core"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
+import { translateSessionTransitionCopy, type SessionTransitionProgress } from "./session-transition-progress"
 import {
   createNewSessionWorkspaceProgress,
   createNewSessionWorkspaceErrorProgress,
@@ -12,6 +16,19 @@ import {
   worktreeOptionSelection,
   worktreeSetupFailureMessage,
 } from "./worktree-session"
+
+function englishI18n() {
+  const i18n = setupI18n({ locale: "en" })
+  i18n.loadAndActivate({
+    locale: "en",
+    messages: Object.fromEntries(Object.values(S).map((descriptor) => [descriptor.id, descriptor.message])),
+  })
+  return i18n
+}
+
+function translateProgressCopy(copy: SessionTransitionProgress["title"]): string {
+  return translateSessionTransitionCopy(copy, englishI18n())
+}
 
 describe("new session workspace selection", () => {
   test("defaults to main checkout from the canonical project root", () => {
@@ -80,20 +97,24 @@ describe("workspace change disabled state", () => {
 
 describe("workspace transition progress model", () => {
   test("creates existing-session enter loading, success, and pure error states", () => {
+    const i18n = englishI18n()
     const request = { operation: "enter" as const, sessionID: "ses_1", directory: "/repo", name: "feature" }
     const loading = createWorkspaceTransitionLoadingProgress(request)
 
     expect(loading.phase).toBe("loading")
     expect(loading.kind).toBe("enter-worktree")
-    expect(loading.steps.map((step) => [step.label, step.state])).toEqual([["Create and bind checkout", "active"]])
+    expect(loading.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
+      ["Create and bind checkout", "active"],
+    ])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "enter" })
-    expect(success.title).toBe("Worktree active")
-    expect(success.description).toContain("isolated checkout")
+    expect(translateProgressCopy(success.title)).toBe("Worktree active")
+    expect(translateProgressCopy(success.description)).toContain("isolated checkout")
     expect(success.steps.every((step) => step.state === "complete")).toBe(true)
 
     const error = createWorkspaceTransitionErrorProgress({ operation: "enter", message: "Failed" })
-    expect(error).toMatchObject({ phase: "error", kind: "enter-worktree", title: "Move to worktree failed" })
+    expect(error).toMatchObject({ phase: "error", kind: "enter-worktree" })
+    expect(translateProgressCopy(error.title)).toBe("Move to worktree failed")
     expect(error.description).toBe("Failed")
     expect("retry" in error).toBe(false)
     expect("dismiss" in error).toBe(false)
@@ -101,29 +122,34 @@ describe("workspace transition progress model", () => {
   })
 
   test("creates existing-session leave loading and success states", () => {
+    const i18n = englishI18n()
     const loading = createWorkspaceTransitionLoadingProgress({
       operation: "leave",
       sessionID: "ses_1",
       directory: "/repo",
     })
 
-    expect(loading.steps.map((step) => [step.label, step.state])).toEqual([["Return to main checkout", "active"]])
+    expect(loading.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
+      ["Return to main checkout", "active"],
+    ])
 
     const success = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
-    expect(success.title).toBe("Main checkout active")
-    expect(success.description).toContain("main checkout")
-    expect(success.steps.map((step) => [step.label, step.state])).toEqual([["Return to main checkout", "complete"]])
+    expect(translateProgressCopy(success.title)).toBe("Main checkout active")
+    expect(translateProgressCopy(success.description)).toContain("main checkout")
+    expect(success.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
+      ["Return to main checkout", "complete"],
+    ])
   })
 
   test("creates new-session worktree startup steps for create and existing modes", () => {
+    const i18n = englishI18n()
     const createProgress = createNewSessionWorkspaceProgress({ selection: { mode: "create" }, stage: "workspace" })
-    expect(createProgress).toMatchObject({
-      kind: "new-worktree-session",
-      phase: "loading",
-      title: "Starting worktree session",
-      description: "Preparing the workspace and submitting your first message.",
-    })
-    expect(createProgress.steps.map((step) => [step.label, step.state])).toEqual([
+    expect(createProgress).toMatchObject({ kind: "new-worktree-session", phase: "loading" })
+    expect(translateProgressCopy(createProgress.title)).toBe("Starting worktree session")
+    expect(translateProgressCopy(createProgress.description)).toBe(
+      "Preparing the workspace and submitting your first message.",
+    )
+    expect(createProgress.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Create checkout", "active"],
       ["Submit message", "pending"],
@@ -133,19 +159,18 @@ describe("workspace transition progress model", () => {
       selection: { mode: "existing", target: "/repo/.synergy/worktrees/feature" },
       stage: "message",
     })
-    expect(existingProgress.steps.map((step) => [step.label, step.state])).toEqual([
+    expect(existingProgress.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Bind worktree", "complete"],
       ["Submit message", "active"],
     ])
 
     const createSuccess = createNewSessionWorkspaceSuccessProgress({ selection: { mode: "create" } })
-    expect(createSuccess).toMatchObject({
-      kind: "new-worktree-session",
-      phase: "success",
-      description: "The workspace is ready and your first message is queued for processing.",
-    })
-    expect(createSuccess.steps.map((step) => [step.label, step.state])).toEqual([
+    expect(createSuccess).toMatchObject({ kind: "new-worktree-session", phase: "success" })
+    expect(translateProgressCopy(createSuccess.description)).toBe(
+      "The workspace is ready and your first message is queued for processing.",
+    )
+    expect(createSuccess.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
       ["Prepare session", "complete"],
       ["Create checkout", "complete"],
       ["Submit message", "complete"],
@@ -154,7 +179,7 @@ describe("workspace transition progress model", () => {
     const existingSuccess = createNewSessionWorkspaceSuccessProgress({
       selection: { mode: "existing", target: "/repo/.synergy/worktrees/feature" },
     })
-    expect(existingSuccess.steps.map((step) => step.label)).toEqual([
+    expect(existingSuccess.steps.map((step) => translateDescriptor(step.label, i18n))).toEqual([
       "Prepare session",
       "Bind worktree",
       "Submit message",

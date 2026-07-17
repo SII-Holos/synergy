@@ -1,5 +1,6 @@
 import { createSignal, Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { useLingui } from "@lingui/solid"
 
 type MarketplaceIcon = { type: "lucide"; name: string } | { type: "image"; url: string; alt?: string }
 
@@ -19,6 +20,7 @@ function fallbackPluginIcon(plugin: PluginIconSource | null | undefined) {
 }
 
 export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null | undefined; class: string }) {
+  const { _ } = useLingui()
   const [imageFailed, setImageFailed] = createSignal(false)
   const icon = () => props.plugin?.icon
   const imageIcon = () => {
@@ -29,6 +31,14 @@ export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null |
   const lucideName = () => {
     const current = icon()
     return current?.type === "lucide" ? current.name : fallbackPluginIcon(props.plugin)
+  }
+
+  const imageAlt = () => {
+    const current = imageIcon()
+    if (current?.alt) return current.alt
+    const name = props.plugin?.name
+    if (name) return _({ id: "app.plugin.icon.alt", message: "{name} icon", values: { name } })
+    return _({ id: "app.plugin.icon.alt.generic", message: "Plugin icon" })
   }
 
   return (
@@ -42,7 +52,7 @@ export function MarketplacePluginIcon(props: { plugin: PluginIconSource | null |
         {(current) => (
           <img
             src={current().url}
-            alt={current().alt ?? `${props.plugin?.name ?? "Plugin"} icon`}
+            alt={imageAlt()}
             class="plugin-marketplace-icon-image"
             loading="lazy"
             decoding="async"

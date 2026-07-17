@@ -1,7 +1,14 @@
 import { splitProps, type ComponentProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { IconButton } from "./icon-button"
 import { Tooltip } from "./tooltip"
-import { createCopyController, type CopyTextSource } from "./clipboard-core"
+import {
+  createCopyController,
+  clipboardCopyDescriptor,
+  clipboardCopiedDescriptor,
+  clipboardCopyFailedDescriptor,
+  type CopyTextSource,
+} from "./clipboard-core"
 
 export * from "./clipboard-core"
 
@@ -18,6 +25,7 @@ export type CopyIconButtonProps = Omit<ComponentProps<typeof IconButton>, "icon"
 }
 
 export function CopyIconButton(props: CopyIconButtonProps) {
+  const { _ } = useLingui()
   const [local, rest] = splitProps(props, [
     "text",
     "copyLabel",
@@ -31,9 +39,9 @@ export function CopyIconButton(props: CopyIconButtonProps) {
   ])
   const copy = createCopyController({
     text: local.text,
-    copyLabel: local.copyLabel,
-    copiedLabel: local.copiedLabel,
-    failedLabel: local.failedLabel,
+    copyLabel: local.copyLabel ?? _(clipboardCopyDescriptor),
+    copiedLabel: local.copiedLabel ?? _(clipboardCopiedDescriptor),
+    failedLabel: local.failedLabel ?? _(clipboardCopyFailedDescriptor),
     failureDescription: local.failureDescription,
     resetDelayMs: local.resetDelayMs,
   })
