@@ -54,6 +54,7 @@ import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMes
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
 import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
+import { navigateToSessionAttachment, specialFileAttachmentSessionID } from "./special-file-attachment"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -1688,19 +1689,47 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 }
 
 function SpecialFileAttachment(props: { file: AttachmentPart; kind: "note" | "session" }) {
+  const data = useData()
   const title = createMemo(
     () => (props.file.metadata?.title as string | undefined) || props.file.filename || "Untitled",
   )
-  return (
-    <div data-slot="user-message-attachment" data-type={props.kind}>
-      <div data-slot="user-message-note-attachment">
-        <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
-        <div data-slot="user-message-note-copy">
-          <span data-slot="user-message-note-title">{title()}</span>
-          <span data-slot="user-message-note-subtitle">{props.kind === "note" ? "Note" : "Session"}</span>
-        </div>
+  const sessionID = createMemo(() => specialFileAttachmentSessionID(props.file, props.kind))
+  const content = () => (
+    <div data-slot="user-message-note-attachment">
+      <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
+      <div data-slot="user-message-note-copy">
+        <span data-slot="user-message-note-title">{title()}</span>
+        <span data-slot="user-message-note-subtitle">{props.kind === "note" ? "Note" : "Session"}</span>
       </div>
     </div>
+  )
+
+  return (
+    <Show
+      when={props.kind === "session" && sessionID() && data.navigateToSession}
+      fallback={
+        <div data-slot="user-message-attachment" data-type={props.kind}>
+          {content()}
+        </div>
+      }
+    >
+      <button
+        type="button"
+        data-slot="user-message-attachment"
+        data-type="session"
+        data-clickable="true"
+        aria-label={`Open session ${title()}`}
+        onClick={() =>
+          navigateToSessionAttachment({
+            file: props.file,
+            kind: props.kind,
+            navigateToSession: data.navigateToSession,
+          })
+        }
+      >
+        {content()}
+      </button>
+    </Show>
   )
 }
 

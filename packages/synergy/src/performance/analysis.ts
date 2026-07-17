@@ -1,6 +1,7 @@
 import { Agent } from "@/agent/agent"
 import { Cortex } from "@/cortex"
 import type { CortexTypes } from "@/cortex/types"
+import { Identifier } from "@/id/id"
 import { Session } from "@/session"
 import { createUserMessage } from "@/session/input"
 import { PerformanceDashboard } from "./dashboard"
@@ -218,7 +219,7 @@ export namespace PerformanceAnalysis {
         sessionID: parent.id,
         agent: "synergy",
         model,
-        noReply: true,
+        noReply: false,
         metadata: { source: "performance-analysis" },
         parts: [
           { type: "text", text: `Analyze current Performance telemetry for the last ${formatWindow(input.windowMs)}.` },
@@ -238,6 +239,22 @@ export namespace PerformanceAnalysis {
           prompt: buildPrompt(data),
         }),
       )
+      const attachmentText = "Open the linked child session to inspect the Performance analysis details."
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        sessionID: parent.id,
+        messageID: parentMessage.info.id,
+        type: "attachment",
+        mime: "text/plain",
+        filename: "Performance analysis details.session.txt",
+        url: `data:text/plain;base64,${Buffer.from(attachmentText).toString("base64")}`,
+        model: { mode: "content", text: attachmentText },
+        metadata: {
+          kind: "session",
+          sessionId: task.sessionID,
+          title: "Performance analysis details",
+        },
+      })
       return viewFromTask(task)
     } catch (error) {
       await Session.remove(parent.id).catch(() => undefined)

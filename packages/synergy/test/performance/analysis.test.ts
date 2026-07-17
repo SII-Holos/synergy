@@ -291,10 +291,11 @@ describe("performance analysis", () => {
     await using tmp = await tmpdir()
     const getAvailableModel = Agent.getAvailableModel
     const invokeInternal = SessionInvoke.invokeInternal
-    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
-    ;(SessionInvoke.invokeInternal as unknown) = mock(async () => {
+    const invokeInternalMock = mock(async () => {
       throw new Error("stop before provider execution")
     })
+    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
+    ;(SessionInvoke.invokeInternal as unknown) = invokeInternalMock
 
     try {
       await ScopeContext.provide({
@@ -304,6 +305,7 @@ describe("performance analysis", () => {
           const child = await Session.get(analysis.sessionID)
           const parent = await Session.get(analysis.parentSessionID)
           const parentMessages = await Session.messages({ sessionID: parent.id })
+          const parentRequest = parentMessages[0]
 
           expect(child.parentID).toBe(parent.id)
           expect(child.cortex).toMatchObject({
@@ -315,15 +317,32 @@ describe("performance analysis", () => {
             notifyParentOnComplete: false,
           })
           expect(parent.title).toBe("Performance analysis · 1m")
-          expect(parentMessages[0]?.parts[0]).toMatchObject({
-            type: "text",
-            text: "Analyze current Performance telemetry for the last 1m.",
-          })
+          expect(parentRequest?.info).toMatchObject({ role: "user", isRoot: true, rootID: parentRequest.info.id })
+          expect(parentRequest?.parts).toContainEqual(
+            expect.objectContaining({
+              type: "text",
+              text: "Analyze current Performance telemetry for the last 1m.",
+            }),
+          )
+          expect(parentRequest?.parts).toContainEqual(
+            expect.objectContaining({
+              type: "attachment",
+              metadata: expect.objectContaining({
+                kind: "session",
+                sessionId: child.id,
+                title: "Performance analysis details",
+              }),
+            }),
+          )
+          const sessionAttachment = parentRequest?.parts.find((part) => part.type === "attachment")
+          expect(sessionAttachment?.metadata).not.toHaveProperty("directory")
 
           const current = await PerformanceAnalysis.get(child.id)
           expect(current.sessionID).toBe(child.id)
 
           await Cortex.waitFor(analysis.taskID, 1)
+          expect(invokeInternalMock).toHaveBeenCalledTimes(1)
+          expect(invokeInternalMock).toHaveBeenCalledWith(expect.objectContaining({ sessionID: child.id }))
           Cortex.reset()
           const durable = await PerformanceAnalysis.get(child.id)
           expect(durable.status).toBe("error")
