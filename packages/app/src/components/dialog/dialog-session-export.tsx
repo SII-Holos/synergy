@@ -4,13 +4,13 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { useGlobalSDK } from "@/context/global-sdk"
-import { useGlobalSync } from "@/context/global-sync"
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { useSync } from "@/context/sync"
+import { useSDK } from "@/context/sdk"
 import { useParams } from "@solidjs/router"
-import type { Session, SessionExportMode } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionExportMode } from "@ericsanchezok/synergy-sdk/client"
 import "./dialog-session-export.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { sessionScopeRequest } from "@/components/session/session-actions"
 
 function formatBytes(bytes?: number): string {
   if (typeof bytes !== "number" || Number.isNaN(bytes)) return "—"
@@ -28,54 +28,45 @@ const MODE_OPTIONS: Array<{ value: SessionExportMode; label: string; desc: strin
 export function DialogSessionExport() {
   const params = useParams()
   const dialog = useDialog()
-  const globalSDK = useGlobalSDK()
-  const globalSync = useGlobalSync()
+  const sdk = useSDK()
+  const sync = useSync()
 
   const [mode, setMode] = createSignal<SessionExportMode>("standard")
   const [exporting, setExporting] = createSignal(false)
 
   const sessionID = () => params.id
-  const directory = () => (params.dir ? base64Decode(params.dir) : "")
 
   const currentSession = () => {
-    const dir = directory()
-    if (!dir) return undefined
-    const [store] = globalSync.ensureScopeState(dir)
-    return store.session.find((s: Session) => s.id === sessionID())
+    const id = sessionID()
+    if (!id) return undefined
+    return sync.session.get(id)
   }
 
   const childSessions = () => {
-    const dir = directory()
     const id = sessionID()
-    if (!dir || !id) return []
-    const [store] = globalSync.ensureScopeState(dir)
-    return store.session.filter((s: Session) => s.parentID === id)
+    if (!id) return []
+    return sync.data.session.filter((session) => session.parentID === id)
   }
 
   const [estimate] = createResource(
     () => {
       const id = sessionID()
-      const dir = directory()
-      if (!id || !dir) return undefined
-      return { sessionID: id, directory: dir }
+      if (!id) return undefined
+      return id
     },
-    async (params) => {
-      const res = await globalSDK.client.session.export.estimate({
-        sessionID: params.sessionID,
-        directory: params.directory,
-      })
+    async (sessionID) => {
+      const res = await sdk.client.session.export.estimate({ sessionID })
       return res.data!
     },
   )
 
   async function handleExport() {
     const id = sessionID()
-    const dir = directory()
-    if (!id || !dir) return
+    if (!id) return
     setExporting(true)
     try {
-      const params = new URLSearchParams({ directory: dir, mode: mode() })
-      const url = `${globalSDK.url}/session/${encodeURIComponent(id)}/export?${params}`
+      const query = new URLSearchParams({ ...sessionScopeRequest(sdk.scopeKey), mode: mode() })
+      const url = `${sdk.url}/session/${encodeURIComponent(id)}/export?${query}`
       const a = document.createElement("a")
       a.href = url
       a.download = ""
