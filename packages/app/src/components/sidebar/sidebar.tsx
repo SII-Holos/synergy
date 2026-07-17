@@ -26,7 +26,7 @@ import { usePlatform } from "@/context/platform"
 import { useProductUpdate } from "@/context/product-update"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { SettingsDialog } from "@/components/settings"
-import { listNavigation, subscribeNavigation, type NavigationEntry } from "@/plugin"
+import { listNavigation, navigationEntryLabel, subscribeNavigation, type NavigationEntry } from "@/plugin"
 import { selectAppAttention, type AppAttentionNotice } from "./app-attention"
 import {
   resolveSessionVisualState,
@@ -95,6 +95,7 @@ export function Sidebar(props: SidebarProps) {
     entry.active?.(location.pathname) ?? location.pathname === entry.path
   const navigationIcon = (entry: NavigationEntry) =>
     entry.icon ?? (entry.iconToken ? getSemanticIcon(entry.iconToken) : getSemanticIcon("plugins.main"))
+  const navigationLabel = (entry: NavigationEntry) => navigationEntryLabel(entry, _)
   const providerNames = createMemo(() =>
     Object.fromEntries([
       ...globalSync.data.provider.all.map((provider) => [provider.id, provider.name]),
@@ -369,10 +370,10 @@ export function Sidebar(props: SidebarProps) {
       <div class="sb-globals">
         <For each={sidebarNavigation()}>
           {(entry) => (
-            <Tooltip value={entry.label} placement="right">
+            <Tooltip value={navigationLabel(entry)} placement="right">
               <button
                 type="button"
-                aria-label={entry.label}
+                aria-label={navigationLabel(entry)}
                 classList={{
                   "sb-global-btn": true,
                   "sb-global-active": isNavigationActive(entry),
@@ -381,7 +382,7 @@ export function Sidebar(props: SidebarProps) {
               >
                 <Icon name={navigationIcon(entry)} size="normal" />
                 <Show when={isExpanded()}>
-                  <span class="sb-action-label">{entry.label}</span>
+                  <span class="sb-action-label">{navigationLabel(entry)}</span>
                 </Show>
               </button>
             </Tooltip>

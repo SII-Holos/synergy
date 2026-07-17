@@ -1,5 +1,6 @@
 import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js"
 import { pluginMarketplace } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import { useNavigate, type RouteSectionProps } from "@solidjs/router"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -33,10 +34,15 @@ export function MarketplacePage(props: MarketplacePageProps) {
   const navigate = useNavigate()
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
   const { _ } = useLingui()
+  const { controller, i18n } = useLocale()
   const [query, setQuery] = createSignal("")
   const [debouncedQuery, setDebouncedQuery] = createSignal("")
   const [view, setView] = createSignal<MarketplaceView>("discover")
   const [catalogSource, setCatalogSource] = createSignal<RegistrySource>(props.initialSource ?? "official")
+  const localizedNavItems = createMemo(() => {
+    controller.activeLocale()
+    return MARKETPLACE_NAV_ITEMS.map((item) => ({ id: item.id, label: translateDescriptor(item.label, i18n) }))
+  })
 
   let debounceTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -85,7 +91,9 @@ export function MarketplacePage(props: MarketplacePageProps) {
   const resultCount = createMemo(() =>
     view() === "discover" ? (searchResults()?.length ?? 0) : installedList().length,
   )
-  const currentLabel = createMemo(() => MARKETPLACE_NAV_ITEMS.find((item) => item.id === view())?.label ?? "Discover")
+  const currentLabel = createMemo(
+    () => localizedNavItems().find((item) => item.id === view())?.label ?? _(pluginMarketplace.navDiscover),
+  )
 
   async function refreshMarketplace() {
     await Promise.all([refetchInstalledPlugins(), refetchSearchResults()])
@@ -132,7 +140,7 @@ export function MarketplacePage(props: MarketplacePageProps) {
             <div class="plugin-marketplace-header-controls">
               <div class="plugin-marketplace-nav">
                 <AppPanel.SegmentedNav
-                  items={[...MARKETPLACE_NAV_ITEMS]}
+                  items={localizedNavItems()}
                   active={view()}
                   onChange={(id) => setView(id as MarketplaceView)}
                 />
@@ -430,6 +438,11 @@ function PluginRow(props: {
 
 function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boolean; onClick: () => void }) {
   const { _ } = useLingui()
+  const { controller, i18n } = useLocale()
+  const localizedInstallationLabel = () => {
+    controller.activeLocale()
+    return translateDescriptor(installationLabel(props.plugin), i18n)
+  }
   const disabled = () => props.plugin.health === "disabled"
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.id,
@@ -478,7 +491,7 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
           {/* plugin.id is catalog identifier — pass through */}
           <span>{props.plugin.id}</span>
           <span aria-hidden="true">·</span>
-          <span>{installationLabel(props.plugin)}</span>
+          <span>{localizedInstallationLabel()}</span>
           <Show when={props.plugin.apiVersion}>
             <span aria-hidden="true">·</span>
             <span>{_(pluginMarketplace.apiVersionLabel.id, { version: props.plugin.apiVersion })}</span>

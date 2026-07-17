@@ -1,4 +1,5 @@
 import { pluginMarketplace } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -84,7 +85,7 @@ export function PluginDetailDialog(props: {
   const dialog = useDialog()
   const confirm = useConfirm()
   const { _ } = useLingui()
-  const { fmt } = useLocale()
+  const { controller, fmt, i18n } = useLocale()
   const [action, setAction] = createSignal<"install" | "update" | "uninstall" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
 
@@ -126,11 +127,12 @@ export function PluginDetailDialog(props: {
     return installation?.kind === "directory" ? installation : null
   })
   const sourceLabel = createMemo(() => {
+    controller.activeLocale()
     if (props.source === "official") return _({ id: "app.plugin.detail.source.official", message: "Official registry" })
     if (props.source === "local") return _({ id: "app.plugin.detail.source.local", message: "Local registry" })
     const installed = installedInfo()
     return installed
-      ? installationLabel(installed)
+      ? translateDescriptor(installationLabel(installed), i18n)
       : _({ id: "app.plugin.detail.source.installed", message: "Installed plugin" })
   })
 

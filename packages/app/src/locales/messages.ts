@@ -1037,6 +1037,18 @@ export const pluginMarketplace = {
   navDiscover: { id: "app.plugin.marketplace.nav.discover", message: "Discover" },
   navInstalled: { id: "app.plugin.marketplace.nav.installed", message: "Installed" },
   navDevelopment: { id: "app.plugin.marketplace.nav.development", message: "Development" },
+  installationDirectory: { id: "app.plugin.marketplace.installation.directory", message: "Local directory" },
+  installationArchive: { id: "app.plugin.marketplace.installation.archive", message: "Local archive" },
+  installationOfficialRegistry: {
+    id: "app.plugin.marketplace.installation.officialRegistry",
+    message: "Official registry",
+  },
+  installationLocalRegistry: {
+    id: "app.plugin.marketplace.installation.localRegistry",
+    message: "Local registry",
+  },
+  installationPackage: { id: "app.plugin.marketplace.installation.package", message: "{source} package" },
+  installationBuiltIn: { id: "app.plugin.marketplace.installation.builtIn", message: "Built in" },
   versionLabel: { id: "app.plugin.marketplace.version.label", message: "v{version}" },
   apiVersionLabel: { id: "app.plugin.marketplace.apiVersion.label", message: "API {version}" },
   generationLabel: { id: "app.plugin.marketplace.generation.label", message: "Generation {id}" },

@@ -1,16 +1,18 @@
 import { createEffect, createSignal, For, Show } from "solid-js"
+import type { MessageDescriptor } from "@lingui/core"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { CommandOption } from "@/context/command"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useLocale } from "@/context/locale"
 import { PI } from "./prompt-input-i18n"
+import { translateDescriptor } from "@/locales/translate"
 import "./quick-actions.css"
 
 type QuickActionBase = {
   icon: SemanticIconTokenName
-  label: string
-  description: string
+  label: MessageDescriptor
+  description: MessageDescriptor
 }
 
 type QuickAction =
@@ -25,22 +27,22 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "ui",
         icon: "command.undo",
-        label: PI.qaUndo.message,
-        description: PI.qaUndoDesc.message,
+        label: PI.qaUndo,
+        description: PI.qaUndoDesc,
         commandId: "session.undo",
       },
       {
         type: "ui",
         icon: "command.redo",
-        label: PI.qaRedo.message,
-        description: PI.qaRedoDesc.message,
+        label: PI.qaRedo,
+        description: PI.qaRedoDesc,
         commandId: "session.redo",
       },
       {
         type: "ui",
         icon: "command.compact",
-        label: PI.qaCompact.message,
-        description: PI.qaCompactDesc.message,
+        label: PI.qaCompact,
+        description: PI.qaCompactDesc,
         commandId: "session.compact",
       },
     ],
@@ -50,29 +52,29 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "runtime",
         icon: "command.init",
-        label: PI.qaInit.message,
-        description: PI.qaInitDesc.message,
+        label: PI.qaInit,
+        description: PI.qaInitDesc,
         command: "init",
       },
       {
         type: "runtime",
         icon: "command.review",
-        label: PI.qaReview.message,
-        description: PI.qaReviewDesc.message,
+        label: PI.qaReview,
+        description: PI.qaReviewDesc,
         command: "review",
       },
       {
         type: "runtime",
         icon: "command.commit",
-        label: PI.qaCommit.message,
-        description: PI.qaCommitDesc.message,
+        label: PI.qaCommit,
+        description: PI.qaCommitDesc,
         command: "commit",
       },
       {
         type: "runtime",
         icon: "command.rmslop",
-        label: PI.qaRmslop.message,
-        description: PI.qaRmslopDesc.message,
+        label: PI.qaRmslop,
+        description: PI.qaRmslopDesc,
         command: "rmslop",
       },
     ],
@@ -82,29 +84,29 @@ const ACTION_GROUPS: QuickActionGroup[] = [
       {
         type: "runtime",
         icon: "notes.main",
-        label: PI.qaNote.message,
-        description: PI.qaNoteDesc.message,
+        label: PI.qaNote,
+        description: PI.qaNoteDesc,
         command: "note",
       },
       {
         type: "runtime",
         icon: "command.continue",
-        label: PI.qaContinue.message,
-        description: PI.qaContinueDesc.message,
+        label: PI.qaContinue,
+        description: PI.qaContinueDesc,
         command: "continue",
       },
       {
         type: "runtime",
         icon: "command.audit",
-        label: PI.qaAudit.message,
-        description: PI.qaAuditDesc.message,
+        label: PI.qaAudit,
+        description: PI.qaAuditDesc,
         command: "audit",
       },
       {
         type: "runtime",
         icon: "command.start",
-        label: PI.qaStart.message,
-        description: PI.qaStartDesc.message,
+        label: PI.qaStart,
+        description: PI.qaStartDesc,
         command: "start",
       },
     ],
@@ -134,10 +136,14 @@ interface QuickActionsProps {
 }
 
 export function QuickActions(props: QuickActionsProps) {
-  const { i18n } = useLocale()
+  const { controller, i18n } = useLocale()
   const [open, setOpen] = createSignal(false)
   const commandsDisabled = () => props.commandsDisabled ?? props.disabled
   const runtimeCommandsDisabled = () => props.runtimeCommandsDisabled ?? props.disabled
+  const translateActionCopy = (descriptor: MessageDescriptor) => {
+    controller.activeLocale()
+    return translateDescriptor(descriptor, i18n)
+  }
 
   createEffect(() => {
     if (props.disabled && open()) setOpen(false)
@@ -159,8 +165,8 @@ export function QuickActions(props: QuickActionsProps) {
 
   const actionTooltip = (action: QuickAction) => {
     const option = commandOption(action)
-    const title = option?.title ?? action.label
-    const description = option?.description ?? action.description
+    const title = option?.title ?? translateActionCopy(action.label)
+    const description = option?.description ?? translateActionCopy(action.description)
     return (
       <div class="qa-tooltip">
         <span class="qa-tooltip-title">{title}</span>
@@ -194,7 +200,7 @@ export function QuickActions(props: QuickActionsProps) {
                             onClick={() => runAction(action)}
                           >
                             <Icon name={getSemanticIcon(action.icon)} size="small" />
-                            <Show when={action.type === "runtime"}>{action.label}</Show>
+                            <Show when={action.type === "runtime"}>{translateActionCopy(action.label)}</Show>
                           </button>
                         </Tooltip>
                       )

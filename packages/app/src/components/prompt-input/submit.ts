@@ -56,6 +56,7 @@ import {
 } from "@/components/session/session-transition-progress"
 import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/components/session/new-session-recovery"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 
 type PromptSubmitInput = {
@@ -220,8 +221,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (pendingLightLoopSlashBlock) {
       showToast({
         type: "warning",
-        title: pendingLightLoopSlashBlock.title,
-        description: pendingLightLoopSlashBlock.description,
+        title: translateDescriptor(pendingLightLoopSlashBlock.title, i18n),
+        description: translateDescriptor(pendingLightLoopSlashBlock.description, i18n),
       })
       releaseNewSessionSubmit()
       return
@@ -455,7 +456,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             title: i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
             description: sessionStartFailureMessage(message),
           })
-          failSessionSetup(sessionID, i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }), message)
+          failSessionSetup(
+            sessionID,
+            i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
+            message,
+          )
           return undefined
         })
       if (!session) return

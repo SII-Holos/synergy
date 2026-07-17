@@ -177,8 +177,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const params = useParams()
   const command = useCommand()
   const sessionTransition = useSessionTransition()
-  const { i18n } = useLocale()
-  const _ = (d: { id: string; message: string }) => i18n._(d)
+  const { controller, i18n } = useLocale()
   let editorRef!: HTMLDivElement
   let fileInputRef!: HTMLInputElement
   let scrollRef!: HTMLDivElement
@@ -542,7 +541,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     requestAnimationFrame(scrollCursorIntoView)
   }
 
-  const setPlan = async (next: boolean, title = i18n._(PI.submitFailedTogglePlan)) => {
+  const setPlan = async (next: boolean, title?: string) => {
     if (!params.id) {
       setPendingPlan(next)
       if (next) {
@@ -560,7 +559,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     } catch (err) {
       showToast({
         type: "error",
-        title,
+        title: title ?? i18n._(PI.submitFailedTogglePlan),
         description: err instanceof Error ? err.message : i18n._(PI.blueprintUnknownError),
       })
       return false
@@ -747,6 +746,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   })
 
   const addMenuSections = createMemo<PromptAddMenuSection[]>(() => {
+    controller.activeLocale()
     const agentSection: PromptAddMenuSection = {
       id: "agent",
       label: i18n._(PI.toolbarAgent),
@@ -859,11 +859,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           {
             id: "lattice-mode",
             label: i18n._(PI.workflowLattice),
-            description: latticeMenuState.description,
+            description: translateDescriptor(latticeMenuState.description, i18n),
             icon: getSemanticIcon("prompt.lattice"),
             selected: latticeActive(),
             ariaDisabled: latticeMenuState.ariaDisabled,
-            title: latticeMenuState.title,
+            title: latticeMenuState.title ? translateDescriptor(latticeMenuState.title, i18n) : undefined,
             iconClass: latticeActive()
               ? "text-icon-base"
               : blueprintModeLocked()
@@ -1893,10 +1893,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         <div class="min-w-48 max-w-64">
                           <div class="text-12-medium text-text-strong truncate">{bp().slot.title}</div>
                           <div class="mt-1 text-10-regular text-text-weak">
-                            {i18n._({
-                              ...PI.bpStatusLabel,
-                              values: { status: getBlueprintSlotStatusLabel(bp().mode).toLowerCase() },
-                            })}
+                            {getBlueprintSlotStatusLabel(bp().mode)}
                           </div>
                           <div class="mt-2 text-10-regular text-text-weak">{getBlueprintSlotHoldLabel(bp())}</div>
                         </div>

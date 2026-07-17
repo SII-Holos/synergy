@@ -5,11 +5,6 @@
 
 export const PI = {
   // submit.ts toasts
-  submitPendingTitle: { id: "prompt.submit.pending.title", message: "Workspace setup in progress" },
-  submitPendingDesc: {
-    id: "prompt.submit.pending.description",
-    message: "Wait for the worktree setup to finish before sending another prompt.",
-  },
   submitTransitionPendingTitle: {
     id: "prompt.submit.transitionPending.title",
     message: "Session transition in progress",
@@ -19,7 +14,6 @@ export const PI = {
     message: "Wait for the current session transition to finish before sending another message.",
   },
   submitQueued: { id: "prompt.submit.queued", message: "Message queued" },
-  submitMessageAria: { id: "prompt.submit.messageAria", message: "Submit message" },
   submitInProgress: { id: "prompt.submit.inProgress", message: "Session start in progress" },
   submitInProgressDesc: {
     id: "prompt.submit.inProgress.description",
@@ -56,7 +50,6 @@ export const PI = {
   submitFailedLightLoop: { id: "prompt.submit.failedLightLoop", message: "Failed to enable Light Loop" },
   submitFailedTogglePlan: { id: "prompt.submit.failedTogglePlan", message: "Failed to toggle Plan" },
   submitFailedEnableLattice: { id: "prompt.submit.failedEnableLattice", message: "Failed to enable Lattice" },
-  submitSent: { id: "prompt.submit.sent", message: "Message sent" },
   submitSentDesc: { id: "prompt.submit.sent.description", message: "Response will appear after reconnection" },
 
   // prompt-input.tsx — toasts
@@ -112,7 +105,6 @@ export const PI = {
   startBpLoop: { id: "prompt.startBlueprintLoop", message: "Start BlueprintLoop" },
   stopAction: { id: "prompt.stop", message: "Stop" },
   sendAction: { id: "prompt.send", message: "Send" },
-  workspacePending: { id: "prompt.workspacePending", message: "Workspace setup in progress" },
   startingSession: { id: "prompt.startingSession", message: "Starting session" },
   stopSession: { id: "prompt.stopSession", message: "Stop session" },
   sendMessage: { id: "prompt.sendMessage", message: "Send message" },
@@ -133,14 +125,14 @@ export const PI = {
   toolbarWorktreeDesc: { id: "prompt.toolbar.worktreeDesc", message: "Isolated checkout" },
 
   // prompt-input.tsx — blueprint slot status labels
-  bpSlotReady: { id: "prompt.bpSlot.ready", message: "Ready to start" },
-  bpSlotEquipped: { id: "prompt.bpSlot.equipped", message: "Equipped" },
-  bpSlotRunning: { id: "prompt.bpSlot.running", message: "Running" },
-  bpSlotWaiting: { id: "prompt.bpSlot.waiting", message: "Waiting" },
-  bpSlotAuditing: { id: "prompt.bpSlot.auditing", message: "In review" },
-  bpSlotCompleted: { id: "prompt.bpSlot.completed", message: "Completed" },
-  bpSlotFailed: { id: "prompt.bpSlot.failed", message: "Needs attention" },
-  bpSlotCancelled: { id: "prompt.bpSlot.cancelled", message: "Unequipped" },
+  bpSlotReady: { id: "prompt.bpSlot.ready", message: "Blueprint ready to start" },
+  bpSlotEquipped: { id: "prompt.bpSlot.equipped", message: "Blueprint equipped" },
+  bpSlotRunning: { id: "prompt.bpSlot.running", message: "Blueprint running" },
+  bpSlotWaiting: { id: "prompt.bpSlot.waiting", message: "Blueprint waiting" },
+  bpSlotAuditing: { id: "prompt.bpSlot.auditing", message: "Blueprint in review" },
+  bpSlotCompleted: { id: "prompt.bpSlot.completed", message: "Blueprint completed" },
+  bpSlotFailed: { id: "prompt.bpSlot.failed", message: "Blueprint needs attention" },
+  bpSlotCancelled: { id: "prompt.bpSlot.cancelled", message: "Blueprint unequipped" },
 
   // prompt-input.tsx — blueprint slot hold labels
   bpHoldStopRun: { id: "prompt.bpHold.stopRun", message: "Hold for 2 seconds to stop this Blueprint run." },
@@ -224,7 +216,6 @@ export const PI = {
   dropZone: { id: "prompt.dropZone", message: "Drop supported files, notes, or sessions here" },
   bpReady: { id: "prompt.bp.ready", message: "Ready to start this BlueprintLoop." },
   bpLabel: { id: "prompt.bp.label", message: "Blueprint" },
-  bpStatusLabel: { id: "prompt.bp.statusLabel", message: "Blueprint {status}" },
   escKey: { id: "prompt.escKey", message: "ESC" },
 
   // permission-selector.tsx

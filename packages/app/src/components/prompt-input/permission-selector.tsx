@@ -1,4 +1,5 @@
 import type { Accessor } from "solid-js"
+import type { MessageDescriptor } from "@lingui/core"
 import { Show } from "solid-js"
 import type { ControlProfileId } from "@/context/input"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -8,6 +9,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import { PERMISSION_MODES } from "./permission-modes"
 import { PI } from "./prompt-input-i18n"
 import type { PermissionModeVisual } from "./types"
@@ -19,14 +21,21 @@ export function PermissionModeSelector(props: {
   selectedProfile: Accessor<ControlProfileId>
   updateProfile: (profile: ControlProfileId, close?: () => void) => void
 }) {
-  const { i18n } = useLocale()
+  const { controller, i18n } = useLocale()
+  const translateModeCopy = (descriptor: MessageDescriptor) => {
+    controller.activeLocale()
+    return translateDescriptor(descriptor, i18n)
+  }
 
   return (
     <ToolbarSelectorPopover
       trigger={
         <button
           type="button"
-          aria-label={i18n._({ ...PI.permissionModeAria, values: { mode: props.activeMode().label } })}
+          aria-label={i18n._({
+            ...PI.permissionModeAria,
+            values: { mode: translateModeCopy(props.activeMode().label) },
+          })}
           aria-disabled={props.working() || props.switching()}
           onClick={(event) => {
             if (!props.working() && !props.switching()) return
@@ -56,7 +65,7 @@ export function PermissionModeSelector(props: {
                 <span
                   class={`prompt-input-compact-label text-12-medium whitespace-nowrap ${props.activeMode().iconClass}`}
                 >
-                  {props.activeMode().shortLabel}
+                  {translateModeCopy(props.activeMode().shortLabel)}
                 </span>
                 <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
               </>
@@ -86,8 +95,10 @@ export function PermissionModeSelector(props: {
               <div class="flex items-start gap-3 min-w-0 text-left">
                 <Icon name={getSemanticIcon(mode.icon)} size="small" class={`shrink-0 mt-0.5 ${mode.iconClass}`} />
                 <div class="min-w-0 flex-1">
-                  <div class="text-13-medium text-text-base">{mode.label}</div>
-                  <div class="mt-0.5 text-12-regular text-text-weak leading-snug">{mode.description}</div>
+                  <div class="text-13-medium text-text-base">{translateModeCopy(mode.label)}</div>
+                  <div class="mt-0.5 text-12-regular text-text-weak leading-snug">
+                    {translateModeCopy(mode.description)}
+                  </div>
                 </div>
               </div>
             )}

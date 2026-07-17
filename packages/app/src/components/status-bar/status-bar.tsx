@@ -409,6 +409,7 @@ function SubsessionsButton(props: {
             type="button"
             class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
             onClick={() => setOpen(true)}
+            aria-label={tooltip()}
           >
             <Icon name={getSemanticIcon("session.child")} size="small" />
             <Show when={total() !== undefined}>

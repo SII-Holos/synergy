@@ -1,5 +1,4 @@
 import { useLingui } from "@lingui/solid"
-import type { MessageDescriptor } from "@lingui/core"
 import { For } from "solid-js"
 import type { ControlProfileSummary, SandboxStatus } from "@ericsanchezok/synergy-sdk/client"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -7,6 +6,7 @@ import { SettingRow } from "../components/SettingRow"
 import { SettingsStepScale } from "../components/SettingsStepScale"
 import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import type { SafetyStore } from "../types"
+import { controlProfileDescription, controlProfileLabel, fallbackControlProfiles } from "./control-profile-copy"
 
 const sandboxChecking = { id: "settings.sandbox.checking", message: "Checking sandbox status..." }
 
@@ -77,36 +77,6 @@ const profilePageDesc = {
   id: "settings.controlProfile.page.desc",
   message: "Resolved access profile applied to sessions and agents.",
 }
-
-const FALLBACK_PROFILE_DESCRIPTIONS: Record<string, MessageDescriptor> = {
-  guarded: {
-    id: "settings.controlProfile.guarded.description",
-    message:
-      "Auto-allow reads, safe local edits, and network lookups. Ask before shell, external writes, identity, platform, or extension actions.",
-  },
-  autonomous: {
-    id: "settings.controlProfile.autonomous.description",
-    message: "Keep working unattended. Medium-risk work is allowed; high-risk asks are denied instead of prompting.",
-  },
-  full_access: {
-    id: "settings.controlProfile.fullAccess.description",
-    message: "Allow all local tool requests without approval prompts.",
-  },
-}
-
-const guardedLabel = { id: "settings.controlProfile.guarded.label", message: "Guarded" }
-const autonomousLabel = { id: "settings.controlProfile.autonomous.label", message: "Autonomous" }
-const fullAccessLabel = { id: "settings.controlProfile.fullAccess.label", message: "Full Access" }
-
-const fallbackProfiles: ControlProfileSummary[] = [
-  { id: "guarded", label: guardedLabel.message!, description: FALLBACK_PROFILE_DESCRIPTIONS.guarded.message! },
-  { id: "autonomous", label: autonomousLabel.message!, description: FALLBACK_PROFILE_DESCRIPTIONS.autonomous.message! },
-  {
-    id: "full_access",
-    label: fullAccessLabel.message!,
-    description: FALLBACK_PROFILE_DESCRIPTIONS.fullAccess.message!,
-  },
-]
 
 export function PermissionsPanel(props: {
   safety: SafetyStore
@@ -203,7 +173,7 @@ export function ControlProfilePanel(props: {
   onSafetyChange: (key: keyof SafetyStore, value: string) => void
 }) {
   const { _ } = useLingui()
-  const profiles = () => (props.controlProfiles.length ? props.controlProfiles : fallbackProfiles)
+  const profiles = () => (props.controlProfiles.length ? props.controlProfiles : fallbackControlProfiles)
   return (
     <SettingsPage title={_(profilePageTitle)} description={_(profilePageDesc)}>
       <SettingsSection>
@@ -216,8 +186,8 @@ export function ControlProfilePanel(props: {
                 classList={{ "ds-profile-card-active": props.safety.controlProfile === profile.id }}
                 onClick={() => props.onSafetyChange("controlProfile", profile.id)}
               >
-                <span class="ds-profile-name">{profile.label}</span>
-                <span class="ds-profile-description">{profileDescription(profile)}</span>
+                <span class="ds-profile-name">{controlProfileLabel(profile, _)}</span>
+                <span class="ds-profile-description">{controlProfileDescription(profile, _)}</span>
               </button>
             )}
           </For>
@@ -225,8 +195,4 @@ export function ControlProfilePanel(props: {
       </SettingsSection>
     </SettingsPage>
   )
-}
-
-function profileDescription(profile: ControlProfileSummary) {
-  return fallbackProfiles.find((item) => item.id === profile.id)?.description ?? profile.description
 }

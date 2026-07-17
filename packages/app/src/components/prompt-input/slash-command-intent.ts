@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import { PI } from "./prompt-input-i18n"
 
 export type SlashBackendCommand = {
@@ -20,8 +21,8 @@ export type SlashCommandIntent =
   | { kind: "ui"; command: string; label: string }
 
 export type PendingLightLoopSlashBlock = {
-  title: string
-  description: string
+  title: MessageDescriptor
+  description: MessageDescriptor
 }
 
 function parseSlashInvocation(text: string): { command: string; arguments: string } | undefined {
@@ -71,14 +72,14 @@ export function resolveSlashCommandIntent(input: {
 export function getPendingLightLoopSlashBlock(intent: SlashCommandIntent): PendingLightLoopSlashBlock | undefined {
   if (intent.kind === "backend-action") {
     return {
-      title: PI.slashUseTask.message,
-      description: PI.slashNoAction.message,
+      title: PI.slashUseTask,
+      description: PI.slashNoAction,
     }
   }
   if (intent.kind === "ui") {
     return {
-      title: PI.slashUseTask.message,
-      description: PI.slashNoUi.message,
+      title: PI.slashUseTask,
+      description: PI.slashNoUi,
     }
   }
   return undefined

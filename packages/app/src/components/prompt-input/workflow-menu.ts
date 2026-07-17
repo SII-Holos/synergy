@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import { PI } from "./prompt-input-i18n"
 
 export type LatticeWorkflowMenuAction = "open" | "cancel" | "none"
@@ -13,8 +14,8 @@ export type LatticeWorkflowMenuStateInput = {
 export type LatticeWorkflowMenuState = {
   action: LatticeWorkflowMenuAction
   ariaDisabled: boolean
-  description: string
-  title?: string
+  description: MessageDescriptor
+  title?: MessageDescriptor
 }
 
 export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateInput): LatticeWorkflowMenuState {
@@ -23,16 +24,16 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
       return {
         action: "none",
         ariaDisabled: true,
-        description: PI.wmRecursiveBpActive.message,
-        title: PI.wmStopSessionBeforeWorkflow.message,
+        description: PI.wmRecursiveBpActive,
+        title: PI.wmStopSessionBeforeWorkflow,
       }
     }
 
     return {
       action: "cancel",
       ariaDisabled: false,
-      description: PI.wmClickExitLattice.message,
-      title: PI.wmExitLattice.message,
+      description: PI.wmClickExitLattice,
+      title: PI.wmExitLattice,
     }
   }
 
@@ -40,8 +41,8 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: PI.wmRunGoal.message,
-      title: PI.wmLatticeUnavailableBp.message,
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailableBp,
     }
   }
 
@@ -49,8 +50,8 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: PI.wmRunGoal.message,
-      title: PI.wmLatticeUnavailablePlan.message,
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailablePlan,
     }
   }
 
@@ -58,14 +59,14 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: PI.wmRunGoal.message,
-      title: PI.wmLatticeUnavailableLl.message,
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailableLl,
     }
   }
 
   return {
     action: "open",
     ariaDisabled: false,
-    description: PI.wmRunGoal.message,
+    description: PI.wmRunGoal,
   }
 }

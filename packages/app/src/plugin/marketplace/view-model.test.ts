@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n } from "@lingui/core"
+import { pluginMarketplace } from "@/locales/messages"
 import type { InstalledPlugin } from "./types"
 import {
   installationLabel,
@@ -40,9 +42,9 @@ describe("plugin marketplace views", () => {
 
   test("Development contains directory registrations while Installed contains both", () => {
     expect(MARKETPLACE_NAV_ITEMS).toEqual([
-      { id: "discover", label: "Discover" },
-      { id: "installed", label: "Installed" },
-      { id: "development", label: "Development" },
+      { id: "discover", label: pluginMarketplace.navDiscover },
+      { id: "installed", label: pluginMarketplace.navInstalled },
+      { id: "development", label: pluginMarketplace.navDevelopment },
     ])
     expect(isDevelopmentPlugin(directory)).toBe(true)
     expect(isDevelopmentPlugin(official)).toBe(false)
@@ -55,8 +57,8 @@ describe("plugin marketplace views", () => {
 
   test("search includes directory paths and installation labels are explicit", () => {
     expect(installedPluginsForView([directory, official], "development", "focus\\dist")).toEqual([directory])
-    expect(installationLabel(directory)).toBe("Local directory")
-    expect(installationLabel(official)).toBe("Official registry")
+    expect(installationLabel(directory)).toBe(pluginMarketplace.installationDirectory)
+    expect(installationLabel(official)).toBe(pluginMarketplace.installationOfficialRegistry)
   })
 
   test("uses the opening snapshot only until the authoritative installed list arrives", () => {
@@ -67,20 +69,31 @@ describe("plugin marketplace views", () => {
 })
 
 describe("plugin content pass-through boundary", () => {
-  test("installationLabel returns plain strings suitable for i18n descriptor wrapping", () => {
-    const labels = [
-      installationLabel(plugin({ id: "a", installation: { kind: "directory", spec: "s", path: "p" } })),
-      installationLabel(plugin({ id: "b", installation: { kind: "archive", spec: "s", path: "p" } })),
-      installationLabel(plugin({ id: "c", installation: { kind: "registry", registry: "official", spec: "s" } })),
-      installationLabel(plugin({ id: "d", installation: { kind: "registry", registry: "local", spec: "s" } })),
-      installationLabel(plugin({ id: "e", installation: { kind: "package", source: "npm", spec: "s" } })),
-      installationLabel(plugin({ id: "f", installation: { kind: "package", source: "git", spec: "s" } })),
-      installationLabel(plugin({ id: "g", installation: { kind: "builtin", spec: "s" } })),
-    ]
-    for (const label of labels) {
-      expect(typeof label).toBe("string")
-      expect(label.length).toBeGreaterThan(0)
-    }
+  test("navigation and installation descriptors re-resolve after a locale switch", () => {
+    const i18n = setupI18n({ locale: "en" })
+    expect(MARKETPLACE_NAV_ITEMS.map((item) => i18n._(item.label))).toEqual(["Discover", "Installed", "Development"])
+    expect(
+      i18n._(installationLabel(plugin({ id: "a", installation: { kind: "directory", spec: "s", path: "p" } }))),
+    ).toBe("Local directory")
+    expect(
+      i18n._(installationLabel(plugin({ id: "e", installation: { kind: "package", source: "npm", spec: "s" } }))),
+    ).toBe("NPM package")
+
+    i18n.loadAndActivate({
+      locale: "zh-CN",
+      messages: {
+        [pluginMarketplace.navDiscover.id]: "发现",
+        [pluginMarketplace.installationDirectory.id]: "本地目录",
+        [pluginMarketplace.installationPackage.id]: "{source} 包",
+      },
+    })
+    expect(i18n._(MARKETPLACE_NAV_ITEMS[0]!.label)).toBe("发现")
+    expect(
+      i18n._(installationLabel(plugin({ id: "a", installation: { kind: "directory", spec: "s", path: "p" } }))),
+    ).toBe("本地目录")
+    expect(
+      i18n._(installationLabel(plugin({ id: "e", installation: { kind: "package", source: "npm", spec: "s" } }))),
+    ).toBe("NPM 包")
   })
 
   test("installationLabel never includes plugin id or name in the label", () => {
@@ -90,16 +103,15 @@ describe("plugin content pass-through boundary", () => {
       installation: { kind: "directory", spec: "s", path: "/tmp/x" },
     })
     const label = installationLabel(p)
-    expect(label).not.toContain("my-unique-plugin-xyz")
-    expect(label).not.toContain("Plugin Name")
-    expect(label).toBe("Local directory")
+    expect(label.values).toBeUndefined()
+    expect(label).toBe(pluginMarketplace.installationDirectory)
   })
 
   test("installationLabel for registry uses canonical labels without naming the plugin", () => {
     const official = plugin({ id: "ghost", installation: { kind: "registry", registry: "official", spec: "s" } })
     const local = plugin({ id: "alias", installation: { kind: "registry", registry: "local", spec: "s" } })
-    expect(installationLabel(official)).toBe("Official registry")
-    expect(installationLabel(local)).toBe("Local registry")
+    expect(installationLabel(official)).toBe(pluginMarketplace.installationOfficialRegistry)
+    expect(installationLabel(local)).toBe(pluginMarketplace.installationLocalRegistry)
   })
 
   test("installedPluginFromSnapshot never fabricates plugin data and preserves identity", () => {

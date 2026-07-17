@@ -6,7 +6,8 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "agenda",
     navigationId: "agenda",
-    label: pluginNav.agenda.message,
+    label: pluginNav.agenda.id,
+    labelDescriptor: pluginNav.agenda,
     iconToken: "agenda.main",
     placement: "sidebar",
     path: "/agenda",
@@ -20,7 +21,8 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "library",
     navigationId: "library",
-    label: pluginNav.library.message,
+    label: pluginNav.library.id,
+    labelDescriptor: pluginNav.library,
     iconToken: "library.main",
     placement: "sidebar",
     path: "/library",
@@ -34,7 +36,8 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "performance",
     navigationId: "performance",
-    label: pluginNav.performance.message,
+    label: pluginNav.performance.id,
+    labelDescriptor: pluginNav.performance,
     iconToken: "performance.main",
     placement: "sidebar",
     path: "/performance",
@@ -48,7 +51,8 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "plugins",
     navigationId: "plugins",
-    label: pluginNav.plugins.message,
+    label: pluginNav.plugins.id,
+    labelDescriptor: pluginNav.plugins,
     iconToken: "plugins.main",
     placement: "sidebar",
     path: "/plugins/marketplace",

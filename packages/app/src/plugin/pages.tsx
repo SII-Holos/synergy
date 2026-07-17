@@ -18,6 +18,7 @@ import {
   getBuiltinNavigation,
   getPluginNavigation,
   subscribeNavigation,
+  navigationEntryLabel,
   type NavigationContentProps,
   type NavigationEntry,
 } from "./registries/navigation-registry"
@@ -55,6 +56,7 @@ function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: Nav
   const [component, setComponent] = createSignal<Component<NavigationContentProps> | null>(null)
   const [loading, setLoading] = createSignal(false)
   const [loadError, setLoadError] = createSignal<string | undefined>()
+  const label = () => navigationEntryLabel(props.entry, _)
 
   let disposed = false
 
@@ -88,7 +90,7 @@ function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: Nav
   })
 
   return (
-    <PluginSurfaceFrame title={props.entry.label}>
+    <PluginSurfaceFrame title={label()}>
       <Show
         when={!loading()}
         fallback={
@@ -97,15 +99,12 @@ function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: Nav
           </div>
         }
       >
-        <Show
-          when={!loadError()}
-          fallback={<PluginSurfaceUnavailable title={props.entry.label} message={loadError()!} />}
-        >
+        <Show when={!loadError()} fallback={<PluginSurfaceUnavailable title={label()} message={loadError()!} />}>
           <Show
             when={component()}
             fallback={
               <PluginSurfaceUnavailable
-                title={props.entry.label}
+                title={label()}
                 message={_({
                   id: "app.plugin.surface.noComponent",
                   message:
@@ -116,9 +115,7 @@ function PluginNavigationContent(props: { entry: NavigationEntry; loadProps: Nav
           >
             {(Loaded) => (
               <ErrorBoundary
-                fallback={(error) => (
-                  <PluginSurfaceUnavailable title={props.entry.label} message={errorMessage(error)} />
-                )}
+                fallback={(error) => <PluginSurfaceUnavailable title={label()} message={errorMessage(error)} />}
               >
                 <Suspense
                   fallback={
