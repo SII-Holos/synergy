@@ -8,7 +8,9 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionInboxItem } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
 import type { useSync } from "@/context/sync"
+import { useLocale } from "@/context/locale"
 import { deriveSessionInboxView, isInboxItemInteractive } from "./session-inbox-utils"
+import { S } from "./session-i18n"
 import "./session-inbox.css"
 
 type SessionInboxProps = {
@@ -18,64 +20,48 @@ type SessionInboxProps = {
   freezeHint?: boolean
 }
 
-function labelByMode(item: SessionInboxItem): string {
-  if (item.mode === "task") return "Queued by you"
-  if (item.mode === "steer") return "Guiding current run"
-  if (item.mode === "context") return "Context update"
-  return "Update"
-}
-
-function timingLabel(item: SessionInboxItem): string {
-  if (item.mode === "task") return "After turn"
-  if (item.mode === "steer") return "Next call"
-  return "Context"
-}
-
-function deliveryDescription(item: SessionInboxItem) {
-  if (item.mode === "task") return "Sends after this turn; multiple queued items share one reply cycle."
-  if (item.mode === "steer") return "Joins the current run before its next model request."
-  return "Joined to the ongoing model call as context."
-}
-
-function itemCountLabel(count: number) {
-  return `${count} ${count === 1 ? "item" : "items"} waiting for your attention`
-}
-
-function queueNote(items: SessionInboxItem[]) {
-  const steers = items.filter((item) => item.mode === "steer").length
-  const tasks = items.filter((item) => item.mode === "task").length
-  const contexts = items.filter((item) => item.mode === "context").length
-
-  if (steers > 0 && tasks > 0) return `${steers} next call · ${tasks} after turn`
-  if (steers > 1) return `${steers} items join the next model call`
-  if (steers === 1) return "Joins the current run's next model call"
-  if (tasks > 1) return `${tasks} items send together in one reply`
-  if (tasks === 1) return "Sends automatically after this turn"
-  if (contexts > 1) return `${contexts} context updates waiting`
-  if (contexts === 1) return "Context update waiting"
-  return "Inbox clear"
-}
-
-function detailText(item: SessionInboxItem) {
-  const lines: string[] = []
-  if (item.detail?.text) lines.push(item.detail.text)
-  if (item.detail?.attachments?.length) lines.push(item.detail.attachments.join("\n"))
-  return lines.join("\n\n").trim() || item.summary.preview || item.summary.title
-}
-
-function InboxDetail(props: { item: SessionInboxItem }) {
+function InboxDetail(props: { item: SessionInboxItem; i18n: ReturnType<typeof useLocale>["i18n"] }) {
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
+  const detailText = () => {
+    const lines: string[] = []
+    if (props.item.detail?.text) lines.push(props.item.detail.text)
+    if (props.item.detail?.attachments?.length) lines.push(props.item.detail.attachments.join("\n"))
+    return lines.join("\n\n").trim() || props.item.summary.preview || props.item.summary.title
+  }
+  const modeLabel = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxQueued)
+      case "steer":
+        return _(S.inboxGuiding)
+      case "context":
+        return _(S.inboxContextUpdate)
+      default:
+        return _(S.inboxUpdate)
+    }
+  }
+  const deliveryDesc = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxDeliveryTask)
+      case "steer":
+        return _(S.inboxDeliverySteer)
+      default:
+        return _(S.inboxDeliveryContext)
+    }
+  }
   return (
     <div class="session-inbox-detail">
-      <div class="text-12-medium text-text-strong">{labelByMode(props.item)}</div>
+      <div class="text-12-medium text-text-strong">{modeLabel()}</div>
       <Markdown
-        text={detailText(props.item)}
+        text={detailText()}
         cacheKey={`session-inbox-detail-${props.item.id}`}
         class="session-inbox-detail-markdown"
       />
       <div class="session-inbox-detail-meta">
         <span>{props.item.source.label ?? props.item.source.type}</span>
         <span>·</span>
-        <span>{deliveryDescription(props.item)}</span>
+        <span>{deliveryDesc()}</span>
       </div>
     </div>
   )
@@ -86,29 +72,56 @@ function InboxRow(props: {
   disabled?: boolean
   onGuide: (item: SessionInboxItem) => void
   onRemove: (item: SessionInboxItem) => void
+  i18n: ReturnType<typeof useLocale>["i18n"]
 }) {
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
   const [menuOpen, setMenuOpen] = createSignal(false)
   const canInteract = () => !props.disabled && isInboxItemInteractive(props.item)
   const preview = () => props.item.summary.preview || props.item.summary.title
-  const guideLabel = () => (props.item.mode === "steer" ? "Queue" : "Send now")
-  const guideTitle = () =>
-    props.item.mode === "steer"
-      ? "Move this message back to the queued task list."
-      : "Add this message to the current run's next model call."
+  const guideLabel = () => (props.item.mode === "steer" ? _(S.inboxGuideQueue) : _(S.inboxGuideSendNow))
+  const guideTitle = () => (props.item.mode === "steer" ? _(S.inboxGuideQueueTip) : _(S.inboxGuideSendNowTip))
 
   const remove = () => {
     setMenuOpen(false)
     props.onRemove(props.item)
   }
 
+  const timingLabel = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxAfterTurn)
+      case "steer":
+        return _(S.inboxNextCall)
+      default:
+        return _(S.inboxContextTag)
+    }
+  }
+
+  const modeLabel = () => {
+    switch (props.item.mode) {
+      case "task":
+        return _(S.inboxQueued)
+      case "steer":
+        return _(S.inboxGuiding)
+      case "context":
+        return _(S.inboxContextUpdate)
+      default:
+        return _(S.inboxUpdate)
+    }
+  }
+
   return (
     <div class="session-inbox-row" data-mode={props.item.mode} data-interactive={canInteract()}>
-      <Tooltip placement="left" class="session-inbox-row-tooltip" value={<InboxDetail item={props.item} />}>
+      <Tooltip
+        placement="left"
+        class="session-inbox-row-tooltip"
+        value={<InboxDetail item={props.item} i18n={props.i18n} />}
+      >
         <div class="session-inbox-row-main">
           <div class="session-inbox-row-meta">
-            <span class="session-inbox-row-label">{labelByMode(props.item)}</span>
+            <span class="session-inbox-row-label">{modeLabel()}</span>
             <span class="session-inbox-row-status" data-mode={props.item.mode}>
-              {timingLabel(props.item)}
+              {timingLabel()}
             </span>
           </div>
           <div class="session-inbox-row-preview">{preview()}</div>
@@ -138,7 +151,7 @@ function InboxRow(props: {
               <button
                 type="button"
                 class="session-inbox-more"
-                aria-label="Queued message actions"
+                aria-label={_(S.inboxDetailAria)}
                 aria-expanded={menuOpen()}
               >
                 <Icon name={getSemanticIcon("action.more")} size="small" />
@@ -147,7 +160,7 @@ function InboxRow(props: {
           >
             <div class="session-inbox-menu-list">
               <button type="button" class="session-inbox-menu-item" onClick={remove}>
-                Delete
+                {_(S.inboxDelete)}
               </button>
             </div>
           </Popover>
@@ -158,16 +171,32 @@ function InboxRow(props: {
 }
 
 export function SessionInbox(props: SessionInboxProps) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const view = createMemo(() => deriveSessionInboxView(props.sync.data.inbox[props.sessionID]))
   const items = createMemo(() => view().items)
   const count = createMemo(() => view().count)
   const actionableItems = createMemo(() => items().filter(isInboxItemInteractive))
+
   const titleDetail = createMemo(() => {
-    if (view().status === "loading") return "Checking for queued messages"
-    if (count() === 0) return "Inbox clear"
-    return itemCountLabel(count())
+    if (view().status === "loading") return _(S.inboxDebug)
+    if (count() === 0) return _(S.inboxClear)
+    return i18n._({ ...S.inboxItemsWaiting, values: { count: count() } })
   })
-  const note = createMemo(() => queueNote(items()))
+
+  const note = createMemo(() => {
+    const steers = items().filter((i) => i.mode === "steer").length
+    const tasks = items().filter((i) => i.mode === "task").length
+    const contexts = items().filter((i) => i.mode === "context").length
+    if (steers > 0 && tasks > 0) return i18n._({ ...S.inboxQueueNextCall, values: { steers, tasks } })
+    if (steers > 1) return i18n._({ ...S.inboxQueueJoinModel, values: { count: steers } })
+    if (steers === 1) return _(S.inboxQueueJoinSingular)
+    if (tasks > 1) return i18n._({ ...S.inboxQueueTasks, values: { count: tasks } })
+    if (tasks === 1) return _(S.inboxQueueTasksSingular)
+    if (contexts > 1) return i18n._({ ...S.inboxQueueContexts, values: { count: contexts } })
+    if (contexts === 1) return _(S.inboxQueueContextSingular)
+    return _(S.inboxClear)
+  })
 
   const guide = async (item: SessionInboxItem) => {
     try {
@@ -175,8 +204,8 @@ export function SessionInbox(props: SessionInboxProps) {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to send message now",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: _(S.inboxGuideFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
       })
     }
   }
@@ -191,8 +220,8 @@ export function SessionInbox(props: SessionInboxProps) {
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to send queued messages now",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: _(S.inboxGuideAllFailed),
+        description: err instanceof Error ? err.message : _(S.inboxRequestFailed),
       })
     }
   }
@@ -211,11 +240,11 @@ export function SessionInbox(props: SessionInboxProps) {
     await props.sdk.client.session.inboxRemove({ sessionID: props.sessionID, itemID: item.id })
     showToast({
       type: "info",
-      title: "Removed queued message",
-      description: "The message has been removed from the inbox. Restoring it will add it to the queue tail.",
+      title: _(S.inboxRemoved),
+      description: _(S.inboxRemovedDesc),
       actions: [
         {
-          label: "Restore",
+          label: _(S.inboxRestore),
           onClick: () => {
             void restoreItem(item).catch(() => {})
           },
@@ -232,7 +261,7 @@ export function SessionInbox(props: SessionInboxProps) {
         class="session-inbox-popover"
         title={
           <div class="session-inbox-title">
-            <span class="session-inbox-title-main">Inbox</span>
+            <span class="session-inbox-title-main">{_(S.inboxTitle)}</span>
             <span class="session-inbox-title-subtitle">{titleDetail()}</span>
           </div>
         }
@@ -241,7 +270,7 @@ export function SessionInbox(props: SessionInboxProps) {
             type="button"
             class="session-inbox-trigger statusbar-glass relative flex size-9 items-center justify-center rounded-full focus:outline-none"
             data-active={count() > 0}
-            aria-label="Session inbox"
+            aria-label={_(S.inboxSessionAria)}
           >
             <Icon name={getSemanticIcon("session.inbox")} size="small" />
             <Show when={count() > 0}>
@@ -252,26 +281,28 @@ export function SessionInbox(props: SessionInboxProps) {
       >
         <Switch>
           <Match when={view().status === "loading"}>
-            <div class="px-1 py-2 text-12-regular text-text-weak">Loading inbox…</div>
+            <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxLoading)}</div>
           </Match>
           <Match when={view().status === "empty"}>
-            <div class="px-1 py-2 text-12-regular text-text-weak">Inbox clear</div>
+            <div class="px-1 py-2 text-12-regular text-text-weak">{_(S.inboxEmpty)}</div>
           </Match>
           <Match when={true}>
             <div class="session-inbox-list">
               <Show when={props.freezeHint}>
-                <div class="px-1 py-1 text-11-medium text-text-subtle">Inbox frozen while rewinding</div>
+                <div class="px-1 py-1 text-11-medium text-text-subtle">{_(S.inboxFrozen)}</div>
               </Show>
               <div class="session-inbox-queue-note">
                 <span>{note()}</span>
                 <Show when={!props.freezeHint && actionableItems().length > 1}>
                   <button type="button" class="session-inbox-send-all" onClick={guideAll}>
-                    Send all now
+                    {_(S.inboxSendAll)}
                   </button>
                 </Show>
               </div>
               <For each={items()}>
-                {(item) => <InboxRow item={item} disabled={props.freezeHint} onGuide={guide} onRemove={remove} />}
+                {(item) => (
+                  <InboxRow item={item} disabled={props.freezeHint} onGuide={guide} onRemove={remove} i18n={i18n} />
+                )}
               </For>
             </div>
           </Match>

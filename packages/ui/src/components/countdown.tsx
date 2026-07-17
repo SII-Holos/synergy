@@ -1,4 +1,6 @@
 import { createSignal, onCleanup, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { COUNTDOWN_DESC } from "./tool-title-descriptors"
 
 export interface CountdownProps {
   seconds: number
@@ -7,6 +9,7 @@ export interface CountdownProps {
 }
 
 export function Countdown(props: CountdownProps) {
+  const { _ } = useLingui()
   const fallbackStartedAt = Date.now()
   const [now, setNow] = createSignal(Date.now())
 
@@ -24,7 +27,7 @@ export function Countdown(props: CountdownProps) {
   return (
     <Show when={props.active}>
       <span data-component="countdown" data-urgent={ratio() <= 0.2} data-expired={expired()}>
-        {remaining()}s
+        {_({ ...COUNTDOWN_DESC.timeoutLabel, values: { remaining: remaining() } })}
       </span>
     </Show>
   )

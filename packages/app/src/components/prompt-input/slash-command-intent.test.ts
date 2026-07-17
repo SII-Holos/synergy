@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { PI } from "./prompt-input-i18n"
 import {
   getPendingLightLoopSlashBlock,
   resolveSlashCommandIntent,
@@ -88,8 +89,8 @@ describe("slash command intent", () => {
         }),
       ),
     ).toEqual({
-      title: "Use a task message",
-      description: "Light Loop can't start from an action command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask,
+      description: PI.slashNoAction,
     })
   })
 
@@ -103,8 +104,8 @@ describe("slash command intent", () => {
         }),
       ),
     ).toEqual({
-      title: "Use a task message",
-      description: "Light Loop can't start from a UI command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask,
+      description: PI.slashNoUi,
     })
   })
 })

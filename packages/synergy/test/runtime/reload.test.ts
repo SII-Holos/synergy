@@ -400,6 +400,9 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("locale is classified as client-side and not reloaded by the server runtime", async () => {
+    expect(RuntimeReload.CONFIG_CLIENT_SIDE.has("locale")).toBe(true)
+  })
   test("error isolation: reload continues after subsystem failure", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

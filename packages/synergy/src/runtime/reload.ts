@@ -55,7 +55,7 @@ export namespace RuntimeReload {
     "email",
     "github",
   ])
-  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast"])
+  export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
   export const Event = {
     Reloaded: BusEvent.define(

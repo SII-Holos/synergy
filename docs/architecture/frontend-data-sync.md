@@ -41,7 +41,8 @@ The sync layer has:
 
 - one global store for paths, project list, providers, provider auth, and global Agenda data;
 - one lazily created store per home/project Scope;
-- message arrays keyed by session ID;
+- message arrays keyed by session ID (window, not full transcript);
+- `messageWindow` metadata keyed by session ID (cursor, hasMore, total, mode, pendingLatest);
 - part arrays keyed by message ID;
 - per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, Cortex, and Agenda.
@@ -68,6 +69,60 @@ Preserving unchanged identities keeps memos and components that read unrelated l
 
 Streaming delta application is even narrower: it appends only to the `text` leaf of the matching text/reasoning part.
 
+## Message Window and Cursor Pagination
+
+The frontend maintains a per-session bounded message window backed by cursor-based pagination via `GET /session/:sessionID/message/page` (generated SDK `session.messagePage`). The unbounded `messages()` API and `/session/:sessionID/message` route remain available for runtime loops, export, and preview consumers.
+
+### Window state
+
+Each session stores `MessageWindowMetadata` keyed by session ID in the store:
+
+```ts
+type MessageWindowMetadata = {
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+  mode: "latest" | "history"
+  pendingLatest: boolean
+  pendingLatestIds: string[]
+}
+```
+
+The `messages` array in the store contains only the visible window messages, not the full transcript.
+
+### Page size and cap
+
+- Default page size is 200; the store cap is 500.
+- `Session.messagePage()` defaults `limit` to 200 and caps it at 500.
+- The store's `DEFAULT_CAP` of 500 applies to both latest loads and history prepends.
+
+### Latest mode
+
+Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming `message.updated` events reconcile into the window:
+
+- If the message already exists, the window updates in place.
+- If the message is new and the window is in latest mode, it is inserted and the window is capped by dropping the oldest messages.
+- Dropped message IDs release their part buckets from the store.
+
+The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
+
+### History mode
+
+When the user requests older messages via "Load earlier", the frontend switches to history mode (`mode: "history"`):
+
+- The existing window messages are preserved; older fetched messages are prepended.
+- The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages).
+- A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted.
+- `total` excludes those suppressed live arrivals while history mode remains active. Older-page responses are normalized by `pendingLatestIds`; returning to latest replaces the metadata with the server total and clears the pending IDs.
+
+### Return to latest
+
+"Return to latest" refetches `messagePage()` without a cursor, resetting `mode` to `"latest"` and clearing `pendingLatest`. The UI force-scrolls to the bottom. Stale-cursor errors during `loadMore` also automatically trigger this recovery: the frontend catches `SessionMessagePageCursorStaleError` and refetches latest.
+
+### Scroll anchor
+
+Successful prepend in history mode captures the DOM offset of the first visible message before the fetch and restores it afterward, keeping the visible conversation stable. `turnStart` is reset to 0 only after a successful load so failed loads do not disturb the turn pagination state.
+
 ## Initial and Explicit Loads
 
 The generated SDK owns internal HTTP calls. Scope-specific clients carry home `scopeID` or project directory context.
@@ -75,8 +130,7 @@ The generated SDK owns internal HTTP calls. Scope-specific clients carry home `s
 Session detail loading is split by concern:
 
 - session metadata loads independently;
-- messages load in chunks of 200;
-- the frontend retains at most the newest 500 loaded messages for one session;
+- messages load through `session.messagePage()` in page size 200, stored in a bounded window capped at 500;
 - parts are sorted and reconciled under their owning message;
 - inbox, todo, DAG, diff, permissions, and questions have separate refresh paths.
 
@@ -199,12 +253,12 @@ This removes quadratic full-part disk writes without weakening terminal persiste
 
 The frontend:
 
-1. fetches the post-compaction session messages while keeping the current timeline visible;
-2. computes the messages to retain and the old part buckets to drop;
+1. fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
+2. computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
 3. applies one Solid batch that deletes stale parts, diff, and inbox state;
-4. reconciles the retained messages and their authoritative parts.
+4. reconciles the retained messages, their authoritative parts, and the message window metadata atomically.
 
-Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released.
+Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`) is replaced atomically in the same batch.
 
 ## Message Bucket Eviction
 
@@ -213,8 +267,8 @@ Loaded message and part buckets are memory-bounded independently of session meta
 - the global LRU spans Scope/session bucket keys;
 - at most 15 session buckets are retained;
 - the actively viewed session is protected even if it is the oldest;
-- eviction removes that session's message array and all parts owned by those messages;
-- revisiting an evicted session reloads it through normal message sync.
+- eviction removes that session's message array, all parts owned by those messages, and the session's `messageWindow` metadata;
+- revisiting an evicted session reloads it through normal message page sync.
 
 Session lists, status, inbox, todo, and other non-message state are not evicted by this policy.
 
@@ -246,3 +300,6 @@ Variant display resolves the explicit or historical session variant first, then 
 - Compaction fetches before swapping the visible message set.
 - The active session survives message-bucket eviction.
 - Composer fallback resolution never writes upward into user intent.
+- The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.
+- Latest mode keeps the newest messages and evicts oldest; history mode preserves the existing window and caps newest overflow.
+- `messageWindow` metadata and messages are evicted together by the message-bucket LRU.

@@ -10,11 +10,15 @@ export type GitHubModelBudget = z.infer<typeof GitHubModelBudget>
 
 const RepositoryMapping = z.record(z.string().min(1), z.string().min(1))
 
+export type GitHubWorkflowAnchor = {
+  parentSessionID: string
+  parentMessageID: string
+}
 export const GitHubFixWorkflowConfig = z
   .object({
     enabled: z.boolean().default(false),
     repositoryMapping: RepositoryMapping.default({}),
-    maxRetries: z.number().int().nonnegative().default(3),
+    maxRetries: z.number().int().min(0).max(20).default(3),
     timeoutMs: z
       .number()
       .int()
@@ -53,7 +57,7 @@ export const GitHubReviewWorkflowConfig = z
       .array(z.string().min(1))
       .default(["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"]),
     reviewCommands: z.array(z.string().min(1)).default(["bun test", "bun run typecheck"]),
-    maxRetries: z.number().int().nonnegative().default(3),
+    maxRetries: z.number().int().min(0).max(20).default(3),
     timeoutMs: z
       .number()
       .int()

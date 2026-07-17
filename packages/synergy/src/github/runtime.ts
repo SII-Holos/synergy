@@ -14,7 +14,7 @@ import {
 } from "./types"
 
 export namespace GitHubRuntime {
-  const log = Log.create({ service: "github-shadow-runtime" })
+  const log = Log.create({ service: "github-runtime" })
   const DELIVERY_CONCURRENCY = 4
   let activeConfig: IntegrationConfig | undefined
   let worker: Promise<void> | undefined

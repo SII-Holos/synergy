@@ -86,6 +86,15 @@ bun run --cwd packages/ui generate:theme
 
 Frontend product colors must use the canonical semantic theme contract. Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. See [Frontend themes and color](frontend-theming.md) for consumer rules, imperative renderer integration, semantic token changes, and the recommended plugin workflow for creating a selectable theme.
 
+Localized frontend changes also update and validate the shared App/UI Lingui catalog:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run localization:check
+```
+
+`i18n:extract` is App-owned because `packages/app/lingui.config.ts` includes both `packages/app/src` and `packages/ui/src`. The single root `localization:check` gate re-extracts catalogs and rejects drift, rejects missing or blank Simplified Chinese translations, strictly compiles every locale, then enforces the App/UI source contract for hard-coded visible strings, Chinese source literals, hard-coded locale tags, invalid descriptors, dynamic IDs, and Lingui macro imports. Keep tracked PO catalogs unchanged after extraction before handing off a localization change.
+
 Write behavior tests around public invariants. Avoid source-text assertions that fail when an implementation is refactored without changing behavior.
 
 ## Quality Commands
@@ -105,7 +114,7 @@ bun run quality:quick
 bun run quality
 ```
 
-`quality:quick` is the default local PR preflight: format, lint, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook runs Bun-version, format, lint, typecheck, and monorepo checks; CI runs the wider matrix.
+`quality:quick` is the default local PR preflight: format, lint, Skill/package-guide checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook runs Bun-version, format, lint, typecheck, and monorepo checks; CI runs the wider matrix.
 
 See [Open-source quality](../operations/open-source-quality.md) for exact jobs and failure guidance.
 

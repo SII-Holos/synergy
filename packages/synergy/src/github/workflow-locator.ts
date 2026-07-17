@@ -3,14 +3,9 @@ import type { CortexTypes } from "@/cortex/types"
 import type { Scope } from "@/scope"
 import { ScopeRuntime } from "@/scope/runtime"
 import z from "zod"
-import { GitHubFixOutput, type GitHubObservation } from "./types"
+import { GitHubFixOutput, type GitHubObservation, type GitHubWorkflowAnchor } from "./types"
 
-type WorkflowAnchor = {
-  parentSessionID: string
-  parentMessageID: string
-}
-
-type LocateIssueInput = WorkflowAnchor & {
+type LocateIssueInput = GitHubWorkflowAnchor & {
   scope: Scope.Project
   deliveryGuid: string
   observation: GitHubObservation

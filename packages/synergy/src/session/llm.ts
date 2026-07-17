@@ -434,6 +434,9 @@ export namespace LLM {
           lateSystem: input.lateSystem,
           messages: input.messages,
         }),
+        // System messages are embedded in the message array on purpose so the
+        // provider transform can place cache breakpoints across system parts.
+        allowSystemInMessages: true,
         model: wrapLanguageModel({
           model: language,
           middleware: [

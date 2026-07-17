@@ -31,36 +31,35 @@ import {
 import { agendaRunStatusTone, agendaStatusTone, formatAgendaDuration } from "./shared"
 import "./agenda-dialog.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
+import { A } from "./agenda-i18n"
 
 type AgendaAction = "trigger" | "activate" | "pause" | "complete" | "cancel" | "remove"
 
-function errorDescription(error: unknown) {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string" && error) return error
-  return "Request failed"
-}
-
-function triggerSummary(triggers: AgendaItem["triggers"]): string {
-  if (!triggers || triggers.length === 0) return "Manual"
+function makeTriggerSummary(
+  triggers: AgendaItem["triggers"],
+  _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string,
+): string {
+  if (!triggers || triggers.length === 0) return _(A.triggerManual)
   return triggers
     .map((t) => {
       switch (t.type) {
         case "cron":
-          return `cron: ${t.expr}`
+          return _(A.triggerCron, { expr: t.expr })
         case "every":
-          return `every ${t.interval}`
+          return _(A.triggerEvery, { interval: t.interval })
         case "at":
-          return `at ${new Date(t.at).toLocaleString()}`
+          return _(A.triggerAt, { time: new Date(t.at).toISOString() })
         case "delay":
-          return `delay ${t.delay}`
+          return _(A.triggerDelay, { delay: String(t.delay) })
         case "watch": {
           const w = t.watch
-          if ("command" in w) return `poll: ${w.command}`
-          if ("tool" in w) return `tool: ${w.tool}`
-          return `watch: ${w.glob}`
+          if ("command" in w) return _(A.triggerPoll, { command: w.command })
+          if ("tool" in w) return _(A.triggerTool, { tool: w.tool })
+          return _(A.triggerWatch, { glob: w.glob })
         }
         default:
-          return "unknown"
+          return _(A.triggerUnknown)
       }
     })
     .join(", ")
@@ -75,6 +74,9 @@ export function AgendaPanel() {
   const confirm = useConfirm()
   const navigate = useNavigate()
   const params = useParams()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
+    i18n._(values ? { ...d, values } : d)
 
   const [tab, setTab] = createSignal<PanelTab>("schedule")
   const onCloseWorkspace = useWorkspaceMobileHeaderClose()
@@ -105,6 +107,8 @@ export function AgendaPanel() {
     if (!range.start || !range.end) return []
     return expandItems(scheduleItems(), range.start, range.end)
   })
+
+  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
 
   function itemById(id: string): AgendaItem | undefined {
     return items().find((i) => i.id === id)
@@ -162,10 +166,12 @@ export function AgendaPanel() {
       }
     } catch (error) {
       if (options?.throwOnError) throw error
+      const errMsg =
+        error instanceof Error ? error.message : typeof error === "string" && error ? error : _(A.actionRequestFailed)
       showToast({
         type: "error",
-        title: "Agenda action failed",
-        description: errorDescription(error),
+        title: _(A.actionFailed),
+        description: errMsg,
       })
     } finally {
       setActionLoading((prev) => {
@@ -186,7 +192,7 @@ export function AgendaPanel() {
 
   function openForm(item?: AgendaItem) {
     dialog.show(() => (
-      <Dialog class="agenda-form-dialog" title={item ? "Edit Agenda" : "New Agenda"}>
+      <Dialog class="agenda-form-dialog" title={item ? _(A.editAgenda) : _(A.newAgenda)}>
         <AgendaForm directory={formDirectory(item)} item={item} presentation="dialog" onBack={() => dialog.close()} />
       </Dialog>
     ))
@@ -276,20 +282,20 @@ export function AgendaPanel() {
         <AppPanel.Header class="agenda-header">
           <div class="agenda-header-inner">
             <AppPanel.HeaderRow>
-              <AppPanel.Title>Agenda</AppPanel.Title>
+              <AppPanel.Title>{_(A.panelTitle)}</AppPanel.Title>
               <button
                 type="button"
                 class="inline-flex h-9 items-center gap-2 rounded-xl bg-text-strong px-3.5 text-13-medium text-background-base ring-1 ring-inset ring-border-weaker-selected shadow-sm transition-colors hover:bg-text-base"
                 onClick={openCreate}
               >
                 <Icon name={getSemanticIcon("action.add")} size="small" class="text-background-base" />
-                <span>New Agenda</span>
+                <span>{_(A.newAgenda)}</span>
               </button>
             </AppPanel.HeaderRow>
             <AppPanel.SegmentedNav
               items={[
-                { id: "schedule", label: "Schedule" },
-                { id: "activity", label: "History" },
+                { id: "schedule", label: _(A.scheduleTab) },
+                { id: "activity", label: _(A.activityTab) },
               ]}
               active={tab()}
               onChange={(id) => setTab(id as PanelTab)}
@@ -309,13 +315,15 @@ export function AgendaPanel() {
                     when={todoItems().length > 0}
                     fallback={
                       <div class="agenda-inner-surface flex min-h-0 flex-1 items-center justify-center px-3 py-4">
-                        <span class="text-10-medium text-text-weaker/60">No todo items</span>
+                        <span class="text-10-medium text-text-weaker/60">{_(A.noTodoItems)}</span>
                       </div>
                     }
                   >
                     <div class="flex items-center justify-between gap-2 mb-2 px-0.5">
                       <div class="flex items-center gap-1.5 min-w-0">
-                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Todo</span>
+                        <span class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">
+                          {_(A.todoLabel)}
+                        </span>
                         <span class="inline-flex items-center rounded-full bg-surface-raised-base px-2 py-0.5 text-[10px] font-medium text-text-weaker">
                           {todoItems().length}
                         </span>
@@ -327,6 +335,7 @@ export function AgendaPanel() {
                           <TodoCard
                             item={item}
                             onClick={(e) => openDetail(item, (e.target as HTMLElement).getBoundingClientRect())}
+                            triggerSummary={triggerSummary}
                           />
                         )}
                       </For>
@@ -361,6 +370,7 @@ export function AgendaPanel() {
                         setPopoverItem(undefined)
                         openEdit(pi)
                       }}
+                      _={_}
                     />
                   </Portal>
                 </Show>
@@ -398,7 +408,11 @@ export function AgendaPanel() {
   )
 }
 
-function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void }) {
+function TodoCard(props: {
+  item: AgendaItem
+  onClick: (e: MouseEvent) => void
+  triggerSummary: (triggers: AgendaItem["triggers"]) => string
+}) {
   return (
     <div
       class="agenda-inner-surface flex cursor-pointer items-center gap-2.5 px-2.5 py-2 transition-colors hover:bg-surface-raised-base-hover"
@@ -409,7 +423,7 @@ function TodoCard(props: { item: AgendaItem; onClick: (e: MouseEvent) => void })
       />
       <span class="min-w-0 flex-1 truncate text-12-regular text-text-strong">{props.item.title}</span>
       <span class="inline-flex shrink-0 items-center rounded-full bg-surface-inset-base px-2 py-0.5 text-[9px] font-medium text-text-weaker">
-        {triggerSummary(props.item.triggers)}
+        {props.triggerSummary(props.item.triggers)}
       </span>
     </div>
   )
@@ -424,7 +438,12 @@ function DetailPopover(props: {
   onClose: () => void
   onAction: (action: AgendaAction) => void
   onEdit: () => void
+  _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string
 }) {
+  const { i18n, fmt } = useLocale()
+  const { _ } = props
+  const triggerSummary = (triggers: AgendaItem["triggers"]) => makeTriggerSummary(triggers, _)
+
   const pos = () => {
     const a = props.anchor
     if (!a) return { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }
@@ -468,13 +487,13 @@ function DetailPopover(props: {
           type="button"
           class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onEdit}
-          title="Edit"
+          title={_(A.detailEdit)}
         >
           <Icon name={getSemanticIcon("action.rename")} size="small" />
         </button>
         <ActionIconBtn
           icon={getSemanticIcon("action.remove")}
-          title="Delete"
+          title={_(A.detailDelete)}
           loading={props.isLoading(props.item.id, "remove")}
           onClick={() => props.onAction("remove")}
           danger
@@ -484,7 +503,7 @@ function DetailPopover(props: {
           type="button"
           class="size-7 flex items-center justify-center rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
           onClick={props.onClose}
-          title="Close"
+          title={_(A.detailClose)}
         >
           <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
@@ -504,23 +523,25 @@ function DetailPopover(props: {
           <div class="flex items-center gap-1.5 flex-wrap">
             <span class="agenda-detail-chip">{triggerSummary(props.item.triggers)}</span>
             <Show when={state()?.runCount}>
-              <span class="agenda-detail-chip">{state()!.runCount} runs</span>
+              <span class="agenda-detail-chip">{_(A.detailRuns, { count: state()!.runCount! })}</span>
             </Show>
             <Show when={state()?.consecutiveErrors && state()!.consecutiveErrors! > 0}>
-              <span class="agenda-detail-chip agenda-detail-chip-danger">{state()!.consecutiveErrors} errors</span>
+              <span class="agenda-detail-chip agenda-detail-chip-danger">
+                {_(A.detailErrors, { count: state()!.consecutiveErrors! })}
+              </span>
             </Show>
             <Show when={props.item.createdBy === "agent"}>
-              <span class="agenda-detail-chip">agent</span>
+              <span class="agenda-detail-chip">{_(A.detailAgent)}</span>
             </Show>
           </div>
 
           <Show when={state()?.nextRunAt}>
-            <div class="agenda-detail-meta">Next: {relativeTime(state()!.nextRunAt!)}</div>
+            <div class="agenda-detail-meta">{_(A.detailNext, { time: relativeTime(fmt, state()!.nextRunAt!) })}</div>
           </Show>
 
           <Show when={state()?.lastRunAt}>
             <div class="agenda-detail-meta">
-              Last run: {absoluteDate(state()!.lastRunAt!)}
+              {_(A.detailLastRun, { date: absoluteDate(fmt, state()!.lastRunAt!) })}
               <Show when={state()?.lastRunStatus}>
                 {" · "}
                 <span class={agendaRunStatusTone(state()!.lastRunStatus!)}>{state()!.lastRunStatus}</span>
@@ -546,34 +567,41 @@ function DetailPopover(props: {
 
           <Show when={props.item.prompt}>
             <div class="agenda-detail-section">
-              <div class="agenda-detail-section-label">Task</div>
+              <div class="agenda-detail-section-label">{_(A.detailTaskLabel)}</div>
               <p class="text-11-regular text-text-weak leading-relaxed whitespace-pre-wrap line-clamp-4">
                 {props.item.prompt}
               </p>
               <Show when={props.item.agent}>
-                <span class="agenda-detail-meta mt-1.5 block">Agent: {props.item.agent}</span>
+                <span class="agenda-detail-meta mt-1.5 block">
+                  {_(A.detailAgentLabel, { agent: props.item.agent! })}
+                </span>
               </Show>
             </div>
           </Show>
 
-          <ActionBar item={props.item} isLoading={props.isLoading} isDone={props.isDone} onAction={props.onAction} />
+          <ActionBar
+            item={props.item}
+            isLoading={props.isLoading}
+            isDone={props.isDone}
+            onAction={props.onAction}
+            _={_}
+          />
 
           <Show when={props.runs} fallback={<Spinner class="size-3.5 my-1" />}>
             {(runs) => (
               <Show when={runs().length > 0}>
                 <div class="agenda-detail-section">
-                  <div class="agenda-detail-section-label">Recent runs</div>
+                  <div class="agenda-detail-section-label">{_(A.detailRecentRuns)}</div>
                   <For each={runs().slice(0, 8)}>{(run) => <RunRow run={run} />}</For>
                 </div>
               </Show>
             )}
           </Show>
-
           <div class="agenda-detail-footer">
-            Created {absoluteDate(props.item.time.created)}
+            {_(A.detailCreated, { date: absoluteDate(fmt, props.item.time.created) })}
             <Show when={props.item.time.updated !== props.item.time.created}>
-              {" · updated "}
-              {absoluteDate(props.item.time.updated)}
+              {" · "}
+              {_(A.detailUpdated, { date: absoluteDate(fmt, props.item.time.updated) })}
             </Show>
           </div>
         </div>
@@ -615,7 +643,9 @@ function ActionBar(props: {
   isLoading: (id: string, action: string) => boolean
   isDone: (id: string, action: string) => boolean
   onAction: (action: AgendaAction) => void
+  _: (d: { id: string; message: string }) => string
 }) {
+  const { _ } = props
   const status = () => props.item.status
 
   const hasActions = () => status() !== "cancelled"
@@ -625,7 +655,7 @@ function ActionBar(props: {
       <div class="flex items-center gap-1.5 flex-wrap">
         <Show when={status() === "active" || status() === "paused" || status() === "pending"}>
           <ActionButton
-            label="Trigger"
+            label={_(A.actionTrigger)}
             loading={props.isLoading(props.item.id, "trigger")}
             done={props.isDone(props.item.id, "trigger")}
             onClick={() => props.onAction("trigger")}
@@ -634,28 +664,28 @@ function ActionBar(props: {
         </Show>
         <Show when={status() === "paused" || status() === "pending"}>
           <ActionButton
-            label="Activate"
+            label={_(A.actionActivate)}
             loading={props.isLoading(props.item.id, "activate")}
             onClick={() => props.onAction("activate")}
           />
         </Show>
         <Show when={status() === "active"}>
           <ActionButton
-            label="Pause"
+            label={_(A.actionPause)}
             loading={props.isLoading(props.item.id, "pause")}
             onClick={() => props.onAction("pause")}
           />
         </Show>
         <Show when={status() !== "done" && status() !== "cancelled"}>
           <ActionButton
-            label="Complete"
+            label={_(A.actionComplete)}
             loading={props.isLoading(props.item.id, "complete")}
             onClick={() => props.onAction("complete")}
           />
         </Show>
         <Show when={status() !== "cancelled"}>
           <ActionButton
-            label="Cancel"
+            label={_(A.actionCancel)}
             loading={props.isLoading(props.item.id, "cancel")}
             onClick={() => props.onAction("cancel")}
             variant="danger"
@@ -702,6 +732,7 @@ function ActionButton(props: {
 }
 
 function RunRow(props: { run: AgendaRunLog }) {
+  const { i18n, fmt } = useLocale()
   return (
     <div class="agenda-run-row">
       <span class={`shrink-0 ${agendaRunStatusTone(props.run.status)}`}>
@@ -716,7 +747,7 @@ function RunRow(props: { run: AgendaRunLog }) {
           <span class="text-text-diff-delete-base">{props.run.error}</span>
         </Show>
       </span>
-      <span class="text-text-weaker shrink-0">{relativeTime(props.run.time.started)}</span>
+      <span class="text-text-weaker shrink-0">{relativeTime(fmt, props.run.time.started)}</span>
     </div>
   )
 }

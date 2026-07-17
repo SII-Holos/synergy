@@ -1,4 +1,5 @@
 import { onCleanup, createSignal } from "solid-js"
+import { useLocale, type IntlFormatter } from "@/context/locale"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
 
 const GREETINGS_MORNING = [
@@ -37,8 +38,8 @@ const SUBTITLES = [
   "Drop some context, let's go.",
 ]
 
-function formatTime(date: Date): string {
-  return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", second: "2-digit" })
+function formatTime(date: Date, fmt: IntlFormatter): string {
+  return fmt.date(date, { hour: "2-digit", minute: "2-digit", second: "2-digit" })
 }
 
 function getTimeGreeting(): string {
@@ -52,12 +53,13 @@ function getSubtitle(): string {
 }
 
 export function NewSessionGreeting() {
-  const [clock, setClock] = createSignal(formatTime(new Date()))
+  const { fmt } = useLocale()
+  const [clock, setClock] = createSignal(formatTime(new Date(), fmt))
   const [greeting] = createSignal(getTimeGreeting())
   const [subtitle, setSubtitle] = createSignal(getSubtitle())
   const [transitioning, setTransitioning] = createSignal(false)
 
-  const clockInterval = setInterval(() => setClock(formatTime(new Date())), 1000)
+  const clockInterval = setInterval(() => setClock(formatTime(new Date(), fmt)), 1000)
   onCleanup(() => clearInterval(clockInterval))
 
   const subtitleInterval = setInterval(() => {

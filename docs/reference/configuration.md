@@ -300,7 +300,7 @@ When `fixWorkflow.enabled` is true, `issues.opened` events that match the bug si
 | ------------------------------- | ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------- |
 | `fixWorkflow.enabled`           | no           | `false`                  | Enable the autonomous issue fix delivery workflow                                                    |
 | `fixWorkflow.repositoryMapping` | when enabled | `{}`                     | Map of repository full name → local project directory (e.g. `{"owner/repo": "/home/projects/repo"}`) |
-| `fixWorkflow.maxRetries`        | no           | `3`                      | Maximum retries before marking a fix delivery permanently failed                                     |
+| `fixWorkflow.maxRetries`        | no           | `3`                      | Maximum retries before permanent failure; accepted range is 0–20                                     |
 | `fixWorkflow.timeoutMs`         | no           | `900000` (15 min)        | Timeout per locator and coder Cortex task                                                            |
 | `fixWorkflow.locatorAgent`      | no           | `"github-issue-locator"` | Hidden agent used for root-cause location                                                            |
 | `fixWorkflow.agent`             | no           | `"github-fix-coder"`     | Hidden agent used for fix implementation                                                             |
@@ -312,17 +312,17 @@ When `reviewWorkflow.enabled` is true, `pull_request.opened`, `pull_request.reop
 
 `reviewWorkflow.repositoryMapping` maps repository full names to local project directory paths. It is required when enabled. An unmapped repository is silently ignored.
 
-| Field                                 | Required     | Default                                                                        | Description                                                         |
-| ------------------------------------- | ------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
-| `reviewWorkflow.enabled`              | no           | `false`                                                                        | Enable the automatic PR review workflow                             |
-| `reviewWorkflow.repositoryMapping`    | when enabled | `{}`                                                                           | Map of repository full name → local project directory               |
-| `reviewWorkflow.eventTypes`           | no           | `["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"]` | Pull request event types to review                                  |
-| `reviewWorkflow.reviewCommands`       | no           | `["bun test", "bun run typecheck"]`                                            | Verification commands to run in the isolated worktree               |
-| `reviewWorkflow.maxRetries`           | no           | `3`                                                                            | Maximum retries before marking a review delivery permanently failed |
-| `reviewWorkflow.timeoutMs`            | no           | `900000` (15 min)                                                              | Timeout for the review Cortex task                                  |
-| `reviewWorkflow.agent`                | no           | `"github-review-agent"`                                                        | Hidden agent used for defect-first review                           |
-| `reviewWorkflow.publishReviewComment` | no           | `true`                                                                         | Post a pull request review comment with findings                    |
-| `reviewWorkflow.publishCheckRun`      | no           | `true`                                                                         | Create a check run on the head SHA with pass/fail conclusion        |
+| Field                                 | Required     | Default                                                                        | Description                                                                              |
+| ------------------------------------- | ------------ | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| `reviewWorkflow.enabled`              | no           | `false`                                                                        | Enable the automatic PR review workflow                                                  |
+| `reviewWorkflow.repositoryMapping`    | when enabled | `{}`                                                                           | Map of repository full name → local project directory                                    |
+| `reviewWorkflow.eventTypes`           | no           | `["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"]` | Pull request event types to review                                                       |
+| `reviewWorkflow.reviewCommands`       | no           | `["bun test", "bun run typecheck"]`                                            | Commands executed with the review agent's sandboxed Bash access in the isolated worktree |
+| `reviewWorkflow.maxRetries`           | no           | `3`                                                                            | Maximum retries before permanent failure; accepted range is 0–20                         |
+| `reviewWorkflow.timeoutMs`            | no           | `900000` (15 min)                                                              | Timeout for the review Cortex task                                                       |
+| `reviewWorkflow.agent`                | no           | `"github-review-agent"`                                                        | Hidden agent used for defect-first review                                                |
+| `reviewWorkflow.publishReviewComment` | no           | `true`                                                                         | Post a pull request review comment with findings                                         |
+| `reviewWorkflow.publishCheckRun`      | no           | `true`                                                                         | Create a check run on the head SHA with pass/fail conclusion                             |
 
 ### Webhook secret and GitHub App credentials
 

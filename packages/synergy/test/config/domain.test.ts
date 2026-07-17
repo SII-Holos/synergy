@@ -60,3 +60,7 @@ test("product update mode is not part of server config", async () => {
   const schema = await Bun.file(new URL("../../schema/config.schema.json", import.meta.url)).json()
   expect(Object.keys(schema.properties ?? {})).not.toContain("autoupdate")
 })
+
+test("locale belongs to the general domain", () => {
+  expect(ConfigDomain.domainForKey("locale")?.id).toBe("general")
+})

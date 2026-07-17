@@ -12,6 +12,119 @@ const DEFAULT_TTL_MS = 30 * 60 * 1000 // 30 minutes
 const MAX_OUTPUT_CHARS = 200_000
 const TAIL_CHARS = 2000
 
+const OUTPUT_SEGMENT_CHARS = 4096
+
+class BoundedTextBuffer {
+  private segments: string[] = []
+  private head = 0
+  private headOffset = 0
+  private pending: string[] = []
+  private pendingLength = 0
+  private retainedLength = 0
+
+  get length() {
+    return this.retainedLength
+  }
+
+  append(input: string, maxChars: number) {
+    if (input.length === 0) return false
+
+    let offset = 0
+    while (offset < input.length) {
+      const available = OUTPUT_SEGMENT_CHARS - this.pendingLength
+      const take = Math.min(available, input.length - offset)
+      this.pending.push(input.slice(offset, offset + take))
+      this.pendingLength += take
+      this.retainedLength += take
+      offset += take
+      if (this.pendingLength === OUTPUT_SEGMENT_CHARS) this.flushPending()
+    }
+
+    const limit = Math.max(0, Math.floor(maxChars))
+    let overflow = this.retainedLength - limit
+    if (overflow <= 0) return false
+
+    while (overflow > 0 && this.head < this.segments.length) {
+      const segment = this.segments[this.head]
+      const available = segment.length - this.headOffset
+      const removed = Math.min(available, overflow)
+      this.headOffset += removed
+      this.retainedLength -= removed
+      overflow -= removed
+      if (this.headOffset === segment.length) {
+        this.head++
+        this.headOffset = 0
+      }
+    }
+
+    if (overflow > 0) {
+      const pending = this.pending.join("").slice(overflow)
+      this.pending = pending ? [pending] : []
+      this.pendingLength = pending.length
+      this.retainedLength -= overflow
+    }
+
+    this.compactSegments()
+    return true
+  }
+
+  text() {
+    if (this.retainedLength === 0) return ""
+    const result: string[] = []
+    for (let index = this.head; index < this.segments.length; index++) {
+      const segment = this.segments[index]
+      result.push(index === this.head && this.headOffset > 0 ? segment.slice(this.headOffset) : segment)
+    }
+    if (this.pendingLength > 0) result.push(this.pending.join(""))
+    return result.join("")
+  }
+
+  tail(maxChars: number) {
+    let remaining = Math.min(maxChars, this.retainedLength)
+    if (remaining === 0) return ""
+
+    const result: string[] = []
+    if (this.pendingLength > 0) {
+      const pending = this.pending.join("")
+      result.push(pending.slice(-remaining))
+      remaining -= Math.min(remaining, pending.length)
+    }
+    for (let index = this.segments.length - 1; index >= this.head && remaining > 0; index--) {
+      const segment =
+        index === this.head && this.headOffset > 0 ? this.segments[index].slice(this.headOffset) : this.segments[index]
+      result.push(segment.slice(-remaining))
+      remaining -= Math.min(remaining, segment.length)
+    }
+    return result.reverse().join("")
+  }
+
+  stats() {
+    return {
+      segments: this.segments.length - this.head + (this.pendingLength > 0 ? 1 : 0),
+      allocatedSegments: this.segments.length + (this.pendingLength > 0 ? 1 : 0),
+    }
+  }
+
+  private flushPending() {
+    if (this.pendingLength === 0) return
+    this.segments.push(this.pending.join(""))
+    this.pending = []
+    this.pendingLength = 0
+  }
+
+  private compactSegments() {
+    if (this.head >= this.segments.length) {
+      this.segments = []
+      this.head = 0
+      this.headOffset = 0
+      return
+    }
+    if (this.head < 64 || this.head * 2 < this.segments.length) return
+    this.segments.splice(0, this.head)
+    this.head = 0
+  }
+}
+
 export namespace ProcessRegistry {
   export type Status = "running" | "completed" | "failed" | "killed"
 
@@ -81,6 +194,7 @@ export namespace ProcessRegistry {
 
   const running = new Map<string, Process>()
   const finished = new Map<string, FinishedProcess>()
+  const outputBuffers = new WeakMap<Process, BoundedTextBuffer>()
   let sweeper: Timer | null = null
   let ttlMs = DEFAULT_TTL_MS
   let processInspector: ProcessInspector = defaultProcessInspector
@@ -93,6 +207,7 @@ export namespace ProcessRegistry {
     stdin?: Stdin
   }): Process {
     const id = Identifier.short("process")
+    const outputBuffer = new BoundedTextBuffer()
     const proc: Process = {
       id,
       command: opts.command,
@@ -103,12 +218,17 @@ export namespace ProcessRegistry {
       pid: opts.child?.pid,
       startedAt: Date.now(),
       maxOutputChars: MAX_OUTPUT_CHARS,
-      output: "",
-      tail: "",
+      get output() {
+        return outputBuffer.text()
+      },
+      get tail() {
+        return outputBuffer.tail(TAIL_CHARS)
+      },
       truncated: false,
       exited: false,
       backgrounded: false,
     }
+    outputBuffers.set(proc, outputBuffer)
     running.set(id, proc)
     startSweeper()
     log.info("process created", { id, commandFamily: ObservabilityRedaction.commandFamily(opts.command) })
@@ -133,14 +253,9 @@ export namespace ProcessRegistry {
   }
 
   export function appendOutput(proc: Process, chunk: string) {
-    const newOutput = proc.output + chunk
-    if (newOutput.length > proc.maxOutputChars) {
-      proc.output = newOutput.slice(newOutput.length - proc.maxOutputChars)
-      proc.truncated = true
-    } else {
-      proc.output = newOutput
-    }
-    proc.tail = proc.output.slice(-TAIL_CHARS)
+    const outputBuffer = outputBuffers.get(proc)
+    if (!outputBuffer) throw new Error(`Process output buffer is unavailable: ${proc.id}`)
+    proc.truncated = outputBuffer.append(chunk, proc.maxOutputChars) || proc.truncated
     proc.lastOutputAt = Date.now()
     ObservabilityMetrics.record({
       name: "process.output.chars",
@@ -171,7 +286,6 @@ export namespace ProcessRegistry {
     proc.exited = true
     proc.exitCode = exitCode
     proc.exitSignal = exitSignal
-    proc.tail = proc.output.slice(-TAIL_CHARS)
 
     const status: Status =
       exitSignal === "SIGKILL" || exitSignal === "SIGTERM" ? "killed" : exitCode === 0 ? "completed" : "failed"
@@ -216,7 +330,7 @@ export namespace ProcessRegistry {
         command: ObservabilityRedaction.commandSummary(proc.command),
         exitCode,
         exitSignal,
-        outputChars: proc.output.length,
+        outputChars: outputChars(proc),
       },
     })
   }
@@ -232,7 +346,7 @@ export namespace ProcessRegistry {
         cwd: proc.cwd,
         data: {
           command: ObservabilityRedaction.commandSummary(proc.command),
-          outputChars: proc.output.length,
+          outputChars: outputChars(proc),
         },
       })
     }
@@ -273,7 +387,7 @@ export namespace ProcessRegistry {
         startedAt: proc.startedAt,
         ageMs: now - proc.startedAt,
         backgrounded: proc.backgrounded,
-        outputChars: proc.output.length,
+        outputChars: outputChars(proc),
         truncated: proc.truncated,
         lastOutputAt: proc.lastOutputAt,
         alive: inspection.alive,
@@ -315,6 +429,16 @@ export namespace ProcessRegistry {
 
   export function setTtl(ms: number) {
     ttlMs = Math.max(60_000, Math.min(ms, 3 * 60 * 60 * 1000))
+  }
+
+  export function outputChars(proc: Process) {
+    return outputBuffers.get(proc)?.length ?? 0
+  }
+
+  export function outputBufferStats(proc: Process) {
+    const outputBuffer = outputBuffers.get(proc)
+    if (!outputBuffer) return { segments: 0, allocatedSegments: 0 }
+    return outputBuffer.stats()
   }
 
   // For testing
@@ -390,7 +514,7 @@ export namespace ProcessRegistry {
       level: "warn",
       data: {
         command: ObservabilityRedaction.commandSummary(proc.command),
-        outputChars: proc.output.length,
+        outputChars: outputChars(proc),
       },
     })
     markExited(proc, null, null)

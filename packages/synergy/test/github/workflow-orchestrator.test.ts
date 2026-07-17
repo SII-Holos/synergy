@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { GitHubWorkflowOrchestrator } from "../../src/github/workflow-orchestrator"
+import { buildGitEnvironment, GitHubWorkflowOrchestrator } from "../../src/github/workflow-orchestrator"
 import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
 import { GitHubAppAuth } from "../../src/github/app-auth"
 
@@ -132,9 +132,9 @@ describe("GitHub action receipt idempotency", () => {
 
 describe("GitHub push helper", () => {
   test("builds one-shot credential helper args without exposing the token", () => {
-    const credential = GitHubAppAuth.buildCredentialHelper({
+    const credential = GitHubAppAuth.buildCredentialCommand({
       token: "ghs_push_token",
-      repoUrl: "https://github.com/owner/repo",
+      args: ["push", "https://github.com/owner/repo"],
     })
     const serializedArgs = JSON.stringify(credential.args)
     expect(serializedArgs).toContain("credential.helper=")
@@ -148,9 +148,7 @@ describe("GitHub push helper", () => {
     const originalPrivateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY
     try {
       process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY = "private-key-material"
-      const env = GitHubWorkflowOrchestrator.gitEnvironment({
-        SYNERGY_GITHUB_INSTALLATION_TOKEN: "ghs_push_token",
-      })
+      const env = buildGitEnvironment({ SYNERGY_GITHUB_INSTALLATION_TOKEN: "ghs_push_token" })
 
       expect(env.SYNERGY_GITHUB_INSTALLATION_TOKEN).toBe("ghs_push_token")
       expect(env.SYNERGY_GITHUB_APP_PRIVATE_KEY).toBeUndefined()

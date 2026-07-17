@@ -17,13 +17,9 @@ import {
   type GitHubFixOutput,
   type GitHubIntegrationConfig as IntegrationConfig,
   type GitHubObservation,
+  type GitHubWorkflowAnchor,
 } from "./types"
 import { GitHubWorkflowLocator } from "./workflow-locator"
-
-type WorkflowAnchor = {
-  parentSessionID: string
-  parentMessageID: string
-}
 
 type JsonRecord = Record<string, unknown>
 
@@ -83,7 +79,7 @@ function responseUrl(value: unknown) {
   return text(item.html_url) ?? text(item.url)
 }
 
-function buildGitEnvironment(overrides?: Record<string, string>) {
+export function buildGitEnvironment(overrides?: Record<string, string>) {
   const env: Record<string, string> = { GIT_TERMINAL_PROMPT: "0" }
   for (const key of GIT_ENV_KEYS) {
     const value = globalThis.process.env[key]
@@ -130,7 +126,7 @@ async function ensureWorkflowAnchor(
   scope: Scope.Project,
   repository: string,
   kind: "fix" | "review",
-): Promise<WorkflowAnchor> {
+): Promise<GitHubWorkflowAnchor> {
   const key = kind === "fix" ? "fixAnchors" : "reviewAnchors"
   const title = kind === "fix" ? `GitHub Fix Deliveries — ${repository}` : `GitHub PR Reviews — ${repository}`
   const state = await GitHubStore.updateRuntimeState(async (draft) => {
@@ -207,7 +203,7 @@ function buildReviewPrompt(input: {
 
 async function launchFixTask(input: {
   scope: Scope.Project
-  anchor: WorkflowAnchor
+  anchor: GitHubWorkflowAnchor
   delivery: GitHubDelivery
   observation: GitHubObservation
   diagnosis: GitHubFixOutput
@@ -263,7 +259,7 @@ async function launchFixTask(input: {
 
 async function launchReviewTask(input: {
   scope: Scope.Project
-  anchor: WorkflowAnchor
+  anchor: GitHubWorkflowAnchor
   delivery: GitHubDelivery
   observation: GitHubObservation
   headSha: string
@@ -567,7 +563,6 @@ async function ensureReviewPublication(input: {
 }
 
 export namespace GitHubWorkflowOrchestrator {
-  export const gitEnvironment = buildGitEnvironment
   export async function ensureProjectScope(directory: string): Promise<Scope.Project> {
     const resolved = await Scope.fromDirectory(directory)
     if (resolved.scope.type !== "project" || resolved.scope.vcs !== "git") {

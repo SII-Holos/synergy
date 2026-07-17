@@ -1,9 +1,18 @@
 import { For, Show, type JSX } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+
+function mergePolicyText(policy: string) {
+  return { id: "settings.pathRow.mergePolicy", message: "Merge policy: {policy}", values: { policy } }
+}
+const copyPathLabel = { id: "settings.pathRow.copy", message: "Copy Path" }
+const copiedLabel = { id: "settings.pathRow.copied", message: "Copied" }
+const openFileLabel = { id: "settings.pathRow.open", message: "Open File" }
+const openingLabel = { id: "settings.pathRow.opening", message: "Opening..." }
 
 export function SettingsPage(props: {
   title: string
@@ -84,6 +93,7 @@ export function SettingsPathRow(props: {
   onOpen?: () => void
   opening?: boolean
 }) {
+  const { _ } = useLingui()
   const copy = createCopyController({
     text: () => props.path,
     copyLabel: "Copy path",
@@ -111,7 +121,7 @@ export function SettingsPathRow(props: {
           </div>
         </Show>
         <Show when={props.mergePolicy}>
-          <div class="settings-path-meta mt-1">Merge policy: {props.mergePolicy}</div>
+          <div class="settings-path-meta mt-1">{_(mergePolicyText(props.mergePolicy!))}</div>
         </Show>
       </div>
       <div class="ds-path-actions">
@@ -124,7 +134,7 @@ export function SettingsPathRow(props: {
           disabled={copy.disabled()}
           onClick={() => void copy.copy()}
         >
-          {copy.copied() ? "Copied" : "Copy Path"}
+          {copy.copied() ? _(copiedLabel) : _(copyPathLabel)}
         </Button>
         <Show when={props.onOpen}>
           <Button
@@ -135,7 +145,7 @@ export function SettingsPathRow(props: {
             disabled={props.opening}
             onClick={props.onOpen}
           >
-            {props.opening ? "Opening..." : "Open File"}
+            {props.opening ? _(openingLabel) : _(openFileLabel)}
           </Button>
         </Show>
       </div>

@@ -1,9 +1,14 @@
+import type { AppMessageDescriptor } from "@/locales/messages"
+import { agentVisual as agentVisualMsgs } from "@/locales/messages"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
 import type { JSX } from "solid-js"
+import { AP } from "@/app-i18n"
 import type { Agent } from "@ericsanchezok/synergy-sdk/client"
 
 export interface AgentVisual {
   emoji: string
-  label: string
+  label: AppMessageDescriptor
   color: string
   external?: boolean
 }
@@ -25,71 +30,71 @@ const COLORS = {
 } as const
 
 const VISUALS: Record<string, AgentVisual> = {
-  synergy: { emoji: "😌", label: "Synergy", color: COLORS.primary },
-  "synergy-max": { emoji: "🧑‍💼", label: "Synergy Max", color: COLORS.max },
+  synergy: { emoji: "😌", label: agentVisualMsgs.roleSynergy, color: COLORS.primary },
+  "synergy-max": { emoji: "🧑‍💼", label: agentVisualMsgs.roleSynergyMax, color: COLORS.max },
 
-  developer: { emoji: "😎", label: "Developer", color: COLORS.code },
-  explore: { emoji: "🥸", label: "Explore", color: COLORS.analysis },
-  scout: { emoji: "🤩", label: "Scout", color: COLORS.knowledge },
-  advisor: { emoji: "🧐", label: "Advisor", color: COLORS.design },
-  inspector: { emoji: "😤", label: "Inspector", color: COLORS.review },
-  scribe: { emoji: "🤭", label: "Scribe", color: COLORS.test },
-  scholar: { emoji: "🤓", label: "Scholar", color: COLORS.research },
+  developer: { emoji: "😎", label: agentVisualMsgs.roleDeveloper, color: COLORS.code },
+  explore: { emoji: "🥸", label: agentVisualMsgs.roleExplore, color: COLORS.analysis },
+  scout: { emoji: "🤩", label: agentVisualMsgs.roleScout, color: COLORS.knowledge },
+  advisor: { emoji: "🧐", label: agentVisualMsgs.roleAdvisor, color: COLORS.design },
+  inspector: { emoji: "😤", label: agentVisualMsgs.roleInspector, color: COLORS.review },
+  scribe: { emoji: "🤭", label: agentVisualMsgs.roleScribe, color: COLORS.test },
+  scholar: { emoji: "🤓", label: agentVisualMsgs.roleScholar, color: COLORS.research },
 
-  "requirements-engineer": { emoji: "😥", label: "Requirements", color: COLORS.analysis },
-  "code-cartographer": { emoji: "😶‍🌫️", label: "Code Map", color: COLORS.analysis },
-  "dependency-tracer": { emoji: "🙄", label: "Dependency Trace", color: COLORS.analysis },
+  "requirements-engineer": { emoji: "😥", label: agentVisualMsgs.roleRequirements, color: COLORS.analysis },
+  "code-cartographer": { emoji: "😶‍🌫️", label: agentVisualMsgs.roleCodeMap, color: COLORS.analysis },
+  "dependency-tracer": { emoji: "🙄", label: agentVisualMsgs.roleDependencyTrace, color: COLORS.analysis },
 
-  "solution-architect": { emoji: "😏", label: "Solution Architect", color: COLORS.design },
-  "api-contract-designer": { emoji: "🤫", label: "API Contract", color: COLORS.design },
-  "migration-architect": { emoji: "😰", label: "Migration", color: COLORS.design },
+  "solution-architect": { emoji: "😏", label: agentVisualMsgs.roleSolutionArchitect, color: COLORS.design },
+  "api-contract-designer": { emoji: "🤫", label: agentVisualMsgs.roleApiContract, color: COLORS.design },
+  "migration-architect": { emoji: "😰", label: agentVisualMsgs.roleMigration, color: COLORS.design },
 
-  "test-strategist": { emoji: "😈", label: "Test Strategy", color: COLORS.test },
-  "fixture-builder": { emoji: "😼", label: "Fixtures", color: COLORS.test },
-  "property-test-engineer": { emoji: "🤖", label: "Property Tests", color: COLORS.test },
-  "type-test-engineer": { emoji: "😑", label: "Type Tests", color: COLORS.test },
+  "test-strategist": { emoji: "😈", label: agentVisualMsgs.roleTestStrategy, color: COLORS.test },
+  "fixture-builder": { emoji: "😼", label: agentVisualMsgs.roleFixtures, color: COLORS.test },
+  "property-test-engineer": { emoji: "🤖", label: agentVisualMsgs.rolePropertyTests, color: COLORS.test },
+  "type-test-engineer": { emoji: "😑", label: agentVisualMsgs.roleTypeTests, color: COLORS.test },
 
-  "implementation-engineer": { emoji: "😡", label: "Implementation", color: COLORS.code },
-  "refactoring-engineer": { emoji: "😇", label: "Refactor", color: COLORS.code },
-  "integration-engineer": { emoji: "🤝", label: "Integration", color: COLORS.code },
-  "documentation-engineer": { emoji: "🙂", label: "Docs", color: COLORS.code },
+  "implementation-engineer": { emoji: "😡", label: agentVisualMsgs.roleImplementation, color: COLORS.code },
+  "refactoring-engineer": { emoji: "😇", label: agentVisualMsgs.roleRefactor, color: COLORS.code },
+  "integration-engineer": { emoji: "🤝", label: agentVisualMsgs.roleIntegration, color: COLORS.code },
+  "documentation-engineer": { emoji: "🙂", label: agentVisualMsgs.roleDocs, color: COLORS.code },
 
-  "quality-gatekeeper": { emoji: "😐", label: "Quality Gate", color: COLORS.quality },
-  "python-quality-engineer": { emoji: "😜", label: "Python Quality", color: COLORS.quality },
-  "rust-quality-engineer": { emoji: "😓", label: "Rust Quality", color: COLORS.quality },
-  "typescript-quality-engineer": { emoji: "😬", label: "TS Quality", color: COLORS.quality },
+  "quality-gatekeeper": { emoji: "😐", label: agentVisualMsgs.roleQualityGate, color: COLORS.quality },
+  "python-quality-engineer": { emoji: "😜", label: agentVisualMsgs.rolePythonQuality, color: COLORS.quality },
+  "rust-quality-engineer": { emoji: "😓", label: agentVisualMsgs.roleRustQuality, color: COLORS.quality },
+  "typescript-quality-engineer": { emoji: "😬", label: agentVisualMsgs.roleTsQuality, color: COLORS.quality },
 
-  "maintainability-reviewer": { emoji: "😒", label: "Maintainability", color: COLORS.review },
-  "security-reviewer": { emoji: "😠", label: "Security", color: COLORS.review },
-  "performance-reviewer": { emoji: "😳", label: "Performance", color: COLORS.review },
-  "api-compatibility-reviewer": { emoji: "😕", label: "API Compatibility", color: COLORS.review },
-  "documentation-reviewer": { emoji: "🙂‍↔️", label: "Doc Review", color: COLORS.review },
+  "maintainability-reviewer": { emoji: "😒", label: agentVisualMsgs.roleMaintainability, color: COLORS.review },
+  "security-reviewer": { emoji: "😠", label: agentVisualMsgs.roleSecurity, color: COLORS.review },
+  "performance-reviewer": { emoji: "😳", label: agentVisualMsgs.rolePerformance, color: COLORS.review },
+  "api-compatibility-reviewer": { emoji: "😕", label: agentVisualMsgs.roleApiCompatibility, color: COLORS.review },
+  "documentation-reviewer": { emoji: "🙂‍↔️", label: agentVisualMsgs.roleDocReview, color: COLORS.review },
 
-  "docs-researcher": { emoji: "🫨", label: "Docs Research", color: COLORS.knowledge },
-  "research-methodologist": { emoji: "😖", label: "Research Method", color: COLORS.research },
-  "research-scout": { emoji: "🫣", label: "Research Scout", color: COLORS.research },
-  "literature-searcher": { emoji: "🫢", label: "Literature Search", color: COLORS.research },
-  "literature-analyst": { emoji: "😯", label: "Literature Analyst", color: COLORS.research },
-  "memory-curator": { emoji: "🤗", label: "Memory", color: COLORS.knowledge },
-  "note-librarian": { emoji: "😊", label: "Notes", color: COLORS.knowledge },
-  "session-historian": { emoji: "🤨", label: "Session History", color: COLORS.knowledge },
+  "docs-researcher": { emoji: "🫨", label: agentVisualMsgs.roleDocsResearch, color: COLORS.knowledge },
+  "research-methodologist": { emoji: "😖", label: agentVisualMsgs.roleResearchMethod, color: COLORS.research },
+  "research-scout": { emoji: "🫣", label: agentVisualMsgs.roleResearchScout, color: COLORS.research },
+  "literature-searcher": { emoji: "🫢", label: agentVisualMsgs.roleLiteratureSearch, color: COLORS.research },
+  "literature-analyst": { emoji: "😯", label: agentVisualMsgs.roleLiteratureAnalyst, color: COLORS.research },
+  "memory-curator": { emoji: "🤗", label: agentVisualMsgs.roleMemory, color: COLORS.knowledge },
+  "note-librarian": { emoji: "😊", label: agentVisualMsgs.roleNotes, color: COLORS.knowledge },
+  "session-historian": { emoji: "🤨", label: agentVisualMsgs.roleSessionHistory, color: COLORS.knowledge },
 
-  supervisor: { emoji: "👀", label: "Supervisor", color: COLORS.supervisor },
+  supervisor: { emoji: "👀", label: agentVisualMsgs.roleSupervisor, color: COLORS.supervisor },
 
-  codex: { emoji: "🫡", label: "Codex", color: COLORS.knowledge, external: true },
-  "claude-code": { emoji: "😉", label: "Claude Code", color: COLORS.max, external: true },
-  openclaw: { emoji: "🤯", label: "OpenClaw", color: COLORS.external, external: true },
+  codex: { emoji: "🫡", label: agentVisualMsgs.roleCodex, color: COLORS.knowledge, external: true },
+  "claude-code": { emoji: "😉", label: agentVisualMsgs.roleClaudeCode, color: COLORS.max, external: true },
+  openclaw: { emoji: "🤯", label: agentVisualMsgs.roleOpenClaw, color: COLORS.external, external: true },
 }
 
 const DEFAULT_VISUAL: AgentVisual = {
-  emoji: "🤷",
-  label: "Agent",
+  emoji: "\uD83E\uDD37",
+  label: agentVisualMsgs.defaultLabel,
   color: COLORS.neutral,
 }
 
 export function getAgentVisual(input?: string | Pick<Agent, "name" | "external"> | null): AgentVisual {
   if (!input) return DEFAULT_VISUAL
-  if (typeof input === "string") return VISUALS[input] ?? { ...DEFAULT_VISUAL, label: titlecaseAgentName(input) }
+  if (typeof input === "string") return VISUALS[input] ?? { ...DEFAULT_VISUAL, label: dynamicLabel(input) }
 
   const byName = VISUALS[input.name]
   if (byName) return byName
@@ -99,7 +104,7 @@ export function getAgentVisual(input?: string | Pick<Agent, "name" | "external">
 
   return {
     ...DEFAULT_VISUAL,
-    label: titlecaseAgentName(input.name),
+    label: dynamicLabel(input.name),
     external: !!input.external,
   }
 }
@@ -110,6 +115,13 @@ export function titlecaseAgentName(name: string): string {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ")
+}
+
+function dynamicLabel(name: string): AppMessageDescriptor {
+  return {
+    id: `app.agent.role.dynamic.${name.toLowerCase().replace(/[-_\s]+/g, "-")}`,
+    message: titlecaseAgentName(name),
+  }
 }
 
 const EMOJI_SIZE_MAP: Record<string, string> = {
@@ -148,6 +160,8 @@ export function AgentPill(props: {
   class?: string
   quiet?: boolean
 }) {
+  const { i18n } = useLocale()
+  const lingui = useLingui()
   const visual = getAgentVisual(props.agent)
   return (
     <span
@@ -163,10 +177,10 @@ export function AgentPill(props: {
       <span class="select-none leading-none" style={{ "font-size": "14px" }}>
         {visual.emoji}
       </span>
-      {props.showLabel !== false && <span>{visual.label}</span>}
+      {props.showLabel !== false && <span>{lingui._(visual.label)}</span>}
       {props.showExternalBadge && visual.external && (
         <span class="rounded-full bg-surface-base px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-[0.08em] text-text-subtle">
-          External
+          {i18n._(AP.agentVisualExternal.id)}
         </span>
       )}
     </span>

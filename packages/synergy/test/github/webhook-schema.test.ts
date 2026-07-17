@@ -145,6 +145,27 @@ describe("GitHub workflow config", () => {
     ).toThrow()
   })
 
+  test("bounds autonomous workflow retries", () => {
+    expect(() =>
+      GitHubIntegrationConfig.parse({
+        fixWorkflow: {
+          enabled: true,
+          repositoryMapping: { "owner/repo": "/tmp/checkouts/repo" },
+          maxRetries: 21,
+        },
+      }),
+    ).toThrow()
+    expect(() =>
+      GitHubIntegrationConfig.parse({
+        reviewWorkflow: {
+          enabled: true,
+          repositoryMapping: { "owner/repo": "/tmp/checkouts/repo" },
+          maxRetries: 21,
+        },
+      }),
+    ).toThrow()
+  })
+
   test("retains proposal-only behavior when workflows are disabled by default", () => {
     const config = GitHubIntegrationConfig.parse({})
 

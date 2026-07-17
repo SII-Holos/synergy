@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
@@ -5,7 +6,7 @@ import { HOME_SCOPE_KEY } from "@/utils/scope"
 
 export type SessionVisualState = {
   icon: IconName
-  label: string
+  label: MessageDescriptor
   tone:
     | "default"
     | "active"
@@ -58,33 +59,60 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     if (fullSession?.blueprint?.loopID) {
       const blueprintIcon = getSemanticIcon("blueprint.main")
       if (waiting)
-        return { icon: blueprintIcon, label: "Blueprint waiting for you", tone: "blueprint-waiting", pulse: true }
+        return {
+          icon: blueprintIcon,
+          label: { id: "session.state.blueprintWaiting", message: "Blueprint waiting for you" },
+          tone: "blueprint-waiting",
+          pulse: true,
+        }
       if (fullSession.blueprint.loopRole === "audit") {
         return {
           icon: getSemanticIcon("command.review"),
-          label: "Auditing Blueprint",
+          label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
           tone: "blueprint-audit",
           pulse: running || childTasksRunning ? true : undefined,
         }
       }
-      if (running) return { icon: blueprintIcon, label: "Running Blueprint", tone: "blueprint-running", pulse: true }
+      if (running)
+        return {
+          icon: blueprintIcon,
+          label: { id: "session.state.runningBlueprint", message: "Running Blueprint" },
+          tone: "blueprint-running",
+          pulse: true,
+        }
       if (childTasksRunning)
         return {
           icon: getSemanticIcon("command.review"),
-          label: "Auditing Blueprint",
+          label: { id: "session.state.auditingBlueprint", message: "Auditing Blueprint" },
           tone: "blueprint-audit",
           pulse: true,
         }
-      return { icon: blueprintIcon, label: "Blueprint session", tone: "blueprint" }
+      return {
+        icon: blueprintIcon,
+        label: { id: "session.state.blueprint", message: "Blueprint session" },
+        tone: "blueprint",
+      }
     }
     if (waiting)
-      return { icon: getSemanticIcon("session.waiting"), label: "Waiting for you", tone: "waiting", pulse: true }
+      return {
+        icon: getSemanticIcon("session.waiting"),
+        label: { id: "session.state.waiting", message: "Waiting for you" },
+        tone: "waiting",
+        pulse: true,
+      }
     if (running || childTasksRunning)
-      return { icon: getSemanticIcon("session.running"), label: "Running session", tone: "active", pulse: true }
+      return {
+        icon: getSemanticIcon("session.running"),
+        label: { id: "session.state.running", message: "Running session" },
+        tone: "active",
+        pulse: true,
+      }
     if (fullSession?.workspace?.type === "git_worktree") {
       return {
         icon: getSemanticIcon("workspace.worktree"),
-        label: `Worktree session${unread ? "; response ready" : ""}`,
+        label: unread
+          ? { id: "session.state.worktree.unread", message: "Worktree session; response ready" }
+          : { id: "session.state.worktree", message: "Worktree session" },
         tone: "worktree",
         completionUnread: unread || undefined,
       }
@@ -92,7 +120,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     if (entry.parentID) {
       return {
         icon: getSemanticIcon("session.child"),
-        label: `Child session${unread ? "; response ready" : ""}`,
+        label: unread
+          ? { id: "session.state.child.unread", message: "Child session; response ready" }
+          : { id: "session.state.child", message: "Child session" },
         tone: "muted",
         completionUnread: unread || undefined,
       }
@@ -102,7 +132,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   if (entry.category === "background") {
     return {
       icon: getSemanticIcon("session.background"),
-      label: `Background session${unread ? "; response ready" : ""}`,
+      label: unread
+        ? { id: "session.state.background.unread", message: "Background session; response ready" }
+        : { id: "session.state.background", message: "Background session" },
       tone: "muted",
       completionUnread: unread || undefined,
     }
@@ -110,7 +142,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   if (entry.category === "channel") {
     return {
       icon: getSemanticIcon("channels.main"),
-      label: `Channel session${unread ? "; response ready" : ""}`,
+      label: unread
+        ? { id: "session.state.channel.unread", message: "Channel session; response ready" }
+        : { id: "session.state.channel", message: "Channel session" },
       tone: "muted",
       completionUnread: unread || undefined,
     }
@@ -118,7 +152,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   if (entry.category === "home") {
     return {
       icon: getSemanticIcon("navigation.home"),
-      label: `Home session${unread ? "; response ready" : ""}`,
+      label: unread
+        ? { id: "session.state.home.unread", message: "Home session; response ready" }
+        : { id: "session.state.home", message: "Home session" },
       tone: "default",
       completionUnread: unread || undefined,
     }
@@ -126,7 +162,9 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
   {
     return {
       icon: getSemanticIcon("session.default"),
-      label: `Session${unread ? "; response ready" : ""}`,
+      label: unread
+        ? { id: "session.state.default.unread", message: "Session; response ready" }
+        : { id: "session.state.default", message: "Session" },
       tone: "default",
       completionUnread: unread || undefined,
     }

@@ -567,23 +567,10 @@ export namespace ToolResolver {
     },
   ) {
     if (!ctx.callID) return
-    const match = input.processor.partFromToolCall(ctx.callID)
-    if (!match || match.state.status !== "running") return
-
-    const updated = await Session.updatePart({
-      ...match,
-      state: {
-        ...match.state,
-        title: state.title ?? match.state.title,
-        metadata: ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
-        status: "running",
-        input: args,
-        time: {
-          start: state.start ?? match.state.time.start,
-        },
-      },
+    await input.processor.updateToolCallState(ctx.callID, {
+      input: args,
+      ...state,
     })
-    Object.assign(match, updated)
   }
 
   async function markExecutionStarted(
@@ -604,9 +591,7 @@ export namespace ToolResolver {
       } satisfies ApprovalMetadata
     }
 
-    const match = ctx.callID ? input.processor.partFromToolCall(ctx.callID) : undefined
     const metadata = {
-      ...(match?.state.status === "running" ? (match.state.metadata ?? {}) : {}),
       toolTimeout,
       ...(approvalFromContext(ctx) ? { approval: approvalFromContext(ctx) } : {}),
     }

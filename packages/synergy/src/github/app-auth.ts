@@ -319,11 +319,6 @@ export namespace GitHubAppAuth {
     }
   }
 
-  export function buildCredentialHelper(input: { token: string; repoUrl: string }) {
-    const repoUrl = requireNonEmpty(input.repoUrl, "GitHub repository URL")
-    return buildCredentialCommand({ token: input.token, args: ["push", repoUrl] })
-  }
-
   export function buildFixBranchName(input: { prefix: string; issueNumber: number; slug: string }) {
     if (!Number.isInteger(input.issueNumber) || input.issueNumber <= 0) throw new Error("Issue number must be positive")
     const prefix = requireNonEmpty(input.prefix, "Fix branch prefix")
