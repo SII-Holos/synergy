@@ -29,7 +29,7 @@ describe("WorkspacePolicy", () => {
 
   describe("fromSession for main workspace", () => {
     test("active root equals scope.directory when workspace type is main", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
 
       await ScopeContext.provide({
@@ -49,7 +49,7 @@ describe("WorkspacePolicy", () => {
     })
 
     test("contains returns true for files inside scope.directory in main workspace", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
 
       await ScopeContext.provide({
@@ -76,7 +76,7 @@ describe("WorkspacePolicy", () => {
 
   describe("fromSession for git_worktree workspace", () => {
     test("active root equals workspace.path when workspace type is git_worktree", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
 
       await ScopeContext.provide({
@@ -103,7 +103,7 @@ describe("WorkspacePolicy", () => {
     })
 
     test("classifies original checkout directory as outside the active workspace", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
 
       await ScopeContext.provide({
@@ -137,7 +137,7 @@ describe("WorkspacePolicy", () => {
 
   describe("fromDefault fallback", () => {
     test("returns main workspace policy when no session workspace is present", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
 
       const policy = await WorkspacePolicy.fromDefault(scope)
@@ -147,7 +147,7 @@ describe("WorkspacePolicy", () => {
     })
 
     test("fromDefault with explicit workspace uses workspace path", async () => {
-      await using tmp = await tmpdir({ git: true })
+      await using tmp = await tmpdir()
       const scope = await tmp.scope()
       const customPath = path.join(scope.directory, "custom-worktree")
 
@@ -167,7 +167,7 @@ describe("ScopeContext.contains workspace awareness", () => {
   // === Requirement 4: ScopeContext.contains delegates to WorkspacePolicy ===
 
   test("ScopeContext.contains returns true for files inside the active workspace directory", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -195,7 +195,7 @@ describe("ScopeContext.contains workspace awareness", () => {
   })
 
   test("ScopeContext.contains returns false for original checkout file when workspace is a git_worktree", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -228,7 +228,7 @@ describe("ScopeContext.contains workspace awareness", () => {
   })
 
   test("ScopeContext.contains returns true for worktree file when workspace is a git_worktree", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -268,7 +268,7 @@ function using(fn: () => Promise<void>): () => Promise<void> {
 
 describe("WorkspacePolicy — original checkout boundary", () => {
   test("original checkout directory is classified as outside the active workspace", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -299,7 +299,7 @@ describe("WorkspacePolicy — original checkout boundary", () => {
   })
 
   test("sibling worktree is classified as outside the active workspace", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -328,7 +328,7 @@ describe("WorkspacePolicy — original checkout boundary", () => {
   })
 
   test("abs_path_in_original_checkout_outside_in_worktree_mode", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -386,7 +386,7 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
   })
 
   test("classifyPath for worktree symlink targeting original checkout returns outside", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     await ScopeContext.provide({
@@ -460,7 +460,7 @@ describe("WorkspacePolicy.classifyPath for worktree original checkout", () => {
 
 describe("PathClassifier originalCheckout boundary classification", () => {
   test("classifyPath detects original checkout paths via PathClassifier", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     const { PathClassifier } = await import("../../src/enforcement/classify")
@@ -482,7 +482,7 @@ describe("PathClassifier originalCheckout boundary classification", () => {
   })
 
   test("classifyPath detects sibling worktree via originalCheckout awareness", async () => {
-    await using tmp = await tmpdir({ git: true })
+    await using tmp = await tmpdir()
     const scope = await tmp.scope()
 
     const { PathClassifier } = await import("../../src/enforcement/classify")

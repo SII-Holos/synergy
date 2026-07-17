@@ -12,6 +12,7 @@ type Entry = {
 }
 
 const INDEX_TTL_MS = 30_000
+const APPLY_CONCURRENCY = 16
 
 function root() {
   return ScopeContext.current.directory
@@ -92,37 +93,67 @@ export namespace WorkspaceFileIndexer {
     entry.fetchedAt = 0
   }
 
-  export async function applyChange(input: { path: string; event: "add" | "change" | "unlink" }) {
+  export async function applyChanges(inputs: Array<{ path: string; event: "add" | "change" | "unlink" }>) {
     const entry = state()
-    const relative = cleanRelative(input.path)
-    if (!relative) return
+    const changes = inputs
+      .map((input) => ({ ...input, path: cleanRelative(input.path) }))
+      .filter((input) => input.path.length > 0)
+    const nodes = new Map<string, Awaited<ReturnType<typeof WorkspaceFileService.maybeNode>>>()
+    const workerCount = Math.min(APPLY_CONCURRENCY, changes.length)
 
-    if (input.event === "unlink") {
-      entry.files = entry.files.filter((item) => item !== relative)
-      entry.dirs = entry.dirs.filter((item) => item !== relative + "/" && !item.startsWith(relative + "/"))
-      return
+    await Promise.all(
+      Array.from({ length: workerCount }, async (_, workerIndex) => {
+        for (let index = workerIndex; index < changes.length; index += workerCount) {
+          const change = changes[index]!
+          if (change.event === "unlink") continue
+          const node = await WorkspaceFileService.maybeNode(change.path, { resolveGitStatus: false })
+          nodes.set(change.path, node)
+        }
+      }),
+    )
+
+    const files = new Set(entry.files)
+    const dirs = new Set(entry.dirs)
+    let invalid = false
+    for (const change of changes) {
+      const relative = change.path
+      if (change.event === "unlink") {
+        files.delete(relative)
+        for (const dir of [...dirs]) {
+          if (dir === relative + "/" || dir.startsWith(relative + "/")) dirs.delete(dir)
+        }
+        continue
+      }
+
+      const node = nodes.get(relative)
+      if (!node) {
+        invalid = true
+        continue
+      }
+      if (node.type === "directory") {
+        dirs.add(node.path.endsWith("/") ? node.path : node.path + "/")
+        continue
+      }
+      if (node.type === "file") {
+        files.add(node.path)
+        addParents(dirs, node.path)
+      }
     }
 
-    const node = await WorkspaceFileService.maybeNode(relative)
-    if (!node) {
-      invalidate()
-      return
-    }
-    if (node.type === "directory") {
-      const dir = node.path.endsWith("/") ? node.path : node.path + "/"
-      if (!entry.dirs.includes(dir)) entry.dirs = [...entry.dirs, dir].toSorted()
-      return
-    }
-    if (node.type === "file" && !entry.files.includes(node.path)) {
-      entry.files = [...entry.files, node.path].toSorted()
-      const dirs = new Set(entry.dirs)
-      addParents(dirs, node.path)
-      entry.dirs = Array.from(dirs).toSorted()
-    }
+    entry.files = [...files].toSorted()
+    entry.dirs = [...dirs].toSorted()
+    if (invalid) invalidate()
+    return new Map([...nodes].filter((item): item is [string, NonNullable<(typeof item)[1]>] => !!item[1]))
+  }
+
+  export async function applyChange(input: { path: string; event: "add" | "change" | "unlink" }) {
+    await applyChanges([input])
   }
 
   export async function applyRename(input: { from: string; to: string }) {
-    await applyChange({ path: input.from, event: "unlink" })
-    await applyChange({ path: input.to, event: "add" })
+    await applyChanges([
+      { path: input.from, event: "unlink" },
+      { path: input.to, event: "add" },
+    ])
   }
 }

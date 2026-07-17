@@ -4,15 +4,19 @@ declare global {
   }
 }
 
-export function proxyPrefix() {
-  const route = window.__SYNERGY_ROUTE__
-  if (route != null) {
-    const fullPath = window.location.pathname
-    if (fullPath !== route && fullPath.endsWith(route)) {
-      return fullPath.slice(0, fullPath.length - route.length).replace(/\/+$/, "")
-    }
+let cachedPrefix: string | undefined
+
+export function resolveProxyPrefix(fullPath: string, route: string | undefined) {
+  if (route != null && fullPath !== route && fullPath.endsWith(route)) {
+    return fullPath.slice(0, fullPath.length - route.length).replace(/\/+$/, "")
   }
   return ""
+}
+
+export function proxyPrefix() {
+  if (cachedPrefix !== undefined) return cachedPrefix
+  cachedPrefix = resolveProxyPrefix(window.location.pathname, window.__SYNERGY_ROUTE__)
+  return cachedPrefix
 }
 
 export function assetPath(path: string) {

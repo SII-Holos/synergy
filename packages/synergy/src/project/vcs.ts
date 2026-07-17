@@ -8,6 +8,7 @@ import { ScopeContext } from "@/scope/context"
 import { ScopedState } from "@/scope/scoped-state"
 import { FileWatcher } from "@/file/watcher"
 import { Filesystem } from "@/util/filesystem"
+import { VcsBranchWatcher } from "./vcs-branch-watcher"
 
 const log = Log.create({ service: "vcs" })
 
@@ -43,28 +44,32 @@ export namespace Vcs {
   const state = ScopedState.create(
     async () => {
       if (ScopeContext.current.scope.type !== "project" || ScopeContext.current.scope.vcs !== "git") {
-        return { branch: async () => undefined, unsubscribe: undefined }
+        return { branch: async () => undefined, unsubscribe: undefined, watcher: undefined }
       }
-      let current = await currentBranch()
+      const watcher = VcsBranchWatcher.create({
+        debounceMs: 50,
+        resolve: currentBranch,
+        onChange: (branch, previous) => {
+          log.info("branch changed", { from: previous, to: branch })
+          Bus.publish(Event.BranchUpdated, { branch })
+        },
+      })
+      const current = await watcher.start()
       log.info("initialized", { branch: current })
 
-      const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, async (evt) => {
-        if (evt.properties.file.endsWith("HEAD")) return
-        const next = await currentBranch()
-        if (next !== current) {
-          log.info("branch changed", { from: current, to: next })
-          current = next
-          Bus.publish(Event.BranchUpdated, { branch: next })
-        }
+      const unsubscribe = Bus.subscribe(FileWatcher.Event.Updated, (event) => {
+        watcher.notify(event.properties.file)
       })
 
       return {
-        branch: async () => current,
+        branch: async () => watcher.current(),
         unsubscribe,
+        watcher,
       }
     },
     async (state) => {
       state.unsubscribe?.()
+      await state.watcher?.dispose()
     },
   )
 

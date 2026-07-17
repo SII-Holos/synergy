@@ -1,9 +1,9 @@
 import type { ControlProfileId } from "@/context/input"
+import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
 import type {
-  NewSessionWorkspaceSelection,
-  SessionWorkspaceProgress,
-  SessionWorkspaceProgressActions,
-} from "@/components/session/worktree-session"
+  SessionTransitionActions,
+  SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
 import type { JSX } from "solid-js"
 
 export type DroppedSessionData = {
@@ -55,12 +55,12 @@ export interface PromptInputProps {
   newSessionCanCreateWorktree?: boolean
   onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
   onNewSessionWorkspaceSelectionReset?: () => void
-  onNewSessionStartProgress?: (input: {
+  onNewSessionTransitionChange?: (input: {
     sessionID: string
-    progress: SessionWorkspaceProgress | null
-    actions?: SessionWorkspaceProgressActions
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
   }) => void
-  workspaceTransitionPending?: boolean
+  sessionTransitionPending?: boolean
   hideAgentSelector?: boolean
   onPriorityControlChange?: (control: JSX.Element | undefined) => void
 }

@@ -9504,6 +9504,148 @@
         ]
       }
     },
+    "/library/embedding/status": {
+      "get": {
+        "operationId": "library.embedding.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get embedding status",
+        "description": "Report the configured embedding mode and local model asset lifecycle without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Embedding mode and local asset status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.embedding.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/embedding/download": {
+      "post": {
+        "operationId": "library.embedding.download",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Download local embedding model",
+        "description": "Start or join the local embedding model download and return its current observable status.",
+        "responses": {
+          "202": {
+            "description": "Local model download accepted or already active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "local"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["huggingface", "hf-mirror", "custom"]
+                    },
+                    "asset": {
+                      "type": "string",
+                      "enum": ["missing", "downloading", "cached", "failed"]
+                    },
+                    "runtime": {
+                      "type": "string",
+                      "enum": ["unloaded", "loading", "ready"]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "loadedBytes": {
+                          "type": "number"
+                        },
+                        "totalBytes": {
+                          "type": "number"
+                        },
+                        "percent": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["loadedBytes", "totalBytes", "percent"]
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["invalid_source", "load_failed"]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["code", "message"]
+                    }
+                  },
+                  "required": ["mode", "model", "source", "asset", "runtime"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A remote embedding service is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingRemoteConfiguredError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.embedding.download({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/library/experience/search": {
       "post": {
         "operationId": "library.experience.search",
@@ -23393,6 +23535,23 @@
         },
         "additionalProperties": false
       },
+      "LocalEmbeddingConfig": {
+        "description": "Bundled local embedding model download settings",
+        "type": "object",
+        "properties": {
+          "source": {
+            "description": "Download source for the bundled local embedding model (default: huggingface)",
+            "type": "string",
+            "enum": ["huggingface", "hf-mirror", "custom"]
+          },
+          "remoteHost": {
+            "description": "Public HTTPS origin used when source is custom",
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": false
+      },
       "EmbeddingConfig": {
         "description": "Embedding model configuration. When absent, a local model is used automatically.",
         "type": "object",
@@ -23408,6 +23567,9 @@
           "model": {
             "description": "Embedding model name",
             "type": "string"
+          },
+          "local": {
+            "$ref": "#/components/schemas/LocalEmbeddingConfig"
           }
         },
         "additionalProperties": false
@@ -28328,6 +28490,47 @@
                 "items": {
                   "$ref": "#/components/schemas/FileDiff"
                 }
+              },
+              "diffState": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "pending"
+                      },
+                      "deadlineAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["status", "deadlineAt"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "ready"
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "error"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  }
+                ]
               }
             },
             "required": ["diffs"]
@@ -31106,6 +31309,92 @@
           }
         },
         "required": ["files"]
+      },
+      "EmbeddingStatus": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "local"
+              },
+              "model": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["huggingface", "hf-mirror", "custom"]
+              },
+              "asset": {
+                "type": "string",
+                "enum": ["missing", "downloading", "cached", "failed"]
+              },
+              "runtime": {
+                "type": "string",
+                "enum": ["unloaded", "loading", "ready"]
+              },
+              "progress": {
+                "type": "object",
+                "properties": {
+                  "loadedBytes": {
+                    "type": "number"
+                  },
+                  "totalBytes": {
+                    "type": "number"
+                  },
+                  "percent": {
+                    "type": "number"
+                  }
+                },
+                "required": ["loadedBytes", "totalBytes", "percent"]
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": ["invalid_source", "load_failed"]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": ["code", "message"]
+              }
+            },
+            "required": ["mode", "model", "source", "asset", "runtime"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "remote"
+              },
+              "model": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              }
+            },
+            "required": ["mode", "model", "baseURL"]
+          }
+        ]
+      },
+      "EmbeddingRemoteConfiguredError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "const": "EMBEDDING_REMOTE_CONFIGURED"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
       },
       "RewardsInfo": {
         "type": "object",
@@ -37059,7 +37348,10 @@
               "parent": {
                 "type": "string"
               },
-              "node": {}
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
             },
             "required": ["file", "event"]
           }

@@ -1,3 +1,9 @@
+import {
+  createSessionStartupSteps,
+  type SessionStartupWorkspaceStep,
+  type SessionTransitionProgress,
+} from "./session-transition-progress"
+
 export type NewSessionWorkspaceSelection =
   | { mode: "current" }
   | { mode: "create" }
@@ -57,59 +63,34 @@ export function worktreeSetupFailureMessage(input: { setupFailed?: boolean; setu
   return input.setupError?.trim() || "Worktree setup command failed."
 }
 
-export type WorkspaceTransitionOperation = "enter" | "leave" | "start"
-export type WorkspaceTransitionPhase = "loading" | "success" | "error"
-export type WorkspaceProgressStepState = "pending" | "active" | "complete"
-
-export type WorkspaceProgressStep = {
-  id: string
-  label: string
-  detail?: string
-  state: WorkspaceProgressStepState
-}
-
 export type SessionWorkspaceTransitionRequest =
   | { operation: "enter"; sessionID: string; directory: string; name?: string }
   | { operation: "leave"; sessionID: string; directory: string }
 
-export type SessionWorkspaceProgress = {
-  operation: WorkspaceTransitionOperation
-  phase: WorkspaceTransitionPhase
-  title: string
-  description: string
-  steps: WorkspaceProgressStep[]
-}
+type NewSessionWorkspaceProgressStage = "workspace" | "message"
 
-export type SessionWorkspaceProgressActions = {
-  retry?: () => void
-  dismiss?: () => void
-}
-
-export type NewSessionWorkspaceProgressStage = "workspace" | "session" | "prompt"
-
-function withStepStates<T extends { id: string; label: string; detail?: string }>(steps: T[], active: T["id"]) {
-  const activeIndex = Math.max(
-    0,
-    steps.findIndex((step) => step.id === active),
-  )
-  return steps.map((step, index) => ({
-    ...step,
-    state: index < activeIndex ? "complete" : index === activeIndex ? "active" : "pending",
-  })) satisfies WorkspaceProgressStep[]
-}
-
-function workspaceStepForSelection(selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>) {
+function workspaceStepForSelection(
+  selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>,
+): SessionStartupWorkspaceStep {
   return selection.mode === "create"
-    ? { id: "workspace", label: "Create checkout", detail: "Preparing a new git worktree." }
-    : { id: "workspace", label: "Bind worktree", detail: "Using the selected checkout." }
+    ? {
+        label: "Create checkout",
+        activeDetail: "Preparing a new git worktree.",
+        completeDetail: "Workspace setup complete.",
+      }
+    : {
+        label: "Bind worktree",
+        activeDetail: "Using the selected checkout.",
+        completeDetail: "Workspace setup complete.",
+      }
 }
 
 export function createWorkspaceTransitionLoadingProgress(
   request: SessionWorkspaceTransitionRequest,
-): SessionWorkspaceProgress {
+): SessionTransitionProgress {
   if (request.operation === "leave") {
     return {
-      operation: "leave",
+      kind: "leave-worktree",
       phase: "loading",
       title: "Leaving worktree",
       description: "Returning this session to the main checkout.",
@@ -125,7 +106,7 @@ export function createWorkspaceTransitionLoadingProgress(
   }
 
   return {
-    operation: "enter",
+    kind: "enter-worktree",
     phase: "loading",
     title: "Moving session to worktree",
     description: "Creating an isolated checkout and binding this session to it.",
@@ -143,10 +124,10 @@ export function createWorkspaceTransitionLoadingProgress(
 export function createWorkspaceTransitionSuccessProgress(input: {
   operation: "enter" | "leave"
   description?: string
-}): SessionWorkspaceProgress {
+}): SessionTransitionProgress {
   if (input.operation === "leave") {
     return {
-      operation: "leave",
+      kind: "leave-worktree",
       phase: "success",
       title: "Main checkout active",
       description: input.description ?? "This session now runs from the main checkout. The worktree remains available.",
@@ -162,7 +143,7 @@ export function createWorkspaceTransitionSuccessProgress(input: {
   }
 
   return {
-    operation: "enter",
+    kind: "enter-worktree",
     phase: "success",
     title: "Worktree active",
     description: input.description ?? "This session now runs in the isolated checkout.",
@@ -178,20 +159,13 @@ export function createWorkspaceTransitionSuccessProgress(input: {
 }
 
 export function createWorkspaceTransitionErrorProgress(input: {
-  operation: WorkspaceTransitionOperation
+  operation: "enter" | "leave"
   message: string
-}): SessionWorkspaceProgress {
-  const title =
-    input.operation === "leave"
-      ? "Leave worktree failed"
-      : input.operation === "enter"
-        ? "Move to worktree failed"
-        : "Worktree setup failed"
-
+}): SessionTransitionProgress {
   return {
-    operation: input.operation,
+    kind: input.operation === "leave" ? "leave-worktree" : "enter-worktree",
     phase: "error",
-    title,
+    title: input.operation === "leave" ? "Leave worktree failed" : "Move to worktree failed",
     description: input.message,
     steps: [],
   }
@@ -200,36 +174,43 @@ export function createWorkspaceTransitionErrorProgress(input: {
 export function createNewSessionWorkspaceProgress(input: {
   selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
   stage: NewSessionWorkspaceProgressStage
-}): SessionWorkspaceProgress {
+}): SessionTransitionProgress {
   return {
-    operation: "start",
+    kind: "new-worktree-session",
     phase: "loading",
     title: "Starting worktree session",
-    description: "Preparing the workspace and sending your first prompt.",
-    steps: withStepStates(
-      [
-        { id: "session", label: "Prepare session", detail: "Creating the conversation state." },
-        workspaceStepForSelection(input.selection),
-        { id: "prompt", label: "Send prompt", detail: "Dispatching your first message." },
-      ],
-      input.stage,
-    ),
+    description: "Preparing the workspace and submitting your first message.",
+    steps: createSessionStartupSteps({
+      stage: input.stage,
+      workspace: workspaceStepForSelection(input.selection),
+    }),
   }
 }
 
 export function createNewSessionWorkspaceSuccessProgress(input: {
   selection: Exclude<NewSessionWorkspaceSelection, { mode: "current" }>
-}): SessionWorkspaceProgress {
-  const workspaceStep = workspaceStepForSelection(input.selection)
+}): SessionTransitionProgress {
   return {
-    operation: "start",
+    kind: "new-worktree-session",
     phase: "success",
-    title: "Worktree session started",
-    description: "The session is ready and your prompt was sent.",
-    steps: [
-      { id: "session", label: "Prepare session", detail: "Conversation state is ready.", state: "complete" },
-      { ...workspaceStep, detail: "Workspace setup complete.", state: "complete" },
-      { id: "prompt", label: "Send prompt", detail: "First prompt dispatched.", state: "complete" },
-    ],
+    title: "Worktree session request accepted",
+    description: "The workspace is ready and your first message is queued for processing.",
+    steps: createSessionStartupSteps({
+      stage: "complete",
+      workspace: workspaceStepForSelection(input.selection),
+    }),
+  }
+}
+
+export function createNewSessionWorkspaceErrorProgress(input: {
+  title: string
+  message: string
+}): SessionTransitionProgress {
+  return {
+    kind: "new-worktree-session",
+    phase: "error",
+    title: input.title,
+    description: input.message,
+    steps: [],
   }
 }

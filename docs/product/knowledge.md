@@ -63,6 +63,8 @@ Experience encoding can degrade over time — an intent may be too long, empty, 
 
 A re-encode job processes each candidate experience and updates its intent or script embedding. The job is owned by the server, not the frontend: closing the settings panel or disconnecting the browser does not cancel it. At most one job is active at a time. Starting a new job when one is already running returns the existing job state with a 409 conflict.
 
+The worker bounds maintenance memory by separating candidates that already have stored raw content from candidates that need session history. Ordinary script repairs use the stored Library content without loading session messages. Intent repairs and complete failed-pipeline repairs are grouped by session: the server loads one session history, processes that session's candidates, releases it, and only then advances to the next session. Cancelling a job also propagates to in-flight encoder and remote embedding requests. Between session groups, critical process or cgroup memory pressure triggers collection before the worker waits for pressure to subside and then resumes with the next history.
+
 REST endpoints support the full lifecycle:
 
 - `POST /library/experience/reencode/jobs` — start a job (`intent` or `script` type, with an optional detection reason filter)
@@ -75,9 +77,64 @@ While process memory is above the canonical session memory-pressure thresholds, 
 
 Three `library.experience.learning` configuration fields control the job runtime:
 
-- `reencodeConcurrency` (1–32, default 5) — how many experiences to re-encode in parallel
+- `reencodeConcurrency` (1–32, default 5) — how many stored-content script repairs may run in parallel; history-dependent repairs remain serialized by session so only one complete session history is retained at a time
 - `reencodeRetries` (0–10, default 3) — how many times to retry a transient model, embedding, session, network, or database stage before marking the item failed
 - `reencodeRetryBackoffMs` (≥ 0, default 1000) — initial backoff in milliseconds for transient retries, doubled on each attempt (1s, 2s, 4s by default)
+
+## Embedding Model
+
+Synergy uses an embedding model to produce vector representations of text for semantic memory retrieval, experience recall, and Library search. Two modes are available, selected automatically by configuration:
+
+Settings → Library → Memory always shows the effective embedding model. A user-configured remote model is shown as configured and takes precedence; when no remote embedding API key is configured, the bundled local model is shown as the default fallback.
+
+### Local Mode (default, zero-config)
+
+When no `embedding.apiKey` is configured, Synergy uses the bundled `Xenova/all-MiniLM-L6-v2` model running locally via `@huggingface/transformers`. The model is approximately 80 MB and produces 384-dimensional vectors.
+
+**Lazy loading**: The local model is not preloaded at startup. It loads on first use — the initial embedding call triggers a one-time download and pipeline initialization. Subsequent calls reuse the warm runtime.
+
+**Explicit download**: Run `synergy embed download` to fetch the model assets ahead of time. The command shows the configured download source and live byte/percentage progress. After a successful download, embedding calls start instantly.
+
+**Status**: `GET /library/embedding/status` reports the current embedding mode. Every response includes `mode` (`"local"` or `"remote"`) and the configured `model`. Local mode also includes:
+
+- `source`: download source (`huggingface`, `hf-mirror`, or `custom`)
+- `asset`: `"missing"`, `"downloading"`, `"cached"`, or `"failed"`
+- `runtime`: `"unloaded"`, `"loading"`, or `"ready"`
+- `progress`: optional byte/percentage snapshot while downloading
+- `error`: optional error detail if a load or source validation failed
+
+Remote mode includes `baseURL`, the configured embedding API endpoint.
+
+Status is in-memory: the local cache is probed on demand but status from a prior runtime is not persisted. After a server restart the model is re-inspected when next needed.
+
+**Download API**: `POST /library/embedding/download` starts or joins the local model download and returns the current observable status. It returns 409 when a remote embedding service is configured — no local download is needed in that case. There is no cancel or SSE endpoint.
+
+### Remote Mode
+
+When `embedding.apiKey` is configured, Synergy queries a remote embedding API. The bundled local model is unused. `synergy embed download` exits immediately with a message that no download is needed. The remote provider defaults to SiliconFlow with `Qwen/Qwen3-Embedding-8B` but any OpenAI-compatible endpoint works through `embedding.baseURL` and `embedding.model`.
+
+Set up remote embedding with `synergy config embedding` or through the Web Settings Embedding page.
+
+### Download Source
+
+The local model downloads from Hugging Face Hub by default. The source is configurable through the General domain (`00-general.jsonc`):
+
+```jsonc
+{
+  "embedding": {
+    "local": {
+      "source": "huggingface",
+    },
+  },
+}
+```
+
+| Field                        | Meaning                                                                                                                                                       |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embedding.local.source`     | `"huggingface"` (default), `"hf-mirror"`, or `"custom"`                                                                                                       |
+| `embedding.local.remoteHost` | Required when `source` is `"custom"`; must be a public HTTPS origin with no credentials, path, query, or hash. Local/private/loopback addresses are rejected. |
+
+The model ID, quantization dtype, and cache directory are not exposed as configuration.
 
 ## Notes
 

@@ -6,19 +6,24 @@ import { Snapshot } from "../../src/session/snapshot"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { tmpdir } from "../fixture/fixture"
+import { SessionBounds } from "../../src/session/bounds"
 
-async function bootstrap() {
+async function bootstrap(options?: { commit?: boolean }) {
   const sessionID = `test-${Math.random().toString(36).slice(2)}`
   return tmpdir({
-    git: true,
+    git: options?.commit,
     init: async (dir) => {
       const unique = Math.random().toString(36).slice(2)
       const aContent = `A${unique}`
       const bContent = `B${unique}`
       await Bun.write(`${dir}/a.txt`, aContent)
       await Bun.write(`${dir}/b.txt`, bContent)
-      await $`git add .`.cwd(dir).quiet()
-      await $`git commit --no-gpg-sign -m init`.cwd(dir).quiet()
+      if (options?.commit) {
+        await $`git add .`.cwd(dir).quiet()
+        await $`git commit --no-gpg-sign -m init`.cwd(dir).quiet()
+      } else {
+        await $`git init`.cwd(dir).quiet()
+      }
       return {
         aContent,
         bContent,
@@ -547,7 +552,7 @@ describe.serial("snapshot", () => {
   })
 
   test("patch detects changes in secondary worktree", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
@@ -579,7 +584,7 @@ describe.serial("snapshot", () => {
   })
 
   test("revert only removes files in invoking worktree", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const sessionID = "revert-worktree-isolation"
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
@@ -613,7 +618,7 @@ describe.serial("snapshot", () => {
   })
 
   test("diff reports worktree-only/shared edits and ignores primary-only", async () => {
-    await using tmp = await bootstrap()
+    await using tmp = await bootstrap({ commit: true })
     const worktreePath = `${tmp.path}-worktree`
     await $`git worktree add ${worktreePath} HEAD`.cwd(tmp.path).quiet()
 
@@ -996,6 +1001,36 @@ describe.serial("snapshot", () => {
 
         const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
         expect(diffs.length).toBe(0)
+      },
+    })
+  })
+
+  test("diffSummary bounds aggregate preview bytes while preserving file statistics", async () => {
+    await using tmp = await bootstrap()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const before = await Snapshot.track(tmp.extra.sessionID)
+        expect(before).toBeTruthy()
+
+        const fileCount = 50
+        const content = "界".repeat(8_000)
+        await Promise.all(
+          Array.from({ length: fileCount }, (_, index) =>
+            Bun.write(`${tmp.path}/large-${index.toString().padStart(2, "0")}.txt`, content),
+          ),
+        )
+
+        const after = await Snapshot.track(tmp.extra.sessionID)
+        expect(after).toBeTruthy()
+
+        const diffs = await Snapshot.diffSummary(before!, after!, tmp.extra.sessionID)
+        const previewBytes = diffs.reduce((sum, diff) => sum + Buffer.byteLength(diff.preview ?? "", "utf8"), 0)
+
+        expect(diffs).toHaveLength(fileCount)
+        expect(diffs.every((diff) => diff.additions === 1 && diff.deletions === 0)).toBe(true)
+        expect(previewBytes).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+        expect(diffs.some((diff) => diff.preview === undefined && diff.truncated === true)).toBe(true)
       },
     })
   })

@@ -123,8 +123,11 @@ export namespace WorkspaceFileService {
     }
   }
 
-  export async function maybeNode(input: string) {
-    return node(input).catch(() => undefined)
+  export async function maybeNode(
+    input: string,
+    options?: { resolveGitStatus?: boolean; gitStatus?: WorkspaceFile.GitStatus },
+  ) {
+    return node(input, options).catch(() => undefined)
   }
 
   function visible(node: WorkspaceFile.Node, options: { showHidden?: boolean; showIgnored?: boolean }) {
