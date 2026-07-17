@@ -12,6 +12,7 @@ import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { Global } from "../global"
 import { LibraryStatsEngine } from "../library"
+import { Embedding } from "../vector/embedding"
 
 const log = Log.create({ service: "server.library" })
 
@@ -100,6 +101,44 @@ const MemoryStats = z
     dbSizeBytes: z.number(),
   })
   .meta({ ref: "MemoryStats" })
+
+const EmbeddingProgressInfo = z.object({
+  loadedBytes: z.number(),
+  totalBytes: z.number(),
+  percent: z.number(),
+})
+
+const EmbeddingErrorInfo = z.object({
+  code: z.enum(["invalid_source", "load_failed"]),
+  message: z.string(),
+})
+
+const LocalEmbeddingStatus = z.object({
+  mode: z.literal("local"),
+  model: z.string(),
+  source: z.enum(["huggingface", "hf-mirror", "custom"]),
+  asset: z.enum(["missing", "downloading", "cached", "failed"]),
+  runtime: z.enum(["unloaded", "loading", "ready"]),
+  progress: EmbeddingProgressInfo.optional(),
+  error: EmbeddingErrorInfo.optional(),
+})
+
+const RemoteEmbeddingStatus = z.object({
+  mode: z.literal("remote"),
+  model: z.string(),
+  baseURL: z.string(),
+})
+
+const EmbeddingStatus = z
+  .discriminatedUnion("mode", [LocalEmbeddingStatus, RemoteEmbeddingStatus])
+  .meta({ ref: "EmbeddingStatus" })
+
+const EmbeddingRemoteConfiguredError = z
+  .object({
+    code: z.literal("EMBEDDING_REMOTE_CONFIGURED"),
+    message: z.string(),
+  })
+  .meta({ ref: "EmbeddingRemoteConfiguredError" })
 
 const ResetResult = z
   .object({
@@ -282,6 +321,65 @@ function toExperienceSearchResult(result: ExperienceRecall.Result): z.infer<type
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 export const LibraryRoute = new Hono()
+  .get(
+    "/embedding/status",
+    describeRoute({
+      summary: "Get embedding status",
+      description: "Report the configured embedding mode and local model asset lifecycle without loading the model.",
+      operationId: "library.embedding.status",
+      responses: {
+        200: {
+          description: "Embedding mode and local asset status",
+          content: { "application/json": { schema: resolver(EmbeddingStatus) } },
+        },
+      },
+    }),
+    async (c) => c.json(await Embedding.status()),
+  )
+
+  .post(
+    "/embedding/download",
+    describeRoute({
+      summary: "Download local embedding model",
+      description: "Start or join the local embedding model download and return its current observable status.",
+      operationId: "library.embedding.download",
+      responses: {
+        202: {
+          description: "Local model download accepted or already active",
+          content: { "application/json": { schema: resolver(LocalEmbeddingStatus) } },
+        },
+        409: {
+          description: "A remote embedding service is configured",
+          content: { "application/json": { schema: resolver(EmbeddingRemoteConfiguredError) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = await Embedding.status()
+      if (current.mode === "remote") {
+        return c.json(
+          {
+            code: "EMBEDDING_REMOTE_CONFIGURED" as const,
+            message: "Local embedding download is unavailable while a remote embedding service is configured",
+          },
+          409,
+        )
+      }
+
+      void Embedding.warmup().catch(() => undefined)
+      const status = await Embedding.status()
+      if (status.mode === "remote") {
+        return c.json(
+          {
+            code: "EMBEDDING_REMOTE_CONFIGURED" as const,
+            message: "Local embedding download is unavailable while a remote embedding service is configured",
+          },
+          409,
+        )
+      }
+      return c.json(status, 202)
+    },
+  )
 
   // ── Experience sub-routes (must be registered before /:id) ──────────────
 

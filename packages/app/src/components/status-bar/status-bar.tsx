@@ -1,5 +1,5 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, Show, type JSX } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { useHolos } from "@/context/holos"
 import { useHolosAgentActions } from "@/components/holos/agent-actions"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -7,6 +7,7 @@ import { useServer } from "@/context/server"
 import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 import { ContextBar } from "./context-bar"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
@@ -14,10 +15,12 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { useLocale } from "@/context/locale"
 import { getScopeLabel } from "@/utils/scope"
 import { relativeTime } from "@/utils/time"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { Session, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import { statusBar as copy } from "@/locales/messages"
 import { resolveRuntimeIconState, runtimeLabel } from "./runtime"
 import {
   normalizeSubsessionSearch,
@@ -40,15 +43,26 @@ function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   }
 }
 
-function holosLabel(holos: ReturnType<typeof useHolos>) {
-  if (!holos.loaded) return "Holos loading"
-  if (!holos.state.identity.loggedIn) return "Holos signed out"
-  if (holos.state.connection.status === "connected") return "Holos connected"
-  if (holos.state.connection.status === "connecting") return "Holos connecting"
-  if (holos.state.connection.status === "failed") return "Holos failed"
-  if (holos.state.connection.status === "disconnected") return "Holos disconnected"
-  if (holos.state.connection.status === "disabled") return "Holos disabled"
-  return "Holos unknown"
+function holosTooltipLabel(holos: ReturnType<typeof useHolos>, i18n: ReturnType<typeof useLocale>["i18n"]) {
+  if (!holos.loaded) return i18n._(copy.holosLoading)
+  if (!holos.state.identity.loggedIn) return i18n._(copy.holosSignedOut)
+  if (holos.state.connection.status === "connected") return i18n._(copy.holosConnected)
+  if (holos.state.connection.status === "connecting") return i18n._(copy.holosConnecting)
+  if (holos.state.connection.status === "failed") return i18n._(copy.holosFailed)
+  if (holos.state.connection.status === "disconnected") return i18n._(copy.holosDisconnected)
+  if (holos.state.connection.status === "disabled") return i18n._(copy.holosDisabled)
+  return i18n._(copy.holosUnknown)
+}
+
+function holosServiceStatus(holos: ReturnType<typeof useHolos>, i18n: ReturnType<typeof useLocale>["i18n"]) {
+  if (!holos.loaded) return i18n._(copy.holosStateLoading)
+  if (!holos.state.identity.loggedIn) return i18n._(copy.holosStateSignedOut)
+  if (holos.state.connection.status === "connected") return i18n._(copy.holosStateConnected)
+  if (holos.state.connection.status === "connecting") return i18n._(copy.holosStateConnecting)
+  if (holos.state.connection.status === "failed") return i18n._(copy.holosStateFailed)
+  if (holos.state.connection.status === "disconnected") return i18n._(copy.holosStateDisconnected)
+  if (holos.state.connection.status === "disabled") return i18n._(copy.holosStateDisabled)
+  return i18n._(copy.holosStateUnknown)
 }
 
 function holosTone(holos: ReturnType<typeof useHolos>) {
@@ -74,10 +88,10 @@ function workspaceField(session: Session | undefined, key: string) {
   return typeof value === "string" ? value : undefined
 }
 
-function serverStatusLabel(healthy: boolean | undefined) {
-  if (healthy === true) return "active"
-  if (healthy === false) return "unavailable"
-  return "unknown"
+function serverStatusLabel(healthy: boolean | undefined, i18n: ReturnType<typeof useLocale>["i18n"]) {
+  if (healthy === true) return i18n._(copy.serverActive)
+  if (healthy === false) return i18n._(copy.serverUnavailable)
+  return i18n._(copy.serverUnknown)
 }
 
 function iconButtonClass(tone?: "base" | "danger" | "success") {
@@ -95,7 +109,8 @@ function HolosIconButton() {
   const globalSDK = useGlobalSDK()
   const holos = useHolos()
   const agentActions = useHolosAgentActions(globalSDK)
-  const label = createMemo(() => holosLabel(holos))
+  const { i18n } = useLocale()
+  const label = createMemo(() => holosTooltipLabel(holos, i18n))
   const dot = createMemo(() => holosTone(holos))
   const [open, setOpen] = createSignal(false)
 
@@ -129,16 +144,20 @@ function HolosIconButton() {
       }
     >
       <div class="w-56">
-        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">Holos</div>
+        <div class="text-12-medium text-text-base border-b border-border-weaker-base/60 px-1 pb-2 mb-2">
+          {i18n._(copy.holosTitle)}
+        </div>
         <div class="space-y-0.5 mb-2">
           <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">Login</span>
+            <span class="text-text-weak w-14 shrink-0">{i18n._(copy.holosLoginLabel)}</span>
             <span class={holos.state.identity.loggedIn ? "text-text-on-success-base" : "text-text-subtle"}>
-              {holos.state.identity.loggedIn ? `Agent ${activeAgentShortID()}` : "Not logged in"}
+              {holos.state.identity.loggedIn
+                ? i18n._({ ...copy.holosAgent, values: { id: activeAgentShortID() } })
+                : i18n._(copy.notLoggedIn)}
             </span>
           </div>
           <div class="flex items-center gap-2 px-1 text-12-regular text-text-base">
-            <span class="text-text-weak w-14 shrink-0">Service</span>
+            <span class="text-text-weak w-14 shrink-0">{i18n._(copy.holosServiceLabel)}</span>
             <span
               classList={{
                 "text-text-on-success-base": holos.state.connection.status === "connected",
@@ -150,7 +169,7 @@ function HolosIconButton() {
                 ),
               }}
             >
-              {holosLabel(holos).replace("Holos ", "")}
+              {holosServiceStatus(holos, i18n)}
             </span>
           </div>
           <Show when={holos.state.connection.error}>
@@ -166,7 +185,7 @@ function HolosIconButton() {
             onClick={handleReconnect}
           >
             <Icon name={getSemanticIcon("action.refresh")} size="small" />
-            <span>Reconnect</span>
+            <span>{i18n._(copy.reconnect)}</span>
           </button>
         </Show>
       </div>
@@ -177,8 +196,12 @@ function HolosIconButton() {
 // ─── Workspace icon button ────────────────────────────────────────
 
 function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string }) {
+  const { i18n } = useLocale()
   const icon = () => getSemanticIcon(props.isWorktree ? "workspace.worktree" : "workspace.main")
-  const tooltip = () => (props.isWorktree ? `Worktree: ${props.workspaceName}` : "Main checkout")
+  const tooltip = () =>
+    props.isWorktree
+      ? i18n._({ ...copy.worktreeLabel, values: { name: props.workspaceName } })
+      : i18n._(copy.mainCheckout)
 
   return (
     <Tooltip placement="top" value={tooltip()}>
@@ -192,8 +215,9 @@ function WorkspaceIconButton(props: { isWorktree: boolean; workspaceName: string
 // ─── Branch icon button ───────────────────────────────────────────
 
 function BranchIconButton(props: { branch: string }) {
+  const { i18n } = useLocale()
   return (
-    <Tooltip placement="top" value={`Branch: ${props.branch}`}>
+    <Tooltip placement="top" value={i18n._({ ...copy.branchLabel, values: { name: props.branch } })}>
       <button type="button" classList={iconButtonClass()}>
         <Icon name={getSemanticIcon("workspace.branch")} size="small" />
       </button>
@@ -204,11 +228,12 @@ function BranchIconButton(props: { branch: string }) {
 // ─── Runtime icon button ──────────────────────────────────────────
 
 function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: boolean }) {
-  const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting))
+  const { i18n } = useLocale()
+  const runtimeState = createMemo(() => resolveRuntimeIconState(props.status, props.waiting, i18n))
   const copyRetryError = createCopyController({
     text: () => runtimeState().copyText,
-    copyLabel: "Copy retry error",
-    failureDescription: "Unable to copy the retry error.",
+    copyLabel: i18n._(copy.copyRetryError),
+    failureDescription: i18n._(copy.copyRetryErrorFailed),
   })
   const tooltip = createMemo(() => (runtimeState().copyText ? copyRetryError.tooltip() : runtimeState().tooltip))
   const icon = createMemo(() =>
@@ -224,7 +249,7 @@ function RuntimeIconButton(props: { status: SessionStatus | undefined; waiting: 
         onClick={() => {
           if (runtimeState().copyText) void copyRetryError.copy()
         }}
-        aria-label={runtimeState().copyText ? "Copy retry error" : runtimeState().tooltip}
+        aria-label={runtimeState().copyText ? i18n._(copy.copyRetryError) : runtimeState().tooltip}
       >
         <span classList={{ "sb-session-icon-pulse": runtimeState().pulse }}>
           <Icon name={icon()} size="small" class="translate-y-0.5" />
@@ -243,6 +268,7 @@ function SubsessionsButton(props: {
 }) {
   const pageSize = 8
   const sdk = useSDK()
+  const { fmt, i18n } = useLocale()
   const [open, setOpen] = createSignal(false)
   const [items, setItems] = createSignal<Session[]>([])
   const [total, setTotal] = createSignal<number | undefined>()
@@ -364,11 +390,11 @@ function SubsessionsButton(props: {
 
   const tooltip = () => {
     const loadedTotal = total()
-    if (loadedTotal === undefined) return "Subsessions"
-    return `${loadedTotal} subsession${loadedTotal !== 1 ? "s" : ""}`
+    if (loadedTotal === undefined) return i18n._(copy.subsessions)
+    return i18n._({ ...copy.subsessionsCount, values: { count: loadedTotal } })
   }
-  const rangeText = () => subsessionRangeLabel(pageIndex(), pageSize, items().length, total() ?? 0)
-  const emptyText = () => (debouncedSearch() ? "No matching subsessions" : "No subsessions yet")
+  const rangeText = () => subsessionRangeLabel(pageIndex(), pageSize, items().length, total() ?? 0, i18n)
+  const emptyText = () => (debouncedSearch() ? i18n._(copy.noMatching) : i18n._(copy.noSubsessions))
 
   return (
     <Popover
@@ -382,22 +408,23 @@ function SubsessionsButton(props: {
           <button
             type="button"
             class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+            onClick={() => setOpen(true)}
             aria-label={tooltip()}
           >
             <Icon name={getSemanticIcon("session.child")} size="small" />
-            <Show when={total() !== undefined && total()! > 0}>
-              <span class="statusbar-indicator-value text-text-weak">{total()}</span>
+            <Show when={total() !== undefined}>
+              <span class="text-11-medium">{total()}</span>
             </Show>
           </button>
         </Tooltip>
       }
     >
-      <div class="min-w-0">
-        <div class="flex items-center justify-between gap-3 border-b border-border-weaker-base/60 px-1 pb-2">
-          <span class="truncate text-12-medium text-text-base">Subsessions</span>
+      <div class="w-72">
+        <div class="flex items-center justify-between gap-2 px-1">
+          <span class="truncate text-12-medium text-text-base">{i18n._(copy.subsessions)}</span>
           <span class="shrink-0 text-11-regular text-text-subtle">
-            <Show when={total() !== undefined} fallback="Loading">
-              {total()} total
+            <Show when={total() !== undefined} fallback={i18n._(copy.loading)}>
+              {i18n._({ ...copy.total, values: { total: total() } })}
             </Show>
           </span>
         </div>
@@ -406,7 +433,7 @@ function SubsessionsButton(props: {
           <Icon name={getSemanticIcon("action.search")} size="small" class="shrink-0 text-icon-weak-base" />
           <input
             value={search()}
-            placeholder="Search subsessions..."
+            placeholder={i18n._(copy.searchPlaceholder)}
             class="min-w-0 flex-1 bg-transparent text-12-regular text-text-base placeholder:text-text-subtle focus:outline-none"
             onInput={(event) => setSearch(event.currentTarget.value)}
           />
@@ -415,13 +442,17 @@ function SubsessionsButton(props: {
         <div class="mt-2 min-h-44 max-h-72 overflow-y-auto [scrollbar-width:thin]">
           <Show
             when={!loading() || items().length > 0}
-            fallback={<div class="px-2 py-8 text-center text-12-regular text-text-subtle">Loading subsessions</div>}
+            fallback={
+              <div class="px-2 py-8 text-center text-12-regular text-text-subtle">
+                {i18n._(copy.loadingSubsessions)}
+              </div>
+            }
           >
             <Show
               when={!error()}
               fallback={
                 <div class="flex min-h-32 flex-col items-center justify-center gap-2 px-2 py-6 text-center">
-                  <div class="text-12-medium text-text-base">Couldn’t load subsessions</div>
+                  <div class="text-12-medium text-text-base">{i18n._(copy.loadError)}</div>
                   <button
                     type="button"
                     class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong-base"
@@ -432,7 +463,7 @@ function SubsessionsButton(props: {
                       })
                     }
                   >
-                    Retry
+                    {i18n._(copy.retry)}
                   </button>
                 </div>
               }
@@ -456,12 +487,14 @@ function SubsessionsButton(props: {
                         <Icon name={status().icon} size="small" class={`mt-0.5 ${rowIconClass(status().tone)}`} />
                         <span class="min-w-0">
                           <span class="block truncate text-12-medium text-text-base">
-                            {session.title || "New session"}
+                            {session.title || i18n._(copy.newSession)}
                           </span>
                           <Show
                             when={preview(session)}
                             fallback={
-                              <span class="mt-0.5 block text-11-regular text-text-subtle">No exchanges yet</span>
+                              <span class="mt-0.5 block text-11-regular text-text-subtle">
+                                {i18n._(copy.noExchanges)}
+                              </span>
                             }
                           >
                             {(text) => (
@@ -482,7 +515,7 @@ function SubsessionsButton(props: {
                             </span>
                           </Show>
                           <span class="block truncate text-10-regular text-text-subtle">
-                            {relativeTime(sessionActivityTime(session))}
+                            {relativeTime(fmt, sessionActivityTime(session))}
                           </span>
                         </span>
                       </button>
@@ -497,23 +530,23 @@ function SubsessionsButton(props: {
         <div class="mt-2 flex items-center justify-between gap-2 border-t border-border-weaker-base/60 px-1 pt-2">
           <span class="min-w-0 truncate text-11-regular text-text-subtle">{rangeText()}</span>
           <div class="flex items-center gap-1">
-            <Tooltip placement="top" value="Previous">
+            <Tooltip placement="top" value={i18n._(copy.previous)}>
               <button
                 type="button"
                 classList={iconButtonClass()}
                 disabled={pageIndex() === 0 || loading()}
-                aria-label="Previous subsessions page"
+                aria-label={i18n._(copy.previousPage)}
                 onClick={previousPage}
               >
                 <Icon name={getSemanticIcon("navigation.back")} size="small" />
               </button>
             </Tooltip>
-            <Tooltip placement="top" value="Next">
+            <Tooltip placement="top" value={i18n._(copy.next)}>
               <button
                 type="button"
                 classList={iconButtonClass()}
                 disabled={!nextCursor() || loading()}
-                aria-label="Next subsessions page"
+                aria-label={i18n._(copy.nextPage)}
                 onClick={nextPage}
               >
                 <Icon name={getSemanticIcon("navigation.forward")} size="small" />
@@ -558,11 +591,12 @@ function PanelIconRow(props: { icon: IconName; label: string; tone?: "base" | "d
 
 export function StatusBar() {
   const params = useParams()
-  const navigate = useNavigate()
+  const navigateToSession = useNavigateToSession()
   const globalSync = useGlobalSync()
   const holos = useHolos()
   const server = useServer()
   const sync = useSync()
+  const { i18n } = useLocale()
   const [expanded, setExpanded] = createSignal(false)
 
   const directory = createMemo(() => decodeDirectory(params.dir))
@@ -589,7 +623,7 @@ export function StatusBar() {
     return workspaceField(session(), "branch") || sync.data.vcs?.branch
   })
   const scopeLabel = createMemo(() => getScopeLabel(scope(), directory()))
-  const runtime = createMemo(() => runtimeLabel(status(), waiting()))
+  const runtime = createMemo(() => runtimeLabel(status(), waiting(), i18n))
   const retryMessage = createMemo(() => {
     const current = status()
     return current?.type === "retry" ? current.message.trim() : undefined
@@ -626,10 +660,10 @@ export function StatusBar() {
       running: status?.type === "busy" || status?.type === "retry" || status?.type === "recovering",
     })
     if (state === "waiting")
-      return { label: "waiting", icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
+      return { label: i18n._(copy.waiting), icon: getSemanticIcon("session.waiting"), tone: "danger" as const }
     if (state === "running")
-      return { label: "running", icon: getSemanticIcon("session.running"), tone: "active" as const }
-    return { label: "idle", icon: getSemanticIcon("session.child"), tone: "base" as const }
+      return { label: i18n._(copy.running), icon: getSemanticIcon("session.running"), tone: "active" as const }
+    return { label: i18n._(copy.idle), icon: getSemanticIcon("session.child"), tone: "base" as const }
   }
 
   const openPanel = () => setExpanded(true)
@@ -638,12 +672,16 @@ export function StatusBar() {
     <div class="w-64">
       <Show when={waiting()}>
         <div class="rounded-xl bg-surface-critical-weak p-2.5 mb-3">
-          <PanelIconRow icon={getSemanticIcon("session.waiting")} label="Permission required" tone="danger" />
+          <PanelIconRow
+            icon={getSemanticIcon("session.waiting")}
+            label={i18n._(copy.permissionRequired)}
+            tone="danger"
+          />
         </div>
       </Show>
 
-      <PanelSection title="Workspace">
-        <PanelRow>{isWorktree() ? "Git worktree" : "Main checkout"}</PanelRow>
+      <PanelSection title={i18n._(copy.workspace)}>
+        <PanelRow>{isWorktree() ? i18n._(copy.gitWorktree) : i18n._(copy.mainCheckout)}</PanelRow>
         <PanelRow>{scopeLabel()}</PanelRow>
         <Show when={isWorktree()}>
           <PanelRow>{workspaceName()}</PanelRow>
@@ -653,7 +691,7 @@ export function StatusBar() {
         </Show>
       </PanelSection>
 
-      <PanelSection title="Runtime">
+      <PanelSection title={i18n._(copy.runtime)}>
         <PanelRow>
           {runtime()}
           <Show
@@ -672,29 +710,39 @@ export function StatusBar() {
         </Show>
       </PanelSection>
 
-      <PanelSection title="Connections">
-        <PanelRow>Holos · {holosLabel(holos)}</PanelRow>
+      <PanelSection title={i18n._(copy.connections)}>
+        <PanelRow>{holosTooltipLabel(holos, i18n)}</PanelRow>
         <Show when={lspTotal() > 0}>
-          <PanelRow>LSP · {lspConnected()} active</PanelRow>
+          <PanelRow>{i18n._({ ...copy.lspActive, values: { connected: lspConnected() } })}</PanelRow>
         </Show>
         <Show when={mcpTotal() > 0}>
           <PanelRow>
-            MCP · {mcpConnected()} connected
+            {i18n._({ ...copy.mcpConnected, values: { connected: mcpConnected() } })}
             <Show when={mcpFailed() > 0}>
-              <span class="text-text-on-critical-base">, {mcpFailed()} unavailable</span>
+              <span class="text-text-on-critical-base">
+                {i18n._({ ...copy.mcpUnavailable, values: { failed: mcpFailed() } })}
+              </span>
             </Show>
           </PanelRow>
         </Show>
         <Show when={cortexRunning() > 0 || cortexCompleted() > 0}>
           <PanelRow>
-            Cortex · {cortexCompleted()} done
+            {i18n._({ ...copy.cortexDone, values: { completed: cortexCompleted() } })}
             <Show when={cortexRunning() > 0}>
-              <span class="text-text-interactive-base"> · {cortexRunning()} running</span>
+              <span class="text-text-interactive-base">
+                {i18n._({ ...copy.cortexRunning, values: { running: cortexRunning() } })}
+              </span>
             </Show>
           </PanelRow>
         </Show>
         <PanelRow>
-          Server · {server.name} ({serverStatusLabel(server.healthy())})
+          {i18n._({
+            ...copy.serverStatus,
+            values: {
+              name: server.name,
+              status: serverStatusLabel(server.healthy(), i18n),
+            },
+          })}
         </PanelRow>
       </PanelSection>
     </div>
@@ -721,7 +769,7 @@ export function StatusBar() {
             <SubsessionsButton
               sessionID={params.id!}
               statusFor={childSessionStatus}
-              onSelect={(child) => navigate(`/${params.dir}/session/${child.id}`)}
+              onSelect={(child) => navigateToSession(child.id)}
             />
             <ContextBar />
           </Show>
@@ -734,7 +782,7 @@ export function StatusBar() {
             placement="top"
             gutter={8}
             trigger={
-              <Tooltip placement="top" value="Details">
+              <Tooltip placement="top" value={i18n._(copy.details)}>
                 <button type="button" classList={iconButtonClass()}>
                   <Icon name={getSemanticIcon("app.statusBar.toggle")} size="small" />
                 </button>

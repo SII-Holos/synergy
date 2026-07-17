@@ -1,3 +1,6 @@
+import { useLingui } from "@lingui/solid"
+import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
+
 import type {
   AssistantMessage,
   AttachmentPart,
@@ -11,11 +14,15 @@ import type {
   UserMessage,
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
-import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
+import {
+  resolveTurnDiffPanelState,
+  TURN_DIFF_PENDING_DELAY_MS,
+  type TurnDiffPanelState,
+} from "./turn-change-summary-panel-model"
 import { Message, Part } from "./message-part"
 import { MessageSlotOutlet, type MessageSlotName } from "./message-slots"
 import { AttachmentGallery } from "./attachment-card"
@@ -78,7 +85,6 @@ export type SessionTurnTimelineVisualKind =
   | "tool-attachments"
   | "compaction"
 
-const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
 export type TurnCompletionStats = {
   duration: string
   segments: string[]
@@ -108,7 +114,7 @@ export function formatTurnTokenCount(value: number): string {
 export function formatTurnCost(value: number): string | undefined {
   if (value <= 0) return undefined
   if (value < 0.01) return `$${value.toFixed(4)}`
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
   }).format(value)
@@ -200,11 +206,17 @@ export function collectUserCompactionTimelineItems(
 export function shouldShowTurnDiffs(
   message: Pick<UserMessage, "metadata" | "summary"> | undefined,
   options: { hasCompactionEvent?: boolean; isCompactedParent?: boolean } = {},
-): boolean {
-  if (!message) return false
-  if (options.isCompactedParent) return false
-  if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return false
-  return (message.summary?.diffs?.length ?? 0) > 0
+): TurnDiffPanelState {
+  if (!message) return "hidden"
+  if (options.isCompactedParent) return "hidden"
+  if (isCompactionBoundaryUser(message) || options.hasCompactionEvent) return "hidden"
+
+  const summary = message.summary
+  const diffState = summary?.diffState
+  if (!diffState) return (summary?.diffs.length ?? 0) > 0 ? "ready" : "hidden"
+  if (diffState.status === "pending") return "pending"
+  if (diffState.status === "error") return "error"
+  return summary.diffs.length > 0 ? "ready" : "hidden"
 }
 
 export function shouldShowTurnUserChrome(
@@ -412,7 +424,7 @@ export function providerPreludeText(status: SessionStatus | undefined): string {
     const description = status.description?.trim()
     if (description) return description
   }
-  return DEFAULT_PROVIDER_PRELUDE_TEXT
+  return "Awaiting response\u2026"
 }
 
 export function shouldShowProviderPrelude(input: {
@@ -505,6 +517,7 @@ function TimelineDisplay(props: {
   rollbackActive: boolean
   onRewind?: () => void
 }) {
+  const { _ } = useLingui()
   if (props.item.kind === "guided-user") {
     // A user's own mid-run message: same right-aligned bubble as a root turn,
     // sharing the reserved rewind gutter so both flush to the same edge. Steer
@@ -529,10 +542,10 @@ function TimelineDisplay(props: {
             e.stopPropagation()
             props.onRewind?.()
           }}
-          title="Rewind to before this message"
+          title={_(SESSION_TURN_DESC.rewindTitle)}
         >
           <Icon name={getSemanticIcon("session.rewind")} size="small" />
-          <span>Rewind</span>
+          <span>{_(SESSION_TURN_DESC.rewind)}</span>
         </button>
       </div>
     )
@@ -582,18 +595,19 @@ function ProviderPrelude(props: {
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {
+  const { _ } = useLingui()
   const data = useData()
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
   const sourceID = createMemo(
     () => (props.message.origin?.sessionID ?? props.message.metadata?.sourceSessionID) as string | undefined,
   )
-  const label = createMemo(() => sourceName() ?? sourceID() ?? "another session")
+  const label = createMemo(() => sourceName() ?? sourceID() ?? _(MAILBOX_DESC.anotherSession))
 
   return (
     <div data-slot="session-turn-mailbox-source">
       <Icon name={getSemanticIcon("session.inbox")} size="small" />
       <span>
-        From{" "}
+        {_(MAILBOX_DESC.from)}{" "}
         <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
           <button data-slot="session-turn-mailbox-link" onClick={() => data.navigateToSession?.(sourceID()!)}>
             {label()}
@@ -621,6 +635,7 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
+  const { _ } = useLingui()
 
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
@@ -774,12 +789,33 @@ export function SessionTurn(
     timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
   )
   const showUserChrome = createMemo(() => shouldShowTurnUserChrome(message(), parts(), hasCompactionEvent()))
-  const hasDiffs = createMemo(() => {
+  const [pendingDelayElapsed, setPendingDelayElapsed] = createSignal(false)
+  const [animateReadyDiffPanel, setAnimateReadyDiffPanel] = createSignal(false)
+  const diffSettlementStatus = createMemo(() => message()?.summary?.diffState?.status)
+
+  createEffect(
+    on(diffSettlementStatus, (status) => {
+      setPendingDelayElapsed(false)
+      if (status !== "pending") return
+
+      const pendingTimer = setTimeout(() => setPendingDelayElapsed(true), TURN_DIFF_PENDING_DELAY_MS)
+      onCleanup(() => clearTimeout(pendingTimer))
+    }),
+  )
+
+  createEffect(on(diffSettlementStatus, (status) => setAnimateReadyDiffPanel(status === "ready"), { defer: true }))
+
+  const diffPanelState = createMemo(() => {
     const msg = message()
-    return shouldShowTurnDiffs(msg, {
+    const projected = shouldShowTurnDiffs(msg, {
       hasCompactionEvent: hasCompactionEvent(),
       isCompactedParent: !!msg && compactionParentIDs().has(msg.id),
     })
+    return resolveTurnDiffPanelState(projected, pendingDelayElapsed())
+  })
+  const visibleDiffPanelState = createMemo<Exclude<TurnDiffPanelState, "hidden"> | undefined>(() => {
+    const state = diffPanelState()
+    return state === "hidden" ? undefined : state
   })
   const latestAssistantTimelineItems = createMemo(() => {
     const latest = lastAssistantMessage()
@@ -843,9 +879,9 @@ export function SessionTurn(
   })
   const copyController = createCopyController({
     text: markdownText,
-    copyLabel: "Copy Markdown",
-    copiedLabel: "Copied!",
-    failureDescription: "Unable to copy the message.",
+    copyLabel: _(SESSION_TURN_DESC.copyMarkdown),
+    copiedLabel: _(SESSION_TURN_DESC.copied),
+    failureDescription: _(SESSION_TURN_DESC.copyFailure),
   })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
@@ -942,10 +978,10 @@ export function SessionTurn(
                               e.stopPropagation()
                               props.onRewind?.()
                             }}
-                            title="Rewind to before this message"
+                            title={_(SESSION_TURN_DESC.rewindTitle)}
                           >
                             <Icon name={getSemanticIcon("session.rewind")} size="small" />
-                            <span>Rewind</span>
+                            <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
                       </div>
@@ -956,7 +992,7 @@ export function SessionTurn(
                         hasTimelineItems() ||
                         showProviderPrelude() ||
                         completedTurnStats() ||
-                        (!working() && hasDiffs())
+                        (!working() && !!visibleDiffPanelState())
                       }
                     >
                       <div data-slot="session-turn-timeline">
@@ -1008,7 +1044,7 @@ export function SessionTurn(
                           {(stats) => (
                             <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                               <ProviderPrelude
-                                text="Completed"
+                                text={_(SESSION_TURN_DESC.completed)}
                                 elapsed={stats().duration}
                                 segments={stats().segments}
                                 variant="completed"
@@ -1040,12 +1076,16 @@ export function SessionTurn(
                             </div>
                           </div>
                         </Show>
-                        <Show when={!working() && hasDiffs()}>
-                          <TurnChangeSummaryPanel
-                            diffs={msg().summary?.diffs ?? []}
-                            onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
-                            onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
-                          />
+                        <Show when={!working() ? visibleDiffPanelState() : undefined}>
+                          {(state) => (
+                            <TurnChangeSummaryPanel
+                              diffs={msg().summary?.diffs ?? []}
+                              state={state()}
+                              animateReady={animateReadyDiffPanel()}
+                              onReviewRequested={() => props.onReviewChanges?.({ messageID: msg().id })}
+                              onFileSelected={(file) => props.onReviewChanges?.({ messageID: msg().id, file })}
+                            />
+                          )}
                         </Show>
                       </div>
                     </Show>

@@ -17,6 +17,9 @@ export namespace Snapshot {
   const SNAPSHOT_HARD_TIMEOUT_MS = SNAPSHOT_TIMEOUT_MS + 5_000
   const SNAPSHOT_MAX_FILE_BYTES = 2 * 1024 * 1024
   const CANDIDATE_STATE_CONCURRENCY = 32
+  const GIT_SPAWN_MAX_ATTEMPTS = 3
+  const GIT_SPAWN_RETRY_BASE_MS = 25
+  const TRANSIENT_GIT_SPAWN_CODES = new Set(["EAGAIN", "EMFILE", "ENFILE", "ENOMEM"])
   const EXCLUDED_DIRS = new Set([
     ".git",
     ".synergy",
@@ -116,6 +119,40 @@ export namespace Snapshot {
     })
   }
 
+  function gitSpawnError(error: unknown) {
+    const code = (error as { code?: unknown })?.code
+    const message = error instanceof Error ? error.message : String(error)
+    return {
+      code: typeof code === "string" ? code : undefined,
+      message,
+    }
+  }
+
+  function isTransientGitSpawnError(error: unknown) {
+    const code = gitSpawnError(error).code
+    return code !== undefined && TRANSIENT_GIT_SPAWN_CODES.has(code)
+  }
+
+  async function waitForGitSpawnRetry(attempt: number, signal?: AbortSignal) {
+    if (signal?.aborted) return false
+    const delayMs = GIT_SPAWN_RETRY_BASE_MS * 2 ** (attempt - 1)
+    return new Promise<boolean>((resolve) => {
+      let settled = false
+      let timer: ReturnType<typeof setTimeout>
+      const finish = (value: boolean) => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        signal?.removeEventListener("abort", onAbort)
+        resolve(value)
+      }
+      const onAbort = () => finish(false)
+      timer = setTimeout(() => finish(true), delayMs)
+      signal?.addEventListener("abort", onAbort, { once: true })
+      if (signal?.aborted) onAbort()
+    })
+  }
+
   async function gitSpawn(
     args: string[],
     cwd: string,
@@ -124,44 +161,59 @@ export namespace Snapshot {
     stdin?: string,
   ): Promise<{ exitCode: number; text: string; stderr: string }> {
     if (signal?.aborted) return abortedGitResult()
-    const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
-    let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
-    try {
-      proc = Bun.spawn(args, {
-        cwd,
-        stdin: stdin === undefined ? "ignore" : "pipe",
-        stdout: "pipe",
-        stderr: "pipe",
-        env: env ? { ...process.env, ...env } : process.env,
-        signal: childSignal.signal,
-      })
-      if (stdin !== undefined) {
-        if (!proc.stdin) throw new Error("git subprocess stdin pipe unavailable")
-        proc.stdin.write(stdin)
-        proc.stdin.end()
-      }
-      const stdout = new Response(proc.stdout).text()
-      const stderr = new Response(proc.stderr).text().catch(() => "")
-      const [text, stderrText, exitCode] = await withTimeout(
-        withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),
-        SNAPSHOT_HARD_TIMEOUT_MS,
-        { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
-      )
-      return { exitCode, text, stderr: stderrText }
-    } catch (err) {
-      if (signal?.aborted) {
+    for (let attempt = 1; ; attempt++) {
+      const childSignal = spawnSignal(SNAPSHOT_TIMEOUT_MS, signal)
+      let proc: Bun.Subprocess<"ignore" | "pipe", "pipe", "pipe"> | undefined
+      try {
+        proc = Bun.spawn(args, {
+          cwd,
+          stdin: stdin === undefined ? "ignore" : "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+          env: env ? { ...process.env, ...env } : process.env,
+          signal: childSignal.signal,
+        })
+        if (stdin !== undefined) {
+          if (!proc.stdin) throw new Error("git subprocess stdin pipe unavailable")
+          proc.stdin.write(stdin)
+          proc.stdin.end()
+        }
+        const stdout = new Response(proc.stdout).text()
+        const stderr = new Response(proc.stderr).text().catch(() => "")
+        const [text, stderrText, exitCode] = await withTimeout(
+          withAbort(Promise.all([stdout, stderr, proc.exited]), childSignal.signal),
+          SNAPSHOT_HARD_TIMEOUT_MS,
+          { message: `git subprocess did not settle within ${SNAPSHOT_HARD_TIMEOUT_MS}ms` },
+        )
+        return { exitCode, text, stderr: stderrText }
+      } catch (error) {
+        if (signal?.aborted) {
+          try {
+            proc?.kill()
+          } catch {}
+          return abortedGitResult()
+        }
         try {
           proc?.kill()
         } catch {}
-        return abortedGitResult()
+        const details = gitSpawnError(error)
+        const retrying = proc === undefined && isTransientGitSpawnError(error) && attempt < GIT_SPAWN_MAX_ATTEMPTS
+        log.warn("git spawn failed", {
+          args,
+          cwd,
+          attempt,
+          maxAttempts: GIT_SPAWN_MAX_ATTEMPTS,
+          retrying,
+          code: details.code,
+          error: details.message,
+        })
+        if (!retrying || !(await waitForGitSpawnRetry(attempt, signal))) {
+          const stderr = details.code ? `${details.code}: ${details.message}` : details.message
+          return { exitCode: -1, text: "", stderr }
+        }
+      } finally {
+        childSignal.cleanup()
       }
-      log.warn("git spawn failed", { args, cwd, error: String(err) })
-      try {
-        proc?.kill()
-      } catch {}
-      return { exitCode: -1, text: "", stderr: "" }
-    } finally {
-      childSignal.cleanup()
     }
   }
 
@@ -500,7 +552,7 @@ export namespace Snapshot {
         }),
       )
     }
-    return result
+    return SnapshotSchema.boundArray(result)
   }
 
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {

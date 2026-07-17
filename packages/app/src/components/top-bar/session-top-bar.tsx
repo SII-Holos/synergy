@@ -1,3 +1,5 @@
+import { useLingui } from "@lingui/solid"
+import { topBar } from "@/locales/messages"
 import { Show, createMemo, createSignal, type Accessor } from "solid-js"
 import { useNavigate, useParams } from "@solidjs/router"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
@@ -22,9 +24,11 @@ import {
   isSessionRunningForWorkspaceChange,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
+import { sessionActionVisibility } from "@/components/session/session-actions"
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
+  scopeSpecific: boolean
   isWorktree: () => boolean
   worktreeDisabled: () => boolean
   onRename: () => void
@@ -34,6 +38,7 @@ function SessionActionMenu(props: {
   onArchive: () => void
 }) {
   const [open, setOpen] = createSignal(false)
+  const { _ } = useLingui()
 
   const run = (action: () => void) => {
     setOpen(false)
@@ -48,11 +53,11 @@ function SessionActionMenu(props: {
       gutter={8}
       class="stb-menu-popover"
       trigger={
-        <Tooltip value="Session actions" placement="bottom">
+        <Tooltip value={_(topBar.sessionActions)} placement="bottom">
           <button
             type="button"
             class="stb-icon-btn"
-            aria-label="Session actions"
+            aria-label={_(topBar.sessionActions)}
             aria-haspopup="menu"
             aria-expanded={open()}
           >
@@ -62,41 +67,45 @@ function SessionActionMenu(props: {
       }
     >
       <div class="stb-menu-list" role="menu">
-        <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
-          <Icon name={getSemanticIcon("action.rename")} size="small" />
-          <span>Rename</span>
-        </button>
-        <button
-          type="button"
-          class="stb-menu-item"
-          role="menuitem"
-          disabled={props.worktreeDisabled()}
-          title={props.worktreeDisabled() ? "Stop the session before changing worktree." : undefined}
-          onClick={() => run(props.onWorktreeToggle)}
-        >
-          <Icon
-            name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
-            size="small"
-          />
-          <span>{props.isWorktree() ? "Exit worktree" : "Enter worktree"}</span>
-        </button>
+        <Show when={props.scopeSpecific}>
+          <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onRename)}>
+            <Icon name={getSemanticIcon("action.rename")} size="small" />
+            <span>{_(topBar.rename)}</span>
+          </button>
+          <button
+            type="button"
+            class="stb-menu-item"
+            role="menuitem"
+            disabled={props.worktreeDisabled()}
+            title={props.worktreeDisabled() ? _(topBar.worktreeDisabledHint) : undefined}
+            onClick={() => run(props.onWorktreeToggle)}
+          >
+            <Icon
+              name={getSemanticIcon(props.isWorktree() ? "workspace.leaveWorktree" : "workspace.enterWorktree")}
+              size="small"
+            />
+            <span>{props.isWorktree() ? _(topBar.exitWorktree) : _(topBar.enterWorktree)}</span>
+          </button>
+        </Show>
         <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onExport)}>
           <Icon name={getSemanticIcon("action.export")} size="small" />
-          <span>Export session data</span>
+          <span>{_(topBar.exportSessionData)}</span>
         </button>
         <button type="button" class="stb-menu-item" role="menuitem" onClick={() => run(props.onImport)}>
           <Icon name={getSemanticIcon("action.import")} size="small" />
-          <span>Import session data</span>
+          <span>{_(topBar.importSessionData)}</span>
         </button>
-        <button
-          type="button"
-          class="stb-menu-item stb-menu-item--danger"
-          role="menuitem"
-          onClick={() => run(props.onArchive)}
-        >
-          <Icon name={getSemanticIcon("action.archive")} size="small" />
-          <span>Archive</span>
-        </button>
+        <Show when={props.scopeSpecific}>
+          <button
+            type="button"
+            class="stb-menu-item stb-menu-item--danger"
+            role="menuitem"
+            onClick={() => run(props.onArchive)}
+          >
+            <Icon name={getSemanticIcon("action.archive")} size="small" />
+            <span>{_(topBar.archive)}</span>
+          </button>
+        </Show>
       </div>
     </Popover>
   )
@@ -104,8 +113,10 @@ function SessionActionMenu(props: {
 
 export function SessionTopBar(props: {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
-  workspaceTransitionPending?: Accessor<boolean>
+  sessionTransitionPending?: Accessor<boolean>
 }) {
+  const { _ } = useLingui()
+
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
@@ -120,13 +131,14 @@ export function SessionTopBar(props: {
 
   const directory = () => (params.dir ? base64Decode(params.dir) : "")
   const isGlobal = () => (params.dir ? isHomeScope(directory()) : false)
+  const actionVisibility = createMemo(() => sessionActionVisibility({ sessionID: params.id, scopeKey: directory() }))
 
   const sessionInfo = createMemo(() => (params.id ? sync.session.get(params.id) : undefined))
   const sessionDirectory = createMemo(() => sessionInfo()?.scope.directory ?? directory())
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
-      pending: props.workspaceTransitionPending?.(),
+      pending: props.sessionTransitionPending?.(),
       status: sync.data.session_status[params.id ?? ""],
       working: sessionInfo()?.working,
     }),
@@ -201,17 +213,17 @@ export function SessionTopBar(props: {
       <Show
         when={!isCurrentExternalModelLocked()}
         fallback={
-          <Tooltip placement="bottom" value="Model is locked for this external agent after the session starts">
+          <Tooltip placement="bottom" value={_(topBar.modelLocked)}>
             <button type="button" class="stb-selector-btn stb-locked">
-              <span class="stb-selector-label">{local.model.current()?.name ?? "Model locked"}</span>
+              <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.modelLockedLabel)}</span>
             </button>
           </Tooltip>
         }
       >
         <ModelSelectorPopover>
-          <TooltipKeybind placement="bottom" title="Choose model" keybind={command.keybind("model.choose")}>
+          <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
             <button type="button" class="stb-selector-btn">
-              <span class="stb-selector-label">{local.model.current()?.name ?? "Select model"}</span>
+              <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
               <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
             </button>
           </TooltipKeybind>
@@ -222,13 +234,17 @@ export function SessionTopBar(props: {
 
   const VariantSelectorButton = () => (
     <Show when={local.model.variant.list().length > 0}>
-      <TooltipKeybind placement="bottom" title="Thinking effort" keybind={command.keybind("model.variant.cycle")}>
+      <TooltipKeybind
+        placement="bottom"
+        title={_(topBar.thinkingEffort)}
+        keybind={command.keybind("model.variant.cycle")}
+      >
         <button
           type="button"
           class="stb-selector-btn border-transparent! hover:border-border-weak-base!"
           onClick={() => local.model.variant.cycle()}
         >
-          <span class="stb-variant-label">{local.model.variant.displayed() ?? "Default"}</span>
+          <span class="stb-variant-label">{local.model.variant.displayed() ?? _(topBar.defaultVariant)}</span>
         </button>
       </TooltipKeybind>
     </Show>
@@ -242,7 +258,7 @@ export function SessionTopBar(props: {
           <button
             type="button"
             class="stb-icon-btn"
-            aria-label="Open navigation"
+            aria-label={_(topBar.openNavigation)}
             onClick={() => layout.mobileSidebar.toggle()}
           >
             <Icon name={getSemanticIcon("app.sidebar.open")} size="normal" />
@@ -250,7 +266,7 @@ export function SessionTopBar(props: {
           <button
             type="button"
             class="stb-icon-btn"
-            aria-label="Open tools"
+            aria-label={_(topBar.openTools)}
             onClick={() => layout.rightSidebar.toggle()}
           >
             <Icon name={getSemanticIcon("app.toolsDrawer")} size="normal" />
@@ -263,13 +279,14 @@ export function SessionTopBar(props: {
           <button
             type="button"
             class="stb-icon-btn"
-            aria-label="New session"
+            aria-label={_(topBar.newSession)}
             onClick={() => navigate(`/${params.dir}/session`)}
           >
             <Icon name={getSemanticIcon("action.add")} size="normal" />
           </button>
-          <Show when={!!params.id && !isGlobal()}>
+          <Show when={actionVisibility().menu}>
             <SessionActionMenu
+              scopeSpecific={actionVisibility().scopeSpecific}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}
@@ -293,8 +310,9 @@ export function SessionTopBar(props: {
           <VariantSelectorButton />
         </div>
         <div class="stb-right">
-          <Show when={!!params.id && !isGlobal()}>
+          <Show when={actionVisibility().menu}>
             <SessionActionMenu
+              scopeSpecific={actionVisibility().scopeSpecific}
               isWorktree={isWorktreeSession}
               worktreeDisabled={worktreeDisabled}
               onRename={showRenameDialog}
@@ -304,24 +322,30 @@ export function SessionTopBar(props: {
               onArchive={archiveSession}
             />
           </Show>
-          <Tooltip value={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"} placement="bottom">
+          <Tooltip
+            value={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
+            placement="bottom"
+          >
             <button
               type="button"
               class="stb-icon-btn"
               classList={{ "stb-icon-btn--active": bottomSurface().opened() }}
-              aria-label={bottomSurface().opened() ? "Hide BottomSpace" : "Open BottomSpace"}
+              aria-label={bottomSurface().opened() ? _(topBar.hideBottomSpace) : _(topBar.openBottomSpace)}
               aria-pressed={bottomSurface().opened()}
               onClick={() => bottomSurface().toggle()}
             >
               <Icon name={getSemanticIcon("app.bottomSpace")} size="normal" />
             </button>
           </Tooltip>
-          <Tooltip value={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"} placement="bottom">
+          <Tooltip
+            value={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
+            placement="bottom"
+          >
             <button
               type="button"
               class="stb-icon-btn"
               classList={{ "stb-icon-btn--active": sideSurface().opened() }}
-              aria-label={sideSurface().opened() ? "Hide side workspace" : "Open side workspace"}
+              aria-label={sideSurface().opened() ? _(topBar.hideSideWorkspace) : _(topBar.openSideWorkspace)}
               aria-pressed={sideSurface().opened()}
               onClick={() => sideSurface().toggle()}
             >

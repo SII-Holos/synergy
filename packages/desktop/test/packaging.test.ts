@@ -30,7 +30,7 @@ interface ElectronBuilderConfig {
 }
 
 describe("desktop packaging", () => {
-  test("copies runtime icon resources for explicit Windows and Linux window icons", async () => {
+  test("copies runtime and unread indicator icon resources", async () => {
     const config = (await Bun.file(
       new URL("../electron-builder.json", import.meta.url),
     ).json()) as ElectronBuilderConfig
@@ -43,6 +43,17 @@ describe("desktop packaging", () => {
       from: "build/icon.png",
       to: "icons/icon.png",
     })
+    expect(config.extraResources).toContainEqual({
+      from: "build/unread-overlay.png",
+      to: "icons/unread-overlay.png",
+    })
+    expect(config.extraResources).toContainEqual({
+      from: "build/icon-unread.png",
+      to: "icons/icon-unread.png",
+    })
+    for (const resource of config.extraResources ?? []) {
+      expect(await Bun.file(new URL(`../${resource.from}`, import.meta.url)).exists()).toBe(true)
+    }
   })
 
   test("keeps desktop shell executables separate from the public runtime CLI", async () => {

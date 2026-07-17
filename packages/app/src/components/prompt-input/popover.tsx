@@ -2,6 +2,8 @@ import type { Accessor } from "solid-js"
 import { For, Match, Show, Switch } from "solid-js"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 import type { AtOption, PromptPopoverMode, SlashCommand } from "./types"
 
 export function PromptPopover(props: {
@@ -16,6 +18,8 @@ export function PromptPopover(props: {
   onSlashSelect: (command: SlashCommand | undefined) => void
   keybindFor: (id: string) => string | undefined
 }) {
+  const { i18n } = useLocale()
+
   return (
     <div
       ref={(el) => {
@@ -29,7 +33,7 @@ export function PromptPopover(props: {
         <Match when={props.mode() === "at"}>
           <Show
             when={props.atItems().length > 0}
-            fallback={<div class="text-text-weak px-2 py-1">No matching results</div>}
+            fallback={<div class="text-text-weak px-2 py-1">{i18n._(PI.popoverNoResults)}</div>}
           >
             <For each={props.atItems().slice(0, 10)}>
               {(item) => (
@@ -55,7 +59,7 @@ export function PromptPopover(props: {
         <Match when={props.mode() === "slash"}>
           <Show
             when={props.slashItems().length > 0}
-            fallback={<div class="text-text-weak px-2 py-1">No matching commands</div>}
+            fallback={<div class="text-text-weak px-2 py-1">{i18n._(PI.popoverNoCommands)}</div>}
           >
             <For each={props.slashItems()}>
               {(cmd) => (
@@ -76,7 +80,7 @@ export function PromptPopover(props: {
                   <div class="flex items-center gap-2 shrink-0">
                     <Show when={cmd.type === "custom"}>
                       <span class="text-11-regular text-text-subtle px-1.5 py-0.5 bg-surface-base rounded">
-                        {cmd.kind === "action" ? "action" : "prompt"}
+                        {cmd.kind === "action" ? i18n._(PI.popoverActionTag) : i18n._(PI.popoverPromptTag)}
                       </span>
                     </Show>
                     <Show when={props.keybindFor(cmd.id)}>

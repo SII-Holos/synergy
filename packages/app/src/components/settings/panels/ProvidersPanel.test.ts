@@ -20,7 +20,7 @@ describe("Providers panel UI contract", () => {
   })
 
   test("uses explicit authorization links in provider login flows", () => {
-    expect(providerFlow).toContain("Open authorization page")
+    expect(providerFlow).toContain("providerFlow.openAuthPage")
     expect(providerFlow).toContain("provider-auth-link")
     expect(providerFlow).not.toContain("this link")
   })

@@ -14,6 +14,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
 
   buildGeneralPatch(cfg, state, patch)
+  buildEmbeddingPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)
   buildAgentPatch(cfg, state, patch)
   buildProviderPatch(cfg, state, patch)
@@ -38,11 +39,31 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const theme = general.theme.trim()
   if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
 
+  const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
+  if (general.locale !== resolvedLocale) patch.locale = general.locale
+
   const toast = toastPatchFromPreferences(general.mutedToasts, general.toastDurations)
   const current = normalizeServerToast(cfg.toast) ?? { muted: [] }
   // Always include muted so domain mergeDeep can replace/clear the array.
   if (JSON.stringify(toast) !== JSON.stringify(current)) {
     patch.toast = toast
+  }
+}
+
+function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const source = state.library.embeddingSource
+  const remoteHost = state.library.embeddingRemoteHost.trim()
+  const currentSource = cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource
+  const currentRemoteHost = cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost
+  const nextRemoteHost = source === "custom" ? remoteHost : ""
+
+  if (source === currentSource && nextRemoteHost === (source === "custom" ? currentRemoteHost : "")) return
+
+  patch.embedding = {
+    local: {
+      source,
+      ...(source === "custom" && nextRemoteHost ? { remoteHost: nextRemoteHost } : {}),
+    },
   }
 }
 

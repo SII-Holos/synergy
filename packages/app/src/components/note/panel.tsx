@@ -28,6 +28,9 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
+import { useLocale } from "@/context/locale"
+import { useLingui } from "@lingui/solid"
+import { requestErrorMessage } from "@/utils/error"
 import { relativeTime } from "@/utils/time"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import {
@@ -55,6 +58,7 @@ import {
   type NoteDirtyField,
   type NoteDirtyRevisions,
 } from "@/components/note/note-sync"
+import { note as N } from "@/locales/messages"
 import "./panel.css"
 
 type LoopStatus = BlueprintLoopInfo["status"]
@@ -74,14 +78,14 @@ function isBlueprintNote(note: { kind?: string; blueprint?: unknown }) {
   return note.kind === "blueprint"
 }
 
-function getLoopLabel(status: LoopStatus) {
-  if (status === "armed") return "Run queued"
-  if (status === "running") return "Running"
-  if (status === "waiting") return "Needs input"
-  if (status === "auditing") return "Reviewing"
-  if (status === "completed") return "Completed"
-  if (status === "failed") return "Failed"
-  return "Cancelled"
+function getLoopLabel(lingui: ReturnType<typeof useLingui>, status: LoopStatus) {
+  if (status === "armed") return lingui._({ id: N.runQueued.id, message: N.runQueued.message })
+  if (status === "running") return lingui._({ id: N.running.id, message: N.running.message })
+  if (status === "waiting") return lingui._({ id: N.needsInput.id, message: N.needsInput.message })
+  if (status === "auditing") return lingui._({ id: N.reviewing.id, message: N.reviewing.message })
+  if (status === "completed") return lingui._({ id: N.completed.id, message: N.completed.message })
+  if (status === "failed") return lingui._({ id: N.failed.id, message: N.failed.message })
+  return lingui._({ id: N.cancelled.id, message: N.cancelled.message })
 }
 
 function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
@@ -93,21 +97,25 @@ function getLoopTone(status: LoopStatus): BlueprintVisualState["tone"] {
   return "idle"
 }
 
-function getRunModeLabel(mode?: BlueprintLoopInfo["runMode"]) {
-  if (mode === "current") return "Session run"
-  if (mode === "new") return "New session"
-  if (mode === "worktree") return "Worktree run"
-  return "Active run"
+function getRunModeLabel(lingui: ReturnType<typeof useLingui>, mode?: BlueprintLoopInfo["runMode"]) {
+  if (mode === "current") return lingui._({ id: N.sessionRun.id, message: N.sessionRun.message })
+  if (mode === "new") return lingui._({ id: N.newSession.id, message: N.newSession.message })
+  if (mode === "worktree") return lingui._({ id: N.worktreeRun.id, message: N.worktreeRun.message })
+  return lingui._({ id: N.activeRun.id, message: N.activeRun.message })
 }
 
-function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []): BlueprintVisualState {
+function getBlueprintVisualState(
+  lingui: ReturnType<typeof useLingui>,
+  note: NoteCardInfo | NoteInfo,
+  loops: BlueprintLoopInfo[] = [],
+): BlueprintVisualState {
   const active = activeBlueprintLoop(note, loops)
   if (active) {
     const status = active.status as LoopStatus
     const runMode = "runMode" in active ? active.runMode : undefined
     return {
-      label: getLoopLabel(status),
-      detail: getRunModeLabel(runMode),
+      label: getLoopLabel(lingui, status),
+      detail: getRunModeLabel(lingui, runMode),
       tone: getLoopTone(status),
       icon:
         status === "auditing"
@@ -119,11 +127,16 @@ function getBlueprintVisualState(note: NoteCardInfo | NoteInfo, loops: Blueprint
   }
   const latest = loops[0]
   if (latest?.status === "failed") {
-    return { label: "Run failed", detail: "Last run failed", tone: "failed", icon: getSemanticIcon("state.error") }
+    return {
+      label: lingui._({ id: N.runFailed.id, message: N.runFailed.message }),
+      detail: lingui._({ id: N.lastRunFailed.id, message: N.lastRunFailed.message }),
+      tone: "failed",
+      icon: getSemanticIcon("state.error"),
+    }
   }
   return {
-    label: "Blueprint",
-    detail: "No active run",
+    label: lingui._({ id: N.blueprint.id, message: N.blueprint.message }),
+    detail: lingui._({ id: N.noActiveRun.id, message: N.noActiveRun.message }),
     tone: "idle",
     icon: getSemanticIcon("blueprint.main"),
   }
@@ -135,17 +148,6 @@ function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] =
 
 function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
   return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
-}
-
-function requestErrorMessage(error: unknown, fallback: string) {
-  if (error && typeof error === "object") {
-    const data = (error as { data?: { message?: string; error?: string } }).data
-    if (data?.message) return data.message
-    if (data?.error) return data.error
-    const message = (error as { message?: unknown }).message
-    if (typeof message === "string" && message) return message
-  }
-  return fallback
 }
 
 function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
@@ -192,13 +194,15 @@ function NoteCard(props: {
   selecting?: boolean
   selected?: boolean
   onToggleSelect?: (id: string, shiftKey?: boolean) => void
+  lingui: ReturnType<typeof useLingui>
 }) {
+  const { fmt } = useLocale()
   const previewHtml = createMemo(() => props.note.previewHtml ?? null)
   const searchPreview = createMemo(() => props.note.searchText ?? "")
   const hasContent = createMemo(() => (previewHtml() ?? searchPreview()).length > 0)
   const variant = createMemo(() => props.variant ?? "balanced")
   const isBlueprint = createMemo(() => isBlueprintNote(props.note))
-  const blueprintState = createMemo(() => getBlueprintVisualState(props.note, props.loops ?? []))
+  const blueprintState = createMemo(() => getBlueprintVisualState(props.lingui, props.note, props.loops ?? []))
   const cardHeight = createMemo(() => {
     if (variant() === "compact") return "h-[260px]"
     if (variant() === "featured") return "h-[370px]"
@@ -231,14 +235,20 @@ function NoteCard(props: {
         </div>
       </Show>
       <Show when={props.originName}>
-        <span class="sr-only">From {props.originName}</span>
+        <span class="sr-only">
+          {props.lingui._({
+            id: N.fromOrigin.id,
+            message: N.fromOrigin.message,
+            values: { name: props.originName ?? "" },
+          })}
+        </span>
       </Show>
 
       <Show when={isBlueprint()}>
         <div class={`note-blueprint-card-header note-blueprint-card-header--${blueprintState().tone}`}>
           <span class="note-blueprint-card-kicker">
             <Icon name={getSemanticIcon("blueprint.main")} size="small" class="size-3.5" />
-            Blueprint
+            {props.lingui._({ id: N.blueprint.id, message: N.blueprint.message })}
           </span>
           <span class={`note-card-status note-card-status--${blueprintState().tone}`}>
             <Icon name={blueprintState().icon} size="small" class="size-3" />
@@ -255,7 +265,7 @@ function NoteCard(props: {
             "text-14-medium tracking-tight": variant() === "featured",
           }}
         >
-          {props.note.title || "Untitled"}
+          {props.note.title || props.lingui._({ id: N.untitled.id, message: N.untitled.message })}
         </span>
       </div>
 
@@ -290,7 +300,13 @@ function NoteCard(props: {
               <Show when={props.originName}>
                 <span class="note-card-origin">
                   <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
-                  <span class="truncate">From {props.originName}</span>
+                  <span class="truncate">
+                    {props.lingui._({
+                      id: N.fromOrigin.id,
+                      message: N.fromOrigin.message,
+                      values: { name: props.originName ?? "" },
+                    })}
+                  </span>
                 </span>
               </Show>
               <Show when={props.note.pinned}>
@@ -299,13 +315,13 @@ function NoteCard(props: {
                 </span>
               </Show>
               <span class="flex-1" />
-              <span class="text-11-regular text-text-weak">{relativeTime(props.note.time.updated)}</span>
+              <span class="text-11-regular text-text-weak">{relativeTime(fmt, props.note.time.updated)}</span>
             </div>
           }
         >
           <div class="flex items-center gap-2">
             <span class="min-w-0 truncate text-10-medium uppercase tracking-[0.08em] text-text-weaker">
-              Run history
+              {props.lingui._({ id: N.runHistory.id, message: N.runHistory.message })}
             </span>
             <span class="min-w-0 flex-1 truncate text-10-regular text-text-weaker">{blueprintState().detail}</span>
             <Show when={props.note.pinned}>
@@ -316,16 +332,26 @@ function NoteCard(props: {
             <Show when={props.originName}>
               <span class="note-card-origin">
                 <Icon name={getSemanticIcon("notes.folder")} class="size-3 shrink-0" />
-                <span class="truncate">From {props.originName}</span>
+                <span class="truncate">
+                  {props.lingui._({
+                    id: N.fromOrigin.id,
+                    message: N.fromOrigin.message,
+                    values: { name: props.originName ?? "" },
+                  })}
+                </span>
               </span>
             </Show>
             <span class="truncate">
               {getRunCount(props.note, props.loops ?? []) > 0
-                ? `${getRunCount(props.note, props.loops ?? [])} runs`
-                : "No runs yet"}
+                ? props.lingui._({
+                    id: N.runsCount.id,
+                    message: N.runsCount.message,
+                    values: { count: getRunCount(props.note, props.loops ?? []) },
+                  })
+                : props.lingui._({ id: N.noRunsYet.id, message: N.noRunsYet.message })}
             </span>
             <span class="flex-1" />
-            <span class="shrink-0">{relativeTime(getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
+            <span class="shrink-0">{relativeTime(fmt, getBlueprintActivityTime(props.note, props.loops ?? []))}</span>
           </div>
         </Show>
       </div>
@@ -361,6 +387,7 @@ function RunMenu(props: {
   onClose: () => void
 }) {
   const globalSync = useGlobalSync()
+  const lingui = useLingui()
   const [level, setLevel] = createSignal<"mode" | "model">("mode")
   const [selectedMode, setSelectedMode] = createSignal<BlueprintRunMode | null>(null)
   const [selectedModelValue, setSelectedModelValue] = createSignal("")
@@ -407,8 +434,8 @@ function RunMenu(props: {
     const fallback: ModelOption = {
       kind: "fallback",
       key: "fallback",
-      label: "Use fallback",
-      description: "Let the agent pick the best model automatically.",
+      label: lingui._(N.useFallback),
+      description: lingui._(N.useFallbackDesc),
       value: "",
     }
     return [fallback, ...providerModels()]
@@ -439,26 +466,22 @@ function RunMenu(props: {
     {
       mode: "current" as const,
       icon: getSemanticIcon("prompt.blueprintStart"),
-      title: "Current session",
-      description: props.canRunInCurrentSession
-        ? "Run in the session you are viewing."
-        : "Open a session in this Blueprint scope first.",
+      title: lingui._(N.currentSession),
+      description: props.canRunInCurrentSession ? lingui._(N.currentSessionDesc) : lingui._(N.currentSessionHint),
       disabled: !props.canRunInCurrentSession,
     },
     {
       mode: "new" as const,
       icon: getSemanticIcon("session.new"),
-      title: "New session",
-      description: "Create a fresh session in this scope and start immediately.",
+      title: lingui._(N.newSessionRun),
+      description: lingui._(N.newSessionDesc),
       disabled: false,
     },
     {
       mode: "worktree" as const,
       icon: getSemanticIcon("workspace.worktree"),
-      title: "New worktree session",
-      description: props.canCreateWorktree
-        ? "Create an isolated worktree session and start immediately."
-        : "Worktree runs require a git project scope.",
+      title: lingui._(N.newWorktreeSession),
+      description: props.canCreateWorktree ? lingui._(N.worktreeDesc) : lingui._(N.worktreeHint),
       disabled: !props.canCreateWorktree,
     },
   ]
@@ -466,9 +489,9 @@ function RunMenu(props: {
   const modeLabel = createMemo(() => {
     const m = selectedMode()
     if (!m) return ""
-    if (m === "current") return "Current session"
-    if (m === "new") return "New session"
-    return "New worktree"
+    if (m === "current") return lingui._(N.currentSession)
+    if (m === "new") return lingui._(N.newSessionRun)
+    return lingui._(N.newWorktreeSession)
   })
 
   function resolveGroup(option: ModelOption) {
@@ -491,15 +514,15 @@ function RunMenu(props: {
         <div class="note-run-menu-header">
           <div class="flex items-start gap-2">
             <div class="min-w-0 flex-1">
-              <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
-              <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || "Untitled"}</p>
+              <h3 class="text-13-medium text-text-strong">{lingui._(N.runBlueprint)}</h3>
+              <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">{props.title || lingui._(N.untitled)}</p>
             </div>
             <button
               type="button"
               class="note-run-menu-close"
               onClick={props.onClose}
-              title="Close"
-              aria-label="Close run menu"
+              title={lingui._(N.close)}
+              aria-label={lingui._(N.closeRunMenu)}
             >
               <Icon name={getSemanticIcon("action.close")} size="small" class="size-3" />
             </button>
@@ -538,23 +561,25 @@ function RunMenu(props: {
               type="button"
               class="note-run-menu-back"
               onClick={() => setLevel("mode")}
-              title="Back"
-              aria-label="Back to session mode"
+              title={lingui._(N.back)}
+              aria-label={lingui._(N.backToSession)}
             >
               <Icon name={getSemanticIcon("navigation.back")} size="small" class="size-3.5" />
             </button>
             <div class="min-w-0 flex-1">
-              <h3 class="text-13-medium text-text-strong">Run Blueprint</h3>
+              <h3 class="text-13-medium text-text-strong">{lingui._(N.runBlueprint)}</h3>
               <p class="mt-1 line-clamp-2 text-11-regular text-text-weak">
-                {modeLabel()} &middot; {props.title || "Untitled"}
+                {modeLabel()}
+                {lingui._(N.separator)}
+                {props.title || lingui._(N.untitled)}
               </p>
             </div>
             <button
               type="button"
               class="note-run-menu-close"
               onClick={props.onClose}
-              title="Close"
-              aria-label="Close run menu"
+              title={lingui._(N.close)}
+              aria-label={lingui._(N.closeRunMenu)}
             >
               <Icon name={getSemanticIcon("action.close")} size="small" class="size-3" />
             </button>
@@ -562,14 +587,14 @@ function RunMenu(props: {
         </div>
         <div class="note-run-model-body">
           <div class="note-run-model-copy">
-            <span class="note-run-model-label">Model</span>
-            <span class="note-run-model-description">Choose a specific model, or keep automatic fallback.</span>
+            <span class="note-run-model-label">{lingui._(N.model)}</span>
+            <span class="note-run-model-description">{lingui._(N.modelChooseHelp)}</span>
           </div>
           <KobaltePopover open={pickerOpen()} onOpenChange={setPickerOpen} placement="bottom-end" gutter={8}>
             <KobaltePopover.Trigger
               type="button"
               class="settings-model-trigger note-run-model-trigger"
-              aria-label="Choose model for Blueprint run"
+              aria-label={lingui._(N.chooseModel)}
             >
               <span class="settings-model-trigger-text">
                 <span class="settings-model-trigger-title">{currentModelOption()?.label}</span>
@@ -579,11 +604,11 @@ function RunMenu(props: {
             </KobaltePopover.Trigger>
             <KobaltePopover.Portal>
               <KobaltePopover.Content class="settings-model-picker-popover note-run-model-picker flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                <KobaltePopover.Title class="sr-only">Select model</KobaltePopover.Title>
+                <KobaltePopover.Title class="sr-only">{lingui._(N.selectModel)}</KobaltePopover.Title>
                 <List<ModelOption>
                   class="settings-model-picker-list"
-                  search={{ placeholder: "Search models", autofocus: true }}
-                  emptyMessage="No model results"
+                  search={{ placeholder: lingui._(N.searchModels), autofocus: true }}
+                  emptyMessage={lingui._(N.noModelResults)}
                   key={(option) => option.key}
                   items={modelOptions}
                   current={currentModelOption()}
@@ -604,7 +629,7 @@ function RunMenu(props: {
           </KobaltePopover>
           <button type="button" class="note-run-model-run" onClick={handleRun}>
             <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3.5" />
-            Run with selected model
+            {lingui._(N.runWithSelectedModel)}
           </button>
         </div>
       </Show>
@@ -620,6 +645,7 @@ type DisplayGroup = NoteMetaScopeGroup & {
 }
 
 function ScopeSection(props: {
+  lingui: ReturnType<typeof useLingui>
   group: DisplayGroup
   expanded: boolean
   loopsByNote: Map<string, BlueprintLoopInfo[]>
@@ -631,10 +657,15 @@ function ScopeSection(props: {
   selectedNotes?: Set<string>
   onToggleSelect?: (id: string, shiftKey?: boolean) => void
 }) {
+  const { fmt } = useLocale()
   const [columns, setColumns] = createSignal(2)
   const latestUpdated = createMemo(() => props.group.notes[0]?.time.updated)
-  const noteCountLabel = createMemo(
-    () => `${props.group.notes.length} ${props.group.notes.length === 1 ? "note" : "notes"}`,
+  const noteCountLabel = createMemo(() =>
+    props.lingui._({
+      id: N.noteCountLabel.id,
+      message: N.noteCountLabel.message,
+      values: { count: props.group.notes.length },
+    }),
   )
   const shelfNotes = createMemo(() => {
     void props.selecting
@@ -697,19 +728,24 @@ function ScopeSection(props: {
           <Show when={props.group.isCurrent}>
             <span class="note-scope-current-badge">
               <span class="size-1.5 rounded-full bg-text-diff-add-base/80" />
-              Current
+              {props.lingui._(N.current)}
             </span>
           </Show>
           <span class="flex-1" />
           <span class="shrink-0 text-11-regular text-text-weaker">{noteCountLabel()}</span>
           <Show when={latestUpdated()}>
             <span class="hidden shrink-0 text-11-regular text-text-weaker sm:inline">
-              · {relativeTime(latestUpdated()!)}
+              · {relativeTime(fmt, latestUpdated()!)}
             </span>
           </Show>
         </button>
         <Show when={!props.group.archived}>
-          <button type="button" class="note-scope-new-button" onClick={props.onCreateNote} title="New note">
+          <button
+            type="button"
+            class="note-scope-new-button"
+            onClick={props.onCreateNote}
+            title={props.lingui._(N.newNote)}
+          >
             <Icon name={getSemanticIcon("action.add")} size="small" />
           </button>
         </Show>
@@ -734,13 +770,18 @@ function ScopeSection(props: {
                     selecting={props.selecting}
                     selected={props.selectedNotes?.has(note.id) ?? false}
                     onToggleSelect={props.onToggleSelect}
+                    lingui={props.lingui}
                   />
                 )}
               </For>
             </div>
             <Show when={hasMore()}>
               <button type="button" class="note-scope-view-all" onClick={props.onToggle}>
-                View all {props.group.notes.length} notes
+                {props.lingui._({
+                  id: N.viewAllNotes.id,
+                  message: N.viewAllNotes.message,
+                  values: { count: props.group.notes.length },
+                })}
                 <Icon name={getSemanticIcon("navigation.expand")} size="small" class="size-3" />
               </button>
             </Show>
@@ -749,7 +790,7 @@ function ScopeSection(props: {
       >
         <Show
           when={props.group.notes.length > 0}
-          fallback={<div class="py-4 text-center text-12-regular text-text-weaker">No notes in this scope</div>}
+          fallback={<div class="py-4 text-center text-12-regular text-text-weaker">{props.lingui._(N.noNotes)}</div>}
         >
           <div
             class="note-card-grid note-card-grid--expanded"
@@ -766,6 +807,7 @@ function ScopeSection(props: {
                   selecting={props.selecting}
                   selected={props.selectedNotes?.has(note.id) ?? false}
                   onToggleSelect={props.onToggleSelect}
+                  lingui={props.lingui}
                 />
               )}
             </For>
@@ -781,6 +823,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const globalSync = useGlobalSync()
   const params = useParams()
   const directory = createMemo(() => (params.dir ? base64Decode(params.dir) : undefined))
+  const lingui = useLingui()
 
   const [view, setView] = createSignal<"list" | "editor">("list")
   const [selectedNoteId, setSelectedNoteId] = createSignal<string | null>(null)
@@ -1037,9 +1080,21 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
   const totalNotes = createMemo(() => (rawGroups() ?? []).reduce((sum, g) => sum + g.notes.length, 0))
   const visibleNotes = createMemo(() => displayGroups().reduce((sum, g) => sum + g.notes.length, 0))
   const filterOptions = createMemo(() => [
-    { value: "all" as const, label: "All", count: noteStats().total },
-    { value: "note" as const, label: "Notes", count: noteStats().notes },
-    { value: "blueprint" as const, label: "Blueprints", count: noteStats().blueprints },
+    {
+      value: "all" as const,
+      label: lingui._({ id: N.filterAll.id, message: N.filterAll.message }),
+      count: noteStats().total,
+    },
+    {
+      value: "note" as const,
+      label: lingui._({ id: N.filterNotes.id, message: N.filterNotes.message }),
+      count: noteStats().notes,
+    },
+    {
+      value: "blueprint" as const,
+      label: lingui._({ id: N.filterBlueprints.id, message: N.filterBlueprints.message }),
+      count: noteStats().blueprints,
+    },
   ])
 
   function isExpanded(scopeID: string, isCurrent: boolean) {
@@ -1202,6 +1257,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
     window.addEventListener("keydown", onKey)
     onCleanup(() => window.removeEventListener("keydown", onKey))
   })
+
   return (
     <div class="flex flex-col h-full bg-background-base relative">
       <style>{TIPTAP_STYLES}</style>
@@ -1213,7 +1269,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
               <Icon name={getSemanticIcon("notes.search")} size="small" class="text-icon-weak-base shrink-0" />
               <input
                 type="text"
-                placeholder="Search notes..."
+                placeholder={lingui._({ id: N.searchNotes.id, message: N.searchNotes.message })}
                 class="min-w-32 flex-1 bg-transparent text-13-regular text-text-base placeholder:text-text-weak outline-none"
                 value={search()}
                 onInput={(e) => setSearch(e.currentTarget.value)}
@@ -1222,7 +1278,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 <button
                   type="button"
                   class="flex items-center justify-center size-5 rounded-md text-icon-weak-base hover:text-icon-base transition-colors"
-                  aria-label="Clear search"
+                  aria-label={lingui._({ id: N.clearSearch.id, message: N.clearSearch.message })}
                   onClick={() => setSearch("")}
                 >
                   <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -1259,7 +1315,11 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   "text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover": !showArchived(),
                 }}
                 onClick={() => setShowArchived((v) => !v)}
-                title={showArchived() ? "Show active" : "Show archived"}
+                title={
+                  showArchived()
+                    ? lingui._({ id: N.showActive.id, message: N.showActive.message })
+                    : lingui._({ id: N.showArchived.id, message: N.showArchived.message })
+                }
               >
                 <Icon name={getSemanticIcon("notes.archive")} size="small" />
               </button>
@@ -1268,7 +1328,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   type="button"
                   class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                   onClick={() => setSelecting(true)}
-                  title="Select notes"
+                  title={lingui._({ id: N.selectNotes.id, message: N.selectNotes.message })}
                 >
                   <Icon name={getSemanticIcon("notes.select")} size="small" />
                 </button>
@@ -1277,7 +1337,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 type="button"
                 class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
                 onClick={() => refetch()}
-                title="Refresh"
+                title={lingui._({ id: N.refresh.id, message: N.refresh.message })}
               >
                 <Icon name={getSemanticIcon("action.refresh")} size="small" />
               </button>
@@ -1288,7 +1348,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
             <div class="flex flex-wrap items-center justify-between gap-3 px-3 py-2.5 library-inner-surface">
               <div class="flex min-w-0 items-center gap-2">
                 <span class="text-12-medium text-text-base">
-                  {selectedNotes().size} / {visibleNotes()} selected
+                  {selectedNotes().size} / {visibleNotes()}{" "}
+                  {lingui._({ id: N.selected.id, message: N.selected.message })}
                 </span>
                 <Show when={selectedNotes().size < visibleNotes()}>
                   <button
@@ -1302,7 +1363,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       setSelectedNotes(all)
                     }}
                   >
-                    Select all
+                    {lingui._({ id: N.selectAll.id, message: N.selectAll.message })}
                   </button>
                 </Show>
               </div>
@@ -1318,7 +1379,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                         disabled={batchBusy()}
                       >
                         <Show when={!batchBusy()} fallback={<Spinner class="size-3" />}>
-                          Archive ({selectedNotes().size})
+                          {lingui._({ id: N.archive.id, message: N.archive.message })} ({selectedNotes().size})
                         </Show>
                       </button>
                     }
@@ -1330,7 +1391,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                         onClick={batchUnarchive}
                         disabled={batchBusy()}
                       >
-                        Restore ({selectedNotes().size})
+                        {lingui._({ id: N.restore.id, message: N.restore.message })} ({selectedNotes().size})
                       </button>
                       <button
                         type="button"
@@ -1338,7 +1399,8 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                         onClick={batchDelete}
                         disabled={batchBusy()}
                       >
-                        Delete ({selectedNotes().size})
+                        {lingui._({ id: N.deletePermanently.id, message: N.deletePermanently.message })} (
+                        {selectedNotes().size})
                       </button>
                     </>
                   </Show>
@@ -1348,7 +1410,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
                   onClick={cancelSelecting}
                 >
-                  Cancel
+                  {lingui._({ id: N.cancel.id, message: N.cancel.message })}
                 </button>
               </div>
             </div>
@@ -1371,7 +1433,9 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                 fallback={
                   <div class="flex flex-col items-center justify-center py-16 gap-3">
                     <Icon name={getSemanticIcon("notes.main")} size="large" class="text-icon-weak-base" />
-                    <div class="text-14-medium text-text-weak">No notes found</div>
+                    <div class="text-14-medium text-text-weak">
+                      {lingui._({ id: N.noNotesFound.id, message: N.noNotesFound.message })}
+                    </div>
                   </div>
                 }
               >
@@ -1379,6 +1443,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                   <For each={displayGroups()}>
                     {(group) => (
                       <ScopeSection
+                        lingui={lingui}
                         group={group}
                         expanded={isExpanded(group.scopeID, group.isCurrent)}
                         loopsByNote={loopsByNote()}
@@ -1437,6 +1502,8 @@ function NoteEditor(props: {
   const params = useParams()
   const confirm = useConfirm()
   const directory = () => props.directory
+  const { fmt } = useLocale()
+  const lingui = useLingui()
 
   const [note, { refetch }] = createResource(
     () => ({ id: props.id, dir: directory(), reconnect: globalSync.reconnectVersion() }),
@@ -1493,7 +1560,7 @@ function NoteEditor(props: {
   const blueprintState = createMemo(() => {
     const base = baseNote()
     if (!base) return null
-    return getBlueprintVisualState(base, noteLoops())
+    return getBlueprintVisualState(lingui, base, noteLoops())
   })
   const activeBlueprintRun = createMemo(() => {
     const base = baseNote()
@@ -1897,7 +1964,6 @@ function NoteEditor(props: {
       setConvertingBlueprint(false)
     }
   }
-
   async function convertToNote() {
     const dir = directory()
     const base = baseNote()
@@ -1914,11 +1980,10 @@ function NoteEditor(props: {
     setConvertingBlueprint(true)
     try {
       const result = await sdk.client.note.update({
-        id: base.id,
+        id: latest.id,
         directory: dir,
         notePatchInput: {
           kind: "note",
-          blueprint: null,
           expectedVersion: latest.version,
         },
       })
@@ -1928,7 +1993,7 @@ function NoteEditor(props: {
       if (remote) {
         setConflict({
           type: "remote-update",
-          message: "This Blueprint changed before it could be converted to a Note.",
+          message: "This note changed before it could be converted from a Blueprint.",
           remote,
         })
         return
@@ -2069,152 +2134,145 @@ function NoteEditor(props: {
     })
   }
 
-  return (
-    <div class="relative flex flex-col h-full bg-background-base">
-      <Show when={note.loading && !noteLoaded()}>
-        <div class="flex items-center justify-center h-full">
-          <Spinner class="size-6" />
-        </div>
-      </Show>
+  let conflictBannerEl: HTMLDivElement | undefined
 
-      <Show when={noteLoaded() && baseNote()}>
-        <div class="note-detail-header">
-          <div class="note-detail-header-row">
+  function handleRunBlueprint() {
+    setShowRunMenu(true)
+  }
+
+  onCleanup(() => {
+    clearDebounce()
+  })
+
+  return (
+    <div class="flex h-full flex-col bg-background-base">
+      <style>{TIPTAP_STYLES}</style>
+
+      <div class="border-b border-border-weaker-base/40">
+        <div class="flex items-center gap-2 px-4 py-2">
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+            onClick={handleBack}
+            aria-label={lingui._({ id: N.backToList.id, message: N.backToList.message })}
+          >
+            <Icon name={getSemanticIcon("navigation.back")} size="small" />
+          </button>
+          <span class="flex-1" />
+          <Show when={isBlueprint()}>
             <button
               type="button"
-              class="note-detail-icon-button"
-              onClick={handleBack}
-              title="Back to list"
-              aria-label="Back to list"
+              class="flex items-center gap-1 rounded-full px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
+              onClick={handleRunBlueprint}
+              disabled={runningBlueprint()}
             >
-              <Icon name={getSemanticIcon("navigation.back")} size="normal" />
+              <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3" />
+              {lingui._({ id: N.run.id, message: N.run.message })}
             </button>
-
-            <div class="note-detail-title">
-              <input
-                type="text"
-                class="w-full bg-transparent text-14-medium tracking-tight text-text-strong outline-none placeholder:text-text-weak/50"
-                placeholder="Untitled"
-                value={title()}
-                onInput={onTitleInput}
-              />
-            </div>
-
-            <div class="note-detail-actions">
-              <Show when={isBlueprint()}>
-                <button
-                  type="button"
-                  class="note-detail-action note-detail-action--run"
-                  classList={{ "note-detail-action--running": runningBlueprint() }}
-                  onClick={() => setShowRunMenu((current) => !current)}
-                  disabled={runningBlueprint()}
-                  title="Run Blueprint"
-                >
-                  <Show when={!runningBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                    <Icon name={getSemanticIcon("prompt.blueprintStart")} size="small" class="size-3" />
-                  </Show>
-                  <span>Run</span>
-                </button>
-                <span class="note-detail-action-divider" aria-hidden="true" />
-              </Show>
-
-              <button
-                type="button"
-                class="note-detail-action"
-                classList={{ "note-detail-action--active": baseNote()!.pinned }}
-                onClick={togglePin}
-                title={baseNote()!.pinned ? "Unpin" : "Pin"}
-              >
-                <Icon name={getSemanticIcon("notes.pin")} size="small" />
-                <span>{baseNote()!.pinned ? "Pinned" : "Pin"}</span>
-              </button>
-
-              <button
-                type="button"
-                class="note-detail-action"
-                classList={{ "note-detail-action--global": baseNote()!.global }}
-                onClick={toggleGlobal}
-                title={baseNote()!.global ? "Make local" : "Make global"}
-              >
-                <Icon name={getSemanticIcon("browser.main")} size="small" />
-                <span>{baseNote()!.global ? "Global" : "Local"}</span>
-              </button>
-
-              <span class="note-detail-action-divider" aria-hidden="true" />
-
-              <button
-                type="button"
-                class="note-detail-icon-button"
-                onClick={downloadNote}
-                title="Download as Markdown"
-                aria-label="Download as Markdown"
-              >
-                <Icon name={getSemanticIcon("action.download")} size="small" />
-              </button>
-
-              <button
-                type="button"
-                class="note-detail-action"
-                classList={{
-                  "note-detail-action--active": isBlueprint(),
-                  "note-detail-action--disabled": convertingBlueprint(),
-                }}
-                onClick={() => {
-                  if (isBlueprint()) void convertToNote()
-                  else void convertToBlueprint()
-                }}
-                title={isBlueprint() ? "Convert to Note" : "Convert to Blueprint"}
-                disabled={convertingBlueprint()}
-              >
-                <Show when={!convertingBlueprint()} fallback={<Spinner class="size-3.5" />}>
-                  <Icon
-                    name={isBlueprint() ? getSemanticIcon("notes.main") : getSemanticIcon("blueprint.main")}
-                    size="small"
-                  />
-                </Show>
-                <span>{isBlueprint() ? "To Note" : "To Blueprint"}</span>
-              </button>
-
-              <Show
-                when={isArchived()}
-                fallback={
-                  <button
-                    type="button"
-                    class="note-detail-icon-button note-detail-icon-button--danger"
-                    onClick={archiveNote}
-                    title="Archive"
-                    aria-label="Archive"
-                  >
-                    <Icon name={getSemanticIcon("notes.archive")} size="small" />
-                  </button>
-                }
-              >
-                <button
-                  type="button"
-                  class="note-detail-icon-button"
-                  onClick={restoreNote}
-                  title="Restore"
-                  aria-label="Restore"
-                >
-                  <Icon name={getSemanticIcon("notes.restore")} size="small" />
-                </button>
-                <button
-                  type="button"
-                  class="note-detail-icon-button note-detail-icon-button--danger"
-                  onClick={deleteArchivedNote}
-                  title="Delete permanently"
-                  aria-label="Delete permanently"
-                >
-                  <Icon name={getSemanticIcon("action.remove")} size="small" />
-                </button>
-              </Show>
-            </div>
-          </div>
+          </Show>
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+            onClick={downloadNote}
+            aria-label={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
+            title={lingui._({ id: N.downloadNote.id, message: N.downloadNote.message })}
+          >
+            <Icon name={getSemanticIcon("action.download")} size="small" />
+          </button>
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+            onClick={togglePin}
+            aria-label={
+              baseNote()?.pinned
+                ? lingui._({ id: N.unpin.id, message: N.unpin.message })
+                : lingui._({ id: N.pin.id, message: N.pin.message })
+            }
+          >
+            <Icon
+              name={getSemanticIcon(baseNote()?.pinned ? "notes.pin" : "action.pin")}
+              size="small"
+              class={baseNote()?.pinned ? "text-icon-base" : "text-icon-weak-base"}
+            />
+          </button>
+          <Show when={isBlueprint()}>
+            <button
+              type="button"
+              class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+              onClick={convertToNote}
+              disabled={convertingBlueprint()}
+              aria-label={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
+              title={lingui._({ id: N.convertToNote.id, message: N.convertToNote.message })}
+            >
+              <Icon name={getSemanticIcon("blueprint.main")} size="small" class="opacity-60" />
+            </button>
+          </Show>
+          <Show when={!isBlueprint()}>
+            <button
+              type="button"
+              class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+              onClick={convertToBlueprint}
+              disabled={convertingBlueprint()}
+              aria-label={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
+              title={lingui._({ id: N.convertToBlueprint.id, message: N.convertToBlueprint.message })}
+            >
+              <Icon name={getSemanticIcon("blueprint.main")} size="small" />
+            </button>
+          </Show>
+          <Show when={baseNote()?.global !== undefined}>
+            <button
+              type="button"
+              class="flex size-7 items-center justify-center rounded-lg transition-colors"
+              classList={{
+                "text-icon-base bg-text-interactive-base/10": baseNote()?.global,
+                "text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base": !baseNote()?.global,
+              }}
+              onClick={toggleGlobal}
+              aria-label={
+                baseNote()?.global
+                  ? lingui._({ id: N.makeLocal.id, message: N.makeLocal.message })
+                  : lingui._({ id: N.makeGlobal.id, message: N.makeGlobal.message })
+              }
+            >
+              <Icon name={getSemanticIcon("navigation.home")} size="small" />
+            </button>
+          </Show>
+          <button
+            type="button"
+            class="flex size-7 items-center justify-center rounded-lg text-icon-weak-base hover:bg-surface-raised-base-hover hover:text-icon-base transition-colors"
+            onClick={() => props.onDelete()}
+            aria-label={lingui._({ id: N.deleteNote.id, message: N.deleteNote.message })}
+          >
+            <Icon name={getSemanticIcon("action.close")} size="small" />
+          </button>
         </div>
 
-        <Show when={isBlueprint() && blueprintState()}>
-          <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
-            <div class="note-blueprint-meta flex flex-wrap items-center gap-2">
+        <Show when={conflict()}>
+          <div
+            ref={conflictBannerEl}
+            class="flex items-center gap-2 border-t border-text-diff-delete-base/15 bg-text-diff-delete-base/8 px-4 py-2"
+          >
+            <span class="flex-1 text-11-regular text-text-diff-delete-base">{conflict()?.message}</span>
+            <button
+              type="button"
+              class="rounded-full px-2 py-0.5 text-10-medium text-text-base ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base-hover"
+              onClick={reloadRemote}
+            >
+              {lingui._({ id: N.reloadRemote.id, message: N.reloadRemote.message })}
+            </button>
+            <button
+              type="button"
+              class="rounded-full px-2 py-0.5 text-10-medium text-text-base ring-1 ring-inset ring-border-base/35 hover:bg-surface-raised-base-hover"
+              onClick={overwriteRemote}
+            >
+              {lingui._({ id: N.keepMine.id, message: N.keepMine.message })}
+            </button>
+          </div>
+        </Show>
+
+        <Show when={isBlueprint()}>
+          <div class="flex items-center gap-2 border-t border-border-weaker-base/40 px-4 py-1.5">
+            <Show when={blueprintState()}>
               <span class={`note-blueprint-state note-blueprint-state--${blueprintState()!.tone}`}>
                 <Icon name={blueprintState()!.icon} size="small" class="size-3" />
                 {blueprintState()!.label}
@@ -2226,9 +2284,9 @@ function NoteEditor(props: {
                   ? `${getRunCount(baseNote()!, noteLoops())} runs`
                   : "No runs yet"}
               </span>
-              <span class="h-3 w-px bg-border-weaker-base" />
               <span class="text-11-regular text-text-weak">
-                Last activity {relativeTime(getBlueprintActivityTime(baseNote()!, noteLoops()))}
+                {lingui._({ id: N.lastActivity.id, message: N.lastActivity.message })}{" "}
+                {relativeTime(fmt, getBlueprintActivityTime(baseNote()!, noteLoops()))}
               </span>
               <Show when={baseNote()!.blueprint?.defaultAgent}>
                 <span class="h-3 w-px bg-border-weaker-base" />
@@ -2244,97 +2302,78 @@ function NoteEditor(props: {
                       onClick={() => openBlueprintSession(sessionID)}
                     >
                       <Icon name={getSemanticIcon("action.open")} size="small" class="size-3" />
-                      Open session
+                      {lingui._({ id: N.openSession.id, message: N.openSession.message })}
                     </button>
                   </>
                 )}
               </Show>
-            </div>
+            </Show>
           </div>
         </Show>
+      </div>
 
-        <Show when={conflict()}>
-          <div class="shrink-0 border-b border-border-warning-base bg-surface-raised-base px-4 py-3 text-12-regular text-text-base">
-            <div class="flex flex-wrap items-center gap-2 rounded-[1rem] bg-background-base/55 px-3 py-2.5 backdrop-blur-sm">
-              <div class="flex size-6 shrink-0 items-center justify-center rounded-full bg-surface-warning-base/18 text-icon-warning-base">
-                <div class="size-1.5 rounded-full bg-icon-warning-base" />
-              </div>
-              <span class="flex-1 text-11-regular leading-5 text-text-base">{conflict()!.message}</span>
-              <Show when={conflict()?.type === "remote-update"}>
-                <button
-                  type="button"
-                  class="rounded-full bg-surface-raised-stronger-non-alpha px-3 py-1.5 text-11-medium text-text-base transition-colors hover:bg-surface-raised-base-hover"
-                  onClick={reloadRemote}
-                >
-                  Reload remote
-                </button>
-                <button
-                  type="button"
-                  class="rounded-full bg-surface-success-base/40 px-3 py-1.5 text-11-medium text-text-diff-add-base transition-colors hover:bg-surface-success-base/62"
-                  onClick={overwriteRemote}
-                >
-                  Overwrite remote
-                </button>
-              </Show>
-            </div>
-          </div>
-        </Show>
+      <Show when={!noteLoaded()}>
+        <div class="flex flex-1 items-center justify-center">
+          <Spinner class="size-4" />
+        </div>
+      </Show>
 
-        <div class="shrink-0 border-b border-border-weaker-base bg-surface-raised-base px-4 py-2.5">
-          <div class="flex flex-wrap items-center gap-2">
+      <Show when={noteLoaded()}>
+        <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-4 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <input
+            type="text"
+            class="w-full border-none bg-transparent text-16-medium text-text-strong outline-none placeholder:text-text-weaker"
+            placeholder={lingui._({ id: N.untitled.id, message: N.untitled.message })}
+            value={title()}
+            onInput={onTitleInput}
+          />
+
+          <DocumentEditorCore
+            content={baseNote()?.content}
+            onUpdate={() => markDirty("content")}
+            onEditorReady={setEditor}
+            uploadFile={uploadFile}
+            sdkClient={sdk.client}
+            sdkUrl={sdk.url}
+            saving={saving()}
+          />
+
+          <div class="flex flex-wrap items-center gap-1.5">
             <For each={tags()}>
               {(tag) => (
-                <span class="inline-flex items-center gap-1.5 rounded-full bg-surface-inset-base/68 px-2.5 py-1.5 text-11-medium text-text-weak">
+                <span class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35">
+                  {tag}
                   <button
                     type="button"
-                    class="flex size-4 items-center justify-center rounded-full text-icon-weak-base transition-colors hover:bg-surface-raised-base-hover hover:text-icon-base"
+                    class="flex size-3 items-center justify-center rounded-full text-text-weaker hover:text-text-base"
                     onClick={() => removeTag(tag)}
+                    aria-label={`Remove tag ${tag}`}
                   >
                     <Icon name={getSemanticIcon("action.close")} size="small" class="size-2.5" />
                   </button>
-                  {tag}
                 </span>
               )}
             </For>
-            <div class="flex min-w-[7rem] flex-1 items-center gap-2 rounded-full px-1 py-1.5">
-              <Icon name={getSemanticIcon("notes.tag")} size="small" class="text-icon-weak-base shrink-0" />
-              <input
-                type="text"
-                class="min-w-0 flex-1 bg-transparent text-11-regular text-text-base outline-none placeholder:text-text-weaker"
-                placeholder={tags().length === 0 ? "Add tags..." : "Add tag"}
-                value={tagInput()}
-                onInput={(e) => setTagInput(e.currentTarget.value)}
-                onKeyDown={handleTagKeyDown}
-                onBlur={() => {
-                  if (tagInput().trim()) addTag(tagInput())
-                }}
-              />
-            </div>
+            <input
+              type="text"
+              class="min-w-[80px] flex-1 border-none bg-transparent text-12-regular text-text-weak outline-none placeholder:text-text-weaker"
+              placeholder={lingui._({ id: N.addTags.id, message: N.addTags.message })}
+              value={tagInput()}
+              onInput={(e) => setTagInput(e.currentTarget.value)}
+              onKeyDown={handleTagKeyDown}
+            />
           </div>
         </div>
+      </Show>
 
-        <DocumentEditorCore
-          content={baseNote()!.content}
-          onUpdate={() => {
-            markDirty("content")
-            scheduleSave()
-          }}
-          onEditorReady={(instance) => setEditor(instance)}
-          uploadFile={uploadFile}
-          sdkClient={sdk.client}
-          sdkUrl={sdk.url}
-          saving={saving()}
+      <Show when={showRunMenu() && activeBlueprintRun() === undefined}>
+        <RunMenu
+          title={baseNote()?.title ?? "Untitled"}
+          canRunInCurrentSession={canRunCurrentSession()}
+          canCreateWorktree={canRunWorktreeSession()}
+          onRun={runBlueprint}
+          onClose={() => setShowRunMenu(false)}
         />
-
-        <Show when={showRunMenu() && isBlueprint() && baseNote()}>
-          <RunMenu
-            title={baseNote()!.title || "Untitled"}
-            canRunInCurrentSession={canRunCurrentSession()}
-            canCreateWorktree={canRunWorktreeSession()}
-            onRun={runBlueprint}
-            onClose={() => setShowRunMenu(false)}
-          />
-        </Show>
       </Show>
     </div>
   )

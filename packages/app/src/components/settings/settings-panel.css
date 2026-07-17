@@ -1391,6 +1391,32 @@
   width: 100%;
 }
 
+.settings-embedding-loading {
+  min-height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-weak);
+  font-size: var(--settings-type-body-size);
+  line-height: var(--settings-type-body-line-height);
+}
+
+.settings-embedding-host {
+  width: min(100%, 360px);
+}
+
+.settings-embedding-progress {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 2px 0 12px;
+}
+
+.settings-embedding-progress .usage-window-meter {
+  margin: 0;
+}
+
 /* ===== Segment pill control ===== */
 
 .ds-segment-wrapper {
@@ -1661,6 +1687,10 @@
   }
 
   .settings-library-step-control {
+    width: 100%;
+  }
+
+  .settings-embedding-host {
     width: 100%;
   }
 }

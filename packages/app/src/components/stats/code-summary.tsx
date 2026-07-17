@@ -1,6 +1,8 @@
 import { createMemo, createSignal, onMount } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
+import { useLocale } from "@/context/locale"
 import { formatCompact } from "./use-stats"
+import { S } from "./stats-i18n"
 
 function useCountUp(target: number, duration = 1600) {
   const [value, setValue] = createSignal(0)
@@ -39,6 +41,7 @@ function CompactStat(props: { label: string; value: string; hint: string }) {
 }
 
 function CompositionRow(props: { label: string; value: string; share: number; tone: "emerald" | "rose" }) {
+  const { i18n } = useLocale()
   const toneClasses = () =>
     props.tone === "emerald"
       ? {
@@ -62,7 +65,7 @@ function CompositionRow(props: { label: string; value: string; share: number; to
         <div class={`text-13-semibold tabular-nums tracking-tight ${toneClasses().text}`}>{props.value}</div>
       </div>
       <div class="mt-2 flex items-center justify-between gap-3 text-[10px] font-medium text-text-weaker">
-        <span>{Math.round(props.share)}% of total change volume</span>
+        <span>{i18n._(S.codeShareTotal.id, { pct: String(Math.round(props.share)) })}</span>
         <span>{props.share > 0 ? `${Math.round(props.share)}%` : "0%"}</span>
       </div>
       <div class="mt-2 h-2 rounded-full bg-surface-inset-base/70 p-0.5">
@@ -76,6 +79,7 @@ function CompositionRow(props: { label: string; value: string; share: number; to
 }
 
 export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }) {
+  const { i18n } = useLocale()
   const added = useCountUp(props.codeChanges.totalAdditions)
   const removed = useCountUp(props.codeChanges.totalDeletions)
   const net = useCountUp(Math.abs(props.codeChanges.netLines))
@@ -90,19 +94,19 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
     return formatCompact(Math.round(totalChanged() / files))
   })
   const growthLine = createMemo(() => {
-    if (props.codeChanges.netLines > 0) return "Growth outpaced cleanup"
-    if (props.codeChanges.netLines < 0) return "Cleanup outpaced new code"
-    return "Additions and removals stayed balanced"
+    if (props.codeChanges.netLines > 0) return i18n._(S.codeGrowthOutpaced.id)
+    if (props.codeChanges.netLines < 0) return i18n._(S.codeCleanupOutpaced.id)
+    return i18n._(S.codeBalanced.id)
   })
   const compositionLine = createMemo(() => {
     const changed = totalChanged()
-    if (changed <= 0) return "No tracked code movement yet"
-    return `${formatCompact(changed)} lines moved overall`
+    if (changed <= 0) return i18n._(S.codeNoMovement.id)
+    return i18n._(S.codeMovedOverall.id, { count: formatCompact(changed) })
   })
 
   return (
     <>
-      <div class="mb-3 px-1 text-12-medium text-text-weak">Code Changes</div>
+      <div class="mb-3 px-1 text-12-medium text-text-weak">{i18n._(S.codeHeader.id)}</div>
       <section
         class="rounded-2xl bg-surface-raised-base px-4 py-4"
         style={{ animation: "fadeUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both" }}
@@ -113,7 +117,7 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
               <div class="flex flex-wrap items-start justify-between gap-4">
                 <div class="min-w-0 flex-1">
                   <div class="text-[10px] font-medium uppercase tracking-[0.18em] text-text-weaker">
-                    Net code growth
+                    {i18n._(S.codeNetGrowth.id)}
                   </div>
                   <div class="mt-2 text-32-semibold tracking-tight tabular-nums text-text-strong">
                     {props.codeChanges.netLines >= 0 ? "+" : "-"}
@@ -122,7 +126,9 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                   <div class="mt-1 text-11-regular text-text-weak">{growthLine()}</div>
                 </div>
                 <div class="rounded-[1rem] bg-surface-base/55 px-3.5 py-2.5 text-right ring-1 ring-inset ring-border-weaker-base">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">Code flow</div>
+                  <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
+                    {i18n._(S.codeFlow.id)}
+                  </div>
                   <div class="mt-1 text-15-semibold tabular-nums tracking-tight text-text-base">
                     {formatSignedCompact(props.codeChanges.netLines)}
                   </div>
@@ -134,13 +140,13 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
                 <div class="flex items-center justify-between gap-3">
                   <div>
                     <div class="text-[10px] font-medium uppercase tracking-[0.16em] text-text-weaker">
-                      Added vs removed
+                      {i18n._(S.codeAddedVsRemoved.id)}
                     </div>
-                    <div class="mt-1 text-11-regular text-text-weak">How the overall movement breaks down</div>
+                    <div class="mt-1 text-11-regular text-text-weak">{i18n._(S.codeBreakdownSubtitle.id)}</div>
                   </div>
                   <div class="text-right text-[10px] font-medium text-text-weaker">
-                    <div>{Math.round(addShare())}% added</div>
-                    <div>{Math.round(removeShare())}% removed</div>
+                    <div>{i18n._(S.codeSharePct.id, { pct: String(Math.round(addShare())) })}</div>
+                    <div>{i18n._(S.codeRemovePct.id, { pct: String(Math.round(removeShare())) })}</div>
                   </div>
                 </div>
                 <div class="mt-3 h-3 overflow-hidden rounded-full bg-surface-inset-base/72 p-0.5">
@@ -159,13 +165,13 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
 
               <div class="mt-4 grid gap-3 md:grid-cols-2">
                 <CompositionRow
-                  label="Lines added"
+                  label={i18n._(S.codeLinesAdded.id)}
                   tone="emerald"
                   value={`+${formatCompact(added())}`}
                   share={addShare()}
                 />
                 <CompositionRow
-                  label="Lines removed"
+                  label={i18n._(S.codeLinesRemoved.id)}
                   tone="rose"
                   value={`-${formatCompact(removed())}`}
                   share={removeShare()}
@@ -176,17 +182,21 @@ export function CodeSummary(props: { codeChanges: StatsSnapshot["codeChanges"] }
 
           <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
             <CompactStat
-              label="Files touched"
+              label={i18n._(S.codeFilesTouched.id)}
               value={formatCompact(props.codeChanges.totalFiles)}
-              hint="Distinct files changed across tracked sessions"
+              hint={i18n._(S.codeFilesHint.id)}
             />
-            <CompactStat label="Adds / day" value={averagePerDay()} hint="Average added lines per active coding day" />
+            <CompactStat label={i18n._(S.codeAddsPerDay.id)} value={averagePerDay()} hint={i18n._(S.codeAddsHint.id)} />
             <CompactStat
-              label="Removals / day"
+              label={i18n._(S.codeRemovalsPerDay.id)}
               value={averageRemovedPerDay()}
-              hint="Average removed lines per active coding day"
+              hint={i18n._(S.codeRemovalsHint.id)}
             />
-            <CompactStat label="Lines / file" value={throughput()} hint="Average touched lines per modified file" />
+            <CompactStat
+              label={i18n._(S.codeLinesPerFile.id)}
+              value={throughput()}
+              hint={i18n._(S.codeLinesPerFileHint.id)}
+            />
           </div>
         </div>
       </section>

@@ -148,13 +148,26 @@ Current loop-level behavior includes:
 
 - compaction processing
 - asynchronous old-tool-output pruning
-- title and summary generation
+- title, body, and turn diff summary generation
 - Library experience chronicling
 - repeated successful tool-call warnings
 - repeated same-class tool-error stopping
 - tool-category failure analysis and escalation
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs cannot hold the critical execution path.
+
+### Turn diff settlement
+
+The `summarize` post-step job computes file diffs and derives title/body for each completed turn without joining the blocking loop path:
+
+1. The job writes `diffState: { status: "pending", deadlineAt }` immediately so the frontend sees the pending state.
+2. It computes diffs from the complete root turn's snapshot range (`step-start` → latest `step-finish` across its assistant revisions).
+3. On success, it writes `{ diffs, diffState: { status: "ready" } }` atomically. A diff failure writes `{ diffState: { status: "error", code } }`; a per-run timeout applies `error/timeout` only while that turn is still `pending`, preserving a diff that already reached `ready` while later enrichment or session aggregation was running.
+4. Title generation may proceed after either outcome. Body generation runs only after a successful non-empty diff settlement, and the applicable LLM calls run in parallel.
+
+Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
+
+The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. Later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot read authoritative durable history. If an existing session aggregation has no cursor, one bounded call rebuilds it from complete history before incremental updates resume.
 
 ## Prompt Budget
 
@@ -230,6 +243,8 @@ Text, reasoning, and tool parts are persisted throughout the step. Streaming tex
 Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
 
 Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
+
+Persisted file diffs retain at most 8,000 characters of preview per file and at most 1 MiB of UTF-8 preview bytes across one diff array. Once the aggregate budget is exhausted, later entries keep file, additions, deletions, binary, and byte-size metadata, omit `preview`, and set `truncated = true`. New snapshots, imports, canonical reads, and the session migration apply the same bound.
 
 Client wire transport can replace full accumulated streaming parts with incremental delta frames and periodic full checkpoints. That optimization does not change the in-process message or event model; see [Frontend data sync](frontend-data-sync.md).
 

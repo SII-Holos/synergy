@@ -191,7 +191,7 @@ describe("session lifecycle events", () => {
       fn: async () => {
         const session = await Session.create({})
 
-        expect(session.completionNotice).toEqual({ unread: false, silent: false })
+        expect(session.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: false })
 
         await Session.remove(session.id)
       },
@@ -206,8 +206,8 @@ describe("session lifecycle events", () => {
         const parent = await Session.create({ completionNotice: { silent: true } })
         const child = await Session.create({ parentID: parent.id })
 
-        expect(parent.completionNotice).toEqual({ unread: false, silent: true })
-        expect(child.completionNotice).toEqual({ unread: false, silent: true })
+        expect(parent.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: true })
+        expect(child.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: true })
 
         await Session.remove(parent.id)
       },

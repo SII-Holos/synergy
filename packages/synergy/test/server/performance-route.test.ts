@@ -442,6 +442,30 @@ describe("performance routes", () => {
     expect(response.status).toBe(400)
   })
 
+  test("performance analysis validates its window and hides unrelated sessions", async () => {
+    const invalid = await Server.App().request("/global/performance/analysis", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ windowMs: 0 }),
+    })
+    expect(invalid.status).toBe(400)
+    expect((await invalid.json()).code).toBe("PERF_INVALID_QUERY")
+
+    const missing = await Server.App().request("/global/performance/analysis/ses_not_an_analysis")
+    expect(missing.status).toBe(404)
+    expect((await missing.json()).code).toBe("PERF_ANALYSIS_NOT_FOUND")
+  })
+
+  test("performance analysis reports a stable unavailable error without a Thinking model", async () => {
+    const response = await Server.App().request("/global/performance/analysis", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ windowMs: 15 * 60 * 1000 }),
+    })
+    expect(response.status).toBe(503)
+    expect((await response.json()).code).toBe("PERF_ANALYSIS_UNAVAILABLE")
+  })
+
   test("config route exposes effective observability performance defaults", async () => {
     const response = await Server.App().request("/global/performance/config")
     expect(response.status).toBe(200)

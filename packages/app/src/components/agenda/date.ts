@@ -37,6 +37,20 @@ export function formatHour(h: number): string {
   return `${h.toString().padStart(2, "0")}:00`
 }
 
-export const MONTH_NAMES_SHORT = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-export const DAY_LABELS_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-export const DAY_LABELS_MINI = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"]
+import type { IntlFormatter } from "@/context/locale/formatter"
+
+export function getMonthNamesShort(fmt: IntlFormatter): string[] {
+  return Array.from({ length: 12 }, (_, i) => fmt.date(new Date(2021, i, 1), { month: "short" }))
+}
+
+export function getDayLabelsShort(fmt: IntlFormatter): string[] {
+  return Array.from({ length: 7 }, (_, i) => fmt.date(new Date(2021, 0, 3 + i), { weekday: "short" }))
+}
+
+export function getDayLabelsMini(fmt: IntlFormatter): string[] {
+  return Array.from({ length: 7 }, (_, i) => fmt.date(new Date(2021, 0, 3 + i), { weekday: "narrow" }))
+}
+
+export function formatLocaleDate(ts: number, fmt: IntlFormatter): string {
+  return fmt.date(new Date(ts), { month: "short", day: "numeric", year: "numeric" })
+}

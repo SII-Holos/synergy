@@ -34,6 +34,25 @@ function extractVarRefs(css: string): string[] {
   return refs
 }
 
+function extractRuleBlock(css: string, selector: string): string {
+  const selectorStart = css.indexOf(selector)
+  if (selectorStart === -1) return ""
+
+  const blockStart = css.indexOf("{", selectorStart)
+  if (blockStart === -1) return ""
+
+  let depth = 0
+  for (let index = blockStart; index < css.length; index++) {
+    const char = css[index]
+    if (char === "{") depth++
+    if (char !== "}") continue
+    depth--
+    if (depth === 0) return css.slice(selectorStart, index + 1)
+  }
+
+  return ""
+}
+
 function extractCustomPropValue(css: string, token: string): string | undefined {
   const re = new RegExp(`^\\s*--${token}\\s*:\\s*([^;]+);`, "gm")
   const matches = [...css.matchAll(re)]
@@ -435,6 +454,27 @@ describe("Visual Token Contract", () => {
       expect(outputBlock, "message-part.css 应定义 tool-output 样式块").not.toBe("")
       expect(outputBlock).toContain("var(--workbench-control-bg")
       expect(outputBlock).toContain("var(--workbench-border")
+    })
+
+    test("question tool results preserve header, prompt, and answer hierarchy", async () => {
+      const css = await readFileSafe("src/components/message-part.css")
+      const item = extractRuleBlock(css, '[data-slot="question-item"]')
+      const header = extractRuleBlock(css, '[data-slot="question-header"]')
+      const prompt = extractRuleBlock(css, '[data-slot="question-text"]')
+      const answer = extractRuleBlock(css, '[data-slot="question-answer"]')
+
+      expect(item).toContain("display: flex")
+      expect(item).toContain("flex-direction: column")
+      expect(item).toContain("gap: 4px")
+      expect(header).toContain("color: var(--text-weaker)")
+      expect(header).toContain("font-size: var(--font-size-small)")
+      expect(header).toContain("font-weight: var(--font-weight-medium)")
+      expect(prompt).toContain("color: var(--text-base)")
+      expect(prompt).toContain("font-size: var(--font-size-base)")
+      expect(prompt).toContain("line-height: var(--line-height-large)")
+      expect(answer).toContain("color: var(--text-weak)")
+      expect(answer).toContain("font-size: var(--font-size-small)")
+      expect(answer).toContain("font-weight: var(--font-weight-medium)")
     })
   })
 

@@ -5,6 +5,7 @@ import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugi
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
+import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 
 export const McpRetry = z
   .object({
@@ -992,11 +993,45 @@ const CategoryRetrieveConfig = z
   })
   .strict()
 
+export const LocalEmbeddingConfig = z
+  .object({
+    source: z
+      .enum(["huggingface", "hf-mirror", "custom"])
+      .optional()
+      .describe("Download source for the bundled local embedding model (default: huggingface)"),
+    remoteHost: z.string().url().optional().describe("Public HTTPS origin used when source is custom"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const source = value.source ?? "huggingface"
+    if (source !== "custom") return
+    if (!value.remoteHost) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: "remoteHost is required when the local embedding source is custom",
+      })
+      return
+    }
+    try {
+      normalizePublicHttpsOrigin(value.remoteHost)
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: error instanceof Error ? error.message : "remoteHost must be a public HTTPS origin",
+      })
+    }
+  })
+  .meta({ ref: "LocalEmbeddingConfig" })
+export type LocalEmbeddingConfig = z.infer<typeof LocalEmbeddingConfig>
+
 export const EmbeddingConfig = z
   .object({
     baseURL: z.string().optional().describe("Base URL for the embedding API"),
     apiKey: z.string().optional().describe("API key for the embedding service"),
     model: z.string().optional().describe("Embedding model name"),
+    local: LocalEmbeddingConfig.optional().describe("Bundled local embedding model download settings"),
   })
   .strict()
   .optional()
@@ -1296,6 +1331,7 @@ export type QuickSwitcher = z.infer<typeof QuickSwitcher>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
+    locale: z.enum(["system", "en", "zh-CN"]).optional().describe("UI locale (system = follow OS, default: system)"),
     theme: z.string().optional().describe("Theme name to use for the interface"),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),

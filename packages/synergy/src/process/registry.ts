@@ -101,6 +101,7 @@ class BoundedTextBuffer {
   stats() {
     return {
       segments: this.segments.length - this.head + (this.pendingLength > 0 ? 1 : 0),
+      allocatedSegments: this.segments.length + (this.pendingLength > 0 ? 1 : 0),
     }
   }
 
@@ -112,6 +113,12 @@ class BoundedTextBuffer {
   }
 
   private compactSegments() {
+    if (this.head >= this.segments.length) {
+      this.segments = []
+      this.head = 0
+      this.headOffset = 0
+      return
+    }
     if (this.head < 64 || this.head * 2 < this.segments.length) return
     this.segments.splice(0, this.head)
     this.head = 0
@@ -430,7 +437,7 @@ export namespace ProcessRegistry {
 
   export function outputBufferStats(proc: Process) {
     const outputBuffer = outputBuffers.get(proc)
-    if (!outputBuffer) return { segments: 0 }
+    if (!outputBuffer) return { segments: 0, allocatedSegments: 0 }
     return outputBuffer.stats()
   }
 

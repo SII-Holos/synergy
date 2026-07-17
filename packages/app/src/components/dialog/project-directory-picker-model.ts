@@ -1,4 +1,5 @@
 import type { Platform } from "@/context/platform"
+import { dialog } from "@/locales/messages"
 
 export interface PickProjectDirectoriesOptions {
   title: string
@@ -66,8 +67,8 @@ export async function pickProjectDirectoriesWithRuntime(
       } catch {
         runtime.showErrorToast({
           type: "error",
-          title: "Folder picker failed",
-          description: "Could not open the folder picker. Please try again.",
+          title: dialog.directoryPickerFailed.message,
+          description: dialog.directoryPickerCantOpen.message,
         })
         return null
       }

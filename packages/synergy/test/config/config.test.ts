@@ -708,6 +708,26 @@ test("loads plugin runtime limits from plugin config domain", async () => {
   })
 })
 
+test("general domain merge preserves a configured remote embedding model when local download settings change", () => {
+  const current = Config.Info.parse({
+    embedding: {
+      apiKey: "secret",
+      baseURL: "https://embedding.example/v1",
+      model: "BAAI/bge-m3",
+      local: { source: "huggingface" },
+    },
+  })
+
+  const next = Config.mergeDomainConfig(current, { embedding: { local: { source: "hf-mirror" } } }, "merge")
+
+  expect(next.embedding).toEqual({
+    apiKey: "secret",
+    baseURL: "https://embedding.example/v1",
+    model: "BAAI/bge-m3",
+    local: { source: "hf-mirror" },
+  })
+})
+
 test("plugin domain updates replace stale specs by canonical source key", async () => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-plugin-domain-"))
   try {
@@ -1860,6 +1880,27 @@ test("experimental.mcp_timeout does not break config loading", async () => {
       const config = await Config.current()
       expect(config.mcp?.mymcp).toBeDefined()
       expect(config.experimental?.mcp_timeout).toBe(60000)
+    },
+  })
+})
+
+test("locale config accepts valid values and rejects invalid ones", () => {
+  expect(Config.Info.parse({}).locale).toBeUndefined()
+  expect(Config.Info.parse({ locale: "system" }).locale).toBe("system")
+  expect(Config.Info.parse({ locale: "en" }).locale).toBe("en")
+  expect(Config.Info.parse({ locale: "zh-CN" }).locale).toBe("zh-CN")
+  expect(() => Config.Info.parse({ locale: "" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "fr" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "de-DE" })).toThrow()
+})
+
+test("locale is optional and absent configs remain valid", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.locale).toBeUndefined()
     },
   })
 })

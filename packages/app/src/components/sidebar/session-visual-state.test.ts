@@ -3,6 +3,10 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { NavEntry } from "@/context/layout"
 import { resolveSessionVisualState, scopeKeyForNavEntry, type SessionVisualStore } from "./session-visual-state"
 
+function msg(d: { message?: string }): string {
+  return d.message ?? ""
+}
+
 function entry(input: Partial<NavEntry> = {}): NavEntry {
   return {
     id: "ses_test",
@@ -13,7 +17,7 @@ function entry(input: Partial<NavEntry> = {}): NavEntry {
     lastActivityAt: 1,
     pinned: 0,
     archived: false,
-    completionNotice: { unread: false },
+    completionNotice: { unread: false, unreadCount: 0 },
     ...input,
   }
 }
@@ -69,17 +73,17 @@ describe("resolveSessionVisualState", () => {
   })
 
   test("marks idle unread sessions as response ready", () => {
-    const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true } }))
+    const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true, unreadCount: 1 } }))
 
     expect(visual.icon).toBe(getSemanticIcon("navigation.home"))
     expect(visual.completionUnread).toBe(true)
-    expect(visual.label).toBe("Home session; response ready")
+    expect(msg(visual.label)).toBe("Home session; response ready")
   })
 
   test("suppresses completion unread while running", () => {
     const visual = resolveSessionVisualState(
       store({ session_status: { ses_test: { type: "busy" } } }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(visual.icon).toBe(getSemanticIcon("session.running"))
@@ -89,7 +93,7 @@ describe("resolveSessionVisualState", () => {
   test("suppresses completion unread while waiting", () => {
     const visual = resolveSessionVisualState(
       store({ permission: { ses_test: [{}] } }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(visual.icon).toBe(getSemanticIcon("session.waiting"))
@@ -99,11 +103,11 @@ describe("resolveSessionVisualState", () => {
   test("preserves worktree and child icons for unread sessions", () => {
     const worktree = resolveSessionVisualState(
       store({ session: [{ id: "ses_test", workspace: { type: "git_worktree" } }] }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
     const child = resolveSessionVisualState(
       store(),
-      entry({ parentID: "ses_parent", completionNotice: { unread: true } }),
+      entry({ parentID: "ses_parent", completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(worktree.icon).toBe(getSemanticIcon("workspace.worktree"))
@@ -151,7 +155,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Blueprint session")
+    expect(msg(visual.label)).toBe("Blueprint session")
     expect(visual.tone).toBe("blueprint")
     expect(visual.pulse).toBeUndefined()
   })
@@ -166,7 +170,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Running Blueprint")
+    expect(msg(visual.label)).toBe("Running Blueprint")
     expect(visual.tone).toBe("blueprint-running")
     expect(visual.pulse).toBe(true)
   })
@@ -181,7 +185,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
 
@@ -195,7 +199,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("blueprint.main"))
-    expect(visual.label).toBe("Blueprint waiting for you")
+    expect(msg(visual.label)).toBe("Blueprint waiting for you")
     expect(visual.tone).toBe("blueprint-waiting")
     expect(visual.pulse).toBe(true)
   })
@@ -207,7 +211,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
   })
 
@@ -221,7 +225,7 @@ describe("resolveSessionVisualState", () => {
     )
 
     expect(visual.icon).toBe(getSemanticIcon("command.review"))
-    expect(visual.label).toBe("Auditing Blueprint")
+    expect(msg(visual.label)).toBe("Auditing Blueprint")
     expect(visual.tone).toBe("blueprint-audit")
     expect(visual.pulse).toBe(true)
   })

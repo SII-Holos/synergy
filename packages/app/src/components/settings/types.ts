@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from "@lingui/core"
+
+import type { LocalePreference } from "@/context/locale/types"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -32,6 +35,7 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
 export const UI_DEFAULTS = {
+  locale: "system" as LocalePreference,
   theme: "" as string,
   username: "" as string,
   snapshot: true,
@@ -48,6 +52,8 @@ export const UI_DEFAULTS = {
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
+  embeddingSource: "huggingface" as LocalEmbeddingSource,
+  embeddingRemoteHost: "" as string,
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
@@ -79,29 +85,72 @@ export function resolvePermissionForUi(permission: unknown): string {
   }
   return UI_DEFAULTS.permission
 }
-export const MODEL_ROLES: Array<{ key: ModelKey; label: string; description: string }> = [
-  { key: "model", label: "Default Model", description: "Primary model for conversations and agent tasks" },
-  { key: "nano_model", label: "Nano Model", description: "Cheapest model for trivial tasks like title generation" },
+export type ModelRoleDefinition = { key: ModelKey; label: MessageDescriptor; description: MessageDescriptor }
+
+export const MODEL_ROLES: ModelRoleDefinition[] = [
+  {
+    key: "model",
+    label: { id: "settings.modelRole.model.label", message: "Default Model" },
+    description: {
+      id: "settings.modelRole.model.description",
+      message: "Primary model for conversations and agent tasks",
+    },
+  },
+  {
+    key: "nano_model",
+    label: { id: "settings.modelRole.nanoModel.label", message: "Nano Model" },
+    description: {
+      id: "settings.modelRole.nanoModel.description",
+      message: "Cheapest model for trivial tasks like title generation",
+    },
+  },
   {
     key: "mini_model",
-    label: "Mini Model",
-    description: "Intent detection, script extraction, and reward evaluation",
+    label: { id: "settings.modelRole.miniModel.label", message: "Mini Model" },
+    description: {
+      id: "settings.modelRole.miniModel.description",
+      message: "Intent detection, script extraction, and reward evaluation",
+    },
   },
   {
     key: "mid_model",
-    label: "Mid Model",
-    description: "Explore, scout, and quick-category task routing",
+    label: { id: "settings.modelRole.midModel.label", message: "Mid Model" },
+    description: {
+      id: "settings.modelRole.midModel.description",
+      message: "Explore, scout, and quick-category task routing",
+    },
   },
-  { key: "vision_model", label: "Vision Model", description: "Image, PDF, and file analysis" },
-  { key: "thinking_model", label: "Thinking Model", description: "Complex reasoning and architecture decisions" },
+  {
+    key: "vision_model",
+    label: { id: "settings.modelRole.visionModel.label", message: "Vision Model" },
+    description: { id: "settings.modelRole.visionModel.description", message: "Image, PDF, and file analysis" },
+  },
+  {
+    key: "thinking_model",
+    label: { id: "settings.modelRole.thinkingModel.label", message: "Thinking Model" },
+    description: {
+      id: "settings.modelRole.thinkingModel.description",
+      message: "Complex reasoning and architecture decisions",
+    },
+  },
   {
     key: "long_context_model",
-    label: "Long Context Model",
-    description: "Session compaction, long document analysis",
+    label: { id: "settings.modelRole.longContextModel.label", message: "Long Context Model" },
+    description: {
+      id: "settings.modelRole.longContextModel.description",
+      message: "Session compaction, long document analysis",
+    },
   },
-  { key: "creative_model", label: "Creative Model", description: "Writing, design, and artistry" },
+  {
+    key: "creative_model",
+    label: { id: "settings.modelRole.creativeModel.label", message: "Creative Model" },
+    description: { id: "settings.modelRole.creativeModel.description", message: "Writing, design, and artistry" },
+  },
 ]
 
+export function getModelRoleDefinition(key: string): ModelRoleDefinition | undefined {
+  return MODEL_ROLES.find((role) => role.key === key)
+}
 export type PluginEntry = {
   value: string
 }
@@ -200,6 +249,7 @@ export type GeneralStore = {
   snapshot: boolean
   username: string
   theme: string
+  locale: LocalePreference
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
@@ -235,6 +285,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
+export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
+
 export type LibrarySettingsStore = {
   learning: string
   autonomy: string
@@ -243,6 +295,8 @@ export type LibrarySettingsStore = {
   experienceSimThreshold: string
   experienceTopK: string
   experienceEpsilon: string
+  embeddingSource: LocalEmbeddingSource
+  embeddingRemoteHost: string
 }
 
 export type ProvidersStore = {
@@ -300,6 +354,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       snapshot: UI_DEFAULTS.snapshot,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
+      locale: UI_DEFAULTS.locale,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,
@@ -336,6 +391,8 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
       experienceTopK: UI_DEFAULTS.experienceTopK,
       experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+      embeddingSource: UI_DEFAULTS.embeddingSource,
+      embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,

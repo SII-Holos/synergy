@@ -368,4 +368,62 @@ describe("settings config patch", () => {
       }).toast,
     ).toBeUndefined()
   })
+
+  test("persists a local embedding source and only sends a custom origin for custom mode", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.library, {
+      embeddingSource: "custom",
+      embeddingRemoteHost: "https://models.example/",
+    })
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).embedding).toEqual({
+      local: { source: "custom", remoteHost: "https://models.example/" },
+    })
+
+    Object.assign(state.library, { embeddingSource: "huggingface" })
+    expect(
+      buildPatch({
+        cfg: {
+          embedding: { local: { source: "custom", remoteHost: "https://models.example/" } },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).embedding,
+    ).toEqual({ local: { source: "huggingface" } })
+  })
+})
+
+describe("settings config patch locale", () => {
+  test("does not emit locale patch when server has no locale and form is at system default", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
+
+  test("emits locale patch when form diverges from absent server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).locale).toBe("en")
+  })
+
+  test("emits locale patch when form diverges from explicit server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "zh-CN"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("zh-CN")
+  })
+
+  test("emits explicit system locale when switching from en back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("emits explicit system locale when switching from zh-CN back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "zh-CN" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("does not emit locale patch when form value matches server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
 })

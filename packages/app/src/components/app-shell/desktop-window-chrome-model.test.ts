@@ -6,6 +6,10 @@ import {
   desktopWindowToggleLabel,
 } from "./desktop-window-chrome-model"
 
+function msg(d: { message?: string }): string {
+  return d.message ?? ""
+}
+
 describe("desktop window chrome model", () => {
   test("shows only for desktop shells with a window bridge", () => {
     const bridge = {
@@ -41,15 +45,15 @@ describe("desktop window chrome model", () => {
 
   test("uses maximize until the window is maximized or fullscreen", () => {
     expect(desktopWindowToggleIcon(null)).toBe("window.maximize")
-    expect(desktopWindowToggleLabel(null)).toBe("Maximize")
+    expect(msg(desktopWindowToggleLabel(null))).toBe("Maximize")
     expect(desktopWindowToggleIcon({ maximized: false, fullscreen: false, focused: true })).toBe("window.maximize")
-    expect(desktopWindowToggleLabel({ maximized: false, fullscreen: false, focused: true })).toBe("Maximize")
+    expect(msg(desktopWindowToggleLabel({ maximized: false, fullscreen: false, focused: true }))).toBe("Maximize")
   })
 
   test("uses restore for maximized and fullscreen windows", () => {
     expect(desktopWindowToggleIcon({ maximized: true, fullscreen: false, focused: true })).toBe("window.restore")
-    expect(desktopWindowToggleLabel({ maximized: true, fullscreen: false, focused: true })).toBe("Restore")
+    expect(msg(desktopWindowToggleLabel({ maximized: true, fullscreen: false, focused: true }))).toBe("Restore")
     expect(desktopWindowToggleIcon({ maximized: false, fullscreen: true, focused: true })).toBe("window.restore")
-    expect(desktopWindowToggleLabel({ maximized: false, fullscreen: true, focused: true })).toBe("Restore")
+    expect(msg(desktopWindowToggleLabel({ maximized: false, fullscreen: true, focused: true }))).toBe("Restore")
   })
 })

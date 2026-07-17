@@ -321,11 +321,12 @@ export namespace SessionManager {
   export async function run<T>(
     sessionID: string,
     fn: (lease: LoopLease) => Promise<T>,
-    options?: { lease?: LoopLease },
+    options?: { lease?: LoopLease; requestNextWorkOnFailure?: boolean },
   ): Promise<T> {
     const lease = options?.lease ?? acquire(sessionID)
     const runtime = getRuntime(sessionID)
     if (!lease || lease.sessionID !== sessionID || !runtime || !owns(runtime, lease)) throw new BusyError(sessionID)
+    let completed = false
 
     try {
       const session = await requireSession(sessionID)
@@ -358,11 +359,17 @@ export namespace SessionManager {
             }
           },
         })
-      if (workspace.type !== "git_worktree") return await runWithScope()
-      const { Worktree } = await import("../project/worktree")
-      return await Worktree.withUse(workspace.path, session.id, runWithScope)
+      let result: T
+      if (workspace.type !== "git_worktree") {
+        result = await runWithScope()
+      } else {
+        const { Worktree } = await import("../project/worktree")
+        result = await Worktree.withUse(workspace.path, session.id, runWithScope)
+      }
+      completed = true
+      return result
     } finally {
-      await release(lease)
+      await release(lease, { requestNextWork: completed || options?.requestNextWorkOnFailure !== false })
       const runtime = getRuntime(sessionID)
       if (runtime && !occupied(runtime)) unregisterRuntime(sessionID)
     }
@@ -438,7 +445,7 @@ export namespace SessionManager {
     return true
   }
 
-  export async function release(lease: LoopLease): Promise<boolean> {
+  export async function release(lease: LoopLease, options: { requestNextWork?: boolean } = {}): Promise<boolean> {
     const runtime = getRuntime(lease.sessionID)
     if (!runtime || !owns(runtime, lease)) return false
 
@@ -451,8 +458,10 @@ export namespace SessionManager {
       log.warn("failed to emit session update after release", { sessionID: lease.sessionID, error })
     })
 
-    const { SessionDrive } = await import("./drive")
-    await SessionDrive.request(lease.sessionID, "release")
+    if (options.requestNextWork !== false) {
+      const { SessionDrive } = await import("./drive")
+      await SessionDrive.request(lease.sessionID, "release")
+    }
     return true
   }
 

@@ -11,17 +11,17 @@ import { PermissionDock } from "./permission-dock"
 import { SessionInbox } from "./session-inbox"
 import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
+import type { SessionNavigationIntent } from "@/composables/use-navigate-to-session"
 import type { usePrompt } from "@/context/prompt"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
-import type {
-  NewSessionWorkspaceSelection,
-  SessionWorkspaceProgress,
-  SessionWorkspaceProgressActions,
-} from "./worktree-session"
+import type { NewSessionWorkspaceSelection } from "./worktree-session"
+import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
 import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
+import { S } from "./session-i18n"
+import { useLocale } from "@/context/locale"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -34,7 +34,7 @@ export function PromptDock(props: {
   prompt: ReturnType<typeof usePrompt>
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
-  navigate: (path: string) => void
+  navigate: (sessionID: string, intent?: SessionNavigationIntent) => void
   handoffPrompt: string
   meta: Accessor<SessionMeta>
   parentTitle?: string
@@ -46,17 +46,19 @@ export function PromptDock(props: {
   newSessionCurrentDirectory: Accessor<string | undefined>
   onNewSessionWorkspaceSelectionChange: (selection: NewSessionWorkspaceSelection) => void
   onNewSessionWorkspaceSelectionReset: () => void
-  onNewSessionStartProgress: (input: {
+  onNewSessionTransitionChange: (input: {
     sessionID: string
-    progress: SessionWorkspaceProgress | null
-    actions?: SessionWorkspaceProgressActions
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
   }) => void
-  workspaceTransitionPending: Accessor<boolean>
+  sessionTransitionPending: Accessor<boolean>
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
   rollbackActive?: boolean
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const nav = useNavigate()
   const meta = createMemo(() => props.meta())
   const backToParentID = createMemo(() => promptDockBackToParentID(meta()))
@@ -98,7 +100,7 @@ export function PromptDock(props: {
           when={props.prompt.ready()}
           fallback={
             <div class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
-              {props.handoffPrompt || "Loading prompt..."}
+              {props.handoffPrompt || _(S.dockLoadingPrompt)}
             </div>
           }
         >
@@ -119,7 +121,7 @@ export function PromptDock(props: {
                 <Show when={backToParentID()}>
                   {(parentID) => (
                     <div class="flex items-center justify-center pb-2">
-                      <Tooltip value={props.parentTitle || "Parent session"} placement="top">
+                      <Tooltip value={props.parentTitle || _(S.dockParentSession)} placement="top">
                         <button
                           type="button"
                           class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
@@ -127,10 +129,10 @@ export function PromptDock(props: {
                           text-12-medium text-text-weak hover:text-text-base
                           active:scale-95
                           transition-all duration-150"
-                          onClick={() => props.navigate(untrack(parentID))}
+                          onClick={() => props.navigate(untrack(parentID), "return-to-parent")}
                         >
                           <Icon name={getSemanticIcon("navigation.back")} size="small" />
-                          <span>Back to parent</span>
+                          <span>{_(S.dockBackToParent)}</span>
                         </button>
                       </Tooltip>
                     </div>
@@ -139,7 +141,7 @@ export function PromptDock(props: {
                 <Show when={forkSourceID()}>
                   {(sourceID) => (
                     <div class="flex items-center justify-center pb-2">
-                      <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
+                      <Tooltip value={props.forkedFromTitle || _(S.dockForkSourceTooltip)} placement="top">
                         <button
                           type="button"
                           class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
@@ -150,7 +152,7 @@ export function PromptDock(props: {
                           onClick={() => props.navigate(untrack(sourceID))}
                         >
                           <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-                          <span>Forked from</span>
+                          <span>{_(S.dockForkedFrom)}</span>
                         </button>
                       </Tooltip>
                     </div>
@@ -169,7 +171,7 @@ export function PromptDock(props: {
                         onClick={() => nav(untrack(from))}
                       >
                         <Icon name={getSemanticIcon("navigation.back")} size="small" />
-                        <span>Back</span>
+                        <span>{_(S.dockBack)}</span>
                       </button>
                     </div>
                   )}
@@ -183,8 +185,8 @@ export function PromptDock(props: {
                     newSessionCanCreateWorktree={!props.isGlobal}
                     onNewSessionWorkspaceSelectionChange={props.onNewSessionWorkspaceSelectionChange}
                     onNewSessionWorkspaceSelectionReset={props.onNewSessionWorkspaceSelectionReset}
-                    onNewSessionStartProgress={props.onNewSessionStartProgress}
-                    workspaceTransitionPending={props.workspaceTransitionPending()}
+                    onNewSessionTransitionChange={props.onNewSessionTransitionChange}
+                    sessionTransitionPending={props.sessionTransitionPending()}
                     hideAgentSelector={!meta().showInputBar}
                     onPriorityControlChange={(control) => setPriorityControl(() => control)}
                   />

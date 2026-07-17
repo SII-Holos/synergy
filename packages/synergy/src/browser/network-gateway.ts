@@ -11,14 +11,20 @@ interface OwnerGrant {
   sockets: Set<net.Socket>
 }
 
+interface Gateway {
+  server: http.Server
+  address: { host: string; port: number }
+}
+
 export interface BrowserProxyDescriptor {
   server: string
   username: string
   password: string
 }
 
-let server: http.Server | null = null
-let address: { host: string; port: number } | null = null
+let gateway: Gateway | null = null
+let starting: Promise<Gateway> | null = null
+let stopping: Promise<void> | null = null
 const grantsByOwner = new Map<string, OwnerGrant>()
 const grantsByUsername = new Map<string, OwnerGrant>()
 const sockets = new Set<net.Socket>()
@@ -30,20 +36,28 @@ class BrowserProxyAuthenticationError extends Error {}
 
 export namespace BrowserNetworkGateway {
   export async function proxyFor(owner: BrowserOwner.Info): Promise<BrowserProxyDescriptor> {
-    await ensure()
-    const ownerKey = BrowserOwner.key(owner)
-    let grant = grantsByOwner.get(ownerKey)
-    if (!grant) {
-      grant = {
-        username: randomBytes(16).toString("hex"),
-        password: randomBytes(32).toString("hex"),
-        activeConnections: 0,
-        sockets: new Set(),
+    while (true) {
+      const current = await ensure()
+      if (stopping || gateway !== current) continue
+
+      const ownerKey = BrowserOwner.key(owner)
+      let grant = grantsByOwner.get(ownerKey)
+      if (!grant) {
+        grant = {
+          username: randomBytes(16).toString("hex"),
+          password: randomBytes(32).toString("hex"),
+          activeConnections: 0,
+          sockets: new Set(),
+        }
+        grantsByOwner.set(ownerKey, grant)
+        grantsByUsername.set(grant.username, grant)
       }
-      grantsByOwner.set(ownerKey, grant)
-      grantsByUsername.set(grant.username, grant)
+      return {
+        server: `http://${current.address.host}:${current.address.port}`,
+        username: grant.username,
+        password: grant.password,
+      }
     }
-    return { server: `http://${address!.host}:${address!.port}`, username: grant.username, password: grant.password }
   }
 
   export function revoke(owner: BrowserOwner.Info): void {
@@ -55,38 +69,77 @@ export namespace BrowserNetworkGateway {
     for (const socket of grant.sockets) socket.destroy()
   }
 
-  export async function stop(): Promise<void> {
-    const active = server
-    server = null
-    address = null
-    grantsByOwner.clear()
-    grantsByUsername.clear()
-    for (const socket of sockets) socket.destroy()
-    sockets.clear()
-    for (const socket of upstreamSockets) socket.destroy()
-    upstreamSockets.clear()
-    if (!active) return
-    await new Promise<void>((resolve) => active.close(() => resolve()))
+  export function stop(): Promise<void> {
+    if (stopping) return stopping
+    stopping = stopGateway().finally(() => {
+      stopping = null
+    })
+    return stopping
   }
 
-  async function ensure(): Promise<void> {
-    if (server && address) return
-    const next = http.createServer(handleHttp)
-    next.on("connect", handleConnect)
-    next.on("connection", (socket) => {
-      sockets.add(socket)
-      socket.once("close", () => sockets.delete(socket))
-    })
-    next.on("clientError", (_error, socket) => socket.destroy())
-    await new Promise<void>((resolve, reject) => {
-      next.once("error", reject)
-      next.listen(0, "127.0.0.1", () => resolve())
-    })
-    const bound = next.address()
-    if (!bound || typeof bound === "string") throw new Error("Browser Network Gateway failed to bind.")
-    server = next
-    address = { host: "127.0.0.1", port: bound.port }
+  async function ensure(): Promise<Gateway> {
+    while (true) {
+      const pendingStop = stopping
+      if (pendingStop) {
+        await pendingStop
+        continue
+      }
+      if (gateway) return gateway
+
+      const pendingStart = starting ?? startGateway()
+      if (!starting) starting = pendingStart
+      let current: Gateway
+      try {
+        current = await pendingStart
+      } finally {
+        if (starting === pendingStart) starting = null
+      }
+      const pendingShutdown = stopping
+      if (!pendingShutdown && gateway === current) return current
+      if (pendingShutdown) await pendingShutdown
+    }
   }
+}
+
+async function startGateway(): Promise<Gateway> {
+  const next = http.createServer(handleHttp)
+  next.on("connect", handleConnect)
+  next.on("connection", (socket) => {
+    sockets.add(socket)
+    socket.once("close", () => sockets.delete(socket))
+  })
+  next.on("clientError", (_error, socket) => socket.destroy())
+  await new Promise<void>((resolve, reject) => {
+    next.once("error", reject)
+    next.listen(0, "127.0.0.1", () => resolve())
+  })
+  const bound = next.address()
+  if (!bound || typeof bound === "string") throw new Error("Browser Network Gateway failed to bind.")
+  const current = { server: next, address: { host: "127.0.0.1", port: bound.port } }
+  gateway = current
+  return current
+}
+
+async function stopGateway(): Promise<void> {
+  const pending = starting
+  if (pending) {
+    try {
+      await pending
+    } catch {
+      // Failed starts have no bound server to close.
+    }
+  }
+
+  const active = gateway
+  gateway = null
+  grantsByOwner.clear()
+  grantsByUsername.clear()
+  for (const socket of sockets) socket.destroy()
+  sockets.clear()
+  for (const socket of upstreamSockets) socket.destroy()
+  upstreamSockets.clear()
+  if (!active) return
+  await new Promise<void>((resolve) => active.server.close(() => resolve()))
 }
 
 async function handleHttp(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {

@@ -1,12 +1,14 @@
 import { type AssistantMessage, type TextPart } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 import { createMemo } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Markdown } from "./markdown"
 import { Icon } from "./icon"
-import { DateTime } from "luxon"
 
 import "./command-result-output.css"
 import { getSemanticIcon } from "./semantic-icon"
+
+const commandOutputLabelDescriptor = { id: "ui.commandResultOutput.label", message: "Command output" }
 
 export function CommandResultOutput(props: {
   message: AssistantMessage
@@ -15,6 +17,7 @@ export function CommandResultOutput(props: {
     container?: string
   }
 }) {
+  const { _ } = useLingui()
   const data = useData()
 
   const parts = createMemo(() => data.store.part[props.message.id] ?? [])
@@ -23,7 +26,7 @@ export function CommandResultOutput(props: {
 
   const timestamp = createMemo(() => {
     const ms = props.message.time.created
-    return DateTime.fromMillis(ms).toFormat("HH:mm")
+    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   })
 
   const textContent = createMemo(() => {
@@ -36,7 +39,7 @@ export function CommandResultOutput(props: {
   const label = createMemo(() => {
     const name = commandName()
     if (name) return `/${name}`
-    return "Command output"
+    return _(commandOutputLabelDescriptor)
   })
 
   return (

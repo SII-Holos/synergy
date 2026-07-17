@@ -14,6 +14,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { Embedding } from "@/vector/embedding"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -48,12 +49,16 @@ export namespace GlobalRuntime {
 
   export async function stop() {
     Agenda.stop()
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await Channel.stopAll().catch(() => undefined)
-      },
-    })
+    await Promise.all([
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await Channel.stopAll().catch(() => undefined)
+        },
+      }),
+      MCP.stop(),
+      Embedding.dispose(),
+    ])
     started = undefined
   }
 

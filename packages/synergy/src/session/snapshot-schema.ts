@@ -90,10 +90,14 @@ export namespace SnapshotSchema {
     }
   }
 
+  export function boundArray(diffs: readonly FileDiff[]): FileDiff[] {
+    return SessionBounds.diffAggregate(diffs)
+  }
+
   export function normalizeArray(value: unknown): FileDiff[] | undefined {
     if (!Array.isArray(value)) return undefined
     const result = value.map(normalize).filter((item): item is FileDiff => item !== undefined)
-    return result.length > 0 ? result : []
+    return boundArray(result)
   }
 
   function simplePreview(before: string, after: string): string {

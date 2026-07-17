@@ -1,4 +1,5 @@
 // @refresh reload
+import { AP } from "@/app-i18n"
 import { render } from "solid-js/web"
 import { AppBaseProviders, AppInterface } from "@/app"
 import { Platform, PlatformProvider } from "@/context/platform"
@@ -21,6 +22,7 @@ declare global {
       }
       theme?: Platform["desktopTheme"]
       window?: Platform["desktopWindow"]
+      badge?: Platform["desktopBadge"]
     }
   }
 }
@@ -54,6 +56,7 @@ const platform: Platform = {
   desktopServer: window.synergyDesktop?.server,
   desktopWindow: window.synergyDesktop?.window,
   desktopTheme: window.synergyDesktop?.theme,
+  desktopBadge: window.synergyDesktop?.badge,
   clipboard: window.synergyDesktop?.clipboard,
   openDirectoryPickerDialog: window.synergyDesktop?.openDirectoryPickerDialog,
   openLink(url: string) {
@@ -100,13 +103,15 @@ const platform: Platform = {
 
 window.addEventListener(APP_SURFACE_READY_EVENT, scheduleBootShellRemoval, { once: true })
 
+// Clipboard configuration is module-level init; configureClipboard runs once before
+// the LocaleProvider tree is mounted, so the strings passed here must be static.
 configureClipboard({
   writer: platform.clipboard?.writeText,
   onFailure: (failure) => {
     showToast({
       type: "error",
-      title: "Copy failed",
-      description: failure.description ?? "Unable to copy to the clipboard.",
+      title: AP.entryCopyFailed.message,
+      description: failure.description ?? AP.entryCopyFailedDetail.message,
     })
   },
 })

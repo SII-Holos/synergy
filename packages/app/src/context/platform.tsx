@@ -93,6 +93,10 @@ export type ClipboardBridge = {
   writeText(text: string): Promise<boolean>
 }
 
+export type DesktopBadgeBridge = {
+  setState(state: { count: number }): Promise<void>
+}
+
 export type Platform = {
   /** Platform discriminator */
   platform: "web" | "desktop"
@@ -129,6 +133,9 @@ export type Platform = {
 
   /** Desktop theme bridge, provided by the desktop shell. */
   desktopTheme?: DesktopThemeBridge
+
+  /** Desktop unread badge bridge, provided by the desktop shell. */
+  desktopBadge?: DesktopBadgeBridge
 
   /** Clipboard bridge, provided by the desktop shell when browser clipboard permissions are not enough. */
   clipboard?: ClipboardBridge

@@ -1,4 +1,6 @@
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import type { I18n } from "@lingui/core"
+import { statusBar as copy } from "@/locales/messages"
 
 export type SubsessionCursor = {
   lastActivityAt: number
@@ -18,11 +20,17 @@ export function normalizeSubsessionSearch(value: string): string {
   return value.trim()
 }
 
-export function subsessionRangeLabel(pageIndex: number, pageSize: number, itemCount: number, total: number): string {
-  if (total <= 0 || itemCount <= 0) return "0 of 0"
+export function subsessionRangeLabel(
+  pageIndex: number,
+  pageSize: number,
+  itemCount: number,
+  total: number,
+  i18n: I18n,
+): string {
+  if (total <= 0 || itemCount <= 0) return i18n._(copy.emptyRange)
   const start = pageIndex * pageSize + 1
   const end = Math.min(start + itemCount - 1, total)
-  return `${start}-${end} of ${total}`
+  return i18n._({ ...copy.range, values: { start, end, total } })
 }
 
 export function subsessionCursorParams(cursor: SubsessionCursor | null | undefined): {

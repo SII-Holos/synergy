@@ -18,7 +18,7 @@ function entry(input: Partial<NavEntry> & Pick<NavEntry, "id">): NavEntry {
     lastActivityAt: input.lastActivityAt ?? 0,
     pinned: input.pinned ?? 0,
     archived: input.archived ?? false,
-    completionNotice: input.completionNotice ?? { unread: false },
+    completionNotice: input.completionNotice ?? { unread: false, unreadCount: 0 },
   }
 }
 
@@ -58,7 +58,12 @@ describe("orderNavEntries", () => {
 
 describe("mergeNavListByID", () => {
   test("updates existing nav rows by id while applying refreshed fields", () => {
-    const previous = entry({ id: "session", title: "Old title", completionNotice: { unread: true }, lastActivityAt: 1 })
+    const previous = entry({
+      id: "session",
+      title: "Old title",
+      completionNotice: { unread: true, unreadCount: 2 },
+      lastActivityAt: 1,
+    })
     const next = entry({ id: "session", title: "New title", lastActivityAt: 20 })
 
     const merged = mergeNavListByID(list([previous]), list([next]))
@@ -90,7 +95,7 @@ describe("navUpdateFromSession", () => {
       pinned: 3,
       parentID: "p1",
       time: { updated: 1234, archived: 0 },
-      completionNotice: { unread: true },
+      completionNotice: { unread: true, unreadCount: 2 },
     })
     expect(u).toEqual({
       id: "s1",
@@ -100,6 +105,7 @@ describe("navUpdateFromSession", () => {
       archived: false,
       parentID: "p1",
       completionNoticeUnread: true,
+      completionNoticeUnreadCount: 2,
     })
   })
 
@@ -177,12 +183,13 @@ describe("applySessionToNavList", () => {
   })
 
   test("preserves prior fields when the update omits them", () => {
-    const l = list([entry({ id: "a", title: "keep", pinned: 2, completionNotice: { unread: true } })])
+    const l = list([entry({ id: "a", title: "keep", pinned: 2, completionNotice: { unread: true, unreadCount: 2 } })])
     const r = applySessionToNavList(l, { id: "a", archived: false, lastActivityAt: 50 })
     const updated = r.list.items[0]
     expect(updated.title).toBe("keep")
     expect(updated.pinned).toBe(2)
     expect(updated.completionNotice.unread).toBe(true)
+    expect(updated.completionNotice.unreadCount).toBe(2)
     expect(updated.lastActivityAt).toBe(50)
   })
 })

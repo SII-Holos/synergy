@@ -1,4 +1,3 @@
-import { $ } from "bun"
 import * as fs from "fs/promises"
 import os from "os"
 import path from "path"
@@ -13,16 +12,65 @@ type TmpDirOptions<T> = {
   init?: (dir: string) => Promise<T>
   dispose?: (dir: string) => Promise<T>
 }
+
+type GitCommandResult = {
+  exitCode: number
+  stderr: string
+}
+
+export type GitFixtureRunner = (args: string[], cwd: string) => Promise<GitCommandResult>
+
+const GIT_FIXTURE_INIT_MAX_ATTEMPTS = 3
+const GIT_FIXTURE_INIT_RETRY_MS = 25
+
+async function runGitCommand(args: string[], cwd: string): Promise<GitCommandResult> {
+  try {
+    const child = Bun.spawn(["git", ...args], {
+      cwd,
+      stdin: "ignore",
+      stdout: "ignore",
+      stderr: "pipe",
+    })
+    const [stderr, exitCode] = await Promise.all([new Response(child.stderr).text(), child.exited])
+    return { exitCode, stderr }
+  } catch (error) {
+    return { exitCode: -1, stderr: error instanceof Error ? error.message : String(error) }
+  }
+}
+
+async function runGitFixtureStage(stage: string, args: string[], cwd: string, run: GitFixtureRunner) {
+  const maxAttempts = args[0] === "init" ? GIT_FIXTURE_INIT_MAX_ATTEMPTS : 1
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await run(args, cwd)
+    if (result.exitCode === 0) return
+    if (result.exitCode === 141 && attempt < maxAttempts) {
+      await Bun.sleep(GIT_FIXTURE_INIT_RETRY_MS * attempt)
+      continue
+    }
+    throw new Error(
+      `Git fixture ${stage} failed with exit code ${result.exitCode}: ${result.stderr.trim() || "no stderr"}`,
+    )
+  }
+}
+
+export async function initializeGitFixture(dirpath: string, run: GitFixtureRunner = runGitCommand) {
+  await runGitFixtureStage("init", ["init"], dirpath, run)
+  await fs.appendFile(
+    path.join(dirpath, ".git", "config"),
+    "\n[user]\n\temail = test@synergy.dev\n\tname = Test Agent\n",
+  )
+  const commitId = Math.random().toString(36).slice(2)
+  await runGitFixtureStage(
+    "root commit",
+    ["commit", "--allow-empty", "--no-gpg-sign", "-m", `root commit ${commitId}`],
+    dirpath,
+    run,
+  )
+}
 export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   const dirpath = Filesystem.sanitizePath(path.join(os.tmpdir(), "synergy-test-" + Math.random().toString(36).slice(2)))
   await fs.mkdir(dirpath, { recursive: true })
-  if (options?.git) {
-    await $`git init`.cwd(dirpath).quiet()
-    await $`git config user.email test@synergy.dev`.cwd(dirpath).quiet()
-    await $`git config user.name "Test Agent"`.cwd(dirpath).quiet()
-    const commitId = Math.random().toString(36).slice(2)
-    await $`git commit --allow-empty -m ${"root commit " + commitId}`.cwd(dirpath).quiet()
-  }
+  if (options?.git) await initializeGitFixture(dirpath)
   if (options?.config) {
     const fragments = ConfigDomain.split({
       $schema: "https://synergy.holosai.io/config.json",

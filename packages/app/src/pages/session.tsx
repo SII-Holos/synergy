@@ -17,7 +17,6 @@ import { useSync } from "@/context/sync"
 import { useTerminal } from "@/context/terminal"
 import { useLayout } from "@/context/layout"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
-import { DateTime } from "luxon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useCommand } from "@/context/command"
 import { useLocation, useNavigate, useParams } from "@solidjs/router"
@@ -37,10 +36,13 @@ import { requestErrorMessage } from "@/utils/error"
 import { useSessionCommands } from "@/components/session/commands"
 import { useSessionMeta } from "@/composables/use-session-meta"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
+import { replaceSessionHistoryUrl, sessionRouteReplaceOptions } from "@/composables/use-navigate-to-session-model"
 import { SessionConversation } from "@/components/session/conversation"
 import { PromptDock } from "@/components/session/prompt-dock"
 import { SessionContextPanel } from "@/components/session/session-context-panel"
 import { useWorkbenchPanels } from "@/context/workbench"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
@@ -53,17 +55,21 @@ import {
   normalizePathForCompare,
   worktreeSetupFailureMessage,
   type NewSessionWorkspaceSelection,
-  type SessionWorkspaceProgressActions,
-  type SessionWorkspaceProgress,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
+import {
+  isSessionTransitionBlocking,
+  type SessionTransitionActions,
+  type SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
-import { sessionLoadView } from "@/components/session/session-load-state"
+import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
+import { useSessionTransition } from "@/context/session-transition"
 
 const handoff = {
   prompt: "",
@@ -99,7 +105,9 @@ function SessionPageContent() {
   const sdk = useSDK()
   const navigateToSession = useNavigateToSession()
   const prompt = usePrompt()
+  const { fmt, i18n } = useLocale()
   const workbench = useWorkbenchPanels()
+  const sessionTransition = useSessionTransition()
   const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
   const tabs = createMemo(() => layout.tabs(sessionKey()))
   const sideSurface = createMemo(() => layout.surface(sessionKey(), "side"))
@@ -162,60 +170,34 @@ function SessionPageContent() {
   const rollback = createMemo(() => info()?.history?.rollback)
   const rollbackActive = createMemo(() => rollback()?.canUnrollback === true)
   const [rollbackDismissed, setRollbackDismissed] = createSignal(false)
-  const [workspaceProgress, setWorkspaceProgress] = createSignal<Record<string, SessionWorkspaceProgress>>({})
-  const [workspaceProgressActions, setWorkspaceProgressActions] = createSignal<
-    Record<string, SessionWorkspaceProgressActions>
-  >({})
-  const visibleWorkspaceProgress = createMemo(() => {
-    const sessionID = params.id
-    if (!sessionID) return null
-    return workspaceProgress()[sessionID] ?? null
-  })
-  const visibleWorkspaceProgressActions = createMemo(() => {
+  const visibleSessionTransitionEntry = createMemo(() => {
     const sessionID = params.id
     if (!sessionID) return undefined
-    return workspaceProgressActions()[sessionID]
+    return sessionTransition.get(sessionID)
   })
-  const workspaceTransitionPending = createMemo(() => visibleWorkspaceProgress()?.phase === "loading")
-  const clearWorkspaceProgress = (sessionID: string) => {
-    setWorkspaceProgress((current) => {
-      const next = { ...current }
-      delete next[sessionID]
-      return next
-    })
-    setWorkspaceProgressActions((current) => {
-      const next = { ...current }
-      delete next[sessionID]
-      return next
-    })
-  }
-  const setVisibleWorkspaceProgress = (
-    sessionID: string,
-    progress: SessionWorkspaceProgress,
-    actions?: SessionWorkspaceProgressActions,
-  ) => {
-    setWorkspaceProgress((current) => ({ ...current, [sessionID]: progress }))
-    setWorkspaceProgressActions((current) => {
-      if (actions?.retry || actions?.dismiss) return { ...current, [sessionID]: actions }
-      const next = { ...current }
-      delete next[sessionID]
-      return next
-    })
-  }
+  const visibleSessionTransition = createMemo(() => visibleSessionTransitionEntry()?.progress ?? null)
+  const visibleSessionTransitionActions = createMemo(() => visibleSessionTransitionEntry()?.actions)
+  const sessionTransitionPending = createMemo(() => isSessionTransitionBlocking(visibleSessionTransition()))
+  const clearSessionTransition = sessionTransition.clear
+  const setSessionTransition = sessionTransition.set
   const startWorkspaceTransition = (request: SessionWorkspaceTransitionRequest) => {
-    if (workspaceProgress()[request.sessionID]?.phase === "loading") return
+    if (sessionTransition.get(request.sessionID)?.progress.phase === "loading") return
     const retry = () => startWorkspaceTransition(request)
-    setVisibleWorkspaceProgress(request.sessionID, createWorkspaceTransitionLoadingProgress(request))
+    setSessionTransition(request.sessionID, createWorkspaceTransitionLoadingProgress(request))
     const run = async () => {
       try {
         if (request.operation === "leave") {
           await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
           const progress = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
           await sync.session.sync(request.sessionID).catch(() => undefined)
-          setVisibleWorkspaceProgress(request.sessionID, progress, {
-            dismiss: () => clearWorkspaceProgress(request.sessionID),
+          setSessionTransition(request.sessionID, progress, {
+            dismiss: () => clearSessionTransition(request.sessionID),
           })
-          showToast({ type: "info", title: "Left worktree", description: "Session returned to the main checkout." })
+          showToast({
+            type: "info",
+            title: i18n._(AP.layoutLeftWorktree.id),
+            description: i18n._(AP.layoutWorktreeLeftToast.id),
+          })
           return
         }
 
@@ -236,17 +218,17 @@ function SessionPageContent() {
           throw new Error(setupFailure)
         }
         const description = result.data?.name
-          ? `This session now runs in ${result.data.name}.`
-          : "This session now runs in the new worktree."
+          ? i18n._(AP.layoutWorktreeDesc.id, { name: result.data.name })
+          : i18n._(AP.layoutWorktreeDescDefault.id)
         const progress = createWorkspaceTransitionSuccessProgress({ operation: "enter", description })
         await sync.session.sync(request.sessionID).catch(() => undefined)
-        setVisibleWorkspaceProgress(request.sessionID, progress, {
-          dismiss: () => clearWorkspaceProgress(request.sessionID),
+        setSessionTransition(request.sessionID, progress, {
+          dismiss: () => clearSessionTransition(request.sessionID),
         })
-        showToast({ type: "info", title: "Moved to worktree", description })
+        showToast({ type: "info", title: i18n._(AP.layoutMovedToWorktree.id), description })
       } catch (error) {
         const message = requestErrorMessage(error)
-        setVisibleWorkspaceProgress(
+        setSessionTransition(
           request.sessionID,
           createWorkspaceTransitionErrorProgress({
             operation: request.operation,
@@ -254,28 +236,31 @@ function SessionPageContent() {
           }),
           {
             retry,
-            dismiss: () => clearWorkspaceProgress(request.sessionID),
+            dismiss: () => clearSessionTransition(request.sessionID),
           },
         )
         showToast({
           type: "error",
-          title: request.operation === "leave" ? "Leave worktree failed" : "Move to worktree failed",
+          title:
+            request.operation === "leave"
+              ? i18n._(AP.layoutLeaveWorktreeFailed.id)
+              : i18n._(AP.layoutMoveWorktreeFailed.id),
           description: message,
         })
       }
     }
     void run()
   }
-  const setNewSessionWorkspaceProgress = (input: {
+  const setNewSessionTransition = (input: {
     sessionID: string
-    progress: SessionWorkspaceProgress | null
-    actions?: SessionWorkspaceProgressActions
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
   }) => {
     if (!input.progress) {
-      clearWorkspaceProgress(input.sessionID)
+      clearSessionTransition(input.sessionID)
       return
     }
-    setVisibleWorkspaceProgress(input.sessionID, input.progress, input.actions)
+    setSessionTransition(input.sessionID, input.progress, input.actions)
   }
   // A fresh rewind (new rollback event id) always shows its banner, even if a
   // previous banner was dismissed.
@@ -310,11 +295,6 @@ function SessionPageContent() {
     }
     if (hidden.size === 0) return raw
     return raw.filter((message) => !hidden.has(message.id))
-  })
-  const isNewSession = createMemo(() => {
-    if (!params.id) return true
-    if (isHomeScope(sdk.scopeKey) && (messages()?.length ?? 0) === 0) return true
-    return false
   })
   const openRewindConfirm = (message: UserMessage | undefined) => {
     if (!message?.id) return
@@ -467,6 +447,11 @@ function SessionPageContent() {
       .filter((item) => item.message?.visible !== false)
       .filter((item) => (item.message?.origin?.type ?? item.source?.type) === "user")
   })
+  const isNewSession = createMemo(() => {
+    if (!params.id) return true
+    if (!isHomeScope(sdk.scopeKey)) return false
+    return (messages()?.length ?? 0) === 0 && pendingTimeline().length === 0 && visibleSessionTransition() === null
+  })
   const guidePending = async (item: SessionInboxItem) => {
     const sessionID = params.id
     if (!sessionID) return
@@ -511,7 +496,7 @@ function SessionPageContent() {
   const lastModified = createMemo(() => {
     const scope = sync.scope
     if (!scope) return undefined
-    return DateTime.fromMillis(scope.time.updated ?? scope.time.created).toRelative()
+    return fmt.relative(scope.time.updated ?? scope.time.created)
   })
 
   const activeMessage = createMemo(() => {
@@ -521,7 +506,12 @@ function SessionPageContent() {
   })
   const conversationLoadView = createMemo(() =>
     sessionLoadView({
-      hasRenderableContent: !!(activeMessage() || (timeline()?.length ?? 0) > 0 || visibleWorkspaceProgress()),
+      hasRenderableContent: hasSessionRenderableContent({
+        hasActiveMessage: !!activeMessage(),
+        timelineCount: timeline()?.length ?? 0,
+        pendingTimelineCount: pendingTimeline().length,
+        hasTransition: visibleSessionTransition() !== null,
+      }),
       messages: params.id ? sync.data.message[params.id] : [],
       load: messageLoad(),
       delayed: messageLoadDelayed(),
@@ -656,7 +646,7 @@ function SessionPageContent() {
     const sessionScope = session.scope.type === "home" ? HOME_SCOPE_KEY : session.scope.directory
     if (!sessionScope) return
     if (normalizePathForCompare(routeScope) === normalizePathForCompare(sessionScope)) return
-    navigate(`/${base64Encode(sessionScope)}/session/${id}`, { replace: true })
+    navigate(`/${base64Encode(sessionScope)}/session/${id}`, sessionRouteReplaceOptions(location.state))
   })
   const parentSession = createMemo(() => {
     const current = currentSession()
@@ -678,15 +668,15 @@ function SessionPageContent() {
     const session = currentSession()
     let title: string
     if (isHomeScope(sdk.scopeKey)) {
-      title = "Home"
+      title = i18n._(AP.sessionTitleHome.id)
     } else {
-      title = session?.title || "New session"
+      title = session?.title || i18n._(AP.sessionTitleNew.id)
     }
-    document.title = `${title} — Synergy`
+    document.title = i18n._(AP.sessionTitleTemplate.id, { title })
   })
 
   onCleanup(() => {
-    document.title = "Synergy"
+    document.title = i18n._(AP.sessionTitleApp.id)
   })
 
   createEffect(
@@ -811,12 +801,12 @@ function SessionPageContent() {
   )
 
   const updateHash = (id: string) => {
-    window.history.replaceState(null, "", `#${anchor(id)}`)
+    replaceSessionHistoryUrl(window.history, `#${anchor(id)}`)
   }
 
   const clearHash = () => {
     if (!window.location.hash) return
-    window.history.replaceState(null, "", window.location.pathname + window.location.search)
+    replaceSessionHistoryUrl(window.history, window.location.pathname + window.location.search)
   }
 
   const scrollToMessage = (message: UserMessage, behavior: ScrollBehavior = "smooth") => {
@@ -988,7 +978,7 @@ function SessionPageContent() {
             <div class="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
               <SessionTopBar
                 onWorkspaceTransition={startWorkspaceTransition}
-                workspaceTransitionPending={workspaceTransitionPending}
+                sessionTransitionPending={sessionTransitionPending}
               />
               <Show when={showRollbackBanner()}>
                 <RollbackBanner
@@ -1008,8 +998,8 @@ function SessionPageContent() {
                           paramsDir={params.dir!}
                           timeline={timeline}
                           pendingTimeline={pendingTimeline}
-                          workspaceTransition={visibleWorkspaceProgress}
-                          workspaceTransitionActions={visibleWorkspaceProgressActions}
+                          sessionTransition={visibleSessionTransition}
+                          sessionTransitionActions={visibleSessionTransitionActions}
                           visibleUserMessages={visibleUserMessages}
                           lastUserMessage={lastRenderableUserMessage}
                           activeMessage={activeMessage}
@@ -1066,7 +1056,7 @@ function SessionPageContent() {
                       >
                         <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger">
                           <Spinner class="size-10 text-text-weak" />
-                          <span class="text-sm text-text-weak">Loading conversation…</span>
+                          <span class="text-sm text-text-weak">{i18n._(AP.sessionLoading.id)}</span>
                           <Show when={conversationLoadView().type === "delayed-loading"}>
                             <button
                               type="button"
@@ -1074,14 +1064,14 @@ function SessionPageContent() {
                               onClick={() => void refreshConversation()}
                             >
                               <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                              <span>Retry</span>
+                              <span>{i18n._(AP.sessionRetry.id)}</span>
                             </button>
                           </Show>
                         </div>
                       </Match>
                       <Match when={conversationLoadView().type === "initial-error"}>
                         <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
-                          <span class="text-sm text-text-strong">Couldn’t load conversation</span>
+                          <span class="text-sm text-text-strong">{i18n._(AP.sessionErrorTitle.id)}</span>
                           <span class="max-w-md text-sm text-text-weak">{conversationLoadError()}</span>
                           <button
                             type="button"
@@ -1089,13 +1079,13 @@ function SessionPageContent() {
                             onClick={() => void refreshConversation()}
                           >
                             <Icon name={getSemanticIcon("action.refresh")} size="small" />
-                            <span>Retry</span>
+                            <span>{i18n._(AP.sessionRetry.id)}</span>
                           </button>
                         </div>
                       </Match>
                       <Match when={true}>
                         <div class="synergy-workbench-canvas flex h-full flex-col items-center justify-center gap-3 bg-background-stronger text-center">
-                          <span class="text-sm text-text-weak">No messages yet</span>
+                          <span class="text-sm text-text-weak">{i18n._(AP.sessionNoMessages.id)}</span>
                           <Show when={conversationLoadView().type === "empty-error"}>
                             <span class="max-w-md text-sm text-text-error">{conversationLoadError()}</span>
                           </Show>
@@ -1111,7 +1101,9 @@ function SessionPageContent() {
                               class={conversationLoadView().type === "refreshing-empty" ? "animate-spin" : undefined}
                             />
                             <span>
-                              {conversationLoadView().type === "refreshing-empty" ? "Refreshing…" : "Refresh"}
+                              {conversationLoadView().type === "refreshing-empty"
+                                ? i18n._(AP.sessionRefreshing.id)
+                                : i18n._(AP.sessionRefresh.id)}
                             </span>
                           </button>
                         </div>
@@ -1146,8 +1138,8 @@ function SessionPageContent() {
               newSessionCurrentDirectory={() => sync.data.path.directory}
               onNewSessionWorkspaceSelectionChange={(selection) => setStore("newSessionWorkspaceSelection", selection)}
               onNewSessionWorkspaceSelectionReset={() => setStore("newSessionWorkspaceSelection", undefined)}
-              onNewSessionStartProgress={setNewSessionWorkspaceProgress}
-              workspaceTransitionPending={workspaceTransitionPending}
+              onNewSessionTransitionChange={setNewSessionTransition}
+              sessionTransitionPending={sessionTransitionPending}
               scopeName={scopeName}
               branch={branch}
               lastModified={lastModified}
@@ -1200,11 +1192,13 @@ function SessionPageContent() {
             style={{ height: "50vh" }}
           >
             <div class="flex items-center justify-between px-4 h-11 shrink-0">
-              <span class="text-13-medium text-text-strong">{reviewCount()} Files Changed</span>
+              <span class="text-13-medium text-text-strong">
+                {i18n._(AP.sessionFilesChanged.id, { count: reviewCount() })}
+              </span>
               <button
                 type="button"
                 class="flex items-center justify-center size-7 rounded-lg text-icon-weak-base hover:text-icon-base hover:bg-surface-raised-base-hover transition-colors"
-                aria-label="Close review"
+                aria-label={i18n._(AP.sessionCloseReview.id)}
                 onClick={() => setStore("mobileReviewOpen", false)}
               >
                 <Icon name={getSemanticIcon("action.close")} size="small" />
@@ -1213,7 +1207,9 @@ function SessionPageContent() {
             <div class="flex-1 min-h-0 overflow-auto">
               <Show
                 when={params.id && sync.data.session_diff[params.id]}
-                fallback={<div class="px-4 py-4 text-13-regular text-text-weak">Loading changes…</div>}
+                fallback={
+                  <div class="px-4 py-4 text-13-regular text-text-weak">{i18n._(AP.sessionLoadingChanges.id)}</div>
+                }
               >
                 {(rawDiffs) => {
                   const diffsArr = Array.isArray(rawDiffs()) ? (rawDiffs() as FileDiff[]) : ([] as FileDiff[])

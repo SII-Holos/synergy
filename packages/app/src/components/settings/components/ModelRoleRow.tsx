@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
@@ -7,8 +8,26 @@ import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
 import type { ModelKey, ModelsStore, ProviderGroup } from "../types"
-import { createProviderModelIndex, fieldLabel, resolveModelRoleDraftDisplay } from "../model-role-draft"
+import { createProviderModelIndex, fieldLabel, modelRoleCopy, resolveModelRoleDraftDisplay } from "../model-role-draft"
 
+const variantDefault = { id: "settings.modelRole.variant.default", message: "Default" }
+const variantDesc = { id: "settings.modelRole.variant.desc", message: "Use the role default" }
+const variantRoleDesc = { id: "settings.modelRole.variant.role", message: "Role variant" }
+const noAgentsUse = { id: "settings.modelRole.noAgentsUse", message: "No agents directly use this role." }
+const usedByLabel = { id: "settings.modelRole.usedBy", message: "Used by" }
+const fallbackChainLabel = { id: "settings.modelRole.fallbackChain", message: "Fallback" }
+const resolutionLabel = { id: "settings.modelRole.resolution", message: "Resolution" }
+const selectModelLabel = { id: "settings.modelRole.selectModel", message: "Select model" }
+const searchModelsPlaceholder = {
+  id: "settings.modelRole.searchModels",
+  message: "Search models",
+}
+const noModelResultsLabel = { id: "settings.modelRole.noModelResults", message: "No model results" }
+const selectVariantLabel = { id: "settings.modelRole.selectVariant", message: "Select model variant" }
+const detailsAriaLabel = { id: "settings.modelRole.details.ariaLabel", message: "{label} details" }
+const systemAgentLabel = { id: "settings.modelRole.system", message: "system" }
+const overrideAgentLabel = { id: "settings.modelRole.override", message: "override" }
+const defaultGroupLabel = { id: "settings.modelRole.group.default", message: "Default" }
 type ModelRef = {
   providerID: string
   modelID: string
@@ -18,7 +37,7 @@ type ModelPickerOption =
   | {
       kind: "fallback"
       key: "fallback"
-      group: "Default"
+      group: string
       label: string
       description: string
       value: ""
@@ -52,27 +71,32 @@ export function ModelRoleRow(props: {
   onChange: (key: ModelKey, value: string) => void
   onVariantChange?: (variant: string) => void
 }) {
+  const { _ } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
   const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
+  const roleCopy = createMemo(() => modelRoleCopy(props.summary, _))
 
   const display = createMemo(() =>
-    resolveModelRoleDraftDisplay({
-      summary: props.summary,
-      value: props.value,
-      draftModels: props.draftModels,
-      savedModels: props.savedModels,
-      providerIndex: providerIndex(),
-    }),
+    resolveModelRoleDraftDisplay(
+      {
+        summary: props.summary,
+        value: props.value,
+        draftModels: props.draftModels,
+        savedModels: props.savedModels,
+        providerIndex: providerIndex(),
+      },
+      _,
+    ),
   )
 
   const options = createMemo<ModelPickerOption[]>(() => [
     {
       kind: "fallback",
       key: "fallback",
-      group: "Default",
-      label: "Use fallback",
+      group: _(defaultGroupLabel),
+      label: display().triggerLabel,
       description: display().fallbackDescription,
       value: "",
     },
@@ -95,11 +119,11 @@ export function ModelRoleRow(props: {
   })
 
   const variantOptions = createMemo<ModelVariantOption[]>(() => [
-    { key: "default", label: "Default", description: "Use the role default", value: "" },
+    { key: "default", label: _(variantDefault), description: _(variantDesc), value: "" },
     ...props.availableVariants.map((variant) => ({
       key: variant,
       label: variant,
-      description: "Role variant",
+      description: _(variantRoleDesc),
       value: variant,
     })),
   ])
@@ -124,20 +148,20 @@ export function ModelRoleRow(props: {
     <div class="settings-model-row">
       <div class="settings-model-copy">
         <div class="settings-model-title-line">
-          <span class="settings-model-title">{props.summary.label}</span>
+          <span class="settings-model-title">{roleCopy().label}</span>
           <Tooltip
             placement="right"
             value={
               <div class="settings-model-detail-popover">
                 <div>
-                  <div class="settings-model-detail-title">{props.summary.label}</div>
-                  <div class="settings-model-detail-muted">{props.summary.summary}</div>
+                  <div class="settings-model-detail-title">{roleCopy().label}</div>
+                  <div class="settings-model-detail-muted">{roleCopy().description}</div>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Used by</div>
+                  <div class="settings-model-detail-label">{_(usedByLabel)}</div>
                   <Show
                     when={props.summary.usedBy.length > 0}
-                    fallback={<div class="settings-model-detail-muted">No agents directly use this role.</div>}
+                    fallback={<div class="settings-model-detail-muted">{_(noAgentsUse)}</div>}
                   >
                     <div class="settings-model-agent-list">
                       <For each={props.summary.usedBy.slice(0, 8)}>
@@ -145,10 +169,10 @@ export function ModelRoleRow(props: {
                           <span class="settings-model-chip">
                             {agent.name}
                             <Show when={agent.hidden}>
-                              <span class="settings-model-chip-muted">system</span>
+                              <span class="settings-model-chip-muted">{_(systemAgentLabel)}</span>
                             </Show>
                             <Show when={agent.modelSource === "explicit"}>
-                              <span class="settings-model-chip-muted">override</span>
+                              <span class="settings-model-chip-muted">{_(overrideAgentLabel)}</span>
                             </Show>
                           </span>
                         )}
@@ -160,24 +184,28 @@ export function ModelRoleRow(props: {
                   </Show>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Fallback</div>
+                  <div class="settings-model-detail-label">{_(fallbackChainLabel)}</div>
                   <div class="settings-model-fallback-chain">
-                    <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field)}</span>}</For>
+                    <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field, _)}</span>}</For>
                   </div>
                 </div>
                 <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">Resolution</div>
+                  <div class="settings-model-detail-label">{_(resolutionLabel)}</div>
                   <div class="settings-model-detail-muted">{display().resolutionDescription}</div>
                 </div>
               </div>
             }
           >
-            <button type="button" class="settings-model-info-button" aria-label={`${props.summary.label} details`}>
+            <button
+              type="button"
+              class="settings-model-info-button"
+              aria-label={_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
+            >
               <Icon name={getSemanticIcon("action.info")} size="small" />
             </button>
           </Tooltip>
         </div>
-        <span class="settings-model-description">{props.summary.summary}</span>
+        <span class="settings-model-description">{roleCopy().description}</span>
       </div>
 
       <div class="settings-model-selector">
@@ -185,7 +213,7 @@ export function ModelRoleRow(props: {
           <KobaltePopover.Trigger
             type="button"
             class="settings-model-trigger"
-            aria-label={`Select ${props.summary.label} model`}
+            aria-label={`${_(selectModelLabel)} ${roleCopy().label}`}
           >
             <span class="settings-model-trigger-text">
               <span class="settings-model-trigger-title">{display().triggerLabel}</span>
@@ -197,11 +225,13 @@ export function ModelRoleRow(props: {
             {(layer) => (
               <Portal mount={layer()}>
                 <KobaltePopover.Content class="settings-model-picker-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                  <KobaltePopover.Title class="sr-only">Select {props.summary.label} model</KobaltePopover.Title>
+                  <KobaltePopover.Title class="sr-only">
+                    {_(selectModelLabel)} {roleCopy().label}
+                  </KobaltePopover.Title>
                   <List<ModelPickerOption>
                     class="settings-model-picker-list"
-                    search={{ placeholder: "Search models", autofocus: true }}
-                    emptyMessage="No model results"
+                    search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+                    emptyMessage={_(noModelResultsLabel)}
                     key={(option) => option.key}
                     items={options}
                     current={currentOption()}
@@ -229,15 +259,15 @@ export function ModelRoleRow(props: {
             placement="bottom-end"
             gutter={8}
           >
-            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label="Select model variant">
-              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? "Default"}</span>
+            <KobaltePopover.Trigger type="button" class="settings-model-variant" aria-label={_(selectVariantLabel)}>
+              <span class="settings-model-variant-label">{currentVariantOption()?.label ?? _(variantDefault)}</span>
               <Icon name="chevron-down" size="small" class="settings-model-trigger-icon" />
             </KobaltePopover.Trigger>
             <Show when={props.popoverLayer}>
               {(layer) => (
                 <Portal mount={layer()}>
                   <KobaltePopover.Content class="settings-model-variant-popover flex flex-col border border-border-base bg-surface-raised-stronger-non-alpha shadow-lg outline-none overflow-hidden">
-                    <KobaltePopover.Title class="sr-only">Select model variant</KobaltePopover.Title>
+                    <KobaltePopover.Title class="sr-only">{_(selectVariantLabel)}</KobaltePopover.Title>
                     <List<ModelVariantOption>
                       class="settings-model-picker-list"
                       key={(option) => option.key}
@@ -268,7 +298,8 @@ function sortModelGroups(
   a: { category: string; items: ModelPickerOption[] },
   b: { category: string; items: ModelPickerOption[] },
 ) {
-  if (a.category === "Default") return -1
-  if (b.category === "Default") return 1
+  const aIsDefault = a.items.some((option) => option.kind === "fallback")
+  const bIsDefault = b.items.some((option) => option.kind === "fallback")
+  if (aIsDefault !== bIsDefault) return aIsDefault ? -1 : 1
   return a.category.localeCompare(b.category)
 }

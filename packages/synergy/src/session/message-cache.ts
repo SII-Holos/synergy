@@ -1,4 +1,5 @@
 import { MessageV2 } from "./message-v2"
+import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 
 // Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
@@ -132,31 +133,16 @@ export namespace SessionMessageCache {
   }
 
   function projectModelWorkingSet(messages: MessageV2.WithParts[]) {
-    let latestSummaryIndex = -1
-    let boundaryUserID: string | undefined
-    for (let index = messages.length - 1; index >= 0; index--) {
-      const info = messages[index].info
-      if (info.role !== "assistant" || !info.summary || !info.finish) continue
-      latestSummaryIndex = index
-      boundaryUserID = info.parentID
-      break
-    }
-    if (latestSummaryIndex < 0 || !boundaryUserID) return messages
-
-    const boundaryIndex = messages.findIndex(
-      (message) =>
-        message.info.role === "user" &&
-        message.info.id === boundaryUserID &&
-        message.parts.some((part) => part.type === "compaction"),
+    const projection = modelWorkingSetProjection(messages.map((message) => message.info))
+    if (!projection) return messages
+    const boundary = messages[projection.boundaryIndex]
+    if (!boundary.parts.some((part) => part.type === "compaction")) return messages
+    return applyModelWorkingSetProjection(
+      messages,
+      projection,
+      (message) => message.info,
+      (message) => ({ ...message, info: { ...message.info, includeInContext: false } }),
     )
-    if (boundaryIndex < 0 || boundaryIndex >= latestSummaryIndex) return messages
-
-    const earlierSummaries = messages.slice(boundaryIndex + 1, latestSummaryIndex).flatMap((message) => {
-      const info = message.info
-      if (info.role !== "assistant" || info.parentID !== boundaryUserID || !info.summary || !info.finish) return []
-      return [{ ...message, info: { ...info, includeInContext: false } }]
-    })
-    return [messages[boundaryIndex], ...earlierSummaries, ...messages.slice(latestSummaryIndex)]
   }
 
   // --- Footprint accounting & LRU eviction ---
@@ -184,8 +170,10 @@ export namespace SessionMessageCache {
   }
 
   function addSize(sessionID: string, bytes: number) {
+    const current = sizes.get(sessionID)
+    if (current === undefined) return
     totalBytes += bytes
-    sizes.set(sessionID, (sizes.get(sessionID) ?? 0) + bytes)
+    sizes.set(sessionID, current + bytes)
   }
 
   // Evict least-recently-used entries until under budget, never evicting the

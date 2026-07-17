@@ -1,7 +1,9 @@
 import { createMemo, For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { ToolTextOutput } from "../tool-output-text"
 import { DiagnosticsDisplay, getDiagnostics, getDirectory, type ToolProps } from "../message-part"
+import { BODY_PRIMITIVES_DESC, ANCHORED_CHIP_DESC } from "../tool-title-descriptors"
 
 type RangeInfo = {
   startLine?: number
@@ -93,14 +95,13 @@ export function SummaryGrid(props: { rows: Array<{ label: string; value?: any } 
 }
 
 export function WarningPanel(props: { metadata: Record<string, any> }) {
+  const { _ } = useLingui()
   const count = () => conflictCount(props.metadata)
   return (
     <Show when={count() > 0}>
       <div data-component="anchored-warning" data-tone="warning">
-        <strong>Conflict markers detected</strong>
-        <span>
-          {count()} file or region{count() === 1 ? "" : "s"} may need resolution before anchored edits.
-        </span>
+        <strong>{_(BODY_PRIMITIVES_DESC.conflictTitle)}</strong>
+        <span>{_({ ...BODY_PRIMITIVES_DESC.conflictDetail, values: { count: count() } })}</span>
       </div>
     </Show>
   )
@@ -130,6 +131,7 @@ export function RawOutput(props: { output?: string }) {
 }
 
 export function SearchFiles(props: { metadata: Record<string, any>; mode: "text" | "ast" }) {
+  const { _ } = useLingui()
   const rows = () => fileRows(props.metadata)
   return (
     <Show when={rows().length > 0}>
@@ -140,7 +142,10 @@ export function SearchFiles(props: { metadata: Record<string, any>; mode: "text"
               <span data-slot="anchored-file-path">{pathLabel(row.file)}</span>
               <span data-slot="anchored-file-meta">
                 {props.mode === "ast" ? row.ranges?.slice(0, 3).join(", ") : row.lines?.slice(0, 6).join(", ")}
-                <Show when={row.tag}> · tag {row.tag}</Show>
+                <Show when={row.tag}>
+                  {" "}
+                  · {_(ANCHORED_CHIP_DESC.tag)} {row.tag}
+                </Show>
               </span>
             </div>
           )}

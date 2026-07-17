@@ -69,6 +69,15 @@ describe("ProcessRegistry.appendOutput", () => {
     expect(ProcessRegistry.outputBufferStats(proc).segments).toBeLessThan(32)
   })
 
+  test("releases fully consumed output segments", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    proc.maxOutputChars = 0
+
+    ProcessRegistry.appendOutput(proc, "x".repeat(4096))
+
+    expect(ProcessRegistry.outputBufferStats(proc).allocatedSegments).toBe(0)
+  })
+
   test("maintains the exact retained window and tail after micro-chunks exceed capacity", () => {
     const proc = ProcessRegistry.create({ command: "test" })
     const chunks: string[] = []

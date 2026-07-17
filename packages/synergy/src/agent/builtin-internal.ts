@@ -6,6 +6,7 @@ import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
 import PROMPT_AGENT_GENERATE from "./generate.txt"
 import { buildCompactionPrompt } from "./prompt/compaction/builder"
+import { createPerformanceAnalystAgent } from "./prompt/performance-analyst/builder"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
@@ -15,7 +16,9 @@ import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
 
 export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
+  const performanceAnalyst = createPerformanceAnalystAgent(ctx)
   return {
+    [performanceAnalyst.name]: performanceAnalyst,
     "multimodal-looker": {
       name: "multimodal-looker",
       prompt: PROMPT_MULTIMODAL_LOOKER,

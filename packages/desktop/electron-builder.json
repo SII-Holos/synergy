@@ -18,6 +18,14 @@
     {
       "from": "build/icon.png",
       "to": "icons/icon.png"
+    },
+    {
+      "from": "build/unread-overlay.png",
+      "to": "icons/unread-overlay.png"
+    },
+    {
+      "from": "build/icon-unread.png",
+      "to": "icons/icon-unread.png"
     }
   ],
   "files": ["dist/**", "package.json"],

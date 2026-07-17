@@ -203,7 +203,10 @@ export namespace SessionInvoke {
         runtime.waiters.push({ onComplete, onCancel })
       })
     }
-    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), { lease })
+    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), {
+      lease,
+      requestNextWorkOnFailure: false,
+    })
   })
 
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
@@ -231,6 +234,8 @@ export namespace SessionInvoke {
     let scopeID = (session.scope as Scope).id
 
     outer: while (true) {
+      let processedRootID: string | undefined
+      let previousTerminalReplyID: string | undefined
       while (true) {
         SessionManager.setStatus(sessionID, { type: "busy" })
         log.info("loop", { step, sessionID })
@@ -296,6 +301,8 @@ export namespace SessionInvoke {
         if (!SessionProgress.needsModelCall(msgs, R.id)) {
           break
         }
+        processedRootID = R.id
+        previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
 
         const jobCtx: LoopJob.Context = {
           session,
@@ -993,6 +1000,14 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         break
       }
 
+      if (processedRootID) {
+        const messages = await Session.messages({ sessionID })
+        const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
+        if (terminalReply && terminalReply.info.id !== previousTerminalReplyID) {
+          await Session.recordCompletionNotice(sessionID)
+        }
+      }
+
       // First: try mode-based next task (drains and materializes)
       const taskItem = await SessionInbox.nextTask(sessionID)
       if (taskItem) {
@@ -1011,14 +1026,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
     evictRecallCache(sessionID)
 
-    // Clear pendingReply — the loop has fully completed and the assistant has
-    // replied. Without this, a crashed/restarted server would see pendingReply=true
-    // on already-finished sessions and incorrectly mark them as pending resume.
+    // Clear pendingReply only after the loop has fully drained. Completion
+    // notices are recorded once per processed root task above.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
-      if (!abort.aborted && !draft.time.archived && !draft.completionNotice.silent) {
-        draft.completionNotice.unread = true
-      }
     })
 
     let resultMessage = selectResultMessage(await SessionHistory.modelMessages({ sessionID }))
@@ -1176,10 +1187,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
-      if (!draft.time.archived && !draft.completionNotice.silent) {
-        draft.completionNotice.unread = true
-      }
     })
+    await Session.recordCompletionNotice(sessionID)
     Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),

@@ -11,6 +11,7 @@ import { Flag } from "@/flag/flag"
 import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionMessageCache } from "./message-cache"
+import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 
 const log = Log.create({ service: "session.history" })
 import { SessionManager } from "./manager"
@@ -311,31 +312,17 @@ export namespace SessionHistory {
     const effective = applyEventsToInfo(canonicalInfos, events)
     if (effective.length === 0) return []
 
-    let latestSummaryIndex = -1
-    let boundaryUserID: string | undefined
-    for (let index = effective.length - 1; index >= 0; index--) {
-      const info = effective[index]
-      if (info.role !== "assistant" || !info.summary || !info.finish) continue
-      latestSummaryIndex = index
-      boundaryUserID = info.parentID
-      break
-    }
-
     let selected = effective
-    if (latestSummaryIndex >= 0 && boundaryUserID) {
-      const boundaryIndex = effective.findIndex(
-        (info, index) => index < latestSummaryIndex && info.role === "user" && info.id === boundaryUserID,
-      )
-      if (boundaryIndex >= 0) {
-        const boundaryParts = await loadParts(boundaryUserID)
-        if (boundaryParts.some((part) => part.type === "compaction")) {
-          const earlierSummaries = effective.slice(boundaryIndex + 1, latestSummaryIndex).flatMap((info) => {
-            if (info.role !== "assistant" || info.parentID !== boundaryUserID || !info.summary || !info.finish)
-              return []
-            return [{ ...info, includeInContext: false }]
-          })
-          selected = [effective[boundaryIndex], ...earlierSummaries, ...effective.slice(latestSummaryIndex)]
-        }
+    const projection = modelWorkingSetProjection(effective)
+    if (projection) {
+      const boundaryParts = await loadParts(projection.boundaryUserID)
+      if (boundaryParts.some((part) => part.type === "compaction")) {
+        selected = applyModelWorkingSetProjection(
+          effective,
+          projection,
+          (info) => info,
+          (info) => ({ ...info, includeInContext: false }),
+        )
       }
     }
 
@@ -487,15 +474,16 @@ export namespace SessionHistory {
   }
 
   async function writeEvent(event: Event) {
+    const { SessionSummary } = await import("./summary")
     SessionManager.bumpHistoryRevision(event.sessionID)
     const session = await SessionManager.requireSession(event.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.remove(StoragePath.sessionSummaryCursor(scopeID, asSessionID(event.sessionID)))
+    await SessionSummary.invalidateDerivedState(event.sessionID, scopeID)
     await Storage.write(
       StoragePath.sessionHistoryEvent(scopeID, asSessionID(event.sessionID), asHistoryID(event.id)),
       event,
     )
-    await Storage.remove(StoragePath.sessionSummaryCursor(scopeID, asSessionID(event.sessionID)))
+    await SessionSummary.invalidateDerivedState(event.sessionID, scopeID)
     SessionManager.bumpHistoryRevision(event.sessionID)
     SessionMessageCache.invalidate(event.sessionID)
   }

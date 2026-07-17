@@ -13,6 +13,15 @@
 // reactive store.
 
 export type ModelKey = { providerID: string; modelID: string }
+export function handoffNewSessionDraft<T>(
+  draft: Record<string, T>,
+  newSessionKey: string,
+  sessionID: string,
+): Record<string, T> {
+  const value = draft[newSessionKey]
+  if (value === undefined) return draft
+  return { ...draft, [sessionID]: value }
+}
 
 /** First candidate (in priority order) that passes validation. */
 export function resolveModel(

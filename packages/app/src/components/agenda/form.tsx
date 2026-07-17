@@ -1,13 +1,23 @@
 import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import type { AgendaItem, AgendaTrigger, AgendaCreateInput, AgendaPatchInput } from "@ericsanchezok/synergy-sdk/client"
 import { AppPanel } from "@/components/app-panel"
-import { startOfDay, addDays, addMonths, startOfWeek, MONTH_NAMES_SHORT, DAY_LABELS_MINI } from "./date"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import {
+  startOfDay,
+  addDays,
+  addMonths,
+  startOfWeek,
+  getMonthNamesShort,
+  getDayLabelsMini,
+  formatLocaleDate,
+} from "./date"
+import { useLocale, type IntlFormatter } from "@/context/locale"
+import { A } from "./agenda-i18n"
 
 // ---------------------------------------------------------------------------
 // Repeat — "every N unit" model
@@ -16,20 +26,22 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 type RepeatMode = "off" | "interval" | "custom"
 type IntervalUnit = "minutes" | "hours" | "days" | "weeks"
 
-const INTERVAL_UNITS: { value: IntervalUnit; label: string; short: string }[] = [
-  { value: "minutes", label: "minutes", short: "m" },
-  { value: "hours", label: "hours", short: "h" },
-  { value: "days", label: "days", short: "d" },
-  { value: "weeks", label: "weeks", short: "w" },
-]
+const INTERVAL_SHORTS: Record<IntervalUnit, string> = {
+  minutes: "m",
+  hours: "h",
+  days: "d",
+  weeks: "w",
+}
 
 function unitToShort(unit: IntervalUnit): string {
-  return INTERVAL_UNITS.find((u) => u.value === unit)!.short
+  return INTERVAL_SHORTS[unit]
 }
 
 function shortToUnit(s: string): IntervalUnit {
-  const found = INTERVAL_UNITS.find((u) => s.endsWith(u.short))
-  return found?.value ?? "days"
+  for (const [unit, short] of Object.entries(INTERVAL_SHORTS)) {
+    if (s.endsWith(short)) return unit as IntervalUnit
+  }
+  return "days"
 }
 
 function parseIntervalString(s: string): { count: number; unit: IntervalUnit } {
@@ -169,12 +181,9 @@ function parseTriggersToSchedule(triggers: AgendaTrigger[]): ScheduleState {
 }
 
 // ---------------------------------------------------------------------------
-// Date formatting
-// ---------------------------------------------------------------------------
 
-function formatDate(ts: number): string {
-  const d = new Date(ts)
-  return `${MONTH_NAMES_SHORT[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`
+function formatDate(ts: number, fmt: IntlFormatter): string {
+  return formatLocaleDate(ts, fmt)
 }
 
 function pad2(n: number): string {
@@ -193,6 +202,8 @@ export function AgendaForm(props: {
 }) {
   const sdk = useGlobalSDK()
   const globalSync = useGlobalSync()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const isEdit = () => !!props.item
   const isDialog = () => props.presentation === "dialog"
 
@@ -221,8 +232,10 @@ export function AgendaForm(props: {
   const [showTags, setShowTags] = createSignal(!!(props.item?.tags && props.item.tags.length > 0))
   const [showAdvanced, setShowAdvanced] = createSignal(isEdit() && !!props.item?.prompt)
 
+  const titleRequiredMsg = createMemo(() => _(A.formTitleRequired))
+
   createEffect(() => {
-    if (title().trim() && error() === "Title is required") setError("")
+    if (title().trim() && error() === titleRequiredMsg()) setError("")
   })
 
   const canSubmit = createMemo(() => title().trim().length > 0 && !saving())
@@ -237,7 +250,13 @@ export function AgendaForm(props: {
       return true
     })
     if (home)
-      items.unshift({ id: "home", type: "home", worktree: home, directory: home, name: "Home" } as (typeof items)[0])
+      items.unshift({
+        id: "home",
+        type: "home",
+        worktree: home,
+        directory: home,
+        name: _(A.formScopeHome),
+      } as (typeof items)[0])
     return items
   })
 
@@ -252,7 +271,7 @@ export function AgendaForm(props: {
     if (!canSubmit()) return
     const t = title().trim()
     if (!t) {
-      setError("Title is required")
+      setError(titleRequiredMsg())
       return
     }
     setSaving(true)
@@ -298,7 +317,7 @@ export function AgendaForm(props: {
       }
       props.onBack()
     } catch (err: any) {
-      setError(err?.message ?? "Failed to save")
+      setError(err?.message ?? _(A.formSaveFailed))
     }
     setSaving(false)
   }
@@ -308,15 +327,15 @@ export function AgendaForm(props: {
       <Show when={!isDialog()}>
         <AppPanel.Header>
           <AppPanel.HeaderRow>
-            <AppPanel.Action icon={getSemanticIcon("navigation.back")} title="Back" onClick={props.onBack} />
-            <AppPanel.Title>{isEdit() ? "Edit Agenda" : "New Agenda"}</AppPanel.Title>
+            <AppPanel.Action icon={getSemanticIcon("navigation.back")} title={_(A.formBack)} onClick={props.onBack} />
+            <AppPanel.Title>{isEdit() ? _(A.editAgenda) : _(A.newAgenda)}</AppPanel.Title>
             <div class="flex items-center gap-1.5">
               <button
                 type="button"
                 class="px-2.5 py-1 rounded-full text-11-medium text-text-weak hover:bg-surface-raised-base-hover transition-colors"
                 onClick={props.onBack}
               >
-                Cancel
+                {_(A.formCancel)}
               </button>
               <button
                 type="button"
@@ -330,7 +349,7 @@ export function AgendaForm(props: {
                 disabled={!canSubmit()}
               >
                 <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
-                  {isEdit() ? "Save" : "Create"}
+                  {isEdit() ? _(A.formSave) : _(A.formCreate)}
                 </Show>
               </button>
             </div>
@@ -346,20 +365,20 @@ export function AgendaForm(props: {
             "gap-0 rounded-xl bg-surface-inset-base p-3": !isDialog(),
           }}
         >
-          <Field label="Title">
+          <Field label={_(A.formTitle)}>
             <div class="agenda-control-surface px-3.5 py-3">
               <input
                 type="text"
                 autofocus
                 class="w-full bg-transparent text-15-medium text-text-strong outline-none py-1 placeholder:text-text-weaker/50"
-                placeholder="Add title"
+                placeholder={_(A.formTitlePlaceholder)}
                 value={title()}
                 onInput={(e) => setTitle(e.currentTarget.value)}
               />
             </div>
           </Field>
 
-          <Field label="Schedule">
+          <Field label={_(A.formSchedule)}>
             <div class="flex items-center">
               <Show
                 when={hasSchedule()}
@@ -376,7 +395,7 @@ export function AgendaForm(props: {
                       setMinute(m5 % 60)
                     }}
                   >
-                    Add time
+                    {_(A.formAddTime)}
                   </button>
                 }
               >
@@ -400,7 +419,7 @@ export function AgendaForm(props: {
 
           {/* Repeat */}
           <Show when={hasSchedule()}>
-            <Field label="Repeat">
+            <Field label={_(A.formRepeat)}>
               <div class="agenda-control-surface min-w-0 px-3 py-2.5">
                 <RepeatControl
                   mode={repeatMode()}
@@ -409,6 +428,7 @@ export function AgendaForm(props: {
                   onModeChange={setRepeatMode}
                   onCountChange={setIntervalCount}
                   onUnitChange={setIntervalUnit}
+                  i18n={i18n}
                 />
               </div>
             </Field>
@@ -417,14 +437,14 @@ export function AgendaForm(props: {
                 <input
                   type="text"
                   class="agenda-control-surface w-full text-12-regular text-text-base outline-none px-3 py-2"
-                  placeholder="Cron expression, e.g. 0 9 * * 1-5"
+                  placeholder={_(A.formCronDetailedPlaceholder)}
                   value={customCron()}
                   onInput={(e) => setCustomCron(e.currentTarget.value)}
                 />
                 <input
                   type="text"
                   class="agenda-control-surface w-full text-11-regular text-text-weaker outline-none px-3 py-2"
-                  placeholder="Timezone (e.g. Asia/Shanghai)"
+                  placeholder={_(A.formTzDetailedPlaceholder)}
                   value={cronTz()}
                   onInput={(e) => setCronTz(e.currentTarget.value)}
                 />
@@ -434,11 +454,11 @@ export function AgendaForm(props: {
 
           <Divider />
 
-          <Field label="Prompt">
+          <Field label={_(A.formPromptLabel)}>
             <div class="agenda-control-surface px-3.5 py-3">
               <textarea
                 class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-24 placeholder:text-text-weaker/50"
-                placeholder="What should the agent do?"
+                placeholder={_(A.formPromptDetailedPlaceholder)}
                 value={prompt()}
                 onInput={(e) => setPrompt(e.currentTarget.value)}
                 rows={4}
@@ -446,12 +466,15 @@ export function AgendaForm(props: {
             </div>
           </Field>
 
-          <Show when={showDesc()} fallback={<ExpandRow label="Add description" onClick={() => setShowDesc(true)} />}>
-            <Field label="Description">
+          <Show
+            when={showDesc()}
+            fallback={<ExpandRow label={_(A.formAddDescription)} onClick={() => setShowDesc(true)} />}
+          >
+            <Field label={_(A.formDescription)}>
               <div class="agenda-control-surface px-3 py-2.5">
                 <textarea
                   class="w-full bg-transparent text-12-regular text-text-base outline-none resize-none min-h-20 placeholder:text-text-weaker/50"
-                  placeholder="Description..."
+                  placeholder={_(A.formDescriptionPlaceholder)}
                   value={description()}
                   onInput={(e) => setDescription(e.currentTarget.value)}
                   rows={3}
@@ -460,13 +483,13 @@ export function AgendaForm(props: {
             </Field>
           </Show>
 
-          <Show when={showTags()} fallback={<ExpandRow label="Add tags" onClick={() => setShowTags(true)} />}>
-            <Field label="Tags">
+          <Show when={showTags()} fallback={<ExpandRow label={_(A.formAddTags)} onClick={() => setShowTags(true)} />}>
+            <Field label={_(A.formTags)}>
               <div class="agenda-control-surface px-3 py-2.5">
                 <input
                   type="text"
                   class="w-full bg-transparent text-12-regular text-text-base outline-none placeholder:text-text-weaker/50"
-                  placeholder="tag1, tag2, ..."
+                  placeholder={_(A.formTagsPlaceholder)}
                   value={tagsText()}
                   onInput={(e) => setTagsText(e.currentTarget.value)}
                 />
@@ -482,8 +505,8 @@ export function AgendaForm(props: {
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <span class="flex min-w-0 flex-1 flex-col gap-0.5">
-              <span class="text-12-medium text-text-strong">Advanced settings</span>
-              <span class="text-11-regular text-text-weaker truncate">Scope and run options.</span>
+              <span class="text-12-medium text-text-strong">{_(A.formAdvancedTitle)}</span>
+              <span class="text-11-regular text-text-weaker truncate">{_(A.formAdvancedSubtitle)}</span>
             </span>
             <div class="shrink-0 text-icon-weak-base">
               <Icon name={showAdvanced() ? "chevron-up" : "chevron-down"} size="small" />
@@ -494,12 +517,13 @@ export function AgendaForm(props: {
             <div class="pb-3 flex flex-col gap-3">
               <Show when={!isEdit() && scopes().length > 1}>
                 <div class="flex flex-col gap-1">
-                  <span class="text-11-medium text-text-weaker">Scope</span>
+                  <span class="text-11-medium text-text-weaker">{_(A.formScopeLabel)}</span>
                   <ScopePicker
                     scopes={scopes()}
                     currentScopeID={currentScopeID()}
                     value={selectedScopeID() || currentScopeID()}
                     onChange={setSelectedScopeID}
+                    i18n={i18n}
                   />
                 </div>
               </Show>
@@ -521,7 +545,7 @@ export function AgendaForm(props: {
             class="h-9 rounded-lg px-4 text-12-medium text-text-base ring-1 ring-inset ring-border-base/50 transition-colors hover:bg-surface-raised-base-hover"
             onClick={props.onBack}
           >
-            Cancel
+            {_(A.formCancel)}
           </button>
           <button
             type="button"
@@ -534,7 +558,7 @@ export function AgendaForm(props: {
             disabled={!canSubmit()}
           >
             <Show when={!saving()} fallback={<Spinner class="size-3 inline-block" />}>
-              {isEdit() ? "Save" : "Create"}
+              {isEdit() ? _(A.formSave) : _(A.formCreate)}
             </Show>
           </button>
         </AppPanel.Footer>
@@ -550,6 +574,9 @@ export function AgendaForm(props: {
 function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
   const [open, setOpen] = createSignal(false)
   const [displayMonth, setDisplayMonth] = createSignal(props.value)
+  const { i18n, fmt } = useLocale()
+  const monthNames = createMemo(() => getMonthNamesShort(fmt))
+  const dayLabels = createMemo(() => getDayLabelsMini(fmt))
   let containerRef: HTMLDivElement | undefined
 
   createEffect(
@@ -604,14 +631,14 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
         data-open={open() ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
-        {formatDate(props.value)}
+        {formatDate(props.value, fmt)}
       </button>
 
       <Show when={open()}>
         <div class="agenda-picker-popover agenda-date-popover select-none">
           <div class="flex items-center justify-between mb-3">
             <span class="text-14-medium text-text-strong">
-              {MONTH_NAMES_SHORT[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
+              {monthNames()[new Date(displayMonth()).getMonth()]} {new Date(displayMonth()).getFullYear()}
             </span>
             <div class="flex items-center gap-1">
               <NavBtn onClick={() => setDisplayMonth((m) => addMonths(m, -1))}>{"‹"}</NavBtn>
@@ -620,7 +647,7 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
           </div>
 
           <div class="grid grid-cols-7 mb-1">
-            <For each={DAY_LABELS_MINI}>
+            <For each={dayLabels()}>
               {(label) => (
                 <div class="agenda-date-cell flex items-center justify-center text-11-medium text-text-weaker">
                   {label}
@@ -654,14 +681,13 @@ function DatePicker(props: { value: number; onChange: (ts: number) => void }) {
               setOpen(false)
             }}
           >
-            Today
+            {i18n._(A.calendarToday)}
           </button>
         </div>
       </Show>
     </div>
   )
 }
-
 // ---------------------------------------------------------------------------
 // TimePicker — split hour + minute columns
 // ---------------------------------------------------------------------------
@@ -760,6 +786,13 @@ function TimePicker(props: {
 // RepeatControl — "every N unit" inline input
 // ---------------------------------------------------------------------------
 
+function intervalUnitLabel(unit: IntervalUnit, _: (d: { id: string; message: string }) => string): string {
+  if (unit === "minutes") return _(A.intervalMinutes)
+  if (unit === "hours") return _(A.intervalHours)
+  if (unit === "days") return _(A.intervalDays)
+  return _(A.intervalWeeks)
+}
+
 function RepeatControl(props: {
   mode: RepeatMode
   count: number
@@ -767,8 +800,10 @@ function RepeatControl(props: {
   onModeChange: (m: RepeatMode) => void
   onCountChange: (n: number) => void
   onUnitChange: (u: IntervalUnit) => void
+  i18n: import("@lingui/core").I18n
 }) {
   const [unitOpen, setUnitOpen] = createSignal(false)
+  const _ = (d: { id: string; message: string }) => props.i18n._(d)
   let unitRef: HTMLDivElement | undefined
 
   createEffect(() => {
@@ -780,10 +815,17 @@ function RepeatControl(props: {
     onCleanup(() => document.removeEventListener("mousedown", onClick))
   })
 
+  const units = (): { value: IntervalUnit; label: string }[] => [
+    { value: "minutes", label: intervalUnitLabel("minutes", _) },
+    { value: "hours", label: intervalUnitLabel("hours", _) },
+    { value: "days", label: intervalUnitLabel("days", _) },
+    { value: "weeks", label: intervalUnitLabel("weeks", _) },
+  ]
+
   return (
     <div class="flex items-center gap-1.5 flex-wrap flex-1 min-w-0">
       <Show when={props.mode === "interval"}>
-        <span class="text-12-regular text-text-base">Every</span>
+        <span class="text-12-regular text-text-base">{_(A.formRepeatEvery)}</span>
         <input
           type="text"
           inputmode="numeric"
@@ -812,12 +854,12 @@ function RepeatControl(props: {
             data-open={unitOpen() ? "true" : undefined}
             onClick={() => setUnitOpen((v) => !v)}
           >
-            {props.unit}
+            {intervalUnitLabel(props.unit, _)}
             <Icon name="chevron-down" size="small" class="text-icon-weak-base" />
           </button>
           <Show when={unitOpen()}>
             <div class="agenda-picker-popover agenda-menu-popover">
-              <For each={INTERVAL_UNITS}>
+              <For each={units()}>
                 {(u) => (
                   <button
                     type="button"
@@ -844,22 +886,22 @@ function RepeatControl(props: {
       </Show>
 
       <Show when={props.mode === "off"}>
-        <span class="text-12-regular text-text-weaker">Does not repeat</span>
+        <span class="text-12-regular text-text-weaker">{_(A.formRepeatOff)}</span>
       </Show>
 
       <Show when={props.mode === "custom"}>
-        <span class="text-12-regular text-text-weaker">Custom cron</span>
+        <span class="text-12-regular text-text-weaker">{_(A.formRepeatCustom)}</span>
       </Show>
 
       <div class="ml-auto flex items-center gap-0.5">
         <ModeChip active={props.mode === "off"} onClick={() => props.onModeChange("off")}>
-          Off
+          {_(A.formRepeatOffChip)}
         </ModeChip>
         <ModeChip active={props.mode === "interval"} onClick={() => props.onModeChange("interval")}>
-          Interval
+          {_(A.formIntervalChip)}
         </ModeChip>
         <ModeChip active={props.mode === "custom"} onClick={() => props.onModeChange("custom")}>
-          Cron
+          {_(A.formCronChip)}
         </ModeChip>
       </div>
     </div>
@@ -886,13 +928,26 @@ function ModeChip(props: { active: boolean; onClick: () => void; children: strin
 // ScopePicker — custom dropdown replacing native <select>
 // ---------------------------------------------------------------------------
 
+function scopePickerLabel(
+  s: { id: string; name?: string; worktree: string },
+  currentScopeID: string,
+  _: (d: { id: string; message: string }, values?: Record<string, unknown>) => string,
+): string {
+  const name = s.name || getFilename(s.worktree) || s.id
+  if (s.id === currentScopeID) return _(A.formScopeCurrent, { name })
+  return name
+}
+
 function ScopePicker(props: {
   scopes: { id: string; name?: string; worktree: string }[]
   currentScopeID: string
   value: string
   onChange: (id: string) => void
+  i18n: import("@lingui/core").I18n
 }) {
   const [open, setOpen] = createSignal(false)
+  const _ = (d: { id: string; message: string }, values?: Record<string, unknown>) =>
+    props.i18n._(values ? { ...d, values } : d)
   let containerRef: HTMLDivElement | undefined
 
   createEffect(() => {
@@ -904,14 +959,9 @@ function ScopePicker(props: {
     onCleanup(() => document.removeEventListener("mousedown", onClick))
   })
 
-  function scopeLabel(s: { id: string; name?: string; worktree: string }): string {
-    const name = s.name || getFilename(s.worktree) || s.id
-    return s.id === props.currentScopeID ? `${name} (current)` : name
-  }
-
   const activeLabel = createMemo(() => {
     const s = props.scopes.find((s) => s.id === props.value)
-    return s ? scopeLabel(s) : "Select scope"
+    return s ? scopePickerLabel(s, props.currentScopeID, _) : _(A.formScopeSelect)
   })
 
   return (
@@ -941,7 +991,7 @@ function ScopePicker(props: {
                   setOpen(false)
                 }}
               >
-                <span class="truncate">{scopeLabel(scope)}</span>
+                <span class="truncate">{scopePickerLabel(scope, props.currentScopeID, _)}</span>
                 <Show when={scope.id === props.value}>
                   <Icon name="check" size="small" class="shrink-0 text-text-strong" />
                 </Show>

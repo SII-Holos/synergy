@@ -24,7 +24,7 @@ Use `synergy config path` to print the active global roots.
 
 | File                   | Domain      | Owned configuration                                                                                                         |
 | ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                    |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                         |
 | `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                      |
 | `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                   |
 | `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                 |
@@ -57,6 +57,20 @@ From lowest to highest precedence, a scoped config is assembled from:
 Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `project_doc_fallback_filenames` are combined and deduplicated rather than simply replaced; plugin specs with the same identity resolve to the later definition.
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
+
+## Interface language
+
+`locale` is a global General preference with three accepted values:
+
+```jsonc
+{
+  "locale": "system", // system | en | zh-CN
+}
+```
+
+`system` is the default when the field is absent. A Chinese system or browser language resolves to Simplified Chinese; unsupported system languages resolve to English. The preference is installation-wide user interface state and does not follow project Scope overrides. It changes Web and Desktop product chrome only; it does not select the language used by agents or model replies.
+
+The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
 ## JSONC, Schema, and References
 
@@ -155,6 +169,53 @@ Post-write language-server diagnostic policy. Controls the diagnostics returned 
 When `lspDiagnostics` is absent, or when either nested field is omitted, missing values inherit `severity: "error"` and `scope: "project"`. Config changes are live-applied and do not restart LSP servers.
 
 The Web Settings Code Checks page exposes these three fields: an Include Diagnostics toggle that disables the Diagnostic Severity and Diagnostic Scope selectors when off.
+
+## Embedding
+
+Embedding configuration is owned by the General domain (`00-general.jsonc`). Two modes are supported: local (default, zero-config) and remote (requires an API key).
+
+### Local (default)
+
+When `embedding.apiKey` is absent, Synergy uses the bundled `Xenova/all-MiniLM-L6-v2` model running locally. The model downloads lazily on first use rather than at startup. Run `synergy embed download` to fetch the assets ahead of time.
+
+```jsonc
+{
+  "embedding": {
+    "local": {
+      "source": "huggingface",
+    },
+  },
+}
+```
+
+| Field                        | Required                    | Default         | Description                                                                                                                                                                     |
+| ---------------------------- | --------------------------- | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `embedding.local.source`     | no                          | `"huggingface"` | Download source: `"huggingface"` downloads from Hugging Face Hub, `"hf-mirror"` uses the HF Mirror (`https://hf-mirror.com/`), and `"custom"` uses a user-supplied `remoteHost` |
+| `embedding.local.remoteHost` | when `source` is `"custom"` | —               | Public HTTPS origin with no credentials, path, query, or hash. Local, private, and loopback hostnames are rejected; the field is ignored for built-in sources.                  |
+
+The model ID, quantization dtype, and ONNX cache directory are not configurable.
+
+### Remote
+
+When `embedding.apiKey` is set, Synergy queries an embedding API instead of using the local model. The remote provider defaults to SiliconFlow with `Qwen/Qwen3-Embedding-8B`.
+
+```jsonc
+{
+  "embedding": {
+    "apiKey": "sk-...",
+    "baseURL": "https://api.siliconflow.cn/v1",
+    "model": "Qwen/Qwen3-Embedding-8B",
+  },
+}
+```
+
+| Field               | Required | Default                           | Description                              |
+| ------------------- | -------- | --------------------------------- | ---------------------------------------- |
+| `embedding.apiKey`  | yes      | —                                 | API key for the embedding service        |
+| `embedding.baseURL` | no       | `"https://api.siliconflow.cn/v1"` | OpenAI-compatible embedding API base URL |
+| `embedding.model`   | no       | `"Qwen/Qwen3-Embedding-8B"`       | Model name sent to the embedding API     |
+
+Use `synergy config embedding` for an interactive setup or the Web Settings Embedding page.
 
 ## Cortex Scheduling
 
