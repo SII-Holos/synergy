@@ -136,6 +136,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           )
           setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
           setStore("messageWindow", sessionID, reconcile(plan.metadata))
+          if (plan.latestContextMessage !== undefined) {
+            globalSync.setLatestContextMessage(sdk.scopeKey, sessionID, plan.latestContextMessage)
+          }
           for (const [messageID, parts] of Object.entries(plan.parts)) {
             setStore("part", messageID, reconcile(parts, { key: "id" }))
           }
@@ -268,6 +271,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        latestContextMessage(sessionID: string) {
+          return store.latestContextMessage[sessionID]
+        },
         loadState(sessionID: string): SessionMessageLoadState {
           const current = meta.messageLoad[sessionID]
           if (current) return current

@@ -50,6 +50,14 @@ export const S = {
 
   // commands.tsx — command registrations are product UI
   cmdNewSession: { id: "session.cmd.newSession", message: "New session" },
+  cmdCategorySession: { id: "session.cmd.category.session", message: "Session" },
+  cmdCategoryFile: { id: "session.cmd.category.file", message: "File" },
+  cmdCategoryView: { id: "session.cmd.category.view", message: "View" },
+  cmdCategoryTerminal: { id: "session.cmd.category.terminal", message: "Terminal" },
+  cmdCategoryModel: { id: "session.cmd.category.model", message: "Model" },
+  cmdCategoryMcp: { id: "session.cmd.category.mcp", message: "MCP" },
+  cmdCategoryAgent: { id: "session.cmd.category.agent", message: "Agent" },
+  cmdDefaultEffort: { id: "session.cmd.effort.default", message: "Default" },
 
   // prompt-dock.tsx — remaining hardcoded
   dockLoadingPrompt: { id: "session.dock.loadingPrompt", message: "Loading prompt\u2026" },
@@ -113,6 +121,11 @@ export const S = {
   },
   cmdToastNoModel: { id: "session.cmd.toast.noModel", message: "No model selected" },
   cmdToastNoModelDesc: { id: "session.cmd.toast.noModelDesc", message: "Connect a provider to summarize this session" },
+  cmdToastCompactFailed: { id: "session.cmd.toast.compactFailed", message: "Compaction failed" },
+  cmdToastCompactFailedDesc: {
+    id: "session.cmd.toast.compactFailedDesc",
+    message: "Unable to compact this session.",
+  },
 
   // dialog-rewind-confirm.tsx — remaining hardcoded
   rewindStartingHere: { id: "session.rewind.startingHere", message: "starting here." },
@@ -235,46 +248,6 @@ export const S = {
   progressActiveCountLabel: { id: "session.progress.activeCountLabel", message: "{count} active" },
   progressPendingCount: { id: "session.progress.pendingCount", message: "{count} pending" },
   progressTodoCompleted: { id: "session.progress.todoCompleted", message: "{count} completed" },
-
-  // session-context-panel
-  contextPanelTitle: { id: "session.context.panelTitle", message: "Context" },
-  contextPanelClose: { id: "session.context.closeAriaLabel", message: "Close Context" },
-
-  // session-context-usage
-  contextTokens: { id: "session.context.tokens", message: "Tokens" },
-  contextUsage: { id: "session.context.usage", message: "Usage" },
-  contextCost: { id: "session.context.cost", message: "Cost" },
-  contextClickToView: { id: "session.context.clickToView", message: "Click to view context" },
-
-  // session-context-tab
-  contextTabSystem: { id: "session.context.tab.system", message: "System" },
-  contextTabUser: { id: "session.context.tab.user", message: "User" },
-  contextTabAssistant: { id: "session.context.tab.assistant", message: "Assistant" },
-  contextTabToolCalls: { id: "session.context.tab.toolCalls", message: "Tool Calls" },
-  contextTabOther: { id: "session.context.tab.other", message: "Other" },
-  contextTabSession: { id: "session.context.tab.session", message: "Session" },
-  contextTabMessages: { id: "session.context.tab.messages", message: "Messages" },
-  contextTabProvider: { id: "session.context.tab.provider", message: "Provider" },
-  contextTabModel: { id: "session.context.tab.model", message: "Model" },
-  contextTabContextLimit: { id: "session.context.tab.contextLimit", message: "Context Limit" },
-  contextTabTotalTokens: { id: "session.context.tab.totalTokens", message: "Total Tokens" },
-  contextTabUsage: { id: "session.context.tab.usage", message: "Usage" },
-  contextTabInputTokens: { id: "session.context.tab.inputTokens", message: "Input Tokens" },
-  contextTabOutputTokens: { id: "session.context.tab.outputTokens", message: "Output Tokens" },
-  contextTabReasoningTokens: { id: "session.context.tab.reasoningTokens", message: "Reasoning Tokens" },
-  contextTabCacheTokens: { id: "session.context.tab.cacheTokens", message: "Cache Tokens (read/write)" },
-  contextTabUserMessages: { id: "session.context.tab.userMessages", message: "User Messages" },
-  contextTabAssistantMessages: { id: "session.context.tab.assistantMessages", message: "Assistant Messages" },
-  contextTabTotalCost: { id: "session.context.tab.totalCost", message: "Total Cost" },
-  contextTabSessionCreated: { id: "session.context.tab.sessionCreated", message: "Session Created" },
-  contextTabLastActivity: { id: "session.context.tab.lastActivity", message: "Last Activity" },
-  contextTabBreakdown: { id: "session.context.tab.breakdown", message: "Context Breakdown" },
-  contextTabSysPrompt: { id: "session.context.tab.sysPrompt", message: "System Prompt" },
-  contextTabRawMessages: { id: "session.context.tab.rawMessages", message: "Raw messages" },
-  contextTabBreakdownHint: {
-    id: "session.context.tab.breakdown.hint",
-    message: 'Approximate breakdown of input tokens. "Other" includes tool definitions and overhead.',
-  },
 
   // session-inbox
   inboxQueued: { id: "session.inbox.queued", message: "Queued by you" },

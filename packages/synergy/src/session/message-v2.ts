@@ -19,6 +19,7 @@ import { Attachment } from "@/attachment"
 import { Asset } from "@/asset/asset"
 import { Log } from "@/util/log"
 import { SessionBounds } from "./bounds"
+import { ContextUsageSchema } from "./context-usage-schema"
 
 function isTLSError(message: string) {
   return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
@@ -635,6 +636,7 @@ export namespace MessageV2 {
         write: z.number(),
       }),
     }),
+    contextUsage: ContextUsageSchema.optional(),
     finish: z.string().optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -911,46 +913,90 @@ export namespace MessageV2 {
     return new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
   }
 
+  export interface ModelMessageContribution {
+    text: string
+  }
+
+  export interface ModelMessageProvenance {
+    categories: {
+      conversation: ModelMessageContribution[]
+      toolActivity: ModelMessageContribution[]
+      filesReferences: ModelMessageContribution[]
+      instructions: ModelMessageContribution[]
+    }
+    items: {
+      conversation: number
+      toolActivity: number
+      filesReferences: number
+      instructions: number
+    }
+  }
+
+  function createModelMessageProvenance(): ModelMessageProvenance {
+    return {
+      categories: {
+        conversation: [],
+        toolActivity: [],
+        filesReferences: [],
+        instructions: [],
+      },
+      items: {
+        conversation: 0,
+        toolActivity: 0,
+        filesReferences: 0,
+        instructions: 0,
+      },
+    }
+  }
+
+  function addModelMessageContribution(
+    provenance: ModelMessageProvenance,
+    category: keyof ModelMessageProvenance["categories"],
+    text: string | undefined,
+  ) {
+    if (!text) return
+    provenance.categories[category].push({ text })
+    provenance.items[category]++
+  }
+
   function appendAttachmentModelParts(
     parts: UIMessage["parts"],
     part: AttachmentPart,
+    provenance: ModelMessageProvenance,
     options: { keptHashes?: Set<string>; includeLocalPath?: boolean } = {},
   ) {
     const mode = attachmentModelMode(part)
     if (mode === "none") return
+    provenance.items.filesReferences++
 
     if (mode === "content") {
-      const text = part.model?.mode === "content" ? part.model.text : undefined
-      parts.push({
-        type: "text",
-        text: text?.trim() ? text : `[Attachment content: ${attachmentSummary(part)}]`,
-      })
+      const content = part.model?.mode === "content" ? part.model.text : undefined
+      const text = content?.trim() ? content : `[Attachment content: ${attachmentSummary(part)}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
       return
     }
 
     if (!shouldSendAttachmentFile(part)) {
-      parts.push({
-        type: "text",
-        text: `[Attachment: ${attachmentSummary(part)}]`,
-      })
+      const text = `[Attachment: ${attachmentSummary(part)}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
       return
     }
 
     if (options.includeLocalPath && part.localPath) {
-      parts.push({
-        type: "text",
-        text: `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${part.localPath}]`,
-      })
+      const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${part.localPath}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
     }
 
     const keptHashes = options.keptHashes
     if (keptHashes && !Attachment.isText(part.mime)) {
       const hash = attachmentHash(part)
       if (!keptHashes.has(hash)) {
-        parts.push({
-          type: "text",
-          text: `[Image: ${attachmentName(part)} — previously shared]`,
-        })
+        const text = `[Image: ${attachmentName(part)} — previously shared]`
+        parts.push({ type: "text", text })
+        provenance.categories.filesReferences.push({ text })
         return
       }
     }
@@ -985,7 +1031,10 @@ export namespace MessageV2 {
     return new Set(canonical.values())
   }
 
-  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+  export function projectModelMessages(
+    input: WithParts[],
+    opts?: { maxHistoryImages?: number },
+  ): { messages: ModelMessage[]; provenance: ModelMessageProvenance } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
@@ -1017,6 +1066,7 @@ export namespace MessageV2 {
     }
 
     const result: UIMessage[] = []
+    const provenance = createModelMessageProvenance()
 
     for (const msg of input) {
       if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
@@ -1031,13 +1081,15 @@ export namespace MessageV2 {
         for (const part of msg.parts) {
           // part.origin has no effect on model visibility (spec §4.4):
           // system-injected text is meant for the model too.
-          if (part.type === "text")
+          if (part.type === "text") {
             userMessage.parts.push({
               type: "text",
               text: part.text,
             })
+            addModelMessageContribution(provenance, isSystemPart(part) ? "instructions" : "conversation", part.text)
+          }
           if (part.type === "attachment") {
-            appendAttachmentModelParts(userMessage.parts, part, { keptHashes, includeLocalPath: true })
+            appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
           }
         }
       }
@@ -1059,12 +1111,14 @@ export namespace MessageV2 {
         }
         const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
         for (const part of msg.parts) {
-          if (part.type === "text")
+          if (part.type === "text") {
             assistantMessage.parts.push({
               type: "text",
               text: part.text,
               providerMetadata: modelProviderMetadata(part.metadata),
             })
+            addModelMessageContribution(provenance, "conversation", part.text)
+          }
           if (part.type === "step-start")
             assistantMessage.parts.push({
               type: "step-start",
@@ -1073,32 +1127,38 @@ export namespace MessageV2 {
             if (isTerminalToolPart(part) && !canonicalToolParts.has(part)) continue
             if (part.state.status === "completed") {
               if (part.state.attachments?.length) {
+                const attachmentIntroduction = `Tool ${part.tool} returned attachment results:`
                 const attachmentParts: UIMessage["parts"] = [
                   {
                     type: "text",
-                    text: `Tool ${part.tool} returned attachment results:`,
+                    text: attachmentIntroduction,
                   },
                 ]
                 for (const attachment of part.state.attachments) {
-                  appendAttachmentModelParts(attachmentParts, attachment)
+                  appendAttachmentModelParts(attachmentParts, attachment, provenance)
                 }
-                if (attachmentParts.length > 1)
+                if (attachmentParts.length > 1) {
                   result.push({
                     id: Identifier.ascending("message"),
                     role: "user",
                     parts: attachmentParts,
                   })
+                  addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
+                }
               }
+              const output = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
                 input: part.state.input,
-                output: part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output,
+                output,
                 callProviderMetadata: modelProviderMetadata(part.metadata),
               })
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", output)
             }
-            if (part.state.status === "error")
+            if (part.state.status === "error") {
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
@@ -1107,6 +1167,9 @@ export namespace MessageV2 {
                 errorText: part.state.error,
                 callProviderMetadata: modelProviderMetadata(part.metadata),
               })
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", part.state.error)
+            }
           }
           if (part.type === "reasoning") {
             assistantMessage.parts.push({
@@ -1114,6 +1177,7 @@ export namespace MessageV2 {
               text: part.text,
               providerMetadata: modelProviderMetadata(part.metadata),
             })
+            addModelMessageContribution(provenance, "conversation", part.text)
           }
         }
         if (assistantMessage.parts.length > 0) {
@@ -1122,7 +1186,14 @@ export namespace MessageV2 {
       }
     }
 
-    return convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")))
+    return {
+      messages: convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))),
+      provenance,
+    }
+  }
+
+  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+    return projectModelMessages(input, opts).messages
   }
 
   function isLegacyStableDeliveryMessageID(id: string): boolean {

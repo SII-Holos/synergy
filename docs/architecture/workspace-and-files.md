@@ -45,7 +45,7 @@ The current public workspace-file routes are read/browse/search/status contracts
 
 ## File Workbench Ownership and Bounds
 
-`packages/app/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace; the temporary Session Context panel does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.
+`packages/app/src/context/file/index.tsx` is the single frontend data owner for the File workbench. File tabs live in the Side Workspace as resource tabs. The Context panel is a separate session-scoped Side Workspace singleton and does not own files. Web and Desktop use generated `workspace.files.*` SDK calls against the active Scope rather than renderer or Electron-main filesystem reads.
 
 Each session persists its open files, active tab, source/preview mode, selection, scroll state, and Explorer layout. Scope-level directory state keeps the expanded tree and hidden/ignored preference warm across sessions in the same project.
 

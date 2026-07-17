@@ -4401,6 +4401,48 @@ export type AssistantMessage = {
       write: number
     }
   }
+  contextUsage?: {
+    version: 1
+    modelID: string
+    providerID: string
+    totalInput: number
+    contextLimit?: number
+    usableInputLimit?: number
+    categories: {
+      conversation: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      toolActivity: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      filesReferences: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+      instructions: {
+        estimatedTokens: number
+        attributedTokens: number
+        items?: number
+      }
+    }
+    overhead: {
+      attributedTokens: number
+    }
+    estimator: {
+      kind: "model-tokenizer"
+      encoding?: string
+    }
+    reconciliation: {
+      mode: "residual" | "scaled-down"
+      factor: number
+    }
+    capturedAt: number
+  }
   finish?: string
   metadata?: {
     [key: string]: unknown

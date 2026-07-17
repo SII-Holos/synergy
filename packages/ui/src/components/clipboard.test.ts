@@ -130,4 +130,30 @@ describe("clipboard", () => {
 
     restore()
   })
+
+  test("copy controller resets feedback when its payload identity changes", async () => {
+    const restore = configureClipboard({ writer: () => true })
+
+    await new Promise<void>((resolve, reject) => {
+      createRoot((dispose) => {
+        queueMicrotask(async () => {
+          try {
+            const copy = createCopyController({ text: "first payload" })
+
+            await copy.copy()
+            expect(copy.state()).toBe("copied")
+            copy.reset()
+            expect(copy.state()).toBe("idle")
+            resolve()
+          } catch (error) {
+            reject(error)
+          } finally {
+            dispose()
+          }
+        })
+      })
+    })
+
+    restore()
+  })
 })

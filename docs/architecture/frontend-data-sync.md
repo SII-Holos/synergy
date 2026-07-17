@@ -43,6 +43,7 @@ The sync layer has:
 - one lazily created store per home/project Scope;
 - message arrays keyed by session ID (window, not full transcript);
 - `messageWindow` metadata keyed by session ID (cursor, hasMore, total, mode, pendingLatest);
+- `latestContextMessage` keyed by session ID, holding the latest eligible assistant snapshot independently of the visible message window;
 - part arrays keyed by message ID;
 - per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, Cortex, and Agenda.
@@ -105,6 +106,14 @@ Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming
 - Dropped message IDs release their part buckets from the store.
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
+
+### Latest Context projection
+
+Context status and workbench consumers read `sync.session.latestContextMessage(sessionID)` rather than normally deriving latest usage from the bounded `messages` viewport. The projection is owned by sync and has three states: a missing key (`undefined`) is uninitialized and permits a temporary fallback to an already-loaded eligible viewport message, `null` means an authoritative latest page contained no eligible assistant and forbids that fallback, and a message is the latest eligible snapshot.
+
+An eligible snapshot is an assistant message with `includeInContext !== false` and either structured `contextUsage` or a non-zero legacy input, output, or reasoning token total. Canonical chronology is `time.created`, then `id`; a later ineligible zero-usage assistant does not erase an earlier eligible snapshot.
+
+Every no-cursor latest page apply seeds the projection, including normal session loads, navigation prefetch, reconnect/recovery refreshes, return-to-latest, stale-cursor recovery, and compaction reloads. Cursor/history pages never replace it. Complete persisted `message.updated` events reduce the projection before or alongside viewport reconciliation even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page re-establishes a message or `null`.
 
 ### History mode
 
@@ -256,7 +265,7 @@ The frontend:
 1. fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
 2. computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
 3. applies one Solid batch that deletes stale parts, diff, and inbox state;
-4. reconciles the retained messages, their authoritative parts, and the message window metadata atomically.
+4. reconciles the retained messages, their authoritative parts, message window metadata, and latest Context projection atomically.
 
 Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`) is replaced atomically in the same batch.
 
@@ -267,7 +276,7 @@ Loaded message and part buckets are memory-bounded independently of session meta
 - the global LRU spans Scope/session bucket keys;
 - at most 15 session buckets are retained;
 - the actively viewed session is protected even if it is the oldest;
-- eviction removes that session's message array, all parts owned by those messages, and the session's `messageWindow` metadata;
+- eviction removes that session's message array, all parts owned by those messages, the session's `messageWindow` metadata, and its latest Context projection;
 - revisiting an evicted session reloads it through normal message page sync.
 
 Session lists, status, inbox, todo, and other non-message state are not evicted by this policy.
@@ -303,3 +312,4 @@ Variant display resolves the explicit or historical session variant first, then 
 - The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.
 - Latest mode keeps the newest messages and evicts oldest; history mode preserves the existing window and caps newest overflow.
 - `messageWindow` metadata and messages are evicted together by the message-bucket LRU.
+- Latest Context usage is sync-owned and independent of history viewport suppression; authoritative latest pages seed it and bucket eviction removes it.

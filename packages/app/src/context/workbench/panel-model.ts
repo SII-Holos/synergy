@@ -1,5 +1,6 @@
 import type {
   WorkbenchPanelCardinality,
+  WorkbenchPanelEntry,
   WorkbenchPanelTab,
   WorkbenchPanelTabInit,
 } from "@/plugin/registries/workbench-panel-registry"
@@ -20,6 +21,22 @@ export interface OpenWorkbenchPanelInput {
   createId: () => string
   reuseExisting?: boolean
   replaceEmpty?: boolean
+}
+
+export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession: boolean) {
+  return !entry.requiresSession || hasSession || entry.supportsDraftSession === true
+}
+
+export type WorkbenchEscapeAction = "none" | "close-add-menu" | "close-surface"
+
+export function resolveWorkbenchEscapeAction(input: {
+  key: string
+  opened: boolean
+  addOpen: boolean
+  dialogActive: boolean
+}): WorkbenchEscapeAction {
+  if (input.key !== "Escape" || !input.opened || input.dialogActive) return "none"
+  return input.addOpen ? "close-add-menu" : "close-surface"
 }
 
 export function createWorkbenchTab(input: {

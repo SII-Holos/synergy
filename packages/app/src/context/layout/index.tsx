@@ -44,11 +44,6 @@ export function getAvatarColors(key?: string) {
   }
 }
 
-type SessionTabs = {
-  active?: string
-  all: string[]
-}
-
 type SessionView = {
   scroll: Record<string, SessionScroll>
   reviewOpen?: string[]
@@ -136,16 +131,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         review: {
           diffStyle: "split" as ReviewDiffStyle,
         },
-        session: {
-          width: 600,
-        },
         mobileSidebar: {
           opened: false,
         },
         rightSidebar: {
           opened: false,
         },
-        sessionTabs: {} as Record<string, SessionTabs>,
         sessionView: {} as Record<string, SessionView>,
         workbenchSurfaces: {} as Record<string, WorkbenchSurfacesLayoutState>,
       }),
@@ -183,7 +174,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
       const keys = new Set<string>()
       for (const key of Object.keys(store.sessionView)) keys.add(key)
-      for (const key of Object.keys(store.sessionTabs)) keys.add(key)
       for (const key of Object.keys(store.workbenchSurfaces)) keys.add(key)
       if (keys.size <= MAX_SESSION_KEYS) return
 
@@ -200,7 +190,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         produce((draft) => {
           for (const key of drop) {
             delete draft.sessionView[key]
-            delete draft.sessionTabs[key]
             delete draft.workbenchSurfaces[key]
           }
         }),
@@ -906,6 +895,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           batch(() => {
             setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
             setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
+            globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage)
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               setChildStore("part", messageID, reconcile(parts, { key: "id" }))
             }
@@ -1143,16 +1133,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           setStore("review", "diffStyle", diffStyle)
         },
       },
-      session: {
-        width: createMemo(() => store.session?.width ?? 600),
-        resize(width: number) {
-          if (!store.session) {
-            setStore("session", { width })
-            return
-          }
-          setStore("session", "width", width)
-        },
-      },
       surface(sessionKey: string, surface: WorkbenchPanelSurface) {
         touch(sessionKey)
         const current = () => store.workbenchSurfaces[sessionKey]?.[surface] ?? {}
@@ -1270,55 +1250,6 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
               if (same(current.reviewOpen, open)) return
               setStore("sessionView", sessionKey, "reviewOpen", open)
             },
-          },
-        }
-      },
-      tabs(sessionKey: string) {
-        touch(sessionKey)
-        const tabs = createMemo(() => store.sessionTabs[sessionKey] ?? { all: [] })
-        return {
-          tabs,
-          active: createMemo(() => tabs().active),
-          all: createMemo(() => tabs().all),
-          setActive(tab: string | undefined) {
-            if (!store.sessionTabs[sessionKey]) {
-              setStore("sessionTabs", sessionKey, { all: [], active: tab })
-            } else {
-              setStore("sessionTabs", sessionKey, "active", tab)
-            }
-          },
-          setAll(all: string[]) {
-            all = all.includes("context") ? ["context"] : []
-            if (!store.sessionTabs[sessionKey]) {
-              setStore("sessionTabs", sessionKey, { all, active: undefined })
-            } else {
-              setStore("sessionTabs", sessionKey, "all", all)
-            }
-          },
-          async open(tab: string) {
-            if (tab !== "context") return
-            const current = store.sessionTabs[sessionKey] ?? { all: [] }
-            const all = [tab, ...current.all.filter((x) => x === "context" && x !== tab)]
-            if (!store.sessionTabs[sessionKey]) {
-              setStore("sessionTabs", sessionKey, { all, active: tab })
-              return
-            }
-            setStore("sessionTabs", sessionKey, "all", all)
-            setStore("sessionTabs", sessionKey, "active", tab)
-          },
-          close(tab: string) {
-            const current = store.sessionTabs[sessionKey]
-            if (!current) return
-
-            const all = current.all.filter((x) => x !== tab)
-            batch(() => {
-              setStore("sessionTabs", sessionKey, "all", all)
-              if (current.active !== tab) return
-
-              const index = current.all.findIndex((f) => f === tab)
-              const next = all[index - 1] ?? all[0]
-              setStore("sessionTabs", sessionKey, "active", next)
-            })
           },
         }
       },

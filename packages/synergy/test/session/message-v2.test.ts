@@ -91,6 +91,10 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.messages).toStrictEqual([])
+    expect(projection.provenance.categories.conversation).toStrictEqual([])
+    expect(projection.provenance.items.conversation).toBe(0)
   })
 
   test("includes synthetic text parts", () => {
@@ -292,6 +296,11 @@ describe("session.message-v2.toModelMessage", () => {
         content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
       },
     ])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.provenance.categories.filesReferences).toStrictEqual([
+      { text: "[Attachment: file.ts (text/plain)]" },
+    ])
+    expect(projection.provenance.items.filesReferences).toBe(1)
   })
 
   test("uses attachment model policy for data text, https text, and images", () => {
@@ -669,6 +678,12 @@ describe("session.message-v2.toModelMessage", () => {
         ],
       },
     ])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.provenance.categories.toolActivity).toStrictEqual([
+      { text: JSON.stringify({ path: "missing.txt" }) },
+      { text: "file not found" },
+    ])
+    expect(projection.provenance.items.toolActivity).toBe(2)
   })
 
   test("removes OpenAI response item references from model provider metadata", () => {
@@ -807,6 +822,10 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.messages).toStrictEqual([])
+    expect(projection.provenance.categories.conversation).toStrictEqual([])
+    expect(projection.provenance.items.conversation).toBe(0)
   })
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", () => {
@@ -913,5 +932,69 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+  })
+
+  test("keeps the compatibility wrapper equivalent to canonical projection", () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user"),
+        parts: [
+          {
+            ...basePart("m-user", "p1"),
+            type: "text",
+            text: "hello",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant", "m-user"),
+        parts: [
+          {
+            ...basePart("m-assistant", "p2"),
+            type: "text",
+            text: "world",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
+  })
+})
+
+describe("session.message-v2 context usage schema", () => {
+  const contextUsage = {
+    version: 1 as const,
+    modelID: "model",
+    providerID: "provider",
+    totalInput: 15,
+    contextLimit: 100,
+    usableInputLimit: 90,
+    categories: {
+      conversation: { estimatedTokens: 4, attributedTokens: 4, items: 1 },
+      toolActivity: { estimatedTokens: 3, attributedTokens: 3, items: 1 },
+      filesReferences: { estimatedTokens: 2, attributedTokens: 2, items: 1 },
+      instructions: { estimatedTokens: 1, attributedTokens: 1, items: 1 },
+    },
+    overhead: { attributedTokens: 5 },
+    estimator: { kind: "model-tokenizer" as const, encoding: "o200k_base" },
+    reconciliation: { mode: "residual" as const, factor: 1 },
+    capturedAt: 123,
+  }
+
+  test("round-trips optional assistant context usage", () => {
+    const assistant = { ...assistantInfo("m-assistant", "m-parent"), contextUsage }
+    expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
+  })
+
+  test("continues to parse legacy assistants without context usage", () => {
+    const assistant = assistantInfo("m-assistant", "m-parent")
+    expect(MessageV2.Assistant.parse(assistant)).not.toHaveProperty("contextUsage")
+  })
+
+  test("older assistant schemas ignore the additive field on rollback", () => {
+    const legacyAssistant = MessageV2.Assistant.omit({ contextUsage: true })
+    const parsed = legacyAssistant.parse({ ...assistantInfo("m-assistant", "m-parent"), contextUsage })
+    expect(parsed).not.toHaveProperty("contextUsage")
   })
 })

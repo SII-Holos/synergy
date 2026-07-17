@@ -6,6 +6,8 @@ import { AppChannel } from "../../src/channel/app"
 import { SessionEndpoint } from "../../src/session/endpoint"
 import { SessionEvent } from "../../src/session/event"
 import { MessageV2 } from "../../src/session/message-v2"
+import { ContextUsage } from "../../src/session/context-usage"
+import { SessionMessageCache } from "../../src/session/message-cache"
 import { Bus } from "../../src/bus"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
@@ -88,6 +90,77 @@ describe("session lifecycle events", () => {
         expect(stored.summary?.title).toBe("Greeting in Chinese")
         expect(stored.metadata?.source).toBe("prompt")
         expect(stored.metadata?.injectedContext).toEqual({ memory: { ids: ["mem_1"] } })
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("publishes and durably reads assistant context usage", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Context usage persistence" })
+        const user = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: Date.now() },
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+        })
+        const contextUsage = ContextUsage.reconcile(
+          {
+            modelID: "test-model",
+            providerID: "test-provider",
+            contextLimit: 1000,
+            usableInputLimit: 900,
+            categories: {
+              conversation: { estimatedTokens: 4, items: 1 },
+              toolActivity: { estimatedTokens: 3, items: 1 },
+              filesReferences: { estimatedTokens: 2, items: 1 },
+              instructions: { estimatedTokens: 1, items: 1 },
+            },
+            estimator: { kind: "model-tokenizer", encoding: "o200k_base" },
+          },
+          12,
+          123,
+        )
+        const assistantID = Identifier.ascending("message")
+        const published = Promise.withResolvers<MessageV2.Assistant>()
+        const unsubscribe = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+          if (event.properties.info.id !== assistantID || event.properties.info.role !== "assistant") return
+          published.resolve(event.properties.info)
+        })
+
+        await Session.updateMessage({
+          id: assistantID,
+          sessionID: session.id,
+          role: "assistant",
+          time: { created: Date.now(), completed: Date.now() },
+          parentID: user.id,
+          modelID: "test-model",
+          providerID: "test-provider",
+          mode: "build",
+          agent: "synergy",
+          path: { cwd: tmp.path, root: tmp.path },
+          cost: 0,
+          tokens: { input: 12, output: 2, reasoning: 0, cache: { read: 0, write: 0 } },
+          contextUsage,
+          finish: "stop",
+        })
+
+        expect((await published.promise).contextUsage).toEqual(contextUsage)
+        unsubscribe()
+
+        SessionMessageCache.invalidate(session.id)
+        const stored = (await Session.messages({ sessionID: session.id, raw: true })).find(
+          (message) => message.info.id === assistantID,
+        )?.info
+        expect(stored?.role).toBe("assistant")
+        if (!stored || stored.role !== "assistant") throw new Error("expected stored assistant message")
+        expect(stored.contextUsage).toEqual(contextUsage)
 
         await Session.remove(session.id)
       },

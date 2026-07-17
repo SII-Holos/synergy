@@ -27,7 +27,6 @@ export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
   inputRef: (el: HTMLDivElement) => void
   isNewSession: Accessor<boolean>
-  showTabs: Accessor<boolean>
   workspaceOpen?: Accessor<boolean>
   isGlobal: boolean
   sessionID: string | undefined
@@ -87,7 +86,6 @@ export function PromptDock(props: {
       <div
         classList={{
           "w-full min-w-0 px-3 md:px-6 pointer-events-auto relative": true,
-          "md:max-w-[54rem]": !props.showTabs(),
         }}
       >
         <Show when={props.sessionID}>

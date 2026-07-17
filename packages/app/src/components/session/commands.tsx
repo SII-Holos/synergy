@@ -16,6 +16,7 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { useNavigate } from "@solidjs/router"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { compactSessionWithCurrentModel } from "./compact-action"
 
 export function useSessionCommands(params: {
   command: ReturnType<typeof useCommand>
@@ -64,9 +65,9 @@ export function useSessionCommands(params: {
   command.register(() => [
     {
       id: "session.new",
-      title: S.cmdNewSession.message,
-      description: S.cmdNewSessionDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdNewSession),
+      description: i18n._(S.cmdNewSessionDesc),
+      category: i18n._(S.cmdCategorySession),
       keybind: "mod+shift+s",
       slash: "new",
       onSelect: () => {
@@ -75,39 +76,39 @@ export function useSessionCommands(params: {
     },
     {
       id: "file.open",
-      title: S.cmdOpenFile.message,
-      description: S.cmdOpenFileDesc.message,
-      category: "File",
+      title: i18n._(S.cmdOpenFile),
+      description: i18n._(S.cmdOpenFileDesc),
+      category: i18n._(S.cmdCategoryFile),
       keybind: "mod+p",
       slash: "open",
       onSelect: () => dialog.show(() => <DialogSelectFile onSelect={(path) => void file.openWorkspaceFile(path)} />),
     },
     {
       id: "file.refresh",
-      title: S.cmdRefreshFile.message,
-      description: S.cmdRefreshFileDesc.message,
-      category: "File",
+      title: i18n._(S.cmdRefreshFile),
+      description: i18n._(S.cmdRefreshFileDesc),
+      category: i18n._(S.cmdCategoryFile),
       onSelect: file.explorer.refresh,
     },
     {
       id: "file.tree.toggle",
-      title: S.cmdToggleFileTree.message,
-      description: S.cmdToggleFileTreeDesc.message,
-      category: "View",
+      title: i18n._(S.cmdToggleFileTree),
+      description: i18n._(S.cmdToggleFileTreeDesc),
+      category: i18n._(S.cmdCategoryView),
       onSelect: () => file.explorer.setOpen(!file.explorer.open()),
     },
     {
       id: "file.tree.collapse",
-      title: S.cmdCollapseFolders.message,
-      description: S.cmdCollapseFoldersDesc.message,
-      category: "View",
+      title: i18n._(S.cmdCollapseFolders),
+      description: i18n._(S.cmdCollapseFoldersDesc),
+      category: i18n._(S.cmdCategoryView),
       onSelect: file.explorer.collapseAll,
     },
     {
       id: "terminal.toggle",
-      title: S.cmdToggleTerminal.message,
-      description: S.cmdToggleTerminalDesc.message,
-      category: "View",
+      title: i18n._(S.cmdToggleTerminal),
+      description: i18n._(S.cmdToggleTerminalDesc),
+      category: i18n._(S.cmdCategoryView),
       keybind: "ctrl+`",
       slash: "terminal",
       onSelect: () => {
@@ -122,9 +123,9 @@ export function useSessionCommands(params: {
     },
     {
       id: "workspace.close",
-      title: S.cmdCloseSideWs.message,
-      description: S.cmdCloseSideWsDesc.message,
-      category: "View",
+      title: i18n._(S.cmdCloseSideWs),
+      description: i18n._(S.cmdCloseSideWsDesc),
+      category: i18n._(S.cmdCategoryView),
       keybind: "mod+shift+w",
       disabled: !workbench.surface("side").opened(),
       slash: "workspace",
@@ -134,9 +135,9 @@ export function useSessionCommands(params: {
     },
     {
       id: "terminal.new",
-      title: S.cmdNewTerminal.message,
-      description: S.cmdNewTerminalDesc.message,
-      category: "Terminal",
+      title: i18n._(S.cmdNewTerminal),
+      description: i18n._(S.cmdNewTerminalDesc),
+      category: i18n._(S.cmdCategoryTerminal),
       keybind: "ctrl+shift+`",
       onSelect: () => {
         void workbench.openPanel("terminal", { forceNew: true })
@@ -144,80 +145,80 @@ export function useSessionCommands(params: {
     },
     {
       id: "message.previous",
-      title: S.cmdPrevMessage.message,
-      description: S.cmdPrevMessageDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdPrevMessage),
+      description: i18n._(S.cmdPrevMessageDesc),
+      category: i18n._(S.cmdCategorySession),
       keybind: "mod+arrowup",
       disabled: !routeParams.id,
       onSelect: () => navigateMessageByOffset(-1),
     },
     {
       id: "message.next",
-      title: S.cmdNextMessage.message,
-      description: S.cmdNextMessageDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdNextMessage),
+      description: i18n._(S.cmdNextMessageDesc),
+      category: i18n._(S.cmdCategorySession),
       keybind: "mod+arrowdown",
       disabled: !routeParams.id,
       onSelect: () => navigateMessageByOffset(1),
     },
     {
       id: "model.choose",
-      title: S.cmdChooseModel.message,
-      description: S.cmdChooseModelDesc.message,
-      category: "Model",
+      title: i18n._(S.cmdChooseModel),
+      description: i18n._(S.cmdChooseModelDesc),
+      category: i18n._(S.cmdCategoryModel),
       keybind: "mod+'",
       slash: "model",
       onSelect: () => dialog.show(() => <DialogSelectModel />),
     },
     {
       id: "mcp.toggle",
-      title: S.cmdToggleMcp.message,
-      description: S.cmdToggleMcpDesc.message,
-      category: "MCP",
+      title: i18n._(S.cmdToggleMcp),
+      description: i18n._(S.cmdToggleMcpDesc),
+      category: i18n._(S.cmdCategoryMcp),
       keybind: "mod+;",
       slash: "mcp",
       onSelect: () => dialog.show(() => <DialogSelectMcp />),
     },
     {
       id: "agent.cycle",
-      title: S.cmdCycleAgent.message,
-      description: S.cmdCycleAgentDesc.message,
-      category: "Agent",
+      title: i18n._(S.cmdCycleAgent),
+      description: i18n._(S.cmdCycleAgentDesc),
+      category: i18n._(S.cmdCategoryAgent),
       keybind: "mod+.",
       slash: "agent",
       onSelect: () => local.agent.move(1),
     },
     {
       id: "agent.cycle.reverse",
-      title: S.cmdCycleAgentRev.message,
-      description: S.cmdCycleAgentRevDesc.message,
-      category: "Agent",
+      title: i18n._(S.cmdCycleAgentRev),
+      description: i18n._(S.cmdCycleAgentRevDesc),
+      category: i18n._(S.cmdCategoryAgent),
       keybind: "shift+mod+.",
       onSelect: () => local.agent.move(-1),
     },
     {
       id: "model.variant.cycle",
-      title: S.cmdCycleEffort.message,
-      description: S.cmdCycleEffortDesc.message,
-      category: "Model",
+      title: i18n._(S.cmdCycleEffort),
+      description: i18n._(S.cmdCycleEffortDesc),
+      category: i18n._(S.cmdCategoryModel),
       keybind: "shift+mod+t",
       onSelect: () => {
         local.model.variant.cycle()
         showToast({
           type: "info",
-          title: S.cmdToastEffortChanged.message,
+          title: i18n._(S.cmdToastEffortChanged),
           description: i18n._({
             ...S.cmdToastEffortChangedDesc,
-            values: { effort: local.model.variant.displayed() ?? "Default" },
+            values: { effort: local.model.variant.displayed() ?? i18n._(S.cmdDefaultEffort) },
           }),
         })
       },
     },
     {
       id: "session.undo",
-      title: S.cmdUndo.message,
-      description: S.cmdUndoDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdUndo),
+      description: i18n._(S.cmdUndoDesc),
+      category: i18n._(S.cmdCategorySession),
       slash: "undo",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
       onSelect: async () => {
@@ -229,9 +230,9 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.redo",
-      title: S.cmdRedo.message,
-      description: S.cmdRedoDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdRedo),
+      description: i18n._(S.cmdRedoDesc),
+      category: i18n._(S.cmdCategorySession),
       slash: "redo",
       disabled: !routeParams.id || info()?.history?.rollback?.canUnrollback !== true,
       onSelect: async () => {
@@ -244,9 +245,9 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.rewind_to_here",
-      title: S.cmdRewindToHere.message,
-      description: S.cmdRewindToHereDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdRewindToHere),
+      description: i18n._(S.cmdRewindToHereDesc),
+      category: i18n._(S.cmdCategorySession),
       disabled: !routeParams.id || !activeMessage(),
       onSelect: async () => {
         const message = activeMessage()
@@ -257,9 +258,9 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.restore_files",
-      title: S.cmdRestoreFiles.message,
-      description: S.cmdRestoreFilesDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdRestoreFiles),
+      description: i18n._(S.cmdRestoreFilesDesc),
+      category: i18n._(S.cmdCategorySession),
       disabled: !routeParams.id || (info()?.history?.rollback?.patchPartIDs.length ?? 0) === 0,
       onSelect: async () => {
         const sessionID = routeParams.id
@@ -269,42 +270,37 @@ export function useSessionCommands(params: {
         const restoredFiles = result.data?.restoredFiles.length ?? 0
         showToast({
           type: "success",
-          title: S.cmdToastFilesRestored.message,
+          title: i18n._(S.cmdToastFilesRestored),
           description: i18n._({ ...S.cmdToastFilesRestoredDesc, values: { count: restoredFiles } }),
         })
       },
     },
     {
       id: "session.compact",
-      title: S.cmdCompact.message,
-      description: S.cmdCompactDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdCompact),
+      description: i18n._(S.cmdCompactDesc),
+      category: i18n._(S.cmdCategorySession),
       slash: "compact",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
       onSelect: async () => {
         const sessionID = routeParams.id
         if (!sessionID) return
-        const model = local.model.current()
-        if (!model) {
-          showToast({
-            type: "warning",
-            title: S.cmdToastNoModel.message,
-            description: S.cmdToastNoModelDesc.message,
-          })
-          return
-        }
-        await sdk.client.session.summarize({
+        await compactSessionWithCurrentModel({
+          sdk,
+          local,
           sessionID,
-          modelID: model.id,
-          providerID: model.provider.id,
+          notices: {
+            noModel: { title: i18n._(S.cmdToastNoModel), description: i18n._(S.cmdToastNoModelDesc) },
+            failure: { title: i18n._(S.cmdToastCompactFailed), description: i18n._(S.cmdToastCompactFailedDesc) },
+          },
         })
       },
     },
     {
       id: "session.fork",
-      title: S.cmdFork.message,
-      description: S.cmdForkDesc.message,
-      category: "Session",
+      title: i18n._(S.cmdFork),
+      description: i18n._(S.cmdForkDesc),
+      category: i18n._(S.cmdCategorySession),
       keybind: "mod+shift+f",
       disabled: !routeParams.id,
       onSelect: async () => {

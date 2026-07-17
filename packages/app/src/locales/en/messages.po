@@ -1149,6 +1149,266 @@ msgstr "Cancel"
 msgid "app.common.confirm"
 msgstr "Confirm"
 
+#. js-lingui-explicit-id
+msgid "app.context.action.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "app.context.action.copy"
+msgstr "Copy"
+
+#. js-lingui-explicit-id
+msgid "app.context.action.copyFailed"
+msgstr "Copy failed"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.estimatedTokens"
+msgstr "Estimated {tokens}"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.estimateNote"
+msgstr "Category values are model-tokenizer estimates reconciled to the exact provider input total."
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.exactInputShare"
+msgstr "{percent} of exact input"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.itemCount"
+msgstr "{count, plural, one {# item} other {# items}}"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.title"
+msgstr "What’s taking space"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.unavailable"
+msgstr "Breakdown available after the next response"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.conversation"
+msgstr "Conversation"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.conversation.description"
+msgstr "User and assistant text, including reasoning"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.filesReferences"
+msgstr "Files and references"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.filesReferences.description"
+msgstr "Attachments, file summaries, and provider-file references"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.instructions"
+msgstr "Instructions"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.instructions.description"
+msgstr "Agent, project, workflow, memory, and runtime guidance"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.overhead"
+msgstr "Overhead"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.overhead.description"
+msgstr "Provider formatting, opaque file usage, and estimation variance"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.toolActivity"
+msgstr "Tool activity"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.toolActivity.description"
+msgstr "Tool definitions, calls, results, and errors"
+
+#. js-lingui-explicit-id
+msgid "app.context.compact.action"
+msgstr "Compact conversation"
+
+#. js-lingui-explicit-id
+msgid "app.context.compact.hint"
+msgstr "Compact the conversation to recover context space."
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.description"
+msgstr "Inspect normalized persisted messages and effective instructions."
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.rawMessages"
+msgstr "Raw Messages"
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.title"
+msgstr "Data access"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.cacheReadWrite"
+msgstr "Cache read / write"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.contextUsage"
+msgstr "Context usage"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.contextWindow"
+msgstr "Context window"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestCallCost"
+msgstr "Latest-call cost"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestCallTotal"
+msgstr "Latest-call total"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestOutputReasoning"
+msgstr "Latest output / reasoning"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.model"
+msgstr "Model"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.provider"
+msgstr "Provider"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.remainingInput"
+msgstr "Remaining input"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.sessionTotalCost"
+msgstr "Session total cost"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.usage"
+msgstr "Usage details"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.assistantMessages"
+msgstr "Assistant messages"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.attributedTotal"
+msgstr "Attributed total"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatedAttributed"
+msgstr "{category} estimated / attributed"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatorEncoding"
+msgstr "Estimator encoding"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatorKind"
+msgstr "Estimator kind"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.lastActivity"
+msgstr "Last activity"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.messages"
+msgstr "Messages"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.rawEstimatedTotal"
+msgstr "Raw estimated total"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.reconciliationFactor"
+msgstr "Reconciliation factor"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.reconciliationMode"
+msgstr "Reconciliation mode"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionCreated"
+msgstr "Session created"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionID"
+msgstr "Session ID"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionTitle"
+msgstr "Session title"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.title"
+msgstr "Developer details"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.userMessages"
+msgstr "User messages"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.copy"
+msgstr "Copy system instructions"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.copyFailed"
+msgstr "Unable to copy system instructions."
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.empty"
+msgstr "No system instructions are available."
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.title"
+msgstr "System instructions"
+
+#. js-lingui-explicit-id
+msgid "app.context.model.label"
+msgstr "Model {model}"
+
+#. js-lingui-explicit-id
+msgid "app.context.session.untitled"
+msgstr "Untitled session"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacting"
+msgstr "Compacting conversation…"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.critical"
+msgstr "Very little context space remains"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.partiallyKnown"
+msgstr "Context size is partially known"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.ready"
+msgstr "Enough room to continue"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.warning"
+msgstr "This context is getting full"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.limitUnknown"
+msgstr "Context limit unknown"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.percentUsed"
+msgstr "{percent} used"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.tokensRemaining"
+msgstr "{tokens} remaining"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.usedInput"
+msgstr "Used input"
+
 #. Confirm
 msgid "app.dialog.confirm.actionFailed"
 msgstr "Action failed"
@@ -3700,6 +3960,10 @@ msgid "app.panel.browser"
 msgstr "Browser"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.context"
+msgstr "Context"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files"
 msgstr "Files"
 
@@ -5015,6 +5279,114 @@ msgstr "{provider} models are now available to use."
 msgid "app.provider.toast.reconnected"
 msgstr "reconnected"
 
+#. js-lingui-explicit-id
+msgid "app.rawMessages.back"
+msgstr "Messages"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.copied"
+msgstr "Copied"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.current"
+msgstr "Copy current message"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.currentFailed"
+msgstr "Unable to copy the current raw session message."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.failed"
+msgstr "Copy failed"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selected"
+msgstr "Copy selected raw messages"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selectedCount"
+msgstr "Copy {count, plural, one {# selected message} other {# selected messages}}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selectedFailed"
+msgstr "Unable to copy selected raw session messages."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.count"
+msgstr "{count, plural, one {# message} other {# messages}}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.empty"
+msgstr "No messages."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.error.load"
+msgstr "Couldn’t load messages."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.flag.excluded"
+msgstr "Excluded"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.flag.hidden"
+msgstr "Hidden"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.list.label"
+msgstr "Raw session messages"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.loadEarlier"
+msgstr "Load earlier"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.loading"
+msgstr "Loading…"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.notice.sensitive"
+msgstr "Sensitive data — copy carefully."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.preview.empty"
+msgstr "Choose a message to inspect."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.refresh"
+msgstr "Refresh raw messages"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.refresh.short"
+msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.role.assistant"
+msgstr "Assistant"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.role.user"
+msgstr "User"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.clear"
+msgstr "Clear selection"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.message"
+msgstr "Select {role} {id}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.selectAll"
+msgstr "Select all loaded messages"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.title"
+msgstr "Raw messages"
+
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "Active"
@@ -6261,8 +6633,32 @@ msgid "app.statusBar.connections.server.unknown"
 msgstr "unknown"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.clickHint"
+msgstr "click for Context"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.inputTokens"
+msgstr "input tokens"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.limitUnknown"
+msgstr "limit unknown"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.openAria"
+msgstr "Open Context, {tokens} input tokens, {usage}"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.context.usage"
 msgstr "{tokens} {count, plural, one {token} other {tokens}} · {percentage} used"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.usageKnown"
+msgstr "{percent} used"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.usageUnavailable"
+msgstr "usage unavailable"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.details"
@@ -9516,6 +9912,41 @@ msgstr "weeks"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.agent"
+msgstr "Agent"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.file"
+msgstr "File"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.mcp"
+msgstr "MCP"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.model"
+msgstr "Model"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.session"
+msgstr "Session"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.terminal"
+msgstr "Terminal"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.view"
+msgstr "View"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.chooseModel"
 msgstr "Choose model"
 
@@ -9583,6 +10014,11 @@ msgstr "Cycle thinking effort"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.cycleEffortDesc"
 msgstr "Switch to the next effort level"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.effort.default"
+msgstr "Default"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -9683,6 +10119,16 @@ msgstr "Rewind to here"
 msgid "session.cmd.rewindToHereDesc"
 msgstr "Rewind session to the active message"
 
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.toast.compactFailed"
+msgstr "Compaction failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.toast.compactFailedDesc"
+msgstr "Unable to compact this session."
+
 #. commands.tsx — toasts
 msgid "session.cmd.toast.effortChanged"
 msgstr "Thinking effort changed"
@@ -9751,158 +10197,6 @@ msgstr "Undo"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.undoDesc"
 msgstr "Undo the last message turn"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.clickToView"
-msgstr "Click to view context"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.closeAriaLabel"
-msgstr "Close Context"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.cost"
-msgstr "Cost"
-
-#. session-context-panel
-msgid "session.context.panelTitle"
-msgstr "Context"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.assistant"
-msgstr "Assistant"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.assistantMessages"
-msgstr "Assistant Messages"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.breakdown"
-msgstr "Context Breakdown"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.breakdown.hint"
-msgstr "Approximate breakdown of input tokens. \"Other\" includes tool definitions and overhead."
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.cacheTokens"
-msgstr "Cache Tokens (read/write)"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.contextLimit"
-msgstr "Context Limit"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.inputTokens"
-msgstr "Input Tokens"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.lastActivity"
-msgstr "Last Activity"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.messages"
-msgstr "Messages"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.model"
-msgstr "Model"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.other"
-msgstr "Other"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.outputTokens"
-msgstr "Output Tokens"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.provider"
-msgstr "Provider"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.rawMessages"
-msgstr "Raw messages"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.reasoningTokens"
-msgstr "Reasoning Tokens"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.session"
-msgstr "Session"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.sessionCreated"
-msgstr "Session Created"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.sysPrompt"
-msgstr "System Prompt"
-
-#. session-context-tab
-msgid "session.context.tab.system"
-msgstr "System"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.toolCalls"
-msgstr "Tool Calls"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.totalCost"
-msgstr "Total Cost"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.totalTokens"
-msgstr "Total Tokens"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.usage"
-msgstr "Usage"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.user"
-msgstr "User"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.userMessages"
-msgstr "User Messages"
-
-#. session-context-usage
-msgid "session.context.tokens"
-msgstr "Tokens"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.usage"
-msgstr "Usage"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

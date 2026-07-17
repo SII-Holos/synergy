@@ -3,6 +3,7 @@ import {
   closeWorkbenchPanelTab,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
+  resolveWorkbenchEscapeAction,
   updateWorkbenchPanelTab,
 } from "./panel-model"
 
@@ -217,5 +218,30 @@ describe("workbench tab updates", () => {
       { id: "c", panelId: "notes" },
     ]
     expect(moveWorkbenchPanelTab(tabs, "a", 2).map((tab) => tab.id)).toEqual(["b", "c", "a"])
+  })
+})
+
+describe("workbench Escape routing", () => {
+  test("keeps the workspace open while a nested dialog owns Escape", () => {
+    expect(
+      resolveWorkbenchEscapeAction({
+        key: "Escape",
+        opened: true,
+        addOpen: false,
+        dialogActive: true,
+      }),
+    ).toBe("none")
+  })
+
+  test("closes the add menu before the workspace and ignores unrelated keys", () => {
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: true, dialogActive: false })).toBe(
+      "close-add-menu",
+    )
+    expect(resolveWorkbenchEscapeAction({ key: "Escape", opened: true, addOpen: false, dialogActive: false })).toBe(
+      "close-surface",
+    )
+    expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, addOpen: false, dialogActive: false })).toBe(
+      "none",
+    )
   })
 })

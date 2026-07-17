@@ -73,13 +73,15 @@ function assistantMessage(id: string, parentID: string, text: string): MessageV2
 }
 
 function installBasicLoopMocks(options?: {
-  onBuildPlan?: (input: any) => void
+  onBuildPlan?: (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => PromptBudgeter.PromptPlan | void
   onProcess?: (
     input: any,
     assistant: MessageV2.Assistant,
     callIndex: number,
   ) => Promise<void | "stop" | "continue"> | void | "stop" | "continue"
   config?: Record<string, unknown>
+  toolDefinitions?: ToolResolver.Definition[]
+  activeToolIDs?: string[]
 }) {
   const originalGetModel = Provider.getModel
   const originalGetAgent = Agent.get
@@ -124,17 +126,22 @@ function installBasicLoopMocks(options?: {
     library: { memory: { enabled: false }, experience: { retrieve: false } },
     ...options?.config,
   }))
-  ;(ToolResolver.definitions as any) = mock(async () => [])
-  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
+  ;(ToolResolver.definitions as any) = mock(async () => options?.toolDefinitions ?? [])
+  ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({
+    tools: {},
+    activeToolIDs: options?.activeToolIDs ?? [],
+  }))
   ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
-    options?.onBuildPlan?.(input)
-    return {
-      system: input.system,
-      systemCacheBreakpoint: input.systemCacheBreakpoint,
-      lateSystem: input.lateSystem,
-      messages: input.messages,
-      toolDefinitions: input.toolDefinitions,
-    }
+    const plan = options?.onBuildPlan?.(input)
+    return (
+      plan ?? {
+        system: input.system,
+        systemCacheBreakpoint: input.systemCacheBreakpoint,
+        lateSystem: input.lateSystem,
+        messages: input.messages,
+        toolDefinitions: input.toolDefinitions,
+      }
+    )
   })
   ;(PromptBudgeter.decide as any) = mock(async () => ({
     budget: { context: 100_000, usable: 100_000, threshold: 0.85, soft: 85_000 },
@@ -642,6 +649,72 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(Cortex.list as any) = originalCortexList
       ;(Cortex.getRunningTasks as any) = originalCortexGetRunningTasks
       ;(Embedding.generate as any) = originalEmbeddingGenerate
+    }
+  })
+})
+
+describe("SessionInvoke context usage provenance", () => {
+  test("includes only tool definitions surviving final availability resolution", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    const toolDefinitions = [
+      { id: "active_tool", description: "Active tool", inputSchema: { type: "object" } },
+      { id: "unavailable_tool", description: "Unavailable tool", inputSchema: { type: "object" } },
+    ] as ToolResolver.Definition[]
+    let toolContributions: Array<{ text: string }> = []
+    const restore = installBasicLoopMocks({
+      toolDefinitions,
+      activeToolIDs: ["active_tool"],
+      onProcess: async (input) => {
+        toolContributions = input.contextUsageProvenance.categories.toolActivity
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(toolContributions.map((contribution) => contribution.text)).toEqual([
+        JSON.stringify({ name: "active_tool", description: "Active tool", inputSchema: { type: "object" } }),
+      ])
+    } finally {
+      restore()
+    }
+  })
+  test("attributes conversation from the final prompt plan instead of the pre-budget projection", async () => {
+    await using tmp = await tmpdir({ git: true })
+
+    let conversationContributions: Array<{ text: string }> = []
+    const restore = installBasicLoopMocks({
+      onBuildPlan: (input) => ({
+        system: input.system,
+        systemCacheBreakpoint: input.systemCacheBreakpoint,
+        lateSystem: input.lateSystem,
+        messages: [{ role: "user", content: "final planned history" }],
+        toolDefinitions: input.toolDefinitions,
+      }),
+      onProcess: async (input) => {
+        conversationContributions = input.contextUsageProvenance.categories.conversation
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(conversationContributions.map((contribution) => contribution.text)).toEqual(["final planned history"])
+    } finally {
+      restore()
     }
   })
 })

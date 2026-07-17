@@ -13,6 +13,7 @@ import {
 } from "@/plugin/registries/workbench-panel-registry"
 import {
   closeWorkbenchPanelTab,
+  isWorkbenchPanelAvailable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
   updateWorkbenchPanelTab,
@@ -46,9 +47,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
     const entries = (surfaceName: WorkbenchPanelSurface) =>
       createMemo(() => {
         registryVersion()
-        return listWorkbenchPanels(surfaceName).filter(
-          (entry) => !entry.requiresSession || hasSession() || entry.supportsDraftSession,
-        )
+        return listWorkbenchPanels(surfaceName).filter((entry) => isWorkbenchPanelAvailable(entry, hasSession()))
       })
 
     const sideEntries = entries("side")
@@ -75,7 +74,7 @@ export const { use: useWorkbenchPanels, provider: WorkbenchPanelsProvider } = cr
       registryVersion()
       const entry = getWorkbenchPanel(panelId)
       if (!entry) return undefined
-      if (entry.requiresSession && !hasSession() && !entry.supportsDraftSession) return undefined
+      if (!isWorkbenchPanelAvailable(entry, hasSession())) return undefined
       return entry
     }
 

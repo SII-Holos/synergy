@@ -192,6 +192,16 @@ Attachments are durable parts with separate model and presentation policies. Mod
 
 Inline data and returned tool attachments are externalized to the Asset store as `asset://` references when appropriate. Provider file IDs remain provider inputs; local paths remain explicit workspace references. Repeated historical images are deduplicated and bounded during model projection without removing their transcript parts. Asset routes validate IDs inside the Asset root rather than accepting arbitrary filesystem paths.
 
+### Assistant context usage
+
+Assistant messages may include an optional `contextUsage` snapshot for the completed provider call. The snapshot is additive message data, not a separate storage record or session aggregate.
+
+`contextUsage.version` is currently `1`. `totalInput` is the provider-reported exact input token total for that assistant step. The `conversation`, `toolActivity`, `filesReferences`, and `instructions` categories store model-tokenizer `estimatedTokens`, reconciled `attributedTokens`, and an optional item count. `overhead.attributedTokens` accounts for exact input tokens that were not attributed to a category. Provider/model identity, optional context and usable-input limits, estimator metadata, reconciliation mode, factor, and capture timestamp travel with the snapshot so the frontend can render it without recomputing prompt assembly.
+
+Older assistant messages that have only `tokens` remain totals-only history. Read-time canonicalization does not invent a category breakdown, and there is no storage migration or historical backfill for `contextUsage`.
+
+The Side Workspace Context panel reads this field from normal message synchronization. It may fall back to existing assistant token totals for exact latest-call usage, but category breakdown is available only when a persisted `contextUsage` snapshot exists.
+
 ## Turn Diffs
 
 Each user message may carry computed file-change diffs from the turn's snapshot/patch parts. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
@@ -274,7 +284,7 @@ If a loop run fails while runnable inbox work remains, release still yields owne
 
 ## Model Context Projection
 
-`MessageV2.toModelMessage()` projects canonical session history into provider messages.
+`MessageV2.projectModelMessages()` projects canonical session history into provider messages and derives category hints from the same emitted branches. `PromptBudgeter.buildPlan()` may transform those messages for the selected provider; before streaming, `SessionInvoke` remaps the hints over the plan's final message array so removed content is not attributed and inserted or rewritten content follows its final role. `MessageV2.toModelMessage()` is the compatibility wrapper for callers that need only the messages.
 
 - messages with `includeInContext = false` are skipped;
 - compacted history is filtered at the compaction boundary;
@@ -283,6 +293,7 @@ If a loop run fails while runnable inbox work remains, release still yields owne
 - tool calls and results are emitted in provider-compatible order;
 - duplicate terminal tool parts from older histories are collapsed by provider call ID, preferring the execution outcome over an AI SDK fallback diagnostic;
 - workflow wrappers are applied ephemerally and do not rewrite stored user text.
+- errored-assistant filtering, canonical terminal tool selection, attachment fallback text, and historical-image placeholders apply identically to messages and provenance.
 
 Visible history and model context can therefore differ intentionally without losing the durable record.
 

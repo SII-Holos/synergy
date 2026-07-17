@@ -182,9 +182,18 @@ export function createCopyController(options: CopyControllerOptions) {
     return options.copyIcon ?? "copy"
   })
 
+  function reset() {
+    if (resetTimer) clearTimeout(resetTimer)
+    resetTimer = undefined
+    setState("idle")
+  }
+
   function scheduleReset() {
     if (resetTimer) clearTimeout(resetTimer)
-    resetTimer = setTimeout(() => setState("idle"), options.resetDelayMs ?? defaultCopyResetDelay)
+    resetTimer = setTimeout(() => {
+      resetTimer = undefined
+      setState("idle")
+    }, options.resetDelayMs ?? defaultCopyResetDelay)
   }
 
   async function copy(source?: CopyTextSource): Promise<ClipboardCopyResult> {
@@ -219,5 +228,6 @@ export function createCopyController(options: CopyControllerOptions) {
     tooltip,
     icon,
     copy,
+    reset,
   }
 }

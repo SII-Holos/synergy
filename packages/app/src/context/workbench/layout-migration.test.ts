@@ -76,65 +76,13 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.workbenchSurfaces["home/session-1"].bottom.size).toBe(360)
   })
 
-  test("moves legacy file tabs into the side workspace and leaves Context isolated", () => {
+  test("drops unsupported persisted layout fields", () => {
     const migrated = migrateWorkbenchLayout({
-      sessionTabs: {
-        "repo/session-1": {
-          active: "file://src/app.ts",
-          all: ["context", "file://src/app.ts", "file://tests/app.ts", "file://src/app.ts"],
-        },
-      },
-      workbenchSurfaces: {
-        "repo/session-1": {
-          side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
-        },
-      },
-    }) as {
-      sessionTabs: Record<string, { active?: string; all: string[] }>
-      workbenchSurfaces: Record<
-        string,
-        {
-          side: {
-            opened: boolean
-            active?: string
-            tabs: Array<{ id: string; panelId: string; resourceId?: string; title?: string; source?: string }>
-          }
-        }
-      >
-    }
+      sidebar: { opened: true, width: 320 },
+      obsoletePanelState: { opened: true },
+    }) as Record<string, unknown>
 
-    expect(migrated.sessionTabs["repo/session-1"]).toEqual({ active: "context", all: ["context"] })
-    expect(migrated.workbenchSurfaces["repo/session-1"].side.opened).toBe(true)
-    expect(migrated.workbenchSurfaces["repo/session-1"].side.active).toBe("file:src/app.ts")
-    expect(migrated.workbenchSurfaces["repo/session-1"].side.tabs).toEqual([
-      { id: "notes", panelId: "notes" },
-      { id: "file:src/app.ts", panelId: "file", resourceId: "src/app.ts", title: "app.ts", source: "migration" },
-      {
-        id: "file:tests/app.ts",
-        panelId: "file",
-        resourceId: "tests/app.ts",
-        title: "app.ts",
-        source: "migration",
-      },
-    ])
-
-    expect(migrateWorkbenchLayout(migrated)).toEqual(migrated)
-  })
-
-  test("does not steal side workspace activation when Context was active", () => {
-    const migrated = migrateWorkbenchLayout({
-      sessionTabs: {
-        "repo/session-1": { active: "context", all: ["context", "file://README.md"] },
-      },
-      workbenchSurfaces: {
-        "repo/session-1": {
-          side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
-        },
-      },
-    }) as {
-      workbenchSurfaces: Record<string, { side: { active?: string } }>
-    }
-
-    expect(migrated.workbenchSurfaces["repo/session-1"].side.active).toBe("notes")
+    expect(migrated.sidebar).toEqual({ opened: true, width: 320 })
+    expect(migrated.obsoletePanelState).toBeUndefined()
   })
 })
