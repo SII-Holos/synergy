@@ -20,6 +20,9 @@ type GitCommandResult = {
 
 export type GitFixtureRunner = (args: string[], cwd: string) => Promise<GitCommandResult>
 
+const GIT_FIXTURE_INIT_MAX_ATTEMPTS = 3
+const GIT_FIXTURE_INIT_RETRY_MS = 25
+
 async function runGitCommand(args: string[], cwd: string): Promise<GitCommandResult> {
   try {
     const child = Bun.spawn(["git", ...args], {
@@ -36,11 +39,18 @@ async function runGitCommand(args: string[], cwd: string): Promise<GitCommandRes
 }
 
 async function runGitFixtureStage(stage: string, args: string[], cwd: string, run: GitFixtureRunner) {
-  const result = await run(args, cwd)
-  if (result.exitCode === 0) return
-  throw new Error(
-    `Git fixture ${stage} failed with exit code ${result.exitCode}: ${result.stderr.trim() || "no stderr"}`,
-  )
+  const maxAttempts = args[0] === "init" ? GIT_FIXTURE_INIT_MAX_ATTEMPTS : 1
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await run(args, cwd)
+    if (result.exitCode === 0) return
+    if (result.exitCode === 141 && attempt < maxAttempts) {
+      await Bun.sleep(GIT_FIXTURE_INIT_RETRY_MS * attempt)
+      continue
+    }
+    throw new Error(
+      `Git fixture ${stage} failed with exit code ${result.exitCode}: ${result.stderr.trim() || "no stderr"}`,
+    )
+  }
 }
 
 export async function initializeGitFixture(dirpath: string, run: GitFixtureRunner = runGitCommand) {

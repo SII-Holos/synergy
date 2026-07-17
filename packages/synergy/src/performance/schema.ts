@@ -405,6 +405,30 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerfInflight" })
   export type Inflight = z.infer<typeof Inflight>
 
+  export const AnalysisRequest = z
+    .object({
+      windowMs: z.coerce.number().int().min(1000).max(86_400_000).default(900_000),
+    })
+    .meta({ ref: "PerformanceAnalysisRequest" })
+  export type AnalysisRequest = z.infer<typeof AnalysisRequest>
+
+  export const AnalysisStatus = z
+    .enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
+    .meta({ ref: "PerformanceAnalysisStatus" })
+  export type AnalysisStatus = z.infer<typeof AnalysisStatus>
+
+  export const AnalysisView = z
+    .object({
+      sessionID: z.string(),
+      status: AnalysisStatus,
+      startedAt: z.number(),
+      completedAt: z.number().optional(),
+      result: z.string().optional(),
+      error: z.string().optional(),
+    })
+    .meta({ ref: "PerformanceAnalysisView" })
+  export type AnalysisView = z.infer<typeof AnalysisView>
+
   export const TraceEvent = z
     .object({
       time: z.number(),
