@@ -946,6 +946,70 @@ describe("ProviderTransform.variants", () => {
     const result = ProviderTransform.variants(model)
     expect(result).toEqual({})
   })
+  test("Kimi Coding Plan leaves K3 reasoning effort provider-managed", () => {
+    const model = createMockModel({
+      id: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "kimi-k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("Kimi Coding Plan leaves K2 reasoning provider-managed without catalog efforts", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test.each(["minimax", "minimax-cn", "minimax-coding-plan", "minimax-cn-coding-plan", "minimax-oauth"])(
+    "%s leaves Anthropic-compatible reasoning provider-managed",
+    (providerID) => {
+      const model = createMockModel({
+        id: "MiniMax-M2.1",
+        providerID,
+        api: {
+          id: "MiniMax-M2.1",
+          url: "https://api.minimax.io/anthropic/v1",
+          npm: "@ai-sdk/anthropic",
+        },
+        capabilities: { reasoningEfforts: ["max"] },
+      })
+
+      expect(ProviderTransform.variants(model)).toEqual({})
+    },
+  )
+
+  test.each(["zhipuai-coding-plan", "zai-coding-plan"])("%s keeps OpenAI-compatible effort variants", (providerID) => {
+    const model = createMockModel({
+      id: "glm-5.2",
+      providerID,
+      api: {
+        id: "glm-5.2",
+        url: "https://api.z.ai/api/coding/paas/v4",
+        npm: "@ai-sdk/openai-compatible",
+      },
+      capabilities: { reasoningEfforts: ["high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      high: { reasoningEffort: "high" },
+      max: { reasoningEffort: "max" },
+    })
+  })
 
   test("deepseek returns empty object", () => {
     const model = createMockModel({
@@ -961,7 +1025,7 @@ describe("ProviderTransform.variants", () => {
     expect(result).toEqual({})
   })
 
-  test("minimax returns empty object", () => {
+  test("MiniMax provider IDs still use OpenAI-compatible effort semantics when configured that way", () => {
     const model = createMockModel({
       id: "minimax/minimax-model",
       providerID: "minimax",
@@ -971,8 +1035,12 @@ describe("ProviderTransform.variants", () => {
         npm: "@ai-sdk/openai-compatible",
       },
     })
-    const result = ProviderTransform.variants(model)
-    expect(result).toEqual({})
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { reasoningEffort: "low" },
+      medium: { reasoningEffort: "medium" },
+      high: { reasoningEffort: "high" },
+    })
   })
 
   test("glm returns empty object", () => {
@@ -1365,7 +1433,7 @@ describe("ProviderTransform.variants", () => {
   })
 
   describe("@ai-sdk/anthropic", () => {
-    test("explicit efforts enable future model families without guessing thinking mode", () => {
+    test("official Anthropic models keep catalog effort variants", () => {
       const model = createMockModel({
         id: "anthropic/claude-future",
         providerID: "anthropic",

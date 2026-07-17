@@ -425,6 +425,19 @@ export namespace ProviderTransform {
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
   const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 
+  const PROVIDER_MANAGED_ANTHROPIC_REASONING = new Set([
+    "kimi-for-coding",
+    "minimax",
+    "minimax-cn",
+    "minimax-coding-plan",
+    "minimax-cn-coding-plan",
+    "minimax-oauth",
+  ])
+
+  function usesProviderManagedAnthropicReasoning(model: Provider.Model) {
+    return model.api.npm === "@ai-sdk/anthropic" && PROVIDER_MANAGED_ANTHROPIC_REASONING.has(model.providerID)
+  }
+
   function effortVariants<T extends Record<string, unknown>>(
     efforts: readonly string[],
     options: (effort: string) => T,
@@ -450,13 +463,11 @@ export namespace ProviderTransform {
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
+    if (usesProviderManagedAnthropicReasoning(model)) return {}
 
     const id = model.id.toLowerCase()
     const modelEfforts = model.capabilities.reasoningEfforts
-    if (
-      modelEfforts === undefined &&
-      (id.includes("deepseek") || id.includes("minimax") || id.includes("glm") || id.includes("mistral"))
-    )
+    if (modelEfforts === undefined && (id.includes("deepseek") || id.includes("glm") || id.includes("mistral")))
       return {}
 
     switch (model.api.npm) {
