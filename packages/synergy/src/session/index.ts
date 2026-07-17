@@ -654,7 +654,7 @@ export namespace Session {
     const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
       StoragePath.sessionSummary(scopeID, asSessionID(sessionID)),
     ).catch(() => [])
-    return diffs ?? []
+    return SnapshotSchema.normalizeArray(diffs) ?? []
   })
 
   export const messages = fn(

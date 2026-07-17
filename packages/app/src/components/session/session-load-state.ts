@@ -16,6 +16,15 @@ type SessionLoadViewInput = {
   delayed: boolean
 }
 
+export function hasSessionRenderableContent(input: {
+  hasActiveMessage: boolean
+  timelineCount: number
+  pendingTimelineCount: number
+  hasTransition: boolean
+}) {
+  return input.hasActiveMessage || input.timelineCount > 0 || input.pendingTimelineCount > 0 || input.hasTransition
+}
+
 export function sessionLoadView(input: SessionLoadViewInput): SessionLoadView {
   if (input.hasRenderableContent) return { type: "conversation" }
 

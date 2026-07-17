@@ -2,6 +2,7 @@ export namespace SessionBounds {
   export const TOOL_INPUT_MAX_BYTES = 1_048_576
   export const TOOL_OUTPUT_MAX_CHARS = 32_000
   export const DIFF_PREVIEW_MAX_CHARS = 8_000
+  export const DIFF_AGGREGATE_PREVIEW_MAX_BYTES = 1_048_576
 
   export function byteLength(value: string): number {
     return Buffer.byteLength(value, "utf8")
@@ -44,5 +45,18 @@ export namespace SessionBounds {
       preview: preview.text,
       ...(preview.truncated ? { truncated: true } : {}),
     }
+  }
+  export function diffAggregate<T extends { preview?: string; truncated?: boolean }>(diffs: readonly T[]): T[] {
+    let previewBytes = 0
+    return diffs.map((diff) => {
+      if (!diff.preview) return diff
+      const bytes = byteLength(diff.preview)
+      if (previewBytes + bytes <= DIFF_AGGREGATE_PREVIEW_MAX_BYTES) {
+        previewBytes += bytes
+        return diff
+      }
+      const { preview: _, ...metadata } = diff
+      return { ...metadata, truncated: true } as T
+    })
   }
 }

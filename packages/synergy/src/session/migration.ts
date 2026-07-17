@@ -1592,6 +1592,74 @@ async function migrateCortexTaskIdentity(progress: (current: number, total: numb
   log.info("cortex task identity migration complete", { total: tasks.length, changed })
 }
 
+async function migrateBoundedDiffAggregatePreviews(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
+  const sessions: Array<{ scopeID: string; sessionID: string }> = []
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) sessions.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of sessions) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sid = Identifier.asSessionID(sessionID)
+    try {
+      changed += await migrateOneBoundedDiffAggregatePreview(scope, sid)
+    } catch (error) {
+      log.warn("failed to migrate bounded diff aggregate previews", {
+        scopeID,
+        sessionID,
+        error: String(error),
+      })
+    }
+    done++
+    progress(done, sessions.length)
+  }
+
+  log.info("bounded diff aggregate preview migration complete", { sessions: sessions.length, changed })
+}
+
+async function migrateOneBoundedDiffAggregatePreview(
+  scope: Identifier.ScopeID,
+  sid: Identifier.SessionID,
+): Promise<number> {
+  let changed = 0
+  const infoKey = StoragePath.sessionInfo(scope, sid)
+  const sessionInfo = await Storage.read<Record<string, unknown>>(infoKey).catch(() => undefined)
+  if (sessionInfo) {
+    const next = normalizeSessionInfo(sessionInfo)
+    if (JSON.stringify(next) !== JSON.stringify(sessionInfo)) {
+      await Storage.write(infoKey, next)
+      changed++
+    }
+  }
+
+  const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scope, sid)).catch(() => [])
+  for (const messageID of messageIDs) {
+    const messageKey = StoragePath.messageInfo(scope, sid, Identifier.asMessageID(messageID))
+    const message = await Storage.read<Record<string, unknown>>(messageKey).catch(() => undefined)
+    if (!message) continue
+    const next = normalizeMessageInfo(message)
+    if (JSON.stringify(next) !== JSON.stringify(message)) {
+      await Storage.write(messageKey, next)
+      changed++
+    }
+  }
+
+  const summaryKey = StoragePath.sessionSummary(scope, sid)
+  const summary = await Storage.read<unknown>(summaryKey).catch(() => undefined)
+  const nextSummary = SnapshotSchema.normalizeArray(summary)
+  if (nextSummary && JSON.stringify(nextSummary) !== JSON.stringify(summary)) {
+    await Storage.write(summaryKey, nextSummary)
+    changed++
+  }
+
+  return changed
+}
+
 async function migrateRetiredIntentAnalystDagAssignments(progress: (current: number, total: number) => void) {
   const scopeIDs = await Storage.scan(["sessions"]).catch(() => [] as string[])
   const allScopeIDs = Array.from(new Set(["home", ...scopeIDs]))
@@ -2195,6 +2263,13 @@ export const migrations: Migration[] = [
     description: "Migrate retired intent-analyst DAG assignments to the primary orchestrator",
     async up(progress) {
       await migrateRetiredIntentAnalystDagAssignments(progress)
+    },
+  },
+  {
+    id: "20260716-bounded-diff-aggregate-preview",
+    description: "Bound aggregate diff preview bytes in persisted session and message summaries",
+    async up(progress) {
+      await migrateBoundedDiffAggregatePreviews(progress)
     },
   },
 ]

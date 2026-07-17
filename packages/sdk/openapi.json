@@ -28328,6 +28328,47 @@
                 "items": {
                   "$ref": "#/components/schemas/FileDiff"
                 }
+              },
+              "diffState": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "pending"
+                      },
+                      "deadlineAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["status", "deadlineAt"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "ready"
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "error"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  }
+                ]
               }
             },
             "required": ["diffs"]
@@ -37059,7 +37100,10 @@
               "parent": {
                 "type": "string"
               },
-              "node": {}
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
             },
             "required": ["file", "event"]
           }
