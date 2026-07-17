@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { z } from "zod"
 import { isolateClarusHome } from "../helpers/clarus-isolation"
 await isolateClarusHome(import.meta.url)
 
@@ -55,38 +56,54 @@ function tearDownHolosMock(): void {
   mockHolosStatus = "disconnected"
 }
 
-mock.module("@/holos/runtime", () => {
-  const zMod = require("zod")
-  return {
-    HolosRuntime: {
-      status: async () => {
-        if (!mockHolosConfigured) return { status: "disconnected" as const }
-        return { status: mockHolosStatus as string }
-      },
-      getNativeTunnel: async () => {
-        if (!mockHolosConfigured) throw new Error("mock not configured")
-        return {
-          registerNativeObserver: () => () => {},
-          registerConnectionObserver: () => () => {},
-          sendNativeRequest: () => ({ requestID: "mock", response: new Promise(() => {}) }),
-        }
-      },
-      reload: async () => {},
-      init: async () => {},
-      start: async () => {},
-      stop: async () => {},
-      Event: {
-        Connected: { type: "holos.connected", properties: zMod.object({ peerId: zMod.string() }) },
-        StatusChanged: {
-          type: "holos.connection.status_changed",
-          properties: zMod.object({ status: zMod.string(), error: zMod.string().optional() }),
-        },
-      },
-      registerAppEventHandler: () => () => {},
-      dispatchAppEvent: async () => false,
-      getProvider: async () => null,
+const realHolosRuntime = { ...(await import("../../src/holos/runtime")).HolosRuntime }
+let holosModuleMockActive = true
+const mockedHolosRuntime = {
+  status: async () => {
+    if (!mockHolosConfigured) return { status: "disconnected" as const }
+    return { status: mockHolosStatus as string }
+  },
+  getNativeTunnel: async () => {
+    if (!mockHolosConfigured) throw new Error("mock not configured")
+    return {
+      registerNativeObserver: () => () => {},
+      registerConnectionObserver: () => () => {},
+      sendNativeRequest: () => ({ requestID: "mock", response: new Promise(() => {}) }),
+    }
+  },
+  reload: async () => {},
+  init: async () => {},
+  start: async () => {},
+  stop: async () => {},
+  Event: {
+    Connected: { type: "holos.connected", properties: z.object({ peerId: z.string() }) },
+    StatusChanged: {
+      type: "holos.connection.status_changed",
+      properties: z.object({ status: z.string(), error: z.string().optional() }),
     },
-  }
+    PresenceUpdate: {
+      type: "holos.presence",
+      properties: z.object({ peerId: z.string(), status: z.any() }),
+    },
+  },
+  registerAppEventHandler: () => () => {},
+  dispatchAppEvent: async () => false,
+  getProvider: async () => null,
+}
+
+mock.module("@/holos/runtime", () => ({
+  HolosRuntime: new Proxy(realHolosRuntime, {
+    get(target, property, receiver) {
+      if (holosModuleMockActive && Object.hasOwn(mockedHolosRuntime, property)) {
+        return Reflect.get(mockedHolosRuntime, property)
+      }
+      return Reflect.get(target, property, receiver)
+    },
+  }),
+}))
+
+afterAll(() => {
+  holosModuleMockActive = false
 })
 
 // ── Setup / cleanup ────────────────────────────────────────────────────
