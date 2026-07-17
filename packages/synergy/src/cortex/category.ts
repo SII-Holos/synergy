@@ -1,5 +1,5 @@
 import * as Schema from "../config/schema"
-import { Provider } from "../provider/provider"
+import type { Provider } from "../provider/provider"
 import { Log } from "../util/log"
 
 export namespace Category {
@@ -187,9 +187,10 @@ The more explicit your prompt, the better the results.
     return Config.current()
   }
 
-  function resolveBuiltinModel(name: string, cfg: Schema.Info): string | undefined {
+  async function resolveBuiltinModel(name: string, cfg: Schema.Info): Promise<string | undefined> {
     const role = CATEGORY_ROLES[name]
     if (!role) return undefined
+    const { Provider } = await import("../provider/provider")
     const ref = Provider.resolveRoleModelSync(cfg, role)
     return ref ? `${ref.providerID}/${ref.modelID}` : undefined
   }
@@ -207,7 +208,7 @@ The more explicit your prompt, the better the results.
       const base = BUILTIN[name]
       const merged = { ...base, ...userCategories[name] }
       if (!merged.model && base) {
-        merged.model = resolveBuiltinModel(name, userConfig)
+        merged.model = await resolveBuiltinModel(name, userConfig)
       }
       return merged
     }
@@ -216,7 +217,7 @@ The more explicit your prompt, the better the results.
       log.info("using builtin category", { name })
       return {
         ...BUILTIN[name],
-        model: resolveBuiltinModel(name, userConfig),
+        model: await resolveBuiltinModel(name, userConfig),
       }
     }
 
