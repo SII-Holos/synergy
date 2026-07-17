@@ -4250,6 +4250,18 @@ export type UserMessage = {
     title?: string
     body?: string
     diffs: Array<FileDiff>
+    diffState?:
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "unknown"
+        }
   }
   agent: string
   model: {
