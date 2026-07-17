@@ -3,6 +3,7 @@ import path from "path"
 import { ScanDocumentTool } from "../../src/tool/scan-document"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
+import { createPptx } from "../fixture/pptx"
 
 const ctx = {
   sessionID: "test-scan-doc",
@@ -46,6 +47,32 @@ describe("tool.scan_document", () => {
             expect(result.output).toContain("name")
             expect(result.metadata.documentKind).toBe("csv")
             expect(result.metadata.filePath).toBe(path.join(tmp.path, "data.csv"))
+          },
+        })
+      },
+      DOCUMENT_TEST_TIMEOUT_MS,
+    )
+
+    test(
+      "extracts slide text from a .pptx file",
+      async () => {
+        await using tmp = await tmpdir({
+          git: true,
+          init: async (dir) => {
+            await Bun.write(path.join(dir, "slides.pptx"), await createPptx(["Quarterly update", "Next steps"]))
+          },
+        })
+        await ScopeContext.provide({
+          scope: await tmp.scope(),
+          fn: async () => {
+            const tool = await ScanDocumentTool.init()
+            const result = await tool.execute({ filePath: path.join(tmp.path, "slides.pptx") }, ctx)
+
+            expect(result.output).toContain("[Slide 1]")
+            expect(result.output).toContain("Quarterly update")
+            expect(result.output).toContain("[Slide 2]")
+            expect(result.output).toContain("Next steps")
+            expect(result.metadata.documentKind).toBe("pptx")
           },
         })
       },

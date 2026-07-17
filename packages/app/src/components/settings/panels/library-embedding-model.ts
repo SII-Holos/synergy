@@ -1,26 +1,33 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { EmbeddingStatus } from "@ericsanchezok/synergy-sdk/client"
 
 export type EmbeddingModelPresentation = {
   title: string
-  description: string
-  stateLabel: "Default" | "Configured"
-  modeLabel: "Local" | "Remote"
+  description: MessageDescriptor
+  stateLabel: MessageDescriptor
+  modeLabel: MessageDescriptor
 }
 
 export function describeEmbeddingModel(status: EmbeddingStatus): EmbeddingModelPresentation {
   if (status.mode === "remote") {
     return {
       title: status.model,
-      description: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
-      stateLabel: "Configured",
-      modeLabel: "Remote",
+      description: {
+        id: "settings.library.embedding.model.remote.desc",
+        message: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
+      },
+      stateLabel: { id: "settings.library.embedding.model.state.configured", message: "Configured" },
+      modeLabel: { id: "settings.library.embedding.model.mode.remote", message: "Remote" },
     }
   }
   return {
     title: status.model,
-    description: "Built-in local fallback used when no remote embedding model is configured.",
-    stateLabel: "Default",
-    modeLabel: "Local",
+    description: {
+      id: "settings.library.embedding.model.local.desc",
+      message: "Built-in local fallback used when no remote embedding model is configured.",
+    },
+    stateLabel: { id: "settings.library.embedding.model.state.default", message: "Default" },
+    modeLabel: { id: "settings.library.embedding.model.mode.local", message: "Local" },
   }
 }
 

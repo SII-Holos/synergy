@@ -1331,6 +1331,7 @@ export type QuickSwitcher = z.infer<typeof QuickSwitcher>
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
+    locale: z.enum(["system", "en", "zh-CN"]).optional().describe("UI locale (system = follow OS, default: system)"),
     theme: z.string().optional().describe("Theme name to use for the interface"),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),

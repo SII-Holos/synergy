@@ -16,13 +16,11 @@ describe("requestPluginHostConfirm", () => {
       },
     )
 
-    expect(shown).toMatchObject({
-      title: "Delete node",
-      description: "This removes the research node from the map.",
-      confirmLabel: "Delete",
-      cancelLabel: "Cancel",
-      tone: "neutral",
-    })
+    expect(shown!.title).toBe("Delete node")
+    expect(shown!.description).toBe("This removes the research node from the map.")
+    expect(shown!.confirmLabel).toBe("Delete")
+    expect(shown!.cancelLabel).toEqual({ id: "app.common.cancel", message: "Cancel" })
+    expect(shown!.tone).toBe("neutral")
 
     await shown?.onConfirm()
     shown?.onConfirmed?.()
@@ -41,7 +39,7 @@ describe("requestPluginHostConfirm", () => {
       },
     )
 
-    expect(shown?.confirmLabel).toBe("Confirm")
+    expect(shown!.confirmLabel).toEqual({ id: "app.common.confirm", message: "Confirm" })
     shown?.onDismiss?.()
     await expect(result).resolves.toBe(false)
   })

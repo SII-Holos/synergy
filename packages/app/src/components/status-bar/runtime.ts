@@ -1,6 +1,8 @@
+import type { I18n } from "@lingui/core"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { statusBar as copy } from "@/locales/messages"
 
 export type RuntimeTone = "base" | "danger"
 
@@ -13,23 +15,27 @@ export interface RuntimeIconState {
   copyText?: string
 }
 
-export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean) {
-  if (waiting) return "waiting"
-  if (!status || status.type === "idle") return "idle"
-  if (status.type === "busy") return status.description || "running"
-  if (status.type === "retry") return `retry ${status.attempt}`
-  if (status.type === "recovering") return status.description || "recovering"
-  return "idle"
+export function runtimeLabel(status: SessionStatus | undefined, waiting: boolean, i18n: I18n): string {
+  if (waiting) return i18n._(copy.runtimeWaiting)
+  if (!status || status.type === "idle") return i18n._(copy.runtimeIdle)
+  if (status.type === "busy") return status.description || i18n._(copy.runtimeRunning)
+  if (status.type === "retry") return i18n._({ ...copy.retryAttempt, values: { attempt: status.attempt } })
+  if (status.type === "recovering") return status.description || i18n._(copy.runtimeRecovering)
+  return i18n._(copy.runtimeIdle)
 }
 
-export function resolveRuntimeIconState(status: SessionStatus | undefined, waiting: boolean): RuntimeIconState {
-  const label = runtimeLabel(status, waiting)
+export function resolveRuntimeIconState(
+  status: SessionStatus | undefined,
+  waiting: boolean,
+  i18n: I18n,
+): RuntimeIconState {
+  const label = runtimeLabel(status, waiting, i18n)
 
   if (waiting) {
     return {
       icon: getSemanticIcon("session.waiting"),
       label,
-      tooltip: `Runtime: ${label}`,
+      tooltip: i18n._({ ...copy.runtimeLabel, values: { label } }),
       tone: "danger",
       pulse: true,
     }
@@ -51,14 +57,14 @@ export function resolveRuntimeIconState(status: SessionStatus | undefined, waiti
     return {
       icon: getSemanticIcon("session.running"),
       label,
-      tooltip: `Runtime: ${label}`,
+      tooltip: i18n._({ ...copy.runtimeLabel, values: { label } }),
       tone: "base",
       pulse: true,
     }
   }
 
   if (status?.type === "recovering") {
-    const message = status.description || "Session is recovering from an incomplete turn"
+    const message = status.description || i18n._(copy.recoveringTooltip)
     return {
       icon: getSemanticIcon("session.retry"),
       label,
@@ -72,7 +78,7 @@ export function resolveRuntimeIconState(status: SessionStatus | undefined, waiti
   return {
     icon: getSemanticIcon("session.idle"),
     label,
-    tooltip: `Runtime: ${label}`,
+    tooltip: i18n._({ ...copy.runtimeLabel, values: { label } }),
     tone: "base",
     pulse: false,
   }

@@ -1,10 +1,11 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { DesktopServerStatus, Platform } from "@/context/platform"
 
 type ErrorRecord = Record<string, unknown>
 
 export type ConfigFileOpenFailure = {
-  title: string
-  description: string
+  title: MessageDescriptor
+  description: MessageDescriptor
 }
 
 function asRecord(value: unknown): ErrorRecord | undefined {
@@ -28,15 +29,39 @@ export function canUseConfigFileOpen(platform: Platform, status: DesktopServerSt
 }
 
 export function configFileOpenFailure(error: unknown, fallbackPath: string): ConfigFileOpenFailure {
-  const message =
-    stringField(error, "message") ??
-    (error instanceof Error && error.message ? error.message : "The server could not open this config file.")
+  const message = stringField(error, "message") ?? (error instanceof Error && error.message ? error.message : undefined)
   const filepath = stringField(error, "path") ?? fallbackPath
-  const separator = /[.!?]$/.test(message) ? " " : ". "
-  const detail = message.includes(filepath) ? message : `${message}${separator}Config file: ${filepath}.`
+  const title = { id: "settings.configFile.openFailed.title", message: "Could not open config file" }
+
+  if (!message) {
+    return {
+      title,
+      description: {
+        id: "settings.configFile.openFailed.unknown",
+        message:
+          "The server could not open this config file. Config file: {filepath}. Use Copy Path to open it manually.",
+        values: { filepath },
+      },
+    }
+  }
+
+  if (message.includes(filepath)) {
+    return {
+      title,
+      description: {
+        id: "settings.configFile.openFailed.withPath",
+        message: "{error} Use Copy Path to open it manually.",
+        values: { error: message },
+      },
+    }
+  }
 
   return {
-    title: "Could not open config file",
-    description: `${detail} Use Copy Path to open it manually.`,
+    title,
+    description: {
+      id: "settings.configFile.openFailed.withDetail",
+      message: "{error} Config file: {filepath}. Use Copy Path to open it manually.",
+      values: { error: message, filepath },
+    },
   }
 }
