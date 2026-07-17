@@ -16,11 +16,11 @@ During ownership:
 
 - the lease abort signal is shared by the session run;
 - status changes are published as busy, retry, idle, or recovering;
-- the loop-scoped message cache holds the assembled raw history;
+- the loop-scoped message cache holds the compaction-aware model working set;
 - all loop writes update that cache and durable storage;
 - cache and recall state are released when the loop exits.
 
-The message cache is valid because the active loop is the sole session writer. Paths that rewrite history in ways the incremental cache does not model, especially compaction, invalidate it and force an authoritative reread.
+The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed.
 
 ## Root Selection
 
@@ -208,7 +208,9 @@ Automatic compaction writes a hidden non-root system continuation belonging to `
 
 ### Filtering and pruning
 
-Later model projection keeps the completed summary and messages after that boundary. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+Later model projection keeps the boundary root, completed summaries for that root, and messages after the latest summary. Earlier completed summaries remain available for audit but are marked out of context. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+
+Model working-set loading applies rollback before boundary selection and restores legacy stable-ID chronology from message creation time. It scans all small message-info records but loads parts only for the selected working set. The active loop caches that projected set and maintains it incrementally; it never retains the full pre-compaction transcript.
 
 Separately, asynchronous pruning clears large outputs from older completed tool parts when all of these conditions hold:
 
@@ -219,7 +221,7 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
-It operates on the loop's existing immutable message snapshot, and its `Session.updatePart()` writes maintain the loop-scoped message cache incrementally. Running a prune job does not invalidate or reread the complete session history.
+It operates on the loop's existing immutable working-set snapshot, and its `Session.updatePart()` writes maintain the loop-scoped cache incrementally. Running a prune job does not invalidate or reread the complete session history.
 
 ## Streaming and Persistence
 

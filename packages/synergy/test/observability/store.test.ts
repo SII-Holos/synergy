@@ -54,6 +54,28 @@ describe("ObservabilityStore", () => {
     expect(new Set(ObservabilityStore.meta().map((row) => row.key))).toContain("schemaVersion")
   })
 
+  test("aggregates process output characters within one flush window", () => {
+    for (let index = 0; index < 10; index++) {
+      ObservabilityMetrics.record({
+        name: "process.output.chars",
+        value: 10,
+        unit: "count",
+        module: "process",
+        source: "process",
+        processId: "proc_aggregate",
+      })
+    }
+    ObservabilityStore.flush()
+
+    const rows = ObservabilityStore.queryMetrics({
+      since: 0,
+      names: ["process.output.chars"],
+      newestFirst: true,
+    })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.value).toBe(100)
+  })
+
   test("ignores JSONL-only mirror files in indexed runtime query", async () => {
     const fs = await import("fs/promises")
     const path = await import("path")

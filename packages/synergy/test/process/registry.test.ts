@@ -60,6 +60,29 @@ describe("ProcessRegistry.appendOutput", () => {
     expect(proc.output).toContain(newData)
     expect(proc.truncated).toBe(true)
   })
+
+  test("coalesces micro-chunks into a bounded number of output segments", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    for (let index = 0; index < 50_000; index++) ProcessRegistry.appendOutput(proc, "x")
+
+    expect(proc.output).toBe("x".repeat(50_000))
+    expect(ProcessRegistry.outputBufferStats(proc).segments).toBeLessThan(32)
+  })
+
+  test("maintains the exact retained window and tail after micro-chunks exceed capacity", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    const chunks: string[] = []
+    for (let index = 0; index < 2_500; index++) {
+      const chunk = `line_${String(index).padStart(6, "0")}_${"x".repeat(84)}\n`
+      chunks.push(chunk)
+      ProcessRegistry.appendOutput(proc, chunk)
+    }
+    const expected = chunks.join("").slice(-200_000)
+
+    expect(proc.output).toBe(expected)
+    expect(proc.tail).toBe(expected.slice(-2_000))
+    expect(proc.truncated).toBe(true)
+  })
 })
 
 describe("ProcessRegistry lifecycle", () => {

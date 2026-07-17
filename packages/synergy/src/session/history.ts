@@ -273,33 +273,79 @@ export namespace SessionHistory {
   }
 
   export async function rawMessages(input: { sessionID: string; limit?: number }) {
-    // Loop-scoped cache (issue #350 D2): during an active loop the assembled
-    // list is held in memory and maintained by the loop's own writes, avoiding a
-    // full history re-read per step. Outside the window `get` returns undefined
-    // and we read from disk. The cache holds the raw pre-deriveSemantics list, so
-    // the result is identical either way.
-    const useCache = !Flag.SYNERGY_DISABLE_MESSAGE_CACHE
-    let raw = useCache ? SessionMessageCache.get(input.sessionID) : undefined
-    if (raw && Flag.SYNERGY_VERIFY_MESSAGE_CACHE) {
-      const disk = await loadRawFromDisk(input.sessionID)
-      if (JSON.stringify(disk) !== JSON.stringify(raw)) {
-        log.error("session message cache diverged from disk; falling back", { sessionID: input.sessionID })
-        SessionMessageCache.invalidate(input.sessionID)
-        raw = undefined
-      }
-    }
-    if (!raw) {
-      raw = await loadRawFromDisk(input.sessionID)
-      if (useCache) SessionMessageCache.set(input.sessionID, raw)
-    }
-    // Canonicalize legacy messages once, at the read boundary, so every
-    // downstream consumer reads rootID / isRoot / visible / origin directly
-    // (issue #281 §12.2). Must run on the full ordered list before slicing.
-    // deriveSemantics returns a fresh top-level array, so callers that mutate it
-    // (e.g. the loop's msgs.push of materialized inbox items) never touch the
-    // cached list.
+    const raw = await loadRawFromDisk(input.sessionID)
     const derived = MessageV2.deriveSemantics(raw)
     return sliceWithReferencedRoots(derived, input.limit)
+  }
+
+  export async function modelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+    const useCache = !Flag.SYNERGY_DISABLE_MESSAGE_CACHE
+    let cached = useCache ? SessionMessageCache.get(input.sessionID) : undefined
+    if (cached && Flag.SYNERGY_VERIFY_MESSAGE_CACHE) {
+      const disk = await loadModelMessages(input)
+      if (JSON.stringify(disk) !== JSON.stringify(cached)) {
+        log.error("session model message cache diverged from disk; falling back", { sessionID: input.sessionID })
+        SessionMessageCache.invalidate(input.sessionID)
+        cached = undefined
+      }
+    }
+    if (cached) return MessageV2.deriveSemantics(cached)
+
+    const messages = await loadModelMessages(input)
+    if (useCache) SessionMessageCache.set(input.sessionID, messages)
+    return messages
+  }
+
+  async function loadModelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
+    const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
+    const effective = applyEventsToInfo(infos, events)
+    if (effective.length === 0) return []
+
+    let latestSummaryIndex = -1
+    let boundaryUserID: string | undefined
+    for (let index = effective.length - 1; index >= 0; index--) {
+      const info = effective[index]
+      if (info.role !== "assistant" || !info.summary || !info.finish) continue
+      latestSummaryIndex = index
+      boundaryUserID = info.parentID
+      break
+    }
+
+    const loadedParts = new Map<string, MessageV2.Part[]>()
+    const loadParts = async (messageID: string) => {
+      const cachedParts = loadedParts.get(messageID)
+      if (cachedParts) return cachedParts
+      input.onLoadParts?.(messageID)
+      const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID })
+      loadedParts.set(messageID, parts)
+      return parts
+    }
+
+    let selected = effective
+    if (latestSummaryIndex >= 0 && boundaryUserID) {
+      const boundaryIndex = effective.findIndex(
+        (info, index) => index < latestSummaryIndex && info.role === "user" && info.id === boundaryUserID,
+      )
+      if (boundaryIndex >= 0) {
+        const boundaryParts = await loadParts(boundaryUserID)
+        if (boundaryParts.some((part) => part.type === "compaction")) {
+          const earlierSummaries = effective.slice(boundaryIndex + 1, latestSummaryIndex).flatMap((info) => {
+            if (info.role !== "assistant" || info.parentID !== boundaryUserID || !info.summary || !info.finish)
+              return []
+            return [{ ...info, includeInContext: false }]
+          })
+          selected = [effective[boundaryIndex], ...earlierSummaries, ...effective.slice(latestSummaryIndex)]
+        }
+      }
+    }
+
+    const messages = await Promise.all(
+      selected.map(async (info) => ({
+        info,
+        parts: await loadParts(info.id),
+      })),
+    )
+    return MessageV2.deriveSemantics(messages)
   }
 
   export async function messages(input: { sessionID: string; limit?: number; raw?: boolean }) {
@@ -359,6 +405,30 @@ export namespace SessionHistory {
     })
   }
 
+  function applyEventsToInfo(messages: MessageV2.Info[], events: Event[]) {
+    const rollbacks = activeRollbacks(events)
+    if (rollbacks.length === 0) return messages
+
+    const cutIndexes: number[] = []
+    const hidden = new Set<string>()
+    for (const event of rollbacks) {
+      const cut = getCutMessageID(event)
+      if (cut && canUnrollbackInfo(messages, event)) {
+        const cutIndex = messages.findIndex((message) => message.id === cut)
+        if (cutIndex >= 0) {
+          cutIndexes.push(cutIndex)
+          continue
+        }
+      }
+      for (const id of event.droppedMessageIDs) hidden.add(id)
+    }
+
+    return messages.filter((message, index) => {
+      if (cutIndexes.some((cutIndex) => index >= cutIndex)) return false
+      return !hidden.has(message.id)
+    })
+  }
+
   export function info(sessionID: string, raw: MessageV2.WithParts[], events: Event[]): Info["history"] | undefined {
     const rollback = latest(events)
     if (!rollback) return undefined
@@ -404,6 +474,7 @@ export namespace SessionHistory {
       StoragePath.sessionHistoryEvent(scopeID, asSessionID(event.sessionID), asHistoryID(event.id)),
       event,
     )
+    SessionMessageCache.invalidate(event.sessionID)
   }
 
   async function updateSessionHistory(sessionID: string, history: Info["history"] | undefined) {
@@ -439,6 +510,10 @@ export namespace SessionHistory {
     )
   }
 
+  export function messageInfos(sessionID: string) {
+    return readMessageInfo(sessionID)
+  }
+
   async function readMessageInfo(sessionID: string) {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
@@ -446,7 +521,7 @@ export namespace SessionHistory {
     const messages = await Storage.readMany<MessageV2.Info>(
       ids.map((id) => StoragePath.messageInfo(scopeID, asSessionID(sessionID), asMessageID(id))),
     )
-    return messages.filter((msg): msg is MessageV2.Info => !!msg).sort((a, b) => a.id.localeCompare(b.id))
+    return messages.filter((msg): msg is MessageV2.Info => !!msg).sort(MessageV2.compareStorageOrder)
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {
