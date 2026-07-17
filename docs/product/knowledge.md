@@ -63,6 +63,8 @@ Experience encoding can degrade over time — an intent may be too long, empty, 
 
 A re-encode job processes each candidate experience and updates its intent or script embedding. The job is owned by the server, not the frontend: closing the settings panel or disconnecting the browser does not cancel it. At most one job is active at a time. Starting a new job when one is already running returns the existing job state with a 409 conflict.
 
+The worker bounds maintenance memory by separating candidates that already have stored raw content from candidates that need session history. Ordinary script repairs use the stored Library content without loading session messages. Intent repairs and complete failed-pipeline repairs are grouped by session: the server loads one session history, processes that session's candidates, releases it, and only then advances to the next session. Cancelling a job also propagates to in-flight encoder and remote embedding requests. Between session groups, critical process or cgroup memory pressure triggers collection; if collection is unavailable or pressure remains critical, the job fails before loading another history.
+
 REST endpoints support the full lifecycle:
 
 - `POST /library/experience/reencode/jobs` — start a job (`intent` or `script` type, with an optional detection reason filter)
@@ -73,7 +75,7 @@ Items transition through `pending` → `processing` → `ok | skipped | failed`.
 
 Three `library.experience.learning` configuration fields control the job runtime:
 
-- `reencodeConcurrency` (1–32, default 5) — how many experiences to re-encode in parallel
+- `reencodeConcurrency` (1–32, default 5) — how many stored-content script repairs may run in parallel; history-dependent repairs remain serialized by session so only one complete session history is retained at a time
 - `reencodeRetries` (0–10, default 3) — how many times to retry a transient model, embedding, session, network, or database stage before marking the item failed
 - `reencodeRetryBackoffMs` (≥ 0, default 1000) — initial backoff in milliseconds for transient retries, doubled on each attempt (1s, 2s, 4s by default)
 

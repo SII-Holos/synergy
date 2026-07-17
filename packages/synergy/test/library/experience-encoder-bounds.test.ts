@@ -135,6 +135,39 @@ describe("ExperienceEncoder stream bounds", () => {
     })
   })
 
+  test("callAgent propagates external cancellation", async () => {
+    installAgentMocks()
+    const external = new AbortController()
+    let llmSignal: AbortSignal | undefined
+    ;(LLM.stream as any) = mock(async (input: { abort: AbortSignal }) => {
+      llmSignal = input.abort
+      return {
+        textStream: (async function* () {
+          yield "1. partial\n"
+          await new Promise<never>((_, reject) => {
+            input.abort.addEventListener(
+              "abort",
+              () => reject(new DOMException("The operation was aborted", "AbortError")),
+              { once: true },
+            )
+          })
+        })(),
+        text: new Promise<string>(() => {}),
+      }
+    })
+
+    const pending = ExperienceEncoder.callAgentForTest(
+      "script",
+      { ...agentContext(), signal: external.signal },
+      "raw conversation",
+    )
+    await Bun.sleep(0)
+    external.abort()
+
+    await expect(pending).rejects.toMatchObject({ name: "EncoderStreamError", code: "aborted" })
+    expect(llmSignal?.aborted).toBe(true)
+  })
+
   test("learning defaults expose encoder timeout and output bounds", () => {
     expect(Config.LEARNING_DEFAULTS.encoderTimeoutMs).toBe(60_000)
     expect(Config.LEARNING_DEFAULTS.encoderMaxOutputChars).toBe(16_000)

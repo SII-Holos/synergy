@@ -131,21 +131,26 @@ export namespace Embedding {
   export interface Input {
     id: string
     text: string
+    signal?: AbortSignal
   }
-
   export async function generate(input: Input): Promise<Info> {
     using _ = log.time("generate", { id: input.id })
+    input.signal?.throwIfAborted()
     const resolved = await resolveModel()
+    input.signal?.throwIfAborted()
 
     let vector: number[]
     if (resolved.mode === "local") {
       const result = await resolved.extractor(input.text, { pooling: "mean", normalize: true })
+      input.signal?.throwIfAborted()
       vector = Array.from(result.data as Float32Array)
     } else {
+      const timeout = AbortSignal.timeout(TIMEOUT_MS)
+      const abortSignal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout
       const { embedding } = await embed({
         model: resolved.model,
         value: input.text,
-        abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+        abortSignal,
       })
       vector = embedding as number[]
     }
