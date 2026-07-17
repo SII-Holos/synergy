@@ -118,7 +118,7 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
   readonly extendInputs: ExtendTaskInput[] = []
   readonly resultInputs: RecordTaskResultInput[] = []
   failSubscriptions = false
-  resultFailure: "rejected" | "ambiguous" | null = null
+  resultFailure: "sync_rejected" | "rejected" | "ambiguous" | null = null
   resultResponse:
     | Promise<{
         kind: "known"
@@ -248,6 +248,14 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
     input: RecordTaskResultInput,
   ): ClarusRequestResult<Extract<ClarusObservedEvent, { type: "runtimeTaskResultRecorded" }>> {
     this.resultInputs.push(input)
+    if (this.resultFailure === "sync_rejected") {
+      throw {
+        disposition: "rejected",
+        requestID: input.requestID,
+        code: "RUNTIME_RUN_NOT_FOUND",
+        message: "Runtime run was not found",
+      } satisfies ClarusRequestFailure
+    }
     if (this.resultFailure === "rejected") {
       const response = Promise.reject({
         disposition: "rejected",
@@ -821,6 +829,7 @@ describe("Clarus Phase 3 result and recovery", () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const port = new FakeClarusPort()
+    port.resultResponse = new Promise(() => {})
 
     await ScopeContext.provide({
       scope,
@@ -856,7 +865,7 @@ describe("Clarus Phase 3 result and recovery", () => {
           metadata() {},
           async ask() {},
         }
-        const result = await tool.execute(
+        const execution = tool.execute(
           {
             success: true,
             output: "Result ready",
@@ -881,6 +890,9 @@ describe("Clarus Phase 3 result and recovery", () => {
           },
           ctx,
         )
+        const result = await Promise.race([execution, Bun.sleep(50).then(() => null)])
+        expect(result).not.toBeNull()
+        if (!result) throw new Error("Clarus result tool waited for the recorded response")
         expect(result.title).toBe("Clarus task result submitted")
         expect(port.resultInputs).toHaveLength(1)
         expect(port.resultInputs[0]).toMatchObject({
@@ -888,6 +900,7 @@ describe("Clarus Phase 3 result and recovery", () => {
           taskID: "task_1",
           subtaskID: "subtask_1",
           success: true,
+          timeoutMs: 120_000,
         })
         const submitting = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
         expect(submitting?.status).toBe("submitting")
@@ -917,7 +930,7 @@ describe("Clarus Phase 3 result and recovery", () => {
     expect(submitted?.resultState).toBe("acknowledged")
     expect((await ClarusOutbox.get(submitted!.resultOutboxRequestID!))?.state).toBe("acknowledged")
   })
-  test("Agent tool preserves rejected and ambiguous result failure semantics", async () => {
+  test("Synergy settles rejected and ambiguous result responses after the Agent tool returns", async () => {
     for (const failure of ["rejected", "ambiguous"] as const) {
       const suffix = `${Date.now()}_${failure}_${Math.random().toString(36).slice(2, 8)}`
       AGENT_ID = `agent_${suffix}`
@@ -948,37 +961,92 @@ describe("Clarus Phase 3 result and recovery", () => {
             async ask() {},
           }
 
-          let caught: unknown
-          try {
-            await tool.execute({ success: true, output: "Result ready" }, ctx)
-          } catch (error) {
-            caught = error
-          }
-
-          expect(caught).toBeInstanceOf(Error)
-          expect(caught).toMatchObject(
-            failure === "rejected"
-              ? {
-                  code: "RUNTIME_RUN_NOT_FOUND",
-                  disposition: "rejected",
-                  message: expect.stringContaining("Do not retry unless Clarus reassigns the task"),
-                }
-              : {
-                  code: "CLARUS_TOOL_SUBMISSION_AMBIGUOUS",
-                  disposition: "ambiguous",
-                  message: expect.stringContaining("Do not retry this assignment"),
-                },
-          )
+          const result = await tool.execute({ success: true, output: "Result ready" }, ctx)
+          expect(result.title).toBe("Clarus task result submitted")
           const requestID = port.resultInputs[0]!.requestID
-          expect(caught).toMatchObject({ requestID })
+          expect(String(result.metadata.requestID)).toBe(requestID)
+          await waitFor(async () => (await ClarusOutbox.get(requestID))?.state === failure)
           const reverted = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
           expect(reverted).toMatchObject({ status: "needs_attention", resultState: "idle" })
           expect(reverted?.resultOutboxRequestID).toBeUndefined()
-          expect((await ClarusOutbox.get(requestID))?.state).toBe(failure)
         },
       })
       ClarusRuntime.detach()
     }
+  })
+
+  test("Agent tool preserves synchronous rejected result failure semantics", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+    port.resultFailure = "sync_rejected"
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await prepareProject(scope)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await port.emit(taskAssignedEvent({ context: { snapshot: true }, taskInput: { explicit: true } }))
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
+        )
+        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+        const tool = await ClarusSubmitTaskResultTool.init()
+        const ctx: Tool.Context = {
+          sessionID: binding!.sessionID,
+          messageID: Identifier.ascending("message"),
+          agent: "synergy",
+          abort: new AbortController().signal,
+          metadata() {},
+          async ask() {},
+        }
+
+        await expect(tool.execute({ success: true, output: "Result ready" }, ctx)).rejects.toMatchObject({
+          code: "RUNTIME_RUN_NOT_FOUND",
+          disposition: "rejected",
+          message: expect.stringContaining("Do not retry unless Clarus reassigns the task"),
+        })
+      },
+    })
+  })
+
+  test("Agent tool rejects an already-aborted submission before dispatch", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await prepareProject(scope)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await port.emit(taskAssignedEvent({ context: { snapshot: true }, taskInput: { explicit: true } }))
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
+        )
+        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+        const tool = await ClarusSubmitTaskResultTool.init()
+        const abort = new AbortController()
+        abort.abort()
+        const ctx: Tool.Context = {
+          sessionID: binding!.sessionID,
+          messageID: Identifier.ascending("message"),
+          agent: "synergy",
+          abort: abort.signal,
+          metadata() {},
+          async ask() {},
+        }
+
+        await expect(tool.execute({ success: true, output: "Result ready" }, ctx)).rejects.toMatchObject({
+          code: "ABORTED",
+          disposition: "rejected",
+          message: expect.stringContaining("The result was not dispatched"),
+        })
+        expect(port.resultInputs).toHaveLength(0)
+      },
+    })
   })
 })
 
@@ -1010,5 +1078,22 @@ describe("Clarus Phase 3 lifecycle reset", () => {
         expect(scheduler.entries.filter((entry) => entry.active)).toHaveLength(0)
       },
     })
+  })
+
+  test("connection events publish navigation updates on Home Scope without a current scope", async () => {
+    const port = new FakeClarusPort()
+    const received: Array<{ directory?: string; payload: { type?: string } }> = []
+    const handler = (event: { directory?: string; payload: { type?: string } }) => received.push(event)
+
+    await ClarusRuntime.attach(port)
+    GlobalBus.on("event", handler)
+    try {
+      await port.connect()
+      await waitFor(() =>
+        received.some((event) => event.directory === "home" && event.payload.type === "clarus.navigation.updated"),
+      )
+    } finally {
+      GlobalBus.off("event", handler)
+    }
   })
 })

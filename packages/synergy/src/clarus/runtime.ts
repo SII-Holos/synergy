@@ -2,6 +2,8 @@ import type { HolosRuntime as HolosRuntimeType } from "@/holos/runtime"
 import { HolosRuntime } from "@/holos/runtime"
 import { createClarusAgentTunnelAdapter } from "@/holos/clarus"
 import { Bus } from "@/bus"
+import { Scope } from "@/scope"
+import { ScopeContext } from "@/scope/context"
 import { Lock } from "@/util/lock"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
@@ -294,11 +296,12 @@ async function settleOutboxFailure(requestID: string, error: unknown): Promise<v
  *  navigation snapshot via GET /global/clarus/navigation on receipt.
  *  Best-effort: never block a transition on publication. */
 function publishNavigationUpdated(): void {
-  try {
-    void Bus.publish(NavigationUpdated, { timestamp: Date.now() })
-  } catch {
-    // Ignore — navigation events are best-effort.
-  }
+  void ScopeContext.provide({
+    scope: Scope.home(),
+    fn: () => Bus.publish(NavigationUpdated, { timestamp: Date.now() }),
+  }).catch((error) => {
+    log.warn("Clarus navigation update publication failed", { error: errorMessage(error) })
+  })
 }
 
 function estimateEventBytes(event: ClarusObservedEvent): number {
@@ -543,11 +546,21 @@ export namespace ClarusRuntime {
     holosTransportStatus = { status: "disconnected" }
   }
 
+  const MAX_TASK_RESULT_TIMEOUT_MS = 120_000
+
   export async function recordTaskResult(
     input: RecordTaskResultInput & { agentId: string; projectId: string },
   ): Promise<unknown> {
     const transport = attached
     if (!transport) throw new Error("ClarusRuntime is not attached")
+    if (input.signal?.aborted) {
+      throw {
+        disposition: "rejected" as const,
+        requestID: input.requestID,
+        code: "ABORTED",
+        message: "Request aborted before dispatch",
+      }
+    }
     if (!input.taskID || connectedAgentId !== input.agentId || connectedEpoch === 0 || connectedGeneration === 0) {
       throw new Error("Clarus result identity is not bound to the active connection")
     }
@@ -593,7 +606,20 @@ export namespace ClarusRuntime {
 
     let request: ReturnType<ClarusAgentTunnelPort["recordTaskResult"]>
     try {
-      request = transport.port.recordTaskResult(input)
+      request = transport.port.recordTaskResult({
+        requestID,
+        runID: input.runID,
+        taskID: input.taskID,
+        subtaskID: input.subtaskID,
+        success: input.success,
+        output: input.output,
+        artifacts: input.artifacts,
+        evidenceRefs: input.evidenceRefs,
+        notaryRefs: input.notaryRefs,
+        error: input.error,
+        payload: input.payload,
+        timeoutMs: Math.min(input.timeoutMs ?? MAX_TASK_RESULT_TIMEOUT_MS, MAX_TASK_RESULT_TIMEOUT_MS),
+      })
       if (request.requestID !== requestID) {
         await ClarusOutbox.markAmbiguous(requestID, "adapter returned a different request ID")
         throw new Error("Clarus result request ID mismatch")
@@ -602,12 +628,6 @@ export namespace ClarusRuntime {
         connectionEpoch: String(connectedEpoch),
         generation: connectedGeneration,
       })
-      const response = await request.response
-      if (response.requestID !== requestID) {
-        await ClarusOutbox.markAmbiguous(requestID, "result response request ID did not match")
-        throw new Error("Clarus result response request ID mismatch")
-      }
-      return response
     } catch (error) {
       const record = await ClarusOutbox.get(requestID)
       if (record?.state !== "ambiguous" && record?.state !== "acknowledged") {
@@ -616,6 +636,58 @@ export namespace ClarusRuntime {
       await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskID)
       publishNavigationUpdated()
       throw error
+    }
+
+    void observeTaskResultResponse({
+      request,
+      requestID,
+      agentId: input.agentId,
+      projectId: input.projectId,
+      taskId: input.taskID,
+    })
+    return { requestID }
+  }
+
+  async function observeTaskResultResponse(input: {
+    request: ReturnType<ClarusAgentTunnelPort["recordTaskResult"]>
+    requestID: string
+    agentId: string
+    projectId: string
+    taskId: string
+  }): Promise<void> {
+    try {
+      const response = await input.request.response
+      if (response.requestID === input.requestID) return
+      await settleTaskResultResponseFailure(
+        input,
+        Object.assign(new Error("Clarus result response request ID mismatch"), {
+          disposition: "ambiguous",
+          requestID: input.requestID,
+          reason: "invalid_response",
+        }),
+      )
+    } catch (error) {
+      await settleTaskResultResponseFailure(input, error)
+    }
+  }
+
+  async function settleTaskResultResponseFailure(
+    input: { requestID: string; agentId: string; projectId: string; taskId: string },
+    error: unknown,
+  ): Promise<void> {
+    try {
+      const record = await ClarusOutbox.get(input.requestID)
+      if (!record || isTerminalOutboxState(record.state)) return
+      await settleOutboxFailure(input.requestID, error)
+      await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskId)
+      publishNavigationUpdated()
+    } catch (settlementError) {
+      const record = await ClarusOutbox.get(input.requestID)
+      if (record && isTerminalOutboxState(record.state)) return
+      log.warn("Clarus result response settlement failed", {
+        requestID: input.requestID,
+        error: errorMessage(settlementError),
+      })
     }
   }
 
