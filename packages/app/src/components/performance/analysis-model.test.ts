@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test"
-import { isPerformanceAnalysisActive, performanceAnalysisStatusLabel } from "./analysis-model"
+import {
+  isPerformanceAnalysisActive,
+  performanceAnalysisSessionPath,
+  performanceAnalysisStatusLabel,
+} from "./analysis-model"
 
 describe("performance analysis state", () => {
   test("only polls queued and running analyses", () => {
@@ -18,5 +22,26 @@ describe("performance analysis state", () => {
     expect(performanceAnalysisStatusLabel("error")).toBe("Failed")
     expect(performanceAnalysisStatusLabel("cancelled")).toBe("Cancelled")
     expect(performanceAnalysisStatusLabel("interrupted")).toBe("Interrupted")
+  })
+
+  test("routes durable analysis sessions from the global Performance panel", () => {
+    expect(
+      performanceAnalysisSessionPath({
+        sessionID: "ses_home",
+        scope: { type: "home" },
+      }),
+    ).toBe("/aG9tZQ/session/ses_home")
+    expect(
+      performanceAnalysisSessionPath({
+        sessionID: "ses_project",
+        scope: { type: "project", directory: "/workspace/project" },
+      }),
+    ).toBe("/L3dvcmtzcGFjZS9wcm9qZWN0/session/ses_project")
+    expect(
+      performanceAnalysisSessionPath({
+        sessionID: "ses_missing",
+        scope: { type: "project" },
+      }),
+    ).toBeUndefined()
   })
 })

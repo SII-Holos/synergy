@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
+import { useNavigate } from "@solidjs/router"
 import { Line } from "solid-chartjs"
 import { Chart as ChartJS, CategoryScale, Filler, LinearScale, LineElement, PointElement, Tooltip } from "chart.js"
 import { Dialog as KobalteDialog } from "@kobalte/core/dialog"
@@ -7,9 +8,13 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { HexColor } from "@ericsanchezok/synergy-ui/theme"
-import { useNavigateToSession } from "@/composables/use-navigate-to-session"
+import { useGlobalSDK } from "@/context/global-sdk"
 import { useChartTheme } from "../visualization/use-chart-theme"
-import { isPerformanceAnalysisActive, performanceAnalysisStatusLabel } from "./analysis-model"
+import {
+  isPerformanceAnalysisActive,
+  performanceAnalysisSessionPath,
+  performanceAnalysisStatusLabel,
+} from "./analysis-model"
 import {
   browserMetricPoints,
   buildLineChartModel,
@@ -267,7 +272,8 @@ function PerformanceAnalysisCard(props: {
   starting: boolean
   onCancel: () => void
 }) {
-  const navigateToSession = useNavigateToSession()
+  const navigate = useNavigate()
+  const globalSDK = useGlobalSDK()
   const analysis = () => props.analysis
   const active = () => isPerformanceAnalysisActive(analysis()?.status)
   const statusTone = () => {
@@ -283,6 +289,14 @@ function PerformanceAnalysisCard(props: {
       default:
         return "text-text-subtle"
     }
+  }
+
+  async function openSession(sessionID: string) {
+    const response = await globalSDK.client.session.get({ sessionID }).catch(() => undefined)
+    const session = response?.data
+    if (!session) return
+    const path = performanceAnalysisSessionPath({ sessionID, scope: session.scope })
+    if (path) navigate(path, { state: { from: window.location.pathname } })
   }
 
   return (
@@ -324,7 +338,7 @@ function PerformanceAnalysisCard(props: {
                   variant="secondary"
                   size="small"
                   icon={getSemanticIcon("action.open")}
-                  onClick={() => navigateToSession(item().sessionID)}
+                  onClick={() => void openSession(item().sessionID)}
                 >
                   Open session
                 </Button>
