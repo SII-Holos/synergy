@@ -240,6 +240,8 @@ export async function startBlueprint(input: {
       budget: r.budget,
       pluginOwner,
       model: r.executionModel,
+      executionTools: r.executionTools,
+      auditTools: r.auditTools,
     })
     loopID = loop.id
 
@@ -265,6 +267,7 @@ export async function startBlueprint(input: {
       visibility: "hidden",
       notifyParentOnComplete: false,
       timeoutMs: r.budget.maxRuntimeMs,
+      tools: r.executionTools,
       owner: pluginOwner,
     })
     taskID = task.id

@@ -16,6 +16,7 @@ export const LightLoopContinuationPolicy: ContinuationKernel.Policy = {
       sessionID: gate.sessionID,
       instructions: workflow.instructions,
       reviewAgent: workflow.reviewAgent,
+      reviewTools: workflow.reviewTools,
       stopRequest,
     })
     await Session.update(gate.sessionID, (draft) => {
@@ -34,6 +35,7 @@ async function prepareReviewer(input: {
   sessionID: string
   instructions: string
   reviewAgent?: string
+  reviewTools?: Record<string, boolean>
   stopRequest: NonNullable<Extract<Session.Info["workflow"], { kind: "lightloop" }>["stopRequest"]>
 }) {
   return Cortex.prepare({
@@ -44,6 +46,7 @@ async function prepareReviewer(input: {
     category: "general",
     parentSessionID: input.sessionID,
     parentMessageID: input.stopRequest.requesterMessageID,
+    tools: input.reviewTools,
     reuseInterrupted: true,
     notifyParentOnComplete: false,
     visibility: "visible",

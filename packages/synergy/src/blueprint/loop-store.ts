@@ -48,6 +48,8 @@ export namespace BlueprintLoopStore {
     sourceDigest?: string
     budget?: Info["budget"]
     pluginOwner?: Info["pluginOwner"]
+    executionTools?: Info["executionTools"]
+    auditTools?: Info["auditTools"]
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
@@ -84,6 +86,8 @@ export namespace BlueprintLoopStore {
       budget: input.budget,
       pluginOwner: input.pluginOwner,
       model: input.model,
+      executionTools: input.executionTools,
+      auditTools: input.auditTools,
       time: { created: now, updated: now },
     }
     await Storage.write(StoragePath.blueprintLoop(sid, id), loop)

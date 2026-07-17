@@ -52,6 +52,7 @@ async function createRunningLoop(input?: {
   auditAgent?: string
   userPrompt?: string
   budget?: { maxRuntimeMs: number; maxIterations: number }
+  auditTools?: Record<string, boolean>
 }) {
   const session = await Session.create({})
   const loop = await BlueprintLoopStore.create({
@@ -60,6 +61,7 @@ async function createRunningLoop(input?: {
     sessionID: session.id,
     auditAgent: input?.auditAgent,
     budget: input?.budget,
+    auditTools: input?.auditTools,
   })
   const running = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
     status: "running",
@@ -170,6 +172,7 @@ describe("blueprint_loop_stop", () => {
         const { session, loop } = await createRunningLoop({
           auditAgent: "security-reviewer",
           userPrompt: "Do not change the public CLI contract.",
+          auditTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
         })
         const launches = installReviewerLaunch()
         const tool = await BlueprintLoopStopTool.init()
@@ -195,6 +198,29 @@ describe("blueprint_loop_stop", () => {
           evidence: ["Focused tests pass"],
           requesterSessionID: session.id,
         })
+
+        await startPendingReview(session.id)
+        const reviewing = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(launches).toHaveLength(1)
+        expect(launches[0].agent).toBe("security-reviewer")
+        expect(launches[0].parentSessionID).toBe(session.id)
+        expect(launches[0].notifyParentOnComplete).toBe(false)
+        expect(launches[0].visibility).toBe("visible")
+        expect(launches[0].prompt).toContain(`Session ID: ${session.id}`)
+        expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
+        expect(launches[0].prompt).toContain("blueprint_loop_approve")
+        expect(launches[0].prompt).toContain("blueprint_loop_reject")
+        // Audit launch receives exactly persisted auditTools, no execution-only submit tool
+        expect(launches[0].tools).toEqual({
+          plugin__truthward__context_query: true,
+          plugin__truthward__n03_artifact_get: true,
+        })
+        expect(launches[0].tools).not.toHaveProperty("plugin__truthward__n03_submit")
+
+        expect(reviewing.status).toBe("auditing")
+        expect(reviewing.auditTaskID).toBeDefined()
+        const reviewSession = await Session.get(reviewing.auditSessionID!)
+        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
       },
     })
   })
@@ -453,6 +479,7 @@ describe("blueprint_loop_reject", () => {
 
         const stop = await BlueprintLoopStopTool.init()
         await stop.execute({ summary: "Verification is now complete." }, ctx(session.id))
+        await startPendingReview(session.id)
         const auditingAgain = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
         expect(auditingAgain.status).toBe("auditing")
 

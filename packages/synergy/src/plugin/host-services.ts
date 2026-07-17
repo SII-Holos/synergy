@@ -395,7 +395,7 @@ export async function startLightLoop(input: {
     parentSessionID: input.context.sessionID,
     parentMessageID: input.context.messageID,
     model,
-    tools: request.tools,
+    tools: request.executionTools,
     visibility: "hidden",
     notifyParentOnComplete: false,
     timeoutMs,
@@ -417,6 +417,7 @@ export async function startLightLoop(input: {
       status: "running",
       executionAgent: request.executionAgent.trim(),
       reviewAgent: request.reviewAgent.trim(),
+      ...(request.reviewTools ? { reviewTools: request.reviewTools } : {}),
       pluginOwner: {
         pluginId: input.pluginId,
         pluginGeneration: input.pluginGeneration,

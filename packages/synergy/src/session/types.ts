@@ -108,6 +108,7 @@ export const WorkflowInfo = z
       terminalError: z.string().optional(),
       terminalHookDeliveredAt: z.number().optional(),
       terminalHookError: z.string().optional(),
+      reviewTools: z.record(z.string(), z.boolean()).optional(),
       stopRequest: z
         .object({
           summary: z.string(),

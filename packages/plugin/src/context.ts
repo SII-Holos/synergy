@@ -125,7 +125,10 @@ export type BlueprintStartInput = {
   executionAgent: string
   auditAgent: string
   executionModel?: { providerID: string; modelID: string }
+  executionTools?: Record<string, boolean>
+  auditTools?: Record<string, boolean>
   budget: { maxRuntimeMs: number; maxIterations: number }
+  parent?: PluginTaskParent
 }
 
 export type BlueprintLoopInfo = {
@@ -177,8 +180,10 @@ export type LightLoopStartInput = {
   executionAgent: string
   reviewAgent: string
   model?: { providerID: string; modelID: string }
-  tools?: Record<string, boolean>
+  executionTools?: Record<string, boolean>
+  reviewTools?: Record<string, boolean>
   budget: { maxRuntimeMs: number; maxIterations: number }
+  parent?: PluginTaskParent
 }
 
 // Protocol 5: LightLoopInfo — sessionID is the Host-returned dedicated execution session.

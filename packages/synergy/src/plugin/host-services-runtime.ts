@@ -124,6 +124,64 @@ async function publishEvent(input: PluginHostServiceInvocationInput) {
   })
 }
 
+/**
+ * Resolve the parent session and message for a start operation.
+ *
+ * Priority:
+ *  1. Explicit request `parent` field,
+ *  2. Agent actor invocation context (falls back to invocation session/message),
+ *  3. Reject with TASK_PARENT_REQUIRED.
+ *
+ * On success validates the resolved parent Session exists and belongs to the
+ * active invocation Scope (TASK_PARENT_SCOPE_MISMATCH).
+ *
+ * Returns a resolved RuntimeContext ready for the target service.
+ */
+async function resolveStartParent(
+  input: PluginHostServiceInvocationInput,
+  methodLabel: string,
+  value: Record<string, unknown>,
+) {
+  const actor = input.invocation.actor
+  const parentParam =
+    value.parent && typeof value.parent === "object" ? (value.parent as Record<string, unknown>) : undefined
+  const sessionID =
+    typeof parentParam?.sessionId === "string"
+      ? parentParam.sessionId
+      : actor.type === "agent"
+        ? input.invocation.sessionId
+        : undefined
+  const messageID =
+    typeof parentParam?.messageId === "string"
+      ? parentParam.messageId
+      : actor.type === "agent"
+        ? actor.messageId
+        : undefined
+  if (!sessionID || !messageID) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.TASK_PARENT_REQUIRED,
+      `${methodLabel} requires a parent Session and message`,
+    )
+  }
+  const parentSession = await Session.get(sessionID)
+  if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.TASK_PARENT_SCOPE_MISMATCH,
+      `${methodLabel} parent Session does not belong to the active Scope`,
+    )
+  }
+  return {
+    pluginId: input.pluginId,
+    pluginDir: input.pluginDir,
+    sessionID,
+    messageID,
+    agent: actor.type === "agent" ? actor.agent : "synergy",
+    callID: actor.type === "agent" ? actor.callId : undefined,
+    directory: input.invocation.directory,
+    abort: input.signal,
+  }
+}
+
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
@@ -200,49 +258,51 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         pluginGeneration: input.manifest.artifacts.generation,
       })
     }
-    const actor = input.invocation.actor
+    if (input.method === "lightloop.get") {
+      const sessionID = value.sessionID
+      if (typeof sessionID !== "string") throw new Error("lightloop.get requires sessionID")
+      return getLightLoop({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        sessionID,
+      })
+    }
+
+    // --- start operations with resolved parent ---
+    if (input.method === "lightloop.start") {
+      return startLightLoop({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        pluginDir: input.pluginDir,
+        context: await resolveStartParent(input, "lightloop.start", value),
+        request: value as never,
+      })
+    }
+    if (input.method === "blueprint.start") {
+      return startPluginBlueprint({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        pluginDir: input.pluginDir,
+        context: await resolveStartParent(input, "blueprint.start", value),
+        request: value as never,
+      })
+    }
     if (input.method === "task.start") {
-      const parent =
-        value.parent && typeof value.parent === "object" ? (value.parent as Record<string, unknown>) : undefined
-      const sessionID =
-        typeof parent?.sessionId === "string"
-          ? parent.sessionId
-          : actor.type === "agent"
-            ? input.invocation.sessionId
-            : undefined
-      const messageID =
-        typeof parent?.messageId === "string" ? parent.messageId : actor.type === "agent" ? actor.messageId : undefined
-      if (!sessionID || !messageID) {
-        throw pluginHostServiceError(
-          PluginHostServiceErrorCode.TASK_PARENT_REQUIRED,
-          "task.start requires a parent Session and message",
-        )
-      }
-      const parentSession = await Session.get(sessionID)
-      if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
-        throw pluginHostServiceError(
-          PluginHostServiceErrorCode.TASK_PARENT_SCOPE_MISMATCH,
-          "task.start parent Session does not belong to the active Scope",
-        )
-      }
       return startPluginTask({
         pluginId: input.pluginId,
         pluginGeneration: input.manifest.artifacts.generation,
         scopeId: input.invocation.scopeId,
         pluginDir: input.pluginDir,
-        context: {
-          pluginId: input.pluginId,
-          pluginDir: input.pluginDir,
-          sessionID,
-          messageID,
-          agent: actor.type === "agent" ? actor.agent : "synergy",
-          callID: actor.type === "agent" ? actor.callId : undefined,
-          directory: input.invocation.directory,
-          abort: input.signal,
-        },
+        context: await resolveStartParent(input, "task.start", value),
         request: value as never,
       })
     }
+
+    // --- remaining operations that require agent context ---
+    const actor = input.invocation.actor
     if (actor.type !== "agent" || !input.invocation.sessionId) {
       throw new Error(`${input.method} requires an agent invocation context`)
     }
@@ -256,17 +316,6 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       directory: input.invocation.directory,
       abort: input.signal,
     }
-    // Protocol 5: blueprint.start takes full request (no loopID); blueprint.cancel takes loopID.
-    if (input.method === "blueprint.start") {
-      return startPluginBlueprint({
-        pluginId: input.pluginId,
-        pluginGeneration: input.manifest.artifacts.generation,
-        scopeId: input.invocation.scopeId,
-        pluginDir: input.pluginDir,
-        context: runtimeContext,
-        request: value as never,
-      })
-    }
     if (input.method === "blueprint.cancel") {
       const loopID = value.loopID
       if (typeof loopID !== "string") throw new Error("blueprint.cancel requires loopID")
@@ -276,26 +325,6 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         scopeId: input.invocation.scopeId,
         context: runtimeContext,
         loopID,
-      })
-    }
-    if (input.method === "lightloop.start") {
-      return startLightLoop({
-        pluginId: input.pluginId,
-        pluginGeneration: input.manifest.artifacts.generation,
-        scopeId: input.invocation.scopeId,
-        pluginDir: input.pluginDir,
-        context: runtimeContext,
-        request: value as never,
-      })
-    }
-    if (input.method === "lightloop.get") {
-      const sessionID = value.sessionID
-      if (typeof sessionID !== "string") throw new Error("lightloop.get requires sessionID")
-      return getLightLoop({
-        pluginId: input.pluginId,
-        pluginGeneration: input.manifest.artifacts.generation,
-        scopeId: input.invocation.scopeId,
-        sessionID,
       })
     }
     if (input.method === "lightloop.cancel") {

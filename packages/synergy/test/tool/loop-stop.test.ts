@@ -87,6 +87,10 @@ describe("loop_stop", () => {
       scope: await tmp.scope(),
       fn: async () => {
         const session = sessionWithLightLoop(true)
+        ;(session as any).workflow.reviewTools = {
+          plugin__truthward__context_query: true,
+          plugin__truthward__n03_artifact_get: true,
+        }
         const updateCalls: Array<{ stopRequest: any }> = []
         const launch = mock(async () => ({ id: "ctx_unexpected", sessionID: "ses_unexpected" }))
         ;(Session.get as any) = mock(async () => session)

@@ -94,17 +94,21 @@ const loop = await context.blueprint.start({
   correlationId: stageRunID,
   executionAgent: "my-plugin.blueprint-executor",
   auditAgent: "my-plugin.blueprint-auditor",
+  executionTools: { "my-plugin.internal-note-read": true },
+  auditTools: { "my-plugin.internal-audit-check": true },
   budget: { maxRuntimeMs: 1_800_000, maxIterations: 3 },
 })
 const info = await context.blueprint.get(loop.id)
 const cancelled = await context.blueprint.cancel(loop.id)
 ```
 
-`start()` accepts the frozen Markdown plan and its digest, creates a Blueprint Note and dedicated execution Session, starts the existing BlueprintLoop lifecycle, and returns the `BlueprintLoopInfo` snapshot. The execution and audit agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. `get()` returns the current snapshot with status, audit state, timestamps, and resolved model. `cancel()` stops a non-terminal loop; cancelling a terminal loop raises `LoopError.InvalidTransition`, so callers that need idempotent cleanup should inspect the current status first.
+`start()` accepts the frozen Markdown plan and its digest, creates a Blueprint Note and dedicated execution Session, starts the existing BlueprintLoop lifecycle, and returns the `BlueprintLoopInfo` snapshot. The execution and audit agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Optional `executionModel`, `executionTools`, and `auditTools` fields select the execution model and role-specific tool visibility. `get()` returns the current snapshot with status, audit state, timestamps, and resolved model. `cancel()` stops a non-terminal loop; cancelling a terminal loop returns the existing terminal snapshot.
 
 The `source` field in `BlueprintLoopInfo` is set to `"plugin"` when the loop was created by a plugin. The `pluginOwner` field records the creating plugin's ID, generation, Scope, and optional correlationId for durable workflow correlation.
 
 Plugin-created loops follow the same execution lifecycle as user-created loops: agents, audit, cancellation, and all control profiles apply identically.
+
+`executionTools` applies only to the execution Session. `auditTools` is persisted by the Host and applied only when the delayed auditor Session launches. These maps are per-prompt visibility toggles; they do not grant Host capabilities and do not override agent or Session permissions. Entries set to `true` make those tools visible for that role. Unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
 ### Blueprint After Hook
 
@@ -144,13 +148,17 @@ const loop = await context.lightloop.start({
   correlationId: stageRunID,
   executionAgent: "my-plugin.lightloop-executor",
   reviewAgent: "my-plugin.lightloop-reviewer",
+  executionTools: { "my-plugin.internal-search": true },
+  reviewTools: { "my-plugin.internal-review-check": true },
   budget: { maxRuntimeMs: 1_800_000, maxIterations: 3 },
 })
 const current = await context.lightloop.get(loop.sessionID)
 const cancelled = await context.lightloop.cancel(loop.sessionID)
 ```
 
-`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Optional `model` and `tools` fields select the execution model and narrow per-task tool visibility; reviewer model and tools come from its agent descriptor.
+`start()` atomically creates a dedicated execution Session, records the plugin owner and instructions in its LightLoop workflow, delivers the first prompt, and returns a `LightLoopInfo` snapshot. The execution and review agents must be distinct hidden agents owned by the invoking plugin generation and allowed by its capability constraints. Optional `model`, `executionTools`, and `reviewTools` fields select the execution model and role-specific tool visibility. `reviewTools` is persisted by the Host and applied only when the delayed reviewer Session launches.
+
+Tool maps are visibility toggles, not capability grants. They do not override agent or Session permissions, and unspecified tools keep their normal visibility unless the caller uses explicit wildcard semantics.
 
 `get()` returns the current snapshot with the dedicated `sessionID`, status, instructions, and any terminal error. `cancel()` terminalizes a non-terminal LightLoop and returns its final snapshot.
 

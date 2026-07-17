@@ -59,6 +59,8 @@ export const Info = z
         attempts: z.number(),
       })
       .optional(),
+    executionTools: z.record(z.string(), z.boolean()).optional(),
+    auditTools: z.record(z.string(), z.boolean()).optional(),
     time: z.object({
       created: z.number(),
       started: z.number().optional(),

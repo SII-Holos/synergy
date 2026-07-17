@@ -85,6 +85,10 @@ describe("LightLoopContinuationPolicy", () => {
         kind: "lightloop" as const,
         instructions: "Write unit tests",
         reviewAgent: "security-reviewer",
+        reviewTools: {
+          plugin__truthward__context_query: true,
+          plugin__truthward__n03_artifact_get: true,
+        },
         stopRequest: {
           summary: "done",
           completed: ["Implemented the behavior"],
@@ -100,6 +104,11 @@ describe("LightLoopContinuationPolicy", () => {
       expect(input.parentSessionID).toBe(session.id)
       expect(input.parentMessageID).toBe("msg_123")
       expect(input.agent).toBe("security-reviewer")
+      expect(input.tools).toEqual({
+        plugin__truthward__context_query: true,
+        plugin__truthward__n03_artifact_get: true,
+      })
+      expect(input.tools).not.toHaveProperty("plugin__truthward__n03_submit")
       expect(input.visibility).toBe("visible")
       expect(input.notifyParentOnComplete).toBe(false)
       expect(input.prompt).toContain("Focused tests pass")
