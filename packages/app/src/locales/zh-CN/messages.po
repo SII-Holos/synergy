@@ -11575,6 +11575,18 @@ msgid "settings.catalog.memory.label"
 msgstr "记忆"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.currentModel"
+msgstr "当前模型"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.downloadSource"
+msgstr "下载来源"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.localModelFiles"
+msgstr "本地模型文件"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.memory.row.perCategory"
 msgstr "每类记忆数量"
 
@@ -11584,7 +11596,7 @@ msgstr "记忆相似度"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.memory.searchTerms"
-msgstr "记忆 | 嵌入 | 召回"
+msgstr "记忆 | 嵌入 | 召回 | 下载 | 模型 | 本地 | 远程 | huggingface | hf mirror | 自定义来源"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.models.description"
@@ -12541,6 +12553,190 @@ msgstr "已更新 {count, plural, one {# 个域} other {# 个域}}。"
 #. js-lingui-explicit-id
 msgid "settings.import.urlPlaceholder"
 msgstr "https://..."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloaded"
+msgstr "已下载"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloading"
+msgstr "正在下载…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.starting"
+msgstr "正在启动…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.currentModel.title"
+msgstr "当前模型"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.desc"
+msgstr "使用不含凭据、路径、查询参数或片段的公共 HTTPS 源站。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.invalid"
+msgstr "自定义来源必须填写源站地址。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.label"
+msgstr "自定义嵌入来源源站"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.title"
+msgstr "自定义来源源站"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.aria"
+msgstr "本地嵌入模型下载来源"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.desc"
+msgstr "选择 Synergy 下载内置本地模型的位置。请先保存来源更改，再开始下载。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.title"
+msgstr "下载来源"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.error.downloadStart"
+msgstr "无法启动下载"
+
+#. ---------- Synergy-authored error fallbacks ----------
+msgid "settings.library.embedding.error.statusUnavailable"
+msgstr "无法获取嵌入状态"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.loading"
+msgstr "正在检查嵌入配置…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.saveFirst"
+msgstr "请先保存所选来源，再开始下载。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.title"
+msgstr "本地模型文件"
+
+#. ---------- local-status descriptors ----------
+msgid "settings.library.embedding.localStatus.cached"
+msgstr "模型文件已就绪"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.downloading"
+msgstr "正在下载本地模型文件"
+
+#. ---------- component ----------
+msgid "settings.library.embedding.localStatus.downloadProgress"
+msgstr "正在下载 {loaded}，共 {total}"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.failed"
+msgstr "上次下载失败"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.missing"
+msgstr "尚未下载模型文件"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.local.desc"
+msgstr "未配置远程嵌入模型时使用的内置本地后备模型。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.local"
+msgstr "本地"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.remote"
+msgstr "远程"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.remote.desc"
+msgstr "用户配置的远程嵌入模型。其优先级高于内置本地后备模型。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.configured"
+msgstr "已配置"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.default"
+msgstr "默认"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.progress.aria"
+msgstr "本地嵌入模型下载进度"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.desc"
+msgstr "用户配置的远程模型优先，因此不会使用内置本地后备模型。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.inactive"
+msgstr "未启用"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.noDownload"
+msgstr "无需下载"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.title"
+msgstr "本地模型下载"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.section.desc"
+msgstr "查看当前使用的嵌入模型，并管理内置本地后备模型的下载。"
+
+#. ---------- static descriptors ----------
+msgid "settings.library.embedding.section.title"
+msgstr "嵌入模型"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.custom"
+msgstr "自定义源站"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.downloading"
+msgstr "下载中"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.missing"
+msgstr "缺失"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.ready"
+msgstr "已就绪"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartError"
+msgstr "无法启动嵌入模型下载"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartFallback"
+msgstr "检查已配置的下载来源后重试。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusLoadFallback"
+msgstr "无法加载本地模型状态。"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusObserverFallback"
+msgstr "下载可能仍在进行。"
+
+#. ---------- toast descriptors ----------
+msgid "settings.library.embedding.toast.statusUnavailable"
+msgstr "无法获取嵌入状态"
 
 #. js-lingui-explicit-id
 msgid "settings.library.encoding.allHealthy"

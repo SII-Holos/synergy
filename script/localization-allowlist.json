@@ -230,5 +230,53 @@
     "occurrence": 1,
     "category": "language-self-name",
     "reason": "Language selectors preserve each supported language's self-name so users can always recover from an unreadable locale."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "jsx-text",
+    "literal": "Hugging Face",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Third-party brand name shown as a download-source option label."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "jsx-text",
+    "literal": "HF Mirror",
+    "occurrence": 1,
+    "category": "brand",
+    "reason": "Third-party service name shown as a download-source option label."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "jsx-attribute",
+    "literal": "https://models.example",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "Example HTTPS origin placeholder illustrating the expected input format."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "model.description",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "model.stateLabel",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
+  },
+  {
+    "path": "packages/app/src/components/settings/panels/library-embedding-section.tsx",
+    "kind": "invalid-message-descriptor",
+    "literal": "model.modeLabel",
+    "occurrence": 1,
+    "category": "code",
+    "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
   }
 ]

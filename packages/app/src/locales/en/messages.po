@@ -11575,6 +11575,18 @@ msgid "settings.catalog.memory.label"
 msgstr "Memory"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.currentModel"
+msgstr "Current Model"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.downloadSource"
+msgstr "Download Source"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.localModelFiles"
+msgstr "Local Model Files"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.memory.row.perCategory"
 msgstr "Memory per Category"
 
@@ -11584,7 +11596,7 @@ msgstr "Memory Similarity"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.memory.searchTerms"
-msgstr "memory | embedding | recall"
+msgstr "memory | embedding | recall | download | model | local | remote | huggingface | hf mirror | custom source"
 
 #. js-lingui-explicit-id
 msgid "settings.catalog.models.description"
@@ -12541,6 +12553,190 @@ msgstr "Updated {count, plural, one {# domain} other {# domains}}."
 #. js-lingui-explicit-id
 msgid "settings.import.urlPlaceholder"
 msgstr "https://..."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.download"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloaded"
+msgstr "Downloaded"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloading"
+msgstr "Downloading…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.starting"
+msgstr "Starting…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.currentModel.title"
+msgstr "Current model"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.desc"
+msgstr "Use a public HTTPS origin without credentials, a path, query, or fragment."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.invalid"
+msgstr "Origin is required for a custom source."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.label"
+msgstr "Custom embedding source origin"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.title"
+msgstr "Custom source origin"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.aria"
+msgstr "Local embedding download source"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.desc"
+msgstr "Choose where Synergy downloads the bundled local model. Save source changes before downloading."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.title"
+msgstr "Download source"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.error.downloadStart"
+msgstr "The download could not be started"
+
+#. ---------- Synergy-authored error fallbacks ----------
+msgid "settings.library.embedding.error.statusUnavailable"
+msgstr "Embedding status is unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.loading"
+msgstr "Checking embedding configuration…"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.saveFirst"
+msgstr "Save the selected source before starting the download."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.title"
+msgstr "Local model files"
+
+#. ---------- local-status descriptors ----------
+msgid "settings.library.embedding.localStatus.cached"
+msgstr "Model files are ready"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.downloading"
+msgstr "Downloading local model files"
+
+#. ---------- component ----------
+msgid "settings.library.embedding.localStatus.downloadProgress"
+msgstr "Downloading {loaded} of {total}"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.failed"
+msgstr "The last download failed"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.missing"
+msgstr "Model files are not downloaded"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.local.desc"
+msgstr "Built-in local fallback used when no remote embedding model is configured."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.local"
+msgstr "Local"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.remote"
+msgstr "Remote"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.remote.desc"
+msgstr "User-configured remote embedding model. It takes precedence over the built-in local fallback."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.configured"
+msgstr "Configured"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.default"
+msgstr "Default"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.progress.aria"
+msgstr "Local embedding model download"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.desc"
+msgstr "The user-configured remote model takes precedence, so the built-in local fallback is not used."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.inactive"
+msgstr "Inactive"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.noDownload"
+msgstr "No download needed"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.title"
+msgstr "Local model download"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.section.desc"
+msgstr "See the active embedding model and manage downloads for the built-in local fallback."
+
+#. ---------- static descriptors ----------
+msgid "settings.library.embedding.section.title"
+msgstr "Embedding model"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.custom"
+msgstr "Custom origin"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.downloading"
+msgstr "Downloading"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.failed"
+msgstr "Failed"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.missing"
+msgstr "Missing"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.ready"
+msgstr "Ready"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartError"
+msgstr "Embedding download could not start"
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartFallback"
+msgstr "Check the configured download source and try again."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusLoadFallback"
+msgstr "The local model state could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusObserverFallback"
+msgstr "The download may still be running."
+
+#. ---------- toast descriptors ----------
+msgid "settings.library.embedding.toast.statusUnavailable"
+msgstr "Embedding status unavailable"
 
 #. js-lingui-explicit-id
 msgid "settings.library.encoding.allHealthy"

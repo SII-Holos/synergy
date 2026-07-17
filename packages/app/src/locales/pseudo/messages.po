@@ -11575,6 +11575,18 @@ msgid "settings.catalog.memory.label"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.currentModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.downloadSource"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.memory.row.localModelFiles"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.memory.row.perCategory"
 msgstr ""
 
@@ -12540,6 +12552,190 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.import.urlPlaceholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloaded"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.downloading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.button.starting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.currentModel.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.customSource.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.downloadSource.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.error.downloadStart"
+msgstr ""
+
+#. ---------- Synergy-authored error fallbacks ----------
+msgid "settings.library.embedding.error.statusUnavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.saveFirst"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localFiles.title"
+msgstr ""
+
+#. ---------- local-status descriptors ----------
+msgid "settings.library.embedding.localStatus.cached"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.downloading"
+msgstr ""
+
+#. ---------- component ----------
+msgid "settings.library.embedding.localStatus.downloadProgress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.localStatus.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.local.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.local"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.mode.remote"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.remote.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.configured"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.model.state.default"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.progress.aria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.desc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.inactive"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.noDownload"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.remoteFallback.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.section.desc"
+msgstr ""
+
+#. ---------- static descriptors ----------
+msgid "settings.library.embedding.section.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.source.option.custom"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.downloading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.missing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.state.ready"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.downloadStartFallback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusLoadFallback"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.library.embedding.toast.statusObserverFallback"
+msgstr ""
+
+#. ---------- toast descriptors ----------
+msgid "settings.library.embedding.toast.statusUnavailable"
 msgstr ""
 
 #. js-lingui-explicit-id

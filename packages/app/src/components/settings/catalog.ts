@@ -200,12 +200,16 @@ const BUILTIN_SETTINGS_COPY = {
     },
     searchTerms: {
       id: "settings.catalog.memory.searchTerms",
-      message: "memory | embedding | recall",
+      message:
+        "memory | embedding | recall | download | model | local | remote | huggingface | hf mirror | custom source",
       comment: SEARCH_TERMS_COMMENT,
     },
     rowLabels: [
       { id: "settings.catalog.memory.row.similarity", message: "Memory Similarity" },
       { id: "settings.catalog.memory.row.perCategory", message: "Memory per Category" },
+      { id: "settings.catalog.memory.row.currentModel", message: "Current Model" },
+      { id: "settings.catalog.memory.row.downloadSource", message: "Download Source" },
+      { id: "settings.catalog.memory.row.localModelFiles", message: "Local Model Files" },
     ],
   },
   experience: {
