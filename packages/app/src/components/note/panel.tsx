@@ -28,6 +28,7 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { getScopeLabel, HOME_SCOPE_KEY } from "@/utils/scope"
 import { assetHttpUrl } from "@/utils/asset-url"
+import { requestErrorMessage } from "@/utils/error"
 import { relativeTime } from "@/utils/time"
 import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import {
@@ -135,17 +136,6 @@ function getRunCount(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] =
 
 function getBlueprintActivityTime(note: NoteCardInfo | NoteInfo, loops: BlueprintLoopInfo[] = []) {
   return note.blueprint?.lastRunAt ?? loops[0]?.time.updated ?? note.time.updated
-}
-
-function requestErrorMessage(error: unknown, fallback: string) {
-  if (error && typeof error === "object") {
-    const data = (error as { data?: { message?: string; error?: string } }).data
-    if (data?.message) return data.message
-    if (data?.error) return data.error
-    const message = (error as { message?: unknown }).message
-    if (typeof message === "string" && message) return message
-  }
-  return fallback
 }
 
 function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {

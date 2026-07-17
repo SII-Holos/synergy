@@ -15,7 +15,7 @@ export namespace PerformanceTimeline {
     if (from >= to) throw new PerformanceError("PERF_INVALID_QUERY", "Timeline from must be before to.", 400)
 
     const config = ObservabilityConfig.current()
-    const bucketMs = query.bucketMs ?? Math.max(1000, Math.ceil((to - from) / config.maxTimelineBuckets))
+    const bucketMs = query.bucketMs ?? Math.max(1000, Math.floor((to - from) / config.maxTimelineBuckets) + 1)
     const bucketCount = Math.floor((to - from) / bucketMs) + 1
     if (bucketCount > config.maxTimelineBuckets) {
       throw new PerformanceError("PERF_TOO_MANY_BUCKETS", "Timeline query exceeds the configured bucket limit.", 400, {

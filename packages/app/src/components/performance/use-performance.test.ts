@@ -219,6 +219,50 @@ describe("performance refresh", () => {
       sharedConfig.context = originalHydrationContext
     }
   })
+
+  test("shows the structured server message when analysis cannot start", async () => {
+    const originalHydrationContext = sharedConfig.context
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => ({ data: null }),
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => {
+              throw {
+                code: "PERF_ANALYSIS_UNAVAILABLE",
+                message: "Performance analysis requires an available Thinking model.",
+              }
+            },
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+      await settle()
+
+      await perf!.startAnalysis()
+      expect(perf!.analysisError()).toBe("Performance analysis requires an available Thinking model.")
+    } finally {
+      dispose?.()
+      sharedConfig.context = originalHydrationContext
+    }
+  })
 })
 
 class FakeEventSource {

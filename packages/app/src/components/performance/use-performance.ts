@@ -1,5 +1,6 @@
 import { createResource, createSignal, onCleanup } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { requestErrorMessage } from "@/utils/error"
 import { isPerformanceAnalysisActive } from "./analysis-model"
 import { CHART_METRICS } from "./chart-model"
 import type {
@@ -12,9 +13,7 @@ import type {
 } from "./types"
 
 function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string") return error
-  return "Unable to load performance data right now."
+  return requestErrorMessage(error, "Unable to load performance data right now.")
 }
 
 function readPerformanceMemory(): number | undefined {

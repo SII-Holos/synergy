@@ -460,7 +460,7 @@ describe("performance routes", () => {
     const response = await Server.App().request("/global/performance/analysis", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ windowMs: 60_000 }),
+      body: JSON.stringify({ windowMs: 15 * 60 * 1000 }),
     })
     expect(response.status).toBe(503)
     expect((await response.json()).code).toBe("PERF_ANALYSIS_UNAVAILABLE")

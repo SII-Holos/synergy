@@ -235,6 +235,15 @@ describe.serial("performance observability store", () => {
     ).toThrow("configured bucket limit")
   })
 
+  test("timeline auto-bucketing stays within the configured inclusive point limit", () => {
+    const timeline = PerformanceTimeline.get({
+      metric: "http.request.duration",
+      windowMs: 15 * 60 * 1000,
+    })
+
+    expect(timeline.series[0]?.points.length).toBeLessThanOrEqual(ObservabilityConfig.current().maxTimelineBuckets)
+  })
+
   test("coalesces repeated issue events while preserving occurrence counts", () => {
     let published = 0
     const unsubscribe = ObservabilityLiveEvents.subscribe((event) => {
