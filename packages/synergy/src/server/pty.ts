@@ -151,7 +151,7 @@ export const PtyRoute = new Hono()
     upgradeWebSocket((c) => {
       const id = c.req.param("ptyID")
       let handler: ReturnType<typeof Pty.connect>
-      if (!Pty.get(id)) throw new Error("Session not found")
+      if (!id || !Pty.get(id)) throw new Error("Session not found")
       return {
         onOpen(_event, ws) {
           handler = Pty.connect(id, ws)
