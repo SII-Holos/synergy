@@ -3,7 +3,6 @@ import { StoragePath } from "@/storage/path"
 import { Lock } from "@/util/lock"
 import { Log } from "@/util/log"
 import type { ClarusOutboxAction, ClarusOutboxRecordV2, ClarusOutboxStateV2 } from "./schemas"
-import { ClarusOutboxStateV2 as ClarusOutboxStateV2Schema } from "./schemas"
 import { canonicalEqual } from "@/util/canonical"
 import { validateSegment, validateRequestID, payloadHash } from "./keys"
 
