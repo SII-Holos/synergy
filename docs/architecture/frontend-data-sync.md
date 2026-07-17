@@ -46,6 +46,11 @@ The sync layer has:
 - per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, Cortex, and Agenda.
 
+**Diff data sources.** Two separate diff stores exist:
+
+- **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.
+- **Session-level diffs** live in the `session_diff` bucket and aggregate all turn diffs for the Review workbench panel. They are loaded on demand through `sync.session.diff()` and never fetched implicitly.
+
 Scope bootstrap limits concurrent instance requests to two. It first loads blocking provider, agent, config, and Scope identity state, marks the store `partial`, then loads remaining operational collections before marking it `complete`.
 
 ## Reconcile, Do Not Replace

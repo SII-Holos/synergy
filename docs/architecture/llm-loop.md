@@ -148,7 +148,7 @@ Current loop-level behavior includes:
 
 - compaction processing
 - asynchronous old-tool-output pruning
-- title and summary generation
+- title, body, and turn diff summary generation
 - Library experience chronicling
 - repeated successful tool-call warnings
 - repeated same-class tool-error stopping
@@ -156,7 +156,18 @@ Current loop-level behavior includes:
 
 A blocking job can return `continue` to restart the loop after changing history or `stop` to finish without another model call. Non-blocking jobs cannot hold the critical execution path.
 
-The non-blocking summary post-job consumes the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving turn summaries. Direct summary callers that do not already own a snapshot fall back to authoritative durable history.
+### Turn diff settlement
+
+The `summarize` post-step job computes file diffs and derives title/body for each completed turn without joining the blocking loop path:
+
+1. The job writes `diffState: { status: "pending", deadlineAt }` immediately so the frontend sees the pending state.
+2. It computes diffs from the complete root turn's snapshot range (`step-start` → latest `step-finish` across its assistant revisions).
+3. On success, it writes `{ diffs, diffState: { status: "ready" } }` atomically. A diff failure writes `{ diffState: { status: "error", code } }`; a per-run timeout applies `error/timeout` only while that turn is still `pending`, preserving a diff that already reached `ready` while later enrichment or session aggregation was running.
+4. Title generation may proceed after either outcome. Body generation runs only after a successful non-empty diff settlement, and the applicable LLM calls run in parallel.
+
+Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
+
+The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. A later queued assistant revision drops that older snapshot and rereads authoritative durable history, so it sees the complete continuation without retaining multiple full histories in memory. Direct callers without a snapshot also use durable history.
 
 ## Prompt Budget
 
