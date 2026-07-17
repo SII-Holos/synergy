@@ -679,6 +679,15 @@ export namespace Session {
     },
   )
 
+  export const messagePage = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    async (input) => SessionHistory.messagePage(input),
+  )
+
   export const rollback = SessionHistory.rollback
   export const unrollback = SessionHistory.unrollback
   export const restoreFiles = SessionHistory.restoreFiles

@@ -98,6 +98,47 @@ export namespace SessionHistory {
     }),
   )
 
+  export const MessagePageCursor = z.object({
+    v: z.literal(1),
+    a: z.string().min(1),
+    d: z.literal("before"),
+  })
+  export type MessagePageCursor = z.infer<typeof MessagePageCursor>
+
+  export const MessagePage = z
+    .object({
+      items: MessageV2.WithParts.array(),
+      referencedRoots: MessageV2.WithParts.array(),
+      nextCursor: z.string().nullable(),
+      hasMore: z.boolean(),
+      total: z.number().int().nonnegative(),
+    })
+    .meta({ ref: "SessionMessagePage" })
+  export type MessagePage = z.infer<typeof MessagePage>
+
+  export const MessagePageCursorInvalidError = NamedError.create(
+    "SessionMessagePageCursorInvalidError",
+    z.object({ message: z.string() }),
+  )
+
+  export const MessagePageCursorStaleError = NamedError.create(
+    "SessionMessagePageCursorStaleError",
+    z.object({ message: z.string(), anchorID: z.string() }),
+  )
+
+  function encodeMessagePageCursor(cursor: MessagePageCursor) {
+    return Buffer.from(JSON.stringify(cursor)).toString("base64url")
+  }
+
+  function decodeMessagePageCursor(cursor: string) {
+    try {
+      const decoded = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"))
+      const parsed = MessagePageCursor.safeParse(decoded)
+      if (parsed.success) return parsed.data
+    } catch {}
+    throw new MessagePageCursorInvalidError({ message: "Invalid session message cursor" })
+  }
+
   function getCutMessageID(event: { cutMessageID?: string; droppedMessageIDs: string[] }): string | undefined {
     return event.cutMessageID ?? event.droppedMessageIDs[0]
   }
@@ -306,6 +347,49 @@ export namespace SessionHistory {
     const raw = await rawMessages({ sessionID: input.sessionID })
     const result = input.raw ? raw : applyEvents(raw, await readEvents(input.sessionID))
     return sliceWithReferencedRoots(result, input.limit)
+  }
+
+  export async function messagePage(input: {
+    sessionID: string
+    cursor?: string
+    limit?: number
+  }): Promise<MessagePage> {
+    const raw = await rawMessages({ sessionID: input.sessionID })
+    const messages = applyEvents(raw, await readEvents(input.sessionID))
+    const total = messages.length
+    let end = total
+
+    if (input.cursor) {
+      const cursor = decodeMessagePageCursor(input.cursor)
+      end = messages.findIndex((message) => message.info.id === cursor.a)
+      if (end === -1) {
+        throw new MessagePageCursorStaleError({
+          message: "Session message cursor no longer exists in effective history",
+          anchorID: cursor.a,
+        })
+      }
+    }
+
+    const limit = input.limit ?? 200
+    const start = Math.max(0, end - limit)
+    const items = messages.slice(start, end)
+    const included = new Set(items.map((message) => message.info.id))
+    const rootIDs = new Set(
+      items
+        .map((message) => message.info.rootID)
+        .filter((rootID): rootID is string => !!rootID && !included.has(rootID)),
+    )
+    const referencedRoots = rootIDs.size ? messages.filter((message) => rootIDs.has(message.info.id)) : []
+    const hasMore = start > 0
+    const oldest = items[0]
+
+    return {
+      items,
+      referencedRoots,
+      nextCursor: hasMore && oldest ? encodeMessagePageCursor({ v: 1, a: oldest.info.id, d: "before" }) : null,
+      hasMore,
+      total,
+    }
   }
 
   function sliceWithReferencedRoots(messages: MessageV2.WithParts[], limit: number | undefined) {

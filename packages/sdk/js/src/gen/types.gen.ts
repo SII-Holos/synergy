@@ -4629,6 +4629,35 @@ export type Part =
   | CompactionPart
   | CompactionRecoveryPart
 
+export type SessionMessagePage = {
+  items: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  referencedRoots: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+}
+
+export type SessionMessagePageCursorInvalidError = {
+  name: "SessionMessagePageCursorInvalidError"
+  data: {
+    message: string
+  }
+}
+
+export type SessionMessagePageCursorStaleError = {
+  name: "SessionMessagePageCursorStaleError"
+  data: {
+    message: string
+    anchorID: string
+  }
+}
+
 export type SessionRollbackEvent = {
   id: string
   sessionID: string
@@ -10242,6 +10271,42 @@ export type SessionPromptResponses = {
 }
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
+
+export type SessionMessagePageData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/message/page"
+}
+
+export type SessionMessagePageErrors = {
+  /**
+   * Invalid or stale message cursor
+   */
+  400: BadRequestError | SessionMessagePageCursorInvalidError | SessionMessagePageCursorStaleError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionMessagePageError = SessionMessagePageErrors[keyof SessionMessagePageErrors]
+
+export type SessionMessagePageResponses = {
+  /**
+   * Cursor-paged session messages
+   */
+  200: SessionMessagePage
+}
+
+export type SessionMessagePageResponse = SessionMessagePageResponses[keyof SessionMessagePageResponses]
 
 export type SessionDiffData = {
   body?: never

@@ -34,6 +34,9 @@ export function SessionConversation(props: {
   onSetTurnStart: (start: number) => void
   historyMore: Accessor<boolean>
   historyLoading: Accessor<boolean>
+  historyMode: Accessor<"latest" | "history">
+  historyPendingLatest: Accessor<boolean>
+  onReturnLatest: () => void
   onLoadMore: () => void
   scrolledUp: Accessor<boolean>
   onScrolledUpChange: (val: boolean) => void
@@ -97,17 +100,30 @@ export function SessionConversation(props: {
           </Button>
         </div>
       </Show>
-      <Show when={props.historyMore()}>
-        <div class="w-full flex justify-center">
-          <Button
-            variant="ghost"
-            size="large"
-            class="text-12-medium opacity-50"
-            disabled={props.historyLoading()}
-            onClick={props.onLoadMore}
-          >
-            {props.historyLoading() ? "Loading earlier messages..." : "Load earlier messages"}
-          </Button>
+      <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
+        <div class="w-full flex flex-wrap justify-center gap-2">
+          <Show when={props.historyMore()}>
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? "Loading earlier messages..." : "Load earlier messages"}
+            </Button>
+          </Show>
+          <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
+            <Button
+              variant="secondary"
+              size="large"
+              class="text-12-medium"
+              disabled={props.historyLoading()}
+              onClick={props.onReturnLatest}
+            >
+              {props.historyPendingLatest() ? "New messages — Return to latest" : "Return to latest"}
+            </Button>
+          </Show>
         </div>
       </Show>
       <For each={props.timeline()}>

@@ -13,7 +13,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 interface DialogRewindConfirmProps {
   /** The target user message to rewind to (cut = this message and everything after) */
   cutMessage: UserMessage
-  /** All messages in the session ordered by id */
+  /** All messages in canonical session order */
   allMessages: { id: string; role: string }[]
   /** Parts records keyed by message id */
   partsByMessage: Record<string, PartType[] | undefined>
@@ -21,7 +21,7 @@ interface DialogRewindConfirmProps {
 }
 
 function activeMessageIndex(messages: { id: string }[], cutId: string) {
-  return messages.findIndex((m) => m.id >= cutId)
+  return messages.findIndex((message) => message.id === cutId)
 }
 
 function computeCounts(props: {

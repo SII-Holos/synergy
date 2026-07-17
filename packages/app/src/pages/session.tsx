@@ -69,6 +69,17 @@ import { PromptProvider } from "@/context/prompt"
 import { ResourceOpenProvider } from "@/context/resource-open"
 import { BuiltinWorkbenchPanelsProvider } from "@/components/workspace/builtin-workbench-panels"
 import { useSessionTransition } from "@/context/session-transition"
+import {
+  messagesBefore,
+  messagesFrom,
+  previousMessage,
+  selectMessagesInCanonicalOrder,
+} from "@/components/session/session-message-order"
+import {
+  adjustedScrollTop,
+  selectPrependAnchor,
+  type PrependScrollAnchor,
+} from "@/components/session/session-history-scroll"
 
 const handoff = {
   prompt: "",
@@ -280,10 +291,7 @@ function SessionPageContent() {
     // including messages sent after undoing the first message — stays visible.
     const hidden = hiddenMessageIDs()
     if (!hidden) return raw
-    if ("cutMessageID" in hidden) {
-      // Prefix cut: drop target and all later messages
-      return raw.filter((message) => message.id < hidden.cutMessageID)
-    }
+    if ("cutMessageID" in hidden) return messagesBefore(raw, hidden.cutMessageID)
     if (hidden.size === 0) return raw
     return raw.filter((message) => !hidden.has(message.id))
   })
@@ -300,6 +308,7 @@ function SessionPageContent() {
         partsByMessage={sync.data.part}
         onRewind={async (cutMessageID, restoreFiles) => {
           if (!sessionID || !cutMessageID) return
+          const previousActiveMessage = previousMessage(userMessages(), cutMessageID)
           // Abort if running. After abort, give the runtime a moment to settle
           // so assertIdle in rollback doesn't reject with BusyError.
           if (status().type !== "idle") {
@@ -317,7 +326,7 @@ function SessionPageContent() {
             prompt.set(restored.prompt, inlineLength(restored.prompt))
             prompt.context.set(restored.context)
           }
-          setActiveMessage(userMessages().findLast((x) => x.id < cutMessageID))
+          setActiveMessage(previousActiveMessage)
         }}
       />
     ))
@@ -362,6 +371,16 @@ function SessionPageContent() {
     if (!id) return false
     return sync.session.history.loading(id)
   })
+  const historyMode = createMemo(() => {
+    const id = params.id
+    if (!id) return "latest" as const
+    return sync.session.history.mode(id)
+  })
+  const historyPendingLatest = createMemo(() => {
+    const id = params.id
+    if (!id) return false
+    return sync.session.history.pendingLatest(id)
+  })
   // ── Root message derivation layer ───────────────────────────────────
   // Replaces old isSessionIdentityAnchor / isGuidedContextUserMessage / synthetic metadata
   // heuristics with orthogonal isRoot/visible/rootID/origin fields.
@@ -400,7 +419,7 @@ function SessionPageContent() {
     const firstID = renderedUserMessages()[0]?.id
     const msgs = visibleRoots()
     if (!firstID) return msgs
-    return msgs.filter((message) => message.id >= firstID)
+    return messagesFrom(msgs, firstID)
   }, emptyUserMessages)
 
   /** @deprecated Use inline empty arrays or nullish coalescing. */
@@ -416,17 +435,7 @@ function SessionPageContent() {
     return metadata.promptVisible === false
   }
 
-  const mergeTimelineMessages = (items: Message[]) => {
-    const seen = new Set<string>()
-    const result: Message[] = []
-    for (const item of items) {
-      if (seen.has(item.id)) continue
-      seen.add(item.id)
-      result.push(item)
-    }
-    result.sort((a, b) => (a.id > b.id ? 1 : -1))
-    return result
-  }
+  const mergeTimelineMessages = (items: Message[]) => selectMessagesInCanonicalOrder(messages(), items)
 
   const pendingTimeline = createMemo(() => {
     const sessionID = params.id
@@ -457,16 +466,16 @@ function SessionPageContent() {
   const timeline = createMemo(() => {
     const turns = renderedConversationUserMessages() as Message[]
     const firstID = renderedUserMessages()[0]?.id ?? turns[0]?.id
+    const canonical = firstID ? messagesFrom(messages(), firstID) : messages()
     const mailbox: Message[] = []
     const actionCommands: Message[] = []
-    for (const msg of messages()) {
+    for (const msg of canonical) {
       if (isActionCommandMessage(msg)) {
-        if (!firstID || msg.id >= firstID) actionCommands.push(msg)
+        actionCommands.push(msg)
         continue
       }
       if (msg.role !== "assistant") continue
       if (!(msg as AssistantMessage).metadata?.mailbox) continue
-      if (firstID && msg.id < firstID) continue
       mailbox.push(msg)
     }
     if ((!turns || turns.length === 0) && actionCommands.length === 0) return emptyTimeline
@@ -742,12 +751,96 @@ function SessionPageContent() {
   let scrollSpyFrame: number | undefined
   let scrollSpyTarget: HTMLDivElement | undefined
   let initScrollFrame: number | undefined
+  let historyScrollFrame: number | undefined
 
   const anchor = (id: string) => `message-${id}`
 
   const setScrollRef = (el: HTMLDivElement | undefined) => {
     scroller = el
     autoScroll.scrollRef(el)
+  }
+
+  const afterHistoryLayoutSettles = (fn: () => void) => {
+    if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
+    historyScrollFrame = requestAnimationFrame(() => {
+      historyScrollFrame = requestAnimationFrame(() => {
+        historyScrollFrame = undefined
+        fn()
+      })
+    })
+  }
+
+  const capturePrependScrollAnchor = (): PrependScrollAnchor | undefined => {
+    const container = scroller
+    if (!container) return
+    const viewportTop = container.getBoundingClientRect().top
+    const candidates = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).map((node) => {
+      const rect = node.getBoundingClientRect()
+      return {
+        messageID: node.dataset.messageId ?? "",
+        top: rect.top,
+        bottom: rect.bottom,
+      }
+    })
+    return selectPrependAnchor(
+      candidates.filter((candidate) => candidate.messageID),
+      viewportTop,
+    )
+  }
+
+  const restorePrependScrollAnchor = (anchor: PrependScrollAnchor | undefined) => {
+    const container = scroller
+    if (!container || !anchor) return
+    const node = Array.from(container.querySelectorAll<HTMLElement>("[data-message-id]")).find(
+      (candidate) => candidate.dataset.messageId === anchor.messageID,
+    )
+    if (!node) return
+    const afterOffsetTop = node.getBoundingClientRect().top - container.getBoundingClientRect().top
+    container.scrollTop = adjustedScrollTop({
+      scrollTop: container.scrollTop,
+      beforeOffsetTop: anchor.offsetTop,
+      afterOffsetTop,
+    })
+  }
+
+  const loadEarlierMessages = async () => {
+    const id = params.id
+    if (!id) return
+    const scrollAnchor = capturePrependScrollAnchor()
+    try {
+      const result = await sync.session.history.loadMore(id)
+      if (!result) return
+      setStore("turnStart", 0)
+      afterHistoryLayoutSettles(() => {
+        if (result === "latest") {
+          autoScroll.forceScrollToBottom()
+          return
+        }
+        restorePrependScrollAnchor(scrollAnchor)
+      })
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: "Couldn’t load earlier messages",
+        description: requestErrorMessage(error),
+      })
+    }
+  }
+
+  const returnToLatestMessages = async () => {
+    const id = params.id
+    if (!id) return
+    try {
+      await sync.session.history.returnLatest(id)
+      setStore("turnStart", 0)
+      afterHistoryLayoutSettles(() => autoScroll.forceScrollToBottom())
+    } catch (error) {
+      showToast({
+        type: "error",
+        title: "Couldn’t return to latest messages",
+        description: requestErrorMessage(error),
+      })
+    }
   }
 
   const turnInit = 20
@@ -946,6 +1039,7 @@ function SessionPageContent() {
     document.removeEventListener("keydown", handleKeyDown)
     if (scrollSpyFrame !== undefined) cancelAnimationFrame(scrollSpyFrame)
     if (initScrollFrame !== undefined) cancelAnimationFrame(initScrollFrame)
+    if (historyScrollFrame !== undefined) cancelAnimationFrame(historyScrollFrame)
     hydratedSessions.clear()
     initializedSessions.clear()
     clearTimeout(loadingRecoveryTimer)
@@ -1001,12 +1095,10 @@ function SessionPageContent() {
                           onSetTurnStart={(start) => setStore("turnStart", start)}
                           historyMore={historyMore}
                           historyLoading={historyLoading}
-                          onLoadMore={() => {
-                            const id = params.id
-                            if (!id) return
-                            setStore("turnStart", 0)
-                            void sync.session.history.loadMore(id).catch(() => undefined)
-                          }}
+                          historyMode={historyMode}
+                          historyPendingLatest={historyPendingLatest}
+                          onLoadMore={() => void loadEarlierMessages()}
+                          onReturnLatest={() => void returnToLatestMessages()}
                           scrolledUp={scrolledUp}
                           onScrolledUpChange={setScrolledUp}
                           autoScroll={autoScroll}

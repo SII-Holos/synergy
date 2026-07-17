@@ -26,6 +26,7 @@ import {
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { planMessagePageApply } from "../session-message-page"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -893,32 +894,23 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
       return retry(() =>
-        globalSdk.client.session.messages({ ...scopeRequest(scopeKey), sessionID, limit: prefetchChunk }),
+        globalSdk.client.session.messagePage({
+          ...scopeRequest(scopeKey),
+          sessionID,
+          limit: prefetchChunk,
+        }),
       )
-        .then((messages) => {
-          if (prefetchToken.value !== token) return
-          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-          const next = items
-            .map((x) => x.info)
-            .filter((m) => !!m?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
+        .then((response) => {
+          if (prefetchToken.value !== token || !response.data) return
+          const plan = planMessagePageApply({ page: response.data })
           batch(() => {
-            setChildStore("message", sessionID, reconcile(next, { key: "id" }))
-            for (const message of items) {
-              setChildStore(
-                "part",
-                message.info.id,
-                reconcile(
-                  message.parts
-                    .filter((p) => !!p?.id)
-                    .slice()
-                    .sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
+            setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
+            for (const [messageID, parts] of Object.entries(plan.parts)) {
+              setChildStore("part", messageID, reconcile(parts, { key: "id" }))
             }
           })
+          globalSync.touchMessageBucket(scopeKey, sessionID)
         })
         .catch(() => undefined)
     }

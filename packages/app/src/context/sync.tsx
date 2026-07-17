@@ -10,6 +10,10 @@ import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
 import { planSessionSyncReload } from "./session-sync-plan"
+import { reconcileMessage, type MessageWindowState } from "./session-message-window"
+import { planMessagePageApply } from "./session-message-page"
+import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
+import { nextMessageWindowTotal } from "./session-message-total"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -22,16 +26,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
-    const maxMessages = 500
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
     const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
     const inflightDag = new Map<string, Promise<void>>()
     const [meta, setMeta] = createStore({
-      limit: {} as Record<string, number>,
-      complete: {} as Record<string, boolean>,
-      loading: {} as Record<string, boolean>,
       messageLoad: {} as Record<string, SessionMessageLoadState>,
     })
     // Track the reconnectVersion at the time of each session's last successful
@@ -68,22 +68,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       )
     }
 
-    const limitFor = (count: number) => {
-      if (count <= chunk) return chunk
-      return Math.ceil(count / chunk) * chunk
-    }
-
-    const hydrateMessages = (sessionID: string) => {
-      if (meta.limit[sessionID] !== undefined) return
-
-      const messages = store.message[sessionID]
-      if (!messages) return
-
-      const limit = limitFor(messages.length)
-      setMeta("limit", sessionID, limit)
-      setMeta("complete", sessionID, messages.length < limit)
-    }
-
     const upsertSession = (session: Session) => {
       reconcileCortexFromSession(session)
       const match = Binary.search(store.session, session.id, (s) => s.id)
@@ -114,62 +98,67 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
     }
 
-    type SessionMessagesResponse = Awaited<ReturnType<(typeof sdk.client.session)["messages"]>>
-    const messageLoader = createSessionMessageLoader<SessionMessagesResponse, { limit: number }>({
+    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
+    type MessagePageLoadInput = {
+      mode: "latest" | "history"
+      cursor?: string
+      limit: number
+    }
+    const messageLoader = createSessionMessageLoader<SessionMessagePageResponse, MessagePageLoadInput>({
       request: (sessionID, signal, input) =>
-        retry(() => sdk.client.session.messages({ sessionID, limit: input?.limit ?? chunk }, { signal })),
-      apply: (sessionID, messages, input) => {
-        const limit = input?.limit ?? chunk
-        const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-        const all = items
-          .map((x) => x.info)
-          .filter((message) => !!message?.id)
-          .slice()
-          .sort((a, b) => a.id.localeCompare(b.id))
-        const keep = all.length > maxMessages ? all.slice(-maxMessages) : all
+        retry(() =>
+          sdk.client.session.messagePage(
+            {
+              sessionID,
+              cursor: input?.cursor,
+              limit: input?.limit ?? chunk,
+            },
+            { signal, throwOnError: true },
+          ),
+        ),
+      apply: (sessionID, response, input) => {
+        const page = response.data
+        if (!page) return
+        const currentMetadata = store.messageWindow[sessionID]
+        const current: MessageWindowState<Message> = {
+          messages: store.message[sessionID] ?? [],
+          mode: currentMetadata?.mode ?? "latest",
+          pendingLatest: currentMetadata?.pendingLatest ?? false,
+        }
+        const plan = planMessagePageApply({ page, current, mode: input?.mode })
 
         batch(() => {
-          setStore("message", sessionID, reconcile(keep, { key: "id" }))
-          const keepIds = new Set(keep.map((message) => message.id))
-          for (const item of items) {
-            if (!keepIds.has(item.info.id)) continue
-            setStore(
-              "part",
-              item.info.id,
-              reconcile(
-                item.parts
-                  .filter((part) => !!part?.id)
-                  .slice()
-                  .sort((a, b) => a.id.localeCompare(b.id)),
-                { key: "id" },
-              ),
-            )
+          setStore(
+            produce((draft) => {
+              for (const messageID of plan.droppedIds) delete draft.part[messageID]
+            }),
+          )
+          setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+          setStore("messageWindow", sessionID, reconcile(plan.metadata))
+          for (const [messageID, parts] of Object.entries(plan.parts)) {
+            setStore("part", messageID, reconcile(parts, { key: "id" }))
           }
-          setMeta("limit", sessionID, limit)
-          setMeta("complete", sessionID, all.length < limit)
         })
         globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
         refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
       },
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
-      onState: (sessionID, state) => {
-        batch(() => {
-          setMeta("messageLoad", sessionID, state)
-          setMeta("loading", sessionID, state.phase === "loading" || state.phase === "refreshing")
-        })
-      },
+      onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
     })
 
-    const loadMessages = (sessionID: string, limit: number, options?: { force?: boolean }) =>
+    const loadMessagePage = (sessionID: string, input: MessagePageLoadInput, options?: { force?: boolean }) =>
       messageLoader
         .load(sessionID, {
           force: options?.force,
           hasSnapshot: store.message[sessionID] !== undefined,
-          input: { limit },
+          input,
         })
         .then(() => {
           markSessionSynced(sessionID)
         })
+
+    const loadLatestMessages = (sessionID: string, options?: { force?: boolean }) =>
+      loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
 
     const loadInbox = (sessionID: string, options?: RefreshOptions) => {
       if (!options?.force && store.inbox[sessionID] !== undefined) return
@@ -301,21 +290,42 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             agent: input.agent,
             model: input.model,
           }
-          setStore(
-            produce((draft) => {
-              const messages = draft.message[input.sessionID]
-              if (!messages) {
-                draft.message[input.sessionID] = [message]
-              } else {
-                const result = Binary.search(messages, input.messageID, (m) => m.id)
-                messages.splice(result.index, 0, message)
-              }
-              draft.part[input.messageID] = input.parts
-                .filter((p) => !!p?.id)
-                .slice()
-                .sort((a, b) => a.id.localeCompare(b.id))
-            }),
-          )
+          const metadata = store.messageWindow[input.sessionID]
+          const current: MessageWindowState<Message> = {
+            messages: store.message[input.sessionID] ?? [],
+            mode: metadata?.mode ?? "latest",
+            pendingLatest: metadata?.pendingLatest ?? false,
+          }
+          const existing = current.messages.some((item) => item.id === message.id)
+          const result = reconcileMessage(current, message)
+          const visible = result.window.messages.some((item) => item.id === message.id)
+          batch(() => {
+            setStore(
+              produce((draft) => {
+                for (const messageID of result.droppedIds) delete draft.part[messageID]
+                if (visible)
+                  draft.part[input.messageID] = input.parts
+                    .filter((part) => !!part?.id)
+                    .toSorted((a, b) => a.id.localeCompare(b.id))
+              }),
+            )
+            setStore("message", input.sessionID, reconcile(result.window.messages, { key: "id" }))
+            setStore(
+              "messageWindow",
+              input.sessionID,
+              reconcile({
+                nextCursor: metadata?.nextCursor ?? null,
+                hasMore: metadata?.hasMore ?? false,
+                total: nextMessageWindowTotal({
+                  total: metadata?.total ?? current.messages.length,
+                  existing,
+                  visible,
+                }),
+                mode: result.window.mode,
+                pendingLatest: result.window.pendingLatest,
+              }),
+            )
+          })
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
           const syncPermissions = () =>
@@ -334,10 +344,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           // durable message/part snapshots too (issue #509 / #331).
           const currentReconnectVersion = globalSync.reconnectVersion()
           const session = getSession(sessionID)
-          hydrateMessages(sessionID)
           const plan = planSessionSyncReload({
             hasSessionRecord: session !== undefined,
-            hasMessages: store.message[sessionID] !== undefined,
+            hasMessages: store.message[sessionID] !== undefined && store.messageWindow[sessionID] !== undefined,
             reconnectVersion: currentReconnectVersion,
             lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
             canUnrollback: session?.history?.rollback?.canUnrollback === true,
@@ -348,10 +357,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             (plan.ready
               ? Promise.resolve()
               : (() => {
-                  const limit = meta.limit[sessionID] ?? chunk
                   const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
                   const messagesReq = plan.forceMessages
-                    ? loadMessages(sessionID, limit, { force: true })
+                    ? loadLatestMessages(sessionID, { force: true })
                     : Promise.resolve()
                   const promise = Promise.all([sessionReq, messagesReq])
                     .then(() => {
@@ -383,10 +391,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         // messages or session metadata such as derived rollback state (issue
         // #328 / #316).
         async refresh(sessionID: string) {
-          const limit = meta.limit[sessionID] ?? chunk
           await Promise.all([
             loadSession(sessionID, { force: true }).catch(() => {}),
-            loadMessages(sessionID, limit, { force: true }),
+            loadLatestMessages(sessionID, { force: true }),
             refreshVolatile(sessionID),
           ])
         },
@@ -413,20 +420,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         refreshVolatile,
         history: {
           more(sessionID: string) {
-            if (store.message[sessionID] === undefined) return false
-            if (meta.limit[sessionID] === undefined) return false
-            if (meta.complete[sessionID]) return false
-            return true
+            return store.messageWindow[sessionID]?.hasMore ?? false
           },
           loading(sessionID: string) {
-            return meta.loading[sessionID] ?? false
+            const phase = meta.messageLoad[sessionID]?.phase
+            return phase === "loading" || phase === "refreshing"
+          },
+          mode(sessionID: string) {
+            return store.messageWindow[sessionID]?.mode ?? "latest"
+          },
+          pendingLatest(sessionID: string) {
+            return store.messageWindow[sessionID]?.pendingLatest ?? false
           },
           async loadMore(sessionID: string, count = chunk) {
-            if (meta.loading[sessionID]) return
-            if (meta.complete[sessionID]) return
-
-            const current = meta.limit[sessionID] ?? chunk
-            await loadMessages(sessionID, current + count)
+            if (this.loading(sessionID)) return
+            const metadata = store.messageWindow[sessionID]
+            if (!metadata?.hasMore || !metadata.nextCursor) return
+            return loadOlderOrRecoverLatest({
+              loadOlder: () =>
+                loadMessagePage(sessionID, {
+                  mode: "history",
+                  cursor: metadata.nextCursor!,
+                  limit: count,
+                }),
+              loadLatest: () => loadLatestMessages(sessionID, { force: true }),
+            })
+          },
+          async returnLatest(sessionID: string) {
+            await loadLatestMessages(sessionID, { force: true })
           },
         },
       },
