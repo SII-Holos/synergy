@@ -21,6 +21,17 @@ describe("OpenAPI spec generation", () => {
     expect(JSON.stringify(modelSchema)).not.toContain("reasoning_options")
   })
 
+  test("reuses complete metadata without sharing caller mutations", async () => {
+    const first = await Server.openapi()
+    const provider = first.components?.schemas?.Provider as Record<string, unknown>
+    provider.mutated = true
+
+    const second = await Server.openapi()
+    expect(second.components?.schemas?.Provider).toBeDefined()
+    expect(second.components?.schemas?.Provider).not.toHaveProperty("mutated")
+    expect(JSON.stringify(second.components?.schemas?.Provider)).toContain("#/components/schemas/Model")
+  })
+
   test("includes /session/index route with operationId session.index", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/session/index"]

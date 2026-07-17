@@ -26,11 +26,16 @@ import path from "path"
 import fs from "fs/promises"
 import { afterAll } from "bun:test"
 
+const baselineTestHome = process.env["SYNERGY_TEST_HOME"]
+const baselineModelsCache = process.env["MODELS_DEV_API_JSON"]
+
 export async function isolateClarusHome(fileUrl: string): Promise<void> {
   const fileKey = encodeURIComponent(fileUrl)
   const suffix = Math.random().toString(36).slice(2, 8)
   const dir = path.join(os.tmpdir(), `synergy-test-${fileKey}-${suffix}`)
   const testHome = path.join(dir, "home")
+  const { closeDB } = await import("../../src/library/database")
+  closeDB()
 
   await fs.mkdir(testHome, { recursive: true })
 
@@ -43,10 +48,9 @@ export async function isolateClarusHome(fileUrl: string): Promise<void> {
   await fs.mkdir(cacheDir, { recursive: true })
   await fs.writeFile(path.join(cacheDir, "version"), "15")
 
-  const originalCache = process.env["MODELS_DEV_API_JSON"]
-  if (originalCache) {
+  if (baselineModelsCache) {
     try {
-      const content = await fs.readFile(originalCache, "utf-8")
+      const content = await fs.readFile(baselineModelsCache, "utf-8")
       const newCachePath = path.join(cacheDir, "models.json")
       await fs.writeFile(newCachePath, content)
       process.env["MODELS_DEV_API_JSON"] = newCachePath
@@ -63,9 +67,19 @@ export async function isolateClarusHome(fileUrl: string): Promise<void> {
 
   process.env["SYNERGY_TEST_HOME"] = testHome
 
-  // Cleanup: remove the isolated home directory when all tests in this file
-  // have finished. The preload's own afterAll handles the original home.
+  // LibraryDB keeps a process-wide SQLite connection whose path is selected
+  // from SYNERGY_TEST_HOME when first opened. Close it before restoring the
+  // preload-owned paths, then remove this file's isolated home.
   afterAll(async () => {
+    if (process.env["SYNERGY_TEST_HOME"] === testHome) {
+      closeDB()
+      if (baselineTestHome === undefined) delete process.env["SYNERGY_TEST_HOME"]
+      else process.env["SYNERGY_TEST_HOME"] = baselineTestHome
+    }
+    if (process.env["MODELS_DEV_API_JSON"] === path.join(cacheDir, "models.json")) {
+      if (baselineModelsCache === undefined) delete process.env["MODELS_DEV_API_JSON"]
+      else process.env["MODELS_DEV_API_JSON"] = baselineModelsCache
+    }
     try {
       await fs.rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 })
     } catch {
