@@ -710,24 +710,42 @@ describe("ExperienceReencode worker primitives", () => {
   test("runs a continuous worker pool without exceeding concurrency", async () => {
     let active = 0
     let peak = 0
+    let slowCompleted = false
+    const started: string[] = []
     const completed: string[] = []
+    const releaseSlow = Promise.withResolvers<void>()
+    const fastTwoStarted = Promise.withResolvers<void>()
 
-    await ExperienceReencode.runPool({
+    const pending = ExperienceReencode.runPool({
       items: ["slow", "fast-1", "fast-2", "fast-3"],
       concurrency: 2,
       signal: new AbortController().signal,
       async process(item) {
         active++
         peak = Math.max(peak, active)
-        await Bun.sleep(item === "slow" ? 35 : 5)
-        completed.push(item)
-        active--
+        started.push(item)
+        try {
+          if (item === "slow") await releaseSlow.promise
+          if (item === "fast-2") fastTwoStarted.resolve()
+          completed.push(item)
+          if (item === "slow") slowCompleted = true
+        } finally {
+          active--
+        }
       },
     })
 
-    expect(peak).toBe(2)
+    await fastTwoStarted.promise
+    const startedBeforeSlowRelease = [...started]
+    const slowCompletedBeforeRelease = slowCompleted
+    const peakBeforeRelease = peak
+    releaseSlow.resolve()
+    await pending
+
+    expect(startedBeforeSlowRelease).toContain("fast-2")
+    expect(slowCompletedBeforeRelease).toBe(false)
+    expect(peakBeforeRelease).toBe(2)
     expect(completed).toHaveLength(4)
-    expect(completed.indexOf("fast-2")).toBeLessThan(completed.indexOf("slow"))
   })
 
   test("stops claiming new work after cancellation", async () => {

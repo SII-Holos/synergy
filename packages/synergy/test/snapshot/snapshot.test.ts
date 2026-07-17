@@ -75,6 +75,62 @@ async function withGitCommandLog<T>(fn: (commands: string[]) => Promise<T>) {
 }
 
 describe.serial("snapshot", () => {
+  test("retries a transient git spawn failure", async () => {
+    await using tmp = await bootstrap()
+    const scope = await tmp.scope()
+    const originalSpawn = Bun.spawn
+    let diffFilesAttempts = 0
+    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+      const command = args[0]
+      if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
+        diffFilesAttempts++
+        if (diffFilesAttempts === 1) {
+          throw Object.assign(new Error("too many open files"), { code: "EMFILE" })
+        }
+      }
+      return originalSpawn(...args)
+    }) as typeof Bun.spawn
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
+        },
+      })
+      expect(diffFilesAttempts).toBe(2)
+    } finally {
+      Bun.spawn = originalSpawn
+    }
+  })
+
+  test("does not retry a permanent git spawn failure", async () => {
+    await using tmp = await bootstrap()
+    const scope = await tmp.scope()
+    const originalSpawn = Bun.spawn
+    let diffFilesAttempts = 0
+    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+      const command = args[0]
+      if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
+        diffFilesAttempts++
+        throw Object.assign(new Error("permission denied"), { code: "EACCES" })
+      }
+      return originalSpawn(...args)
+    }) as typeof Bun.spawn
+
+    try {
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          expect(await Snapshot.track(tmp.extra.sessionID)).toBeUndefined()
+        },
+      })
+      expect(diffFilesAttempts).toBe(1)
+    } finally {
+      Bun.spawn = originalSpawn
+    }
+  })
+
   test("tracks deleted files correctly", async () => {
     await using tmp = await bootstrap()
     await ScopeContext.provide({
