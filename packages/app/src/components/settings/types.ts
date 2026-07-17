@@ -48,6 +48,8 @@ export const UI_DEFAULTS = {
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
+  embeddingSource: "huggingface" as LocalEmbeddingSource,
+  embeddingRemoteHost: "" as string,
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
@@ -235,6 +237,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
+export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
+
 export type LibrarySettingsStore = {
   learning: string
   autonomy: string
@@ -243,6 +247,8 @@ export type LibrarySettingsStore = {
   experienceSimThreshold: string
   experienceTopK: string
   experienceEpsilon: string
+  embeddingSource: LocalEmbeddingSource
+  embeddingRemoteHost: string
 }
 
 export type ProvidersStore = {
@@ -336,6 +342,8 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
       experienceTopK: UI_DEFAULTS.experienceTopK,
       experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+      embeddingSource: UI_DEFAULTS.embeddingSource,
+      embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,

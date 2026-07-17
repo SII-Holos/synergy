@@ -500,7 +500,7 @@ export namespace Snapshot {
         }),
       )
     }
-    return result
+    return SnapshotSchema.boundArray(result)
   }
 
   async function refreshIndex(sessionID: string, signal?: AbortSignal): Promise<boolean> {

@@ -132,6 +132,27 @@ The `openai-codex` provider uses ChatGPT/Codex OAuth credentials and the Codex b
 
 See [Configuration](configuration.md) for files, precedence, domains, and instruction discovery.
 
+### embed download
+
+`synergy embed download` fetches the bundled local embedding model (`Xenova/all-MiniLM-L6-v2`, ~80 MB) so that embedding calls start instantly. The command is for local mode; when a remote embedding API key is configured it exits immediately with "No download needed."
+
+```bash
+synergy embed download
+```
+
+The command displays:
+
+- the model name, size, and purpose
+- the configured download source (Hugging Face Hub, HF Mirror, or custom)
+- live byte and percentage progress, updated roughly every 250 ms
+- success confirmation with the final "ready" message
+
+On failure, the command prints the error and suggests troubleshooting steps: check the network connection, verify the configured download source in `embedding.local.source`, or configure a remote embedding API with `synergy config embedding`.
+
+The download source is set in `00-general.jsonc` under `embedding.local.source` (`"huggingface"`, `"hf-mirror"`, or `"custom"`). The `custom` source requires `embedding.local.remoteHost` to be a public HTTPS origin.
+
+See [Knowledge: Embedding Model](../product/knowledge.md#embedding-model) for the embedding lifecycle and [Configuration: Embedding](configuration.md#embedding) for the full config schema.
+
 ## Sessions, Library, and Data
 
 | Command family                                      | Purpose                                                                                                            |

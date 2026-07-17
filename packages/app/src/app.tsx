@@ -15,6 +15,7 @@ import { ServerProvider, useServer } from "@/context/server"
 import { NotificationProvider } from "@/context/notification"
 import { CommandProvider } from "@/context/command"
 import { ProductUpdateProvider } from "@/context/product-update"
+import { SessionTransitionProvider } from "@/context/session-transition"
 import { DesktopThemeSync } from "@/components/app-shell"
 
 import { AuthProvider } from "@/context/auth"
@@ -212,23 +213,25 @@ function ConnectedApp() {
                 <Router
                   base={proxyPrefix()}
                   root={(props) => (
-                    <PluginRouteScope>
-                      {(scopeKey) => (
-                        <PluginHostProvider scopeKey={scopeKey}>
-                          <GlobalSyncProvider>
-                            <PluginComposerSlotBridge />
-                            <PluginThemeConfigBridge />
-                            <LayoutProvider>
-                              <NotificationProvider>
-                                <CommandProvider>
-                                  <Layout>{props.children}</Layout>
-                                </CommandProvider>
-                              </NotificationProvider>
-                            </LayoutProvider>
-                          </GlobalSyncProvider>
-                        </PluginHostProvider>
-                      )}
-                    </PluginRouteScope>
+                    <SessionTransitionProvider>
+                      <PluginRouteScope>
+                        {(scopeKey) => (
+                          <PluginHostProvider scopeKey={scopeKey}>
+                            <GlobalSyncProvider>
+                              <PluginComposerSlotBridge />
+                              <PluginThemeConfigBridge />
+                              <LayoutProvider>
+                                <NotificationProvider>
+                                  <CommandProvider>
+                                    <Layout>{props.children}</Layout>
+                                  </CommandProvider>
+                                </NotificationProvider>
+                              </LayoutProvider>
+                            </GlobalSyncProvider>
+                          </PluginHostProvider>
+                        )}
+                      </PluginRouteScope>
+                    </SessionTransitionProvider>
                   )}
                 >
                   <Route path="/" component={() => <Navigate href={`/${base64Encode("home")}/session`} />} />

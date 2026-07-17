@@ -58,6 +58,42 @@ describe("BrowserNetworkGateway", () => {
     for (const tunnel of tunnels) tunnel.client.destroy()
     await close(target)
   })
+  test("shares one gateway across concurrent owner grants", async () => {
+    const proxies = await Promise.all(
+      Array.from({ length: 8 }, (_value, index) => BrowserNetworkGateway.proxyFor(owner(`concurrent-${index}`))),
+    )
+
+    expect(new Set(proxies.map((proxy) => proxy.server))).toEqual(new Set([proxies[0].server]))
+  })
+
+  test("returns a live gateway when stop overlaps startup", async () => {
+    const target = net.createServer()
+    const port = await listen(target)
+    const [proxy] = await Promise.all([
+      BrowserNetworkGateway.proxyFor(owner("start-stop")),
+      BrowserNetworkGateway.stop(),
+    ])
+
+    const tunnel = await connectTunnel(proxy, port)
+    expect(tunnel.response).toContain("200 Connection Established")
+    tunnel.client.destroy()
+    await close(target)
+  })
+
+  test("returns a live gateway when stop overlaps an existing gateway", async () => {
+    const target = net.createServer()
+    const port = await listen(target)
+    await BrowserNetworkGateway.proxyFor(owner("existing"))
+    const [proxy] = await Promise.all([
+      BrowserNetworkGateway.proxyFor(owner("existing-stop")),
+      BrowserNetworkGateway.stop(),
+    ])
+
+    const tunnel = await connectTunnel(proxy, port)
+    expect(tunnel.response).toContain("200 Connection Established")
+    tunnel.client.destroy()
+    await close(target)
+  })
 })
 
 function owner(id: string): BrowserOwner.Info {

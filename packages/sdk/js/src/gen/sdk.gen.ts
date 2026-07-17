@@ -223,6 +223,9 @@ import type {
   LatticeRunListResponses,
   LatticeSessionGetRunErrors,
   LatticeSessionGetRunResponses,
+  LibraryEmbeddingDownloadErrors,
+  LibraryEmbeddingDownloadResponses,
+  LibraryEmbeddingStatusResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
   LibraryExperienceCancelReencodeJobErrors,
@@ -6910,6 +6913,72 @@ export class Workspace extends HeyApiClient {
   files = new Files({ client: this.client })
 }
 
+export class Embedding extends HeyApiClient {
+  /**
+   * Get embedding status
+   *
+   * Report the configured embedding mode and local model asset lifecycle without loading the model.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<LibraryEmbeddingStatusResponses, unknown, ThrowOnError>({
+      url: "/library/embedding/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download local embedding model
+   *
+   * Start or join the local embedding model download and return its current observable status.
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      LibraryEmbeddingDownloadResponses,
+      LibraryEmbeddingDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/library/embedding/download",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Experience extends HeyApiClient {
   /**
    * Search experiences
@@ -7566,6 +7635,8 @@ export class Library extends HeyApiClient {
       ...params,
     })
   }
+
+  embedding = new Embedding({ client: this.client })
 
   experience = new Experience({ client: this.client })
 }

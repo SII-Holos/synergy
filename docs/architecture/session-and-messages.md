@@ -142,6 +142,59 @@ Attachments are durable parts with separate model and presentation policies. Mod
 
 Inline data and returned tool attachments are externalized to the Asset store as `asset://` references when appropriate. Provider file IDs remain provider inputs; local paths remain explicit workspace references. Repeated historical images are deduplicated and bounded during model projection without removing their transcript parts. Asset routes validate IDs inside the Asset root rather than accepting arbitrary filesystem paths.
 
+## Turn Diffs
+
+Each user message may carry computed file-change diffs from the turn's snapshot/patch parts. Diffs are stored in `summary.diffs` on the `UserMessage` schema and surfaced to the frontend through the existing `message.updated` reconcile flow — no separate event, store, or route.
+
+### Diff state machine
+
+`summary.diffState` records the lifecycle of diff computation for a turn:
+
+| Status    | Meaning                                                                                                                   |
+| --------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `pending` | Diff is being computed; includes the server-owned expiry marker `deadlineAt` (epoch ms) for timeout and restart recovery. |
+| `ready`   | Diffs computed successfully.                                                                                              |
+| `error`   | Diff computation failed; carries a safe error `code` (`timeout`, `git_failure`, or `unknown`).                            |
+
+The non-blocking summary `LoopJob` derives turn diffs in this order:
+
+1. fresh-merge `diffState: { status: "pending", deadlineAt }` on the user message before `computeDiff()` so the frontend sees the pending state immediately;
+2. call `computeDiff()` using the snapshot range from every assistant revision belonging to the root turn;
+3. on success, write `{ diffs, diffState: { status: "ready" } }` atomically;
+4. on failure, write `{ diffState: { status: "error", code } }`; on a per-run timeout, apply `error/timeout` only if the diff is still `pending`, preserving an already-`ready` settlement while later enrichment or session aggregation finishes.
+
+Title generation may continue after either outcome. Body generation runs only when diff settlement succeeded with a non-empty diff set. Diff errors persist safe error codes only and do not block the session or later queued turns. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary after its deadline; the frontend renders the server settlement state and never compares `deadlineAt` with the client clock.
+
+### Ordering and caching
+
+Summary computation is FIFO per session. Queue identity includes the terminal assistant revision, so later continuations of the same root turn are processed while duplicate triggers for one revision are coalesced. Each worker must settle after cancellation before the queue advances, preventing timed-out work from overwriting a later revision. Each `summarizeNow()` run owns a `diffCache` that lets its session-level and turn-level computations reuse the same in-flight snapshot-range promise when their bounds match.
+
+### Schema
+
+`diffState` is an optional additive field on `summary`:
+
+```ts
+diffState?: {
+  status: "pending"
+  deadlineAt: number
+} | {
+  status: "ready"
+} | {
+  status: "error"
+  code: "timeout" | "git_failure" | "unknown"
+}
+```
+
+`summary.diffs` is always present when `summary` exists (default empty array).
+
+### Invariants
+
+- A ready settlement writes `diffState` and `summary.diffs` in the same `updateSummary` call; an error settlement writes only its safe state and preserves existing summary fields.
+- A message without `diffState` but with non-empty `diffs` is treated as legacy `ready` at the read boundary.
+- `deadlineAt` is a server recovery marker. Clients render the persisted settlement state and do not derive terminal state from their local clock.
+- `summary.diffs` is the sole turn-level diff data source. The session-level `session_diff` bucket is a separate aggregation of all turn diffs for the Review workbench panel.
+- No migration, route, event, storage export version, config, or new runtime module was required for the diff settlement flow; it uses only the existing summary infrastructure.
+
 ## Persistent Inbox
 
 All delivery into an existing session uses the persistent `SessionInbox`. There is no separate in-memory mailbox.
@@ -166,6 +219,8 @@ Typical mappings:
 Promoting a queued user task to guide/steer changes the inbox mode instead of writing permanent guided/no-reply metadata into the message model.
 
 On abort, steer and context items are discarded while queued task items remain for explicit later execution.
+
+If a loop run fails while runnable inbox work remains, release still yields ownership but does not immediately request another drive cycle. The durable inbox item remains available for an explicit retry or a later delivery-triggered wake instead of entering a tight self-wake loop.
 
 ## Model Context Projection
 

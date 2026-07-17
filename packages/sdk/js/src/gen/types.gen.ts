@@ -1985,6 +1985,20 @@ export type ProviderConfig = {
 }
 
 /**
+ * Bundled local embedding model download settings
+ */
+export type LocalEmbeddingConfig = {
+  /**
+   * Download source for the bundled local embedding model (default: huggingface)
+   */
+  source?: "huggingface" | "hf-mirror" | "custom"
+  /**
+   * Public HTTPS origin used when source is custom
+   */
+  remoteHost?: string
+}
+
+/**
  * Embedding model configuration. When absent, a local model is used automatically.
  */
 export type EmbeddingConfig = {
@@ -2000,6 +2014,7 @@ export type EmbeddingConfig = {
    * Embedding model name
    */
   model?: string
+  local?: LocalEmbeddingConfig
 }
 
 /**
@@ -4265,6 +4280,18 @@ export type UserMessage = {
     title?: string
     body?: string
     diffs: Array<FileDiff>
+    diffState?:
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "unknown"
+        }
   }
   agent: string
   model: {
@@ -5146,6 +5173,34 @@ export type WorkspaceFileStatusSummary = {
     added?: number
     removed?: number
   }>
+}
+
+export type EmbeddingStatus =
+  | {
+      mode: "local"
+      model: string
+      source: "huggingface" | "hf-mirror" | "custom"
+      asset: "missing" | "downloading" | "cached" | "failed"
+      runtime: "unloaded" | "loading" | "ready"
+      progress?: {
+        loadedBytes: number
+        totalBytes: number
+        percent: number
+      }
+      error?: {
+        code: "invalid_source" | "load_failed"
+        message: string
+      }
+    }
+  | {
+      mode: "remote"
+      model: string
+      baseURL: string
+    }
+
+export type EmbeddingRemoteConfiguredError = {
+  code: "EMBEDDING_REMOTE_CONFIGURED"
+  message: string
 }
 
 export type RewardsInfo = {
@@ -7090,6 +7145,7 @@ export type EventFileWatcherUpdated = {
     oldAbsolute?: string
     parent?: string
     node?: unknown
+    resync?: boolean
   }
 }
 
@@ -11663,6 +11719,69 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type LibraryEmbeddingStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/embedding/status"
+}
+
+export type LibraryEmbeddingStatusResponses = {
+  /**
+   * Embedding mode and local asset status
+   */
+  200: EmbeddingStatus
+}
+
+export type LibraryEmbeddingStatusResponse = LibraryEmbeddingStatusResponses[keyof LibraryEmbeddingStatusResponses]
+
+export type LibraryEmbeddingDownloadData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/embedding/download"
+}
+
+export type LibraryEmbeddingDownloadErrors = {
+  /**
+   * A remote embedding service is configured
+   */
+  409: EmbeddingRemoteConfiguredError
+}
+
+export type LibraryEmbeddingDownloadError = LibraryEmbeddingDownloadErrors[keyof LibraryEmbeddingDownloadErrors]
+
+export type LibraryEmbeddingDownloadResponses = {
+  /**
+   * Local model download accepted or already active
+   */
+  202: {
+    mode: "local"
+    model: string
+    source: "huggingface" | "hf-mirror" | "custom"
+    asset: "missing" | "downloading" | "cached" | "failed"
+    runtime: "unloaded" | "loading" | "ready"
+    progress?: {
+      loadedBytes: number
+      totalBytes: number
+      percent: number
+    }
+    error?: {
+      code: "invalid_source" | "load_failed"
+      message: string
+    }
+  }
+}
+
+export type LibraryEmbeddingDownloadResponse =
+  LibraryEmbeddingDownloadResponses[keyof LibraryEmbeddingDownloadResponses]
 
 export type LibraryExperienceSearchData = {
   body?: {
