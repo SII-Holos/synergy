@@ -1,6 +1,7 @@
 import z from "zod"
 import { MAX_SEGMENT_LENGTH } from "./keys"
 import type { SessionEndpoint } from "@/session/endpoint"
+import { canonicalHash } from "@/util/canonical"
 
 export const ClarusIdSchema = z.string().min(1).max(MAX_SEGMENT_LENGTH)
 
@@ -640,7 +641,7 @@ export function upgradeOutboxV1ToV2(v1: z.infer<typeof ClarusOutboxRecordV1>): C
     projectId: v1.projectId,
     taskId: v1.taskId,
     payload: v1.payload ?? {},
-    payloadHash: v1.payload ? computePayloadHash(v1.payload) : "",
+    payloadHash: v1.payload ? canonicalHash(v1.payload) : "",
     state,
     preparedAt: hasResolution && state !== "prepared" ? (v1.resolvedAt as number) : v1.createdAt,
     ...(hasResolution ? { dispatchedAt: v1.resolvedAt } : {}),
@@ -648,9 +649,4 @@ export function upgradeOutboxV1ToV2(v1: z.infer<typeof ClarusOutboxRecordV1>): C
     ...(state === "rejected" ? { rejectedAt: v1.resolvedAt ?? now, errorCode: "v1_upgrade" } : {}),
     ...(state === "ambiguous" ? { ambiguousAt: v1.resolvedAt ?? now } : {}),
   })
-}
-
-function computePayloadHash(payload: Record<string, unknown>): string {
-  const canonical = JSON.stringify(payload, Object.keys(payload).sort())
-  return new Bun.CryptoHasher("sha256").update(canonical).digest("base64url").slice(0, 32)
 }

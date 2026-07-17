@@ -1,7 +1,6 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-// errors import removed — using clarusError* refs instead
 import { Bus } from "../bus"
 import { NavigationUpdated } from "../clarus/event"
 import { ClarusBindingStore, ClarusTaskBindingStore, ClarusProjectActivityStore, ClarusRuntime } from "../clarus"

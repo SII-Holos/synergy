@@ -431,14 +431,14 @@ describe("Clarus upgrade functions", () => {
     expect(v2.connectionEpoch).toBeUndefined()
   })
 
-  test("upgradeOutboxV1ToV2 preserves payload hash", () => {
+  test("upgradeOutboxV1ToV2 uses the runtime canonical payload hash", () => {
     const v1 = ClarusOutboxRecordV1.parse({
       schemaVersion: 1,
       requestID: "req-hash",
       action: "task_result",
       agentId: "ag-1",
       projectId: "pr-1",
-      payload: { result: "done" },
+      payload: { result: { content: "done", metadata: { z: 1, a: 2 } } },
       state: "acknowledged",
       resolvedAt: 2000,
       resolvedBy: "sys",
@@ -448,8 +448,7 @@ describe("Clarus upgrade functions", () => {
     const v2 = upgradeOutboxV1ToV2(v1)
     expect(v2.state).toBe("acknowledged")
     expect(v2.acknowledgedAt).toBe(2000)
-    expect(v2.payloadHash).toBeTruthy()
-    expect(v2.payloadHash).toHaveLength(32)
+    expect(v2.payloadHash).toBe(payloadHash(v1.payload!))
   })
 })
 
