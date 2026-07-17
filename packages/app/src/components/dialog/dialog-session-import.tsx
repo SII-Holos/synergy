@@ -5,8 +5,7 @@ import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Button } from "@ericsanchezok/synergy-ui/button"
-import { useGlobalSDK } from "@/context/global-sdk"
-import { base64Decode } from "@ericsanchezok/synergy-util/encode"
+import { useSDK } from "@/context/sdk"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionImportResult } from "@ericsanchezok/synergy-sdk/client"
 import "./dialog-session-export.css"
@@ -21,23 +20,17 @@ export function DialogSessionImport() {
   const params = useParams()
   const navigate = useNavigate()
   const dialog = useDialog()
-  const globalSDK = useGlobalSDK()
+  const sdk = useSDK()
   const [file, setFile] = createSignal<File>()
   const [importing, setImporting] = createSignal(false)
 
-  const directory = () => (params.dir ? base64Decode(params.dir) : "")
-
   async function handleImport() {
     const selected = file()
-    const dir = directory()
-    if (!selected || !dir) return
+    if (!selected) return
 
     setImporting(true)
     try {
-      const response = await globalSDK.client.session.import({
-        directory: dir,
-        file: selected,
-      })
+      const response = await sdk.client.session.import({ file: selected })
       const result = response.data as SessionImportResult | undefined
       if (!result) throw new Error("No import result returned")
       const descParts = [
@@ -73,7 +66,7 @@ export function DialogSessionImport() {
         <section class="session-export-summary" aria-label="Import target">
           <div class="session-export-summary-title">
             <Icon name={getSemanticIcon("action.import")} size="small" class="session-export-summary-icon" />
-            <span>Import into current project</span>
+            <span>Import into current scope</span>
           </div>
           <div class="session-export-meta">
             <span>Accepts .json and .json.gz session exports</span>
@@ -103,7 +96,7 @@ export function DialogSessionImport() {
       </div>
 
       <div data-slot="dialog-actions" class="session-export-footer">
-        <span class="session-export-hint">Imported sessions get new IDs and use this project workspace.</span>
+        <span class="session-export-hint">Imported sessions get new IDs and use the current scope.</span>
         <Button
           type="button"
           variant="primary"

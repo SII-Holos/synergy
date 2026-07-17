@@ -13,11 +13,32 @@
 }
 
 [data-component="compaction-card"][data-status="running"] {
+  position: relative;
+  isolation: isolate;
   background-color: color-mix(
     in srgb,
     var(--surface-base, var(--surface-raised-base)) 92%,
     var(--color-surface-info-weak) 8%
   );
+}
+
+[data-component="compaction-card"][data-status="running"]::before {
+  content: "";
+  position: absolute;
+  inset: -45% -25%;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    112deg,
+    transparent 38%,
+    color-mix(in srgb, var(--color-surface-info-weak) 34%, transparent) 48%,
+    color-mix(in srgb, var(--icon-info-base) 8%, transparent) 52%,
+    transparent 62%
+  );
+  opacity: 0;
+  transform: translate3d(-42%, 0, 0);
+  animation: compaction-card-shimmer 2.8s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 [data-slot="compaction-card-header"] {
@@ -68,7 +89,6 @@
 
 [data-component="compaction-card"][data-status="running"] [data-slot="compaction-card-icon"] {
   color: var(--icon-info-base);
-  animation: compaction-card-running 1.8s var(--motion-ease-standard) infinite;
 }
 
 [data-slot="compaction-card-copy"] {
@@ -143,6 +163,11 @@
   border: 0;
   border-radius: inherit;
   overflow: visible;
+}
+
+[data-component="compaction-card"][data-status="running"] > [data-component="collapsible"] {
+  position: relative;
+  z-index: 2;
 }
 
 [data-component="compaction-card"] [data-slot="collapsible-content"] {
@@ -290,13 +315,19 @@
   }
 }
 
-@keyframes compaction-card-running {
+@keyframes compaction-card-shimmer {
   0%,
-  100% {
-    opacity: 0.68;
+  12% {
+    opacity: 0;
+    transform: translate3d(-42%, 0, 0);
   }
-  50% {
+  32%,
+  72% {
     opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(42%, 0, 0);
   }
 }
 
@@ -308,5 +339,11 @@
   [data-component="compaction-card"] [data-slot="collapsible-content"] {
     animation: none;
     transition: none;
+  }
+
+  [data-component="compaction-card"][data-status="running"]::before {
+    animation: none;
+    transition: none;
+    will-change: auto;
   }
 }

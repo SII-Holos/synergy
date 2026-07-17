@@ -43,10 +43,13 @@ export const UI_DEFAULTS = {
   compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
+  cortexConcurrency: "8" as string,
   libraryLearning: "true" as string,
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
+  embeddingSource: "huggingface" as LocalEmbeddingSource,
+  embeddingRemoteHost: "" as string,
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
@@ -60,6 +63,9 @@ export const UI_DEFAULTS = {
   watcherIgnore: "" as string,
   logLevel: "" as string,
   coauthorReminder: "true" as string,
+  lspWriteDiagnostics: "true" as string,
+  lspDiagnosticsSeverity: "error" as string,
+  lspDiagnosticsScope: "project" as string,
   defaultAgent: "synergy" as string,
 } as const
 
@@ -231,6 +237,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
+export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
+
 export type LibrarySettingsStore = {
   learning: string
   autonomy: string
@@ -239,6 +247,8 @@ export type LibrarySettingsStore = {
   experienceSimThreshold: string
   experienceTopK: string
   experienceEpsilon: string
+  embeddingSource: LocalEmbeddingSource
+  embeddingRemoteHost: string
 }
 
 export type ProvidersStore = {
@@ -260,6 +270,7 @@ export type RuntimeStore = {
   compactionPrune: string
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
+  cortexConcurrency: string
   invokeTimeout: string
   providerTtfbTimeout: string
   providerIdleTimeout: string
@@ -269,6 +280,9 @@ export type RuntimeStore = {
   watcherIgnore: string
   logLevel: string
   coauthorReminder: string
+  lspWriteDiagnostics: string
+  lspDiagnosticsSeverity: string
+  lspDiagnosticsScope: string
 }
 
 export type SettingsState = {
@@ -328,6 +342,8 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
       experienceTopK: UI_DEFAULTS.experienceTopK,
       experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+      embeddingSource: UI_DEFAULTS.embeddingSource,
+      embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,
@@ -342,6 +358,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       compactionPrune: UI_DEFAULTS.compactionPrune,
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,
       providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
       providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,
@@ -351,6 +368,9 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
       coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
+      lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
+      lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
     },
     email: {
       enabled: true,

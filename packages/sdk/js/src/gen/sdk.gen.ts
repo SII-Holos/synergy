@@ -125,6 +125,11 @@ import type {
   ConfigImportApplyResponses,
   ConfigImportPlanErrors,
   ConfigImportPlanResponses,
+  ConfigInstructionsGetResponses,
+  ConfigInstructionsResetResponses,
+  ConfigInstructionsUpdateErrors,
+  ConfigInstructionsUpdateInput,
+  ConfigInstructionsUpdateResponses,
   ConfigProvidersResponses,
   ConfigUpdateErrors,
   ConfigUpdateResponses,
@@ -133,6 +138,7 @@ import type {
   ControlProfileListResponses,
   CortexCancelErrors,
   CortexCancelResponses,
+  CortexConcurrencyResponses,
   CortexGetErrors,
   CortexGetResponses,
   CortexListErrors,
@@ -217,6 +223,9 @@ import type {
   LatticeRunListResponses,
   LatticeSessionGetRunErrors,
   LatticeSessionGetRunResponses,
+  LibraryEmbeddingDownloadErrors,
+  LibraryEmbeddingDownloadResponses,
+  LibraryEmbeddingStatusResponses,
   LibraryExperienceApplyRewardErrors,
   LibraryExperienceApplyRewardResponses,
   LibraryExperienceCancelReencodeJobErrors,
@@ -4778,6 +4787,109 @@ export class Pty extends HeyApiClient {
   }
 }
 
+export class Instructions extends HeyApiClient {
+  /**
+   * Reset global custom instructions
+   *
+   * Remove AGENTS.override.md and fall back to the global AGENTS.md file.
+   */
+  public reset<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).delete<ConfigInstructionsResetResponses, unknown, ThrowOnError>({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get global custom instructions
+   *
+   * Read the effective global AGENTS override or primary instructions file.
+   */
+  public get<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ConfigInstructionsGetResponses, unknown, ThrowOnError>({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update global custom instructions
+   *
+   * Write the global AGENTS.override.md file, or remove it when the content is empty.
+   */
+  public update<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      configInstructionsUpdateInput?: ConfigInstructionsUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "configInstructionsUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).put<
+      ConfigInstructionsUpdateResponses,
+      ConfigInstructionsUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/config/instructions",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+}
+
 export class Domain extends HeyApiClient {
   /**
    * List config domains
@@ -5155,6 +5267,8 @@ export class Config extends HeyApiClient {
       ...params,
     })
   }
+
+  instructions = new Instructions({ client: this.client })
 
   domain = new Domain({ client: this.client })
 
@@ -5922,6 +6036,36 @@ export class Cortex extends HeyApiClient {
     )
     return (options?.client ?? this.client).get<CortexListResponses, CortexListErrors, ThrowOnError>({
       url: "/cortex/tasks",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Get Cortex concurrency status
+   *
+   * Get the configured, effective, and memory-recommended Cortex task concurrency limits.
+   */
+  public concurrency<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<CortexConcurrencyResponses, unknown, ThrowOnError>({
+      url: "/cortex/tasks/concurrency",
       ...options,
       ...params,
     })
@@ -6699,6 +6843,72 @@ export class Workspace extends HeyApiClient {
   files = new Files({ client: this.client })
 }
 
+export class Embedding extends HeyApiClient {
+  /**
+   * Get embedding status
+   *
+   * Report the configured embedding mode and local model asset lifecycle without loading the model.
+   */
+  public status<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<LibraryEmbeddingStatusResponses, unknown, ThrowOnError>({
+      url: "/library/embedding/status",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Download local embedding model
+   *
+   * Start or join the local embedding model download and return its current observable status.
+   */
+  public download<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      LibraryEmbeddingDownloadResponses,
+      LibraryEmbeddingDownloadErrors,
+      ThrowOnError
+    >({
+      url: "/library/embedding/download",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Experience extends HeyApiClient {
   /**
    * Search experiences
@@ -7355,6 +7565,8 @@ export class Library extends HeyApiClient {
       ...params,
     })
   }
+
+  embedding = new Embedding({ client: this.client })
 
   experience = new Experience({ client: this.client })
 }

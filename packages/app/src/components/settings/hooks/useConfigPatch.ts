@@ -14,6 +14,7 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
 
   buildGeneralPatch(cfg, state, patch)
+  buildEmbeddingPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)
   buildAgentPatch(cfg, state, patch)
   buildProviderPatch(cfg, state, patch)
@@ -43,6 +44,23 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   // Always include muted so domain mergeDeep can replace/clear the array.
   if (JSON.stringify(toast) !== JSON.stringify(current)) {
     patch.toast = toast
+  }
+}
+
+function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const source = state.library.embeddingSource
+  const remoteHost = state.library.embeddingRemoteHost.trim()
+  const currentSource = cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource
+  const currentRemoteHost = cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost
+  const nextRemoteHost = source === "custom" ? remoteHost : ""
+
+  if (source === currentSource && nextRemoteHost === (source === "custom" ? currentRemoteHost : "")) return
+
+  patch.embedding = {
+    local: {
+      source,
+      ...(source === "custom" && nextRemoteHost ? { remoteHost: nextRemoteHost } : {}),
+    },
   }
 }
 
@@ -170,6 +188,22 @@ function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<strin
 
 function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const { runtime } = state
+  const lspWriteDiagnostics = runtime.lspWriteDiagnostics !== "false"
+  if (lspWriteDiagnostics !== (cfg.lspWriteDiagnostics !== false)) {
+    patch.lspWriteDiagnostics = lspWriteDiagnostics
+  }
+
+  const lspDiagnostics = {
+    severity: runtime.lspDiagnosticsSeverity as "error" | "warning",
+    scope: runtime.lspDiagnosticsScope as "delta" | "file" | "project",
+  }
+  const currentLspDiagnostics = cfg.lspDiagnostics ?? {
+    severity: UI_DEFAULTS.lspDiagnosticsSeverity,
+    scope: UI_DEFAULTS.lspDiagnosticsScope,
+  }
+  if (JSON.stringify(lspDiagnostics) !== JSON.stringify(currentLspDiagnostics)) {
+    patch.lspDiagnostics = lspDiagnostics
+  }
 
   const questionTimeout = nonNegativeNumber(runtime.questionTimeout)
   if (questionTimeout !== undefined && questionTimeout !== (cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout)) {
@@ -194,6 +228,12 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     JSON.stringify(compaction) !== JSON.stringify(currentCompaction)
   ) {
     patch.compaction = compaction
+  }
+
+  const cortexConcurrency = positiveInteger(runtime.cortexConcurrency)
+  const currentCortexConcurrency = cfg.cortex?.maxConcurrentTasks ?? Number(UI_DEFAULTS.cortexConcurrency)
+  if (cortexConcurrency !== undefined && cortexConcurrency !== currentCortexConcurrency) {
+    patch.cortex = { maxConcurrentTasks: cortexConcurrency }
   }
 
   const timeout = buildTimeoutPatch(cfg, runtime)

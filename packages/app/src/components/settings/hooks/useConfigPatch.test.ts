@@ -94,6 +94,111 @@ describe("settings config patch", () => {
     expect(patch).not.toHaveProperty("default_agent")
   })
 
+  test("persists post-write diagnostics policy without touching raw LSP server config", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "false",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "file",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "error", scope: "project" },
+        lsp: false,
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.lspWriteDiagnostics).toBe(false)
+    expect(patch.lspDiagnostics).toEqual({ severity: "warning", scope: "file" })
+    expect(patch).not.toHaveProperty("lsp")
+  })
+
+  test("does not re-save unchanged post-write diagnostics policy", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "warning",
+      lspDiagnosticsScope: "delta",
+    })
+
+    const patch = buildPatch({
+      cfg: {
+        lspWriteDiagnostics: true,
+        lspDiagnostics: { severity: "warning", scope: "delta" },
+      } as unknown as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
+  test("keeps the absent diagnostics policy implicit at compatibility defaults", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.runtime as unknown as Record<string, string>, {
+      lspWriteDiagnostics: "true",
+      lspDiagnosticsSeverity: "error",
+      lspDiagnosticsScope: "project",
+    })
+
+    const patch = buildPatch({ cfg: {} as Config, state, originalMcps: {} })
+
+    expect(patch).not.toHaveProperty("lspWriteDiagnostics")
+    expect(patch).not.toHaveProperty("lspDiagnostics")
+  })
+
+  test("persists an explicit Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "3"
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch.cortex).toEqual({ maxConcurrentTasks: 3 })
+  })
+
+  test("does not materialize the default Cortex concurrency maximum", () => {
+    const state = defaultSettingsState("enter")
+
+    const patch = buildPatch({
+      cfg: {} as Config,
+      state,
+      originalMcps: {},
+    })
+
+    expect(patch).not.toHaveProperty("cortex")
+  })
+
+  test("omits unchanged or invalid Cortex concurrency values", () => {
+    const state = defaultSettingsState("enter")
+    state.runtime.cortexConcurrency = "6"
+
+    expect(
+      buildPatch({
+        cfg: { cortex: { maxConcurrentTasks: 6 } } as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+
+    state.runtime.cortexConcurrency = "0"
+    expect(
+      buildPatch({
+        cfg: {} as Config,
+        state,
+        originalMcps: {},
+      }),
+    ).not.toHaveProperty("cortex")
+  })
+
   test("provider idle timeout can be disabled with false", () => {
     const state = defaultSettingsState("enter")
     state.runtime.providerIdleTimeout = "false"
@@ -188,6 +293,7 @@ describe("settings config patch", () => {
       fallbackPolicy: "warn",
     })
   })
+
   test("persists toast mute and duration preferences on the general domain", () => {
     const state = defaultSettingsState("enter")
     state.general.mutedToasts = ["info", "success"]
@@ -261,5 +367,28 @@ describe("settings config patch", () => {
         originalMcps: {},
       }).toast,
     ).toBeUndefined()
+  })
+
+  test("persists a local embedding source and only sends a custom origin for custom mode", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.library, {
+      embeddingSource: "custom",
+      embeddingRemoteHost: "https://models.example/",
+    })
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).embedding).toEqual({
+      local: { source: "custom", remoteHost: "https://models.example/" },
+    })
+
+    Object.assign(state.library, { embeddingSource: "huggingface" })
+    expect(
+      buildPatch({
+        cfg: {
+          embedding: { local: { source: "custom", remoteHost: "https://models.example/" } },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).embedding,
+    ).toEqual({ local: { source: "huggingface" } })
   })
 })

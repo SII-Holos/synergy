@@ -5,6 +5,7 @@ import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugi
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
+import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 
 export const McpRetry = z
   .object({
@@ -992,11 +993,45 @@ const CategoryRetrieveConfig = z
   })
   .strict()
 
+export const LocalEmbeddingConfig = z
+  .object({
+    source: z
+      .enum(["huggingface", "hf-mirror", "custom"])
+      .optional()
+      .describe("Download source for the bundled local embedding model (default: huggingface)"),
+    remoteHost: z.string().url().optional().describe("Public HTTPS origin used when source is custom"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const source = value.source ?? "huggingface"
+    if (source !== "custom") return
+    if (!value.remoteHost) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: "remoteHost is required when the local embedding source is custom",
+      })
+      return
+    }
+    try {
+      normalizePublicHttpsOrigin(value.remoteHost)
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: error instanceof Error ? error.message : "remoteHost must be a public HTTPS origin",
+      })
+    }
+  })
+  .meta({ ref: "LocalEmbeddingConfig" })
+export type LocalEmbeddingConfig = z.infer<typeof LocalEmbeddingConfig>
+
 export const EmbeddingConfig = z
   .object({
     baseURL: z.string().optional().describe("Base URL for the embedding API"),
     apiKey: z.string().optional().describe("API key for the embedding service"),
     model: z.string().optional().describe("Embedding model name"),
+    local: LocalEmbeddingConfig.optional().describe("Bundled local embedding model download settings"),
   })
   .strict()
   .optional()
@@ -1362,6 +1397,18 @@ export const Info = z
       })
       .optional()
       .describe("Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts"),
+    cortex: z
+      .object({
+        maxConcurrentTasks: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of Cortex subagent tasks that may run concurrently (default: 8)"),
+      })
+      .strict()
+      .optional()
+      .describe("Cortex task scheduling configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
@@ -1540,6 +1587,17 @@ export const Info = z
           error: "For custom LSP servers, 'extensions' array is required.",
         },
       ),
+    lspWriteDiagnostics: z
+      .boolean()
+      .optional()
+      .describe("Include LSP diagnostics after file-writing tools complete (default: true)"),
+    lspDiagnostics: z
+      .object({
+        severity: z.enum(["error", "warning"]).optional(),
+        scope: z.enum(["delta", "file", "project"]).optional(),
+      })
+      .optional()
+      .describe("Severity and scope policy for diagnostics returned after file-writing tools"),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     project_doc_fallback_filenames: z
       .array(z.string())

@@ -46,6 +46,11 @@ The sync layer has:
 - per-session buckets for status, diffs, todo, DAG, inbox, permissions, questions, and Plan Blueprint offers;
 - per-Scope collections for sessions, agents, commands, config, MCP, LSP, VCS, Cortex, and Agenda.
 
+**Diff data sources.** Two separate diff stores exist:
+
+- **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.
+- **Session-level diffs** live in the `session_diff` bucket and aggregate all turn diffs for the Review workbench panel. They are loaded on demand through `sync.session.diff()` and never fetched implicitly.
+
 Scope bootstrap limits concurrent instance requests to two. It first loads blocking provider, agent, config, and Scope identity state, marks the store `partial`, then loads remaining operational collections before marking it `complete`.
 
 ## Reconcile, Do Not Replace
@@ -225,11 +230,14 @@ Lower layers never write into higher layers. Selecting a model explicitly persis
 
 Agent and workflow selections follow the same principle: server session fields are durable defaults, while unsent composer intent remains local until the user performs an action that explicitly persists it.
 
+Variant display resolves the explicit or historical session variant first, then the agent default and configured model-role default. Only the session variant is submitted; displaying a configured fallback never writes it into message history.
+
 ## Invariants
 
 - One global event WebSocket multiplexes events by owning Scope directory.
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery.
+- Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
 - Web snapshot apply-gating is not implemented merely because response headers exist.
 - Store updates reconcile existing leaves and identities.
 - Streaming deltas converge through full checkpoints.

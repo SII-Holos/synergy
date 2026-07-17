@@ -1,5 +1,6 @@
 import { Log } from "../util/log"
 import { SessionMemoryPressure } from "../session/memory-pressure"
+import z from "zod"
 
 export namespace CortexConcurrency {
   const log = Log.create({ service: "cortex.concurrency" })
@@ -8,36 +9,63 @@ export namespace CortexConcurrency {
   const queues: Map<string, Array<() => void>> = new Map()
 
   const DEFAULT_LIMIT = 8
-  // Healthy runs keep the historical per-agent limit without a tight global cap.
-  // Global throttling only engages under soft/critical memory pressure (#501).
-  const DEFAULT_GLOBAL_LIMIT = Number.POSITIVE_INFINITY
-  const SOFT_PRESSURE_GLOBAL_LIMIT = 4
-  const PRESSURE_GLOBAL_LIMIT = 2
+  const DEFAULT_GLOBAL_LIMIT = 8
+  const SOFT_PRESSURE_RECOMMENDATION = 4
+  const CRITICAL_PRESSURE_RECOMMENDATION = 2
 
   let globalRunning = 0
+  let configuredGlobalLimit: number | undefined
   let memoryProbe: (() => SessionMemoryPressure.Snapshot) | undefined
+
+  export const GlobalStatus = z
+    .object({
+      configured: z.number().int().positive().nullable(),
+      environment: z.number().int().positive().nullable(),
+      effective: z.number().int().positive(),
+      recommended: z.number().int().positive(),
+      recommendationReason: z.enum(["normal", "memory_pressure", "critical_memory_pressure"]),
+      source: z.enum(["default", "config", "environment"]),
+      perAgentLimit: z.number().int().positive(),
+      running: z.number().int().nonnegative(),
+      queued: z.number().int().nonnegative(),
+    })
+    .meta({ ref: "CortexConcurrencyStatus" })
+  export type GlobalStatus = z.infer<typeof GlobalStatus>
 
   export function getLimit(_key: string): number {
     return DEFAULT_LIMIT
   }
 
-  export function getGlobalLimit(snapshot = currentMemorySnapshot()): number {
-    const configured = envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY)
+  export function configure(limit: number | undefined): void {
+    const previous = getGlobalLimit()
+    configuredGlobalLimit = normalizeLimit(limit)
+    if (getGlobalLimit() > previous) wakeAllQueues()
+  }
+
+  export function getGlobalLimit(): number {
+    return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
+  }
+
+  export function getRecommendation(snapshot = currentMemorySnapshot()) {
     const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
     const critical =
       snapshot.rssBytes >= thresholds.rssCriticalBytes ||
       snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
       (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
-    if (critical) return configured ? Math.min(configured, PRESSURE_GLOBAL_LIMIT) : PRESSURE_GLOBAL_LIMIT
+    if (critical) {
+      return { limit: CRITICAL_PRESSURE_RECOMMENDATION, reason: "critical_memory_pressure" as const }
+    }
 
-    // Soft pressure: start throttling once we are halfway to the critical RSS /
-    // ArrayBuffer thresholds so parallel subagents do not race into the redline.
     const softRss = thresholds.rssCriticalBytes * 0.5
     const softArrayBuffers = thresholds.arrayBuffersCriticalBytes * 0.5
     if (snapshot.rssBytes >= softRss || snapshot.arrayBuffersBytes >= softArrayBuffers) {
-      return configured ? Math.min(configured, SOFT_PRESSURE_GLOBAL_LIMIT) : SOFT_PRESSURE_GLOBAL_LIMIT
+      return { limit: SOFT_PRESSURE_RECOMMENDATION, reason: "memory_pressure" as const }
     }
-    return configured ?? DEFAULT_GLOBAL_LIMIT
+    return { limit: DEFAULT_GLOBAL_LIMIT, reason: "normal" as const }
+  }
+
+  export function getRecommendedLimit(snapshot = currentMemorySnapshot()): number {
+    return getRecommendation(snapshot).limit
   }
 
   export function setMemoryProbeForTest(probe?: () => SessionMemoryPressure.Snapshot) {
@@ -86,23 +114,7 @@ export namespace CortexConcurrency {
       globalRunning = Math.max(0, globalRunning - 1)
     }
 
-    // Prefer the same agent queue, then any other waiting agent, so a global
-    // slot freed under memory pressure can be reused by another agent.
-    const sameAgentQueue = queues.get(key)
-    if (sameAgentQueue?.length) {
-      const next = sameAgentQueue.shift()!
-      log.info("released-to-waiting", { key, remaining: sameAgentQueue.length, globalRunning })
-      next()
-      return
-    }
-
-    for (const [queuedKey, queue] of queues) {
-      if (!queue.length) continue
-      const next = queue.shift()!
-      log.info("released-to-waiting", { key: queuedKey, remaining: queue.length, globalRunning, from: key })
-      next()
-      return
-    }
+    if (wakeNextQueue(key)) return
 
     log.info("released", { key, current: Math.max(0, current - 1), globalRunning })
   }
@@ -118,10 +130,24 @@ export namespace CortexConcurrency {
     return result
   }
 
-  export function globalStatus() {
+  export function globalStatus(snapshot = currentMemorySnapshot()): GlobalStatus {
+    const environment = envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY)
+    const recommendation = getRecommendation(snapshot)
     return {
+      configured: configuredGlobalLimit ?? null,
+      environment: environment ?? null,
+      effective: environment ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT,
+      recommended: recommendation.limit,
+      recommendationReason: recommendation.reason,
+      source:
+        environment !== undefined
+          ? ("environment" as const)
+          : configuredGlobalLimit !== undefined
+            ? ("config" as const)
+            : ("default" as const),
+      perAgentLimit: DEFAULT_LIMIT,
       running: globalRunning,
-      limit: getGlobalLimit(),
+      queued: Array.from(queues.values()).reduce((total, queue) => total + queue.length, 0),
     }
   }
 
@@ -129,7 +155,36 @@ export namespace CortexConcurrency {
     counts.clear()
     queues.clear()
     globalRunning = 0
+    configuredGlobalLimit = undefined
     memoryProbe = undefined
+  }
+
+  function wakeNextQueue(preferredKey?: string): boolean {
+    if (preferredKey) {
+      const preferred = queues.get(preferredKey)
+      if (preferred?.length) {
+        preferred.shift()!()
+        return true
+      }
+    }
+
+    for (const queue of queues.values()) {
+      if (!queue.length) continue
+      queue.shift()!()
+      return true
+    }
+    return false
+  }
+
+  function wakeAllQueues(): void {
+    const waiting = Array.from(queues.values()).flatMap((queue) => queue.splice(0))
+    for (const wake of waiting) wake()
+  }
+
+  function normalizeLimit(value: number | undefined): number | undefined {
+    if (value === undefined) return undefined
+    if (!Number.isInteger(value) || value <= 0) return undefined
+    return value
   }
 
   function currentMemorySnapshot(): SessionMemoryPressure.Snapshot {
@@ -140,6 +195,6 @@ export namespace CortexConcurrency {
   function envNumber(value: string | undefined) {
     if (!value) return undefined
     const parsed = Number(value)
-    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : undefined
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : undefined
   }
 }

@@ -144,7 +144,7 @@ export function SubagentSessionFooter(props: {
               <button
                 type="button"
                 class="workbench-control-surface workbench-control-surface-hover inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base px-3 text-12-medium text-text-weak transition-all duration-150 hover:text-text-base active:scale-[0.97]"
-                onClick={() => navigateToSession(untrack(parentSessionID))}
+                onClick={() => navigateToSession(untrack(parentSessionID), "return-to-parent")}
               >
                 <Icon name={getSemanticIcon("navigation.back")} size="small" />
                 <span class="hidden sm:inline">Parent</span>

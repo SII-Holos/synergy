@@ -259,6 +259,7 @@ export namespace SessionNav {
 
   export async function queryGlobal(opts?: {
     parentOnly?: boolean
+    category?: NavCategory
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
@@ -279,6 +280,7 @@ export namespace SessionNav {
     allEntries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
     let entries = allEntries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
+    if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()

@@ -1972,6 +1972,20 @@ export type ProviderConfig = {
 }
 
 /**
+ * Bundled local embedding model download settings
+ */
+export type LocalEmbeddingConfig = {
+  /**
+   * Download source for the bundled local embedding model (default: huggingface)
+   */
+  source?: "huggingface" | "hf-mirror" | "custom"
+  /**
+   * Public HTTPS origin used when source is custom
+   */
+  remoteHost?: string
+}
+
+/**
  * Embedding model configuration. When absent, a local model is used automatically.
  */
 export type EmbeddingConfig = {
@@ -1987,6 +2001,7 @@ export type EmbeddingConfig = {
    * Embedding model name
    */
   model?: string
+  local?: LocalEmbeddingConfig
 }
 
 /**
@@ -2872,6 +2887,15 @@ export type Config = {
       ask_sec?: number
     }
   }
+  /**
+   * Cortex task scheduling configuration
+   */
+  cortex?: {
+    /**
+     * Maximum number of Cortex subagent tasks that may run concurrently (default: 8)
+     */
+    maxConcurrentTasks?: number
+  }
   watcher?: {
     ignore?: Array<string>
   }
@@ -3020,6 +3044,17 @@ export type Config = {
             }
       }
   /**
+   * Include LSP diagnostics after file-writing tools complete (default: true)
+   */
+  lspWriteDiagnostics?: boolean
+  /**
+   * Severity and scope policy for diagnostics returned after file-writing tools
+   */
+  lspDiagnostics?: {
+    severity?: "error" | "warning"
+    scope?: "delta" | "file" | "project"
+  }
+  /**
    * Additional instruction files or patterns to include
    */
   instructions?: Array<string>
@@ -3125,6 +3160,19 @@ export type Config = {
       [key: string]: number
     }
   }
+}
+
+export type ConfigInstructionsInfo = {
+  content: string
+  source: "override" | "primary" | "empty"
+  sourceFilename: "AGENTS.override.md" | "AGENTS.md" | null
+  editableFilename: "AGENTS.override.md"
+  hasOverride: boolean
+  maxBytes: number
+}
+
+export type ConfigInstructionsUpdateInput = {
+  content: string
 }
 
 export type ConfigDomainSummary = {
@@ -4226,6 +4274,18 @@ export type UserMessage = {
     title?: string
     body?: string
     diffs: Array<FileDiff>
+    diffState?:
+      | {
+          status: "pending"
+          deadlineAt: number
+        }
+      | {
+          status: "ready"
+        }
+      | {
+          status: "error"
+          code: "timeout" | "git_failure" | "unknown"
+        }
   }
   agent: string
   model: {
@@ -4809,6 +4869,18 @@ export type CortexTask = {
   }
 }
 
+export type CortexConcurrencyStatus = {
+  configured: number | null
+  environment: number | null
+  effective: number
+  recommended: number
+  recommendationReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  source: "default" | "config" | "environment"
+  perAgentLimit: number
+  running: number
+  queued: number
+}
+
 export type Command = {
   name: string
   description?: string
@@ -5095,6 +5167,34 @@ export type WorkspaceFileStatusSummary = {
     added?: number
     removed?: number
   }>
+}
+
+export type EmbeddingStatus =
+  | {
+      mode: "local"
+      model: string
+      source: "huggingface" | "hf-mirror" | "custom"
+      asset: "missing" | "downloading" | "cached" | "failed"
+      runtime: "unloaded" | "loading" | "ready"
+      progress?: {
+        loadedBytes: number
+        totalBytes: number
+        percent: number
+      }
+      error?: {
+        code: "invalid_source" | "load_failed"
+        message: string
+      }
+    }
+  | {
+      mode: "remote"
+      model: string
+      baseURL: string
+    }
+
+export type EmbeddingRemoteConfiguredError = {
+  code: "EMBEDDING_REMOTE_CONFIGURED"
+  message: string
 }
 
 export type RewardsInfo = {
@@ -6922,6 +7022,13 @@ export type EventSessionCompacted = {
   }
 }
 
+export type EventFileEdited = {
+  type: "file.edited"
+  properties: {
+    file: string
+  }
+}
+
 export type EventLspClientDiagnostics = {
   type: "lsp.client.diagnostics"
   properties: {
@@ -6934,13 +7041,6 @@ export type EventLspUpdated = {
   type: "lsp.updated"
   properties: {
     [key: string]: unknown
-  }
-}
-
-export type EventFileEdited = {
-  type: "file.edited"
-  properties: {
-    file: string
   }
 }
 
@@ -7039,6 +7139,7 @@ export type EventFileWatcherUpdated = {
     oldAbsolute?: string
     parent?: string
     node?: unknown
+    resync?: boolean
   }
 }
 
@@ -7221,9 +7322,9 @@ export type Event =
   | EventQuestionRejected
   | EventQuestionTimedOut
   | EventSessionCompacted
+  | EventFileEdited
   | EventLspClientDiagnostics
   | EventLspUpdated
-  | EventFileEdited
   | EventDagUpdated
   | EventTodoUpdated
   | EventAgendaItemCreated
@@ -8531,6 +8632,73 @@ export type ConfigGlobalResponses = {
 }
 
 export type ConfigGlobalResponse = ConfigGlobalResponses[keyof ConfigGlobalResponses]
+
+export type ConfigInstructionsResetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsResetResponses = {
+  /**
+   * Reset effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsResetResponse = ConfigInstructionsResetResponses[keyof ConfigInstructionsResetResponses]
+
+export type ConfigInstructionsGetData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsGetResponses = {
+  /**
+   * Effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsGetResponse = ConfigInstructionsGetResponses[keyof ConfigInstructionsGetResponses]
+
+export type ConfigInstructionsUpdateData = {
+  body?: ConfigInstructionsUpdateInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/config/instructions"
+}
+
+export type ConfigInstructionsUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ConfigInstructionsUpdateError = ConfigInstructionsUpdateErrors[keyof ConfigInstructionsUpdateErrors]
+
+export type ConfigInstructionsUpdateResponses = {
+  /**
+   * Updated effective global custom instructions
+   */
+  200: ConfigInstructionsInfo
+}
+
+export type ConfigInstructionsUpdateResponse =
+  ConfigInstructionsUpdateResponses[keyof ConfigInstructionsUpdateResponses]
 
 export type ConfigDomainListData = {
   body?: never
@@ -10774,6 +10942,25 @@ export type CortexListResponses = {
 
 export type CortexListResponse = CortexListResponses[keyof CortexListResponses]
 
+export type CortexConcurrencyData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/cortex/tasks/concurrency"
+}
+
+export type CortexConcurrencyResponses = {
+  /**
+   * Cortex concurrency status
+   */
+  200: CortexConcurrencyStatus
+}
+
+export type CortexConcurrencyResponse = CortexConcurrencyResponses[keyof CortexConcurrencyResponses]
+
 export type CortexGetData = {
   body?: never
   path: {
@@ -11472,6 +11659,69 @@ export type WorkspaceFilesStatusResponses = {
 }
 
 export type WorkspaceFilesStatusResponse = WorkspaceFilesStatusResponses[keyof WorkspaceFilesStatusResponses]
+
+export type LibraryEmbeddingStatusData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/embedding/status"
+}
+
+export type LibraryEmbeddingStatusResponses = {
+  /**
+   * Embedding mode and local asset status
+   */
+  200: EmbeddingStatus
+}
+
+export type LibraryEmbeddingStatusResponse = LibraryEmbeddingStatusResponses[keyof LibraryEmbeddingStatusResponses]
+
+export type LibraryEmbeddingDownloadData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/library/embedding/download"
+}
+
+export type LibraryEmbeddingDownloadErrors = {
+  /**
+   * A remote embedding service is configured
+   */
+  409: EmbeddingRemoteConfiguredError
+}
+
+export type LibraryEmbeddingDownloadError = LibraryEmbeddingDownloadErrors[keyof LibraryEmbeddingDownloadErrors]
+
+export type LibraryEmbeddingDownloadResponses = {
+  /**
+   * Local model download accepted or already active
+   */
+  202: {
+    mode: "local"
+    model: string
+    source: "huggingface" | "hf-mirror" | "custom"
+    asset: "missing" | "downloading" | "cached" | "failed"
+    runtime: "unloaded" | "loading" | "ready"
+    progress?: {
+      loadedBytes: number
+      totalBytes: number
+      percent: number
+    }
+    error?: {
+      code: "invalid_source" | "load_failed"
+      message: string
+    }
+  }
+}
+
+export type LibraryEmbeddingDownloadResponse =
+  LibraryEmbeddingDownloadResponses[keyof LibraryEmbeddingDownloadResponses]
 
 export type LibraryExperienceSearchData = {
   body?: {

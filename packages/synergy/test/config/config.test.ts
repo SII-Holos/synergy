@@ -47,6 +47,60 @@ test("loads JSON config file", async () => {
   })
 })
 
+test("enables post-write diagnostics by default without materializing a policy", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspWriteDiagnostics).toBe(true)
+      expect(config.lspDiagnostics).toBeUndefined()
+    },
+  })
+})
+
+test("loads explicit post-write diagnostics settings", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          lspWriteDiagnostics: false,
+          lspDiagnostics: { severity: "warning", scope: "file" },
+        }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspWriteDiagnostics).toBe(false)
+      expect(config.lspDiagnostics).toEqual({ severity: "warning", scope: "file" })
+    },
+  })
+})
+
+test("accepts partial post-write diagnostics policy", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          lspDiagnostics: { severity: "warning" },
+        }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspDiagnostics).toEqual({ severity: "warning" })
+    },
+  })
+})
+
 test("loads JSONC config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -174,6 +228,13 @@ test("validates config schema and throws on invalid fields", async () => {
       await expect(Config.current()).rejects.toThrow()
     },
   })
+})
+
+test("validates Cortex concurrency as a positive integer", () => {
+  expect(Config.Info.parse({ cortex: { maxConcurrentTasks: 6 } }).cortex?.maxConcurrentTasks).toBe(6)
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 0 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: -1 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 2.5 } })).toThrow()
 })
 
 test("throws error for invalid JSON", async () => {
@@ -644,6 +705,26 @@ test("loads plugin runtime limits from plugin config domain", async () => {
       expect(limits?.hostServiceRequestTimeoutMs).toBe(90000)
       expect(limits?.taskRunTimeoutMs).toBe(135000)
     },
+  })
+})
+
+test("general domain merge preserves a configured remote embedding model when local download settings change", () => {
+  const current = Config.Info.parse({
+    embedding: {
+      apiKey: "secret",
+      baseURL: "https://embedding.example/v1",
+      model: "BAAI/bge-m3",
+      local: { source: "huggingface" },
+    },
+  })
+
+  const next = Config.mergeDomainConfig(current, { embedding: { local: { source: "hf-mirror" } } }, "merge")
+
+  expect(next.embedding).toEqual({
+    apiKey: "secret",
+    baseURL: "https://embedding.example/v1",
+    model: "BAAI/bge-m3",
+    local: { source: "hf-mirror" },
   })
 })
 

@@ -2742,6 +2742,144 @@
         ]
       }
     },
+    "/config/instructions": {
+      "get": {
+        "operationId": "config.instructions.get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get global custom instructions",
+        "description": "Read the effective global AGENTS override or primary instructions file.",
+        "responses": {
+          "200": {
+            "description": "Effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.get({\n  ...\n})"
+          }
+        ]
+      },
+      "put": {
+        "operationId": "config.instructions.update",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Update global custom instructions",
+        "description": "Write the global AGENTS.override.md file, or remove it when the content is empty.",
+        "responses": {
+          "200": {
+            "description": "Updated effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigInstructionsUpdateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.update({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "config.instructions.reset",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Reset global custom instructions",
+        "description": "Remove AGENTS.override.md and fall back to the global AGENTS.md file.",
+        "responses": {
+          "200": {
+            "description": "Reset effective global custom instructions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfigInstructionsInfo"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.config.instructions.reset({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/config/domains": {
       "get": {
         "operationId": "config.domain.list",
@@ -7729,6 +7867,47 @@
         ]
       }
     },
+    "/cortex/tasks/concurrency": {
+      "get": {
+        "operationId": "cortex.concurrency",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get Cortex concurrency status",
+        "description": "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+        "responses": {
+          "200": {
+            "description": "Cortex concurrency status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CortexConcurrencyStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.cortex.concurrency({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/cortex/tasks/{taskID}": {
       "get": {
         "operationId": "cortex.get",
@@ -9321,6 +9500,148 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.workspace.files.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/embedding/status": {
+      "get": {
+        "operationId": "library.embedding.status",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get embedding status",
+        "description": "Report the configured embedding mode and local model asset lifecycle without loading the model.",
+        "responses": {
+          "200": {
+            "description": "Embedding mode and local asset status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingStatus"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.embedding.status({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/library/embedding/download": {
+      "post": {
+        "operationId": "library.embedding.download",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Download local embedding model",
+        "description": "Start or join the local embedding model download and return its current observable status.",
+        "responses": {
+          "202": {
+            "description": "Local model download accepted or already active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mode": {
+                      "type": "string",
+                      "const": "local"
+                    },
+                    "model": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["huggingface", "hf-mirror", "custom"]
+                    },
+                    "asset": {
+                      "type": "string",
+                      "enum": ["missing", "downloading", "cached", "failed"]
+                    },
+                    "runtime": {
+                      "type": "string",
+                      "enum": ["unloaded", "loading", "ready"]
+                    },
+                    "progress": {
+                      "type": "object",
+                      "properties": {
+                        "loadedBytes": {
+                          "type": "number"
+                        },
+                        "totalBytes": {
+                          "type": "number"
+                        },
+                        "percent": {
+                          "type": "number"
+                        }
+                      },
+                      "required": ["loadedBytes", "totalBytes", "percent"]
+                    },
+                    "error": {
+                      "type": "object",
+                      "properties": {
+                        "code": {
+                          "type": "string",
+                          "enum": ["invalid_source", "load_failed"]
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["code", "message"]
+                    }
+                  },
+                  "required": ["mode", "model", "source", "asset", "runtime"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A remote embedding service is configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingRemoteConfiguredError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.library.embedding.download({\n  ...\n})"
           }
         ]
       }
@@ -23224,6 +23545,23 @@
         },
         "additionalProperties": false
       },
+      "LocalEmbeddingConfig": {
+        "description": "Bundled local embedding model download settings",
+        "type": "object",
+        "properties": {
+          "source": {
+            "description": "Download source for the bundled local embedding model (default: huggingface)",
+            "type": "string",
+            "enum": ["huggingface", "hf-mirror", "custom"]
+          },
+          "remoteHost": {
+            "description": "Public HTTPS origin used when source is custom",
+            "type": "string",
+            "format": "uri"
+          }
+        },
+        "additionalProperties": false
+      },
       "EmbeddingConfig": {
         "description": "Embedding model configuration. When absent, a local model is used automatically.",
         "type": "object",
@@ -23239,6 +23577,9 @@
           "model": {
             "description": "Embedding model name",
             "type": "string"
+          },
+          "local": {
+            "$ref": "#/components/schemas/LocalEmbeddingConfig"
           }
         },
         "additionalProperties": false
@@ -24530,6 +24871,19 @@
               }
             }
           },
+          "cortex": {
+            "description": "Cortex task scheduling configuration",
+            "type": "object",
+            "properties": {
+              "maxConcurrentTasks": {
+                "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "additionalProperties": false
+          },
           "watcher": {
             "type": "object",
             "properties": {
@@ -24862,6 +25216,24 @@
               }
             ]
           },
+          "lspWriteDiagnostics": {
+            "description": "Include LSP diagnostics after file-writing tools complete (default: true)",
+            "type": "boolean"
+          },
+          "lspDiagnostics": {
+            "description": "Severity and scope policy for diagnostics returned after file-writing tools",
+            "type": "object",
+            "properties": {
+              "severity": {
+                "type": "string",
+                "enum": ["error", "warning"]
+              },
+              "scope": {
+                "type": "string",
+                "enum": ["delta", "file", "project"]
+              }
+            }
+          },
           "instructions": {
             "description": "Additional instruction files or patterns to include",
             "type": "array",
@@ -25033,6 +25405,51 @@
           }
         },
         "additionalProperties": false
+      },
+      "ConfigInstructionsInfo": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["override", "primary", "empty"]
+          },
+          "sourceFilename": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["AGENTS.override.md", "AGENTS.md"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "editableFilename": {
+            "type": "string",
+            "const": "AGENTS.override.md"
+          },
+          "hasOverride": {
+            "type": "boolean"
+          },
+          "maxBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["content", "source", "sourceFilename", "editableFilename", "hasOverride", "maxBytes"]
+      },
+      "ConfigInstructionsUpdateInput": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": ["content"]
       },
       "ConfigDomainSummary": {
         "type": "object",
@@ -28114,6 +28531,47 @@
                 "items": {
                   "$ref": "#/components/schemas/FileDiff"
                 }
+              },
+              "diffState": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "pending"
+                      },
+                      "deadlineAt": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["status", "deadlineAt"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "ready"
+                      }
+                    },
+                    "required": ["status"]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "status": {
+                        "type": "string",
+                        "const": "error"
+                      },
+                      "code": {
+                        "type": "string",
+                        "enum": ["timeout", "git_failure", "unknown"]
+                      }
+                    },
+                    "required": ["status", "code"]
+                  }
+                ]
               }
             },
             "required": ["diffs"]
@@ -29850,6 +30308,79 @@
           "startedAt"
         ]
       },
+      "CortexConcurrencyStatus": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "environment": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "effective": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommended": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "recommendationReason": {
+            "type": "string",
+            "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["default", "config", "environment"]
+          },
+          "perAgentLimit": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "running": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "queued": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "configured",
+          "environment",
+          "effective",
+          "recommended",
+          "recommendationReason",
+          "source",
+          "perAgentLimit",
+          "running",
+          "queued"
+        ]
+      },
       "Command": {
         "type": "object",
         "properties": {
@@ -30819,6 +31350,92 @@
           }
         },
         "required": ["files"]
+      },
+      "EmbeddingStatus": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "local"
+              },
+              "model": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["huggingface", "hf-mirror", "custom"]
+              },
+              "asset": {
+                "type": "string",
+                "enum": ["missing", "downloading", "cached", "failed"]
+              },
+              "runtime": {
+                "type": "string",
+                "enum": ["unloaded", "loading", "ready"]
+              },
+              "progress": {
+                "type": "object",
+                "properties": {
+                  "loadedBytes": {
+                    "type": "number"
+                  },
+                  "totalBytes": {
+                    "type": "number"
+                  },
+                  "percent": {
+                    "type": "number"
+                  }
+                },
+                "required": ["loadedBytes", "totalBytes", "percent"]
+              },
+              "error": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string",
+                    "enum": ["invalid_source", "load_failed"]
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": ["code", "message"]
+              }
+            },
+            "required": ["mode", "model", "source", "asset", "runtime"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "mode": {
+                "type": "string",
+                "const": "remote"
+              },
+              "model": {
+                "type": "string"
+              },
+              "baseURL": {
+                "type": "string"
+              }
+            },
+            "required": ["mode", "model", "baseURL"]
+          }
+        ]
+      },
+      "EmbeddingRemoteConfiguredError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "const": "EMBEDDING_REMOTE_CONFIGURED"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
       },
       "RewardsInfo": {
         "type": "object",
@@ -36428,6 +37045,25 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.file.edited": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "file.edited"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "type": "string"
+              }
+            },
+            "required": ["file"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.lsp.client.diagnostics": {
         "type": "object",
         "properties": {
@@ -36460,25 +37096,6 @@
           "properties": {
             "type": "object",
             "properties": {}
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.file.edited": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "file.edited"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "file": {
-                "type": "string"
-              }
-            },
-            "required": ["file"]
           }
         },
         "required": ["type", "properties"]
@@ -36772,7 +37389,10 @@
               "parent": {
                 "type": "string"
               },
-              "node": {}
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
             },
             "required": ["file", "event"]
           }
@@ -37274,13 +37894,13 @@
             "$ref": "#/components/schemas/Event.session.compacted"
           },
           {
+            "$ref": "#/components/schemas/Event.file.edited"
+          },
+          {
             "$ref": "#/components/schemas/Event.lsp.client.diagnostics"
           },
           {
             "$ref": "#/components/schemas/Event.lsp.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.file.edited"
           },
           {
             "$ref": "#/components/schemas/Event.dag.updated"

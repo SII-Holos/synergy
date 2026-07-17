@@ -628,6 +628,70 @@ describe("session migrations", () => {
     })
   })
 
+  test("bounds aggregate diff previews in persisted session and message summaries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const userMessage = Identifier.asMessageID(user.id)
+        const diffs = Array.from({ length: 50 }, (_, index) => ({
+          file: `file-${index}.txt`,
+          additions: index + 1,
+          deletions: index,
+          preview: "界".repeat(SessionBounds.DIFF_PREVIEW_MAX_CHARS),
+          beforeBytes: index,
+          afterBytes: index + 1,
+        }))
+
+        await Storage.write(StoragePath.sessionSummary(scope, sid), diffs)
+        await Storage.update<any>(StoragePath.messageInfo(scope, sid, userMessage), (draft) => {
+          draft.summary = { text: "legacy summary", diffs }
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260716-bounded-diff-aggregate-preview")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const firstSummary = await Storage.read<any[]>(StoragePath.sessionSummary(scope, sid))
+        const firstMessage = await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage))
+        for (const migrated of [firstSummary, firstMessage.summary.diffs]) {
+          expect(migrated).toHaveLength(diffs.length)
+          expect(
+            migrated.reduce(
+              (total: number, diff: SnapshotSchema.FileDiff) =>
+                total + (diff.preview ? SessionBounds.byteLength(diff.preview) : 0),
+              0,
+            ),
+          ).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+          expect(migrated.some((diff: SnapshotSchema.FileDiff) => !diff.preview && diff.truncated)).toBe(true)
+          expect(migrated.at(-1)).toMatchObject({
+            file: "file-49.txt",
+            additions: 50,
+            deletions: 49,
+            beforeBytes: 49,
+            afterBytes: 50,
+            truncated: true,
+          })
+        }
+
+        const serialized = JSON.stringify({ summary: firstSummary, message: firstMessage })
+        await migration!.up(() => {})
+        expect(
+          JSON.stringify({
+            summary: await Storage.read<any[]>(StoragePath.sessionSummary(scope, sid)),
+            message: await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage)),
+          }),
+        ).toBe(serialized)
+      },
+    })
+  })
+
   test("migrates legacy cortex output contract fields", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

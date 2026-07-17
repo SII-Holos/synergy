@@ -349,6 +349,23 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!id || !m) return undefined
         return ComposerIntent.sessionDefaultVariant({ providerID: m.provider.id, modelID: m.id }, sync.data.message[id])
       })
+      const currentVariant = () => {
+        const m = current()
+        if (!m) return undefined
+        const modelKey = { providerID: m.provider.id, modelID: m.id }
+        const session = variantSession()
+        if (session.has(modelKey)) return session.get(modelKey)
+        return sessionDefaultVariant()
+      }
+
+      const displayedVariant = () => {
+        const a = agent.current()
+        return ComposerIntent.resolveVariantDisplay(
+          currentVariant(),
+          a?.defaultVariant,
+          a ? sync.data.config.role_variant?.[a.modelRole || "default"] : undefined,
+        )
+      }
 
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
 
@@ -424,14 +441,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           return recommendedSet().has(keyOf(model))
         },
         variant: {
-          current() {
-            const m = current()
-            if (!m) return undefined
-            const modelKey = { providerID: m.provider.id, modelID: m.id }
-            const session = variantSession()
-            if (session.has(modelKey)) return session.get(modelKey)
-            return sessionDefaultVariant()
-          },
+          current: currentVariant,
+          displayed: displayedVariant,
           list() {
             const m = current()
             if (!m) return []

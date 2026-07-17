@@ -57,7 +57,9 @@ The workbench keeps resource use bounded:
 - Monaco keeps at most 12 models or about 24 MiB
 - the Explorer keeps at most 25,000 loaded nodes and virtualizes visible rows
 
-The project watcher is enabled by default, ignores high-cost repository/build paths, and coalesces nearby updates. `SYNERGY_DISABLE_FILEWATCHER=1` is a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on watcher delivery.
+The project watcher is enabled by default. The workspace subscription excludes `.synergy` and other high-cost repository/build paths, while a separate `.synergy` subscription accepts only classified project runtime inputs such as config, agents, commands, skills, and custom tools. This keeps managed worktrees, caches, logs, and runtime state out of the workspace event path without making `.synergy` unavailable to explicit File workbench browsing.
+
+Workspace events enter one per-Scope drain that deduplicates paths, processes one batch at a time, bounds pending paths, and updates the file index without resolving Git status. Git-status reads share one in-flight build and perform at most one follow-up build when invalidated during that work. VCS branch refreshes run only for the dedicated Git `HEAD` event, not for ordinary file changes. If the watcher queue overflows, the backend invalidates its caches and emits one `file.watcher.updated` event with `resync: true`; the File context refreshes the root, expanded directories, and active document. `SYNERGY_DISABLE_FILEWATCHER=1` remains a diagnostic escape hatch. Refocus, refresh, and directory expansion still validate state, so correctness does not depend on lossless per-file delivery.
 
 ## Classic and Anchored Coding Tools
 
