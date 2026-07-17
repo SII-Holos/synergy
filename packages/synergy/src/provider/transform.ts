@@ -425,17 +425,25 @@ export namespace ProviderTransform {
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
   const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 
-  const PROVIDER_MANAGED_ANTHROPIC_REASONING = new Set([
-    "kimi-for-coding",
-    "minimax",
-    "minimax-cn",
-    "minimax-coding-plan",
-    "minimax-cn-coding-plan",
-    "minimax-oauth",
-  ])
+  function modelIdentityTokens(model: Provider.Model) {
+    return [model.id, model.api.id, model.family ?? ""].map((id) => id.toLowerCase())
+  }
 
-  function usesProviderManagedAnthropicReasoning(model: Provider.Model) {
-    return model.api.npm === "@ai-sdk/anthropic" && PROVIDER_MANAGED_ANTHROPIC_REASONING.has(model.providerID)
+  function directProviderReasoningVariants(model: Provider.Model): Record<string, Record<string, unknown>> | undefined {
+    const ids = modelIdentityTokens(model)
+    const isMiniMax = ids.some((id) => id.includes("minimax"))
+    const isKimi = ids.some((id) => id.includes("kimi"))
+
+    if (model.api.npm === "@ai-sdk/anthropic") {
+      if (isKimi) return {}
+      if (isMiniMax && ids.some((id) => id.includes("minimax-m3"))) {
+        return { max: { thinking: { type: "adaptive" } } }
+      }
+      if (isMiniMax) return {}
+    }
+
+    if (model.api.npm === "@ai-sdk/openai-compatible" && isMiniMax) return {}
+    return undefined
   }
 
   function effortVariants<T extends Record<string, unknown>>(
@@ -463,7 +471,8 @@ export namespace ProviderTransform {
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
-    if (usesProviderManagedAnthropicReasoning(model)) return {}
+    const directProviderVariants = directProviderReasoningVariants(model)
+    if (directProviderVariants) return directProviderVariants
 
     const id = model.id.toLowerCase()
     const modelEfforts = model.capabilities.reasoningEfforts

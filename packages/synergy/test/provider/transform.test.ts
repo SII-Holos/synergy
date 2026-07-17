@@ -993,6 +993,66 @@ describe("ProviderTransform.variants", () => {
     },
   )
 
+  test("MiniMax M3 exposes adaptive thinking on Anthropic-compatible endpoints", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "minimax-oauth",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://api.minimax.io/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom MiniMax aliases do not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "MiniMax-M2.1",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M2.1",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("custom MiniMax M3 aliases preserve adaptive thinking", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom Kimi aliases keep reasoning provider-managed", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "custom-provider",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
   test.each(["zhipuai-coding-plan", "zai-coding-plan"])("%s keeps OpenAI-compatible effort variants", (providerID) => {
     const model = createMockModel({
       id: "glm-5.2",
@@ -1025,7 +1085,7 @@ describe("ProviderTransform.variants", () => {
     expect(result).toEqual({})
   })
 
-  test("MiniMax provider IDs still use OpenAI-compatible effort semantics when configured that way", () => {
+  test("MiniMax OpenAI-compatible Chat models do not expose reasoning effort variants", () => {
     const model = createMockModel({
       id: "minimax/minimax-model",
       providerID: "minimax",
@@ -1036,11 +1096,7 @@ describe("ProviderTransform.variants", () => {
       },
     })
 
-    expect(ProviderTransform.variants(model)).toEqual({
-      low: { reasoningEffort: "low" },
-      medium: { reasoningEffort: "medium" },
-      high: { reasoningEffort: "high" },
-    })
+    expect(ProviderTransform.variants(model)).toEqual({})
   })
 
   test("glm returns empty object", () => {
