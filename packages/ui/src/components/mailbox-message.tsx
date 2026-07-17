@@ -1,12 +1,14 @@
 import { type AssistantMessage, type TextPart } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 import { createMemo, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Markdown } from "./markdown"
 import { Icon } from "./icon"
-import { DateTime } from "luxon"
 
 import "./mailbox-message.css"
 import { getSemanticIcon } from "./semantic-icon"
+
+const fromSessionDescriptor = { id: "ui.mailbox.fromSession", message: "From {source}" }
 
 export function MailboxMessage(props: {
   message: AssistantMessage
@@ -15,6 +17,7 @@ export function MailboxMessage(props: {
     container?: string
   }
 }) {
+  const { _ } = useLingui()
   const data = useData()
 
   const parts = createMemo(() => data.store.part[props.message.id] ?? [])
@@ -28,7 +31,7 @@ export function MailboxMessage(props: {
 
   const timestamp = createMemo(() => {
     const ms = props.message.time.created
-    return DateTime.fromMillis(ms).toFormat("HH:mm")
+    return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   })
 
   const textContent = createMemo(() => {
@@ -45,16 +48,19 @@ export function MailboxMessage(props: {
           <div data-slot="mailbox-message-source">
             <Icon name={getSemanticIcon("session.inbox")} size="small" />
             <span data-slot="mailbox-message-source-label">
-              From{" "}
               <Show
                 when={sourceSessionID()}
-                fallback={<span data-slot="mailbox-message-source-text">{sourceLabel()}</span>}
+                fallback={
+                  <span data-slot="mailbox-message-source-text">
+                    {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
+                  </span>
+                }
               >
                 <button
                   data-slot="mailbox-message-source-link"
                   onClick={() => data.navigateToSession?.(sourceSessionID()!)}
                 >
-                  {sourceLabel()}
+                  {_({ ...fromSessionDescriptor, values: { source: sourceLabel() } })}
                 </button>
               </Show>
             </span>

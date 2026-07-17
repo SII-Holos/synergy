@@ -1,4 +1,11 @@
+import { useLingui } from "@lingui/solid"
 import { For, Show } from "solid-js"
+
+const customLabel = { id: "settings.stepScale.custom", message: "Custom" }
+
+function customValueLabel(value: string) {
+  return { id: "settings.stepScale.customValue", message: "Custom {value}", values: { value } }
+}
 
 export type SettingsStepOption = {
   value: string
@@ -16,6 +23,7 @@ export function SettingsStepScale(props: {
   lowLabel?: string
   highLabel?: string
 }) {
+  const { _ } = useLingui()
   const currentIndex = () => {
     const index = props.options.findIndex((option) => option.value === props.value)
     return index >= 0 ? index : 0
@@ -23,7 +31,7 @@ export function SettingsStepScale(props: {
   const current = () => props.options[currentIndex()]
   const currentSummary = () => {
     const option = current()
-    if (!option) return props.value ? `Custom ${props.value}` : "Custom"
+    if (!option) return props.value ? _(customValueLabel(props.value)) : _(customLabel)
     return props.summary ? props.summary(option) : option.label
   }
 

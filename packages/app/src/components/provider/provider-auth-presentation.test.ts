@@ -1,10 +1,17 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import {
   providerNeedsAction,
   providerRecoveryCopy,
   providerStatusLabel,
   providerUsageStatusLabel,
 } from "./provider-auth-presentation"
+
+const i18n = setupI18n({ locale: "en" })
+
+function render(descriptor: MessageDescriptor): string {
+  return i18n._(descriptor)
+}
 
 describe("provider auth presentation", () => {
   test("durable action-required and immediate usage rejection share one decision", () => {
@@ -35,27 +42,24 @@ describe("provider auth presentation", () => {
         },
       ),
     ).toBe(false)
-    expect(providerStatusLabel({ providerID: "a", status: "exhausted" })).toBe("Temporarily unavailable")
+    expect(render(providerStatusLabel({ providerID: "a", status: "exhausted" }))).toBe("Temporarily unavailable")
   })
 
   test("recovery copy distinguishes environment, API-key, and OAuth actions", () => {
-    expect(
-      providerRecoveryCopy(
-        "GitHub",
-        { providerID: "github", status: "action_required", recovery: "update_environment" },
-        ["GH_TOKEN", "GITHUB_TOKEN"],
-      ),
-    ).toContain("GH_TOKEN or GITHUB_TOKEN")
-    expect(
-      providerRecoveryCopy("OpenRouter", {
-        providerID: "openrouter",
-        status: "action_required",
-        authKind: "api_key",
-      }),
-    ).toContain("Replace")
-    expect(providerRecoveryCopy("OpenAI Codex", { providerID: "openai-codex", status: "action_required" })).toContain(
-      "Reconnect",
+    const githubCopy = providerRecoveryCopy(
+      "GitHub",
+      { providerID: "github", status: "action_required", recovery: "update_environment" },
+      ["GH_TOKEN", "GITHUB_TOKEN"],
     )
+    expect(render(githubCopy)).toContain("GH_TOKEN or GITHUB_TOKEN")
+    const openRouterCopy = providerRecoveryCopy("OpenRouter", {
+      providerID: "openrouter",
+      status: "action_required",
+      authKind: "api_key",
+    })
+    expect(render(openRouterCopy)).toContain("Replace")
+    const codexCopy = providerRecoveryCopy("OpenAI Codex", { providerID: "openai-codex", status: "action_required" })
+    expect(render(codexCopy)).toContain("Reconnect")
   })
 
   test("usage badges distinguish rejection, exhaustion, and transient failure", () => {
@@ -67,10 +71,10 @@ describe("provider auth presentation", () => {
       details: [],
       reloginRequired,
     })
-    expect(providerUsageStatusLabel(undefined, snapshot("error", true))).toBe("Sign-in required")
-    expect(providerUsageStatusLabel({ providerID: "a", status: "exhausted" }, snapshot("error"))).toBe(
+    expect(render(providerUsageStatusLabel(undefined, snapshot("error", true)))).toBe("Sign-in required")
+    expect(render(providerUsageStatusLabel({ providerID: "a", status: "exhausted" }, snapshot("error")))).toBe(
       "Temporarily unavailable",
     )
-    expect(providerUsageStatusLabel({ providerID: "a", status: "connected" }, snapshot("error"))).toBe("Retry")
+    expect(render(providerUsageStatusLabel({ providerID: "a", status: "connected" }, snapshot("error")))).toBe("Retry")
   })
 })

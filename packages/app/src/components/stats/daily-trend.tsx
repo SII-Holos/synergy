@@ -13,8 +13,10 @@ import {
   type ScriptableContext,
 } from "chart.js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
+import { useLocale } from "@/context/locale"
 import { formatCompact, formatCost } from "./use-stats"
 import { useChartTheme } from "../visualization/use-chart-theme"
+import { S } from "./stats-i18n"
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, Tooltip)
 
@@ -27,19 +29,7 @@ type DailyPoint = {
   tokens: number
 }
 
-const RANGES: { label: string; value: Range }[] = [
-  { label: "7d", value: 7 },
-  { label: "14d", value: 14 },
-  { label: "30d", value: 30 },
-  { label: "All", value: "all" },
-]
-
-function formatDayLabel(day: string): string {
-  return new Date(day).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  })
-}
+type RangeDef = { label: string; value: Range }
 
 function totalTokens(tokens: StatsSnapshot["timeSeries"]["days"][number]["tokens"]): number {
   return tokens.input + tokens.output + tokens.reasoning + tokens.cache.read + tokens.cache.write
@@ -61,7 +51,15 @@ function createAreaFill(ctx: ScriptableContext<"line">, top: string, bottom: str
 
 export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] }) {
   const theme = useChartTheme()
+  const { i18n, fmt } = useLocale()
   const [range, setRange] = createSignal<Range>(14)
+
+  const ranges = createMemo<RangeDef[]>(() => [
+    { label: i18n._(S.dailyRange7d.id), value: 7 },
+    { label: i18n._(S.dailyRange14d.id), value: 14 },
+    { label: i18n._(S.dailyRange30d.id), value: 30 },
+    { label: i18n._(S.dailyRangeAll.id), value: "all" },
+  ])
 
   const filtered = createMemo(() => {
     const selectedRange = range()
@@ -72,7 +70,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
   const points = createMemo<DailyPoint[]>(() =>
     filtered().map((day) => ({
       day: day.day,
-      label: formatDayLabel(day.day),
+      label: fmt.date(new Date(day.day), { month: "short", day: "numeric" }),
       cost: day.cost,
       tokens: totalTokens(day.tokens),
     })),
@@ -100,7 +98,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
     labels: points().map((point) => point.label),
     datasets: [
       {
-        label: "Cost",
+        label: i18n._(S.dailyCostLegend.id),
         data: points().map((point) => point.cost),
         yAxisID: "cost",
         borderColor: theme().series[0],
@@ -118,7 +116,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         pointHoverBorderColor: theme().series[0],
       },
       {
-        label: "Tokens",
+        label: i18n._(S.dailyTokensLegend.id),
         data: points().map((point) => point.tokens),
         yAxisID: "tokens",
         borderColor: theme().series[1],
@@ -171,8 +169,9 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           },
           label: (context) => {
             const value = Number(context.raw ?? 0)
-            if (context.dataset.label === "Cost") return `Cost: ${formatCost(value)}`
-            return `Tokens: ${formatTokenValue(value)}`
+            if (context.dataset.label === i18n._(S.dailyCostLegend.id))
+              return i18n._(S.dailyTooltipCost.id, { value: formatCost(value) })
+            return i18n._(S.dailyTooltipTokens.id, { value: formatTokenValue(value) })
           },
         },
       },
@@ -207,7 +206,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         },
         title: {
           display: true,
-          text: "Cost ($)",
+          text: i18n._(S.dailyCostLabel.id),
           color: theme().axis,
           padding: { bottom: 6 },
         },
@@ -228,7 +227,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         },
         title: {
           display: true,
-          text: "Tokens",
+          text: i18n._(S.dailyTokensLabel.id),
           color: theme().axis,
           padding: { bottom: 6 },
         },
@@ -249,11 +248,11 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
     <div class="rounded-2xl bg-surface-raised-base px-4 py-4">
       <div class="flex items-start justify-between gap-3">
         <div>
-          <h3 class="text-14-semibold text-text-base">Daily Trend</h3>
-          <p class="mt-1 text-11-regular text-text-weak">Cost and token volume over time</p>
+          <h3 class="text-14-semibold text-text-base">{i18n._(S.dailyTitle.id)}</h3>
+          <p class="mt-1 text-11-regular text-text-weak">{i18n._(S.dailySubtitle.id)}</p>
         </div>
         <div class="flex flex-wrap items-center justify-end gap-1.5">
-          {RANGES.map((item) => {
+          {ranges().map((item) => {
             const active = () => range() === item.value
             return (
               <button
@@ -275,11 +274,11 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
       <div class="mt-3 flex flex-wrap gap-2">
         <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
           <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[0] }} />
-          <span>Cost</span>
+          <span>{i18n._(S.dailyCostLegend.id)}</span>
         </div>
         <div class="inline-flex items-center gap-2 rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-11-medium text-text-base">
           <span class="h-2.5 w-2.5 rounded-full" style={{ background: theme().series[1] }} />
-          <span>Tokens</span>
+          <span>{i18n._(S.dailyTokensLegend.id)}</span>
         </div>
       </div>
 
@@ -290,7 +289,9 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
               <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: theme().series[0] }} />
                 <div class="min-w-0">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest cost</div>
+                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">
+                    {i18n._(S.dailyPeakCost.id)}
+                  </div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">
                     <span class="text-13-semibold text-text-base">{formatCost(peak().cost)}</span>
                     <span class="text-11-regular text-text-weak">{peak().label}</span>
@@ -304,7 +305,9 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
               <div class="inline-flex min-w-[10rem] items-center gap-3 rounded-2xl border border-border-base/50 bg-surface-raised-stronger-non-alpha/70 px-3 py-2 text-text-base backdrop-blur-sm">
                 <div class="h-8 w-1 rounded-full" style={{ background: theme().series[1] }} />
                 <div class="min-w-0">
-                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">Highest volume</div>
+                  <div class="text-[10px] font-medium uppercase tracking-[0.14em] text-text-weak">
+                    {i18n._(S.dailyPeakVolume.id)}
+                  </div>
                   <div class="mt-0.5 flex items-baseline gap-2 tabular-nums">
                     <span class="text-13-semibold text-text-base">{formatTokenValue(peak().tokens)}</span>
                     <span class="text-11-regular text-text-weak">{peak().label}</span>
@@ -319,7 +322,7 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
           when={points().length > 0}
           fallback={
             <div class="flex h-56 items-center justify-center rounded-xl border border-border-base/45 bg-surface-raised-stronger-non-alpha/65 text-12-medium text-text-weak">
-              No daily activity yet
+              {i18n._(S.dailyEmpty.id)}
             </div>
           }
         >

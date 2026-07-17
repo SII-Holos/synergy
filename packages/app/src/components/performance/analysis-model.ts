@@ -1,26 +1,28 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { SessionScope } from "@ericsanchezok/synergy-sdk"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import type { PerformanceAnalysis } from "./types"
+import { P } from "./performance-i18n"
 
 export function isPerformanceAnalysisActive(status: PerformanceAnalysis["status"] | undefined) {
   return status === "queued" || status === "running"
 }
 
-export function performanceAnalysisStatusLabel(status: PerformanceAnalysis["status"]) {
+export function performanceAnalysisStatusDescriptor(status: PerformanceAnalysis["status"]): MessageDescriptor {
   switch (status) {
     case "queued":
-      return "Queued"
+      return P.analysisStatusQueued
     case "running":
-      return "Running"
+      return P.analysisStatusRunning
     case "completed":
-      return "Completed"
+      return P.analysisStatusCompleted
     case "error":
-      return "Failed"
+      return P.analysisStatusFailed
     case "cancelled":
-      return "Cancelled"
+      return P.analysisStatusCancelled
     case "interrupted":
-      return "Interrupted"
+      return P.analysisStatusInterrupted
   }
 }
 

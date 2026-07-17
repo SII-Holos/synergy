@@ -1,6 +1,8 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { ChartData, ChartOptions, TooltipItem } from "chart.js"
 import { withAlpha, type HexColor } from "@ericsanchezok/synergy-ui/theme"
 import type { BrowserMetricSample, PerformanceMetricPoint, PerformanceSummary, PerformanceTimeline } from "./types"
+import { P } from "./performance-i18n"
 
 export const CHART_METRICS = [
   "process.cpu.utilization",
@@ -40,6 +42,7 @@ export function buildLineChartModel(input: {
   points: PerformanceMetricPoint[]
   datasets: ChartDatasetSpec[]
   theme: { axisText: string; gridColor: string }
+  formatTime: (value: number) => string
 }): PerformanceLineChartModel {
   const axisSpecs = uniqueAxes(input.datasets)
   const timestamps = input.points.map((point) => pointTimestamp(point))
@@ -75,7 +78,7 @@ export function buildLineChartModel(input: {
             label: (context) => tooltipLabel(context, input.datasets),
             title: (context) => {
               const x = context[0]?.parsed?.x
-              return x != null ? formatTimeTick(x) : ""
+              return x != null ? input.formatTime(x) : ""
             },
           },
         },
@@ -89,7 +92,7 @@ export function buildLineChartModel(input: {
             maxRotation: 0,
             autoSkip: true,
             maxTicksLimit: 6,
-            callback: formatTimeTick,
+            callback: (value: string | number) => input.formatTime(Number(value)),
           },
         },
         ...Object.fromEntries(axisSpecs.map((axis, index) => [axis.axisId, axisOptions(axis, index, input.theme)])),
@@ -106,10 +109,6 @@ function pointTimestamp(point: PerformanceMetricPoint): number {
     if (!Number.isNaN(parsed)) return parsed
   }
   return Date.now()
-}
-
-function formatTimeTick(value: string | number): string {
-  return new Date(Number(value)).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
 }
 
 export function resourcePressurePoints(timeline: PerformanceTimeline | null | undefined): PerformanceMetricPoint[] {
@@ -205,9 +204,8 @@ export function pointsFromTimeline(
   return [...byTime.values()].sort((a, b) => Number(a.timestamp ?? 0) - Number(b.timestamp ?? 0))
 }
 
-export function summaryQualityMessage(summary: PerformanceSummary | null | undefined) {
-  if (summary?.quality?.truncated || summary?.quality?.partial)
-    return "Summary is partial because the metric volume exceeded the dashboard cap."
+export function summaryQualityMessage(summary: PerformanceSummary | null | undefined): MessageDescriptor | undefined {
+  if (summary?.quality?.truncated || summary?.quality?.partial) return P.qualitySummaryPartial
   return undefined
 }
 

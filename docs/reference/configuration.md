@@ -24,7 +24,7 @@ Use `synergy config path` to print the active global roots.
 
 | File                   | Domain      | Owned configuration                                                                                                         |
 | ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                    |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                         |
 | `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                      |
 | `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                   |
 | `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                 |
@@ -57,6 +57,20 @@ From lowest to highest precedence, a scoped config is assembled from:
 Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `project_doc_fallback_filenames` are combined and deduplicated rather than simply replaced; plugin specs with the same identity resolve to the later definition.
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
+
+## Interface language
+
+`locale` is a global General preference with three accepted values:
+
+```jsonc
+{
+  "locale": "system", // system | en | zh-CN
+}
+```
+
+`system` is the default when the field is absent. A Chinese system or browser language resolves to Simplified Chinese; unsupported system languages resolve to English. The preference is installation-wide user interface state and does not follow project Scope overrides. It changes Web and Desktop product chrome only; it does not select the language used by agents or model replies.
+
+The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
 ## JSONC, Schema, and References
 
@@ -304,16 +318,16 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Experimental and diagnostic escape hatches
 
-| Variable                             | Effect                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it              |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                     |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                  |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                         |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped session-message cache and read storage directly            |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare cached messages with disk and fall back when they diverge                 |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the message-cache byte budget; the default is 256 MiB                         |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand            |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two |
+| Variable                             | Effect                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                         |
+| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                |
+| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                             |
+| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                    |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge            |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate model-working-set cache byte budget; the default is 256 MiB                |
+| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                       |
+| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two            |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).

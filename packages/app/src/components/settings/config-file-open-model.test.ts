@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import { canUseConfigFileOpen, configFileOpenFailure } from "./config-file-open-model"
 import type { DesktopServerStatus, Platform } from "@/context/platform"
 
@@ -26,6 +27,11 @@ function platform(overrides: Partial<Platform> = {}): Platform {
   }
 }
 
+function render(descriptor: MessageDescriptor): string {
+  const i18n = setupI18n({ locale: "en" })
+  return i18n._(descriptor)
+}
+
 describe("config file open model", () => {
   test("surfaces structured opener failures with the config path and recovery action", () => {
     const failure = configFileOpenFailure(
@@ -38,25 +44,25 @@ describe("config file open model", () => {
       "/fallback/00-general.jsonc",
     )
 
-    expect(failure.title).toBe("Could not open config file")
-    expect(failure.description).toContain('Required opener "xdg-open" was not found')
-    expect(failure.description).toContain("/srv/synergy/config/synergy.d/00-general.jsonc")
-    expect(failure.description).toContain("Copy Path")
+    expect(render(failure.title)).toBe("Could not open config file")
+    expect(render(failure.description)).toContain('Required opener "xdg-open" was not found')
+    expect(render(failure.description)).toContain("/srv/synergy/config/synergy.d/00-general.jsonc")
+    expect(render(failure.description)).toContain("Copy Path")
   })
 
   test("uses the known domain path when opening throws an Error", () => {
     const failure = configFileOpenFailure(new Error("No application is registered"), "/config/10-models.jsonc")
 
-    expect(failure.description).toContain("No application is registered")
-    expect(failure.description).toContain("/config/10-models.jsonc")
+    expect(render(failure.description)).toContain("No application is registered")
+    expect(render(failure.description)).toContain("/config/10-models.jsonc")
   })
 
   test("uses an actionable fallback for unknown failures", () => {
     const failure = configFileOpenFailure(null, "/config/20-providers.jsonc")
 
-    expect(failure.description).toContain("server could not open")
-    expect(failure.description).toContain("/config/20-providers.jsonc")
-    expect(failure.description).toContain("Copy Path")
+    expect(render(failure.description)).toContain("server could not open")
+    expect(render(failure.description)).toContain("/config/20-providers.jsonc")
+    expect(render(failure.description)).toContain("Copy Path")
   })
 
   test("allows Open File only for a running managed Desktop server", () => {
