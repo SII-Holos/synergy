@@ -1,5 +1,6 @@
 import { TOOL_TITLE_DESC, TOOL_MISC_DESC } from "../../tool-title-descriptors"
 import { Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { BasicTool } from "../../basic-tool"
 import { DagGraph } from "../../dag-graph"
 import { ToolRegistry } from "../../message-part"
@@ -53,10 +54,10 @@ ToolRegistry.register({
     )
   },
 })
-
 ToolRegistry.register({
   name: "dagpatch",
   render(props) {
+    const { _ } = useLingui()
     const nodes = () =>
       (props.metadata?.nodes ?? []) as {
         id: string
@@ -75,7 +76,7 @@ ToolRegistry.register({
         trigger={{
           icon: getSemanticIcon("dag.main"),
           title: TOOL_TITLE_DESC["dagpatch"],
-          subtitle: TOOL_MISC_DESC.updated.message!,
+          subtitle: _(TOOL_MISC_DESC.updated),
           tags: ratio() ? [{ label: ratio() }] : undefined,
         }}
       >

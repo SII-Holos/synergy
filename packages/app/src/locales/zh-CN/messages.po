@@ -4566,6 +4566,30 @@ msgstr "第 {id} 代"
 msgid "app.plugin.marketplace.heading.label"
 msgstr "{label} 插件"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.archive"
+msgstr "本地归档"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.builtIn"
+msgstr "内置"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.directory"
+msgstr "本地目录"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.localRegistry"
+msgstr "本地注册表"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.officialRegistry"
+msgstr "官方注册表"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.package"
+msgstr "{source} 软件包"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.matchingQuery"
 msgstr "匹配“{query}”"
@@ -7406,13 +7430,6 @@ msgstr "已准备好启动此 BlueprintLoop。"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bp.statusLabel"
-msgstr "Blueprint {status}"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpAria.holdCancel"
 msgstr "按住以取消 BlueprintLoop：{title}"
 
@@ -8324,6 +8341,13 @@ msgstr "启用 Lattice 失败"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedExitWorkflow"
+msgstr "退出 {workflow} 失败"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedLightLoop"
 msgstr "启用 Light Loop 失败"
 
@@ -8394,12 +8418,8 @@ msgstr "描述 Light Loop 任务"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.submit.pending.description"
-msgstr "请等待工作树设置完成，再发送其他提示词。"
-
-#. submit.ts toasts
-msgid "prompt.submit.pending.title"
-msgstr "正在设置工作区"
+msgid "prompt.submit.queued"
+msgstr "消息已排队"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -8419,13 +8439,6 @@ msgstr "请先选择 Agent 和模型，再发送提示词。"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.submit.sent"
-msgstr "消息已发送"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.sent.description"
 msgstr "重新连接后将显示响应"
 
@@ -8435,6 +8448,17 @@ msgstr "重新连接后将显示响应"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.sessionNotStarted"
 msgstr "会话尚未启动"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.transitionPending.description"
+msgstr "请等待当前会话转换完成，再发送其他消息。"
+
+#. submit.ts toasts
+msgid "prompt.submit.transitionPending.title"
+msgstr "会话正在转换"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -8650,13 +8674,6 @@ msgstr "Lattice 激活时无法使用 Light Loop"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.workflow.unavailable.plan"
 msgstr "Plan 激活时无法使用 Light Loop"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.workspacePending"
-msgstr "工作区等待中"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10611,6 +10628,54 @@ msgstr "点按打开 · 长按取消"
 #. subagent-dock.tsx
 msgid "session.subagent.toolsCount"
 msgstr "{count} 个工具"
+
+#. session-transition-card.tsx — generic transition card
+msgid "session.transition.card.dismissAria"
+msgstr "关闭会话进度"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.card.dismissTitle"
+msgstr "关闭"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.card.retry"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.queued"
+msgstr "你的第一条消息已排队等待处理。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.submitting"
+msgstr "正在提交你的第一条消息。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.detail.messageQueued"
+msgstr "第一条消息已排队。"
+
+#. session-transition-progress.ts — general session startup factory
+msgid "session.transition.step.prepareSession"
+msgstr "准备会话"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.step.submitMessage"
+msgstr "提交消息"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.accepted"
+msgstr "会话请求已接受"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.starting"
+msgstr "正在启动会话"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -14549,9 +14614,93 @@ msgstr "计划"
 msgid "special-user.label.workflow"
 msgstr "工作流"
 
+#. Question subtitle
+msgid "tool.label.asked-count"
+msgstr "已询问 {count} 个问题"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.blueprints"
+msgstr "{count} 个 Blueprint"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.changes"
+msgstr "{count} 项变更"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.files"
+msgstr "{count} 个文件"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.found"
+msgstr "找到 {count} 项"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.items"
+msgstr "{count} 项"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.matches"
+msgstr "{count} 个匹配项"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.matches-in-blueprints"
+msgstr "在 {noteCount} 个 Blueprint 中找到 {matchCount} 个匹配项"
+
+#. Composite count labels
+msgid "tool.label.matches-in-notes"
+msgstr "在 {noteCount} 个 Note 中找到 {matchCount} 个匹配项"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.memories"
+msgstr "{count} 条记忆"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.notes"
+msgstr "{count} 个 Note"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.posts"
+msgstr "{count} 篇帖子"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.results"
+msgstr "{count} 个结果"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.runs"
+msgstr "{count} 次运行"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.scopes"
+msgstr "{count} 个 Scope"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.sessions"
+msgstr "{count} 个会话"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.targets"
+msgstr "{count} 个目标"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.tasks"
+msgstr "{count} 个任务"
+
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.background-task"
 msgstr "后台任务"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.cascaded"
+msgstr "已级联"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.changed-fields"
+msgstr "已更改字段"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed"
+msgstr "已执行"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"
@@ -14562,8 +14711,20 @@ msgid "tool.misc.html-preview"
 msgstr "HTML 预览"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.live-applied"
+msgstr "已实时应用"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.ready"
 msgstr "就绪"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.requested"
+msgstr "已请求"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.restart-required"
+msgstr "需要重启"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.updated"
@@ -14572,6 +14733,10 @@ msgstr "已更新"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.visible-background-tasks"
 msgstr "可见后台任务"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.warnings"
+msgstr "警告"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
@@ -14924,6 +15089,14 @@ msgstr "解析代码"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch"
 msgstr "补丁"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.patch-applied"
+msgstr "已应用"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.patch-generating"
+msgstr "正在生成补丁…"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"

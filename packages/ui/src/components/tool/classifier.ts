@@ -1,7 +1,7 @@
 import type { IconName } from "../icon"
 import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
-import { CLASSIFIER_LABEL_DESC } from "../tool-title-descriptors"
+import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
 /**
  * Semantic tool classification system.
@@ -354,6 +354,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(memory|library|remember|recall)/i, category: "memory" },
   { pattern: /^note[-_]/i, category: "note" },
   { pattern: /^skill/i, category: "skill" },
+  { pattern: /^blueprint[-_]/i, category: "blueprint" },
   { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },
   { pattern: /^(dag|plan)/i, category: "dag" },
   { pattern: /^todo/i, category: "dag" },
@@ -390,12 +391,15 @@ const INPUT_HEURISTICS: { keys: string[]; writeHint?: string[]; category: Semant
 export interface ClassifiedTool {
   category: SemanticCategory
   spec: CategorySpec
-  /** Category descriptor resolved for i18n or English default. */
+  /** English fallback or pass-through title. */
   title: string
-  /** Title descriptor for use with useLingui()._. */
-  titleDescriptor: MessageDescriptor
+  /** Static descriptor for Synergy-owned tools; absent for external tool names. */
+  titleDescriptor?: MessageDescriptor
   subtitle?: string
   args?: string[]
+  /** ICU plural count descriptor to resolve at render time, plus values. */
+  countDescriptor?: MessageDescriptor
+  countValues?: Record<string, number>
 }
 
 export function classifyTool(
@@ -438,14 +442,15 @@ export function classifyTool(
 
   const spec = CATEGORIES[category]
 
-  const titleDescriptor = humanizeToolDescriptor(toolName, category, spec)
-  const title = resolveDescriptor(i18n, titleDescriptor)
+  const titleDescriptor = toolTitleDescriptor(toolName, spec)
+  const title = titleDescriptor ? resolveDescriptor(i18n, titleDescriptor) : humanizeToolName(toolName)
 
   const subtitle = extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys)
 
   const args = buildArgs(input, metadata, spec)
+  const count = classifyCount(toolName, category, metadata)
 
-  return { category, spec, title, titleDescriptor, subtitle, args }
+  return { category, spec, title, titleDescriptor, subtitle, args, ...count }
 }
 
 function resolveDescriptor(i18n: any, desc: MessageDescriptor): string {
@@ -453,19 +458,20 @@ function resolveDescriptor(i18n: any, desc: MessageDescriptor): string {
   return desc.message ?? desc.id
 }
 
-function humanizeToolDescriptor(name: string, category: SemanticCategory, spec: CategorySpec): MessageDescriptor {
-  // If the category has a descriptor and the tool is a known short name, prefer the category label
-  if (spec.descriptor.message && TOOL_CATEGORIES[name]) {
-    if (name.length <= 6) return spec.descriptor
-  }
+function toolTitleDescriptor(name: string, spec: CategorySpec): MessageDescriptor | undefined {
+  const exactDescriptor: MessageDescriptor | undefined = Object.hasOwn(TOOL_TITLE_DESC, name)
+    ? TOOL_TITLE_DESC[name]
+    : undefined
+  if (exactDescriptor) return exactDescriptor
+  return Object.hasOwn(TOOL_CATEGORIES, name) ? spec.descriptor : undefined
+}
 
-  // Convert snake_case/camelCase/kebab-case to Title Case as a fallback descriptor
-  const fallback = name
+function humanizeToolName(name: string): string {
+  return name
     .replace(/[-_]/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\b\w/g, (char) => char.toUpperCase())
     .trim()
-  return { id: `tool.classifier.${name}`, message: fallback }
 }
 
 function extractField(input: Record<string, any>, keys: string[]): string | undefined {
@@ -475,6 +481,48 @@ function extractField(input: Record<string, any>, keys: string[]): string | unde
     if (Array.isArray(val) && val.length > 0 && typeof val[0] === "string") return val[0]
   }
   return undefined
+}
+type CountPresentation = Pick<ClassifiedTool, "countDescriptor" | "countValues">
+
+const TOOL_COUNT_DESCRIPTORS: Partial<Record<string, MessageDescriptor>> = {
+  session_list: TOOL_LABEL_DESC.sessions,
+  scope_list: TOOL_LABEL_DESC.scopes,
+  task_list: TOOL_LABEL_DESC.tasks,
+  note_list: TOOL_LABEL_DESC.notes,
+  worktree_list: TOOL_LABEL_DESC.targets,
+}
+
+const CATEGORY_COUNT_DESCRIPTORS: Partial<Record<SemanticCategory, MessageDescriptor>> = {
+  session: TOOL_LABEL_DESC.sessions,
+  note: TOOL_LABEL_DESC.notes,
+  blueprint: TOOL_LABEL_DESC.blueprints,
+  task: TOOL_LABEL_DESC.tasks,
+  memory: TOOL_LABEL_DESC.results,
+  search: TOOL_LABEL_DESC.results,
+  community: TOOL_LABEL_DESC.posts,
+  schedule: TOOL_LABEL_DESC.items,
+  "file-read": TOOL_LABEL_DESC.files,
+  "file-write": TOOL_LABEL_DESC.files,
+}
+
+function classifyCount(toolName: string, category: SemanticCategory, metadata: Record<string, any>): CountPresentation {
+  const count = metadata.matchCount ?? metadata.count ?? metadata.total
+  if (typeof count !== "number") return {}
+
+  if (typeof metadata.noteCount === "number") {
+    return {
+      countDescriptor:
+        category === "blueprint" || toolName.includes("blueprint")
+          ? TOOL_LABEL_DESC.matchesInBlueprints
+          : TOOL_LABEL_DESC.matchesInNotes,
+      countValues: { matchCount: count, noteCount: metadata.noteCount },
+    }
+  }
+
+  return {
+    countDescriptor: TOOL_COUNT_DESCRIPTORS[toolName] ?? CATEGORY_COUNT_DESCRIPTORS[category] ?? TOOL_LABEL_DESC.items,
+    countValues: { count },
+  }
 }
 
 function buildArgs(
@@ -491,35 +539,12 @@ function buildArgs(
     }
   }
 
-  const count = metadata.count ?? metadata.total ?? metadata.matchCount
-  if (typeof count === "number") {
-    const unit =
-      metadata.noteCount != null
-        ? `${count} match${count === 1 ? "" : "es"} in ${metadata.noteCount} note${metadata.noteCount === 1 ? "" : "s"}`
-        : inferCountUnit(count, spec)
-    args.push(unit)
-  }
-
   const status = metadata.status ?? metadata.action
   if (typeof status === "string" && status.length > 0 && status.length < 20) {
     args.push(status.charAt(0).toUpperCase() + status.slice(1))
   }
 
   return args.length > 0 ? args : undefined
-}
-
-function inferCountUnit(count: number, spec: CategorySpec): string {
-  const unitMap: Partial<Record<SemanticCategory, string>> = {
-    session: "session",
-    note: "note",
-    memory: "result",
-    search: "result",
-    community: "post",
-    schedule: "item",
-    task: "task",
-  }
-  const unit = unitMap[spec.descriptor.id?.split(".").pop() as SemanticCategory] ?? "item"
-  return `${count} ${unit}${count === 1 ? "" : "s"}`
 }
 
 // Re-export for convenient access

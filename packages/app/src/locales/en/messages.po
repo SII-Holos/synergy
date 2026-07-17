@@ -4566,6 +4566,30 @@ msgstr "Generation {id}"
 msgid "app.plugin.marketplace.heading.label"
 msgstr "{label} plugins"
 
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.archive"
+msgstr "Local archive"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.builtIn"
+msgstr "Built in"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.directory"
+msgstr "Local directory"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.localRegistry"
+msgstr "Local registry"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.officialRegistry"
+msgstr "Official registry"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.installation.package"
+msgstr "{source} package"
+
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.matchingQuery"
 msgstr "matching \"{query}\""
@@ -7406,13 +7430,6 @@ msgstr "Ready to start this BlueprintLoop."
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.bp.statusLabel"
-msgstr "Blueprint {status}"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpAria.holdCancel"
 msgstr "Hold to cancel BlueprintLoop: {title}"
 
@@ -7468,53 +7485,53 @@ msgstr "Hold for 2 seconds to unequip."
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.auditing"
-msgstr "In review"
+msgstr "Blueprint in review"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.cancelled"
-msgstr "Unequipped"
+msgstr "Blueprint unequipped"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.completed"
-msgstr "Completed"
+msgstr "Blueprint completed"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.equipped"
-msgstr "Equipped"
+msgstr "Blueprint equipped"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.failed"
-msgstr "Needs attention"
+msgstr "Blueprint needs attention"
 
 #. prompt-input.tsx — blueprint slot status labels
 msgid "prompt.bpSlot.ready"
-msgstr "Ready to start"
+msgstr "Blueprint ready to start"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.running"
-msgstr "Running"
+msgstr "Blueprint running"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.bpSlot.waiting"
-msgstr "Waiting"
+msgstr "Blueprint waiting"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -8324,6 +8341,13 @@ msgstr "Failed to enable Lattice"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.failedExitWorkflow"
+msgstr "Failed to exit {workflow}"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.failedLightLoop"
 msgstr "Failed to enable Light Loop"
 
@@ -8394,12 +8418,8 @@ msgstr "Describe the Light Loop task"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.submit.pending.description"
-msgstr "Wait for the worktree setup to finish before sending another prompt."
-
-#. submit.ts toasts
-msgid "prompt.submit.pending.title"
-msgstr "Workspace setup in progress"
+msgid "prompt.submit.queued"
+msgstr "Message queued"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -8419,13 +8439,6 @@ msgstr "Choose an agent and model before sending a prompt."
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.submit.sent"
-msgstr "Message sent"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.sent.description"
 msgstr "Response will appear after reconnection"
 
@@ -8435,6 +8448,17 @@ msgstr "Response will appear after reconnection"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.sessionNotStarted"
 msgstr "Session was not started."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.transitionPending.description"
+msgstr "Wait for the current session transition to finish before sending another message."
+
+#. submit.ts toasts
+msgid "prompt.submit.transitionPending.title"
+msgstr "Session transition in progress"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -8650,13 +8674,6 @@ msgstr "Light Loop is unavailable while Lattice is active"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.workflow.unavailable.plan"
 msgstr "Light Loop is unavailable while Plan is active"
-
-#. Runtime Lingui descriptors for prompt-input component strings.
- *  Each is a plain object with `id` + English `message`.
- *  Translate at use time via `useLocale().i18n._(descriptor)` or
- *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
-msgid "prompt.workspacePending"
-msgstr "Workspace setup in progress"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -10612,6 +10629,54 @@ msgstr "Tap to open · press and hold to cancel"
 msgid "session.subagent.toolsCount"
 msgstr "{count} tools"
 
+#. session-transition-card.tsx — generic transition card
+msgid "session.transition.card.dismissAria"
+msgstr "Dismiss session progress"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.card.dismissTitle"
+msgstr "Dismiss"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.card.retry"
+msgstr "Retry"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.queued"
+msgstr "Your first message is queued for processing."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.desc.submitting"
+msgstr "Submitting your first message."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.detail.messageQueued"
+msgstr "First message queued."
+
+#. session-transition-progress.ts — general session startup factory
+msgid "session.transition.step.prepareSession"
+msgstr "Prepare session"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.step.submitMessage"
+msgstr "Submit message"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.accepted"
+msgstr "Session request accepted"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.transition.title.starting"
+msgstr "Starting session"
+
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.card.dismissAria"
@@ -10659,12 +10724,12 @@ msgstr "Creating an isolated checkout and binding this session to it."
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
-msgstr "The session is ready and your prompt was sent."
+msgstr "The workspace is ready and your first message is queued for processing."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.starting"
-msgstr "Preparing the workspace and sending your first prompt."
+msgstr "Preparing the workspace and submitting your first message."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -10829,7 +10894,7 @@ msgstr "Worktree setup failed"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.started"
-msgstr "Worktree session started"
+msgstr "Worktree session request accepted"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -14549,9 +14614,93 @@ msgstr "Plan"
 msgid "special-user.label.workflow"
 msgstr "Workflow"
 
+#. Question subtitle
+msgid "tool.label.asked-count"
+msgstr "Asked {count, plural, one {# question} other {# questions}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.blueprints"
+msgstr "{count, plural, one {# blueprint} other {# blueprints}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.changes"
+msgstr "{count, plural, one {# change} other {# changes}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.files"
+msgstr "{count, plural, one {# file} other {# files}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.found"
+msgstr "{count} found"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.items"
+msgstr "{count, plural, one {# item} other {# items}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.matches"
+msgstr "{count, plural, one {# match} other {# matches}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.matches-in-blueprints"
+msgstr "{matchCount, plural, one {# match} other {# matches}} in {noteCount, plural, one {# blueprint} other {# blueprints}}"
+
+#. Composite count labels
+msgid "tool.label.matches-in-notes"
+msgstr "{matchCount, plural, one {# match} other {# matches}} in {noteCount, plural, one {# note} other {# notes}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.memories"
+msgstr "{count, plural, one {# memory} other {# memories}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.notes"
+msgstr "{count, plural, one {# note} other {# notes}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.posts"
+msgstr "{count, plural, one {# post} other {# posts}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.results"
+msgstr "{count, plural, one {# result} other {# results}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.runs"
+msgstr "{count, plural, one {# run} other {# runs}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.scopes"
+msgstr "{count, plural, one {# scope} other {# scopes}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.sessions"
+msgstr "{count, plural, one {# session} other {# sessions}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.targets"
+msgstr "{count, plural, one {# target} other {# targets}}"
+
+#. ── Tool label descriptors (ICU plural count labels) ─────────────────
+msgid "tool.label.tasks"
+msgstr "{count, plural, one {# task} other {# tasks}}"
+
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.background-task"
 msgstr "background"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.cascaded"
+msgstr "Cascaded"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.changed-fields"
+msgstr "Changed Fields"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.executed"
+msgstr "Executed"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"
@@ -14562,8 +14711,20 @@ msgid "tool.misc.html-preview"
 msgstr "HTML preview"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.live-applied"
+msgstr "Live Applied"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.ready"
 msgstr "Ready"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.requested"
+msgstr "Requested"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.restart-required"
+msgstr "Restart Required"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.updated"
@@ -14572,6 +14733,10 @@ msgstr "updated"
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.visible-background-tasks"
 msgstr "Visible background tasks"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.warnings"
+msgstr "Warnings"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.abort-session"
@@ -14924,6 +15089,14 @@ msgstr "Parse Code"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch"
 msgstr "Patch"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.patch-applied"
+msgstr "Applied"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.patch-generating"
+msgstr "Generating patch…"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"

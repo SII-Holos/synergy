@@ -858,7 +858,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       return {
         icon: "list-todo",
         title: TOOL_TITLE_DESC["task_list"],
-        subtitle: TOOL_TITLE_DESC["visibleBackgroundTasks"].message,
+        subtitle: undefined,
       }
     case "task_output":
       return {
@@ -1751,8 +1751,9 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
 }
 
 function SpecialFileAttachment(props: { file: AttachmentPart; kind: "note" | "session" }) {
+  const { _ } = useLingui()
   const title = createMemo(
-    () => (props.file.metadata?.title as string | undefined) || props.file.filename || "Untitled",
+    () => (props.file.metadata?.title as string | undefined) || props.file.filename || _(MESSAGE_PART_DESC.untitled),
   )
   return (
     <div data-slot="user-message-attachment" data-type={props.kind}>
@@ -1760,7 +1761,9 @@ function SpecialFileAttachment(props: { file: AttachmentPart; kind: "note" | "se
         <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
         <div data-slot="user-message-note-copy">
           <span data-slot="user-message-note-title">{title()}</span>
-          <span data-slot="user-message-note-subtitle">{props.kind === "note" ? "Note" : "Session"}</span>
+          <span data-slot="user-message-note-subtitle">
+            {props.kind === "note" ? _(MESSAGE_PART_DESC.noteLabel) : _(MESSAGE_PART_DESC.sessionLabel)}
+          </span>
         </div>
       </div>
     </div>

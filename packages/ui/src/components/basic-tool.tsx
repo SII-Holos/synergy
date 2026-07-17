@@ -1,5 +1,6 @@
 import { createEffect, createMemo, createSignal, Match, Show, Switch, type JSX } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import type { I18n, MessageDescriptor } from "@lingui/core"
 import { Collapsible } from "./collapsible"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
@@ -10,6 +11,13 @@ import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
 
 const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
+function translateToolDescriptor(
+  i18n: Pick<I18n, "_">,
+  descriptor: MessageDescriptor,
+  values?: Record<string, number>,
+): string {
+  return i18n._({ ...descriptor, values })
+}
 
 /** Legacy trigger value shape (pre-ToolTriggerProps). */
 interface LegacyTriggerValue {
@@ -190,6 +198,7 @@ export function SmartTool(props: {
     subtitleTemplate?: string
   }
 }) {
+  const { i18n } = useLingui()
   const classified = createMemo(() =>
     classifyTool(props.tool, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
   )
@@ -203,7 +212,8 @@ export function SmartTool(props: {
   const title = createMemo(() => {
     const fb = props.fallbackMeta
     if (fb?.title) return fb.title
-    return classified().title
+    const descriptor = classified().titleDescriptor
+    return descriptor ? translateToolDescriptor(i18n(), descriptor) : classified().title
   })
 
   const subtitle = createMemo(() => {
@@ -212,6 +222,13 @@ export function SmartTool(props: {
       return resolveTemplate(fb.subtitleTemplate, props.input, props.metadata ?? {})
     }
     return classified().subtitle
+  })
+  const tags = createMemo(() => {
+    const items = classified().args?.map((label) => ({ label })) ?? []
+    const descriptor = classified().countDescriptor
+    const values = classified().countValues
+    if (descriptor && values) items.push({ label: translateToolDescriptor(i18n(), descriptor, values) })
+    return items.length > 0 ? items : undefined
   })
 
   return (
@@ -224,7 +241,7 @@ export function SmartTool(props: {
         icon: icon(),
         title: title(),
         subtitle: subtitle(),
-        tags: classified().args?.map((a) => ({ label: a })),
+        tags: tags(),
       }}
       hideDetails={props.hideDetails}
     >

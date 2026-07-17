@@ -1,4 +1,5 @@
-import { TOOL_TITLE_DESC } from "../../tool-title-descriptors"
+import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
+import { useLingui } from "@lingui/solid"
 import { createMemo, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -24,6 +25,7 @@ ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 ToolRegistry.register({
   name: "file_search",
   render(props) {
+    const { _ } = useLingui()
     const count = () => props.metadata?.count as number | undefined
     return (
       <BasicTool
@@ -32,7 +34,8 @@ ToolRegistry.register({
           icon: "scan-document",
           title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
-          tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
+          tags:
+            count() != null ? [{ label: _({ ...TOOL_LABEL_DESC.results, values: { count: count()! } }) }] : undefined,
         }}
       >
         <Show when={props.output}>

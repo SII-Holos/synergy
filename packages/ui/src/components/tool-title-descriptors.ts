@@ -240,6 +240,8 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   memory_write_similar_found: d("tool.title.memory-similar-found", "Similar found"),
   memory_write_stored: d("tool.title.memory-stored", "Stored"),
   memory_edit_updated: d("tool.title.memory-edit-updated", "Updated"),
+  patch_generating: d("tool.title.patch-generating", "Generating patch…"),
+  patch_applied: d("tool.title.patch-applied", "Applied"),
 }
 
 // ── Classifier category labels ──────────────────────────────────────
@@ -360,6 +362,13 @@ export const TOOL_MISC_DESC = {
   ready: d("tool.misc.ready", "Ready"),
   updated: d("tool.misc.updated", "updated"),
   visibleBackgroundTasks: d("tool.misc.visible-background-tasks", "Visible background tasks"),
+  requested: d("tool.misc.requested", "Requested"),
+  executed: d("tool.misc.executed", "Executed"),
+  cascaded: d("tool.misc.cascaded", "Cascaded"),
+  changedFields: d("tool.misc.changed-fields", "Changed Fields"),
+  liveApplied: d("tool.misc.live-applied", "Live Applied"),
+  restartRequired: d("tool.misc.restart-required", "Restart Required"),
+  warnings: d("tool.misc.warnings", "Warnings"),
 } as const
 
 // ── Markdown ────────────────────────────────────────────────────────
@@ -447,4 +456,34 @@ export const CODE_COPY_DESC = {
   copyFailed: d("markdown.copy-failed", "Copy failed"),
   copy: d("markdown.copy", "Copy"),
   failed: d("markdown.failed", "Failed"),
+} as const
+
+// ── Tool label descriptors (ICU plural count labels) ─────────────────
+export const TOOL_LABEL_DESC = {
+  sessions: d("tool.label.sessions", "{count, plural, one {# session} other {# sessions}}"),
+  scopes: d("tool.label.scopes", "{count, plural, one {# scope} other {# scopes}}"),
+  tasks: d("tool.label.tasks", "{count, plural, one {# task} other {# tasks}}"),
+  results: d("tool.label.results", "{count, plural, one {# result} other {# results}}"),
+  items: d("tool.label.items", "{count, plural, one {# item} other {# items}}"),
+  files: d("tool.label.files", "{count, plural, one {# file} other {# files}}"),
+  matches: d("tool.label.matches", "{count, plural, one {# match} other {# matches}}"),
+  runs: d("tool.label.runs", "{count, plural, one {# run} other {# runs}}"),
+  changes: d("tool.label.changes", "{count, plural, one {# change} other {# changes}}"),
+  notes: d("tool.label.notes", "{count, plural, one {# note} other {# notes}}"),
+  blueprints: d("tool.label.blueprints", "{count, plural, one {# blueprint} other {# blueprints}}"),
+  targets: d("tool.label.targets", "{count, plural, one {# target} other {# targets}}"),
+  posts: d("tool.label.posts", "{count, plural, one {# post} other {# posts}}"),
+  memories: d("tool.label.memories", "{count, plural, one {# memory} other {# memories}}"),
+  found: d("tool.label.found", "{count} found"),
+  // Composite count labels
+  matchesInNotes: d(
+    "tool.label.matches-in-notes",
+    "{matchCount, plural, one {# match} other {# matches}} in {noteCount, plural, one {# note} other {# notes}}",
+  ),
+  matchesInBlueprints: d(
+    "tool.label.matches-in-blueprints",
+    "{matchCount, plural, one {# match} other {# matches}} in {noteCount, plural, one {# blueprint} other {# blueprints}}",
+  ),
+  // Question subtitle
+  askedCount: d("tool.label.asked-count", "Asked {count, plural, one {# question} other {# questions}}"),
 } as const
