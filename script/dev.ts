@@ -593,32 +593,59 @@ async function taskkill(pid: number): Promise<void> {
   await proc.exited
 }
 
-function signalProcessTree(child: DevProcess, signal: "SIGTERM" | "SIGKILL"): void {
-  const pid = child.pid
-  if (!pid) return
+function signalProcessGroup(processGroupId: number, signal: "SIGTERM" | "SIGKILL"): void {
   try {
-    process.kill(-pid, signal)
-  } catch {
-    if (child.exitCode === null) child.kill(signal)
-  }
+    process.kill(-processGroupId, signal)
+  } catch {}
 }
 
-function processGroupExists(pid: number): boolean {
+function processGroupExists(processGroupId: number): boolean {
   try {
-    process.kill(-pid, 0)
+    process.kill(-processGroupId, 0)
     return true
   } catch {
     return false
   }
 }
 
-async function waitForProcessGroupExit(pid: number, timeoutMs: number): Promise<boolean> {
+async function waitForProcessGroupExit(processGroupId: number, timeoutMs: number): Promise<boolean> {
   const deadline = Date.now() + timeoutMs
-  while (processGroupExists(pid)) {
+  while (processGroupExists(processGroupId)) {
     if (Date.now() >= deadline) return false
     await Bun.sleep(25)
   }
   return true
+}
+
+function descendantProcessGroups(children: DevProcess[]): number[] {
+  const roots = children.flatMap((child) => (child.pid ? [child.pid] : []))
+  const groups = new Set(roots)
+  const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,pgid="], {
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "ignore",
+  })
+  if (result.exitCode !== 0) return [...groups]
+
+  const processes = new Map<number, { parentPid: number; processGroupId: number }>()
+  for (const line of result.stdout.toString().split("\n")) {
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/)
+    if (!match) continue
+    processes.set(Number(match[1]), { parentPid: Number(match[2]), processGroupId: Number(match[3]) })
+  }
+
+  const descendants = new Set(roots)
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const [pid, process] of processes) {
+      if (descendants.has(pid) || !descendants.has(process.parentPid)) continue
+      descendants.add(pid)
+      groups.add(process.processGroupId)
+      changed = true
+    }
+  }
+  return [...groups]
 }
 
 export async function terminateDevProcesses(children: DevProcess[]): Promise<void> {
@@ -629,23 +656,43 @@ export async function terminateDevProcesses(children: DevProcess[]): Promise<voi
     return
   }
 
-  for (const child of active) signalProcessTree(child, "SIGTERM")
+  const processGroups = descendantProcessGroups(active)
+  for (const processGroupId of processGroups) signalProcessGroup(processGroupId, "SIGTERM")
   const settle = Promise.allSettled(children.map((child) => child.exited))
-  await Promise.all(active.flatMap((child) => (child.pid ? [waitForProcessGroupExit(child.pid, 3000)] : [])))
-  for (const child of active) {
-    if (child.pid && processGroupExists(child.pid)) signalProcessTree(child, "SIGKILL")
+  await Promise.all(processGroups.map((processGroupId) => waitForProcessGroupExit(processGroupId, 3000)))
+  for (const processGroupId of processGroups) {
+    if (processGroupExists(processGroupId)) signalProcessGroup(processGroupId, "SIGKILL")
   }
-  await Promise.all(active.flatMap((child) => (child.pid ? [waitForProcessGroupExit(child.pid, 1000)] : [])))
+  await Promise.all(processGroups.map((processGroupId) => waitForProcessGroupExit(processGroupId, 1000)))
   await Promise.race([settle, Bun.sleep(1000)])
 }
 
 async function runSerial(processes: DevProcessSpec[]): Promise<number> {
-  for (const spec of processes) {
-    const proc = spawnDevProcess(spec)
-    const exitCode = await proc.exited
-    if (exitCode !== 0) return exitCode
+  const children: DevProcess[] = []
+  let exiting = false
+  const cleanup = () => terminateDevProcesses(children)
+  const handleSignal = (exitCode: number) => async () => {
+    if (exiting) return
+    exiting = true
+    await cleanup()
+    process.exit(exitCode)
   }
-  return 0
+  const handleSigint = handleSignal(130)
+  const handleSigterm = handleSignal(143)
+  process.once("SIGINT", handleSigint)
+  process.once("SIGTERM", handleSigterm)
+  try {
+    for (const spec of processes) {
+      const proc = spawnDevProcess(spec)
+      children.push(proc)
+      const exitCode = await proc.exited
+      if (exitCode !== 0) return exitCode
+    }
+    return 0
+  } finally {
+    process.off("SIGINT", handleSigint)
+    process.off("SIGTERM", handleSigterm)
+  }
 }
 
 async function runParallel(plan: DevPlan): Promise<number> {

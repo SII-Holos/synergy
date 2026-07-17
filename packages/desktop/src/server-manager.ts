@@ -89,19 +89,7 @@ export class DesktopServerManager {
     }
     const child = this.child
     this.child = null
-    const exited = new Promise<void>((resolve) => {
-      child.once("exit", () => resolve())
-    })
-    child.kill("SIGTERM")
-    await Promise.race([
-      exited,
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          if (!child.killed) child.kill("SIGKILL")
-          resolve()
-        }, SHUTDOWN_TIMEOUT_MS)
-      }),
-    ])
+    await terminateServerProcess(child)
     this.state = "stopped"
     this.port = null
     this.url = null
@@ -125,6 +113,7 @@ export class DesktopServerManager {
         ...process.env,
         SYNERGY_CWD: process.env.SYNERGY_CWD ?? os.homedir(),
         SYNERGY_DESKTOP_CHANNEL: this.options.channel,
+        SYNERGY_DESKTOP_PARENT_PID: String(process.pid),
       },
       stdio: ["ignore", "pipe", "pipe"],
     })
@@ -176,6 +165,29 @@ export class DesktopServerManager {
       cwd: sourceRoot,
     }
   }
+}
+
+export async function terminateServerProcess(
+  child: ChildProcess,
+  shutdownTimeoutMs = SHUTDOWN_TIMEOUT_MS,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve())
+  })
+  child.kill("SIGTERM")
+  const graceful = await Promise.race([
+    exited.then(() => true),
+    new Promise<false>((resolve) => {
+      const timeout = setTimeout(() => resolve(false), shutdownTimeoutMs)
+      timeout.unref()
+    }),
+  ])
+  if (graceful || child.exitCode !== null || child.signalCode !== null) return
+
+  child.kill("SIGKILL")
+  await exited
 }
 
 export async function findAvailablePort(): Promise<number> {

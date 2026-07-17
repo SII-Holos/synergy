@@ -34,9 +34,9 @@ bun dev build desktop
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
 | `send`              | one-off source CLI execution                                              |
 
-Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined Web or Desktop flows. `--hostname` binds both the source server and Vite app in Web and external Desktop modes. The orchestrator checks required ports and target health before starting dependent processes. In parallel modes it terminates sibling process trees when one exits so package-script wrappers cannot leave servers or Electron hosts running.
+Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined Web or Desktop flows. `--hostname` binds both the source server and Vite app in Web and external Desktop modes. The orchestrator checks required ports and target health before starting dependent processes. Parallel and serial modes terminate complete descendant process trees, including nested package scripts that create another process group, so stopping the orchestrator does not leave servers or Electron hosts running.
 
-Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Normal daily Desktop work should use external mode for Vite reload speed.
+Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
 ## Developing Synergy with Synergy
 

@@ -44,6 +44,8 @@ SYNERGY_HOME="$DEV_HOME" bun dev web --hostname 0.0.0.0 --server-port 4097 --app
 
 Use `server` for backend/CLI work, `web` for normal full-stack work, `desktop` for Electron-native behavior, and `desktop --managed` for the production-style managed-server path. Managed mode rebuilds the Web distribution before launch.
 
+Development process lifecycle is owned by the root orchestrator. Both serial build-and-run workflows and parallel workflows must terminate nested descendant process groups. A managed Desktop server must also stop when its Electron parent disappears, because forced application termination cannot run Electron quit handlers.
+
 ## Preserve Desktop Renderer Lifecycle
 
 Route main-process broadcasts for the application renderer through `DesktopRendererDelivery`. A live `BrowserWindow` or `WebContents` does not prove that its current main frame can receive IPC during startup, document navigation, reload, renderer exit, or shutdown.
