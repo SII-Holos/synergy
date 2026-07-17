@@ -17,6 +17,7 @@ describe("session completion notice route", () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
           draft.completionNotice.unread = true
+          draft.completionNotice.unreadCount = 2
         })
         const before = await Session.get(session.id)
 
@@ -28,7 +29,7 @@ describe("session completion notice route", () => {
 
         expect(response.status).toBe(200)
         const body = await response.json()
-        expect(body.completionNotice).toEqual({ unread: false, silent: false })
+        expect(body.completionNotice).toEqual({ unread: false, unreadCount: 0, silent: false })
         expect(body.time.updated).toBe(before.time.updated)
 
         const repeated = await app.request(`/session/${session.id}`, {

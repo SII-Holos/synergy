@@ -16,6 +16,7 @@ export type NavSessionUpdate = {
   archived: boolean
   parentID?: string
   completionNoticeUnread?: boolean
+  completionNoticeUnreadCount?: number
 }
 
 export function navUpdateFromSession(
@@ -25,7 +26,7 @@ export function navUpdateFromSession(
     pinned?: number
     parentID?: string
     time?: { updated?: number; archived?: number }
-    completionNotice?: { unread?: boolean }
+    completionNotice?: { unread?: boolean; unreadCount?: number }
   },
   navEntry?: Pick<NavEntry, "lastActivityAt">,
 ): NavSessionUpdate {
@@ -37,6 +38,7 @@ export function navUpdateFromSession(
     archived: !!info.time?.archived,
     parentID: info.parentID,
     completionNoticeUnread: info.completionNotice?.unread,
+    completionNoticeUnreadCount: info.completionNotice?.unreadCount,
   }
 }
 
@@ -63,7 +65,10 @@ export function applySessionToNavList(
     pinned: update.pinned ?? prev.pinned,
     lastActivityAt: update.lastActivityAt ?? prev.lastActivityAt,
     parentID: update.parentID ?? prev.parentID,
-    completionNotice: { unread: update.completionNoticeUnread ?? prev.completionNotice.unread },
+    completionNotice: {
+      unread: update.completionNoticeUnread ?? prev.completionNotice.unread,
+      unreadCount: update.completionNoticeUnreadCount ?? prev.completionNotice.unreadCount,
+    },
   }
   const items = list.items.map((entry, i) => (i === idx ? merged : entry))
   return { list: { ...list, items }, applied: true }

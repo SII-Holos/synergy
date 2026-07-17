@@ -4,6 +4,7 @@ import {
   parseBrowserNativeAttach,
   parseBrowserNativePage,
   parseBrowserNativeResize,
+  parseDesktopBadgeState,
   parseClipboardWriteText,
   parseExternalUrl,
   parseSelectDirectoryDialogRequest,
@@ -80,6 +81,15 @@ describe("desktop ipc contract", () => {
     expect(parseClipboardWriteText("")).toBe("")
     expect(() => parseClipboardWriteText({ text: "copy me" })).toThrow()
     expect(() => parseClipboardWriteText(null)).toThrow()
+  })
+
+  test("validates desktop badge counts", () => {
+    expect(parseDesktopBadgeState({ count: 0 })).toEqual({ count: 0 })
+    expect(parseDesktopBadgeState({ count: 12 })).toEqual({ count: 12 })
+    expect(() => parseDesktopBadgeState({ count: -1 })).toThrow()
+    expect(() => parseDesktopBadgeState({ count: 1.5 })).toThrow()
+    expect(() => parseDesktopBadgeState({ count: 1, extra: true })).toThrow()
+    expect(() => parseDesktopBadgeState(null)).toThrow()
   })
 
   test("validates native directory picker requests", () => {

@@ -15,7 +15,6 @@ import { Scope } from "../scope"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 import { Plugin } from "../plugin"
-import { withTimeout } from "../util/timeout"
 import { createHash } from "crypto"
 
 export namespace ExperienceEncoder {
@@ -96,7 +95,9 @@ export namespace ExperienceEncoder {
     userMessageID: string,
     msgs: MessageV2.WithParts[],
     learning?: Required<Config.Learning>,
+    signal?: AbortSignal,
   ): Promise<{ intent: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
+    signal?.throwIfAborted()
     const userText = Turn.resolveUserText(msgs, userMessageID)
     if (!userText) throw new Error("no-user-text")
     const model = await resolveModel(userMessageID)
@@ -109,14 +110,14 @@ export namespace ExperienceEncoder {
       userMsg: userInfo ?? ({} as MessageV2.User),
       model,
       learning: effectiveLearning,
+      signal,
     }
-
     const history = buildIntentHistory(msgs, userMessageID)
     const rawIntent = await generateIntent(ctx, history, userText)
     const result = Intent.sanitizeWithReason(rawIntent, userText)
     const intent = result.value
     const usedFallback = intent === userText
-    const embedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
+    const embedding = await Embedding.generate({ id: userMessageID, text: intent || userText, signal })
 
     log.info("reencode intent", {
       sessionID,
@@ -137,11 +138,19 @@ export namespace ExperienceEncoder {
     userMessageID: string,
     raw: string,
     learning?: Required<Config.Learning>,
+    signal?: AbortSignal,
   ): Promise<{ script: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
+    signal?.throwIfAborted()
     const model = await resolveModel(userMessageID)
     const effectiveLearning = learning ?? (await loadLearning())
 
-    const ctx: AgentContext = { sessionID, userMsg: {} as MessageV2.User, model, learning: effectiveLearning }
+    const ctx: AgentContext = {
+      sessionID,
+      userMsg: {} as MessageV2.User,
+      model,
+      learning: effectiveLearning,
+      signal,
+    }
 
     const content = buildReencodeScriptContent(raw)
     const rawScript = await generateScript(ctx, content)
@@ -149,8 +158,8 @@ export namespace ExperienceEncoder {
     const script = result.value
     const usedFallback = script === raw
     const embedding = script
-      ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
-      : await Embedding.generate({ id: `${userMessageID}:script`, text: raw })
+      ? await Embedding.generate({ id: `${userMessageID}:script`, text: script, signal })
+      : await Embedding.generate({ id: `${userMessageID}:script`, text: raw, signal })
 
     log.info("reencode script", {
       sessionID,
@@ -165,18 +174,32 @@ export namespace ExperienceEncoder {
 
     return { script, embedding, reason: result.reason, usedFallback }
   }
+  export interface RepairOptions {
+    learning?: Required<Config.Learning>
+    session?: Awaited<ReturnType<typeof Session.get>>
+    messages?: MessageV2.WithParts[]
+    signal?: AbortSignal
+  }
+
   export async function repairFailedExperience(
     sessionID: string,
     userMessageID: string,
-    learning?: Required<Config.Learning>,
+    learningOrOptions: Required<Config.Learning> | RepairOptions = {},
   ): Promise<EncodeOutcome> {
-    return encode(sessionID, userMessageID, { force: true, learning })
+    const options = "reencodeConcurrency" in learningOrOptions ? { learning: learningOrOptions } : learningOrOptions
+    return encode(sessionID, userMessageID, { force: true, ...options })
   }
 
   async function encode(
     sessionID: string,
     userMessageID: string,
-    options: { force?: boolean; learning?: Required<Config.Learning> } = {},
+    options: {
+      force?: boolean
+      learning?: Required<Config.Learning>
+      session?: Awaited<ReturnType<typeof Session.get>>
+      messages?: MessageV2.WithParts[]
+      signal?: AbortSignal
+    } = {},
   ): Promise<EncodeOutcome> {
     const existing = LibraryDB.Experience.get(userMessageID)
     if (existing && existing.reward_status !== "encoding_failed") {
@@ -184,7 +207,7 @@ export namespace ExperienceEncoder {
       if (content?.script) return { encoded: false, skipped: true, experienceID: userMessageID }
     }
 
-    const session = await Session.get(sessionID).catch(() => undefined)
+    const session = options.session ?? (await Session.get(sessionID).catch(() => undefined))
     if (!session?.scope) return { encoded: false, skipped: true }
     if (session.parentID) return { encoded: false, skipped: true }
 
@@ -203,7 +226,7 @@ export namespace ExperienceEncoder {
         ...library?.experience?.learning,
         rewardWeights: { ...Config.REWARD_WEIGHT_DEFAULTS, ...library?.experience?.learning?.rewardWeights },
       } as Required<Config.Learning>)
-    const msgs = await Session.messages({ sessionID })
+    const msgs = options.messages ?? (await Session.messages({ sessionID }))
 
     userMessageID = Turn.resolveRealUser(msgs, userMessageID)
 
@@ -220,7 +243,13 @@ export namespace ExperienceEncoder {
       const userInfo = userMsg.info as MessageV2.User
 
       const intentModel = await Provider.getModel(userInfo.model.providerID, userInfo.model.modelID)
-      const intentCtx: AgentContext = { sessionID, userMsg: userInfo, model: intentModel, learning }
+      const intentCtx: AgentContext = {
+        sessionID,
+        userMsg: userInfo,
+        model: intentModel,
+        learning,
+        signal: options.signal,
+      }
       const history = buildIntentHistory(msgs, userMessageID)
       const rawIntent = await generateIntent(intentCtx, history, userText)
       const intentResult = Intent.sanitizeWithReason(rawIntent, userText)
@@ -235,7 +264,11 @@ export namespace ExperienceEncoder {
         rawHash: hashForLog(rawIntent),
         rawPreview: preview(rawIntent),
       })
-      const intentEmbedding = await Embedding.generate({ id: userMessageID, text: intent || userText })
+      const intentEmbedding = await Embedding.generate({
+        id: userMessageID,
+        text: intent || userText,
+        signal: options.signal,
+      })
 
       const extracted = TurnDigest.extractSingle(session, msgs, userMessageID, {
         toolOutputBudget: learning.digestToolOutputBudget,
@@ -255,7 +288,13 @@ export namespace ExperienceEncoder {
       const scriptModel = assistantInfo
         ? await Provider.getModel(assistantInfo.providerID, assistantInfo.modelID)
         : undefined
-      const scriptCtx: AgentContext = { sessionID, userMsg: userInfo, model: scriptModel, learning }
+      const scriptCtx: AgentContext = {
+        sessionID,
+        userMsg: userInfo,
+        model: scriptModel,
+        learning,
+        signal: options.signal,
+      }
       const rawScript = await generateScript(scriptCtx, buildScriptContent(digest, learning))
       const scriptResult = Script.sanitizeWithReason(rawScript, raw)
       const script = scriptResult.value
@@ -270,7 +309,7 @@ export namespace ExperienceEncoder {
         rawPreview: preview(rawScript),
       })
       const scriptEmbedding = script
-        ? await Embedding.generate({ id: `${userMessageID}:script`, text: script })
+        ? await Embedding.generate({ id: `${userMessageID}:script`, text: script, signal: options.signal })
         : undefined
 
       const duplicate = LibraryDB.Experience.findSimilar(
@@ -471,6 +510,7 @@ export namespace ExperienceEncoder {
     userMsg: MessageV2.User
     model: Provider.Model | undefined
     learning: Required<Config.Learning>
+    signal?: AbortSignal
   }
 
   export class EncoderStreamError extends Error {
@@ -505,53 +545,75 @@ export namespace ExperienceEncoder {
   }
 
   async function callAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
+    if (ctx.signal?.aborted) {
+      throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
+    }
     const agent = await Agent.get(agentName)
     if (!agent || !ctx.userMsg) return ""
 
     const agentModel = await Agent.getAvailableModel(agent)
     const model = agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : ctx.model
     if (!model) return ""
+    if (ctx.signal?.aborted) {
+      throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
+    }
 
     const timeoutMs = ctx.learning.encoderTimeoutMs ?? ENCODER_LLM_TIMEOUT_MS
     const maxChars = ctx.learning.encoderMaxOutputChars ?? ENCODER_MAX_OUTPUT_CHARS
     const abort = new AbortController()
-    const timeout = AbortSignal.timeout(timeoutMs)
-    const onTimeout = () => abort.abort()
-    timeout.addEventListener("abort", onTimeout, { once: true })
+    const timeout = new AbortController()
+    const combined = ctx.signal
+      ? AbortSignal.any([ctx.signal, timeout.signal, abort.signal])
+      : AbortSignal.any([timeout.signal, abort.signal])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    let onCancel: (() => void) | undefined
+    const interrupted = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        timeout.abort()
+        reject(new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`))
+      }, timeoutMs)
+      timer.unref?.()
+      if (ctx.signal) {
+        onCancel = () => reject(new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`))
+        ctx.signal.addEventListener("abort", onCancel, { once: true })
+      }
+    })
+    const waitForInterruption = <T>(promise: Promise<T>) => Promise.race([promise, interrupted])
 
     try {
-      const stream = await LLM.stream({
-        agent,
-        user: ctx.userMsg,
-        tools: {},
-        model,
-        small: true,
-        messages: [{ role: "user" as const, content }],
-        abort: abort.signal,
-        sessionID: ctx.sessionID,
-        system: [],
-        retries: ctx.learning.encoderRetries,
-      })
+      const stream = await waitForInterruption(
+        LLM.stream({
+          agent,
+          user: ctx.userMsg,
+          tools: {},
+          model,
+          small: true,
+          messages: [{ role: "user" as const, content }],
+          abort: combined,
+          sessionID: ctx.sessionID,
+          system: [],
+          retries: ctx.learning.encoderRetries,
+        }),
+      )
 
       const textStream = LLM.takeTextStream(stream)
       try {
-        return await withTimeout(collectBoundedText({ textStream: textStream.stream, maxChars, abort }), timeoutMs, {
-          message: `encoder ${agentName} timed out after ${timeoutMs}ms`,
-        })
+        return await waitForInterruption(collectBoundedText({ textStream: textStream.stream, maxChars, abort }))
       } finally {
         await textStream.dispose()
       }
     } catch (error) {
       if (error instanceof EncoderStreamError) throw error
-      if (abort.signal.aborted || timeout.aborted) {
-        throw new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`)
+      if (ctx.signal?.aborted) {
+        throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
       }
-      if (error instanceof Error && /timed out/i.test(error.message)) {
-        throw new EncoderStreamError("timeout", error.message)
+      if (timeout.signal.aborted) {
+        throw new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`)
       }
       throw error
     } finally {
-      timeout.removeEventListener("abort", onTimeout)
+      if (timer !== undefined) clearTimeout(timer)
+      if (ctx.signal && onCancel) ctx.signal.removeEventListener("abort", onCancel)
     }
   }
 

@@ -479,6 +479,16 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
+        diffState: z
+          .discriminatedUnion("status", [
+            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
+            z.object({ status: z.literal("ready") }),
+            z.object({
+              status: z.literal("error"),
+              code: z.enum(["timeout", "git_failure", "unknown"]),
+            }),
+          ])
+          .optional(),
       })
       .optional(),
     agent: z.string(),
@@ -540,12 +550,15 @@ export namespace MessageV2 {
   }
 
   export function canonicalMessage<T extends Info>(info: T): T {
-    if (info.role !== "user" || !info.summary?.diffs) return info
+    if (info.role !== "user" || !info.summary) return info
+    const diffState = info.summary.diffState
+    const expiredPending = diffState?.status === "pending" && diffState.deadlineAt <= Date.now()
     return {
       ...info,
       summary: {
         ...info.summary,
         diffs: SnapshotSchema.normalizeArray(info.summary.diffs) ?? [],
+        ...(expiredPending ? { diffState: { status: "error" as const, code: "timeout" as const } } : {}),
       },
     } as T
   }
@@ -1223,8 +1236,11 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
+      const info = canonicalMessage(
+        await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+      )
       return {
-        info: await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+        info,
         parts: await parts({ scopeID, sessionID: input.sessionID, messageID: input.messageID }),
       }
     },

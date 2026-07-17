@@ -20,6 +20,7 @@ import {
   reencodeJobSummary,
 } from "./library-reencode-model"
 import { LibraryReencodeProgress } from "./library-reencode-progress"
+import { LibraryEmbeddingSection } from "./library-embedding-section"
 
 const similarityOptions: SettingsStepOption[] = [
   { value: "0.5", label: "Broad", tickLabel: "0.5", detail: "Loose context match" },
@@ -102,6 +103,7 @@ export function LearningPanel(props: {
 
 export function MemoryPanel(props: {
   library: LibrarySettingsStore
+  embeddingConfigDirty: boolean
   onLibraryChange: (key: keyof LibrarySettingsStore, value: string) => void
 }) {
   return (
@@ -141,6 +143,11 @@ export function MemoryPanel(props: {
           }
         />
       </SettingsSection>
+      <LibraryEmbeddingSection
+        library={props.library}
+        configDirty={props.embeddingConfigDirty}
+        onLibraryChange={props.onLibraryChange}
+      />
     </SettingsPage>
   )
 }

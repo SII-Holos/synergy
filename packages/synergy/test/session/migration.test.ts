@@ -194,7 +194,7 @@ describe("session migrations", () => {
     })
   })
 
-  test("normalizes completion notices and rebuilds nav entries", async () => {
+  test("backfills completion counts idempotently and rebuilds nav entries", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()
 
@@ -203,6 +203,7 @@ describe("session migrations", () => {
       fn: async () => {
         const legacy = await Session.create({ title: "Legacy Notice" })
         const preserved = await Session.create({ title: "Preserved Notice" })
+        const counted = await Session.create({ title: "Counted Notice" })
         const silent = await Session.create({ title: "Silent Notice" })
         const scope = Identifier.asScopeID(tmpScope.id)
 
@@ -217,10 +218,16 @@ describe("session migrations", () => {
           completionNotice: { unread: true, silent: false },
         })
 
+        const countedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(counted.id))
+        await Storage.write(countedKey, {
+          ...(await Storage.read<any>(countedKey)),
+          completionNotice: { unread: true, unreadCount: 3, silent: false },
+        })
+
         const silentKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(silent.id))
         await Storage.write(silentKey, {
           ...(await Storage.read<any>(silentKey)),
-          completionNotice: { unread: true, silent: true },
+          completionNotice: { unread: true, unreadCount: 4, silent: true },
         })
 
         await Storage.write(StoragePath.sessionNavIndex(scope), {
@@ -241,20 +248,49 @@ describe("session migrations", () => {
           ],
         })
 
-        const migration = migrations.find((entry) => entry.id === "20260703-session-completion-notice")
+        const migration = migrations.find((entry) => entry.id === "20260717-session-completion-unread-count")
         expect(migration).toBeDefined()
         await migration!.up(() => {})
+        await migration!.up(() => {})
 
-        expect((await Storage.read<any>(legacyKey)).completionNotice).toEqual({ unread: false, silent: false })
-        expect((await Storage.read<any>(preservedKey)).completionNotice).toEqual({ unread: true, silent: false })
-        expect((await Storage.read<any>(silentKey)).completionNotice).toEqual({ unread: false, silent: true })
+        expect((await Storage.read<any>(legacyKey)).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+          silent: false,
+        })
+        expect((await Storage.read<any>(preservedKey)).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 1,
+          silent: false,
+        })
+        expect((await Storage.read<any>(countedKey)).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 3,
+          silent: false,
+        })
+        expect((await Storage.read<any>(silentKey)).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+          silent: true,
+        })
 
         const nav = await Storage.read<any>(StoragePath.sessionNavIndex(scope))
-        expect(nav.entries.find((entry: any) => entry.id === legacy.id).completionNotice).toEqual({ unread: false })
-        expect(nav.entries.find((entry: any) => entry.id === preserved.id).completionNotice).toEqual({ unread: true })
+        expect(nav.entries.find((entry: any) => entry.id === legacy.id).completionNotice).toEqual({
+          unread: false,
+          unreadCount: 0,
+        })
+        expect(nav.entries.find((entry: any) => entry.id === preserved.id).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 1,
+        })
+        expect(nav.entries.find((entry: any) => entry.id === counted.id).completionNotice).toEqual({
+          unread: true,
+          unreadCount: 3,
+        })
 
         await Session.remove(legacy.id)
         await Session.remove(preserved.id)
+        await Session.remove(counted.id)
         await Session.remove(silent.id)
       },
     })
@@ -588,6 +624,70 @@ describe("session migrations", () => {
         const secondSummary = await Storage.read<any>(StoragePath.sessionSummary(scope, sid))
         const secondMessage = await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage))
         expect(JSON.stringify({ part: secondPart, summary: secondSummary, message: secondMessage })).toBe(serialized)
+      },
+    })
+  })
+
+  test("bounds aggregate diff previews in persisted session and message summaries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await addUserMessage(session.id)
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const sid = Identifier.asSessionID(session.id)
+        const userMessage = Identifier.asMessageID(user.id)
+        const diffs = Array.from({ length: 50 }, (_, index) => ({
+          file: `file-${index}.txt`,
+          additions: index + 1,
+          deletions: index,
+          preview: "界".repeat(SessionBounds.DIFF_PREVIEW_MAX_CHARS),
+          beforeBytes: index,
+          afterBytes: index + 1,
+        }))
+
+        await Storage.write(StoragePath.sessionSummary(scope, sid), diffs)
+        await Storage.update<any>(StoragePath.messageInfo(scope, sid, userMessage), (draft) => {
+          draft.summary = { text: "legacy summary", diffs }
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260716-bounded-diff-aggregate-preview")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        const firstSummary = await Storage.read<any[]>(StoragePath.sessionSummary(scope, sid))
+        const firstMessage = await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage))
+        for (const migrated of [firstSummary, firstMessage.summary.diffs]) {
+          expect(migrated).toHaveLength(diffs.length)
+          expect(
+            migrated.reduce(
+              (total: number, diff: SnapshotSchema.FileDiff) =>
+                total + (diff.preview ? SessionBounds.byteLength(diff.preview) : 0),
+              0,
+            ),
+          ).toBeLessThanOrEqual(SessionBounds.DIFF_AGGREGATE_PREVIEW_MAX_BYTES)
+          expect(migrated.some((diff: SnapshotSchema.FileDiff) => !diff.preview && diff.truncated)).toBe(true)
+          expect(migrated.at(-1)).toMatchObject({
+            file: "file-49.txt",
+            additions: 50,
+            deletions: 49,
+            beforeBytes: 49,
+            afterBytes: 50,
+            truncated: true,
+          })
+        }
+
+        const serialized = JSON.stringify({ summary: firstSummary, message: firstMessage })
+        await migration!.up(() => {})
+        expect(
+          JSON.stringify({
+            summary: await Storage.read<any[]>(StoragePath.sessionSummary(scope, sid)),
+            message: await Storage.read<any>(StoragePath.messageInfo(scope, sid, userMessage)),
+          }),
+        ).toBe(serialized)
       },
     })
   })

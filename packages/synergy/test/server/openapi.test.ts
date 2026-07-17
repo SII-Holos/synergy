@@ -143,6 +143,11 @@ describe("OpenAPI spec generation", () => {
       "performance.browserMetrics.ingest",
     )
     expect(spec.paths["/global/performance/events"]?.get?.operationId).toBe("performance.events.stream")
+    expect(spec.paths["/global/performance/analysis"]?.post?.operationId).toBe("performance.analysis.start")
+    expect(spec.paths["/global/performance/analysis/{sessionID}"]?.get?.operationId).toBe("performance.analysis.get")
+    expect(spec.paths["/global/performance/analysis/{sessionID}/cancel"]?.post?.operationId).toBe(
+      "performance.analysis.cancel",
+    )
     expect(spec.paths["/global/diagnostics"]?.get?.operationId).toBe("observability.diagnostics.summary")
     const diagnosticsResponse = spec.paths["/global/diagnostics"]?.get?.responses?.["200"]
     const diagnosticsSchema = JSON.stringify(

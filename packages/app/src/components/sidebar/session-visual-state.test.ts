@@ -13,7 +13,7 @@ function entry(input: Partial<NavEntry> = {}): NavEntry {
     lastActivityAt: 1,
     pinned: 0,
     archived: false,
-    completionNotice: { unread: false },
+    completionNotice: { unread: false, unreadCount: 0 },
     ...input,
   }
 }
@@ -69,7 +69,7 @@ describe("resolveSessionVisualState", () => {
   })
 
   test("marks idle unread sessions as response ready", () => {
-    const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true } }))
+    const visual = resolveSessionVisualState(store(), entry({ completionNotice: { unread: true, unreadCount: 1 } }))
 
     expect(visual.icon).toBe(getSemanticIcon("navigation.home"))
     expect(visual.completionUnread).toBe(true)
@@ -79,7 +79,7 @@ describe("resolveSessionVisualState", () => {
   test("suppresses completion unread while running", () => {
     const visual = resolveSessionVisualState(
       store({ session_status: { ses_test: { type: "busy" } } }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(visual.icon).toBe(getSemanticIcon("session.running"))
@@ -89,7 +89,7 @@ describe("resolveSessionVisualState", () => {
   test("suppresses completion unread while waiting", () => {
     const visual = resolveSessionVisualState(
       store({ permission: { ses_test: [{}] } }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(visual.icon).toBe(getSemanticIcon("session.waiting"))
@@ -99,11 +99,11 @@ describe("resolveSessionVisualState", () => {
   test("preserves worktree and child icons for unread sessions", () => {
     const worktree = resolveSessionVisualState(
       store({ session: [{ id: "ses_test", workspace: { type: "git_worktree" } }] }),
-      entry({ completionNotice: { unread: true } }),
+      entry({ completionNotice: { unread: true, unreadCount: 1 } }),
     )
     const child = resolveSessionVisualState(
       store(),
-      entry({ parentID: "ses_parent", completionNotice: { unread: true } }),
+      entry({ parentID: "ses_parent", completionNotice: { unread: true, unreadCount: 1 } }),
     )
 
     expect(worktree.icon).toBe(getSemanticIcon("workspace.worktree"))

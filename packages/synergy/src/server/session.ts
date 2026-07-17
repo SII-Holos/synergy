@@ -472,7 +472,10 @@ export const SessionRoute = new Hono()
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
-        if (updates.completionNotice?.unread === false) session.completionNotice.unread = false
+        if (updates.completionNotice?.unread === false) {
+          session.completionNotice.unread = false
+          session.completionNotice.unreadCount = 0
+        }
         if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
       }
 
