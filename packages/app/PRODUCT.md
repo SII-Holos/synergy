@@ -67,6 +67,7 @@ Settings typography should use the global semantic UI type tokens, not local pix
 Worktree settings should aggregate only Git projects, preserve readable project results when another repository fails, and keep main or external worktrees informational. Managed deletion is a confirmed lifecycle action: show dirty and bound-session consequences, refuse active use, and refresh the list after the backend has migrated idle bindings or cleaned a stale record.
 
 Library settings should explain learning, memory recall, and experience reuse as product preferences. Use switch controls for binary learning behavior and discrete guided scales for recall or exploration thresholds; do not present cosine similarity, top-k, or epsilon choices as raw debug parameters.
+Library settings should always identify the effective embedding model. A user-configured remote model takes precedence and should be labeled as configured; the bundled local model is the visible default fallback only when no remote embedding API key is configured. Keep local download-source and file-status controls subordinate to that effective-model row, and do not expose API keys or private connection details in the summary.
 
 Model settings should keep role routing and quick-switcher visibility together in one Models page. Specialist model roles are the first section; connected models and their quick-switch toggles are the second section. Avoid reopening a separate Manage Models modal from inside Settings.
 
@@ -88,6 +89,7 @@ Desktop cold start should show a native Synergy shell immediately instead of a b
 Desktop managed-local project selection should use native OS folder picking for Add/Open Project because the Electron shell and managed server share local filesystem authority. Web, remote-server, and desktop external-server project selection must browse the server filesystem instead of exposing local desktop paths; that server browser should use an explicit search action, clear base/query state, and bounded server-side browse rather than keystroke-driven recursive scanning.
 
 Session, Agenda, Library, Performance, and Plugins should feel like one continuous workbench canvas in both light and dark modes. Their root backgrounds should align with the session message-flow background; inner surfaces can step up or down for hierarchy, but should not look like separate apps.
+Session import and export are session-level portability actions. Keep them available for every open session regardless of Scope type, while Scope-specific workspace and lifecycle actions may remain limited to project sessions.
 Performance and Diagnostics are developer diagnostic workbench surfaces. Organize them around evidence, current health, inflight or stale work, and recovery actions; keep raw trace IDs, span IDs, correlation IDs, and debug tables in detail or copy areas instead of making them default primary labels.
 
 Performance should separate server process resources from registered tool child process resources. Main RSS, heap, CPU, and event-loop signals belong in the primary resource cards and charts; tool child process count, aggregate RSS, and top child memory contributors should be visible as support-oriented diagnostics without crowding the main time-series model.
@@ -110,6 +112,17 @@ Message-flow errors should remain compact by default: show a single-line error p
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.
 Turn-level file changes summarize in the message flow; detailed file diff inspection belongs in the session Review workbench surface.
 
+### Turn diff panel states
+
+The turn diff panel appears below each completed turn and follows the `diffState` lifecycle from the message summary:
+
+- **pending**: The panel shows a quiet "Calculating file changes…" label with a pulsing icon. The state is hidden for the first 150 ms to avoid flashing on fast completions. The server owns timeout and restart recovery and publishes the terminal **error** state; the client does not compare `deadlineAt` with its local clock.
+- **ready**: The panel displays the file list with per-file add/delete bars and a "Review changes" button. The panel enters with a subtle slide-and-fade animation (`turn-change-summary-entering`). Empty diffs (`summary.diffs` with zero length) render as hidden — only non-empty diff sets are visible.
+- **error**: The panel shows "Couldn't calculate file changes" with a weak icon. No inline error details or retry action; the error state is informational only.
+- **legacy (no diffState)**: A message without `diffState` but with non-empty `summary.diffs` inherits `ready` treatment to preserve backward compatibility with older histories.
+
+Motion under `prefers-reduced-motion: reduce` disables all panel entrance transitions and the pulsing pending icon animation.
+
 Special user-message renderers should keep workflow prompts lightweight in the message stream. Plan, Lattice, Light Loop, BlueprintLoop starts, and workflow continuation controls may use the same compact right-aligned prompt-bubble treatment with a small source badge; control messages should show a short human-readable summary by default rather than raw loop IDs, internal prompt text, or heavy centered event cards.
 
 Turn titles are navigation metadata, not conversation content; keep them in the session timeline or session-level chrome, and place user-prompt timestamps and copy controls outside the prompt bubble as low-emphasis metadata. Collapsed user-prompt expansion belongs inside the prompt bubble at the truncation edge, not in the external metadata row.
@@ -124,6 +137,7 @@ Conversation attachment display should be owned by each attachment's presentatio
 Image preview is a grounded modal viewer for previewable image attachments, with quiet metadata, separated viewer controls, zoom/pan/rotate, load failure fallback, and gallery navigation that preserves the owning attachment scope and order. Composer image attachments share one prompt-local gallery before send; sent attachment galleries keep their message-local scope.
 
 Child sessions are session-local context and should be reachable from the current session's StatusBar rather than the global sidebar. Keep the child-session button persistent, but load children lazily only when the user opens its StatusBar panel. Show them as a compact paginated recent-activity switcher ordered by each child session's latest update time, with search, previous/next paging, and running or waiting state visible in the row.
+Opening a related session may create an in-app Back target, but returning to a parent session is hierarchical navigation: restore a verified parent history entry when available, otherwise replace the child route with the canonical parent route, and never make the child the parent's Back target.
 Sidebar completion dots are quiet workflow-state reminders backed by persisted session completion state. Show them as restrained critical-color dots on session icons only after a run finishes, clear them when the session is opened, and never infer them from timestamps, category, source names, or local runtime status. Sidebar session and project ordering should advance once when a reply starts and once when it completes, but remain stable during in-flight updates so parallel active sessions do not make navigation targets jump.
 
 Opening a workbench panel should not force the session message stream or prompt composer into a separate narrow fixed measure. Keep the session column at its normal readable working measure and let it shrink only when the actual pane width requires it. The normal session measure should feel like a broad workbench column for coding and tool-rich conversations, not a narrow chat lane. In constrained panes, preserve a minimum horizontal gutter around the message stream and tool cards so they do not visually stretch.
@@ -183,7 +197,7 @@ Loaded file context in the composer should appear as quiet removable chips insid
 
 New-session initialization controls should sit in the composer toolbar next to the Add control as a quiet start-mode selector, not as a second row inside the typing area. Keep the selector menu data-driven so workspace mode, templates, cloud execution, and future start parameters can expand in one place while preserving the composer as a single grounded surface.
 
-New-session initialization must use a blocking workbench progress surface whenever workspace or session setup can take visible time. The user should see compact step progress for worktree creation, session preparation, and prompt dispatch, and should not be able to operate the half-initialized session until setup completes or fails cleanly.
+Ordinary and worktree-backed new sessions should publish compact transition progress into the target session conversation before navigation exposes that route. A half-initialized session must never appear as an actionable empty page: preparation and first-message dispatch stay visible in the conversation, successful transitions remain for three seconds and then fade out, and errors remain until retry or dismissal. The session transition card is distinct from the composer’s DAG/Todo progress island and the two product layers must not be merged.
 
 Session Inbox should read as a transient queue surface, not a debug overlay. Use explicit text actions for queue promotion, keep destructive actions behind secondary menus plus confirmation, make after-turn batching visible as one reply cycle, and let inbox items fill the popover width with quiet row rhythm instead of nested icon-heavy cards.
 

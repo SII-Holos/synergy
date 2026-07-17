@@ -11,14 +11,12 @@ import { PermissionDock } from "./permission-dock"
 import { SessionInbox } from "./session-inbox"
 import { SubagentSessionFooter } from "./subagent-session-footer"
 import { type SessionMeta } from "@/composables/use-session-meta"
+import type { SessionNavigationIntent } from "@/composables/use-navigate-to-session"
 import type { usePrompt } from "@/context/prompt"
 import type { useSync } from "@/context/sync"
 import type { useSDK } from "@/context/sdk"
-import type {
-  NewSessionWorkspaceSelection,
-  SessionWorkspaceProgress,
-  SessionWorkspaceProgressActions,
-} from "./worktree-session"
+import type { NewSessionWorkspaceSelection } from "./worktree-session"
+import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
 import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
@@ -34,7 +32,7 @@ export function PromptDock(props: {
   prompt: ReturnType<typeof usePrompt>
   sync: ReturnType<typeof useSync>
   sdk: ReturnType<typeof useSDK>
-  navigate: (path: string) => void
+  navigate: (sessionID: string, intent?: SessionNavigationIntent) => void
   handoffPrompt: string
   meta: Accessor<SessionMeta>
   parentTitle?: string
@@ -46,12 +44,12 @@ export function PromptDock(props: {
   newSessionCurrentDirectory: Accessor<string | undefined>
   onNewSessionWorkspaceSelectionChange: (selection: NewSessionWorkspaceSelection) => void
   onNewSessionWorkspaceSelectionReset: () => void
-  onNewSessionStartProgress: (input: {
+  onNewSessionTransitionChange: (input: {
     sessionID: string
-    progress: SessionWorkspaceProgress | null
-    actions?: SessionWorkspaceProgressActions
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
   }) => void
-  workspaceTransitionPending: Accessor<boolean>
+  sessionTransitionPending: Accessor<boolean>
   scopeName: Accessor<string>
   branch: Accessor<string | undefined>
   lastModified: Accessor<string | null | undefined>
@@ -127,7 +125,7 @@ export function PromptDock(props: {
                           text-12-medium text-text-weak hover:text-text-base
                           active:scale-95
                           transition-all duration-150"
-                          onClick={() => props.navigate(untrack(parentID))}
+                          onClick={() => props.navigate(untrack(parentID), "return-to-parent")}
                         >
                           <Icon name={getSemanticIcon("navigation.back")} size="small" />
                           <span>Back to parent</span>
@@ -183,8 +181,8 @@ export function PromptDock(props: {
                     newSessionCanCreateWorktree={!props.isGlobal}
                     onNewSessionWorkspaceSelectionChange={props.onNewSessionWorkspaceSelectionChange}
                     onNewSessionWorkspaceSelectionReset={props.onNewSessionWorkspaceSelectionReset}
-                    onNewSessionStartProgress={props.onNewSessionStartProgress}
-                    workspaceTransitionPending={props.workspaceTransitionPending()}
+                    onNewSessionTransitionChange={props.onNewSessionTransitionChange}
+                    sessionTransitionPending={props.sessionTransitionPending()}
                     hideAgentSelector={!meta().showInputBar}
                     onPriorityControlChange={(control) => setPriorityControl(() => control)}
                   />

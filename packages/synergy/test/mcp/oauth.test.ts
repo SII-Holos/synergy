@@ -1,8 +1,10 @@
-import { describe, expect, test, beforeAll, beforeEach, afterAll, afterEach } from "bun:test"
+import { describe, expect, test, beforeAll, beforeEach, afterAll, afterEach, mock } from "bun:test"
 import fs from "fs/promises"
 import { McpOAuthProvider, OAUTH_CALLBACK_PATH, getOAuthCallbackPort } from "../../src/mcp/oauth-provider"
 import { McpAuth } from "../../src/mcp/auth"
 import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
+import { MCP } from "../../src/mcp"
+import { PendingOAuth } from "../../src/mcp/pending-oauth"
 import { Global } from "../../src/global"
 import { Log } from "../../src/util/log"
 
@@ -430,6 +432,24 @@ describe.serial("McpOAuthCallback", () => {
     ])
   })
 
+  test("callback escapes provider errors before rendering HTML", async () => {
+    const oauthState = "escaped-error-state"
+    const errorDescription = `<script>alert("xss")</script> & denied`
+    const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
+    const response = dispatchCallback(
+      `${OAUTH_CALLBACK_PATH}?error=access_denied&error_description=${encodeURIComponent(errorDescription)}&state=${oauthState}`,
+    )
+
+    await Promise.all([
+      (async () => {
+        const body = await response.text()
+        expect(body).not.toContain("<script>alert")
+        expect(body).toContain("&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt; &amp; denied")
+      })(),
+      expect(callbackPromise).rejects.toThrow(errorDescription),
+    ])
+  })
+
   test("callback rejects with error code when no description", async () => {
     const oauthState = "error-state-no-desc"
     const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
@@ -472,13 +492,50 @@ describe.serial("McpOAuthCallback", () => {
     expect(response.status).toBe(404)
   })
 
-  test("cancelPending rejects the waiting promise", async () => {
-    const oauthState = "cancel-state"
-    const callbackPromise = McpOAuthCallback.waitForCallback(oauthState)
+  test("cancelPending rejects the callback registered for an MCP server", async () => {
+    const callbackPromise = McpOAuthCallback.waitForCallback("cancel-state", "demo-server")
 
-    McpOAuthCallback.cancelPending(oauthState)
+    McpOAuthCallback.cancelPending("demo-server")
 
     await expect(callbackPromise).rejects.toThrow("Authorization cancelled")
+  })
+
+  test("cancelling one MCP server leaves other callbacks pending", async () => {
+    const first = McpOAuthCallback.waitForCallback("first-state", "first-server")
+    const second = McpOAuthCallback.waitForCallback("second-state", "second-server")
+
+    McpOAuthCallback.cancelPending("first-server")
+    const response = dispatchCallback(`${OAUTH_CALLBACK_PATH}?code=second-code&state=second-state`)
+
+    await expect(first).rejects.toThrow("Authorization cancelled")
+    expect(await second).toBe("second-code")
+    expect(response.status).toBe(200)
+  })
+
+  test("finishAuth failure closes the pending OAuth owner", async () => {
+    const close = mock(async () => {})
+    await PendingOAuth.register("failed-server", {
+      client: { close },
+      transport: {
+        finishAuth: async () => {
+          throw new Error("token exchange failed")
+        },
+      },
+    })
+
+    const status = await MCP.finishAuth("failed-server", "invalid-code")
+
+    expect(status).toEqual({ status: "failed", error: "token exchange failed" })
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(PendingOAuth.get("failed-server")).toBeUndefined()
+  })
+
+  test("MCP stop shuts down the OAuth callback server", async () => {
+    await McpOAuthCallback.ensureRunning()
+
+    await MCP.stop()
+
+    expect(McpOAuthCallback.isRunning()).toBe(false)
   })
 
   test("stop rejects all pending auths", async () => {

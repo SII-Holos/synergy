@@ -5,6 +5,15 @@ export type TurnChangeSummaryDiff = {
   binary?: boolean
 }
 
+export type TurnDiffPanelState = "hidden" | "pending" | "ready" | "error"
+
+export const TURN_DIFF_PENDING_DELAY_MS = 150
+
+export function resolveTurnDiffPanelState(state: TurnDiffPanelState, pendingDelayElapsed: boolean): TurnDiffPanelState {
+  if (state === "pending" && !pendingDelayElapsed) return "hidden"
+  return state
+}
+
 export function turnChangeSummaryTitle(fileCount: number) {
   return `Changed ${fileCount} ${fileCount === 1 ? "file" : "files"}`
 }
