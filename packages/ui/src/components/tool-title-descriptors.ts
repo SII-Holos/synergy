@@ -266,7 +266,7 @@ export const CLASSIFIER_LABEL_DESC: Record<string, MessageDescriptor> = {
   communication: d("classifier.label.communication", "Send"),
   skill: d("classifier.label.skill", "Skill"),
   research: d("classifier.label.research", "Research"),
-  generic: d("classifier.label.generic", ""),
+  generic: d("classifier.label.generic", "Tool"),
 }
 
 // ── Special user message labels ─────────────────────────────────────

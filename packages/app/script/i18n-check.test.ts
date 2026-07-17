@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { readFile } from "node:fs/promises"
 import { changedCatalogPaths, missingTranslationIds } from "./i18n-check"
 
 describe("i18n catalog drift check", () => {
@@ -54,5 +55,11 @@ msgstr ""
 `
 
     expect(missingTranslationIds(source, target)).toEqual(["app.blank", "app.missing"])
+  })
+
+  test("keeps the English source catalog complete", async () => {
+    const source = await readFile(new URL("../src/locales/en/messages.po", import.meta.url), "utf-8")
+
+    expect(missingTranslationIds(source, source)).toEqual([])
   })
 })

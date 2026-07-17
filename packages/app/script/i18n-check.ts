@@ -82,6 +82,17 @@ async function main(): Promise<void> {
   const chineseCatalog = after.get("zh-CN/messages.po")
   const missingChineseTranslations =
     sourceCatalog && chineseCatalog ? missingTranslationIds(sourceCatalog, chineseCatalog) : ["<missing-catalog>"]
+  const missingSourceTranslations = sourceCatalog
+    ? missingTranslationIds(sourceCatalog, sourceCatalog)
+    : ["<missing-catalog>"]
+
+  if (missingSourceTranslations.length > 0) {
+    console.error(`English source catalog has ${missingSourceTranslations.length} missing default message(s):`)
+    for (const id of missingSourceTranslations.slice(0, 20)) console.error(`  ${id}`)
+    if (missingSourceTranslations.length > 20) {
+      console.error(`  ...and ${missingSourceTranslations.length - 20} more`)
+    }
+  }
 
   if (missingChineseTranslations.length > 0) {
     console.error(`Simplified Chinese catalog has ${missingChineseTranslations.length} missing translation(s):`)
@@ -94,7 +105,14 @@ async function main(): Promise<void> {
   const compiled = await run([process.execPath, "run", "i18n:compile", "--", "--strict"], appDir)
   const sourceContract = await run([process.execPath, "run", "localization:source"], repositoryRoot)
 
-  if (!extracted || changed.length > 0 || missingChineseTranslations.length > 0 || !compiled || !sourceContract) {
+  if (
+    !extracted ||
+    changed.length > 0 ||
+    missingSourceTranslations.length > 0 ||
+    missingChineseTranslations.length > 0 ||
+    !compiled ||
+    !sourceContract
+  ) {
     process.exit(1)
   }
 }
