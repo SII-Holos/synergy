@@ -14,13 +14,14 @@ import { S } from "./session-i18n"
 
 interface DialogRewindConfirmProps {
   cutMessage: UserMessage
+  /** All messages in canonical session order */
   allMessages: { id: string; role: string }[]
   partsByMessage: Record<string, PartType[] | undefined>
   onRewind: (cutMessageID: string, restoreFiles: boolean) => Promise<void>
 }
 
 function activeMessageIndex(messages: { id: string }[], cutId: string) {
-  return messages.findIndex((m) => m.id >= cutId)
+  return messages.findIndex((message) => message.id === cutId)
 }
 
 function computeCounts(props: {

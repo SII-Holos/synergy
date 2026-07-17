@@ -164,6 +164,14 @@ export const AP = {
 
   // ── pages/session.tsx ───────────────────────────────────────────────
   sessionErrorTitle: { id: "app.session.error.title", message: "Couldn’t load conversation" },
+  sessionLoadEarlierFailed: {
+    id: "app.session.history.loadEarlierFailed",
+    message: "Couldn’t load earlier messages",
+  },
+  sessionReturnLatestFailed: {
+    id: "app.session.history.returnLatestFailed",
+    message: "Couldn’t return to latest messages",
+  },
   sessionLoading: { id: "app.session.loading", message: "Loading conversation…" },
   sessionRetry: { id: "app.session.retry", message: "Retry" },
   sessionNoMessages: { id: "app.session.noMessages", message: "No messages yet" },

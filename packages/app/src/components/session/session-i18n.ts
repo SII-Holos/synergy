@@ -14,6 +14,11 @@ export const S = {
   convPending: { id: "session.conversation.pending", message: "Pending\u2026" },
   convLoadEarlier: { id: "session.conversation.loadEarlier", message: "Load earlier messages" },
   convLoadingEarlier: { id: "session.conversation.loadingEarlier", message: "Loading earlier messages..." },
+  convReturnLatest: { id: "session.conversation.returnLatest", message: "Return to latest" },
+  convNewMessagesReturnLatest: {
+    id: "session.conversation.newMessagesReturnLatest",
+    message: "New messages — Return to latest",
+  },
   convPausedTooltip: {
     id: "session.conversation.pausedTooltip",
     message: "Delivery paused during rollback. Will resume on redo or new task.",

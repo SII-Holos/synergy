@@ -5175,6 +5175,16 @@ msgstr "{count} Files Changed"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.loadEarlierFailed"
+msgstr "Couldn’t load earlier messages"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.returnLatestFailed"
+msgstr "Couldn’t return to latest messages"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.loading"
 msgstr "Loading conversation…"
 
@@ -9930,6 +9940,11 @@ msgstr "Move back to queue"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.newMessagesReturnLatest"
+msgstr "New messages — Return to latest"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.paused"
 msgstr "Paused"
 
@@ -9961,6 +9976,11 @@ msgstr "Remove pending message"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "Render earlier messages"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.returnLatest"
+msgstr "Return to latest"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

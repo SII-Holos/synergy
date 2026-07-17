@@ -5175,6 +5175,16 @@ msgstr ""
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.loadEarlierFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.returnLatestFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.loading"
 msgstr ""
 
@@ -9930,6 +9940,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.newMessagesReturnLatest"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.paused"
 msgstr ""
 
@@ -9960,6 +9975,11 @@ msgstr ""
 
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.returnLatest"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.

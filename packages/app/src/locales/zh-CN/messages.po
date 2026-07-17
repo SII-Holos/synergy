@@ -5175,6 +5175,16 @@ msgstr "{count} 个文件已更改"
 
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.loadEarlierFailed"
+msgstr "无法加载更早的消息"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.session.history.returnLatestFailed"
+msgstr "无法返回最新消息"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.session.loading"
 msgstr "正在加载对话…"
 
@@ -9930,6 +9940,11 @@ msgstr "移回队列"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.newMessagesReturnLatest"
+msgstr "有新消息 — 返回最新消息"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.conversation.paused"
 msgstr "已暂停"
 
@@ -9961,6 +9976,11 @@ msgstr "移除待处理消息"
 #. conversation.tsx
 msgid "session.conversation.renderEarlier"
 msgstr "渲染更早的消息"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.conversation.returnLatest"
+msgstr "返回最新消息"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
