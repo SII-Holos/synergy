@@ -203,7 +203,10 @@ export namespace SessionInvoke {
         runtime.waiters.push({ onComplete, onCancel })
       })
     }
-    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), { lease })
+    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), {
+      lease,
+      requestNextWorkOnFailure: false,
+    })
   })
 
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {

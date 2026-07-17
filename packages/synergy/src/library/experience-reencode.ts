@@ -1,13 +1,13 @@
 import { randomUUID } from "crypto"
 import type { MessageV2 } from "../session/message-v2"
 import { Session } from "../session"
+import { SessionMemoryPressure } from "../session/memory-pressure"
 import { Config } from "../config/config"
 import { Global } from "../global"
 import { Log } from "../util/log"
 import { LibraryDB } from "./database"
 import { detect, type Candidate } from "./experience-detect"
 import { ExperienceEncoder } from "./experience-encoder"
-import { SessionMemoryPressure } from "../session/memory-pressure"
 
 export namespace ExperienceReencode {
   export type JobType = LibraryDB.ReencodeJob.Type
@@ -48,6 +48,12 @@ export namespace ExperienceReencode {
   const running = new Map<string, Promise<void>>()
   const cancelling = new Set<string>()
   const log = Log.create({ service: "library.reencode" })
+  const DEFAULT_PRESSURE_POLL_MS = 30_000
+
+  function pressurePollMs() {
+    const configured = Number(process.env.SYNERGY_REENCODE_PRESSURE_POLL_MS)
+    return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_PRESSURE_POLL_MS
+  }
 
   function toSummary(row: LibraryDB.ReencodeJob.Row): JobSummary {
     return {
@@ -185,19 +191,46 @@ export namespace ExperienceReencode {
     )
   }
 
-  async function relieveMemoryPressure(sessionID: string) {
+  type PressureGate = () => Promise<boolean>
+
+  function createPressureGate(jobID: string): PressureGate {
+    let paused = false
+    return async () => {
+      const snapshot = await SessionMemoryPressure.currentSnapshotWithCgroup()
+      const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+      const decision = SessionMemoryPressure.decide({
+        snapshot,
+        thresholds,
+        now: Date.now(),
+        lastGCAt: 0,
+        gcAvailable: typeof Bun.gc === "function",
+      })
+      if (paused !== decision.critical) {
+        paused = decision.critical
+        log.info(paused ? "reencode paused for memory pressure" : "reencode resumed after memory pressure", {
+          jobID,
+          memory: snapshot,
+          thresholds,
+        })
+      }
+      return decision.critical
+    }
+  }
+
+  async function relieveMemoryPressure(input: {
+    sessionID: string
+    signal: AbortSignal
+    pressureGate: PressureGate
+    pressurePollMs: number
+  }) {
     const before = await SessionMemoryPressure.currentSnapshotWithCgroup()
-    if (!isCritical(before)) return
-    const result = await SessionMemoryPressure.maybeCollect({
-      sessionID,
-      phase: "library.reencode.after_session",
-    })
-    if (result.decision.action === "unavailable") {
-      throw new Error("reencode stopped because memory is critical and garbage collection is unavailable")
+    if (isCritical(before)) {
+      await SessionMemoryPressure.maybeCollect({
+        sessionID: input.sessionID,
+        phase: "library.reencode.after_session",
+      })
     }
-    if (result.after && isCritical(result.after)) {
-      throw new Error("reencode stopped because memory remains above the critical threshold")
-    }
+    return waitForPressureRelief(input)
   }
 
   type PendingItem = {
@@ -361,28 +394,39 @@ export namespace ExperienceReencode {
     try {
       const learning = await ExperienceEncoder.loadLearning()
       const { direct, sessions } = partitionItems(job, LibraryDB.ReencodeJob.pendingItems(jobID))
+      const pollMs = pressurePollMs()
+      const pressureGate = createPressureGate(jobID)
       await runPool({
         items: direct,
         concurrency: learning.reencodeConcurrency,
         signal: controller.signal,
+        pressureGate,
+        pressurePollMs: pollMs,
         process: (pending) => processItem({ job, pending, learning, signal: controller.signal }),
       })
       for (const [sessionID, items] of sessions) {
-        if (controller.signal.aborted) break
-        {
-          const loaded =
-            (await withStageRetry({
-              retries: learning.reencodeRetries,
-              backoffMs: learning.reencodeRetryBackoffMs,
-              signal: controller.signal,
-              operation: () => loadSession(sessionID),
-            })) ?? null
-          for (const pending of items) {
-            if (controller.signal.aborted) break
-            await processItem({ job, pending, learning, signal: controller.signal, loaded })
-          }
+        if (!(await waitForPressureRelief({ signal: controller.signal, pressureGate, pressurePollMs: pollMs }))) break
+        const loaded =
+          (await withStageRetry({
+            retries: learning.reencodeRetries,
+            backoffMs: learning.reencodeRetryBackoffMs,
+            signal: controller.signal,
+            operation: () => loadSession(sessionID),
+          })) ?? null
+        for (const pending of items) {
+          if (controller.signal.aborted) break
+          await processItem({ job, pending, learning, signal: controller.signal, loaded })
         }
-        await relieveMemoryPressure(sessionID)
+        if (
+          !(await relieveMemoryPressure({
+            sessionID,
+            signal: controller.signal,
+            pressureGate,
+            pressurePollMs: pollMs,
+          }))
+        ) {
+          break
+        }
       }
       const latest = LibraryDB.ReencodeJob.get(jobID)
       if (latest?.status === "running" && !cancelling.has(jobID)) {
@@ -402,6 +446,8 @@ export namespace ExperienceReencode {
     items: T[]
     concurrency: number
     signal: AbortSignal
+    pressureGate?: () => boolean | Promise<boolean>
+    pressurePollMs?: number
     process: (item: T) => Promise<void>
   }): Promise<void> {
     let cursor = 0
@@ -409,11 +455,29 @@ export namespace ExperienceReencode {
     await Promise.all(
       Array.from({ length: workerCount }, async () => {
         while (!input.signal.aborted && cursor < input.items.length) {
+          if (!(await waitForPressureRelief(input))) return
+          if (input.signal.aborted || cursor >= input.items.length) return
           const index = cursor++
           await input.process(input.items[index])
         }
       }),
     )
+  }
+
+  async function waitForPressureRelief(input: {
+    signal: AbortSignal
+    pressureGate?: () => boolean | Promise<boolean>
+    pressurePollMs?: number
+  }): Promise<boolean> {
+    while (!input.signal.aborted && input.pressureGate && (await input.pressureGate())) {
+      try {
+        await sleep(Math.max(1, input.pressurePollMs ?? DEFAULT_PRESSURE_POLL_MS), input.signal)
+      } catch (error) {
+        if (input.signal.aborted) return false
+        throw error
+      }
+    }
+    return !input.signal.aborted
   }
 
   function isTransient(error: unknown) {
@@ -444,9 +508,11 @@ export namespace ExperienceReencode {
 
   async function sleep(ms: number, signal: AbortSignal) {
     if (ms <= 0) return
+    if (signal.aborted) throw new DOMException("Aborted", "AbortError")
     await new Promise<void>((resolve, reject) => {
       const abort = () => {
         clearTimeout(timeout)
+        signal.removeEventListener("abort", abort)
         reject(new DOMException("Aborted", "AbortError"))
       }
       const timeout = setTimeout(() => {
@@ -454,6 +520,7 @@ export namespace ExperienceReencode {
         resolve()
       }, ms)
       signal.addEventListener("abort", abort, { once: true })
+      if (signal.aborted) abort()
       timeout.unref?.()
     })
   }

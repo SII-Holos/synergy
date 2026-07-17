@@ -220,6 +220,8 @@ Promoting a queued user task to guide/steer changes the inbox mode instead of wr
 
 On abort, steer and context items are discarded while queued task items remain for explicit later execution.
 
+If a loop run fails while runnable inbox work remains, release still yields ownership but does not immediately request another drive cycle. The durable inbox item remains available for an explicit retry or a later delivery-triggered wake instead of entering a tight self-wake loop.
+
 ## Model Context Projection
 
 `MessageV2.toModelMessage()` projects canonical session history into provider messages.

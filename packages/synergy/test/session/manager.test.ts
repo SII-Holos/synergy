@@ -325,6 +325,85 @@ describe("SessionManager.getSession", () => {
 })
 
 describe("loop ownership", () => {
+  test("lets inbox loop callers suppress release wake after failure", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRequest = SessionDrive.request
+        const driveRequests: string[] = []
+        ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
+          driveRequests.push(reason)
+          return true
+        })
+
+        let sessionID = ""
+        try {
+          const session = await Session.create({})
+          sessionID = session.id
+          const item = await SessionInbox.enqueueUser({
+            sessionID,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "missing-model" },
+            parts: [{ type: "text", text: "Retry after provider recovery" }],
+          })
+
+          await expect(
+            SessionManager.run(
+              sessionID,
+              async () => {
+                throw new Error("simulated loop failure")
+              },
+              { requestNextWorkOnFailure: false },
+            ),
+          ).rejects.toThrow("simulated loop failure")
+
+          expect(SessionManager.isRunning(sessionID)).toBe(false)
+          expect(SessionManager.getRuntime(sessionID)).toBeUndefined()
+          expect(driveRequests).not.toContain("release")
+          expect((await SessionInbox.list(sessionID)).map((entry) => entry.id)).toContain(item.id)
+        } finally {
+          ;(SessionDrive.request as any) = originalRequest
+          if (sessionID) SessionManager.unregisterRuntime(sessionID)
+          SessionDrive.reset()
+        }
+      },
+    })
+  })
+
+  test("requests pending work after a non-loop run fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const originalRequest = SessionDrive.request
+        const driveRequests: string[] = []
+        ;(SessionDrive.request as any) = mock(async (_sessionID: string, reason: string) => {
+          driveRequests.push(reason)
+          return true
+        })
+
+        let sessionID = ""
+        try {
+          const session = await Session.create({})
+          sessionID = session.id
+
+          await expect(
+            SessionManager.run(sessionID, async () => {
+              throw new Error("simulated command failure")
+            }),
+          ).rejects.toThrow("simulated command failure")
+
+          expect(driveRequests).toContain("release")
+        } finally {
+          ;(SessionDrive.request as any) = originalRequest
+          if (sessionID) SessionManager.unregisterRuntime(sessionID)
+          SessionDrive.reset()
+        }
+      },
+    })
+  })
+
   test("reserves ownership before async session setup can yield", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
