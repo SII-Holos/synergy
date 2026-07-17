@@ -75,11 +75,14 @@ export const ClarusSubmitTaskResultTool = Tool.define(
       } catch (error) {
         const failure = parseClarusRequestFailure(error)
         if (failure?.disposition === "rejected") {
-          throw toolError(
-            failure.code,
-            `${failure.code}: ${failure.message}. The Clarus server definitively rejected this result. Do not retry unless Clarus reassigns the task.`,
-            { disposition: failure.disposition, requestID: failure.requestID },
-          )
+          const message =
+            failure.code === "ABORTED"
+              ? `${failure.code}: ${failure.message}. The result was not dispatched.`
+              : `${failure.code}: ${failure.message}. The Clarus server definitively rejected this result. Do not retry unless Clarus reassigns the task.`
+          throw toolError(failure.code, message, {
+            disposition: failure.disposition,
+            requestID: failure.requestID,
+          })
         }
         if (failure?.disposition === "ambiguous") {
           throw toolError(

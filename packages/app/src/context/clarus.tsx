@@ -7,10 +7,21 @@
  */
 
 import { createEffect } from "solid-js"
+import type { Event } from "@ericsanchezok/synergy-sdk/client"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createClarusModel, type ClarusModel } from "./clarus/clarus-model"
 import { useGlobalSDK } from "./global-sdk"
 import { useGlobalSync } from "./global-sync"
+import { HOME_SCOPE_KEY } from "@/utils/scope"
+type ClarusEventSource = {
+  on(directory: string, handler: (event: Event) => void): () => void
+}
+
+export function listenForClarusNavigationUpdates(source: ClarusEventSource, handler: () => void): () => void {
+  return source.on(HOME_SCOPE_KEY, (event) => {
+    if (event.type === "clarus.navigation.updated") handler()
+  })
+}
 
 export const { use: useClarus, provider: ClarusProvider } = createSimpleContext({
   name: "Clarus",
@@ -37,11 +48,10 @@ export const { use: useClarus, provider: ClarusProvider } = createSimpleContext(
         })),
       eventEmitter: {
         listen(handler) {
-          return sdk.event.on("global", (event) => {
-            if (event.type !== "clarus.navigation.updated") return
+          return listenForClarusNavigationUpdates(sdk.event, () => {
             handler({
-              type: event.type,
-              properties: event.properties,
+              type: "clarus.navigation.updated",
+              properties: {},
             })
           })
         },

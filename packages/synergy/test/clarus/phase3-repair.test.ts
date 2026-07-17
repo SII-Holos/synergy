@@ -178,7 +178,7 @@ describe("Clarus Phase 3 security boundaries", () => {
 })
 
 describe("Clarus Phase 3 result state machine", () => {
-  test("transport response does not acknowledge a result; only exact recorded event does", async () => {
+  test("result dispatch returns without acknowledging; only exact recorded event acknowledges", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const port = new IdlePort()
@@ -190,7 +190,7 @@ describe("Clarus Phase 3 result state machine", () => {
         await ClarusRuntime.attach(port)
         await port.emitConnection(connected())
         const requestID = "result_repair"
-        const result = ClarusRuntime.recordTaskResult({
+        const result = await ClarusRuntime.recordTaskResult({
           requestID,
           agentId,
           projectId,
@@ -204,16 +204,8 @@ describe("Clarus Phase 3 result state machine", () => {
           notaryRefs: [],
           payload: {},
         })
-        await Bun.sleep(10)
+        expect(result).toEqual({ requestID })
         expect((await ClarusOutbox.get(requestID))?.state).toBe("dispatched")
-        const settled = await Promise.race([
-          result.then(
-            () => true,
-            () => true,
-          ),
-          Bun.sleep(20).then(() => false),
-        ])
-        expect(settled).toBe(false)
       },
     })
   })
