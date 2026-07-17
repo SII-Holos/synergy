@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { afterAll, afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { isolateClarusHome } from "../helpers/clarus-isolation"
 await isolateClarusHome(import.meta.url)
 
@@ -188,130 +188,151 @@ class StallingRest implements ClarusRestPort.Interface {
 }
 
 // ── HolosRuntime mock (for init/reconnect tests) ────────────────────
+let moduleMocksActive = true
 let mockHolosStatus: { status: string; error?: string } = { status: "disconnected" }
 let mockGetNativeTunnelFailures = 0
 let mockReloadCalls = 0
 let mockHolosStatusGate: (() => void) | null = null
 const fakeNativePort = new FakeNativePort()
-
-mock.module("@/holos/runtime", () => {
-  const zMod = z
-  return {
-    HolosRuntime: {
-      status: async () => {
-        if (mockHolosStatusGate) {
-          await new Promise<void>((resolve) => {
-            mockHolosStatusGate = resolve
-          })
-        }
-        if (mockHolosStatus.status === "failed") {
-          return { status: "failed", error: mockHolosStatus.error } as const
-        }
-        return { status: mockHolosStatus.status } as { status: string }
-      },
-      getNativeTunnel: async () => {
-        if (mockGetNativeTunnelFailures > 0) {
-          mockGetNativeTunnelFailures--
-          throw new Error("mock tunnel setup failure")
-        }
-        return {
-          registerNativeObserver: (h: (msg: NativeMessage) => void | Promise<void>) => {
-            fakeNativePort.nativeObservers.add(h)
-            return () => {
-              fakeNativePort.nativeObservers.delete(h)
-            }
-          },
-          registerConnectionObserver: (h: (event: HolosConnectionEvent) => void | Promise<void>) => {
-            fakeNativePort.connectionObservers.add(h)
-            return () => {
-              fakeNativePort.connectionObservers.delete(h)
-            }
-          },
-          sendNativeRequest: (input: {
-            type: string
-            payload: unknown
-            requestID: string
-            expectedResponseType: string
-            timeoutMs?: number
-            signal?: AbortSignal
-            meta?: Record<string, unknown>
-          }) => {
-            fakeNativePort.requestCalls.push({
-              type: input.type,
-              payload: input.payload,
-              requestID: input.requestID,
-              expectedResponseType: input.expectedResponseType,
-            })
-            return { requestID: input.requestID, response: new Promise<NativeMessage>(() => {}) }
-          },
+const realHolosRuntime = { ...(await import("../../src/holos/runtime")).HolosRuntime }
+const mockedHolosRuntime = {
+  status: async () => {
+    if (mockHolosStatusGate) {
+      await new Promise<void>((resolve) => {
+        mockHolosStatusGate = resolve
+      })
+    }
+    if (mockHolosStatus.status === "failed") {
+      return { status: "failed", error: mockHolosStatus.error } as const
+    }
+    return { status: mockHolosStatus.status } as { status: string }
+  },
+  getNativeTunnel: async () => {
+    if (mockGetNativeTunnelFailures > 0) {
+      mockGetNativeTunnelFailures--
+      throw new Error("mock tunnel setup failure")
+    }
+    return {
+      registerNativeObserver: (h: (msg: NativeMessage) => void | Promise<void>) => {
+        fakeNativePort.nativeObservers.add(h)
+        return () => {
+          fakeNativePort.nativeObservers.delete(h)
         }
       },
-      reload: async () => {
-        mockReloadCalls++
+      registerConnectionObserver: (h: (event: HolosConnectionEvent) => void | Promise<void>) => {
+        fakeNativePort.connectionObservers.add(h)
+        return () => {
+          fakeNativePort.connectionObservers.delete(h)
+        }
       },
-      init: async () => {},
-      start: async () => {},
-      stop: async () => {},
-      Event: {
-        Connected: {
-          type: "holos.connected",
-          properties: zMod.object({ peerId: zMod.string() }),
-        },
-        StatusChanged: {
-          type: "holos.connection.status_changed",
-          properties: zMod.object({ status: zMod.string(), error: zMod.string().optional() }),
-        },
-        PresenceUpdate: {
-          type: "holos.presence",
-          properties: zMod.object({ peerId: zMod.string(), status: zMod.any() }),
-        },
+      sendNativeRequest: (input: {
+        type: string
+        payload: unknown
+        requestID: string
+        expectedResponseType: string
+        timeoutMs?: number
+        signal?: AbortSignal
+        meta?: Record<string, unknown>
+      }) => {
+        fakeNativePort.requestCalls.push({
+          type: input.type,
+          payload: input.payload,
+          requestID: input.requestID,
+          expectedResponseType: input.expectedResponseType,
+        })
+        return { requestID: input.requestID, response: new Promise<NativeMessage>(() => {}) }
       },
-      registerAppEventHandler: () => () => {},
-      dispatchAppEvent: async () => false,
-      getProvider: async () => null,
+    }
+  },
+  reload: async () => {
+    mockReloadCalls++
+  },
+  init: async () => {},
+  start: async () => {},
+  stop: async () => {},
+  Event: {
+    Connected: {
+      type: "holos.connected",
+      properties: z.object({ peerId: z.string() }),
     },
-  }
-})
+    StatusChanged: {
+      type: "holos.connection.status_changed",
+      properties: z.object({ status: z.string(), error: z.string().optional() }),
+    },
+    PresenceUpdate: {
+      type: "holos.presence",
+      properties: z.object({ peerId: z.string(), status: z.any() }),
+    },
+  },
+  registerAppEventHandler: () => () => {},
+  dispatchAppEvent: async () => false,
+  getProvider: async () => null,
+}
+
+mock.module("@/holos/runtime", () => ({
+  HolosRuntime: new Proxy(realHolosRuntime, {
+    get(target, property, receiver) {
+      if (moduleMocksActive && Object.hasOwn(mockedHolosRuntime, property)) {
+        return Reflect.get(mockedHolosRuntime, property)
+      }
+      return Reflect.get(target, property, receiver)
+    },
+  }),
+}))
 
 // ── Config / Auth mock state (for GlobalRuntime REST wiring tests) ──
 
 let mockConfigCurrent: Record<string, unknown> = {}
-
-mock.module("@/config/config", () => {
-  return {
-    Config: {
-      current: async () => mockConfigCurrent,
-      globalResolved: async () => mockConfigCurrent,
-      domainUpdate: async () => {},
-      Event: {
-        Updated: {
-          type: "config.updated",
-          properties: z.object({ scope: z.string(), changedFields: z.array(z.string()) }),
-        },
-      },
-      diff: () => [],
-      redactForClient: (c: unknown) => c,
+const realConfig = { ...(await import("../../src/config/config")).Config }
+const mockedConfig = {
+  current: async () => mockConfigCurrent,
+  globalResolved: async () => mockConfigCurrent,
+  domainUpdate: async () => {},
+  Event: {
+    Updated: {
+      type: "config.updated",
+      properties: z.object({ scope: z.string(), changedFields: z.array(z.string()) }),
     },
-  }
-})
+  },
+  diff: () => [],
+  redactForClient: (c: unknown) => c,
+}
+
+mock.module("@/config/config", () => ({
+  Config: new Proxy(realConfig, {
+    get(target, property, receiver) {
+      if (moduleMocksActive && Object.hasOwn(mockedConfig, property)) {
+        return Reflect.get(mockedConfig, property)
+      }
+      return Reflect.get(target, property, receiver)
+    },
+  }),
+}))
 
 let mockCredentialId: string | null = null
 let mockCredentialSecret: string | null = null
+const realHolosAuth = { ...(await import("../../src/holos/auth")).HolosAuth }
+const mockedHolosAuth = {
+  getStoredCredential: async () => {
+    if (!mockCredentialId) return undefined
+    return {
+      agentId: mockCredentialId,
+      agentSecret: mockCredentialSecret ?? "",
+      maskedSecret: "********",
+    }
+  },
+}
 
-mock.module("@/holos/auth", () => {
-  return {
-    HolosAuth: {
-      getStoredCredential: async () => {
-        if (!mockCredentialId) return undefined
-        return {
-          agentId: mockCredentialId,
-          agentSecret: mockCredentialSecret ?? "",
-          maskedSecret: "********",
-        }
-      },
+mock.module("@/holos/auth", () => ({
+  HolosAuth: new Proxy(realHolosAuth, {
+    get(target, property, receiver) {
+      if (moduleMocksActive && Object.hasOwn(mockedHolosAuth, property)) {
+        return Reflect.get(mockedHolosAuth, property)
+      }
+      return Reflect.get(target, property, receiver)
     },
-  }
-})
+  }),
+}))
 
 const GlobalRuntimeMock = {
   setConfig(holosApiUrl?: string, clarusApiUrl?: string) {
@@ -376,6 +397,10 @@ const HolosRuntimeMock = {
     fakeNativePort.reset()
   },
 }
+afterAll(() => {
+  moduleMocksActive = false
+})
+
 // ── Test setup / cleanup ────────────────────────────────────────────
 
 beforeEach(() => {
