@@ -20,6 +20,7 @@ import { Session } from "."
 import { lastModel, type InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
+import { SessionHistory } from "./history"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -314,7 +315,7 @@ export namespace SessionInbox {
     const session = await Session.get(sessionID).catch(() => undefined)
     let agentName = payload.agent ?? session?.agentOverride
     if (!agentName) {
-      const messages = await Session.messages({ sessionID })
+      const messages = await SessionHistory.modelMessages({ sessionID })
       for (let index = messages.length - 1; index >= 0; index--) {
         const msg = messages[index]
         if (msg.info.role !== "user") continue
@@ -333,7 +334,7 @@ export namespace SessionInbox {
   }
 
   export async function latestRootID(sessionID: string): Promise<string | undefined> {
-    const messages = await Session.messages({ sessionID })
+    const messages = await SessionHistory.modelMessages({ sessionID })
     for (let index = messages.length - 1; index >= 0; index--) {
       const msg = messages[index]
       if (msg.info.role !== "user") continue
@@ -447,10 +448,10 @@ export namespace SessionInbox {
     if (existing) return { itemID: existing.id, messageID: existing.messageID, created: false }
 
     const legacyMessageID = legacyStableMessageID(input.sessionID, input.deliveryKey)
-    const materialized = (await Session.messages({ sessionID: input.sessionID })).find(
-      (message) => message.info.id === legacyMessageID || message.info.metadata?.inboxDeliveryKey === input.deliveryKey,
+    const materialized = (await SessionHistory.messageInfos(input.sessionID)).find(
+      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === input.deliveryKey,
     )
-    if (materialized) return { itemID, messageID: materialized.info.id, created: false }
+    if (materialized) return { itemID, messageID: materialized.id, created: false }
 
     const ids = { itemID, messageID: Identifier.ascending("message") }
     const item = deliveryItem(input, ids)
@@ -654,7 +655,9 @@ export namespace SessionInbox {
     options?: { guiding?: boolean },
   ): Promise<MessageV2.WithParts | undefined> {
     // Pre-allocated messageID ensures idempotent write
-    const existing = (await Session.messages({ sessionID: item.sessionID })).find((m) => m.info.id === item.messageID)
+    const existing = await MessageV2.get({ sessionID: item.sessionID, messageID: item.messageID }).catch(
+      () => undefined,
+    )
     if (existing) return existing
 
     const payload = item.message

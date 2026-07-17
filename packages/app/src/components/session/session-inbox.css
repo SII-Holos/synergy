@@ -47,7 +47,7 @@
   border-color: var(--border-weak-active);
 }
 
-.session-inbox-badge {
+.session-inbox-trigger > .session-inbox-badge {
   position: absolute;
   top: -0.25rem;
   right: -0.25rem;
