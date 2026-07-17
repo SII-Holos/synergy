@@ -237,6 +237,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
 
     const selectedVariant = local.model.variant.current()
+    const selectedModel = {
+      modelID: currentModel.id,
+      providerID: currentModel.provider.id,
+    }
     input.addToHistory(currentPrompt, mode)
     input.setStore("historyIndex", -1)
     input.setStore("savedPrompt", null)
@@ -284,7 +288,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           lightLoop: armedLightLoop,
           blueprintSlot,
           agent: currentAgent.name,
-          model: { providerID: currentModel.provider.id, modelID: currentModel.id },
+          model: selectedModel,
           variant: selectedVariant,
           autoSubmit: false,
         }
@@ -375,6 +379,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (session) {
         createdSessionForSubmit = true
         client = resolveSessionClient(sessionCreateScopeKey)
+        local.handoffNewSessionIntent(session.id)
+        if (selectedVariant) {
+          local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
+        }
         input.props.onNewSessionWorkspaceSelectionReset?.()
         publishNewSessionTransition(
           session.id,
@@ -527,15 +535,9 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const activeSession = session!
 
-    const model = {
-      modelID: currentModel.id,
-      providerID: currentModel.provider.id,
-    }
+    const model = selectedModel
     const agent = currentAgent.name
     const variant = selectedVariant
-    if (createdSessionForSubmit && variant) {
-      local.model.variant.setForSession(activeSession.id, variant, model, sessionScopeKey)
-    }
     const clearInput = () => {
       prompt.resetDraft()
       input.setStore("mode", "normal")
