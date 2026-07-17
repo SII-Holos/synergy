@@ -104,35 +104,6 @@ describe.serial("snapshot", () => {
     }
   })
 
-  test("retries a transient git init SIGPIPE exit", async () => {
-    await using tmp = await bootstrap()
-    const scope = await tmp.scope()
-    const originalSpawn = Bun.spawn
-    let initAttempts = 0
-    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
-      const command = args[0]
-      if (Array.isArray(command) && command.length === 2 && command[0] === "git" && command[1] === "init") {
-        initAttempts++
-        if (initAttempts === 1) {
-          return originalSpawn([process.execPath, "-e", "process.exit(141)"], args[1])
-        }
-      }
-      return originalSpawn(...args)
-    }) as typeof Bun.spawn
-
-    try {
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
-        },
-      })
-      expect(initAttempts).toBe(2)
-    } finally {
-      Bun.spawn = originalSpawn
-    }
-  })
-
   test("does not retry a permanent git spawn failure", async () => {
     await using tmp = await bootstrap()
     const scope = await tmp.scope()

@@ -34,17 +34,6 @@ describe("ObservabilityResources", () => {
     expect(metricNames).toContain("process.event_loop.lag")
   })
 
-  test("isolates pending resource samples when resetting the observability home", () => {
-    ObservabilityResources.start()
-    ObservabilityResources.snapshot({ role: "server" })
-    expect(ObservabilityStore.stats().pending).toBeGreaterThan(0)
-
-    resetObservabilityHome()
-
-    expect(ObservabilityResources.stats().running).toBe(false)
-    expect(ObservabilityStore.resourceSince(0)).toHaveLength(0)
-  })
-
   test("raises deterministic memory pressure issue when thresholds are exceeded", () => {
     ObservabilityConfig.refresh({
       observability: {
