@@ -1,9 +1,14 @@
 import { Agent } from "@/agent/agent"
-import { Cortex } from "@/cortex"
-import type { CortexTypes } from "@/cortex/types"
 import { Identifier } from "@/id/id"
+import { Scope } from "@/scope"
 import { Session } from "@/session"
 import { createUserMessage } from "@/session/input"
+import { SessionInvoke } from "@/session/invoke"
+import { SessionManager } from "@/session/manager"
+import { MessageV2 } from "@/session/message-v2"
+import { SessionProgress } from "@/session/progress"
+import * as SessionWorking from "@/session/working"
+import { Log } from "@/util/log"
 import { PerformanceDashboard } from "./dashboard"
 import { PerformanceError } from "./error"
 import { PerformanceInflight } from "./inflight"
@@ -11,8 +16,10 @@ import { PerformanceSchema } from "./schema"
 import { PerformanceTimeline } from "./timeline"
 
 export namespace PerformanceAnalysis {
+  const log = Log.create({ service: "performance.analysis" })
   const AGENT = "performance-analyst"
-  const TIMEOUT_MS = 180_000
+  const CANCEL_WAIT_MS = 2_000
+  const CANCEL_POLL_MS = 20
   const PROMPT_MAX_BYTES = 128 * 1024
   const PROMPT_STRING_LIMITS = [512, 256, 128, 64, 32] as const
   const PROMPT_ARRAY_LIMITS = [20, 10, 5, 3, 1] as const
@@ -172,28 +179,6 @@ export namespace PerformanceAnalysis {
     return header + "\n\n" + payload + footer
   }
 
-  export function launchInput(input: {
-    parentSessionID: string
-    parentMessageID: string
-    model: { providerID: string; modelID: string }
-    prompt: string
-  }): CortexTypes.LaunchInput {
-    return {
-      description: "Analyze runtime performance",
-      prompt: input.prompt,
-      agent: AGENT,
-      executionRole: "delegated_subagent",
-      parentSessionID: input.parentSessionID,
-      parentMessageID: input.parentMessageID,
-      model: input.model,
-      notifyParentOnComplete: false,
-      visibility: "visible",
-      tools: {},
-      output: { mode: "final_response" },
-      timeoutMs: TIMEOUT_MS,
-    }
-  }
-
   export async function start(input: PerformanceSchema.AnalysisRequest): Promise<PerformanceSchema.AnalysisView> {
     const agent = await Agent.get(AGENT)
     const model = agent ? await Agent.getAvailableModel(agent) : undefined
@@ -209,111 +194,151 @@ export namespace PerformanceAnalysis {
     const timeline = PerformanceTimeline.get({ windowMs: input.windowMs, metric: ANALYSIS_METRICS })
     const inflight = PerformanceInflight.get({ limit: 20 })
     const data = snapshot({ summary: await summaryPromise, timeline, inflight })
-    const parent = await Session.create({
+    const session = await Session.create({
       title: `Performance analysis · ${formatWindow(input.windowMs)}`,
-      agentOverride: "synergy",
+      agentOverride: AGENT,
     })
-    let parentMessage: Awaited<ReturnType<typeof createUserMessage>>
+
     try {
-      parentMessage = await createUserMessage({
-        sessionID: parent.id,
-        agent: "synergy",
+      const root = await createUserMessage({
+        sessionID: session.id,
+        agent: AGENT,
         model,
         noReply: false,
+        tools: {},
         metadata: { source: "performance-analysis" },
         parts: [
           { type: "text", text: `Analyze current Performance telemetry for the last ${formatWindow(input.windowMs)}.` },
+          { type: "text", origin: "system", text: buildPrompt(data) },
         ],
       })
-    } catch (error) {
-      await Session.remove(parent.id).catch(() => undefined)
-      throw error
-    }
-
-    try {
-      const task = await Cortex.launch(
-        launchInput({
-          parentSessionID: parent.id,
-          parentMessageID: parentMessage.info.id,
-          model,
-          prompt: buildPrompt(data),
-        }),
-      )
-      const attachmentText = "Open the linked child session to inspect the Performance analysis details."
-      await Session.updatePart({
-        id: Identifier.ascending("part"),
-        sessionID: parent.id,
-        messageID: parentMessage.info.id,
-        type: "attachment",
-        mime: "text/plain",
-        filename: "Performance analysis details.session.txt",
-        url: `data:text/plain;base64,${Buffer.from(attachmentText).toString("base64")}`,
-        model: { mode: "content", text: attachmentText },
-        metadata: {
-          kind: "session",
-          sessionId: task.sessionID,
-          title: "Performance analysis details",
-        },
+      await Session.update(session.id, (draft) => {
+        draft.pendingReply = true
       })
-      return viewFromTask(task)
+      void SessionInvoke.loop(session.id).catch((error) => {
+        log.error("performance analysis loop failed", { sessionID: session.id, error })
+      })
+      return PerformanceSchema.AnalysisView.parse({
+        sessionID: session.id,
+        status: "queued",
+        startedAt: root.info.time.created,
+      })
     } catch (error) {
-      await Session.remove(parent.id).catch(() => undefined)
+      await Session.remove(session.id).catch(() => undefined)
       throw error
     }
   }
 
   export async function get(sessionID: string): Promise<PerformanceSchema.AnalysisView> {
-    const session = await analysisSession(sessionID)
-    const live = Cortex.get(session.cortex.taskID)
-    if (live) return viewFromTask(live)
-    return viewFromSession(session)
+    const { session, messages, root } = await analysisSession(sessionID)
+    return viewFromSession({ session, messages, root })
   }
 
   export async function cancel(sessionID: string): Promise<PerformanceSchema.AnalysisView> {
-    const session = await analysisSession(sessionID)
-    const live = Cortex.get(session.cortex.taskID)
-    if (live && (live.status === "queued" || live.status === "running")) await Cortex.cancel(live.id)
+    await analysisSession(sessionID)
+    SessionInvoke.cancel(sessionID)
+    const deadline = Date.now() + CANCEL_WAIT_MS
+    while (SessionManager.isRunning(sessionID) && Date.now() < deadline) await Bun.sleep(CANCEL_POLL_MS)
+    await SessionInvoke.repairAfterAbort(sessionID)
+    if (!SessionManager.isRunning(sessionID)) {
+      const current = await analysisSession(sessionID)
+      if (!SessionProgress.findTerminalReply(current.messages, current.root.info.id))
+        await writeCancelledAssistant(current)
+    }
     return get(sessionID)
   }
 
   async function analysisSession(sessionID: string) {
     const session = await Session.get(sessionID).catch(() => undefined)
-    if (!session?.cortex || session.cortex.agent !== AGENT) {
-      throw new PerformanceError("PERF_ANALYSIS_NOT_FOUND", "Performance analysis was not found.", 404)
+    if (!session) throw analysisNotFound()
+    const messages = await Session.messages({ sessionID })
+    const root = messages.find(
+      (message): message is MessageV2.WithParts & { info: MessageV2.User } =>
+        message.info.role === "user" &&
+        (message.info as MessageV2.User).isRoot === true &&
+        message.info.metadata?.source === "performance-analysis",
+    )
+    if (!root) throw analysisNotFound()
+    return { session, messages, root }
+  }
+
+  async function viewFromSession(
+    input: Awaited<ReturnType<typeof analysisSession>>,
+  ): Promise<PerformanceSchema.AnalysisView> {
+    const terminal = SessionProgress.findTerminalReply(input.messages, input.root.info.id)
+    if (terminal?.info.role === "assistant") {
+      const assistant = terminal.info as MessageV2.Assistant
+      const error = assistant.error
+      const cancelled = error?.name === "MessageAbortedError"
+      const failed = !!error || assistant.finish === "error"
+      return PerformanceSchema.AnalysisView.parse({
+        sessionID: input.session.id,
+        status: failed ? (cancelled ? "cancelled" : "error") : "completed",
+        startedAt: input.root.info.time.created,
+        completedAt: assistant.time.completed,
+        result: failed ? undefined : outputText(terminal.parts),
+        error: error ? errorMessage(error) : failed ? "Performance analysis failed." : undefined,
+      })
     }
-    return session as typeof session & { cortex: NonNullable<typeof session.cortex> }
-  }
 
-  function viewFromTask(task: CortexTypes.Task): PerformanceSchema.AnalysisView {
+    if (SessionManager.isRunning(input.session.id)) {
+      return PerformanceSchema.AnalysisView.parse({
+        sessionID: input.session.id,
+        status: "running",
+        startedAt: input.root.info.time.created,
+      })
+    }
+
+    const working = await SessionWorking.resolve(input.session.id)
     return PerformanceSchema.AnalysisView.parse({
-      taskID: task.id,
-      sessionID: task.sessionID,
-      parentSessionID: task.parentSessionID,
-      status: task.status,
-      startedAt: task.startedAt,
-      completedAt: task.completedAt,
-      result: outputText(task.output),
-      error: task.error,
+      sessionID: input.session.id,
+      status: working?.status === "recovering" ? "interrupted" : input.session.pendingReply ? "queued" : "interrupted",
+      startedAt: input.root.info.time.created,
     })
   }
 
-  function viewFromSession(session: Awaited<ReturnType<typeof analysisSession>>): PerformanceSchema.AnalysisView {
-    return PerformanceSchema.AnalysisView.parse({
-      taskID: session.cortex.taskID,
-      sessionID: session.id,
-      parentSessionID: session.cortex.parentSessionID,
-      status: session.cortex.status,
-      startedAt: session.cortex.startedAt,
-      completedAt: session.cortex.completedAt,
-      result: outputText(session.cortex.output),
-      error: session.cortex.error,
+  async function writeCancelledAssistant(input: Awaited<ReturnType<typeof analysisSession>>) {
+    const completedAt = Date.now()
+    const scope = input.session.scope as Scope
+    await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      sessionID: input.session.id,
+      role: "assistant",
+      rootID: input.root.info.id,
+      parentID: input.root.info.id,
+      visible: true,
+      time: { created: completedAt, completed: completedAt },
+      modelID: input.root.info.model.modelID,
+      providerID: input.root.info.model.providerID,
+      path: { cwd: scope.directory, root: scope.directory },
+      mode: input.root.info.agent,
+      agent: input.root.info.agent,
+      cost: 0,
+      tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+      finish: "error",
+      error: new MessageV2.AbortedError({ message: "Performance analysis cancelled" }).toObject(),
+    })
+    await Session.update(input.session.id, (draft) => {
+      draft.pendingReply = undefined
     })
   }
 
-  function outputText(output: CortexTypes.TaskOutput | undefined) {
-    if (!output) return undefined
-    if (output.mode === "summary" || output.mode === "final_response") return output.value
-    return JSON.stringify(output.value)
+  function analysisNotFound() {
+    return new PerformanceError("PERF_ANALYSIS_NOT_FOUND", "Performance analysis was not found.", 404)
+  }
+
+  function outputText(parts: MessageV2.Part[]) {
+    const text = parts
+      .flatMap((part) => (part.type === "text" && !MessageV2.isSystemPart(part) ? [part.text] : []))
+      .join("\n")
+      .trim()
+    return text || undefined
+  }
+
+  function errorMessage(error: NonNullable<MessageV2.Assistant["error"]>) {
+    const data = error.data
+    if (data && typeof data === "object" && "message" in data && typeof data.message === "string") return data.message
+    return error.name
   }
 
   function formatWindow(windowMs: number) {

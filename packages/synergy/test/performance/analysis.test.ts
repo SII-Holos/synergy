@@ -1,12 +1,12 @@
 import { describe, expect, mock, test } from "bun:test"
 import { Agent } from "../../src/agent/agent"
-import { Cortex } from "../../src/cortex"
+import { Identifier } from "../../src/id/id"
 import { PerformanceAnalysis } from "../../src/performance/analysis"
 import type { PerformanceSchema } from "../../src/performance/schema"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionInvoke } from "../../src/session/invoke"
-import { SessionInbox } from "../../src/session/inbox"
+import { MessageV2 } from "../../src/session/message-v2"
 import { tmpdir } from "../fixture/fixture"
 
 describe("performance analysis", () => {
@@ -243,120 +243,219 @@ describe("performance analysis", () => {
     expect(() => JSON.parse(payload ?? "")).not.toThrow()
   })
 
-  test("launch input uses a tool-free visible Cortex child with durable final output", () => {
-    const input = PerformanceAnalysis.launchInput({
-      parentSessionID: "ses_parent01234567890",
-      parentMessageID: "msg_parent01234567890",
-      model: { providerID: "provider", modelID: "model" },
-      prompt: "Analyze this snapshot",
-    })
-
-    expect(input).toMatchObject({
-      agent: "performance-analyst",
-      executionRole: "delegated_subagent",
-      visibility: "visible",
-      tools: {},
-      output: { mode: "final_response" },
-      notifyParentOnComplete: false,
-      timeoutMs: 180_000,
-    })
-  })
-
-  test("removes the request session tree when Cortex launch fails", async () => {
+  test("starts one ordinary top-level session and invokes it without waiting", async () => {
     await using tmp = await tmpdir()
     const getAvailableModel = Agent.getAvailableModel
-    const launch = Cortex.launch
+    const loop = SessionInvoke.loop
+    const loopStarted = Promise.withResolvers<string>()
+    const releaseLoop = Promise.withResolvers<void>()
     ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
-    ;(Cortex.launch as unknown) = mock(async () => {
-      throw new Error("launch failed")
+    ;(SessionInvoke.loop as unknown) = mock(async (sessionID: string) => {
+      loopStarted.resolve(sessionID)
+      await releaseLoop.promise
+      return undefined as never
     })
-
-    try {
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          expect((await Session.list({ parentOnly: false })).total).toBe(0)
-          await expect(PerformanceAnalysis.start({ windowMs: 60_000 })).rejects.toThrow("launch failed")
-          expect((await Session.list({ parentOnly: false })).total).toBe(0)
-        },
-      })
-    } finally {
-      ;(Agent.getAvailableModel as unknown) = getAvailableModel
-      ;(Cortex.launch as unknown) = launch
-      Cortex.reset()
-    }
-  })
-
-  test("starts an auditable Cortex child from a visible performance request session", async () => {
-    await using tmp = await tmpdir()
-    const getAvailableModel = Agent.getAvailableModel
-    const invokeInternal = SessionInvoke.invokeInternal
-    const invokeInternalMock = mock(async () => {
-      throw new Error("stop before provider execution")
-    })
-    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
-    ;(SessionInvoke.invokeInternal as unknown) = invokeInternalMock
 
     try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const analysis = await PerformanceAnalysis.start({ windowMs: 60_000 })
-          const child = await Session.get(analysis.sessionID)
-          const parent = await Session.get(analysis.parentSessionID)
-          const parentMessages = await Session.messages({ sessionID: parent.id })
-          const parentRequest = parentMessages[0]
+          expect(await loopStarted.promise).toBe(analysis.sessionID)
 
-          expect(child.parentID).toBe(parent.id)
-          expect(child.cortex).toMatchObject({
-            taskID: analysis.taskID,
-            agent: "performance-analyst",
-            executionRole: "delegated_subagent",
-            visibility: "visible",
-            outputConfig: { mode: "final_response" },
-            notifyParentOnComplete: false,
+          const sessions = (await Session.list({ parentOnly: false })).data
+          expect(sessions).toHaveLength(1)
+          expect(analysis).toMatchObject({ sessionID: sessions[0]?.id, status: "queued" })
+          expect(analysis).not.toHaveProperty("taskID")
+          expect(analysis).not.toHaveProperty("parentSessionID")
+          expect(sessions[0]).toMatchObject({
+            agentOverride: "performance-analyst",
+            title: "Performance analysis · 1m",
+            pendingReply: true,
           })
-          expect(parent.title).toBe("Performance analysis · 1m")
-          expect(parentRequest?.info).toMatchObject({ role: "user", isRoot: true, rootID: parentRequest.info.id })
-          expect(parentRequest?.parts).toContainEqual(
+          expect(sessions[0]).not.toHaveProperty("parentID")
+          expect(sessions[0]).not.toHaveProperty("cortex")
+
+          const messages = await Session.messages({ sessionID: analysis.sessionID })
+          expect(messages).toHaveLength(1)
+          expect(messages[0]?.info).toMatchObject({
+            role: "user",
+            agent: "performance-analyst",
+            tools: {},
+            isRoot: true,
+            metadata: { source: "performance-analysis" },
+          })
+          expect(messages[0]?.parts).toContainEqual(
             expect.objectContaining({
               type: "text",
               text: "Analyze current Performance telemetry for the last 1m.",
             }),
           )
-          expect(parentRequest?.parts).toContainEqual(
+          expect(messages[0]?.parts).toContainEqual(
             expect.objectContaining({
-              type: "attachment",
-              metadata: expect.objectContaining({
-                kind: "session",
-                sessionId: child.id,
-                title: "Performance analysis details",
-              }),
+              type: "text",
+              origin: "system",
+              text: expect.stringContaining("<telemetry_data>"),
             }),
           )
-          const sessionAttachment = parentRequest?.parts.find((part) => part.type === "attachment")
-          expect(sessionAttachment?.metadata).not.toHaveProperty("directory")
 
-          const current = await PerformanceAnalysis.get(child.id)
-          expect(current.sessionID).toBe(child.id)
+          await Session.remove(analysis.sessionID)
+        },
+      })
+    } finally {
+      releaseLoop.resolve()
+      ;(Agent.getAvailableModel as unknown) = getAvailableModel
+      ;(SessionInvoke.loop as unknown) = loop
+    }
+  })
 
-          await Cortex.waitFor(analysis.taskID, 1)
-          expect(invokeInternalMock).toHaveBeenCalledTimes(1)
-          expect(invokeInternalMock).toHaveBeenCalledWith(expect.objectContaining({ sessionID: child.id }))
-          Cortex.reset()
-          const durable = await PerformanceAnalysis.get(child.id)
-          expect(durable.status).toBe("error")
-          expect(await SessionInbox.list(parent.id)).toEqual([])
+  test("reads the final response from durable Session messages", async () => {
+    await using tmp = await tmpdir()
+    const getAvailableModel = Agent.getAvailableModel
+    const loop = SessionInvoke.loop
+    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
+    ;(SessionInvoke.loop as unknown) = mock(async () => undefined as never)
 
-          await PerformanceAnalysis.cancel(child.id)
-          await Session.remove(child.id)
-          await Session.remove(parent.id)
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const analysis = await PerformanceAnalysis.start({ windowMs: 60_000 })
+          const session = await Session.get(analysis.sessionID)
+          const messages = await Session.messages({ sessionID: analysis.sessionID })
+          const root = messages[0]
+          if (!root || root.info.role !== "user") throw new Error("expected performance analysis root message")
+          const completedAt = Date.now()
+          const assistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: assistantID,
+            sessionID: session.id,
+            role: "assistant",
+            rootID: root.info.id,
+            parentID: root.info.id,
+            visible: true,
+            time: { created: completedAt, completed: completedAt },
+            modelID: root.info.model.modelID,
+            providerID: root.info.model.providerID,
+            path: { cwd: tmp.path, root: tmp.path },
+            mode: root.info.agent,
+            agent: root.info.agent,
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: session.id,
+            messageID: assistantID,
+            type: "text",
+            text: "The runtime is healthy.",
+          })
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = undefined
+          })
+
+          expect(await PerformanceAnalysis.get(session.id)).toEqual({
+            sessionID: session.id,
+            status: "completed",
+            startedAt: root.info.time.created,
+            completedAt,
+            result: "The runtime is healthy.",
+          })
+          await Session.remove(session.id)
         },
       })
     } finally {
       ;(Agent.getAvailableModel as unknown) = getAvailableModel
-      ;(SessionInvoke.invokeInternal as unknown) = invokeInternal
-      Cortex.reset()
+      ;(SessionInvoke.loop as unknown) = loop
+    }
+  })
+
+  test("reads durable Session assistant errors", async () => {
+    await using tmp = await tmpdir()
+    const getAvailableModel = Agent.getAvailableModel
+    const loop = SessionInvoke.loop
+    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
+    ;(SessionInvoke.loop as unknown) = mock(async () => undefined as never)
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const analysis = await PerformanceAnalysis.start({ windowMs: 60_000 })
+          const session = await Session.get(analysis.sessionID)
+          const messages = await Session.messages({ sessionID: analysis.sessionID })
+          const root = messages[0]
+          if (!root || root.info.role !== "user") throw new Error("expected performance analysis root message")
+          const completedAt = Date.now()
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            rootID: root.info.id,
+            parentID: root.info.id,
+            visible: true,
+            time: { created: completedAt, completed: completedAt },
+            modelID: root.info.model.modelID,
+            providerID: root.info.model.providerID,
+            path: { cwd: tmp.path, root: tmp.path },
+            mode: root.info.agent,
+            agent: root.info.agent,
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "error",
+            error: new MessageV2.APIError({ message: "Provider unavailable", isRetryable: false }).toObject(),
+          })
+
+          expect(await PerformanceAnalysis.get(session.id)).toEqual({
+            sessionID: session.id,
+            status: "error",
+            startedAt: root.info.time.created,
+            completedAt,
+            error: "Provider unavailable",
+          })
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      ;(Agent.getAvailableModel as unknown) = getAvailableModel
+      ;(SessionInvoke.loop as unknown) = loop
+    }
+  })
+
+  test("cancels an idle queued analysis with a durable aborted assistant", async () => {
+    await using tmp = await tmpdir()
+    const getAvailableModel = Agent.getAvailableModel
+    const loop = SessionInvoke.loop
+    ;(Agent.getAvailableModel as unknown) = mock(async () => ({ providerID: "test-provider", modelID: "test-model" }))
+    ;(SessionInvoke.loop as unknown) = mock(async () => undefined as never)
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const analysis = await PerformanceAnalysis.start({ windowMs: 60_000 })
+          const cancelled = await PerformanceAnalysis.cancel(analysis.sessionID)
+          expect(cancelled).toMatchObject({
+            sessionID: analysis.sessionID,
+            status: "cancelled",
+            error: "Performance analysis cancelled",
+          })
+          expect(cancelled.completedAt).toBeNumber()
+
+          const messages = await Session.messages({ sessionID: analysis.sessionID })
+          const assistant = messages.find((message) => message.info.role === "assistant")?.info as
+            | MessageV2.Assistant
+            | undefined
+          expect(assistant?.finish).toBe("error")
+          expect(assistant?.error?.name).toBe("MessageAbortedError")
+          expect((await Session.get(analysis.sessionID)).pendingReply).toBeUndefined()
+          await Session.remove(analysis.sessionID)
+        },
+      })
+    } finally {
+      ;(Agent.getAvailableModel as unknown) = getAvailableModel
+      ;(SessionInvoke.loop as unknown) = loop
     }
   })
 })

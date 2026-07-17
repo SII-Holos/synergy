@@ -309,7 +309,7 @@ function PerformanceAnalysisCard(props: {
               <div class="text-13-medium text-text-strong">AI performance analysis</div>
               <div class="text-11-regular text-text-subtle">
                 {analysis()
-                  ? "Bounded, redacted telemetry analyzed in a durable Cortex session"
+                  ? "Bounded, redacted telemetry analyzed in one durable Session"
                   : "Preparing a bounded, redacted telemetry snapshot"}
               </div>
             </div>

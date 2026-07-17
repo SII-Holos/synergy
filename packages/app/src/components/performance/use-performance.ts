@@ -183,6 +183,7 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
       )
       const next = result.data ?? null
       setAnalysis(next)
+      if (next && isPerformanceAnalysisActive(next.status)) scheduleAnalysisPoll(next.sessionID)
       return next
     } catch (err) {
       setAnalysisError(getErrorMessage(err))

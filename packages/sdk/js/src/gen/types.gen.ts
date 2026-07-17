@@ -589,11 +589,11 @@ export type PerfDashboardSummary = {
   issues: Array<PerfIssue>
 }
 
+export type PerformanceAnalysisStatus = "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+
 export type PerformanceAnalysisView = {
-  taskID: string
   sessionID: string
-  parentSessionID: string
-  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  status: PerformanceAnalysisStatus
   startedAt: number
   completedAt?: number
   result?: string

@@ -25,9 +25,9 @@ Server resource samples are kept separate from registered tool child process sam
 
 ## AI analysis
 
-Use **Analyze** in the Performance toolbar to snapshot the selected monitoring window and ask the hidden `performance-analyst` agent for a concise health verdict, evidence-backed findings, recommendations, and material data gaps. The panel displays queued and running state, supports explicit cancellation, renders the final Markdown result directly, and links to the durable child session for inspection.
+Use **Analyze** in the Performance toolbar to snapshot the selected monitoring window and ask the hidden `performance-analyst` agent for a concise health verdict, evidence-backed findings, recommendations, and material data gaps. The panel displays queued and running state, supports explicit cancellation, renders the final Markdown result directly, and links to the durable analysis Session for inspection.
 
-Analysis runs as a visible, tool-free Cortex child under a dedicated Performance request session. The prompt receives only a bounded read model: raw trace, span, session, issue, correlation, process, and fingerprint identifiers are omitted; child processes receive anonymous labels; time-series points are reduced to aggregate trends; and inflight work is capped. Telemetry strings are treated as untrusted data. Starting an analysis requires an available Thinking model and does not grant the analyst filesystem, shell, network, or other tool access.
+Analysis runs in one visible, tool-free, ordinary top-level Session with the `performance-analyst` agent override. The prompt receives only a bounded read model: raw trace, span, session, issue, correlation, process, and fingerprint identifiers are omitted; child processes receive anonymous labels; time-series points are reduced to aggregate trends; and inflight work is capped. Telemetry strings are treated as untrusted data. Starting an analysis requires an available Thinking model and does not grant the analyst filesystem, shell, network, or other tools.
 
 ## Local storage
 

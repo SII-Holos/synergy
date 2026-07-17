@@ -2939,7 +2939,7 @@ export class Analysis extends HeyApiClient {
   /**
    * Start AI performance analysis
    *
-   * Snapshot redacted runtime telemetry and analyze it in a durable Cortex child session.
+   * Snapshot redacted runtime telemetry and analyze it in one durable top-level Session.
    */
   public start<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -2963,7 +2963,7 @@ export class Analysis extends HeyApiClient {
   /**
    * Get AI performance analysis
    *
-   * Read live or durable analysis state from its Cortex child session.
+   * Read live or durable analysis state from its Session messages and runtime.
    */
   public get<ThrowOnError extends boolean = false>(
     parameters: {
@@ -2982,7 +2982,7 @@ export class Analysis extends HeyApiClient {
   /**
    * Cancel AI performance analysis
    *
-   * Cancel a queued or running Performance Cortex child and return its durable state.
+   * Cancel a queued or running Performance analysis Session and return its durable state.
    */
   public cancel<ThrowOnError extends boolean = false>(
     parameters: {

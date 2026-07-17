@@ -106,9 +106,7 @@ describe("performance refresh", () => {
     sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
 
     const queued = {
-      taskID: "ctx_analysis",
       sessionID: "ses_analysis",
-      parentSessionID: "ses_parent",
       status: "queued" as const,
       startedAt: 1,
     }

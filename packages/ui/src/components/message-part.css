@@ -42,10 +42,6 @@
     background: var(--workbench-control-bg, var(--surface-base));
     border: 1px solid var(--workbench-border, var(--border-base));
     transition: border-color 0.15s ease;
-    font: inherit;
-    color: inherit;
-    padding: 0;
-    text-align: left;
 
     &:hover {
       border-color: var(--border-strong-base);
@@ -53,11 +49,6 @@
 
     &[data-clickable="true"] {
       cursor: pointer;
-
-      &:focus-visible {
-        outline: 2px solid var(--border-focus);
-        outline-offset: 2px;
-      }
     }
 
     &[data-type="image"] {
@@ -70,8 +61,7 @@
       width: auto;
     }
 
-    &[data-type="note"],
-    &[data-type="session"] {
+    &[data-type="note"] {
       height: auto;
       width: auto;
     }

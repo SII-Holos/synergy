@@ -15,7 +15,7 @@ describe("performance analysis state", () => {
     expect(isPerformanceAnalysisActive("interrupted")).toBe(false)
   })
 
-  test("presents every durable Cortex status", () => {
+  test("presents every durable analysis status", () => {
     expect(performanceAnalysisStatusLabel("queued")).toBe("Queued")
     expect(performanceAnalysisStatusLabel("running")).toBe("Running")
     expect(performanceAnalysisStatusLabel("completed")).toBe("Completed")

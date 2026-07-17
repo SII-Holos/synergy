@@ -184,7 +184,7 @@ export const PerformanceRoute = new Hono()
     "/performance/analysis",
     describeRoute({
       summary: "Start AI performance analysis",
-      description: "Snapshot redacted runtime telemetry and analyze it in a durable Cortex child session.",
+      description: "Snapshot redacted runtime telemetry and analyze it in one durable top-level Session.",
       operationId: "performance.analysis.start",
       responses: {
         202: {
@@ -206,7 +206,7 @@ export const PerformanceRoute = new Hono()
     "/performance/analysis/:sessionID",
     describeRoute({
       summary: "Get AI performance analysis",
-      description: "Read live or durable analysis state from its Cortex child session.",
+      description: "Read live or durable analysis state from its Session messages and runtime.",
       operationId: "performance.analysis.get",
       responses: {
         200: {
@@ -222,7 +222,7 @@ export const PerformanceRoute = new Hono()
     "/performance/analysis/:sessionID/cancel",
     describeRoute({
       summary: "Cancel AI performance analysis",
-      description: "Cancel a queued or running Performance Cortex child and return its durable state.",
+      description: "Cancel a queued or running Performance analysis Session and return its durable state.",
       operationId: "performance.analysis.cancel",
       responses: {
         200: {

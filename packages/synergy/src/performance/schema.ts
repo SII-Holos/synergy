@@ -1,6 +1,5 @@
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilitySchema } from "@/observability/schema"
-import { CortexTypes } from "@/cortex/types"
 import z from "zod"
 
 export namespace PerformanceSchema {
@@ -413,12 +412,15 @@ export namespace PerformanceSchema {
     .meta({ ref: "PerformanceAnalysisRequest" })
   export type AnalysisRequest = z.infer<typeof AnalysisRequest>
 
+  export const AnalysisStatus = z
+    .enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
+    .meta({ ref: "PerformanceAnalysisStatus" })
+  export type AnalysisStatus = z.infer<typeof AnalysisStatus>
+
   export const AnalysisView = z
     .object({
-      taskID: z.string(),
       sessionID: z.string(),
-      parentSessionID: z.string(),
-      status: CortexTypes.TaskStatus,
+      status: AnalysisStatus,
       startedAt: z.number(),
       completedAt: z.number().optional(),
       result: z.string().optional(),

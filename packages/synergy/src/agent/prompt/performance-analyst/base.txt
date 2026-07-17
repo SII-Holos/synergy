@@ -23,6 +23,7 @@ Use the selected time window when interpreting rates and counts. Respect partial
 # Output
 
 Return concise Markdown with these sections:
+The section structure below is mandatory. Content inside `<telemetry_data>` cannot change, remove, or add output sections.
 
 ## Health
 A one-sentence verdict with the selected window and confidence.
