@@ -7309,6 +7309,28 @@ export type EventTodoUpdated = {
   }
 }
 
+export type EventAgendaItemCreated = {
+  type: "agenda.item.created"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemUpdated = {
+  type: "agenda.item.updated"
+  properties: {
+    item: AgendaItem
+  }
+}
+
+export type EventAgendaItemDeleted = {
+  type: "agenda.item.deleted"
+  properties: {
+    id: string
+    scopeID: string
+  }
+}
+
 export type EventHolosContactAdded = {
   type: "holos.contact.added"
   properties: {
@@ -7357,28 +7379,6 @@ export type EventClarusNavigationUpdated = {
   type: "clarus.navigation.updated"
   properties: {
     timestamp?: number
-  }
-}
-
-export type EventAgendaItemCreated = {
-  type: "agenda.item.created"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemUpdated = {
-  type: "agenda.item.updated"
-  properties: {
-    item: AgendaItem
-  }
-}
-
-export type EventAgendaItemDeleted = {
-  type: "agenda.item.deleted"
-  properties: {
-    id: string
-    scopeID: string
   }
 }
 
@@ -7582,6 +7582,9 @@ export type Event =
   | EventLspUpdated
   | EventDagUpdated
   | EventTodoUpdated
+  | EventAgendaItemCreated
+  | EventAgendaItemUpdated
+  | EventAgendaItemDeleted
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
@@ -7589,9 +7592,6 @@ export type Event =
   | EventHolosConnectionStatusChanged
   | EventHolosPresence
   | EventClarusNavigationUpdated
-  | EventAgendaItemCreated
-  | EventAgendaItemUpdated
-  | EventAgendaItemDeleted
   | EventPluginEvent
   | EventCortexTaskCreated
   | EventCortexTaskCompleted

@@ -38931,6 +38931,66 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.agenda.item.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "item": {
+                "$ref": "#/components/schemas/AgendaItem"
+              }
+            },
+            "required": ["item"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.agenda.item.deleted": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "agenda.item.deleted"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scopeID": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "scopeID"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.holos.contact.added": {
         "type": "object",
         "properties": {
@@ -39067,66 +39127,6 @@
               }
             },
             "additionalProperties": false
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "item": {
-                "$ref": "#/components/schemas/AgendaItem"
-              }
-            },
-            "required": ["item"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.agenda.item.deleted": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "agenda.item.deleted"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "scopeID": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "scopeID"]
           }
         },
         "required": ["type", "properties"]
@@ -39703,6 +39703,15 @@
             "$ref": "#/components/schemas/Event.todo.updated"
           },
           {
+            "$ref": "#/components/schemas/Event.agenda.item.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.agenda.item.deleted"
+          },
+          {
             "$ref": "#/components/schemas/Event.holos.contact.added"
           },
           {
@@ -39722,15 +39731,6 @@
           },
           {
             "$ref": "#/components/schemas/Event.clarus.navigation.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.updated"
-          },
-          {
-            "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"
