@@ -994,11 +994,14 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     return titlecaseStatusLabel(latestAssistant?.agent ?? local.agent.current()?.name ?? "Synergy")
   })
   const fallbackWorkingPhrase = createMemo(() =>
-    computeWorkingPhrase({
-      agentName: agentName(),
-      cortexRunning: cortexRunning(),
-      seed: params.id ?? sessionKey(),
-    }),
+    computeWorkingPhrase(
+      {
+        agentName: agentName(),
+        cortexRunning: cortexRunning(),
+        seed: params.id ?? sessionKey(),
+      },
+      i18n,
+    ),
   )
 
   async function updateControlProfile(profile: ControlProfileId, close?: () => void) {

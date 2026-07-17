@@ -406,7 +406,6 @@ export function classifyTool(
   toolName: string,
   input: Record<string, any> = {},
   metadata: Record<string, any> = {},
-  i18n?: any,
 ): ClassifiedTool {
   // Layer 1: flat lookup
   let category: SemanticCategory | undefined = TOOL_CATEGORIES[toolName]
@@ -443,7 +442,7 @@ export function classifyTool(
   const spec = CATEGORIES[category]
 
   const titleDescriptor = toolTitleDescriptor(toolName, spec)
-  const title = titleDescriptor ? resolveDescriptor(i18n, titleDescriptor) : humanizeToolName(toolName)
+  const title = titleDescriptor?.message ?? humanizeToolName(toolName)
 
   const subtitle = extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys)
 
@@ -451,11 +450,6 @@ export function classifyTool(
   const count = classifyCount(toolName, category, metadata)
 
   return { category, spec, title, titleDescriptor, subtitle, args, ...count }
-}
-
-function resolveDescriptor(i18n: any, desc: MessageDescriptor): string {
-  if (i18n && typeof i18n._ === "function") return i18n._(desc)
-  return desc.message ?? desc.id
 }
 
 function toolTitleDescriptor(name: string, spec: CategorySpec): MessageDescriptor | undefined {

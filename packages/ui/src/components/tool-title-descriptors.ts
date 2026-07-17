@@ -239,7 +239,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   note_write_replaced: d("tool.title.note-replaced", "Replaced"),
   memory_write_similar_found: d("tool.title.memory-similar-found", "Similar found"),
   memory_write_stored: d("tool.title.memory-stored", "Stored"),
-  memory_edit_updated: d("tool.title.memory-edit-updated", "Updated"),
   patch_generating: d("tool.title.patch-generating", "Generating patch…"),
   patch_applied: d("tool.title.patch-applied", "Applied"),
 }

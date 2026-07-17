@@ -15015,10 +15015,6 @@ msgid "tool.title.memory-edit"
 msgstr "Memory Edit"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.memory-edit-updated"
-msgstr "Updated"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-get"
 msgstr "Memory Get"
 

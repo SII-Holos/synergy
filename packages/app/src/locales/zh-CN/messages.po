@@ -15015,10 +15015,6 @@ msgid "tool.title.memory-edit"
 msgstr "编辑记忆"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
-msgid "tool.title.memory-edit-updated"
-msgstr "已更新"
-
-#. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-get"
 msgstr "获取记忆"
 
