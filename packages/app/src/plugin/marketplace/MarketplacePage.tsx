@@ -450,6 +450,10 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
     return translateDescriptor(installationLabel(props.plugin), i18n)
   }
   const status = () => installedPluginStatusView(props.plugin, props.development ? "development" : "installed")
+  const localizedStatusLabel = () => {
+    controller.activeLocale()
+    return translateDescriptor(status().label, i18n)
+  }
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.id,
     keywords: ["plugin"],
@@ -526,7 +530,7 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
             "plugin-marketplace-state-disabled": status().isDisabled,
           }}
         >
-          {status().label}
+          {localizedStatusLabel()}
         </span>
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />

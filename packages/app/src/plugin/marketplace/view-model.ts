@@ -4,7 +4,7 @@ import type { InstalledPlugin } from "./types"
 
 export type MarketplaceView = "discover" | "installed" | "development"
 export interface InstalledPluginStatusView {
-  label: string
+  label: MessageDescriptor
   isDisabled: boolean
   canReviewPermissions: boolean
 }
@@ -67,12 +67,12 @@ export function installedPluginStatusView(
   _view: Exclude<MarketplaceView, "discover">,
 ): InstalledPluginStatusView {
   if (isApprovalDisabledPlugin(plugin)) {
-    return { label: "Needs approval", isDisabled: true, canReviewPermissions: true }
+    return { label: pluginMarketplace.statusNeedsApproval, isDisabled: true, canReviewPermissions: true }
   }
   if (plugin.health === "disabled") {
-    return { label: "Disabled", isDisabled: true, canReviewPermissions: false }
+    return { label: pluginMarketplace.statusDisabled, isDisabled: true, canReviewPermissions: false }
   }
-  return { label: "Active", isDisabled: false, canReviewPermissions: false }
+  return { label: pluginMarketplace.statusActive, isDisabled: false, canReviewPermissions: false }
 }
 
 export function installedPluginFromSnapshot(

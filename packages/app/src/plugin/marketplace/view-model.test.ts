@@ -71,12 +71,12 @@ describe("plugin marketplace views", () => {
 
   test("status labels distinguish active, approval-disabled, and ordinary disabled plugins", () => {
     expect(installedPluginStatusView(directory, "development")).toEqual({
-      label: "Active",
+      label: pluginMarketplace.statusActive,
       isDisabled: false,
       canReviewPermissions: false,
     })
     expect(installedPluginStatusView(official, "installed")).toEqual({
-      label: "Active",
+      label: pluginMarketplace.statusActive,
       isDisabled: false,
       canReviewPermissions: false,
     })
@@ -98,7 +98,7 @@ describe("plugin marketplace views", () => {
     })
     expect(isApprovalDisabledPlugin(approvalDisabled)).toBe(true)
     expect(installedPluginStatusView(approvalDisabled, "development")).toEqual({
-      label: "Needs approval",
+      label: pluginMarketplace.statusNeedsApproval,
       isDisabled: true,
       canReviewPermissions: true,
     })
@@ -114,7 +114,7 @@ describe("plugin marketplace views", () => {
     })
     expect(isApprovalDisabledPlugin(disabled)).toBe(false)
     expect(installedPluginStatusView(disabled, "development")).toEqual({
-      label: "Disabled",
+      label: pluginMarketplace.statusDisabled,
       isDisabled: true,
       canReviewPermissions: false,
     })

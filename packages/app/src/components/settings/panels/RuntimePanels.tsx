@@ -101,7 +101,8 @@ const invokeRowDesc = {
 const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message: "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure.",
+  message:
+    "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
 const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }

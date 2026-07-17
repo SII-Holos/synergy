@@ -3399,6 +3399,10 @@ msgstr "Library"
 msgid "app.name.synergy"
 msgstr "Synergy"
 
+#. js-lingui-explicit-id
+msgid "app.note.blueprint.pluginOwner"
+msgstr "From {plugin}"
+
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.runMode.active"
 msgstr "Active run"
@@ -4648,32 +4652,92 @@ msgid "app.plugin.builtin.plugins"
 msgstr "Plugins"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.approveInstall"
-msgstr "Approve & Install"
+msgid "app.plugin.consent.addedGroup"
+msgstr "Added {group}"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.deny"
-msgstr "Deny"
+msgid "app.plugin.consent.approvalFailed"
+msgstr "Approval failed"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.description"
-msgstr "{plugin} {version} requests the following permissions."
+msgid "app.plugin.consent.approvalRequired"
+msgstr "This plugin requires your approval."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.emptyPermissions"
-msgstr "No specific permissions declared."
+msgid "app.plugin.consent.approving"
+msgstr "Approving..."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.riskSummary"
-msgstr "This plugin requires your approval to install"
+msgid "app.plugin.consent.current.empty"
+msgstr "No existing permissions are unchanged."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.current.title"
+msgstr "Current permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.dialog.description"
+msgstr "{plugin} {version}. {description}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.approve"
+msgstr "Approve & install"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.description"
+msgstr "Review the permissions before installing this plugin."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.title"
+msgstr "Approve Plugin Install"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.manifestChanged"
+msgstr "Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.notNow"
+msgstr "Not now"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.approve"
+msgstr "Approve & reload"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.description"
+msgstr "Review the current plugin manifest before reloading it."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.title"
+msgstr "Review Plugin Permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.empty"
+msgstr "No permissions are being removed."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.title"
+msgstr "Removed permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reviewChanged"
+msgstr "Plugin changed while you were reviewing it"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.severityChanges"
 msgstr "Severity changes"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.title"
-msgstr "Install Plugin"
+msgid "app.plugin.consent.update.approve"
+msgstr "Approve & update"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.description"
+msgstr "Review the permission changes before updating this plugin."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.title"
+msgstr "Approve Plugin Update"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.install"
@@ -4686,6 +4750,14 @@ msgstr "Installed v{version}"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.installing"
 msgstr "Installing..."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingReview"
+msgstr "Loading review..."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.reviewPermissions"
+msgstr "Review permissions"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.uninstall"
@@ -4777,7 +4849,7 @@ msgstr "Capabilities"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
-msgstr "{tools} tools · {surfaces} UI surfaces"
+msgstr "{tools} tools · {operations} operations · {surfaces} UI surfaces"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.developmentRegistration"
@@ -4834,6 +4906,10 @@ msgstr "Active"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.disabled"
 msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.state.needsApproval"
+msgstr "Needs approval"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
@@ -4996,18 +5072,6 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "Plugin disabled"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.development"
-msgstr "Development"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.disabled"
-msgstr "Disabled"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.installed"
-msgstr "Installed"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.tools"
 msgstr "{count} tools"
 
@@ -5038,6 +5102,18 @@ msgstr "Local registry"
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.source.official"
 msgstr "Official"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.active"
+msgstr "Active"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.disabled"
+msgstr "Disabled"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.needsApproval"
+msgstr "Needs approval"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.title"
@@ -14994,11 +15070,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. Memory pressure recommendations never override this value."
+msgstr "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.recommended"
-msgstr "Recommended: {value}"
+msgid "settings.runtime.agents.concurrency.memorySafety"
+msgstr "Memory safety limit: {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
+msgstr "Managed by environment · Memory safety limit: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

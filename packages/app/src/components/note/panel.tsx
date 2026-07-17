@@ -351,7 +351,13 @@ function NoteCard(props: {
             <Show when={pluginOwnerName()}>
               <span class="note-card-origin">
                 <Icon name={getSemanticIcon("plugins.main")} class="size-3 shrink-0" />
-                <span class="truncate">From {pluginOwnerName()}</span>
+                <span class="truncate">
+                  {props.lingui._({
+                    id: "app.note.blueprint.pluginOwner",
+                    message: "From {plugin}",
+                    values: { plugin: pluginOwnerName() ?? "" },
+                  })}
+                </span>
               </span>
             </Show>
             <span class="truncate">

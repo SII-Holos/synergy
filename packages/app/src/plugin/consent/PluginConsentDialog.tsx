@@ -1,21 +1,45 @@
 import { For, Show, createMemo, createSignal } from "solid-js"
+import { pluginPermission } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { ApprovalReview } from "@ericsanchezok/synergy-sdk/client"
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { PermissionRiskBadge } from "./PermissionRiskBadge"
 import "./PluginConsentDialog.css"
 
-const DISPLAY_GROUPS: { key: string; label: string; categories: string[]; icon: SemanticIconTokenName }[] = [
-  { key: "tools", label: "Tools", categories: ["tools", "files"], icon: "plugins.permission.tools" },
-  { key: "data", label: "Data", categories: ["data", "session", "identity"], icon: "plugins.permission.data" },
-  { key: "network", label: "Network", categories: ["network", "communication"], icon: "plugins.permission.network" },
-  { key: "ui", label: "UI", categories: ["ui", "browser"], icon: "plugins.permission.ui" },
+const DISPLAY_GROUPS: {
+  key: string
+  label: MessageDescriptor
+  categories: string[]
+  icon: SemanticIconTokenName
+}[] = [
+  {
+    key: "tools",
+    label: pluginPermission.groupTools,
+    categories: ["tools", "files"],
+    icon: "plugins.permission.tools",
+  },
+  {
+    key: "data",
+    label: pluginPermission.groupData,
+    categories: ["data", "session", "identity"],
+    icon: "plugins.permission.data",
+  },
+  {
+    key: "network",
+    label: pluginPermission.groupNetwork,
+    categories: ["network", "communication"],
+    icon: "plugins.permission.network",
+  },
+  { key: "ui", label: pluginPermission.groupUi, categories: ["ui", "browser"], icon: "plugins.permission.ui" },
   {
     key: "runtime",
-    label: "Runtime",
+    label: pluginPermission.groupRuntime,
     categories: ["runtime", "hooks", "platform"],
     icon: "plugins.permission.runtime",
   },
@@ -34,27 +58,38 @@ export interface PluginConsentDialogProps {
   onCancel: () => void
 }
 
-const INTENT_COPY: Record<PluginConsentIntent, { title: string; description: string; primary: string; busy: string }> =
-  {
-    install: {
-      title: "Approve Plugin Install",
-      description: "Review the permissions before installing this plugin.",
-      primary: "Approve & install",
-      busy: "Approving...",
+const INTENT_COPY: Record<
+  PluginConsentIntent,
+  { title: MessageDescriptor; description: MessageDescriptor; primary: MessageDescriptor; busy: MessageDescriptor }
+> = {
+  install: {
+    title: { id: "app.plugin.consent.install.title", message: "Approve Plugin Install" },
+    description: {
+      id: "app.plugin.consent.install.description",
+      message: "Review the permissions before installing this plugin.",
     },
-    update: {
-      title: "Approve Plugin Update",
-      description: "Review the permission changes before updating this plugin.",
-      primary: "Approve & update",
-      busy: "Approving...",
+    primary: { id: "app.plugin.consent.install.approve", message: "Approve & install" },
+    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+  },
+  update: {
+    title: { id: "app.plugin.consent.update.title", message: "Approve Plugin Update" },
+    description: {
+      id: "app.plugin.consent.update.description",
+      message: "Review the permission changes before updating this plugin.",
     },
-    reapprove: {
-      title: "Review Plugin Permissions",
-      description: "Review the current plugin manifest before reloading it.",
-      primary: "Approve & reload",
-      busy: "Approving...",
+    primary: { id: "app.plugin.consent.update.approve", message: "Approve & update" },
+    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+  },
+  reapprove: {
+    title: { id: "app.plugin.consent.reapprove.title", message: "Review Plugin Permissions" },
+    description: {
+      id: "app.plugin.consent.reapprove.description",
+      message: "Review the current plugin manifest before reloading it.",
     },
-  }
+    primary: { id: "app.plugin.consent.reapprove.approve", message: "Approve & reload" },
+    busy: { id: "app.plugin.consent.approving", message: "Approving..." },
+  },
+}
 
 function groupByDisplayCategory(items: readonly ReviewPermissionItem[]) {
   const map: Record<string, ReviewPermissionItem[]> = {}
@@ -141,6 +176,7 @@ function PermissionList(props: {
 
 export function PluginConsentDialog(props: PluginConsentDialogProps) {
   const dialog = useDialog()
+  const { _ } = useLingui()
   const [busy, setBusy] = createSignal(false)
   const [error, setError] = createSignal<string | null>(null)
   const [currentReview, setCurrentReview] = createSignal(props.review)
@@ -165,12 +201,18 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
       const nextReview = await props.onApprove(currentReview())
       if (nextReview) {
         setCurrentReview(nextReview)
-        setStaleMessage("Plugin changed while you were reviewing it")
+        setStaleMessage(
+          _({
+            id: "app.plugin.consent.reviewChanged",
+            message: "Plugin changed while you were reviewing it",
+          }),
+        )
         return
       }
       dialog.close()
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Approval failed"
+      const message =
+        err instanceof Error ? err.message : _({ id: "app.plugin.consent.approvalFailed", message: "Approval failed" })
       setError(message)
     } finally {
       setBusy(false)
@@ -179,13 +221,28 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
 
   return (
     <Dialog
-      title={copy().title}
-      description={`${pluginLabel(currentReview())} ${versionCopy(currentReview())}. ${copy().description}`}
+      title={translateDescriptor(copy().title, { _ })}
+      description={_({
+        id: "app.plugin.consent.dialog.description",
+        message: "{plugin} {version}. {description}",
+        values: {
+          plugin: pluginLabel(currentReview()),
+          version: versionCopy(currentReview()),
+          description: translateDescriptor(copy().description, { _ }),
+        },
+      })}
       class="consent-dialog"
     >
       <div class="consent-risk-summary">
         <Icon name={getSemanticIcon("permission.required")} size="small" />
-        <span>{currentReview().reason ?? currentReview().diff.reason ?? "This plugin requires your approval."}</span>
+        <span>
+          {currentReview().reason ??
+            currentReview().diff.reason ??
+            _({
+              id: "app.plugin.consent.approvalRequired",
+              message: "This plugin requires your approval.",
+            })}
+        </span>
         <PermissionRiskBadge risk={currentReview().diff.riskAfter ?? currentReview().risk} />
       </div>
 
@@ -201,7 +258,13 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
       <Show when={hasManifestOnlyChange()}>
         <div class="consent-manifest-note">
           <Icon name={getSemanticIcon("plugins.permission.diff")} size="small" />
-          <span>Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving.</span>
+          <span>
+            {_({
+              id: "app.plugin.consent.manifestChanged",
+              message:
+                "Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving.",
+            })}
+          </span>
         </div>
       </Show>
 
@@ -212,7 +275,13 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
               <section class="consent-group">
                 <div class="consent-group-header">
                   <Icon name={getSemanticIcon(group.icon)} size="small" class="consent-group-icon" />
-                  <span class="consent-group-label">Added {group.label}</span>
+                  <span class="consent-group-label">
+                    {_({
+                      id: "app.plugin.consent.addedGroup",
+                      message: "Added {group}",
+                      values: { group: translateDescriptor(group.label, { _ }) },
+                    })}
+                  </span>
                   <span class="consent-group-count">{group.items.length}</span>
                 </div>
                 <ul class="consent-group-items">
@@ -241,14 +310,20 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
       </Show>
 
       <PermissionList
-        title="Removed permissions"
-        empty="No permissions are being removed."
+        title={_({ id: "app.plugin.consent.removed.title", message: "Removed permissions" })}
+        empty={_({
+          id: "app.plugin.consent.removed.empty",
+          message: "No permissions are being removed.",
+        })}
         items={currentReview().diff.removed}
         muted
       />
       <PermissionList
-        title="Current permissions"
-        empty="No existing permissions are unchanged."
+        title={_({ id: "app.plugin.consent.current.title", message: "Current permissions" })}
+        empty={_({
+          id: "app.plugin.consent.current.empty",
+          message: "No existing permissions are unchanged.",
+        })}
         items={currentReview().diff.unchanged}
         muted
       />
@@ -257,7 +332,7 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
         <section class="consent-changed">
           <p class="consent-changed-title">
             <Icon name={getSemanticIcon("plugins.permission.diff")} size="small" class="consent-changed-icon" />
-            Severity changes
+            {_({ id: "app.plugin.consent.severityChanges", message: "Severity changes" })}
           </p>
           <For each={currentReview().diff.changed}>
             {(change) => (
@@ -294,10 +369,10 @@ export function PluginConsentDialog(props: PluginConsentDialogProps) {
             props.onCancel()
           }}
         >
-          Not now
+          {_({ id: "app.plugin.consent.notNow", message: "Not now" })}
         </Button>
         <Button type="button" variant="primary" size="small" disabled={busy()} onClick={() => void approve()}>
-          {busy() ? copy().busy : copy().primary}
+          {translateDescriptor(busy() ? copy().busy : copy().primary, { _ })}
         </Button>
       </div>
     </Dialog>

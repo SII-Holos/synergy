@@ -206,8 +206,7 @@ export function PluginDetailDialog(props: {
   const primaryLabel = createMemo(() => {
     if (action() === "install") return _({ id: "app.plugin.detail.action.installing", message: "Installing..." })
     if (action() === "update") return _({ id: "app.plugin.detail.action.updating", message: "Updating..." })
-    if (action() === "review")
-      return _({ id: "app.plugin.detail.action.loadingReview", message: "Loading review..." })
+    if (action() === "review") return _({ id: "app.plugin.detail.action.loadingReview", message: "Loading review..." })
     if (installedStatus()?.canReviewPermissions)
       return _({ id: "app.plugin.detail.action.reviewPermissions", message: "Review permissions" })
     if (!installedVersion()) return _({ id: "app.plugin.detail.action.install", message: "Install" })
@@ -534,8 +533,8 @@ export function PluginDetailDialog(props: {
                           {installedStatus()?.canReviewPermissions
                             ? _({ id: "app.plugin.detail.state.needsApproval", message: "Needs approval" })
                             : installedStatus()?.isDisabled
-                            ? _({ id: "app.plugin.detail.state.disabled", message: "Disabled" })
-                            : _({ id: "app.plugin.detail.state.active", message: "Active" })}
+                              ? _({ id: "app.plugin.detail.state.disabled", message: "Disabled" })
+                              : _({ id: "app.plugin.detail.state.active", message: "Active" })}
                         </span>
                       </div>
                       {/* installation path is user content — pass through */}
