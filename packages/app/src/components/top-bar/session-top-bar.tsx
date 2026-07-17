@@ -110,7 +110,7 @@ function SessionActionMenu(props: {
 
 export function SessionTopBar(props: {
   onWorkspaceTransition?: (request: SessionWorkspaceTransitionRequest) => void
-  workspaceTransitionPending?: Accessor<boolean>
+  sessionTransitionPending?: Accessor<boolean>
 }) {
   const params = useParams()
   const navigate = useNavigate()
@@ -133,7 +133,7 @@ export function SessionTopBar(props: {
   const isWorktreeSession = createMemo(() => sessionInfo()?.workspace?.type === "git_worktree")
   const worktreeDisabled = createMemo(() =>
     isSessionRunningForWorkspaceChange({
-      pending: props.workspaceTransitionPending?.(),
+      pending: props.sessionTransitionPending?.(),
       status: sync.data.session_status[params.id ?? ""],
       working: sessionInfo()?.working,
     }),

@@ -37059,7 +37059,10 @@
               "parent": {
                 "type": "string"
               },
-              "node": {}
+              "node": {},
+              "resync": {
+                "type": "boolean"
+              }
             },
             "required": ["file", "event"]
           }

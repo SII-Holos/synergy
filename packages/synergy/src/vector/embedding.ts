@@ -4,6 +4,76 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import { Log } from "../util/log"
 import { Config } from "../config/config"
 
+export interface LocalExtractor {
+  (input: string, options: { pooling: "mean"; normalize: true }): Promise<{ data: Float32Array }>
+  dispose(): Promise<void>
+}
+
+export class LocalEmbeddingRuntime {
+  private extractor: LocalExtractor | undefined
+  private loading: Promise<LocalExtractor> | undefined
+  private generation = 0
+  private loadError: Error | undefined
+
+  constructor(
+    private readonly load: () => Promise<LocalExtractor>,
+    private readonly onDisposeError: (error: unknown) => void = () => {},
+  ) {}
+
+  get ready(): boolean {
+    return this.extractor !== undefined
+  }
+
+  get error(): Error | undefined {
+    return this.loadError
+  }
+
+  clearError(): void {
+    this.loadError = undefined
+  }
+
+  async get(): Promise<LocalExtractor> {
+    if (this.extractor) return this.extractor
+    if (this.loading) return this.loading
+
+    const generation = this.generation
+    const loading = this.load()
+      .then(async (extractor) => {
+        if (generation !== this.generation) {
+          await this.release(extractor)
+          throw new Error("Local embedding runtime disposed during load")
+        }
+        this.extractor = extractor
+        return extractor
+      })
+      .catch((error) => {
+        if (generation === this.generation) {
+          this.loadError = error instanceof Error ? error : new Error(String(error))
+        }
+        throw error
+      })
+      .finally(() => {
+        if (this.loading === loading) this.loading = undefined
+      })
+    this.loading = loading
+    return loading
+  }
+
+  async dispose(): Promise<void> {
+    this.generation++
+    const extractor = this.extractor
+    const loading = this.loading
+    this.extractor = undefined
+    this.loadError = undefined
+    if (extractor) await this.release(extractor)
+    await loading?.catch(() => undefined)
+  }
+
+  private async release(extractor: LocalExtractor): Promise<void> {
+    await extractor.dispose().catch(this.onDisposeError)
+  }
+}
+
 export namespace Embedding {
   const log = Log.create({ service: "vector.embedding" })
 
@@ -11,51 +81,42 @@ export namespace Embedding {
   const DEFAULT_MODEL = "Qwen/Qwen3-Embedding-8B"
   const TIMEOUT_MS = 10_000
 
-  // Local model singleton — created on first use
-  let localExtractor: any
-  let localModelReady = false
-  let localModelError: Error | undefined
+  const localRuntime = new LocalEmbeddingRuntime(loadLocalExtractor, (error) => {
+    log.warn("failed to dispose local embedding model", { error })
+  })
 
-  async function getLocalExtractor() {
-    // Already loaded — fast path.
-    if (localExtractor) return localExtractor
+  async function loadLocalExtractor(): Promise<LocalExtractor> {
     const transformersPackage = "@huggingface/transformers"
     const { pipeline } = await import(transformersPackage)
 
-    // Previous attempt failed — clear the error so we can retry.
-    // This handles the case where the user downloads the model via
-    // `synergy embed download` after the server has already started.
-    if (localModelError) {
-      log.info("retrying local embedding model load (previous attempt failed)")
-      localModelError = undefined
-    }
-
-    // First attempt: allow network (for auto-download on first use).
     try {
-      localExtractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", { dtype: "q8" })
-      localModelReady = true
-      return localExtractor
+      return (await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+        dtype: "q8",
+      })) as unknown as LocalExtractor
     } catch (networkErr) {
       log.warn("local embedding model: network load failed, trying from disk cache", {
         error: networkErr instanceof Error ? networkErr.message : String(networkErr),
       })
     }
 
-    // Second attempt: local cache only — no network required.
-    // If the model was downloaded earlier (via CLI or a previous session),
-    // this will succeed even without internet access.
     try {
-      localExtractor = await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
+      const extractor = (await pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2", {
         dtype: "q8",
         local_files_only: true,
-      })
-      localModelReady = true
+      })) as unknown as LocalExtractor
       log.info("local embedding model loaded from disk cache (offline)")
-      return localExtractor
+      return extractor
     } catch (cacheErr) {
-      localModelError = cacheErr instanceof Error ? cacheErr : new Error(String(cacheErr))
-      throw localModelError
+      throw cacheErr instanceof Error ? cacheErr : new Error(String(cacheErr))
     }
+  }
+
+  async function getLocalExtractor(): Promise<LocalExtractor> {
+    if (localRuntime.error) {
+      log.info("retrying local embedding model load (previous attempt failed)")
+      localRuntime.clearError()
+    }
+    return localRuntime.get()
   }
 
   export const Info = z
@@ -108,8 +169,8 @@ export namespace Embedding {
    * embedding calls that need the local model will block until ready.
    */
   export function warmup(): Promise<void> {
-    if (localModelReady) return Promise.resolve()
-    if (localModelError) return Promise.reject(localModelError)
+    if (localRuntime.ready) return Promise.resolve()
+    if (localRuntime.error) return Promise.reject(localRuntime.error)
     return getLocalExtractor()
       .then(() => {
         log.info("local embedding model ready")
@@ -125,10 +186,8 @@ export namespace Embedding {
    * No-op if the model was never loaded or was already disposed.
    * Subsequent generate() calls will load the model again on demand.
    */
-  export function dispose() {
-    localExtractor = undefined
-    localModelReady = false
-    localModelError = undefined
+  export async function dispose(): Promise<void> {
+    await localRuntime.dispose()
   }
 
   async function resolveModel() {
