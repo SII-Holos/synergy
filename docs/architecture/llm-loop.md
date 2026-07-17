@@ -16,11 +16,11 @@ During ownership:
 
 - the lease abort signal is shared by the session run;
 - status changes are published as busy, retry, idle, or recovering;
-- the loop-scoped message cache holds the assembled raw history;
+- the loop-scoped message cache holds the compaction-aware model working set;
 - all loop writes update that cache and durable storage;
 - cache and recall state are released when the loop exits.
 
-The message cache is valid because the active loop is the sole session writer. Paths that rewrite history in ways the incremental cache does not model, especially compaction, invalidate it and force an authoritative reread.
+The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed.
 
 ## Root Selection
 
@@ -167,7 +167,7 @@ The `summarize` post-step job computes file diffs and derives title/body for eac
 
 Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
-The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. A later queued assistant revision drops that older snapshot and rereads authoritative durable history, so it sees the complete continuation without retaining multiple full histories in memory. Direct callers without a snapshot also use durable history.
+The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. Later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot read authoritative durable history. If an existing session aggregation has no cursor, one bounded call rebuilds it from complete history before incremental updates resume.
 
 ## Prompt Budget
 
@@ -221,7 +221,9 @@ Automatic compaction writes a hidden non-root system continuation belonging to `
 
 ### Filtering and pruning
 
-Later model projection keeps the completed summary and messages after that boundary. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+Later model projection keeps the boundary root, completed summaries for that root, and messages after the latest summary. Earlier completed summaries remain available for audit but are marked out of context. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+
+Model working-set loading applies rollback before boundary selection and restores legacy stable-ID chronology from message creation time. It scans all small message-info records but loads parts only for the selected working set. The active loop caches that projected set and maintains it incrementally; it never retains the full pre-compaction transcript.
 
 Separately, asynchronous pruning clears large outputs from older completed tool parts when all of these conditions hold:
 
@@ -232,7 +234,7 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
-It operates on the loop's existing immutable message snapshot, and its `Session.updatePart()` writes maintain the loop-scoped message cache incrementally. Running a prune job does not invalidate or reread the complete session history.
+It operates on the loop's existing immutable working-set snapshot, and its `Session.updatePart()` writes maintain the loop-scoped cache incrementally. Running a prune job does not invalidate or reread the complete session history.
 
 ## Streaming and Persistence
 

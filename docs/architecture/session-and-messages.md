@@ -37,7 +37,7 @@ This single-writer rule supports:
 
 - ordered task execution
 - deterministic message and part persistence
-- a loop-scoped in-memory message cache
+- a loop-scoped in-memory model working-set cache
 - safe abort and terminal repair
 - one status stream per session
 
@@ -107,18 +107,20 @@ Part origin answers who authored the text. It does not remove the part from mode
 
 Persisted histories may contain older metadata shapes. `MessageV2.deriveSemantics()` is the only read-time derivation for canonical message fields.
 
-It runs over the complete ordered raw message list before pagination or slicing so root ownership can be derived consistently. It:
+Full transcript reads run it over the complete ordered raw message list before pagination or slicing so root ownership can be derived consistently. It:
 
 - maps legacy source metadata into canonical `origin`;
 - derives `isRoot`, `rootID`, `visible`, and `includeInContext` when absent;
 - maps legacy synthetic text into part origin;
 - gives assistants the active root when an older record lacks `rootID`.
 
+The LLM loop uses a compaction-aware read boundary instead of materializing the full transcript. It restores chronological message-info order, applies rollback events, locates the latest committed compaction boundary, loads parts only for the boundary root, retained summaries, and active suffix, then derives semantics over that root-anchored working set. Generic `Session.messages()` remains the complete transcript path for UI, export, rollback, fork, and other history consumers.
+
 Downstream loop, compaction, history, and frontend code read canonical fields. They must not recreate the retired metadata heuristics.
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
-Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. The read boundary restores those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. Both full and model-working-set read boundaries restore those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
 
 ## Message Parts
 

@@ -542,7 +542,7 @@ export const LocalBashBackend = {
       void trace("bash.child.exit", {
         exitCode: code,
         exitSignal: signal,
-        outputChars: regProc?.output.length ?? 0,
+        outputChars: ProcessRegistry.outputChars(regProc),
       })
       resolveChildFinished("exited")
     })

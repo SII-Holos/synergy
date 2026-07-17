@@ -7,6 +7,8 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Session } from "../../src/session"
 import { SessionHistory } from "../../src/session/history"
 import { Snapshot } from "../../src/session/snapshot"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 import { Log } from "../../src/util/log"
 import { tmpdir } from "../fixture/fixture"
 
@@ -15,10 +17,16 @@ Log.init({ print: false })
 describe("session rollback history", () => {
   test("rollback hides effective turns without deleting raw messages", async () => {
     await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
     await ScopeContext.provide({
-      scope: await tmp.scope(),
+      scope,
       fn: async () => {
         const session = await Session.create({})
+        const cursorPath = StoragePath.sessionSummaryCursor(
+          Identifier.asScopeID(scope.id),
+          Identifier.asSessionID(session.id),
+        )
+        await Storage.write(cursorPath, { from: "from_tree", to: "to_tree", files: [] })
         const [u1] = await writeTurn(session.id, tmp.path, "first", "one")
         await writeTurn(session.id, tmp.path, "second", "two")
         await writeTurn(session.id, tmp.path, "third", "three")
@@ -27,6 +35,7 @@ describe("session rollback history", () => {
           sessionID: session.id,
           numTurns: 1,
         })) as SessionHistory.RollbackEvent
+        await expect(Storage.read(cursorPath)).rejects.toBeInstanceOf(Storage.NotFoundError)
         expect(firstRollback.droppedUserMessageIDs).toHaveLength(1)
         expect(await visibleTexts(session.id)).toEqual(["first", "one", "second", "two"])
         expect(await rawTexts(session.id)).toEqual(["first", "one", "second", "two", "third", "three"])
@@ -34,7 +43,9 @@ describe("session rollback history", () => {
         await Session.rollback({ sessionID: session.id, numTurns: 1 })
         expect(await visibleTexts(session.id)).toEqual(["first", "one"])
 
+        await Storage.write(cursorPath, { from: "from_tree", to: "to_tree", files: [] })
         await Session.unrollback({ sessionID: session.id })
+        await expect(Storage.read(cursorPath)).rejects.toBeInstanceOf(Storage.NotFoundError)
         expect(await visibleTexts(session.id)).toEqual(["first", "one", "second", "two"])
 
         const info = await Session.get(session.id)

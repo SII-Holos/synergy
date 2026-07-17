@@ -160,7 +160,7 @@ export namespace Diagnostics {
       cwd: ObservabilityRedaction.cwdScope(proc.cwd),
       startedAt: proc.startedAt,
       backgrounded: proc.backgrounded,
-      outputChars: proc.output.length,
+      outputChars: ProcessRegistry.outputChars(proc),
       tailOmitted: true,
       tailChars: proc.tail.length,
       truncated: proc.truncated,

@@ -843,7 +843,7 @@ export namespace Session {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
-    const msgs = await messages({ sessionID })
+    const msgs = await SessionHistory.modelMessages({ sessionID })
     for (let i = msgs.length - 1; i >= 0; i--) {
       const msg = msgs[i]
       if (!lastExchange.assistant && msg.info.role === "assistant") {
