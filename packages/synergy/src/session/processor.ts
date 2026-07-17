@@ -65,6 +65,13 @@ export namespace SessionProcessor {
     resolvedAt?: number
   }
 
+  type ToolCallState = {
+    input: Record<string, any>
+    title?: string
+    metadata?: Record<string, any>
+    start?: number
+  }
+
   export function createSlot(callID: string): ToolExecutionSlot {
     let outcome: ToolOutcome | undefined
     let resolved = false
@@ -177,6 +184,8 @@ export namespace SessionProcessor {
     const executionCallbacks = new Map<string, Promise<unknown>>()
     const settlementPromises = new Map<string, Promise<void>>()
     const settledToolCalls = new Set<string>()
+    const pendingToolCallStates = new Map<string, ToolCallState>()
+    const toolCallStateUpdates = new Map<string, Promise<void>>()
     const generatingAccum: Record<string, string> = {}
     const generatingBytes: Record<string, number> = {}
     let snapshot: string | undefined
@@ -539,8 +548,59 @@ export namespace SessionProcessor {
       }
     }
 
+    function stageToolCallState(callID: string, state: ToolCallState) {
+      const pending = pendingToolCallStates.get(callID)
+      pendingToolCallStates.set(callID, {
+        input: state.input,
+        title: state.title ?? pending?.title,
+        metadata: ToolTimeout.mergeMetadata(pending?.metadata, state.metadata),
+        start: state.start ?? pending?.start,
+      })
+    }
+
+    async function flushToolCallState(callID: string) {
+      const match = toolcalls[callID]
+      if (!match || match.state.status !== "running") return
+      const state = pendingToolCallStates.get(callID)
+      if (!state) return
+      pendingToolCallStates.delete(callID)
+
+      const updated = await Session.updatePart({
+        ...match,
+        state: {
+          ...match.state,
+          title: state.title ?? match.state.title,
+          metadata: ToolTimeout.mergeMetadata(match.state.metadata, state.metadata) ?? match.state.metadata,
+          status: "running",
+          input: state.input,
+          time: {
+            start: state.start ?? match.state.time.start,
+          },
+        },
+      })
+      Object.assign(match, updated)
+    }
+
+    async function queueToolCallStateFlush(callID: string) {
+      const previous = toolCallStateUpdates.get(callID)?.catch(() => {}) ?? Promise.resolve()
+      const update = previous.then(() => flushToolCallState(callID))
+      toolCallStateUpdates.set(callID, update)
+      try {
+        await update
+      } finally {
+        if (toolCallStateUpdates.get(callID) === update) toolCallStateUpdates.delete(callID)
+      }
+    }
+
+    async function updateToolCallState(callID: string, state: ToolCallState) {
+      stageToolCallState(callID, state)
+      await queueToolCallStateFlush(callID)
+    }
+
     function forgetToolCall(callID: string) {
       executions.delete(callID)
+      pendingToolCallStates.delete(callID)
+      toolCallStateUpdates.delete(callID)
       delete toolcalls[callID]
       delete generatingAccum[callID]
       delete generatingBytes[callID]
@@ -701,6 +761,8 @@ export namespace SessionProcessor {
       const before = toolSettlementSnapshot(undefined, true)
       for (const callID of Object.keys(toolcalls)) delete toolcalls[callID]
       executions.clear()
+      pendingToolCallStates.clear()
+      toolCallStateUpdates.clear()
       executionCallbacks.clear()
       settlementPromises.clear()
       settledToolCalls.clear()
@@ -723,6 +785,7 @@ export namespace SessionProcessor {
         return toolcalls[toolCallID]
       },
       beginExecution,
+      updateToolCallState,
       executeOnce,
       dispose,
       async process(streamInput: LLM.StreamInput) {
@@ -997,6 +1060,12 @@ export namespace SessionProcessor {
                       })
                       if (shouldIgnoreSettledStreamEvent(value.toolCallId, "tool-call", value.toolName)) break
                       const match = toolcalls[value.toolCallId]
+                      const pendingState = pendingToolCallStates.get(value.toolCallId)
+                      pendingToolCallStates.delete(value.toolCallId)
+                      const runningMetadata = ToolTimeout.mergeMetadata(
+                        runningToolMetadata(value.toolName, value.providerMetadata),
+                        pendingState?.metadata,
+                      )
                       const toolInput = SessionToolInput.normalize(value.input)
                       if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
                         const error = SessionBounds.toolInputExceededMessage()
@@ -1013,7 +1082,7 @@ export namespace SessionProcessor {
                             status: "error",
                             input: {},
                             error,
-                            metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                            metadata: runningMetadata,
                             time: { start: Date.now(), end: Date.now() },
                           },
                           metadata: value.providerMetadata,
@@ -1036,14 +1105,16 @@ export namespace SessionProcessor {
                         state: {
                           status: "running",
                           input: toolInput,
-                          metadata: runningToolMetadata(value.toolName, value.providerMetadata),
+                          title: pendingState?.title,
+                          metadata: runningMetadata,
                           time: {
-                            start: Date.now(),
+                            start: pendingState?.start ?? Date.now(),
                           },
                         },
                         metadata: value.providerMetadata,
                       })
                       toolcalls[value.toolCallId] = part as MessageV2.ToolPart
+                      await queueToolCallStateFlush(value.toolCallId)
                       delete generatingAccum[value.toolCallId]
                       delete generatingBytes[value.toolCallId]
                       log.info("tool.stream.tool_call.part_running", {
