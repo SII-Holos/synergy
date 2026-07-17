@@ -249,6 +249,7 @@ export namespace Session {
       chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
       completionNotice: {
         unread: session.completionNotice.unread,
+        unreadCount: session.completionNotice.unreadCount,
       },
     }
   }
@@ -348,6 +349,7 @@ export namespace Session {
     const controlProfile = input?.parentID ? undefined : input?.controlProfile
     const completionNotice = {
       unread: false,
+      unreadCount: 0,
       silent: input?.completionNotice?.silent ?? parent?.completionNotice.silent ?? false,
     }
 
@@ -593,15 +595,24 @@ export namespace Session {
     const scope = session.scope as Scope
     const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
     const before = await Storage.read<Info>(key)
-    if (!before.completionNotice.unread) return withRuntimeInfo(before)
+    if (!before.completionNotice.unread && !before.completionNotice.unreadCount) return withRuntimeInfo(before)
 
     const result = await Storage.update<Info>(key, (draft) => {
       draft.completionNotice.unread = false
+      draft.completionNotice.unreadCount = 0
     })
 
     const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
     await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
+  }
+  export async function recordCompletionNotice(id: string) {
+    return update(id, (draft) => {
+      if (draft.time.archived || draft.completionNotice.silent) return
+      const unreadCount = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+      draft.completionNotice.unread = true
+      draft.completionNotice.unreadCount = Math.min(Number.MAX_SAFE_INTEGER, unreadCount + 1)
+    })
   }
 
   export async function update(id: string, editor: (session: Info) => void) {

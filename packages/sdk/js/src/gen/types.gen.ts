@@ -589,6 +589,21 @@ export type PerfDashboardSummary = {
   issues: Array<PerfIssue>
 }
 
+export type PerformanceAnalysisStatus = "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+
+export type PerformanceAnalysisView = {
+  sessionID: string
+  status: PerformanceAnalysisStatus
+  startedAt: number
+  completedAt?: number
+  result?: string
+  error?: string
+}
+
+export type PerformanceAnalysisRequest = {
+  windowMs?: number
+}
+
 export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
 
 export type PerfSpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
@@ -1138,6 +1153,7 @@ export type SessionNavEntry = {
   chatType?: "dm" | "group"
   completionNotice: {
     unread: boolean
+    unreadCount: number
   }
 }
 
@@ -1146,10 +1162,11 @@ export type NavCursor = {
   id: string
 }
 
-export type SessionNavResponse = {
+export type GlobalRecentResponse = {
   items: Array<SessionNavEntry>
   nextCursor: NavCursor | null
   total: number
+  unreadCompletionCount: number
 }
 
 export type PinnedResponse = {
@@ -3669,6 +3686,7 @@ export type PermissionRuleset = Array<PermissionRule>
 
 export type SessionCompletionNotice = {
   unread: boolean
+  unreadCount: number
   silent: boolean
 }
 
@@ -3903,6 +3921,12 @@ export type WorktreeRemoveInput = {
 
 export type VcsInfo = {
   branch: string
+}
+
+export type SessionNavResponse = {
+  items: Array<SessionNavEntry>
+  nextCursor: NavCursor | null
+  total: number
 }
 
 export type SessionStatus =
@@ -7743,6 +7767,60 @@ export type PerformanceSummaryResponses = {
 
 export type PerformanceSummaryResponse = PerformanceSummaryResponses[keyof PerformanceSummaryResponses]
 
+export type PerformanceAnalysisStartData = {
+  body?: PerformanceAnalysisRequest
+  path?: never
+  query?: never
+  url: "/global/performance/analysis"
+}
+
+export type PerformanceAnalysisStartResponses = {
+  /**
+   * Performance analysis started
+   */
+  202: PerformanceAnalysisView
+}
+
+export type PerformanceAnalysisStartResponse =
+  PerformanceAnalysisStartResponses[keyof PerformanceAnalysisStartResponses]
+
+export type PerformanceAnalysisGetData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/performance/analysis/{sessionID}"
+}
+
+export type PerformanceAnalysisGetResponses = {
+  /**
+   * Performance analysis state
+   */
+  200: PerformanceAnalysisView
+}
+
+export type PerformanceAnalysisGetResponse = PerformanceAnalysisGetResponses[keyof PerformanceAnalysisGetResponses]
+
+export type PerformanceAnalysisCancelData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: never
+  url: "/global/performance/analysis/{sessionID}/cancel"
+}
+
+export type PerformanceAnalysisCancelResponses = {
+  /**
+   * Performance analysis state
+   */
+  200: PerformanceAnalysisView
+}
+
+export type PerformanceAnalysisCancelResponse =
+  PerformanceAnalysisCancelResponses[keyof PerformanceAnalysisCancelResponses]
+
 export type PerformanceInflightData = {
   body?: never
   path?: never
@@ -8202,7 +8280,7 @@ export type GlobalNavRecentResponses = {
   /**
    * Paginated recent sessions
    */
-  200: SessionNavResponse
+  200: GlobalRecentResponse
 }
 
 export type GlobalNavRecentResponse = GlobalNavRecentResponses[keyof GlobalNavRecentResponses]

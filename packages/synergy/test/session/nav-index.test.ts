@@ -239,11 +239,12 @@ describe("SessionNav.buildNavIndex", () => {
         const session = await Session.create({ title: "Unread Session" })
         await Session.update(session.id, (draft) => {
           draft.completionNotice.unread = true
+          draft.completionNotice.unreadCount = 1
         })
 
         const index = await SessionNav.buildNavIndex(scope.id)
         const entry = index.entries.find((e) => e.id === session.id)
-        expect(entry?.completionNotice).toEqual({ unread: true })
+        expect(entry?.completionNotice).toEqual({ unread: true, unreadCount: 1 })
 
         await Session.remove(session.id)
       },
@@ -286,11 +287,12 @@ describe("SessionNav.buildNavIndex", () => {
         await Session.update(session.id, (draft) => {
           draft.pendingReply = undefined
           draft.completionNotice.unread = true
+          draft.completionNotice.unreadCount = 1
         })
         const finished = (await SessionNav.readNavIndex(scope.id)).entries.find((e) => e.id === session.id)
         expect(finished).toBeDefined()
         expect(finished!.lastActivityAt).toBeGreaterThan(duringRun!.lastActivityAt)
-        expect(finished!.completionNotice).toEqual({ unread: true })
+        expect(finished!.completionNotice).toEqual({ unread: true, unreadCount: 1 })
 
         await Session.remove(session.id)
       },

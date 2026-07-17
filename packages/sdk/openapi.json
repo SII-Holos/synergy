@@ -958,6 +958,110 @@
         ]
       }
     },
+    "/global/performance/analysis": {
+      "post": {
+        "operationId": "performance.analysis.start",
+        "summary": "Start AI performance analysis",
+        "description": "Snapshot redacted runtime telemetry and analyze it in one durable top-level Session.",
+        "responses": {
+          "202": {
+            "description": "Performance analysis started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PerformanceAnalysisRequest"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.start({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/analysis/{sessionID}": {
+      "get": {
+        "operationId": "performance.analysis.get",
+        "summary": "Get AI performance analysis",
+        "description": "Read live or durable analysis state from its Session messages and runtime.",
+        "responses": {
+          "200": {
+            "description": "Performance analysis state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.get({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/global/performance/analysis/{sessionID}/cancel": {
+      "post": {
+        "operationId": "performance.analysis.cancel",
+        "summary": "Cancel AI performance analysis",
+        "description": "Cancel a queued or running Performance analysis Session and return its durable state.",
+        "responses": {
+          "200": {
+            "description": "Performance analysis state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PerformanceAnalysisView"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.performance.analysis.cancel({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/performance/inflight": {
       "get": {
         "operationId": "performance.inflight",
@@ -1763,7 +1867,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SessionNavResponse"
+                  "$ref": "#/components/schemas/GlobalRecentResponse"
                 }
               }
             }
@@ -20699,6 +20803,45 @@
           "issues"
         ]
       },
+      "PerformanceAnalysisStatus": {
+        "type": "string",
+        "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+      },
+      "PerformanceAnalysisView": {
+        "type": "object",
+        "properties": {
+          "sessionID": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PerformanceAnalysisStatus"
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "result": {
+            "type": "string"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["sessionID", "status", "startedAt"]
+      },
+      "PerformanceAnalysisRequest": {
+        "type": "object",
+        "properties": {
+          "windowMs": {
+            "default": 900000,
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 86400000
+          }
+        }
+      },
       "PerfSource": {
         "type": "string",
         "enum": ["backend", "frontend", "electron-main", "electron-renderer", "process", "browser"]
@@ -22102,9 +22245,14 @@
             "properties": {
               "unread": {
                 "type": "boolean"
+              },
+              "unreadCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
               }
             },
-            "required": ["unread"]
+            "required": ["unread", "unreadCount"]
           }
         },
         "required": [
@@ -22131,7 +22279,7 @@
         },
         "required": ["lastActivityAt", "id"]
       },
-      "SessionNavResponse": {
+      "GlobalRecentResponse": {
         "type": "object",
         "properties": {
           "items": {
@@ -22152,9 +22300,14 @@
           },
           "total": {
             "type": "number"
+          },
+          "unreadCompletionCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
           }
         },
-        "required": ["items", "nextCursor", "total"]
+        "required": ["items", "nextCursor", "total", "unreadCompletionCount"]
       },
       "PinnedResponse": {
         "type": "object",
@@ -26808,6 +26961,7 @@
       "SessionCompletionNotice": {
         "default": {
           "unread": false,
+          "unreadCount": 0,
           "silent": false
         },
         "type": "object",
@@ -26815,11 +26969,16 @@
           "unread": {
             "type": "boolean"
           },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
           "silent": {
             "type": "boolean"
           }
         },
-        "required": ["unread", "silent"]
+        "required": ["unread", "unreadCount", "silent"]
       },
       "SessionInteractionMode": {
         "type": "string",
@@ -27550,6 +27709,31 @@
           }
         },
         "required": ["branch"]
+      },
+      "SessionNavResponse": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionNavEntry"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/NavCursor"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "total": {
+            "type": "number"
+          }
+        },
+        "required": ["items", "nextCursor", "total"]
       },
       "SessionStatus": {
         "anyOf": [

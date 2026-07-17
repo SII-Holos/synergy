@@ -14,6 +14,31 @@ export const P = {
   snapshotFrom: { id: "app.performance.snapshot.from", message: "Snapshot from {time}" },
   refresh: { id: "app.performance.action.refresh", message: "Refresh" },
 
+  // performance analysis
+  analysisAnalyze: { id: "app.performance.analysis.action.analyze", message: "Analyze" },
+  analysisAnalyzing: { id: "app.performance.analysis.action.analyzing", message: "Analyzing…" },
+  analysisCancel: { id: "app.performance.analysis.action.cancel", message: "Cancel" },
+  analysisOpenSession: { id: "app.performance.analysis.action.openSession", message: "Open session" },
+  analysisTitle: { id: "app.performance.analysis.title", message: "AI performance analysis" },
+  analysisDescriptionReady: {
+    id: "app.performance.analysis.description.ready",
+    message: "Bounded, redacted telemetry analyzed in one durable Session",
+  },
+  analysisDescriptionPreparing: {
+    id: "app.performance.analysis.description.preparing",
+    message: "Preparing a bounded, redacted telemetry snapshot",
+  },
+  analysisProgress: {
+    id: "app.performance.analysis.progress",
+    message: "The analyst is correlating current health, latency, resource, session, storage, and frontend signals.",
+  },
+  analysisStatusQueued: { id: "app.performance.analysis.status.queued", message: "Queued" },
+  analysisStatusRunning: { id: "app.performance.analysis.status.running", message: "Running" },
+  analysisStatusCompleted: { id: "app.performance.analysis.status.completed", message: "Completed" },
+  analysisStatusFailed: { id: "app.performance.analysis.status.failed", message: "Failed" },
+  analysisStatusCancelled: { id: "app.performance.analysis.status.cancelled", message: "Cancelled" },
+  analysisStatusInterrupted: { id: "app.performance.analysis.status.interrupted", message: "Interrupted" },
+
   // summary cards
   summaryHealth: { id: "app.performance.summary.health", message: "Health" },
   summaryUnknown: { id: "app.performance.summary.unknown", message: "Unknown" },

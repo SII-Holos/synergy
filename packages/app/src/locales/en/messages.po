@@ -3724,6 +3724,75 @@ msgstr "Terminal"
 msgid "app.performance.action.refresh"
 msgstr "Refresh"
 
+#. performance analysis
+msgid "app.performance.analysis.action.analyze"
+msgstr "Analyze"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.action.analyzing"
+msgstr "Analyzing…"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.action.cancel"
+msgstr "Cancel"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.action.openSession"
+msgstr "Open session"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.description.preparing"
+msgstr "Preparing a bounded, redacted telemetry snapshot"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.description.ready"
+msgstr "Bounded, redacted telemetry analyzed in one durable Session"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.progress"
+msgstr "The analyst is correlating current health, latency, resource, session, storage, and frontend signals."
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.cancelled"
+msgstr "Cancelled"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.completed"
+msgstr "Completed"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.failed"
+msgstr "Failed"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.interrupted"
+msgstr "Interrupted"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.queued"
+msgstr "Queued"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.status.running"
+msgstr "Running"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.analysis.title"
+msgstr "AI performance analysis"
+
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.axis.bytes"

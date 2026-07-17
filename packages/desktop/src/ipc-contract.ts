@@ -25,6 +25,14 @@ export const externalUrlSchema = z
 
 export const clipboardWriteTextSchema = z.string()
 
+export const desktopBadgeStateSchema = z
+  .object({
+    count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+
+export type DesktopBadgeState = z.infer<typeof desktopBadgeStateSchema>
+
 export const selectDirectoryDialogRequestSchema = z
   .object({
     title: z.string().trim().min(1).max(120).optional(),
@@ -78,6 +86,10 @@ export function parseExternalUrl(input: unknown): string {
 
 export function parseClipboardWriteText(input: unknown): string {
   return clipboardWriteTextSchema.parse(input)
+}
+
+export function parseDesktopBadgeState(input: unknown): DesktopBadgeState {
+  return desktopBadgeStateSchema.parse(input)
 }
 
 export function parseSelectDirectoryDialogRequest(input: unknown): SelectDirectoryDialogRequest {

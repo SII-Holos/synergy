@@ -1161,7 +1161,56 @@ describe("SessionInvoke completion notices", () => {
 
           await SessionInvoke.loop.force(session.id)
 
-          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: true,
+            unreadCount: 1,
+            silent: false,
+          })
+        },
+      })
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
+  test("consecutive unread completions in one session increment the notice count", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            role: "user",
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: session.id,
+            type: "text",
+            text: "Run the session again",
+          })
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: true,
+            unreadCount: 2,
+            silent: false,
+          })
         },
       })
     } finally {
@@ -1184,7 +1233,11 @@ describe("SessionInvoke completion notices", () => {
 
           await SessionInvoke.loop.force(session.id)
 
-          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: false, silent: true })
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: false,
+            unreadCount: 0,
+            silent: true,
+          })
         },
       })
     } finally {
@@ -1211,7 +1264,11 @@ describe("SessionInvoke completion notices", () => {
 
           await SessionInvoke.loop.force(session.id)
 
-          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: false, silent: false })
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: false,
+            unreadCount: 0,
+            silent: false,
+          })
         },
       })
     } finally {
@@ -1238,7 +1295,11 @@ describe("SessionInvoke completion notices", () => {
 
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
 
-          expect((await Session.get(session.id)).completionNotice).toEqual({ unread: true, silent: false })
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: true,
+            unreadCount: 1,
+            silent: false,
+          })
         },
       })
     } finally {
