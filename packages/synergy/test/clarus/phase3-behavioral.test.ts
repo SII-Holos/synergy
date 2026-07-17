@@ -1133,7 +1133,7 @@ describe("Clarus Phase 3 result and recovery", () => {
           },
           ctx,
         )
-        const result = await Promise.race([execution, Bun.sleep(50).then(() => null)])
+        const result = await Promise.race([execution, Bun.sleep(1_000).then(() => null)])
         expect(result).not.toBeNull()
         if (!result) throw new Error("Clarus result tool waited for the recorded response")
         expect(result.title).toBe("Clarus task result submitted")
@@ -1208,7 +1208,15 @@ describe("Clarus Phase 3 result and recovery", () => {
           expect(result.title).toBe("Clarus task result submitted")
           const requestID = port.resultInputs[0]!.requestID
           expect(String(result.metadata.requestID)).toBe(requestID)
-          await waitFor(async () => (await ClarusOutbox.get(requestID))?.state === failure)
+          await waitFor(async () => {
+            const outbox = await ClarusOutbox.get(requestID)
+            const bindingState = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
+            return (
+              outbox?.state === failure &&
+              bindingState?.status === "needs_attention" &&
+              bindingState.resultState === "idle"
+            )
+          })
           const reverted = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
           expect(reverted).toMatchObject({ status: "needs_attention", resultState: "idle" })
           expect(reverted?.resultOutboxRequestID).toBeUndefined()

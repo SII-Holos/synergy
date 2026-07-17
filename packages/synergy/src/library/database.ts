@@ -11,6 +11,8 @@ import { ObservabilityMetrics } from "@/observability/metrics"
 const log = Log.create({ service: "library.db" })
 
 let db: Database | undefined
+let activeDBPath: string | undefined
+let checkpointTimer: ReturnType<typeof setInterval> | undefined
 
 let embeddingDimensions: number | undefined
 interface VecTableState {
@@ -131,8 +133,9 @@ function loadSqliteVec(conn: Database) {
 }
 
 function open(): Database {
-  if (db) return db
   const dbPath = Global.Path.libraryDB
+  if (db && activeDBPath === dbPath) return db
+  if (db) closeDB()
   log.info("open", { path: dbPath })
   const conn = new Database(dbPath, { create: true })
   try {
@@ -148,10 +151,11 @@ function open(): Database {
   initialize(conn)
   reconcileReencodeJobs(conn)
   db = instrumentConnection(conn)
+  activeDBPath = dbPath
 
   // Periodic WAL checkpoint to prevent unbounded WAL file growth.
   // TRUNCATE checkpoints and zeros the WAL file; failures are non-critical.
-  const checkpointTimer = setInterval(
+  checkpointTimer = setInterval(
     () => {
       try {
         conn.exec("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -560,6 +564,11 @@ export function closeDB() {
   if (db) {
     db.close()
     db = undefined
+  }
+  activeDBPath = undefined
+  if (checkpointTimer) {
+    clearInterval(checkpointTimer)
+    checkpointTimer = undefined
   }
   embeddingDimensions = undefined
   vecExperience.ready = false

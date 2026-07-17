@@ -4,7 +4,7 @@ import { GlobalBus } from "@/bus/global"
 import { EventWire } from "./event-wire"
 import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
-import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
+import { describeRoute, generateSpecs, validator, resolver } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
 import { cors } from "hono/cors"
 import { streamSSE } from "hono/streaming"
@@ -168,6 +168,7 @@ export namespace Server {
   let _url: URL | undefined
   let _corsWhitelist = new Set<string>()
   let _appMounted = false
+  let _openapiPromise: ReturnType<typeof generateSpecs> | undefined
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
   let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
@@ -837,19 +838,7 @@ export namespace Server {
             return c.json({ accepted: true })
           },
         )
-        .get(
-          "/doc",
-          openAPIRouteHandler(app, {
-            documentation: {
-              info: {
-                title: "synergy",
-                version: "0.0.3",
-                description: "synergy api",
-              },
-              openapi: "3.1.1",
-            },
-          }),
-        )
+        .get("/doc", async (c) => c.json(await openapi()))
         .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
@@ -1591,19 +1580,25 @@ export namespace Server {
     _appMounted = true
   }
 
-  export async function openapi() {
-    // Cast to break excessive type recursion from long route chains
-    const result = await generateSpecs(App() as Hono, {
-      documentation: {
-        info: {
-          title: "synergy",
-          version: "1.0.0",
-          description: "synergy api",
+  export function openapi() {
+    if (!_openapiPromise) {
+      // hono-openapi consumes schema metadata while generating components, so
+      // reuse the first complete document for every caller.
+      _openapiPromise = generateSpecs(App() as Hono, {
+        documentation: {
+          info: {
+            title: "synergy",
+            version: "1.0.0",
+            description: "synergy api",
+          },
+          openapi: "3.1.1",
         },
-        openapi: "3.1.1",
-      },
-    })
-    return result
+      }).catch((error) => {
+        _openapiPromise = undefined
+        throw error
+      })
+    }
+    return _openapiPromise.then((spec) => structuredClone(spec))
   }
 
   function lanOrigins(): string[] {

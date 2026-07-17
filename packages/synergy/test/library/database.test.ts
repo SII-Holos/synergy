@@ -1,4 +1,7 @@
 import { describe, expect, test, beforeEach, afterAll } from "bun:test"
+import fs from "fs/promises"
+import os from "os"
+import path from "path"
 import { Database } from "bun:sqlite"
 import { LibraryDB, closeDB } from "../../src/library/database"
 import { Log } from "../../src/util/log"
@@ -132,6 +135,36 @@ describe.serial("LibraryDB", () => {
 
   afterAll(() => {
     closeDB()
+  })
+
+  test("reopens the connection when the library path changes", async () => {
+    const originalHome = process.env["SYNERGY_TEST_HOME"]
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-library-path-"))
+    const firstHome = path.join(root, "first")
+    const secondHome = path.join(root, "second")
+    await Promise.all(
+      [firstHome, secondHome].map((home) => fs.mkdir(path.join(home, ".synergy", "data"), { recursive: true })),
+    )
+
+    try {
+      process.env["SYNERGY_TEST_HOME"] = firstHome
+      const first = LibraryDB.connection()
+      first.exec("CREATE TABLE path_probe (value TEXT NOT NULL)")
+      first.prepare("INSERT INTO path_probe (value) VALUES (?1)").run("first")
+
+      process.env["SYNERGY_TEST_HOME"] = secondHome
+      const second = LibraryDB.connection()
+      expect(second.prepare("SELECT name FROM sqlite_master WHERE name = 'path_probe'").get()).toBeNull()
+
+      process.env["SYNERGY_TEST_HOME"] = firstHome
+      const reopened = LibraryDB.connection()
+      expect(reopened.prepare("SELECT value FROM path_probe").get()).toEqual({ value: "first" })
+    } finally {
+      closeDB()
+      if (originalHome === undefined) delete process.env["SYNERGY_TEST_HOME"]
+      else process.env["SYNERGY_TEST_HOME"] = originalHome
+      await fs.rm(root, { recursive: true, force: true })
+    }
   })
 
   describe("Experience", () => {
