@@ -298,7 +298,17 @@ export namespace SessionHistory {
 
   async function loadModelMessages(input: { sessionID: string; onLoadParts?: (messageID: string) => void }) {
     const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
-    const effective = applyEventsToInfo(infos, events)
+    const loadedParts = new Map<string, MessageV2.Part[]>()
+    const loadParts = async (messageID: string) => {
+      const cachedParts = loadedParts.get(messageID)
+      if (cachedParts) return cachedParts
+      input.onLoadParts?.(messageID)
+      const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID })
+      loadedParts.set(messageID, parts)
+      return parts
+    }
+    const canonicalInfos = await deriveRollbackSemantics(infos, events, loadParts)
+    const effective = applyEventsToInfo(canonicalInfos, events)
     if (effective.length === 0) return []
 
     let latestSummaryIndex = -1
@@ -309,16 +319,6 @@ export namespace SessionHistory {
       latestSummaryIndex = index
       boundaryUserID = info.parentID
       break
-    }
-
-    const loadedParts = new Map<string, MessageV2.Part[]>()
-    const loadParts = async (messageID: string) => {
-      const cachedParts = loadedParts.get(messageID)
-      if (cachedParts) return cachedParts
-      input.onLoadParts?.(messageID)
-      const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID })
-      loadedParts.set(messageID, parts)
-      return parts
     }
 
     let selected = effective
@@ -405,6 +405,25 @@ export namespace SessionHistory {
     })
   }
 
+  async function deriveRollbackSemantics(
+    messages: MessageV2.Info[],
+    events: Event[],
+    loadParts: (messageID: string) => Promise<MessageV2.Part[]>,
+  ) {
+    if (activeRollbacks(events).length === 0) return messages
+    const legacy = new Set(
+      messages.flatMap((message) => (message.role === "user" && message.isRoot === undefined ? [message.id] : [])),
+    )
+    if (legacy.size === 0) return messages
+    const withParts = await Promise.all(
+      messages.map(async (info) => ({
+        info,
+        parts: legacy.has(info.id) ? await loadParts(info.id) : [],
+      })),
+    )
+    return MessageV2.deriveSemantics(withParts).map((message) => message.info)
+  }
+
   function applyEventsToInfo(messages: MessageV2.Info[], events: Event[]) {
     const rollbacks = activeRollbacks(events)
     if (rollbacks.length === 0) return messages
@@ -468,12 +487,16 @@ export namespace SessionHistory {
   }
 
   async function writeEvent(event: Event) {
+    SessionManager.bumpHistoryRevision(event.sessionID)
     const session = await SessionManager.requireSession(event.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
+    await Storage.remove(StoragePath.sessionSummaryCursor(scopeID, asSessionID(event.sessionID)))
     await Storage.write(
       StoragePath.sessionHistoryEvent(scopeID, asSessionID(event.sessionID), asHistoryID(event.id)),
       event,
     )
+    await Storage.remove(StoragePath.sessionSummaryCursor(scopeID, asSessionID(event.sessionID)))
+    SessionManager.bumpHistoryRevision(event.sessionID)
     SessionMessageCache.invalidate(event.sessionID)
   }
 

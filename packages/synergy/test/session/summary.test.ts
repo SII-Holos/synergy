@@ -10,13 +10,28 @@ import { SessionSummary } from "../../src/session/summary"
 import { Snapshot } from "../../src/session/snapshot"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { tmpdir } from "../fixture/fixture"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
 
 const originalDiffSummary = Snapshot.diffSummary
 const originalGetModel = Provider.getModel
+const originalMessages = Session.messages
+
+function summarizeFromLoop(input: { sessionID: string; messageID: string; messages: MessageV2.WithParts[] }) {
+  const summary = SessionSummary as typeof SessionSummary & {
+    summarizeFromLoop: (input: {
+      sessionID: string
+      messageID: string
+      messages: MessageV2.WithParts[]
+    }) => Promise<void>
+  }
+  return summary.summarizeFromLoop(input)
+}
 
 afterEach(() => {
   ;(Snapshot.diffSummary as any) = originalDiffSummary
   ;(Provider.getModel as any) = originalGetModel
+  ;(Session.messages as any) = originalMessages
 })
 
 describe("SessionSummary", () => {
@@ -144,6 +159,132 @@ describe("SessionSummary", () => {
         const messages = await Session.messages({ sessionID: session.id })
         const storedUser = messages.find((message) => message.info.id === user.id)?.info as MessageV2.User | undefined
         expect(storedUser?.summary?.diffs).toEqual([diff])
+
+        await Session.remove(session.id)
+      },
+    })
+  })
+
+  test("extends the session diff cursor from bounded loop messages", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Bounded summary history" })
+        const file = path.join(tmp.path, "file.txt")
+        const writeTurn = async (index: number) => {
+          const user = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            time: { created: Date.now() },
+            agent: "synergy",
+            model: { providerID: "test", modelID: "test" },
+            summary: { title: `Turn ${index}`, diffs: [] },
+          })) as MessageV2.User
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: user.id,
+            sessionID: session.id,
+            type: "text",
+            text: `turn ${index}`,
+          })
+          const assistant = (await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: user.id,
+            rootID: user.id,
+            modelID: "test",
+            providerID: "test",
+            time: { created: Date.now(), completed: Date.now() },
+            mode: "synergy",
+            agent: "synergy",
+            path: { cwd: tmp.path, root: tmp.path },
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })) as MessageV2.Assistant
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "step-start",
+            snapshot: `from_${index}`,
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "step-finish",
+            reason: "tool-calls",
+            snapshot: `to_${index}`,
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            messageID: assistant.id,
+            sessionID: session.id,
+            type: "patch",
+            hash: `from_${index}`,
+            files: [file],
+          })
+          return {
+            user,
+            messages: [
+              { info: user, parts: await MessageV2.parts({ sessionID: session.id, messageID: user.id }) },
+              { info: assistant, parts: await MessageV2.parts({ sessionID: session.id, messageID: assistant.id }) },
+            ],
+          }
+        }
+
+        const diff = SnapshotSchema.fromPatch({
+          file: "file.txt",
+          additions: 1,
+          deletions: 0,
+          patch: "diff --git a/file.txt b/file.txt\n@@ -0,0 +1 @@\n+content\n",
+        })
+        const diffSummary = mock(async () => [diff])
+        ;(Snapshot.diffSummary as any) = diffSummary
+
+        const first = await writeTurn(1)
+        await summarizeFromLoop({ sessionID: session.id, messageID: first.user.id, messages: first.messages })
+        ;(Session.messages as any) = mock(async () => {
+          throw new Error("bounded summary must not reload the full transcript")
+        })
+        const second = await writeTurn(2)
+        await summarizeFromLoop({ sessionID: session.id, messageID: second.user.id, messages: second.messages })
+
+        expect(diffSummary).toHaveBeenCalledTimes(3)
+        const ranges = diffSummary.mock.calls.map((call) => (call as unknown[]).slice(0, 3))
+        expect(ranges).toContainEqual(["from_2", "to_2", session.id])
+        expect(ranges).toContainEqual(["from_1", "to_2", session.id])
+        expect((await Session.get(session.id)).summary).toEqual({ additions: 1, deletions: 0, files: 1 })
+
+        const cursorPath = StoragePath.sessionSummaryCursor(
+          Identifier.asScopeID(scope.id),
+          Identifier.asSessionID(session.id),
+        )
+        const entered = Promise.withResolvers<void>()
+        const release = Promise.withResolvers<void>()
+        ;(Snapshot.diffSummary as any) = mock(async () => {
+          entered.resolve()
+          await release.promise
+          return [diff]
+        })
+        const third = await writeTurn(3)
+        const summarizing = summarizeFromLoop({
+          sessionID: session.id,
+          messageID: third.user.id,
+          messages: third.messages,
+        })
+        await entered.promise
+        await Session.rollback({ sessionID: session.id, numTurns: 1 })
+        release.resolve()
+        await summarizing
+        await expect(Storage.read(cursorPath)).rejects.toBeInstanceOf(Storage.NotFoundError)
 
         await Session.remove(session.id)
       },

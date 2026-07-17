@@ -50,6 +50,10 @@ export namespace StoragePath {
     ...sessionRoot(scopeID, sessionID),
     "summary",
   ]
+  export const sessionSummaryCursor = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "summary_cursor",
+  ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
   export const sessionInboxRoot = (scopeID: ScopeID, sessionID: SessionID) => [

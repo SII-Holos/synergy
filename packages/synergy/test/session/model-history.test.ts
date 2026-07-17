@@ -169,6 +169,47 @@ describe("SessionHistory.modelMessages", () => {
     })
   })
 
+  test("keeps legacy non-root injections hidden while rollback remains active", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = await writeUser(session.id, "root")
+        root.isRoot = true
+        root.rootID = root.id
+        await Session.updateMessage(root)
+        await writeAssistant(session.id, root.id, "reply", { rootID: root.id })
+
+        const rollback = (await Session.rollback({
+          sessionID: session.id,
+          numTurns: 1,
+        })) as SessionHistory.RollbackEvent
+        const legacySteer = await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          role: "user",
+          sessionID: session.id,
+          agent: "synergy",
+          model: { providerID: "test-provider", modelID: "test-model" },
+          metadata: { noReply: true },
+          time: { created: rollback.time.created + 1 },
+        })
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          messageID: legacySteer.id,
+          sessionID: session.id,
+          type: "text",
+          text: "legacy steer",
+        })
+
+        const full = await Session.messages({ sessionID: session.id })
+        const model = await modelMessages({ sessionID: session.id })
+        expect(model.map((message) => message.info.id)).toEqual(full.map((message) => message.info.id))
+        expect(model.some((message) => message.info.id === legacySteer.id)).toBe(false)
+      },
+    })
+  })
+
   test("preserves chronological ordering for legacy stable message IDs", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

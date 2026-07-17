@@ -28,7 +28,19 @@ import { withTimeout } from "@/util/timeout"
 export namespace SessionSummary {
   const log = Log.create({ service: "session.summary" })
   const { asScopeID, asSessionID, asMessageID } = Identifier
-  const active = new Map<string, { promise: Promise<void>; next?: { sessionID: string; messageID: string } }>()
+  type SummaryInput = {
+    sessionID: string
+    messageID: string
+    messages?: MessageV2.WithParts[]
+  }
+  type QueuedSummaryInput = SummaryInput & { historyRevision: number }
+  const SummaryCursor = z.object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+    files: z.array(z.string()),
+  })
+  type SummaryCursor = z.infer<typeof SummaryCursor>
+  const active = new Map<string, { promise: Promise<void>; next?: QueuedSummaryInput }>()
 
   // Each summary LLM call is bounded so a stalled provider can never hang the
   // coalescing loop forever. AbortSignal.timeout aborts the request; the
@@ -42,26 +54,33 @@ export namespace SessionSummary {
     return Number.isFinite(env) && env > 0 ? env : DEFAULT_SUMMARY_RUN_TIMEOUT_MS
   }
 
+  function enqueueSummary(input: SummaryInput) {
+    const queued = { ...input, historyRevision: SessionManager.historyRevision(input.sessionID) }
+    const pending = active.get(input.sessionID)
+    if (pending) {
+      pending.next = queued
+      return pending.promise
+    }
+    const task = Promise.resolve().then(() => runSummaries(queued))
+    active.set(input.sessionID, { promise: task })
+    return task
+  }
+
   export const summarize = fn(
     z.object({
       sessionID: z.string(),
       messageID: z.string(),
     }),
-    async (input) => {
-      const pending = active.get(input.sessionID)
-      if (pending) {
-        pending.next = input
-        return pending.promise
-      }
-      const task = runSummaries(input)
-      active.set(input.sessionID, { promise: task })
-      return task
-    },
+    enqueueSummary,
   )
 
-  async function runSummaries(input: { sessionID: string; messageID: string }) {
+  export function summarizeFromLoop(input: SummaryInput & { messages: MessageV2.WithParts[] }) {
+    return enqueueSummary(input)
+  }
+
+  async function runSummaries(input: QueuedSummaryInput) {
     try {
-      let current: { sessionID: string; messageID: string } | undefined = input
+      let current: QueuedSummaryInput | undefined = input
       while (current) {
         // Isolate per-iteration failures: a throw here (e.g. the session was
         // removed mid-run, a storage hiccup) must not abandon the coalescing
@@ -80,39 +99,46 @@ export namespace SessionSummary {
     }
   }
 
-  async function summarizeNow(input: { sessionID: string; messageID: string }) {
-    const all = await Session.messages({ sessionID: input.sessionID })
+  async function summarizeNow(input: QueuedSummaryInput) {
+    const completeHistory = input.messages === undefined
+    const messages = input.messages ?? (await Session.messages({ sessionID: input.sessionID }))
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
-    await Promise.all([
-      summarizeSession({ sessionID: input.sessionID, messages: all, diffCache }),
-      summarizeMessage({ messageID: input.messageID, messages: all, sessionID: input.sessionID, diffCache }),
+    const results = await Promise.allSettled([
+      summarizeSession({
+        sessionID: input.sessionID,
+        messages,
+        completeHistory,
+        diffCache,
+        historyRevision: input.historyRevision,
+      }),
+      summarizeMessage({ messageID: input.messageID, messages, sessionID: input.sessionID, diffCache }),
     ])
+    const failure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+    if (failure) throw failure.reason
   }
 
   async function summarizeSession(input: {
     sessionID: string
     messages: MessageV2.WithParts[]
+    completeHistory: boolean
     diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+    historyRevision: number
   }) {
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
     const session = await SessionManager.requireSession(input.sessionID)
     const directory = (session.scope as Scope).directory
     const scopeID = asScopeID((session.scope as Scope).id)
-    const files = new Set(
-      input.messages
-        .flatMap((x) => x.parts)
-        .filter((x) => x.type === "patch")
-        .flatMap((x) => x.files)
-        .map((x) => path.relative(directory, x)),
+    let cursor = await readSummaryCursor(scopeID, input.sessionID)
+    if (!cursor) {
+      const history = input.completeHistory ? input.messages : await Session.messages({ sessionID: input.sessionID })
+      cursor = cursorFromMessages(history, directory)
+    }
+    cursor = mergeSummaryCursor(cursor, input.messages, directory)
+    const files = new Set(cursor.files)
+    const diffs = (await computeCursorDiff(cursor, input.sessionID, input.diffCache)).filter((diff) =>
+      files.has(diff.file),
     )
-    const diffs = await computeDiff({
-      messages: input.messages,
-      sessionID: input.sessionID,
-      cache: input.diffCache,
-    }).then((x) =>
-      x.filter((x) => {
-        return files.has(x.file)
-      }),
-    )
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
     await Session.update(input.sessionID, (draft) => {
       draft.summary = {
         additions: diffs.reduce((sum, x) => sum + x.additions, 0),
@@ -120,11 +146,59 @@ export namespace SessionSummary {
         files: diffs.length,
       }
     })
-    await Storage.write(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)), diffs)
+    await Promise.all([
+      Storage.write(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)), diffs),
+      Storage.write(StoragePath.sessionSummaryCursor(scopeID, asSessionID(input.sessionID)), cursor),
+    ])
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) {
+      await Storage.remove(StoragePath.sessionSummaryCursor(scopeID, asSessionID(input.sessionID)))
+      return
+    }
     Bus.publish(SessionEvent.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
     })
+  }
+
+  function cursorFromMessages(messages: MessageV2.WithParts[], directory: string): SummaryCursor {
+    const range = diffRange(messages)
+    return {
+      from: range?.from,
+      to: range?.to,
+      files: summaryFiles(messages, directory),
+    }
+  }
+
+  function mergeSummaryCursor(cursor: SummaryCursor, messages: MessageV2.WithParts[], directory: string) {
+    const next = cursorFromMessages(messages, directory)
+    return {
+      from: cursor.from ?? next.from,
+      to: next.to ?? cursor.to,
+      files: Array.from(new Set([...cursor.files, ...next.files])),
+    }
+  }
+
+  function summaryFiles(messages: MessageV2.WithParts[], directory: string) {
+    return messages
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === "patch")
+      .flatMap((part) => part.files)
+      .map((file) => path.relative(directory, file))
+  }
+
+  async function readSummaryCursor(scopeID: Identifier.ScopeID, sessionID: string) {
+    return Storage.read<unknown>(StoragePath.sessionSummaryCursor(scopeID, asSessionID(sessionID)))
+      .then((value) => SummaryCursor.parse(value))
+      .catch(() => undefined)
+  }
+
+  function computeCursorDiff(
+    cursor: SummaryCursor,
+    sessionID: string,
+    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>,
+  ) {
+    if (!cursor.from || !cursor.to) return Promise.resolve([])
+    return computeSnapshotDiff({ from: cursor.from, to: cursor.to }, sessionID, cache)
   }
 
   async function saveSummary(userMsg: MessageV2.User) {
@@ -184,8 +258,6 @@ export namespace SessionSummary {
       return
     }
 
-    const fallbackModel = await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID)
-
     const textPart = msgWithParts.parts.find((p) => p.type === "text" && !MessageV2.isSystemPart(p)) as
       | MessageV2.TextPart
       | undefined
@@ -194,6 +266,11 @@ export namespace SessionSummary {
     )
     const needsBody = hasStepFinish && diffs.length > 0
     const needsTitle = textPart && !userMsg.summary?.title
+    if (!needsTitle && !needsBody) {
+      if (diffsChanged) await saveSummary(userMsg)
+      return
+    }
+    const fallbackModel = await Provider.getModel(assistantMsg.providerID, assistantMsg.modelID)
 
     const generateTitle = async (): Promise<string | undefined> => {
       if (!needsTitle || !textPart) return undefined
@@ -295,11 +372,19 @@ export namespace SessionSummary {
   }) {
     const range = diffRange(input.messages)
     if (!range) return []
+    return computeSnapshotDiff(range, input.sessionID, input.cache)
+  }
+
+  function computeSnapshotDiff(
+    range: { from: string; to: string },
+    sessionID: string,
+    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>,
+  ) {
     const key = `${range.from}:${range.to}`
-    let cached = input.cache.get(key)
+    let cached = cache.get(key)
     if (!cached) {
-      cached = Snapshot.diffSummary(range.from, range.to, input.sessionID)
-      input.cache.set(key, cached)
+      cached = Snapshot.diffSummary(range.from, range.to, sessionID)
+      cache.set(key, cached)
     }
     return cached
   }
@@ -342,9 +427,10 @@ LoopJob.register({
     return [{ type: "summarize" }]
   },
   async execute(ctx) {
-    await SessionSummary.summarize({
+    await SessionSummary.summarizeFromLoop({
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
+      messages: ctx.messages,
     })
     return "pass"
   },
