@@ -368,6 +368,29 @@ describe("settings config patch", () => {
       }).toast,
     ).toBeUndefined()
   })
+
+  test("persists a local embedding source and only sends a custom origin for custom mode", () => {
+    const state = defaultSettingsState("enter")
+    Object.assign(state.library, {
+      embeddingSource: "custom",
+      embeddingRemoteHost: "https://models.example/",
+    })
+
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).embedding).toEqual({
+      local: { source: "custom", remoteHost: "https://models.example/" },
+    })
+
+    Object.assign(state.library, { embeddingSource: "huggingface" })
+    expect(
+      buildPatch({
+        cfg: {
+          embedding: { local: { source: "custom", remoteHost: "https://models.example/" } },
+        } as Config,
+        state,
+        originalMcps: {},
+      }).embedding,
+    ).toEqual({ local: { source: "huggingface" } })
+  })
 })
 
 describe("settings config patch locale", () => {

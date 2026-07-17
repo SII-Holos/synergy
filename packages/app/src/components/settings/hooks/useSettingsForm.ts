@@ -187,6 +187,8 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       experienceRetrieve?.topK !== undefined ? String(experienceRetrieve.topK) : UI_DEFAULTS.experienceTopK,
     experienceEpsilon:
       experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
+    embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
+    embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
   })
 
   params.setInitialized(true)

@@ -24,6 +24,7 @@ import {
 } from "./library-reencode-model"
 import { LibraryReencodeProgress } from "./library-reencode-progress"
 import type { MessageDescriptor } from "@lingui/core"
+import { LibraryEmbeddingSection } from "./library-embedding-section"
 
 /* ---------- option descriptors (labels/details held as descriptors; translated at consumer) ---------- */
 
@@ -293,65 +294,62 @@ const reencodeStatusUnavailableTitle = {
   id: "settings.library.reencode.unavailable",
   message: "Re-encoding status unavailable",
 }
+
+const jobLoadFallback = {
+  id: "settings.library.reencode.loadFallback",
+  message: "Could not load re-encoding job status.",
+}
+
 const reencodeHistoryUnavailableTitle = {
   id: "settings.library.reencode.historyUnavailable",
-  message: "Re-encoding history unavailable",
+  message: "Re-encode history unavailable",
 }
-const reencodeStartErrorTitle = { id: "settings.library.reencode.startError", message: "Re-encoding could not start" }
+
+const historyLoadFallback = {
+  id: "settings.library.reencode.historyLoadFallback",
+  message: "Could not load re-encode history.",
+}
+
+const reencodeStartErrorTitle = {
+  id: "settings.library.reencode.startError",
+  message: "Could not start re-encoding",
+}
+
+const startJobFallback = {
+  id: "settings.library.reencode.startJobFallback",
+  message: "Could not start re-encode job.",
+}
+
 const reencodeCancelErrorTitle = {
   id: "settings.library.reencode.cancelError",
-  message: "Re-encoding could not be cancelled",
-}
-const allHealthyText = { id: "settings.library.encoding.allHealthy", message: "All experience records are healthy." }
-const jobLoadFallback = {
-  id: "settings.library.encoding.jobLoadFallback",
-  message: "The current job could not be loaded.",
-}
-const historyLoadFallback = {
-  id: "settings.library.encoding.historyLoadFallback",
-  message: "The latest job could not be loaded.",
-}
-const startJobFallback = { id: "settings.library.encoding.startJobFallback", message: "The job could not be started." }
-const cancelJobFallback = { id: "settings.library.encoding.cancelJobFallback", message: "The job is still running." }
-
-const scanNowDescriptor = { id: "settings.library.encoding.scanNow", message: "Scan Now" }
-const scanningDescriptor = {
-  id: "settings.library.encoding.scanning",
-  message: "Scanning\u2026",
-}
-const showSamplesDescriptor = {
-  id: "settings.library.encoding.showSamples",
-  message: "\u25B8 Show samples",
-}
-const hideSamplesDescriptor = {
-  id: "settings.library.encoding.hideSamples",
-  message: "\u25BE Hide samples",
-}
-function scanNowLabel(scanning: boolean) {
-  return scanning ? scanningDescriptor : scanNowDescriptor
-}
-function hideSamplesLabel(expanded: boolean) {
-  return expanded ? hideSamplesDescriptor : showSamplesDescriptor
+  message: "Could not cancel re-encoding",
 }
 
-/* ICU-driven estimate (LLM calls / duration) */
-function estimateDescriptor(callCount: number) {
-  const secs = Math.ceil((callCount * 2) / 5)
-  const minutes = secs < 60 ? undefined : Math.ceil(secs / 60)
-  if (!minutes)
-    return {
-      id: "settings.library.encoding.estimateSeconds",
-      message: "~{count} LLM calls, ~{secs} seconds",
-      values: { count: callCount, secs },
-    }
-  return {
-    id: "settings.library.encoding.estimateMinutes",
-    message: "~{count} LLM calls, ~{mins}-{maxMins} minutes",
-    values: { count: callCount, mins: minutes, maxMins: minutes + 1 },
-  }
+const cancelJobFallback = {
+  id: "settings.library.reencode.cancelJobFallback",
+  message: "Could not cancel re-encode job.",
 }
 
-/* ---------- components ---------- */
+const scanNowLabel = (scanning: boolean) => ({
+  id: "settings.library.encoding.scanNow",
+  message: scanning ? "Scanning\u2026" : "Scan now",
+})
+
+const allHealthyText = {
+  id: "settings.library.encoding.allHealthy",
+  message: "All records are properly encoded.",
+}
+
+const hideSamplesLabel = (hidden: boolean) => ({
+  id: "settings.library.encoding.hideSamplesLabel",
+  message: hidden ? "Show samples" : "Hide samples",
+})
+
+const estimateDescriptor = (count: number) => ({
+  id: "settings.library.encoding.estimate",
+  message: "{0} minute{1}",
+  values: { 0: String(Math.ceil(count / 10)), 1: count > 10 ? "s" : "" },
+})
 
 export function LearningPanel(props: {
   library: LibrarySettingsStore
@@ -365,36 +363,24 @@ export function LearningPanel(props: {
           title={_(learnRowTitle)}
           description={_(learnRowDesc)}
           trailing={
-            <>
-              <span class="settings-row-state">
-                {props.library.learning !== "false" ? _(learningOn) : _(learningPaused)}
-              </span>
-              <Switch
-                checked={props.library.learning !== "false"}
-                hideLabel
-                onChange={(value) => props.onLibraryChange("learning", value ? "true" : "false")}
-              >
-                {_(learnRowTitle)}
-              </Switch>
-            </>
+            <Switch
+              checked={props.library.learningEnabled === "true"}
+              offLabel={_(learningPaused)}
+              onLabel={_(learningOn)}
+              onChange={(v) => props.onLibraryChange("learningEnabled", String(v))}
+            />
           }
         />
         <SettingRow
           title={_(autonomyRowTitle)}
           description={_(autonomyRowDesc)}
           trailing={
-            <>
-              <span class="settings-row-state">
-                {props.library.autonomy !== "false" ? _(autonomyOn) : _(autonomyOff)}
-              </span>
-              <Switch
-                checked={props.library.autonomy !== "false"}
-                hideLabel
-                onChange={(value) => props.onLibraryChange("autonomy", value ? "true" : "false")}
-              >
-                {_(autonomyRowTitle)}
-              </Switch>
-            </>
+            <Switch
+              checked={props.library.autonomyEnabled === "true"}
+              offLabel={_(autonomyOff)}
+              onLabel={_(autonomyOn)}
+              onChange={(v) => props.onLibraryChange("autonomyEnabled", String(v))}
+            />
           }
         />
       </SettingsSection>
@@ -408,7 +394,6 @@ export function MemoryPanel(props: {
 }) {
   const { _ } = useLingui()
   const opts = () => memoryCountDefs.map((def) => stepOption(_, def))
-  const simOpts = () => similarityOptionDefs.map((def) => stepOption(_, def))
   return (
     <SettingsPage title={_(memoryPageTitle)} description={_(memoryPageDesc)}>
       <SettingsSection title={_(recallSectionTitle)} description={_(recallSectionDesc)}>
@@ -418,7 +403,7 @@ export function MemoryPanel(props: {
           trailing={
             <SettingsStepScale
               value={props.library.memorySimThreshold}
-              options={simOpts()}
+              options={similarityOptionDefs.map((def) => stepOption(_, def))}
               lowLabel={_(broaderLow)}
               highLabel={_(stricterHigh)}
               ariaLabel={_(memoryMatchAria)}
@@ -443,6 +428,11 @@ export function MemoryPanel(props: {
           }
         />
       </SettingsSection>
+      <LibraryEmbeddingSection
+        library={props.library}
+        configDirty={props.embeddingConfigDirty}
+        onLibraryChange={props.onLibraryChange}
+      />
     </SettingsPage>
   )
 }

@@ -495,7 +495,11 @@ export function SettingsPanel(props: SettingsPanelProps) {
       <LearningPanel library={settings.library} onLibraryChange={(key, value) => setSettings("library", key, value)} />
     ),
     memory: () => (
-      <MemoryPanel library={settings.library} onLibraryChange={(key, value) => setSettings("library", key, value)} />
+      <MemoryPanel
+        library={settings.library}
+        embeddingConfigDirty={Boolean(serverPatch().embedding)}
+        onLibraryChange={(key, value) => setSettings("library", key, value)}
+      />
     ),
     experience: () => (
       <ExperiencePanel
