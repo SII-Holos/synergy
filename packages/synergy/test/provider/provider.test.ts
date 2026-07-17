@@ -53,6 +53,40 @@ test("catalog reasoning efforts survive unrelated future option types", () => {
   expect(Object.keys(model.variants ?? {})).toEqual(["low", "max"])
 })
 
+test("Kimi K3 catalog efforts become Anthropic-compatible variants", () => {
+  const catalog = ModelsDev.Provider.parse({
+    id: "kimi-for-coding",
+    name: "Kimi For Coding",
+    api: "https://api.kimi.com/coding/v1",
+    npm: "@ai-sdk/anthropic",
+    env: [],
+    models: {
+      k3: {
+        id: "k3",
+        name: "Kimi K3",
+        family: "kimi-k3",
+        release_date: "2026-07-16",
+        attachment: false,
+        reasoning: true,
+        reasoning_options: [{ type: "toggle" }, { type: "effort", values: ["low", "high", "max"] }],
+        temperature: true,
+        tool_call: true,
+        modalities: { input: ["text", "image", "video"], output: ["text"] },
+        limit: { context: 1_048_576, output: 131_072 },
+        options: {},
+      },
+    },
+  })
+
+  const model = Provider.fromModelsDevProvider(catalog).models.k3
+  expect(model.capabilities.reasoningEfforts).toEqual(["low", "high", "max"])
+  expect(model.variants).toEqual({
+    low: { effort: "low" },
+    high: { effort: "high" },
+    max: {},
+  })
+})
+
 test.each([
   ["non-array options", { reasoning_options: {} }],
   ["non-array values", { reasoning_options: [{ type: "effort", values: {} }] }],
@@ -1863,6 +1897,48 @@ test("model variants are generated for reasoning models", async () => {
       expect(model.capabilities.reasoning).toBe(true)
       expect(model.variants).toBeDefined()
       expect(Object.keys(model.variants!).length).toBeGreaterThan(0)
+    },
+  })
+})
+
+test("Kimi K2 config variants remain explicit without generated Anthropic variants", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          $schema: "file:///test/config.schema.json",
+          provider: {
+            "kimi-for-coding": {
+              models: {
+                "kimi-k2-thinking": {
+                  variants: {
+                    custom: {
+                      customField: "configured",
+                    },
+                    removed: {
+                      customField: "disabled",
+                      disabled: true,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        }),
+      )
+    },
+  })
+  await provideTestScope({
+    scope: await tmp.scope(),
+    init: async () => {
+      Env.set("KIMI_API_KEY", "test-api-key")
+    },
+    fn: async () => {
+      const providers = await Provider.list()
+      const model = providers["kimi-for-coding"].models["kimi-k2-thinking"]
+      expect(Object.keys(model.variants ?? {})).toEqual(["custom"])
+      expect(model.variants?.custom).toEqual({ customField: "configured" })
     },
   })
 })
