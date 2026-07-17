@@ -1626,6 +1626,30 @@ export type GitHubIntegrationConfig = {
   }
   classifierEnabled?: boolean
   proposalEnabled?: boolean
+  fixWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    maxRetries?: number
+    timeoutMs?: number
+    locatorAgent?: string
+    agent?: string
+    pushBranchPrefix?: string
+  }
+  reviewWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    eventTypes?: Array<string>
+    reviewCommands?: Array<string>
+    maxRetries?: number
+    timeoutMs?: number
+    agent?: string
+    publishReviewComment?: boolean
+    publishCheckRun?: boolean
+  }
 }
 
 /**

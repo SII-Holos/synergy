@@ -22,22 +22,22 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                                                     |
-| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                                |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                  |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                               |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                             |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                            |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                 |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                      |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                          |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                      |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                              |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                       |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                     |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings            |
-| `130-github.jsonc`     | GitHub      | GitHub App webhook shadow integration (enabled, watched repositories, event types, CI thresholds, classifier/proposal toggles, budgets) |
+| File                   | Domain      | Owned configuration                                                                                                                           |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                           |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                        |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                                     |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                                   |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                                  |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                       |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                            |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                                |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                            |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                    |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                             |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                           |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                  |
+| `130-github.jsonc`     | GitHub      | GitHub App webhook integration (master enable, watched repos, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -58,6 +58,20 @@ From lowest to highest precedence, a scoped config is assembled from:
 Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `project_doc_fallback_filenames` are combined and deduplicated rather than simply replaced; plugin specs with the same identity resolve to the later definition.
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
+
+## Interface language
+
+`locale` is a global General preference with three accepted values:
+
+```jsonc
+{
+  "locale": "system", // system | en | zh-CN
+}
+```
+
+`system` is the default when the field is absent. A Chinese system or browser language resolves to Simplified Chinese; unsupported system languages resolve to English. The preference is installation-wide user interface state and does not follow project Scope overrides. It changes Web and Desktop product chrome only; it does not select the language used by agents or model replies.
+
+The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
 ## JSONC, Schema, and References
 
@@ -220,9 +234,9 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 Memory pressure may recommend a lower value, shown in Settings and the Cortex concurrency status API, but the recommendation never overrides the effective maximum. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
 
-## GitHub Shadow Integration
+## GitHub Integration
 
-Synergy can receive GitHub App webhooks and process them into shadow-only diagnostic proposals. The configuration is owned by the GitHub domain (`130-github.jsonc`) and is disabled by default.
+Synergy can receive GitHub App webhooks and process them through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous fix delivery, and opt-in automatic PR review and test. The configuration is owned by the GitHub domain (`130-github.jsonc`) and all pipelines are disabled by default.
 
 ```jsonc
 {
@@ -236,15 +250,37 @@ Synergy can receive GitHub App webhooks and process them into shadow-only diagno
     "proposalEnabled": false,
     "modelBudgetNano": { "maxTokens": 256, "maxCost": 0.001 },
     "modelBudgetProposal": { "maxTokens": 2048, "maxCost": 0.02 },
+    "fixWorkflow": {
+      "enabled": false,
+      "repositoryMapping": { "owner/repo": "/path/to/local/repo" },
+      "maxRetries": 3,
+      "timeoutMs": 900000,
+      "locatorAgent": "github-issue-locator",
+      "agent": "github-fix-coder",
+      "pushBranchPrefix": "synergy/fix/",
+    },
+    "reviewWorkflow": {
+      "enabled": false,
+      "repositoryMapping": { "owner/repo": "/path/to/local/repo" },
+      "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
+      "reviewCommands": ["bun test", "bun run typecheck"],
+      "maxRetries": 3,
+      "timeoutMs": 900000,
+      "agent": "github-review-agent",
+      "publishReviewComment": true,
+      "publishCheckRun": true,
+    },
   },
 }
 ```
 
+### Common settings
+
 | Field                         | Required | Default                                       | Description                                                                               |
 | ----------------------------- | -------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `github.enabled`              | no       | `false`                                       | Enable the GitHub webhook shadow integration                                              |
+| `github.enabled`              | no       | `false`                                       | Master enable for all GitHub integration pipelines                                        |
 | `github.watchedRepositories`  | no       | —                                             | Repository full-name allowlist (e.g. `["owner/repo"]`). Absent = any repository accepted. |
-| `github.eventTypes`           | no       | `["issues.opened", "workflow_run.completed"]` | GitHub event types to process                                                             |
+| `github.eventTypes`           | no       | `["issues.opened", "workflow_run.completed"]` | GitHub event types to process through the gate and shadow pipeline                        |
 | `github.ciFailureThreshold`   | no       | `3`                                           | Consecutive workflow failures before triggering a CI proposal                             |
 | `github.ciFailureWindowHours` | no       | `24`                                          | Sliding window in hours for counting CI failures                                          |
 | `github.classifierEnabled`    | no       | `false`                                       | Enable the sessionless nano classifier for ambiguous issues                               |
@@ -254,9 +290,50 @@ Synergy can receive GitHub App webhooks and process them into shadow-only diagno
 
 The `modelBudgetNano.maxTokens` cap is passed as `maxOutputTokens` to the classifier LLM call. The `modelBudgetProposal.maxTokens` cap is passed as `maxOutputTokens` to the proposal Cortex task. After the call completes, actual usage is measured against both the token and cost limits; exceeding either discards the result.
 
+### fixWorkflow (autonomous issue fix delivery)
+
+When `fixWorkflow.enabled` is true, `issues.opened` events that match the bug signal regex are routed through an autonomous fix pipeline: locate root cause, post a proposed-fix issue comment, implement the fix in an isolated worktree, commit, push a branch, open a pull request, and post a completion comment. The shadow proposal pipeline is bypassed for the same event.
+
+`fixWorkflow.repositoryMapping` maps repository full names to local project directory paths. It is required when enabled. An unmapped repository is silently ignored by the gate.
+
+| Field                           | Required     | Default                  | Description                                                                                          |
+| ------------------------------- | ------------ | ------------------------ | ---------------------------------------------------------------------------------------------------- |
+| `fixWorkflow.enabled`           | no           | `false`                  | Enable the autonomous issue fix delivery workflow                                                    |
+| `fixWorkflow.repositoryMapping` | when enabled | `{}`                     | Map of repository full name → local project directory (e.g. `{"owner/repo": "/home/projects/repo"}`) |
+| `fixWorkflow.maxRetries`        | no           | `3`                      | Maximum retries before marking a fix delivery permanently failed                                     |
+| `fixWorkflow.timeoutMs`         | no           | `900000` (15 min)        | Timeout per locator and coder Cortex task                                                            |
+| `fixWorkflow.locatorAgent`      | no           | `"github-issue-locator"` | Hidden agent used for root-cause location                                                            |
+| `fixWorkflow.agent`             | no           | `"github-fix-coder"`     | Hidden agent used for fix implementation                                                             |
+| `fixWorkflow.pushBranchPrefix`  | no           | `"synergy/fix/"`         | Prefix for pushed fix branches; the suffix is `issue-<number>-<slug>`                                |
+
+### reviewWorkflow (automatic PR review and test)
+
+When `reviewWorkflow.enabled` is true, `pull_request.opened`, `pull_request.reopened`, and `pull_request.synchronize` events fetch the PR head and base SHAs, run a read-only reviewer in an isolated worktree, execute configured verification commands, and optionally publish a pull request review comment and a check run.
+
+`reviewWorkflow.repositoryMapping` maps repository full names to local project directory paths. It is required when enabled. An unmapped repository is silently ignored.
+
+| Field                                 | Required     | Default                                                                        | Description                                                         |
+| ------------------------------------- | ------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------------------- |
+| `reviewWorkflow.enabled`              | no           | `false`                                                                        | Enable the automatic PR review workflow                             |
+| `reviewWorkflow.repositoryMapping`    | when enabled | `{}`                                                                           | Map of repository full name → local project directory               |
+| `reviewWorkflow.eventTypes`           | no           | `["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"]` | Pull request event types to review                                  |
+| `reviewWorkflow.reviewCommands`       | no           | `["bun test", "bun run typecheck"]`                                            | Verification commands to run in the isolated worktree               |
+| `reviewWorkflow.maxRetries`           | no           | `3`                                                                            | Maximum retries before marking a review delivery permanently failed |
+| `reviewWorkflow.timeoutMs`            | no           | `900000` (15 min)                                                              | Timeout for the review Cortex task                                  |
+| `reviewWorkflow.agent`                | no           | `"github-review-agent"`                                                        | Hidden agent used for defect-first review                           |
+| `reviewWorkflow.publishReviewComment` | no           | `true`                                                                         | Post a pull request review comment with findings                    |
+| `reviewWorkflow.publishCheckRun`      | no           | `true`                                                                         | Create a check run on the head SHA with pass/fail conclusion        |
+
+### Webhook secret and GitHub App credentials
+
 The webhook secret is configured through the environment variable `SYNERGY_GITHUB_WEBHOOK_SECRET`. It is never a config field. The route returns 503 when the secret is absent.
 
-See [GitHub Shadow Integration](../architecture/github-shadow.md) for the processing pipeline and architecture invariants.
+The fix and review workflows require GitHub App authentication for API calls and git push operations. These credentials are env-only and never appear in config:
+
+- `SYNERGY_GITHUB_APP_ID` — the GitHub App ID used to sign installation-access JWTs
+- `SYNERGY_GITHUB_APP_PRIVATE_KEY` — the RSA private key for the GitHub App; `\n` sequences in an environment variable are automatically converted to literal newlines
+
+See [GitHub Integration](../architecture/github-shadow.md) for the processing pipeline and architecture invariants.
 
 ## Config Import
 
@@ -299,17 +376,19 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Location and merge inputs
 
-| Variable                        | Effect                                                                                          |
-| ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `SYNERGY_HOME`                  | Change the parent of the complete `.synergy/` installation home                                 |
-| `SYNERGY_CONFIG`                | Merge one additional config file after global config                                            |
-| `SYNERGY_CONFIG_CONTENT`        | Merge inline JSON after `SYNERGY_CONFIG`                                                        |
-| `SYNERGY_CONFIG_DIR`            | Add a high-precedence config/agent/command/skill/instruction root                               |
-| `SYNERGY_PERMISSION`            | Merge a final JSON permission overlay                                                           |
-| `SYNERGY_CWD`                   | Override the launch/current directory used by source and embedded flows                         |
-| `SYNERGY_CLIENT`                | Identify the client in the runtime user agent and client-specific tool exposure                 |
-| `SYNERGY_GIT_BASH_PATH`         | Select Git Bash on Windows when automatic shell discovery is unsuitable                         |
-| `SYNERGY_GITHUB_WEBHOOK_SECRET` | Required webhook signature secret for the GitHub shadow integration; absent → route returns 503 |
+| Variable                         | Effect                                                                                               |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `SYNERGY_HOME`                   | Change the parent of the complete `.synergy/` installation home                                      |
+| `SYNERGY_CONFIG`                 | Merge one additional config file after global config                                                 |
+| `SYNERGY_CONFIG_CONTENT`         | Merge inline JSON after `SYNERGY_CONFIG`                                                             |
+| `SYNERGY_CONFIG_DIR`             | Add a high-precedence config/agent/command/skill/instruction root                                    |
+| `SYNERGY_PERMISSION`             | Merge a final JSON permission overlay                                                                |
+| `SYNERGY_CWD`                    | Override the launch/current directory used by source and embedded flows                              |
+| `SYNERGY_CLIENT`                 | Identify the client in the runtime user agent and client-specific tool exposure                      |
+| `SYNERGY_GIT_BASH_PATH`          | Select Git Bash on Windows when automatic shell discovery is unsuitable                              |
+| `SYNERGY_GITHUB_WEBHOOK_SECRET`  | Required webhook signature secret for the GitHub integration; absent → route returns 503             |
+| `SYNERGY_GITHUB_APP_ID`          | GitHub App ID for installation token signing; required when fixWorkflow or reviewWorkflow is enabled |
+| `SYNERGY_GITHUB_APP_PRIVATE_KEY` | GitHub App RSA private key for JWT creation; `\n` sequences are converted to literal newlines        |
 
 ### Network and discovery overrides
 
@@ -336,16 +415,16 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Experimental and diagnostic escape hatches
 
-| Variable                             | Effect                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it              |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                     |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                  |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                         |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped session-message cache and read storage directly            |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare cached messages with disk and fall back when they diverge                 |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the message-cache byte budget; the default is 256 MiB                         |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand            |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two |
+| Variable                             | Effect                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                         |
+| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                |
+| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                             |
+| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                    |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge            |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate model-working-set cache byte budget; the default is 256 MiB                |
+| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                       |
+| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two            |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).

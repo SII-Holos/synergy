@@ -14,7 +14,6 @@ import { MessageV2 } from "../session/message-v2"
 import { CortexTypes } from "./types"
 import { Trajectory } from "./trajectory"
 import { CortexConcurrency } from "./concurrency"
-import { fn } from "@/util/fn"
 import { Dag } from "../session/dag"
 import { CortexEvent } from "./event"
 import { Plugin } from "../plugin"
@@ -88,7 +87,7 @@ export namespace Cortex {
     ].join("\n")
   }
 
-  export const launch = fn(CortexTypes.LaunchInput, async (input) => {
+  async function launchParsed(input: CortexTypes.ParsedLaunchInput) {
     const taskID = Identifier.short("cortex")
     const executionRole = input.executionRole ?? "primary"
     const notifyParentOnComplete = input.notifyParentOnComplete ?? input.visibility !== "hidden"
@@ -166,10 +165,13 @@ export namespace Cortex {
     if (input.worktree?.create) {
       const parentWorkspace = (parent as import("../session/types").Info).workspace
       if (parentWorkspace?.type !== "git_worktree") {
-        try {
+        const createWorktree = async () => {
           const created = await Worktree.create({
-            name: input.worktree.name,
-            baseRef: input.worktree.baseRef,
+            name: input.worktree?.name,
+            sessionID: session.id,
+            owner: { type: "session", sessionID: session.id },
+            baseRef: input.worktree?.baseRef ?? "current",
+            baseRevision: input.worktree?.baseRevision,
             bind: false,
           })
           await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
@@ -178,8 +180,13 @@ export namespace Cortex {
             worktreeID: created.id,
             worktreeName: created.name,
           })
-        } catch (error) {
-          log.warn("failed to create worktree for child session", { taskID, error })
+        }
+        if (input.worktree.failOnError) {
+          await createWorktree()
+        } else {
+          await createWorktree().catch((error) => {
+            log.warn("failed to create worktree for child session", { taskID, error })
+          })
         }
       } else {
         log.info("parent already in worktree, child inherits parent workspace", { taskID })
@@ -275,7 +282,12 @@ export namespace Cortex {
     }
 
     return current
-  })
+  }
+
+  export const launch = Object.assign(
+    (input: CortexTypes.LaunchInput) => launchParsed(CortexTypes.LaunchInput.parse(input)),
+    { force: launchParsed, schema: CortexTypes.LaunchInput },
+  )
 
   function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): void {
     const task = tasks.get(taskID)

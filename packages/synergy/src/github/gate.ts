@@ -29,7 +29,8 @@ function repositoryIsWatched(delivery: GitHubDelivery, config: GitHubIntegration
 
 function eventIsConfigured(delivery: GitHubDelivery, config: GitHubIntegrationConfig) {
   const normalizedEvent = eventKey(delivery)
-  return config.eventTypes.some((event) => event.toLowerCase() === normalizedEvent.toLowerCase())
+  const configured = [...config.eventTypes, ...(config.reviewWorkflow.enabled ? config.reviewWorkflow.eventTypes : [])]
+  return configured.some((event) => event.toLowerCase() === normalizedEvent.toLowerCase())
 }
 
 export function shouldTrackGitHubWorkflowConclusion(delivery: GitHubDelivery, inputConfig: GitHubIntegrationConfig) {
@@ -42,10 +43,10 @@ export function shouldTrackGitHubWorkflowConclusion(delivery: GitHubDelivery, in
   )
 }
 
-function decision(
-  delivery: GitHubDelivery,
-  value: Omit<TriggerDecision, "deliveryGuid" | "eventType">,
-): TriggerDecision {
+type DecisionInput = Omit<TriggerDecision, "deliveryGuid" | "eventType" | "fixTriggered" | "reviewTriggered"> &
+  Partial<Pick<TriggerDecision, "fixTriggered" | "reviewTriggered">>
+
+function decision(delivery: GitHubDelivery, value: DecisionInput): TriggerDecision {
   return GitHubTriggerDecision.parse({
     deliveryGuid: delivery.deliveryGuid,
     eventType: eventKey(delivery),
@@ -59,7 +60,10 @@ export function evaluateGitHubDelivery(
   priorCiFailures: number,
 ): TriggerDecision {
   const config = GitHubIntegrationConfig.parse(inputConfig)
-  if (senderIsBot(delivery)) {
+  const normalizedEvent = eventKey(delivery)
+  const isReviewEvent = config.reviewWorkflow.enabled && config.reviewWorkflow.eventTypes.includes(normalizedEvent)
+
+  if (senderIsBot(delivery) && !isReviewEvent) {
     return decision(delivery, {
       decision: "ignored_bot",
       reason: `Sender ${delivery.senderLogin} is a bot`,
@@ -77,7 +81,6 @@ export function evaluateGitHubDelivery(
     })
   }
 
-  const normalizedEvent = eventKey(delivery)
   if (!eventIsConfigured(delivery, config)) {
     return decision(delivery, {
       decision: "ignored_type",
@@ -87,17 +90,35 @@ export function evaluateGitHubDelivery(
     })
   }
 
+  if (isReviewEvent) {
+    const mapped = !!config.reviewWorkflow.repositoryMapping[delivery.repositoryFullName]
+    return decision(delivery, {
+      decision: mapped ? "gated_pr" : "ignored_type",
+      reason: mapped
+        ? `Pull request event ${normalizedEvent} requires review and tests`
+        : `Repository ${delivery.repositoryFullName} is unmapped for review workflow`,
+      classifierNeeded: false,
+      proposalTriggered: false,
+      reviewTriggered: mapped,
+    })
+  }
+
   const payload = githubPayloadRecord(delivery.rawPayload)
   if (normalizedEvent === "issues.opened") {
     const issue = githubPayloadRecord(payload.issue)
     const title = typeof issue.title === "string" ? issue.title : ""
     const body = typeof issue.body === "string" ? issue.body : ""
     if (ISSUE_SIGNAL.test(`${title}\n${body}`)) {
+      const mapped = !!config.fixWorkflow.repositoryMapping[delivery.repositoryFullName]
       return decision(delivery, {
         decision: "gated_issue",
-        reason: "Issue contains a deterministic bug or failure signal",
+        reason:
+          config.fixWorkflow.enabled && !mapped
+            ? `Repository ${delivery.repositoryFullName} is unmapped for fix workflow`
+            : "Issue contains a deterministic bug or failure signal",
         classifierNeeded: false,
-        proposalTriggered: config.proposalEnabled,
+        proposalTriggered: config.proposalEnabled && !config.fixWorkflow.enabled,
+        fixTriggered: config.fixWorkflow.enabled && mapped,
       })
     }
     return decision(delivery, {
@@ -131,7 +152,7 @@ export function evaluateGitHubDelivery(
 
   return decision(delivery, {
     decision: "ignored_type",
-    reason: `Event ${normalizedEvent} has no GitHub shadow handler`,
+    reason: `Event ${normalizedEvent} has no GitHub handler`,
     classifierNeeded: false,
     proposalTriggered: false,
   })

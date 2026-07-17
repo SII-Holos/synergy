@@ -53,3 +53,62 @@ test("GitHub proposals launch as silent hidden structured Cortex work", () => {
     maxCost: 0.01,
   })
 })
+
+test("GitHub fix workflow exposes a project-scoped locator contract", async () => {
+  const module = await import("../../src/github/workflow-locator")
+  expect(module.GitHubWorkflowLocator).toBeDefined()
+})
+
+test("GitHub issue locator, fix coder, and review agents are hidden with deny-all permissions", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/default-test",
+      mini_model: "openai/mini-test",
+      mid_model: "openai/mid-test",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const locator = await Agent.get("github-issue-locator")
+      const coder = await Agent.get("github-fix-coder")
+      const reviewer = await Agent.get("github-review-agent")
+
+      // All three must be hidden native agents
+      expect(locator).toMatchObject({ hidden: true, native: true, temperature: 0 })
+      expect(coder).toMatchObject({ hidden: true, native: true, temperature: 0 })
+      expect(reviewer).toMatchObject({ hidden: true, native: true, temperature: 0 })
+
+      // All three must have deny-all permission underneath host-level writes
+      for (const agent of [locator, coder, reviewer]) {
+        expect(agent?.permission).toEqual(
+          expect.arrayContaining([expect.objectContaining({ permission: "*", action: "deny" })]),
+        )
+      }
+
+      // Model roles must be appropriate for task complexity
+      expect(coder?.modelRole).toBe("mid")
+      expect(reviewer?.modelRole).toBe("mid")
+
+      // Locator is read-only — can use a lighter model
+      expect(locator?.modelRole).toBe("mini")
+    },
+  })
+})
+
+test("Fix coder agent has no credential-bearing configuration surface", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/default-test",
+      mid_model: "openai/mid-test",
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const coder = await Agent.get("github-fix-coder")
+      expect(coder).toBeDefined()
+      expect(Object.keys(coder ?? {})).not.toContain("env")
+    },
+  })
+})

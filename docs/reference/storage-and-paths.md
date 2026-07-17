@@ -54,9 +54,9 @@ data/github/ci/
 data/github/runtime.json
 ```
 
-GitHub shadow deliveries, CI failure state, and runtime anchor live under `data/github/`. Each delivery is keyed by its `x-github-delivery` GUID.
+GitHub integration deliveries, CI failure state, and runtime anchors live under `data/github/`. Each delivery is keyed by its `x-github-delivery` GUID.
 
-Inside a session, `info.json`, `summary.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
+Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 
 The session index, paged-session index, child-session index, and navigation index are derived but operationally important. Do not hand-move one session directory without its Scope/session indexes; use export/import, data, migration, or repair workflows.
 

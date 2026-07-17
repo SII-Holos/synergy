@@ -83,7 +83,15 @@ The `email_send` and `email_read` tools share the `communication.email` taxonomy
 
 ## GitHub Webhooks
 
-Synergy can receive GitHub App webhooks for shadow-only diagnostic processing. The integration is configured in `130-github.jsonc` and uses the `SYNERGY_GITHUB_WEBHOOK_SECRET` environment variable for signature verification. It is an inbound-only observer: it classifies issues and CI failures, then optionally produces hidden Cortex structured proposals, but never performs GitHub API writes. See [GitHub Shadow Integration](../architecture/github-shadow.md) for the full pipeline.
+Synergy can receive GitHub App webhooks for three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous issue fix delivery, and opt-in automatic PR review and testing. All pipelines are disabled by default. Configuration is in `130-github.jsonc`.
+
+The shadow pipeline classifies issues and CI failures, then optionally produces hidden Cortex structured proposals. It is read-only and never performs GitHub API writes.
+
+The fix workflow, when enabled with `fixWorkflow.repositoryMapping`, inspects opened issues, locates root causes, posts a proposed-fix comment, implements and tests the fix in an isolated worktree, commits, pushes a branch with an ephemeral GitHub App installation token, opens a deduplicated pull request, and posts a completion comment. Agents never receive the token and cannot run `gh`, `git push`, or `git remote` operations.
+
+The review workflow, when enabled with `reviewWorkflow.repositoryMapping`, fetches exact PR head and base SHAs, runs a read-only reviewer in an isolated worktree, executes configured verification commands, and publishes a pull request review comment and a check run.
+
+The webhook secret (`SYNERGY_GITHUB_WEBHOOK_SECRET`) and GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) are environment variables only. See [GitHub Integration](../architecture/github-shadow.md) for the full processing pipeline.
 
 ## Boundaries
 
@@ -92,5 +100,5 @@ Synergy can receive GitHub App webhooks for shadow-only diagnostic processing. T
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
-- GitHub webhooks are a read-only shadow integration, not a Channel endpoint.
+- GitHub webhooks support shadow diagnostics plus opt-in autonomous fix delivery and PR review, not a Channel endpoint.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

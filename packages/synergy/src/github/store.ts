@@ -73,7 +73,9 @@ export namespace GitHubStore {
   }
 
   export async function recoverInFlight(): Promise<number> {
-    const processing = (await list()).filter((item) => item.status === "processing")
+    const processing = (await list()).filter(
+      (item) => item.status === "processing" || item.status === "processing_fix" || item.status === "processing_review",
+    )
     await Promise.all(
       processing.map((item) =>
         update(item.deliveryGuid, (draft) => {
@@ -107,6 +109,16 @@ export namespace GitHubStore {
     const nextFailures = input.conclusion === "failure" ? [...failures, input.occurredAt] : []
     await Storage.write(key, { ...current, failures: nextFailures })
     return { priorFailures, currentFailures: nextFailures.length }
+  }
+
+  export async function updateRuntimeState<T extends Record<string, unknown>>(
+    mutate: (draft: Record<string, unknown>) => T | Promise<T>,
+  ): Promise<T> {
+    using _ = await Lock.write("github:runtime")
+    const current = await Storage.read<Record<string, unknown>>(StoragePath.githubRuntimeState()).catch(() => ({}))
+    const next = await mutate(structuredClone(current))
+    await Storage.write(StoragePath.githubRuntimeState(), next)
+    return next
   }
 
   export async function readRuntimeState<T>(): Promise<T | undefined> {
