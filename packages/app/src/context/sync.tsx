@@ -14,6 +14,7 @@ import { reconcileMessage, type MessageWindowState } from "./session-message-win
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import { nextMessageWindowTotal } from "./session-message-total"
+import { createOptimisticRootMessage } from "./session-optimistic-message"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -283,14 +284,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           agent: string
           model: { providerID: string; modelID: string }
         }) {
-          const message: Message = {
+          const message = createOptimisticRootMessage({
             id: input.messageID,
             sessionID: input.sessionID,
-            role: "user",
-            time: { created: Date.now() },
+            created: Date.now(),
             agent: input.agent,
             model: input.model,
-          }
+          })
           const metadata = store.messageWindow[input.sessionID]
           const current: MessageWindowState<Message> = {
             messages: store.message[input.sessionID] ?? [],

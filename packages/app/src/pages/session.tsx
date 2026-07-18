@@ -64,7 +64,11 @@ import {
 } from "@/components/session/session-transition-progress"
 import { RollbackBanner } from "@/components/session/rollback-banner"
 import { DialogRewindConfirm } from "@/components/session/dialog-rewind-confirm"
-import { hasSessionRenderableContent, sessionLoadView } from "@/components/session/session-load-state"
+import {
+  hasSessionRenderableContent,
+  sessionLoadView,
+  shouldSyncSessionRoute,
+} from "@/components/session/session-load-state"
 import { TerminalProvider } from "@/context/terminal"
 import { PromptProvider } from "@/context/prompt"
 import { ResourceOpenProvider } from "@/context/resource-open"
@@ -573,8 +577,8 @@ function SessionPageContent() {
   // params.id, one on sdk.connected) and double-fetched on mount.
   createEffect(
     on(
-      () => [params.id, sdk.connected()] as const,
-      ([id, connected], prev) => {
+      () => [params.id, sdk.connected(), sessionTransitionPending()] as const,
+      ([id, connected, transitionPending], prev) => {
         const prevId = prev?.[0]
         if (prevId && prevId !== id) {
           hydratedSessions.delete(prevId)
@@ -582,7 +586,9 @@ function SessionPageContent() {
         }
         // Protect the viewed session's buckets from LRU eviction.
         sync.markActiveSession(id)
-        if (connected && id) void sync.session.sync(id, { refreshVolatile: true }).catch(() => undefined)
+        if (shouldSyncSessionRoute({ sessionID: id, connected, transitionPending })) {
+          void sync.session.sync(id!, { refreshVolatile: true }).catch(() => undefined)
+        }
       },
     ),
   )
