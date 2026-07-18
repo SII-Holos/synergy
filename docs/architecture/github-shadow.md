@@ -77,7 +77,7 @@ The worker is a single global promise-based loop started by `GitHubRuntime.start
 
 At startup, `GitHubStore.recoverInFlight()` resets any deliveries left in `processing`, `processing_fix`, or `processing_review` state (from a prior crash or restart) to `retryable_failure`, increments `retryCount`, and records restart recovery metadata so they can be re-claimed within the configured retry limit.
 
-The worker FIFO-claims the next `received` or `retryable_failure` delivery, processes it, and repeats until no work remains. A failed delivery is excluded from the remainder of the current drain so a retryable error cannot create a tight loop; a later `notify()` or runtime restart can claim it again. A `notify()` call (from the poll runtime after accepting new deliveries) sets a flag and spawns the worker if one is not already running. The worker re-checks the flag after each batch to avoid missing deliveries that arrived during processing.
+The worker FIFO-claims the next `received` or `retryable_failure` delivery, processes it, and repeats until no work remains. A failed delivery is excluded from later drain cycles within the same worker invocation so a retryable error cannot create a tight loop; a runtime restart or reload starts a fresh worker that can claim it again. A `notify()` call (from the poll runtime after accepting new deliveries) sets the wake flag and spawns the worker only if one is not already running; it does not reset the existing worker's failed-delivery exclusion set. The worker re-checks the flag after each batch to avoid missing deliveries that arrived during processing.
 
 ## Processing Pipeline
 
