@@ -3,6 +3,7 @@ import z from "zod"
 import { Agent } from "../../src/agent/agent"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
 import { BlueprintLoopStore } from "../../src/blueprint"
+import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -105,6 +106,37 @@ function toolContext(sessionID: string): Tool.Context {
     metadata() {},
     async ask() {},
   }
+}
+
+function runtimeProcessor() {
+  const callbacks = new Map<string, Promise<unknown>>()
+  return {
+    message: { id: "message_test" },
+    partFromToolCall: () => undefined,
+    updateToolCallState: async () => {},
+    executeOnce<T>(callID: string, execute: () => Promise<T>) {
+      const existing = callbacks.get(callID)
+      if (existing) return existing as Promise<T>
+      const callback = Promise.resolve().then(execute)
+      callbacks.set(callID, callback)
+      return callback
+    },
+    beginExecution(callID: string) {
+      return {
+        callID,
+        promise: Promise.resolve(undefined),
+        resolve() {},
+        complete() {},
+        fail() {},
+        get outcome() {
+          return undefined
+        },
+        get status() {
+          return "pending" as const
+        },
+      }
+    },
+  } as any
 }
 
 describe("tool exposure", () => {
@@ -542,6 +574,89 @@ describe("tool exposure", () => {
         expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_screenshot")).toBe(true)
       },
     })
+  })
+
+  test("tool discovery applies the current invocation tool allowlist", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+        const session = await Session.create({})
+        const userTools = { "*": false, search_tools: true, expand_tools: true, note_read: true }
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent,
+          model,
+          sessionID: session.id,
+          session,
+          processor: runtimeProcessor(),
+          userTools,
+          includeMCP: false,
+        })
+
+        const searchResult = await (resolved.tools.search_tools as any).execute(
+          { query: "note", limit: 8 },
+          { toolCallId: "call_search" },
+        )
+        const noteResult = (searchResult.metadata.results as Array<any>).find((result) => result.id === "note")
+        expect(noteResult?.matchedToolPreview).toEqual(["note_read"])
+
+        const expandResult = await (resolved.tools.expand_tools as any).execute(
+          { groups: ["note"] },
+          { toolCallId: "call_expand" },
+        )
+        expect(expandResult.metadata.availableRequestedTools).toEqual(["note_read"])
+
+        const ids = await definitionIDs(await Session.get(session.id), { agent, userTools })
+        expect(ids.has("note_read")).toBe(true)
+        expect(ids.has("note_write")).toBe(false)
+        expect(ids.has("note_edit")).toBe(false)
+      },
+    })
+  })
+
+  test("restricted subagents cannot enumerate permission-hidden MCP groups", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalToolEntries = MCP.toolEntries
+    const serverName = "private-server"
+    const groupID = ToolExposure.mcpGroupID(serverName)
+    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
+      ToolExposure.mcpToolID(serverName, `secret_${index}`),
+    )
+    ;(MCP as any).toolEntries = async () =>
+      toolIDs.map((id, index) => ({
+        id,
+        serverName,
+        toolName: `secret_${index}`,
+        tool: { description: "Permission-hidden MCP tool" },
+      }))
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const session = await Session.create({})
+          const search = await SearchToolsTool.init({ agent })
+          const searchResult = await search.execute({ query: "no-match", limit: 8 }, toolContext(session.id))
+          expect(searchResult.metadata.groups).not.toContain(groupID)
+          expect(searchResult.output).not.toContain(serverName)
+
+          const expand = await ExpandToolsTool.init({ agent })
+          const unknownResult = await expand.execute({ groups: ["missing"] }, toolContext(session.id))
+          expect(unknownResult.output).not.toContain(groupID)
+
+          const hiddenResult = await expand.execute({ groups: [groupID] }, toolContext(session.id))
+          expect(hiddenResult.metadata.changed).toBe(false)
+          expect(hiddenResult.metadata.issues.unknownGroups).toEqual([groupID])
+          expect(hiddenResult.metadata.issues.permissionHidden).toEqual([])
+          expect(hiddenResult.output).not.toContain(toolIDs[0])
+          expect((await Session.get(session.id)).toolState).toBeUndefined()
+        },
+      })
+    } finally {
+      ;(MCP as any).toolEntries = originalToolEntries
+    }
   })
 
   test("Plan keeps bash visible and forces the note group without exposing other deferred groups", async () => {

@@ -36,7 +36,26 @@ describe("synergy-max subagents", () => {
         expect(action(agent, permission)).toBe("allow")
       }
       expect(action(agent, "arxiv_download")).toBe("ask")
-      expect(action(agent, "mcp__any_server__any_tool")).toBe("allow")
+    }
+  })
+
+  test("deferred permissions stay within the owning subagent profiles", () => {
+    const readOnly = agents["code-cartographer"]
+    expect(action(readOnly, "note_read")).toBe("allow")
+    expect(action(readOnly, "note_write")).toBe("deny")
+    expect(action(readOnly, "note_edit")).toBe("deny")
+    expect(action(readOnly, "memory_get")).toBe("deny")
+    expect(action(readOnly, "session_read")).toBe("deny")
+    expect(action(readOnly, "mcp__any_server__any_tool")).toBe("deny")
+
+    const historian = agents["session-historian"]
+    expect(action(historian, "session_list")).toBe("allow")
+    expect(action(historian, "session_read")).toBe("allow")
+    expect(action(historian, "session_search")).toBe("allow")
+    expect(action(historian, "session_send")).toBe("deny")
+
+    for (const name of ["docs-researcher", "research-scout", "literature-searcher", "literature-analyst"]) {
+      expect(action(agents[name], "mcp__any_server__any_tool"), name).toBe("allow")
     }
   })
 
