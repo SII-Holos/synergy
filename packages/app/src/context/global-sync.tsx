@@ -24,6 +24,13 @@ import {
 import { resolveWorkspaceTransition } from "./workspace-transition"
 import { planCompactionReplace } from "./session-compaction"
 import { observeWatermark, type Watermark } from "./sync-watermark"
+import {
+  parseSyncVersion,
+  readSyncVersion,
+  SyncResourceFreshness,
+  type SyncResource,
+  type SyncResourceRequest,
+} from "./sync-resource-freshness"
 import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
@@ -232,6 +239,7 @@ function createGlobalSync() {
   // in the normalized store — e.g. blueprint loop state, which the server cannot
   // replay after a restart — refetch their state (issue #331).
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
+  const resourceFreshness = new SyncResourceFreshness()
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -260,6 +268,50 @@ function createGlobalSync() {
 
   function scopeRequest(scopeKey: string) {
     return isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }
+  }
+
+  function captureResourceRequest(scopeKey: string, sessionID: string, resource: SyncResource) {
+    return resourceFreshness.capture({ scopeKey, sessionID, resource })
+  }
+
+  function applyResourceResponse(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    request: SyncResourceRequest,
+    headers: Pick<Headers, "get"> | undefined,
+    apply: () => void,
+  ) {
+    const accepted = resourceFreshness.acceptResponse(
+      { scopeKey, sessionID, resource },
+      request,
+      readSyncVersion(headers),
+    )
+    if (!accepted) return false
+    apply()
+    return true
+  }
+
+  function applyResourceEvent(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    event: { epoch?: unknown; seq?: unknown },
+    apply: () => void,
+  ) {
+    const accepted = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource }, parseSyncVersion(event))
+    if (!accepted) return false
+    apply()
+    return true
+  }
+
+  function isResourceRequestCurrent(
+    scopeKey: string,
+    sessionID: string,
+    resource: SyncResource,
+    request: SyncResourceRequest,
+  ) {
+    return resourceFreshness.unchanged({ scopeKey, sessionID, resource }, request)
   }
 
   function scheduleBootstrap(scopeKey: string) {
@@ -335,6 +387,7 @@ function createGlobalSync() {
 
   function releaseScopeState(scopeKey: string) {
     delete children[scopeKey]
+    resourceFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
   }
 
@@ -595,9 +648,14 @@ function createGlobalSync() {
         if (!state) return
         const [, setStore] = state
         const sdk = createScopedClient(scopeKey)
+        const request = captureResourceRequest(scopeKey, sessionID, "inbox")
         sdk.session
           .inbox({ sessionID })
-          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .then((result) => {
+            applyResourceResponse(scopeKey, sessionID, "inbox", request, result.response?.headers, () => {
+              setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+            })
+          })
           .catch(() => {})
       }, 120),
     )
@@ -646,18 +704,33 @@ function createGlobalSync() {
     )
     const sdk = createScopedClient(scopeKey)
     await runInstanceRequests(sessionIDs, async (sessionID) => {
+      const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
+      const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
+      const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
       await Promise.all([
         sdk.session
           .inbox({ sessionID })
-          .then((result) => setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .then((result) => {
+            applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, result.response?.headers, () => {
+              setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+            })
+          })
           .catch(() => {}),
         sdk.session
           .todo({ sessionID })
-          .then((result) => setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .then((result) => {
+            applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () => {
+              setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" }))
+            })
+          })
           .catch(() => {}),
         sdk.session
           .dag({ sessionID, ...scopeRequest(scopeKey) })
-          .then((result) => setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" })))
+          .then((result) => {
+            applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () => {
+              setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" }))
+            })
+          })
           .catch(() => {}),
       ])
     })
@@ -952,11 +1025,17 @@ function createGlobalSync() {
         setStore("session_diff", event.properties.sessionID, reconcile(event.properties.diff, { key: "file" }))
         break
       case "todo.updated":
-        setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
+        applyResourceEvent(scopeKey, event.properties.sessionID, "todo", event, () => {
+          setStore("todo", event.properties.sessionID, reconcile(event.properties.todos, { key: "id" }))
+        })
         break
-      case "dag.updated" as string:
-        setStore("dag", (event as any).properties.sessionID, reconcile((event as any).properties.nodes, { key: "id" }))
+      case "dag.updated" as string: {
+        const properties = (event as any).properties
+        applyResourceEvent(scopeKey, properties.sessionID, "dag", event, () => {
+          setStore("dag", properties.sessionID, reconcile(properties.nodes, { key: "id" }))
+        })
         break
+      }
       case "session.status": {
         // Handles busy, retry, idle, and recovering statuses
         setStore("session_status", event.properties.sessionID, reconcile(event.properties.status))
@@ -975,7 +1054,9 @@ function createGlobalSync() {
         break
       }
       case "session.inbox.updated": {
-        setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+        applyResourceEvent(scopeKey, event.properties.sessionID, "inbox", event, () => {
+          setStore("inbox", event.properties.sessionID, reconcile(event.properties.items, { key: "id" }))
+        })
         break
       }
       case "mcp.ready":
@@ -1289,6 +1370,10 @@ function createGlobalSync() {
       case "session.compacted": {
         const sessionID = event.properties.sessionID as string
         if (!store.message[sessionID]) break
+        const version = parseSyncVersion(event)
+        const accepted = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
+        if (!accepted) break
+        const request = captureResourceRequest(scopeKey, sessionID, "inbox")
         // Fetch first, then swap atomically. Deleting the messages up front left
         // the timeline empty until the refetch returned — a visible flash (#319).
         const sdk = createScopedClient(scopeKey)
@@ -1301,7 +1386,7 @@ function createGlobalSync() {
                 produce((draft) => {
                   for (const messageID of plan.dropPartMessageIds) delete draft.part[messageID]
                   delete draft.session_diff[sessionID]
-                  delete draft.inbox[sessionID]
+                  if (isResourceRequestCurrent(scopeKey, sessionID, "inbox", request)) delete draft.inbox[sessionID]
                 }),
               )
               setStore("message", sessionID, reconcile(plan.keep, { key: "id" }))
@@ -1317,12 +1402,17 @@ function createGlobalSync() {
   }
 
   const unsub = globalSDK.event.listen((e) => {
-    // Track the scope's event watermark before applying, and trigger a replay
-    // if a gap or epoch change is detected. Streaming events carry no seq and
-    // leave the watermark untouched.
-    // seq/epoch are additive envelope fields not present in the generated Event
-    // type; read them structurally.
-    const observed = observeWatermark(watermarks.get(e.name), e.details as unknown as { epoch?: string; seq?: number })
+    // Retired-epoch events must not affect either the store or watermark.
+    // Streaming events carry no seq and pass through without changing either
+    // freshness or watermark state. seq/epoch are additive envelope fields not
+    // present in the generated Event type, so read them structurally.
+    const sequencedDetails = e.details as unknown as { epoch?: unknown; seq?: unknown }
+    const version =
+      typeof sequencedDetails.epoch === "string" && typeof sequencedDetails.seq === "number"
+        ? parseSyncVersion(sequencedDetails)
+        : undefined
+    if (!resourceFreshness.acceptScopeEvent(e.name, version)) return
+    const observed = observeWatermark(watermarks.get(e.name), sequencedDetails as { epoch?: string; seq?: number })
     if (observed.next) watermarks.set(e.name, observed.next)
     if (observed.epochChanged || observed.gap) void replayOrResync(e.name)
     applyEvent(e.name, e.details)
@@ -1357,6 +1447,7 @@ function createGlobalSync() {
         | undefined
       if (!data || data.status === "reset") {
         watermarks.delete(scopeKey)
+        if (data) resourceFreshness.resetScope(scopeKey, data.epoch, data.seq)
         await resyncInstance(scopeKey).catch(() => undefined)
         return
       }
@@ -1467,6 +1558,8 @@ function createGlobalSync() {
     touchMessageBucket,
     bootstrap,
     reconnectVersion,
+    captureResourceRequest,
+    applyResourceResponse,
     get agenda() {
       return globalStore.agenda
     },

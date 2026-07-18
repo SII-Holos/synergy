@@ -133,6 +133,8 @@ or:
 
 For `ok`, the frontend applies replayed events through the same event reducer and advances the Scope watermark. For `reset` or request failure, it refetches Scope snapshots: sessions, status, Cortex, Agenda, permissions, questions, retained inbox/todo/DAG buckets, and project MCP/LSP state.
 
+When replay returns `reset`, the frontend also calls `resourceFreshness.resetScope()` before refetching. This advances the Scope generation, invalidates in-flight resource requests, and clears stale per-resource versions so the resync snapshots can establish fresh baselines.
+
 Resources outside the normalized store, including BlueprintLoop feature state, observe `reconnectVersion` and refetch after connection recovery.
 
 Active session message/part snapshots also observe reconnect recovery. Because tool-part updates are published as unsequenced streaming events, reconnect replay alone cannot restore a missed tool card. After a reconnect, `sync.session.sync()` force-reloads the viewed session's durable message/part snapshot in addition to volatile collections.
@@ -143,16 +145,69 @@ Reconnect replay starts from the watermark retained before the disconnect and is
 
 The live gap detector currently adopts the newly received sequence before it starts `replayOrResync()`. A replay triggered only by that gap therefore starts at the new watermark rather than the pre-gap value. Maintainers must not describe live gap detection as proven backfill until the reducer retains the prior watermark for that request.
 
-## Snapshot Watermark Headers
+## Resource-Level Snapshot Freshness
 
-Scoped GET responses expose:
+The sync layer applies a freshness gate to DAG, Todo, and Inbox snapshots and live events. Each resource is scoped to `(scopeKey, sessionID, resource)`.
+
+### Response headers
+
+Scoped GET responses for these resources expose:
 
 - `x-synergy-seq`
 - `x-synergy-epoch`
 
-The server captures the sequence before the route reads its snapshot, so the value is a conservative lower bound for that response.
+The server captures the epoch and sequence number before reading the snapshot, so the value is a conservative lower bound for that response. The Web client reads both headers via `readSyncVersion()` and uses them in the freshness checks below.
 
-The current Web SDK/sync layer does not consume these headers and does not apply a snapshot-versus-event gate. They are an advertised server contract for future or other clients, not an implemented Web stale-snapshot rejection mechanism. Documentation and agent guidance must not claim otherwise.
+A response is unversioned when either header is absent or the epoch/sequence values are invalid.
+
+### Request tokens
+
+Every snapshot request captures a `SyncResourceRequest` token:
+
+- `generation` — a Scope-level monotonic counter. A new Scope epoch or `releaseScope` advances the generation, invalidating all in-flight requests for that Scope.
+- `revision` — a per-resource counter that increments on every accepted event or snapshot for that resource. A revision mismatch means the resource was written between request capture and response arrival.
+
+### Response acceptance
+
+`acceptResponse()` checks the captured request before delegating every accepted response to `acceptSnapshot()`:
+
+1. **Generation match.** If the current Scope generation differs from the request generation, the response is rejected — a Scope epoch switch or release occurred between request and response.
+
+2. **Revision check.** If the resource revision changed while the request was in flight, an unversioned response is rejected. A versioned response may continue only when the resource has a known current version to compare against.
+
+3. **Snapshot version guard.** Responses that pass the request-token checks still go through the epoch and sequence checks below.
+
+### Snapshot version guard
+
+`acceptSnapshot()` enforces:
+
+- **Retired epochs are rejected.** An epoch that has been superseded cannot overwrite current state.
+- **Snapshots cannot switch an established Scope epoch.** `prepareSnapshotScope()` rejects a snapshot whose epoch differs from the current Scope epoch when one exists. Events are authoritative for epoch transitions; a snapshot may establish only the initial epoch when no Scope version has been set.
+- **Older snapshots are rejected.** A snapshot with `seq < current.seq` for the same resource and epoch is stale and discarded. Equal `seq` is accepted because the server stamps the sequence before reading.
+- **Unversioned responses fail open conditionally.** An unversioned response is accepted when no intervening same-resource write occurred (revision unchanged). When an event updated the resource in flight, the response is rejected because it cannot prove it is newer. An accepted unversioned snapshot clears the stored resource version, so later ordering starts from the next valid version.
+
+### Scope-level event pre-filter
+
+Before any event reaches `applyEvent()`, the global listener calls `acceptScopeEvent(scopeKey, version)`. This applies to every incoming event, not only DAG, Todo, and Inbox updates:
+
+- events from retired epochs are dropped without changing the watermark or triggering replay;
+- an event from a new epoch retires the old epoch, advances the Scope generation, invalidates in-flight resource requests, clears per-resource versions, and establishes the new epoch floor;
+- unversioned events, including streaming deltas, pass through without changing Scope freshness state.
+
+This pre-filter runs before watermark observation and before the resource-specific `acceptEvent()` checks.
+
+### Event acceptance
+
+Live events (`todo.updated`, `dag.updated`, `session.inbox.updated`) pass through `acceptEvent()`:
+
+- **Epoch advance.** An event with a new epoch retires the old epoch, advances the Scope generation (invalidating in-flight snapshot requests), clears all resource versions for that Scope, and establishes the new epoch.
+- **Ordered only.** Within the same epoch, an event with `seq <= current.seq` for that resource is a duplicate and discarded.
+- **Unversioned events** clear the resource version rather than preserving a comparison that can no longer be proven. A later unversioned snapshot may still fail open when its request was captured after that event and no same-resource write occurred in flight.
+- Every accepted event bumps the resource revision.
+
+### Resource scope
+
+Per-resource snapshot/event ordering applies only to `dag`, `todo`, and `inbox`. All incoming events still pass through the Scope-level epoch pre-filter. Snapshots for other resources remain governed by the existing replay/resync behavior and are not subject to resource freshness checks.
 
 ## Streaming Delta Protocol
 
@@ -197,11 +252,13 @@ This removes quadratic full-part disk writes without weakening terminal persiste
 
 `session.compacted` means the visible effective message set changed at a summary boundary.
 
+The compaction event is first gated through `acceptEvent()` using the session's `inbox` resource key. A duplicate, older, or retired-epoch compaction event is discarded before any message swap or cleanup runs.
+
 The frontend:
 
 1. fetches the post-compaction session messages while keeping the current timeline visible;
 2. computes the messages to retain and the old part buckets to drop;
-3. applies one Solid batch that deletes stale parts, diff, and inbox state;
+3. applies one Solid batch that deletes stale parts and diff state, and deletes inbox state only if no newer inbox event arrived while the fetch was in flight;
 4. reconciles the retained messages and their authoritative parts.
 
 Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released.
@@ -238,7 +295,7 @@ Variant display resolves the explicit or historical session variant first, then 
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
-- Web snapshot apply-gating is not implemented merely because response headers exist.
+- Every event passes the Scope epoch pre-filter; DAG, Todo, and Inbox additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.
 - Streaming deltas converge through full checkpoints.
 - Active text rendering processes appended suffixes rather than rescanning accumulated snapshots.

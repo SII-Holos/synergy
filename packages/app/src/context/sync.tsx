@@ -177,9 +177,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightInbox.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "inbox")
       const promise = retry(() => sdk.client.session.inbox({ sessionID }))
         .then((result) => {
-          setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "inbox", request, result.response?.headers, () => {
+            setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
@@ -196,9 +199,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightTodo.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "todo")
       const promise = retry(() => sdk.client.session.todo({ sessionID }))
-        .then((todo) => {
-          setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "todo", request, result.response?.headers, () => {
+            setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
@@ -215,16 +221,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightDag.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
       const promise = retry(() =>
-        sdk.client.session
-          .dag({
-            sessionID,
-            ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
-          })
-          .then((r) => r.data as any),
+        sdk.client.session.dag({
+          sessionID,
+          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+        }),
       )
-        .then((nodes) => {
-          setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "dag", request, result.response?.headers, () => {
+            setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
