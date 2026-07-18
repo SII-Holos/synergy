@@ -3,11 +3,12 @@ import {
   GitHubActionProposal,
   GitHubDelivery,
   GitHubIntegrationConfig,
+  GitHubPollingConfig,
   GitHubTriggerDecision,
 } from "../../src/github/types"
 
 describe("GitHub integration schemas", () => {
-  test("applies safe disabled defaults without storing a webhook secret", () => {
+  test("applies safe disabled defaults with polling config included", () => {
     const config = GitHubIntegrationConfig.parse({})
 
     expect(config).toEqual({
@@ -19,6 +20,13 @@ describe("GitHub integration schemas", () => {
       proposalEnabled: false,
       modelBudgetNano: { maxTokens: 256, maxCost: 0.001 },
       modelBudgetProposal: { maxTokens: 2048, maxCost: 0.02 },
+      polling: {
+        enabled: true,
+        intervalMs: 60_000,
+        overlapWindowMs: 300_000,
+        pageSize: 100,
+        maxPages: 30,
+      },
       fixWorkflow: {
         enabled: false,
         repositoryMapping: {},

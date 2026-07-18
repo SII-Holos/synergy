@@ -10,7 +10,7 @@ type InstallationToken = {
   expiresAt: string
 }
 
-type RequestDescriptor = {
+export type RequestDescriptor = {
   url: string
   method: "GET" | "POST"
   headers: Record<string, string>
@@ -18,14 +18,26 @@ type RequestDescriptor = {
 }
 
 export class GitHubApiError extends Error {
+  readonly retryAfterMs: number | undefined
+
   constructor(
     readonly status: number,
     readonly method: string,
     readonly path: string,
     response: string,
+    headers?: Headers,
   ) {
     super(`GitHub API ${method} ${path} failed (${status}): ${response}`)
     this.name = "GitHubApiError"
+    const retryAfterHeader = headers?.get("retry-after")
+    const resetHeader = headers?.get("x-ratelimit-reset")
+    const retryAfterSeconds = retryAfterHeader ? Number(retryAfterHeader) : Number.NaN
+    const resetDelay = resetHeader ? Number(resetHeader) * 1_000 - Date.now() : Number.NaN
+    this.retryAfterMs = Number.isFinite(retryAfterSeconds)
+      ? Math.max(0, retryAfterSeconds * 1_000)
+      : Number.isFinite(resetDelay)
+        ? Math.max(0, resetDelay)
+        : undefined
   }
 }
 
@@ -55,11 +67,16 @@ function request(input: {
   }
 }
 
-function appRequest(input: { path: string; jwt: string; body?: unknown }): RequestDescriptor {
+function appRequest(input: {
+  path: string
+  method?: RequestDescriptor["method"]
+  jwt: string
+  body?: unknown
+}): RequestDescriptor {
   const jwt = requireNonEmpty(input.jwt, "GitHub App JWT")
   return {
     url: `https://api.github.com${input.path}`,
-    method: "POST",
+    method: input.method ?? "GET",
     headers: {
       Accept: "application/vnd.github+json",
       Authorization: `Bearer ${jwt}`,
@@ -71,19 +88,30 @@ function appRequest(input: { path: string; jwt: string; body?: unknown }): Reque
   }
 }
 
-async function execute<T>(descriptor: RequestDescriptor): Promise<T> {
+async function executeResponse(descriptor: RequestDescriptor, signal?: AbortSignal) {
   const response = await fetch(descriptor.url, {
     method: descriptor.method,
     headers: descriptor.headers,
     body: descriptor.body,
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    signal: signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT_MS)])
+      : AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   })
   const text = await response.text()
   if (!response.ok) {
-    throw new GitHubApiError(response.status, descriptor.method, new URL(descriptor.url).pathname, text)
+    throw new GitHubApiError(
+      response.status,
+      descriptor.method,
+      new URL(descriptor.url).pathname,
+      text,
+      response.headers,
+    )
   }
-  if (!text) return undefined as T
-  return JSON.parse(text) as T
+  return { data: text ? (JSON.parse(text) as unknown) : undefined, headers: response.headers }
+}
+
+async function execute<T>(descriptor: RequestDescriptor, signal?: AbortSignal): Promise<T> {
+  return (await executeResponse(descriptor, signal)).data as T
 }
 
 function encodeJson(value: unknown) {
@@ -136,15 +164,15 @@ export namespace GitHubAppAuth {
     installationTokens.clear()
   }
 
-  export async function getInstallationToken(installationId: number): Promise<string> {
+  export async function getInstallationToken(installationId: number, signal?: AbortSignal): Promise<string> {
     const cached = installationTokens.get(installationId)
     if (cached) return cached.token
 
     const appId = Number(process.env.SYNERGY_GITHUB_APP_ID)
     const privateKey = process.env.SYNERGY_GITHUB_APP_PRIVATE_KEY?.replaceAll("\\n", "\n") ?? ""
     const jwt = generateJWT({ appId, privateKey })
-    const descriptor = appRequest({ path: `/app/installations/${installationId}/access_tokens`, jwt })
-    const response = await execute<{ token?: unknown; expires_at?: unknown }>(descriptor)
+    const descriptor = appRequest({ path: `/app/installations/${installationId}/access_tokens`, method: "POST", jwt })
+    const response = await execute<{ token?: unknown; expires_at?: unknown }>(descriptor, signal)
     if (typeof response.token !== "string" || typeof response.expires_at !== "string") {
       throw new Error("GitHub installation token response is invalid")
     }
@@ -154,6 +182,71 @@ export namespace GitHubAppAuth {
   }
 
   export namespace GitHubClient {
+    export function resolveInstallation(input: { owner: string; repo: string; jwt: string }) {
+      return appRequest({ path: `/repos/${input.owner}/${input.repo}/installation`, jwt: input.jwt })
+    }
+
+    export function listRepositoryIssues(input: {
+      owner: string
+      repo: string
+      since: string
+      pageSize: number
+      installationToken: string
+    }) {
+      const query = new URLSearchParams({
+        filter: "all",
+        state: "all",
+        since: input.since,
+        sort: "updated",
+        direction: "asc",
+        per_page: String(input.pageSize),
+      })
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/issues?${query.toString()}`,
+        installationToken: input.installationToken,
+      })
+    }
+
+    export function followPagination(input: { url: string; installationToken: string }) {
+      const url = new URL(input.url)
+      if (url.protocol !== "https:" || url.origin !== "https://api.github.com") {
+        throw new Error("GitHub pagination URL must use the api.github.com HTTPS origin")
+      }
+      const token = requireNonEmpty(input.installationToken, "GitHub installation token")
+      return {
+        url: url.toString(),
+        method: "GET" as const,
+        headers: {
+          Accept: "application/vnd.github+json",
+          Authorization: `Bearer ${token}`,
+          "X-GitHub-Api-Version": GITHUB_API_VERSION,
+          "User-Agent": USER_AGENT,
+        },
+      }
+    }
+
+    export function listWorkflowRuns(input: {
+      owner: string
+      repo: string
+      since?: string
+      pageSize: number
+      installationToken: string
+    }) {
+      const query = new URLSearchParams()
+      if (input.since) query.set("created", `>=${input.since}`)
+      query.set("per_page", String(input.pageSize))
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/actions/runs?${query.toString()}`,
+        installationToken: input.installationToken,
+      })
+    }
+
+    export function getWorkflowRun(input: { owner: string; repo: string; runId: number; installationToken: string }) {
+      return request({
+        path: `/repos/${input.owner}/${input.repo}/actions/runs/${input.runId}`,
+        installationToken: input.installationToken,
+      })
+    }
     export function createIssueComment(input: {
       owner: string
       repo: string
@@ -303,8 +396,12 @@ export namespace GitHubAppAuth {
       })
     }
 
-    export async function send<T>(descriptor: RequestDescriptor) {
-      return execute<T>(descriptor)
+    export async function send<T>(descriptor: RequestDescriptor, signal?: AbortSignal) {
+      return execute<T>(descriptor, signal)
+    }
+    export async function sendPage<T>(descriptor: RequestDescriptor, signal?: AbortSignal) {
+      const response = await executeResponse(descriptor, signal)
+      return { data: response.data as T, headers: response.headers }
     }
   }
 

@@ -291,8 +291,13 @@ export namespace RuntimeReload {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
         }
         if (resolvedScope === "global" && result.changedFields.includes("github")) {
-          const { GitHubRuntime } = await import("../github/runtime")
+          const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
+            import("../github/poll-runtime"),
+            import("../github/runtime"),
+          ])
+          await GitHubPollRuntime.stop()
           await GitHubRuntime.reload(result.config.github)
+          await GitHubPollRuntime.start(result.config.github)
         }
         // Infer cascades from changed config fields
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {

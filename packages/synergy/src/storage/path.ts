@@ -173,6 +173,7 @@ export namespace StoragePath {
   export const githubDeliveriesRoot = () => ["github", "deliveries"]
   export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]
   export const githubRuntimeState = () => ["github", "runtime"]
+  export const githubPollState = (repository: string) => ["github", "poll-state", encodeURIComponent(repository)]
   export const githubCiState = (repository: string, workflowName: string) => [
     "github",
     "ci",

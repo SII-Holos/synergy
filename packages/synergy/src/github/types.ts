@@ -89,6 +89,52 @@ export const GitHubReviewWorkflowConfig = z
     publishCheckRun: true,
   })
 export type GitHubReviewWorkflowConfig = z.infer<typeof GitHubReviewWorkflowConfig>
+export const GitHubPollingConfig = z
+  .object({
+    enabled: z.boolean().default(true),
+    intervalMs: z.number().int().min(15_000).max(300_000).default(60_000),
+    overlapWindowMs: z.number().int().min(0).max(600_000).default(300_000),
+    pageSize: z.number().int().min(1).max(100).default(100),
+    maxPages: z.number().int().min(1).max(100).default(30),
+  })
+  .strict()
+  .default({
+    enabled: true,
+    intervalMs: 60_000,
+    overlapWindowMs: 300_000,
+    pageSize: 100,
+    maxPages: 30,
+  })
+export type GitHubPollingConfig = z.infer<typeof GitHubPollingConfig>
+
+const GitHubPollSeenPullRequest = z
+  .object({
+    number: z.number().int().positive(),
+    headSha: z.string().min(1),
+    state: z.enum(["open", "closed"]),
+    updatedAt: z.string().min(1),
+  })
+  .strict()
+
+const GitHubPollSeenWorkflowRun = z
+  .object({
+    runId: z.number().int().positive(),
+    conclusion: z.string().min(1).optional(),
+    updatedAt: z.string().min(1),
+  })
+  .strict()
+
+export const GitHubPollState = z
+  .object({
+    repository: z.string().min(1),
+    baselineTimestampMs: z.number().int().nonnegative(),
+    lastUpdatedAt: z.number().int().nonnegative(),
+    lastWorkflowRunCreatedAt: z.number().int().nonnegative().optional(),
+    seenPRs: z.record(z.string(), GitHubPollSeenPullRequest).default({}),
+    seenWorkflowRunIds: z.record(z.string(), GitHubPollSeenWorkflowRun).default({}),
+  })
+  .strict()
+export type GitHubPollState = z.infer<typeof GitHubPollState>
 
 export const GitHubIntegrationConfig = z
   .object({
@@ -101,10 +147,28 @@ export const GitHubIntegrationConfig = z
     modelBudgetProposal: GitHubModelBudget.default({ maxTokens: 2048, maxCost: 0.02 }),
     classifierEnabled: z.boolean().default(false),
     proposalEnabled: z.boolean().default(false),
+    polling: GitHubPollingConfig,
     fixWorkflow: GitHubFixWorkflowConfig,
     reviewWorkflow: GitHubReviewWorkflowConfig,
   })
   .strict()
+  .superRefine((value, ctx) => {
+    if (!value.enabled || !value.polling.enabled) return
+    const repositories = new Set(value.watchedRepositories ?? [])
+    if (value.fixWorkflow.enabled) {
+      for (const repository of Object.keys(value.fixWorkflow.repositoryMapping)) repositories.add(repository)
+    }
+    if (value.reviewWorkflow.enabled) {
+      for (const repository of Object.keys(value.reviewWorkflow.repositoryMapping)) repositories.add(repository)
+    }
+    if (repositories.size === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["polling"],
+        message: "At least one watched or workflow-mapped repository is required when GitHub polling is enabled",
+      })
+    }
+  })
   .meta({ ref: "GitHubIntegrationConfig" })
 export type GitHubIntegrationConfig = z.infer<typeof GitHubIntegrationConfig>
 
@@ -279,11 +343,3 @@ export const GitHubDelivery = z
   .strict()
   .meta({ ref: "GitHubDelivery" })
 export type GitHubDelivery = z.infer<typeof GitHubDelivery>
-
-export const GitHubWebhookResponse = z
-  .object({
-    accepted: z.literal(true),
-    duplicate: z.boolean(),
-  })
-  .strict()
-  .meta({ ref: "GitHubWebhookResponse" })

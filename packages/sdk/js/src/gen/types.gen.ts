@@ -878,11 +878,6 @@ export type PerfBrowserMetricBatch = {
   }>
 }
 
-export type GitHubWebhookResponse = {
-  accepted: true
-  duplicate: boolean
-}
-
 export type HolosLoginResponse = {
   url: string
 }
@@ -1608,7 +1603,7 @@ export type ServerConfig = {
 }
 
 /**
- * GitHub App webhook shadow integration configuration
+ * Outbound GitHub App polling and automation configuration
  */
 export type GitHubIntegrationConfig = {
   enabled?: boolean
@@ -1626,6 +1621,13 @@ export type GitHubIntegrationConfig = {
   }
   classifierEnabled?: boolean
   proposalEnabled?: boolean
+  polling?: {
+    enabled?: boolean
+    intervalMs?: number
+    overlapWindowMs?: number
+    pageSize?: number
+    maxPages?: number
+  }
   fixWorkflow?: {
     enabled?: boolean
     repositoryMapping?: {
@@ -8108,51 +8110,6 @@ export type PerformanceEventsStreamResponses = {
    */
   200: unknown
 }
-
-export type GithubWebhookReceiveData = {
-  body?: never
-  path?: never
-  query?: never
-  url: "/integrations/github/webhook"
-}
-
-export type GithubWebhookReceiveErrors = {
-  /**
-   * Malformed webhook
-   */
-  400: {
-    error: string
-  }
-  /**
-   * Invalid webhook signature
-   */
-  401: {
-    error: string
-  }
-  /**
-   * Webhook payload too large
-   */
-  413: {
-    error: string
-  }
-  /**
-   * Webhook secret unavailable
-   */
-  503: {
-    error: string
-  }
-}
-
-export type GithubWebhookReceiveError = GithubWebhookReceiveErrors[keyof GithubWebhookReceiveErrors]
-
-export type GithubWebhookReceiveResponses = {
-  /**
-   * Webhook accepted
-   */
-  202: GitHubWebhookResponse
-}
-
-export type GithubWebhookReceiveResponse = GithubWebhookReceiveResponses[keyof GithubWebhookReceiveResponses]
 
 export type GlobalDisposeData = {
   body?: never

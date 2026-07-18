@@ -152,8 +152,6 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
-  GithubWebhookReceiveErrors,
-  GithubWebhookReceiveResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -3401,25 +3399,6 @@ export class Performance extends HeyApiClient {
   browserMetrics = new BrowserMetrics({ client: this.client })
 
   events = new Events({ client: this.client })
-}
-
-export class Webhook extends HeyApiClient {
-  /**
-   * Receive a GitHub App webhook
-   *
-   * Verify, deduplicate, and durably enqueue a GitHub App webhook for shadow processing.
-   */
-  public receive<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
-    return (options?.client ?? this.client).post<
-      GithubWebhookReceiveResponses,
-      GithubWebhookReceiveErrors,
-      ThrowOnError
-    >({ url: "/integrations/github/webhook", ...options })
-  }
-}
-
-export class Github extends HeyApiClient {
-  webhook = new Webhook({ client: this.client })
 }
 
 export class Credentials extends HeyApiClient {
@@ -10397,8 +10376,6 @@ export class SynergyClient extends HeyApiClient {
   observability = new Observability({ client: this.client })
 
   performance = new Performance({ client: this.client })
-
-  github = new Github({ client: this.client })
 
   holos = new Holos({ client: this.client })
 

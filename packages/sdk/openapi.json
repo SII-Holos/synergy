@@ -1399,95 +1399,6 @@
         ]
       }
     },
-    "/integrations/github/webhook": {
-      "post": {
-        "operationId": "github.webhook.receive",
-        "summary": "Receive a GitHub App webhook",
-        "description": "Verify, deduplicate, and durably enqueue a GitHub App webhook for shadow processing.",
-        "responses": {
-          "202": {
-            "description": "Webhook accepted",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/GitHubWebhookResponse"
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Malformed webhook",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "401": {
-            "description": "Invalid webhook signature",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "413": {
-            "description": "Webhook payload too large",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          },
-          "503": {
-            "description": "Webhook secret unavailable",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "properties": {
-                    "error": {
-                      "type": "string"
-                    }
-                  },
-                  "required": ["error"]
-                }
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.github.webhook.receive({\n  ...\n})"
-          }
-        ]
-      }
-    },
     "/global/dispose": {
       "post": {
         "operationId": "global.dispose",
@@ -21898,20 +21809,6 @@
         },
         "required": ["sentAt", "metrics"]
       },
-      "GitHubWebhookResponse": {
-        "type": "object",
-        "properties": {
-          "accepted": {
-            "type": "boolean",
-            "const": true
-          },
-          "duplicate": {
-            "type": "boolean"
-          }
-        },
-        "required": ["accepted", "duplicate"],
-        "additionalProperties": false
-      },
       "HolosLoginResponse": {
         "type": "object",
         "properties": {
@@ -23152,7 +23049,7 @@
         "additionalProperties": false
       },
       "GitHubIntegrationConfig": {
-        "description": "GitHub App webhook shadow integration configuration",
+        "description": "Outbound GitHub App polling and automation configuration",
         "type": "object",
         "properties": {
           "enabled": {
@@ -23233,6 +23130,47 @@
           "proposalEnabled": {
             "default": false,
             "type": "boolean"
+          },
+          "polling": {
+            "default": {
+              "enabled": true,
+              "intervalMs": 60000,
+              "overlapWindowMs": 300000,
+              "pageSize": 100,
+              "maxPages": 30
+            },
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "intervalMs": {
+                "default": 60000,
+                "type": "integer",
+                "minimum": 15000,
+                "maximum": 300000
+              },
+              "overlapWindowMs": {
+                "default": 300000,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 600000
+              },
+              "pageSize": {
+                "default": 100,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "maxPages": {
+                "default": 30,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "additionalProperties": false
           },
           "fixWorkflow": {
             "default": {

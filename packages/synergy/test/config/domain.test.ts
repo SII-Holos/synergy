@@ -47,8 +47,8 @@ test("cortex task concurrency is owned by the runtime domain", () => {
   })
 })
 
-test("GitHub shadow integration has its own canonical config domain", () => {
-  const github = Config.GitHubIntegrationConfig.parse({ enabled: true })
+test("GitHub integration has its own canonical config domain", () => {
+  const github = Config.GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } })
   expect(ConfigDomain.domainForKey("github")?.id).toBe("github")
   expect(ConfigDomain.extract({ github }, "github")).toEqual({ github })
 })

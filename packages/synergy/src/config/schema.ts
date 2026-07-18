@@ -1414,7 +1414,7 @@ export const Info = z
       .strict()
       .optional()
       .describe("Cortex task scheduling configuration"),
-    github: GitHubIntegrationConfig.optional().describe("GitHub App webhook shadow integration configuration"),
+    github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),

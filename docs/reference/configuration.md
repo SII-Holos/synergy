@@ -22,22 +22,22 @@ Use `synergy config path` to print the active global roots.
 
 ## Domains
 
-| File                   | Domain      | Owned configuration                                                                                                                           |
-| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                           |
-| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                        |
-| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                                     |
-| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                                   |
-| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                                  |
-| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                       |
-| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                            |
-| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                                |
-| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                            |
-| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                    |
-| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                             |
-| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                           |
-| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                  |
-| `130-github.jsonc`     | GitHub      | GitHub App webhook integration (master enable, watched repos, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
+| File                   | Domain      | Owned configuration                                                                                                                                             |
+| ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                                             |
+| `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                                                          |
+| `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                                                       |
+| `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                                                     |
+| `40-mcp.jsonc`         | MCP         | MCP servers and MCP defaults                                                                                                                                    |
+| `50-plugins.jsonc`     | Plugins     | installed specs, plugin settings, approval, runtime limits, marketplace                                                                                         |
+| `60-agents.jsonc`      | Agents      | default agent, agent/external-agent definitions, instruction discovery, categories                                                                              |
+| `70-commands.jsonc`    | Commands    | configured command definitions                                                                                                                                  |
+| `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                                              |
+| `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
+| `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
+| `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
+| `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                                    |
+| `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
@@ -236,7 +236,7 @@ Memory pressure may recommend a lower value, shown in Settings and the Cortex co
 
 ## GitHub Integration
 
-Synergy can receive GitHub App webhooks and process them through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous fix delivery, and opt-in automatic PR review and test. The configuration is owned by the GitHub domain (`130-github.jsonc`) and all pipelines are disabled by default.
+Synergy polls GitHub repositories outbound using GitHub App installation tokens. It requires no public inbound listener. Events are synthesized from REST API responses and processed through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous fix delivery, and opt-in automatic PR review and test. The configuration is owned by the GitHub domain (`130-github.jsonc`) and all pipelines are disabled by default.
 
 ```jsonc
 {
@@ -250,6 +250,13 @@ Synergy can receive GitHub App webhooks and process them through three independe
     "proposalEnabled": false,
     "modelBudgetNano": { "maxTokens": 256, "maxCost": 0.001 },
     "modelBudgetProposal": { "maxTokens": 2048, "maxCost": 0.02 },
+    "polling": {
+      "enabled": true,
+      "intervalMs": 60000,
+      "overlapWindowMs": 300000,
+      "pageSize": 100,
+      "maxPages": 30,
+    },
     "fixWorkflow": {
       "enabled": false,
       "repositoryMapping": { "owner/repo": "/path/to/local/repo" },
@@ -290,6 +297,18 @@ Synergy can receive GitHub App webhooks and process them through three independe
 
 The `modelBudgetNano.maxTokens` cap is passed as `maxOutputTokens` to the classifier LLM call. The `modelBudgetProposal.maxTokens` cap is passed as `maxOutputTokens` to the proposal Cortex task. After the call completes, actual usage is measured against both the token and cost limits; exceeding either discards the result.
 
+### polling (outbound REST API polling)
+
+When `github.enabled` and `polling.enabled` are both true, Synergy polls each known repository's GitHub REST API on a configurable interval using ephemeral GitHub App installation tokens. At least one `watchedRepositories` entry or one `repositoryMapping` entry in fix/review workflows is required.
+
+| Field                     | Required | Default  | Description                                                                                                  |
+| ------------------------- | -------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| `polling.enabled`         | no       | `true`   | Enable outbound API polling; set to false to suppress all API calls while keeping delivery processing active |
+| `polling.intervalMs`      | no       | `60000`  | Milliseconds between poll cycles per repository; accepted range 15000–300000 (15 s to 5 min)                 |
+| `polling.overlapWindowMs` | no       | `300000` | Milliseconds to extend the `since` query backward for overlap safety; accepted range 0–600000 (10 min)       |
+| `polling.pageSize`        | no       | `100`    | Results per API page; accepted range 1–100                                                                   |
+| `polling.maxPages`        | no       | `30`     | Maximum pages per query; exceeding the limit aborts with an error; accepted range 1–100                      |
+
 ### fixWorkflow (autonomous issue fix delivery)
 
 When `fixWorkflow.enabled` is true, `issues.opened` events that match the bug signal regex are routed through an autonomous fix pipeline: locate root cause, post a proposed-fix issue comment, implement the fix in an isolated worktree, commit, push a branch, open a pull request, and post a completion comment. The shadow proposal pipeline is bypassed for the same event.
@@ -324,16 +343,16 @@ When `reviewWorkflow.enabled` is true, `pull_request.opened`, `pull_request.reop
 | `reviewWorkflow.publishReviewComment` | no           | `true`                                                                         | Post a pull request review comment with findings                                         |
 | `reviewWorkflow.publishCheckRun`      | no           | `true`                                                                         | Create a check run on the head SHA with pass/fail conclusion                             |
 
-### Webhook secret and GitHub App credentials
+### GitHub App credentials
 
-The webhook secret is configured through the environment variable `SYNERGY_GITHUB_WEBHOOK_SECRET`. It is never a config field. The route returns 503 when the secret is absent.
-
-The fix and review workflows require GitHub App authentication for API calls and git push operations. These credentials are env-only and never appear in config:
+The integration uses GitHub App authentication for all REST API calls and git push operations. These credentials are env-only and never appear in config:
 
 - `SYNERGY_GITHUB_APP_ID` — the GitHub App ID used to sign installation-access JWTs
 - `SYNERGY_GITHUB_APP_PRIVATE_KEY` — the RSA private key for the GitHub App; `\n` sequences in an environment variable are automatically converted to literal newlines
 
-See [GitHub Integration](../architecture/github-shadow.md) for the processing pipeline and architecture invariants.
+Polling requires these credentials. The fix and review workflows also require them. There is no webhook secret, no inbound webhook route, and no CORS bypass for GitHub.
+
+See [GitHub Integration](../architecture/github-shadow.md) for the polling architecture and processing pipeline.
 
 ## Config Import
 
@@ -376,19 +395,18 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Location and merge inputs
 
-| Variable                         | Effect                                                                                               |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `SYNERGY_HOME`                   | Change the parent of the complete `.synergy/` installation home                                      |
-| `SYNERGY_CONFIG`                 | Merge one additional config file after global config                                                 |
-| `SYNERGY_CONFIG_CONTENT`         | Merge inline JSON after `SYNERGY_CONFIG`                                                             |
-| `SYNERGY_CONFIG_DIR`             | Add a high-precedence config/agent/command/skill/instruction root                                    |
-| `SYNERGY_PERMISSION`             | Merge a final JSON permission overlay                                                                |
-| `SYNERGY_CWD`                    | Override the launch/current directory used by source and embedded flows                              |
-| `SYNERGY_CLIENT`                 | Identify the client in the runtime user agent and client-specific tool exposure                      |
-| `SYNERGY_GIT_BASH_PATH`          | Select Git Bash on Windows when automatic shell discovery is unsuitable                              |
-| `SYNERGY_GITHUB_WEBHOOK_SECRET`  | Required webhook signature secret for the GitHub integration; absent → route returns 503             |
-| `SYNERGY_GITHUB_APP_ID`          | GitHub App ID for installation token signing; required when fixWorkflow or reviewWorkflow is enabled |
-| `SYNERGY_GITHUB_APP_PRIVATE_KEY` | GitHub App RSA private key for JWT creation; `\n` sequences are converted to literal newlines        |
+| Variable                         | Effect                                                                                                               |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `SYNERGY_HOME`                   | Change the parent of the complete `.synergy/` installation home                                                      |
+| `SYNERGY_CONFIG`                 | Merge one additional config file after global config                                                                 |
+| `SYNERGY_CONFIG_CONTENT`         | Merge inline JSON after `SYNERGY_CONFIG`                                                                             |
+| `SYNERGY_CONFIG_DIR`             | Add a high-precedence config/agent/command/skill/instruction root                                                    |
+| `SYNERGY_PERMISSION`             | Merge a final JSON permission overlay                                                                                |
+| `SYNERGY_CWD`                    | Override the launch/current directory used by source and embedded flows                                              |
+| `SYNERGY_CLIENT`                 | Identify the client in the runtime user agent and client-specific tool exposure                                      |
+| `SYNERGY_GIT_BASH_PATH`          | Select Git Bash on Windows when automatic shell discovery is unsuitable                                              |
+| `SYNERGY_GITHUB_APP_ID`          | GitHub App ID for installation token signing; required for polling and when fixWorkflow or reviewWorkflow is enabled |
+| `SYNERGY_GITHUB_APP_PRIVATE_KEY` | GitHub App RSA private key for JWT creation; `\n` sequences are converted to literal newlines                        |
 
 ### Network and discovery overrides
 

@@ -203,7 +203,7 @@ describe("runtime.reload", () => {
         scope: await tmp.scope(),
         fn: async () => {
           Config.reload = mock(async () => ({
-            config: { github: GitHubIntegrationConfig.parse({ enabled: true }) },
+            config: { github: GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } }) },
             changedFields: ["github"],
             oldConfig: {},
           })) as typeof Config.reload

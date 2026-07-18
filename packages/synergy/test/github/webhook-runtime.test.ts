@@ -38,7 +38,10 @@ describe("GitHub shadow runtime", () => {
     const record = delivery({ guid: `runtime-ignore-${crypto.randomUUID()}`, eventType: "pull_request", payload: {} })
     await GitHubStore.accept({ ...record, status: "received" })
 
-    await GitHubRuntime.processDelivery(record, GitHubIntegrationConfig.parse({ enabled: true }))
+    await GitHubRuntime.processDelivery(
+      record,
+      GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } }),
+    )
 
     expect(await GitHubStore.get(record.deliveryGuid)).toMatchObject({
       status: "ignored",
@@ -48,7 +51,11 @@ describe("GitHub shadow runtime", () => {
   })
 
   test("tracks CI failures durably and triggers only at the threshold", async () => {
-    const config = GitHubIntegrationConfig.parse({ enabled: true, ciFailureThreshold: 2 })
+    const config = GitHubIntegrationConfig.parse({
+      enabled: true,
+      polling: { enabled: false },
+      ciFailureThreshold: 2,
+    })
     const first = delivery({
       guid: `runtime-ci-1-${crypto.randomUUID()}`,
       eventType: "workflow_run",
@@ -95,7 +102,10 @@ describe("GitHub shadow runtime", () => {
     })
     await GitHubStore.accept({ ...record, status: "received" })
 
-    await GitHubRuntime.processDelivery(record, GitHubIntegrationConfig.parse({ enabled: true }))
+    await GitHubRuntime.processDelivery(
+      record,
+      GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } }),
+    )
 
     expect((await GitHubStore.get(record.deliveryGuid))?.observation).toMatchObject({
       eventType: "pull_request.opened",

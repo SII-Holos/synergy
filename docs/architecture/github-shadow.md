@@ -1,32 +1,83 @@
 # GitHub Integration
 
-The GitHub integration receives GitHub App webhooks and processes them through three independent pipelines: a shadow diagnostic pipeline, an opt-in autonomous fix delivery pipeline, and an opt-in automatic PR review and test pipeline. All three are disabled by default.
+The GitHub integration polls the GitHub REST API outbound using GitHub App installation tokens. It requires no public inbound listener and never accepts incoming HTTP requests. Events are synthesized from API responses and processed through three independent pipelines: a shadow diagnostic pipeline, an opt-in autonomous fix delivery pipeline, and an opt-in automatic PR review and test pipeline. All three are disabled by default.
 
-## Route and Authentication
+## Polling Architecture
 
-`POST /integrations/github/webhook` is a global route (no Scope required) and is listed in the CORS bypass set.
+The `GitHubPollRuntime` is started and stopped by the global runtime alongside the delivery worker. When `github.enabled` and `polling.enabled` are both true and at least one repository is known (via `watchedRepositories` or a `repositoryMapping` in fix/review workflows), one polling loop runs per repository.
 
-The route verifies the `x-hub-signature-256` header against the exact raw request body using `SYNERGY_GITHUB_WEBHOOK_SECRET` (env-only, never a config field). It requires `x-github-event` and `x-github-delivery` headers and rejects bodies larger than 256 KiB before parsing or persistence. Malformed or missing values return 400; an invalid signature returns 401; an oversized payload returns 413; an absent secret returns 503.
+### Poll Loop
 
-## Webhook Acceptance
+Each repository loop awakens on the configured `polling.intervalMs`, calls the GitHub REST API with an ephemeral installation token, synthesizes deliveries from new or changed entities, writes them to durable storage, notifies the delivery worker, and sleeps until the next cycle. Rate-limit errors (403/429) extend the sleep to the longer of the configured interval or GitHub's requested delay, using `Retry-After` first and `x-ratelimit-reset` as a fallback.
 
-A parsed delivery is deduplicated by `x-github-delivery` using a durable write lock. A duplicate returns `{ accepted: true, duplicate: true }` (202). A new delivery is persisted as `received` and the worker is notified.
+### Credentials
+
+The poll runtime reads `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` from the process environment. It signs a JWT for the App, resolves the repository installation ID, and obtains a short-lived installation access token via `POST /app/installations/{id}/access_tokens`. Installation tokens are cached with a 5-minute refresh window; the cache is cleared when the GitHub runtime stops or reloads.
+
+### Poll State
+
+Each repository maintains a poll-state file at:
+
+```text
+data/github/poll-state/<encoded repository>
+```
+
+The state tracks:
+
+- `baselineTimestampMs` — set once on first poll; issues and PRs created before this timestamp are never synthesized
+- `lastUpdatedAt` — the maximum `updated_at` across processed issues and PRs; the next poll queries with `since` offset backwards by `overlapWindowMs`
+- `lastWorkflowRunCreatedAt` — the maximum `created_at` across processed workflow runs; used independently for the workflow-run query window
+- `seenPRs` — transition state for every open PR and at most the 5,000 most recently updated closed PRs
+- `seenWorkflowRunIds` — pending workflow runs only; completed runs are removed immediately
+
+### First Baseline
+
+When a repository has no poll state, the first poll creates a baseline at `Date.now()`. Historical issues and PRs are suppressed by their creation time, while current PR transition state and pending workflow runs are initialized for later changes. Completed historical workflow runs do not produce deliveries.
+
+### Query Windows
+
+Each poll cycle makes two paginated list queries per repository, plus detail requests when needed:
+
+1. **List repository issues** — `GET /repos/{owner}/{repo}/issues` with `sort: updated`, `direction: asc`, and `since` set to `lastUpdatedAt - overlapWindowMs`. Ordinary issues are processed directly; entries with a `pull_request` field are enriched separately.
+2. **Fetch pull request details** — for each pull request entry returned by the issues query, `GET /repos/{owner}/{repo}/pulls/{number}` fetches the full PR object.
+3. **List workflow runs** — `GET /repos/{owner}/{repo}/actions/runs` with `created` query filter set to `lastWorkflowRunCreatedAt - overlapWindowMs`. Pending runs (those previously seen with no conclusion and not in the current page set) are individually fetched via `GET /repos/{owner}/{repo}/actions/runs/{id}` to catch completions.
+
+Each query paginates up to `maxPages`; page results are ordered by time. When the remaining rate-limit budget drops to 5 or fewer requests, the poll loop sleeps for the configured interval before requesting the next page.
+
+### Event Synthesis
+
+Each new or changed entity is synthesized into a `GitHubDelivery` record with a deterministic delivery GUID:
+
+| Entity        | Delivery GUID pattern                                                 |
+| ------------- | --------------------------------------------------------------------- |
+| New issue     | `poll:<repo>:issue:<number>:<created_at_epoch_ms>`                    |
+| Opened PR     | `poll:<repo>:pr:<number>:opened:<headSha>:<created_at_epoch_ms>`      |
+| Reopened PR   | `poll:<repo>:pr:<number>:reopened:<headSha>:<updated_at_epoch_ms>`    |
+| Synced PR     | `poll:<repo>:pr:<number>:synchronize:<headSha>:<updated_at_epoch_ms>` |
+| Workflow done | `poll:<repo>:workflow:<runId>:completed:<updated_at_epoch_ms>`        |
+
+The synthetic delivery carries `x-poll-event` and `x-poll-delivery` in `rawHeaders` instead of incoming webhook headers, but otherwise matches the delivery schema the worker already consumed. The synthesizer sets `status: "received"` and hands the delivery through `GitHubStore.accept()`, which deduplicates by delivery GUID identically to the former webhook path.
+
+### Delivery Acceptance and Worker Notification
+
+After each poll cycle's batch of synthesized deliveries is accepted through `GitHubStore.accept()`, the poll runtime calls `GitHubRuntime.notify()` if at least one delivery was new. The delivery worker then FIFO-claims and processes the batch exactly as before.
 
 ## Storage
 
-Three durable collections under `data/github/`:
+Three durable collections plus poll state:
 
-- `data/github/deliveries/<deliveryGuid>` — per-webhook records with full lifecycle state
+- `data/github/deliveries/<deliveryGuid>` — per-delivery records with full lifecycle state
 - `data/github/ci/<repository>/<workflowName>` — per-workflow CI failure timestamps within the configured window
 - `data/github/runtime.json` — persistent anchors (parent sessions/messages) for fix and review Cortex tasks
+- `data/github/poll-state/<encoded repository>` — per-repository cursors and bounded transition state
 
 ## Worker Lifecycle
 
-The worker is a single global promise-based loop started by `GlobalRuntime.start()` and stopped by `GlobalRuntime.stop()`. It only runs when `github.enabled` is true.
+The worker is a single global promise-based loop started by `GitHubRuntime.start()` and stopped by `GitHubRuntime.stop()`. It runs only when `github.enabled` is true.
 
-At startup, `GitHubStore.recoverInFlight()` resets any deliveries left in `processing`, `processing_fix`, or `processing_review` state (from a prior crash or restart) to `retryable_failure` so they are re-claimed.
+At startup, `GitHubStore.recoverInFlight()` resets any deliveries left in `processing`, `processing_fix`, or `processing_review` state (from a prior crash or restart) to `retryable_failure`, increments `retryCount`, and records restart recovery metadata so they can be re-claimed within the configured retry limit.
 
-The worker FIFO-claims the next `received` or `retryable_failure` delivery, processes it, and repeats until no work remains. A failed delivery is excluded from the remainder of the current drain so a retryable error cannot create a tight loop; a later `notify()` or runtime restart can claim it again. A `notify()` call after webhook acceptance sets a flag and spawns the worker if one is not already running. The worker re-checks the flag after each batch to avoid missing deliveries that arrived during processing.
+The worker FIFO-claims the next `received` or `retryable_failure` delivery, processes it, and repeats until no work remains. A failed delivery is excluded from the remainder of the current drain so a retryable error cannot create a tight loop; a later `notify()` or runtime restart can claim it again. A `notify()` call (from the poll runtime after accepting new deliveries) sets a flag and spawns the worker if one is not already running. The worker re-checks the flag after each batch to avoid missing deliveries that arrived during processing.
 
 ## Processing Pipeline
 
@@ -63,7 +114,7 @@ Terminal ignored and gated deliveries without classifier/proposal/fix/review are
 
 ### L1 Classifier (optional, shadow only)
 
-When `classifierEnabled` and the decision is `ambiguous_issue`, the worker calls `classifyGitHubObservation()`. This uses the hidden `github-shadow-classifier` agent (nano model role, temperature 0, permission `*: deny`) sessionlessly through `LLM.stream()` — no session is created and no transcript is persisted. The call has a 10-second abort timeout. The model budget cap (`modelBudgetNano.maxTokens`) is passed as `maxOutputTokens`. After the call, actual token usage and cost are measured against both limits; exceeding either discards the result and marks the delivery ignored.
+When `classifierEnabled` and the decision is `ambiguous_issue`, the worker calls `classifyGitHubObservation()`. This uses the hidden `github-shadow-classifier` agent (nano model role, temperature 0, permission `*: deny`) sessionlessly through `LLM.stream()` — no session is created and no transcript is persisted. The call has a 10-second abort timeout. The model budget cap (`modelBudgetNano.maxTokens`) is passed as `maxOutputTokens`. After the call, actual token usage and cost are measured against both limits; an exceeded budget silently discards the result.
 
 A successful classification returns `{ relevant, category, confidence, reason }`. When `relevant` is true and `category === "bug"`:
 
@@ -105,7 +156,7 @@ When `fixWorkflow.enabled` and the delivery is routed into the fix workflow, the
 
 2. **Anchor session**: A hidden autonomous parent session (`"GitHub Fix Deliveries — <repo>"`) is created lazily per repository and reused.
 
-3. **Installation token**: An ephemeral GitHub App installation token is obtained from the installation ID in the webhook payload. This token is used for all GitHub API calls and git credential operations.
+3. **Installation token**: An ephemeral GitHub App installation token is obtained from the installation ID synthesized in the delivery. This token is used for all GitHub API calls and git credential operations.
 
 4. **Fetch base**: The default branch's HEAD commit SHA is fetched into the local project using the installation token for authentication.
 
@@ -113,7 +164,7 @@ When `fixWorkflow.enabled` and the delivery is routed into the fix workflow, the
 
 6. **Proposed-fix comment**: An issue comment with the locator diagnosis is posted to the GitHub issue with a deduplication marker (`<!-- synergy-fix:<deliveryGuid>:proposed -->`). If a comment with the same marker already exists, a new comment is not created.
 
-7. **Fix coder**: The `github-fix-coder` agent runs as a hidden Cortex subagent in a fresh isolated worktree at the same base SHA. It receives the locator's diagnosis, writes a failing behavioral test where appropriate, implements the smallest root-cause fix, runs focused validation, and creates one local commit. It returns structured `GitHubFixExecutionOutput` with summary, changed files, test results, and commit SHA. Permissions: read, grep, glob, edit, write, bash, todoread, todowrite are allowed; gh CLI, git push, and git remote are denied.
+7. **Fix coder**: The `github-fix-coder` agent runs as a hidden Cortex subagent in a fresh isolated worktree at the same base SHA. It receives the locator's diagnosis, writes a failing behavioral test where appropriate, implements the smallest root-cause fix, runs focused validation, and creates one local commit. It returns structured `GitHubFixExecutionOutput` with summary, changed files, test results, and commit SHA. Permissions: read, grep, glob, edit, write, and bash are allowed; gh CLI, git push, and git remote are denied.
 
 8. **Commit verification**: The actual HEAD commit SHA in the coder's worktree is compared against the reported SHA. A mismatch aborts the delivery.
 
@@ -153,15 +204,15 @@ When `reviewWorkflow.enabled` and the delivery is routed into the review workflo
 
 ## Agents
 
-Six hidden, native agents power the integration. All use temperature 0.
+Five hidden, native agents power the integration. All use temperature 0.
 
-| Agent                      | Model Role | Workflow | Permissions                                                         | Purpose                                              |
-| -------------------------- | ---------- | -------- | ------------------------------------------------------------------- | ---------------------------------------------------- |
-| `github-shadow-classifier` | nano       | Shadow   | `*: deny`                                                           | Classify ambiguous issues as bug/feature/question    |
-| `github-shadow-proposer`   | mid        | Shadow   | `*: deny`                                                           | Produce structured `GitHubActionProposal` via Cortex |
-| `github-issue-locator`     | mini       | Fix      | read, grep, glob, bash; deny gh, git push/remote                    | Locate root cause in checked-out repository          |
-| `github-fix-coder`         | mid        | Fix      | read, grep, glob, edit, write, bash, todo; deny gh, git push/remote | Implement fix in isolated worktree                   |
-| `github-review-agent`      | mid        | Review   | read, grep, glob, bash; deny gh, git push/remote                    | Defect-first review and test execution               |
+| Agent                      | Model Role | Workflow | Permissions                                                   | Purpose                                              |
+| -------------------------- | ---------- | -------- | ------------------------------------------------------------- | ---------------------------------------------------- |
+| `github-shadow-classifier` | nano       | Shadow   | `*: deny`                                                     | Classify ambiguous issues as bug/feature/question    |
+| `github-shadow-proposer`   | mid        | Shadow   | `*: deny`                                                     | Produce structured `GitHubActionProposal` via Cortex |
+| `github-issue-locator`     | mini       | Fix      | read, grep, glob, bash; deny gh, git push/remote              | Locate root cause in checked-out repository          |
+| `github-fix-coder`         | mid        | Fix      | read, grep, glob, edit, write, bash; deny gh, git push/remote | Implement fix in isolated worktree                   |
+| `github-review-agent`      | mid        | Review   | read, grep, glob, bash; deny gh, git push/remote              | Defect-first review and test execution               |
 
 Agents never receive GitHub tokens. git push and remote operations are performed by the orchestrator using a credential helper that injects the ephemeral installation token outside the agent's execution context. The `gh` CLI is denied to all GitHub agents.
 
@@ -177,7 +228,7 @@ git push operations use a credential helper (`credential.helper=!f() {...}`) tha
 received → processing | processing_fix | processing_review → completed | ignored | permanent_failure | retryable_failure
 ```
 
-- `received`: persisted by the webhook route
+- `received`: persisted by the poll synthesizer through `GitHubStore.accept()`
 - `processing`: claimed by the worker for classifier or proposal work
 - `processing_fix`: claimed by the worker for autonomous fix delivery
 - `processing_review`: claimed by the worker for PR review
@@ -189,10 +240,12 @@ received → processing | processing_fix | processing_review → completed | ign
 ## Invariants
 
 - The integration is inactive until `enabled: true`. Each workflow (`fixWorkflow`, `reviewWorkflow`) is independently gated by its own `enabled` flag.
-- `repositoryMapping` is required when either the fix or review workflow is enabled. An unmapped repository is silently ignored.
-- The webhook secret is env-only (`SYNERGY_GITHUB_WEBHOOK_SECRET`) and never appears in config or config examples.
-- GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) are env-only and never appear in config. The route returns 503 when these are absent and a workflow that needs them is triggered.
-- The route is global (no Scope) and uses the CORS bypass list.
+- Polling is independently gated by `polling.enabled` (default true). Set to false to suppress all outbound API calls while keeping delivery processing active.
+- At least one repository must be known (via `watchedRepositories` or a fix/review `repositoryMapping`) when both `github.enabled` and `polling.enabled` are true, or the configuration is invalid.
+- `repositoryMapping` is required when either the fix or review workflow is enabled. An unmapped repository is silently ignored by the gate.
+- The first poll baseline skips history. Issues and PRs created before the baseline are never synthesized regardless of age or `updated_at`.
+- `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` are env-only. Polling requires them; fix and review workflows also require them for API calls and git push operations.
+- There is no inbound webhook route, no webhook secret, no CORS bypass for GitHub, and no HMAC signature verification.
 - Deduplication is durable and lock-protected per delivery GUID.
 - The worker claims deliveries FIFO by received timestamp and processes at most four concurrently; failure and retry state remains isolated per delivery.
 - Classifier calls are sessionless and produce no durable transcript.
@@ -205,5 +258,5 @@ received → processing | processing_fix | processing_review → completed | ign
 - Review comments and check runs are deduplicated: one review comment per PR + head SHA; one check run per delivery.
 - Budget overages (tokens or cost) discard classifier results silently.
 - The worker recovers in-flight deliveries to retryable state on restart.
-- Global `github` config reloads stop and restart the worker with the newly resolved settings.
+- Global `github` config reloads stop and restart both the worker and poll runtime with the newly resolved settings.
 - The existing shadow pipeline (classifier + proposal) remains operational when `classifierEnabled` or `proposalEnabled` are set. When `fixWorkflow.enabled` fires, it replaces the shadow proposal for the same event.
