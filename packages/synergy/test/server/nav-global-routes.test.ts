@@ -318,7 +318,7 @@ describe("GET /global/pinned", () => {
         expect(item).toBeDefined()
         expect(item.id).toBeTypeOf("string")
         expect(item.title).toBeTypeOf("string")
-        expect(item.category).toBeOneOf(["project", "home", "channel", "background"])
+        expect(item.category).toBeOneOf(["project", "home", "channel", "background", "github"])
         expect(item.scopeID).toBeTypeOf("string")
         expect(item.pinned).toBeGreaterThan(0)
 
