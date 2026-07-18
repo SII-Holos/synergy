@@ -1,42 +1,51 @@
-import { createSignal, type JSXElement } from "solid-js"
+import { createSignal } from "solid-js"
+import type { I18n, MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { dialog } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import type { ConfirmTone } from "./confirm-copy"
 import "./confirm-dialog.css"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export type { ConfirmTone } from "./confirm-copy"
 
+export type ConfirmContent = string | MessageDescriptor
+
 export interface ConfirmOptions {
-  title: JSXElement
-  description: JSXElement
-  confirmLabel: string
-  cancelLabel?: string
+  title: ConfirmContent
+  description: ConfirmContent
+  confirmLabel: ConfirmContent
+  cancelLabel?: ConfirmContent
   tone: ConfirmTone
   onConfirm: () => void | Promise<void>
   onConfirmed?: () => void
   onDismiss?: () => void
 }
-
-function errorDescription(error: unknown) {
+function errorDescription(error: unknown, _: (descriptor: { id: string; message: string }) => string): string {
   if (error instanceof Error && error.message) return error.message
   if (typeof error === "string" && error) return error
-  return "The action could not be completed."
+  return _(dialog.actionNotCompleted)
+}
+function resolveContent(content: ConfirmContent, translate: I18n["_"]): string {
+  return typeof content === "string" ? content : translateDescriptor(content, { _: translate })
 }
 
 export function ConfirmDialog(props: ConfirmOptions) {
-  const dialog = useDialog()
+  const { _ } = useLingui()
+  const dialogContext = useDialog()
   const [pending, setPending] = createSignal(false)
   let settled = false
 
   function dismiss() {
     if (pending() || settled) return
     settled = true
-    dialog.close()
+    dialogContext.close()
     props.onDismiss?.()
   }
 
@@ -46,13 +55,13 @@ export function ConfirmDialog(props: ConfirmOptions) {
     try {
       await props.onConfirm()
       settled = true
-      dialog.close()
+      dialogContext.close()
       props.onConfirmed?.()
     } catch (error) {
       showToast({
         type: "error",
-        title: "Action failed",
-        description: errorDescription(error),
+        title: _(dialog.actionFailed),
+        description: errorDescription(error, _),
       })
       setPending(false)
     }
@@ -60,8 +69,8 @@ export function ConfirmDialog(props: ConfirmOptions) {
 
   return (
     <Dialog
-      title={props.title}
-      description={props.description}
+      title={resolveContent(props.title, _)}
+      description={resolveContent(props.description, _)}
       class="confirm-dialog"
       action={
         <button
@@ -80,7 +89,7 @@ export function ConfirmDialog(props: ConfirmOptions) {
     >
       <div data-slot="dialog-actions" class="confirm-dialog-actions">
         <Button type="button" variant="ghost" size="large" disabled={pending()} onClick={() => dismiss()}>
-          {props.cancelLabel ?? "Cancel"}
+          {props.cancelLabel ? resolveContent(props.cancelLabel, _) : _(dialog.cancel)}
         </Button>
         <Button
           type="button"
@@ -94,10 +103,10 @@ export function ConfirmDialog(props: ConfirmOptions) {
           {pending() ? (
             <>
               <Spinner class="confirm-dialog-spinner" />
-              {props.confirmLabel}
+              {resolveContent(props.confirmLabel, _)}
             </>
           ) : (
-            props.confirmLabel
+            resolveContent(props.confirmLabel, _)
           )}
         </Button>
       </div>
@@ -106,14 +115,14 @@ export function ConfirmDialog(props: ConfirmOptions) {
 }
 
 export function useConfirm() {
-  const dialog = useDialog()
+  const dialogContext = useDialog()
 
   return {
     show(options: ConfirmOptions) {
-      dialog.push(() => <ConfirmDialog {...options} />)
+      dialogContext.push(() => <ConfirmDialog {...options} />)
     },
     close() {
-      dialog.close()
+      dialogContext.close()
     },
   }
 }

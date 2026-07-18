@@ -2,17 +2,15 @@ import { createMemo, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLingui } from "@lingui/solid"
 import { usePlatform, type DesktopWindowState } from "@/context/platform"
 import { BRAND_ASSETS, brandAssetPath } from "@/utils/brand-assets"
-import {
-  desktopWindowChromeVisible,
-  desktopWindowToggleIcon,
-  desktopWindowToggleLabel,
-} from "./desktop-window-chrome-model"
+import { desktopWindowChromeVisible, desktopWindowToggleIcon } from "./desktop-window-chrome-model"
 import "./desktop-window-chrome.css"
 
 export function DesktopWindowChrome() {
   const platform = usePlatform()
+  const { _ } = useLingui()
   const [store, setStore] = createStore<{ state: DesktopWindowState | null }>({
     state: null,
   })
@@ -20,7 +18,11 @@ export function DesktopWindowChrome() {
   const visible = () => desktopWindowChromeVisible(platform)
   const bridge = () => platform.desktopWindow
   const toggleIcon = createMemo(() => desktopWindowToggleIcon(store.state))
-  const toggleLabel = createMemo(() => desktopWindowToggleLabel(store.state))
+  const toggleLabel = createMemo(() =>
+    store.state?.maximized || store.state?.fullscreen
+      ? _({ id: "app.shell.window.restore", message: "Restore" })
+      : _({ id: "app.shell.window.maximize", message: "Maximize" }),
+  )
 
   onMount(() => {
     if (!visible()) return
@@ -64,15 +66,15 @@ export function DesktopWindowChrome() {
             class="desktop-window-chrome__icon"
             draggable={false}
           />
-          <span class="desktop-window-chrome__title">Synergy</span>
+          <span class="desktop-window-chrome__title">{_({ id: "app.name.synergy", message: "Synergy" })}</span>
         </div>
         <div class="desktop-window-chrome__drag-region" />
         <div class="desktop-window-chrome__controls">
           <button
             type="button"
             class="desktop-window-chrome__control"
-            aria-label="Minimize"
-            title="Minimize"
+            aria-label={_({ id: "window.minimize.aria", message: "Minimize" })}
+            title={_({ id: "window.minimize.title", message: "Minimize" })}
             onClick={minimize}
           >
             <Icon name={getSemanticIcon("window.minimize")} size="small" />
@@ -89,8 +91,8 @@ export function DesktopWindowChrome() {
           <button
             type="button"
             class="desktop-window-chrome__control desktop-window-chrome__control--close"
-            aria-label="Close"
-            title="Close"
+            aria-label={_({ id: "window.close.aria", message: "Close" })}
+            title={_({ id: "window.close.title", message: "Close" })}
             onClick={close}
           >
             <Icon name={getSemanticIcon("window.close")} size="small" />

@@ -1,3 +1,5 @@
+import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
+import { useLingui } from "@lingui/solid"
 import { createMemo, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -23,15 +25,17 @@ ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 ToolRegistry.register({
   name: "file_search",
   render(props) {
+    const { _ } = useLingui()
     const count = () => props.metadata?.count as number | undefined
     return (
       <BasicTool
         {...props}
         trigger={{
           icon: "scan-document",
-          title: "File Search",
+          title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
-          tags: count() != null ? [{ label: `${count()} result${count() === 1 ? "" : "s"}` }] : undefined,
+          tags:
+            count() != null ? [{ label: _({ ...TOOL_LABEL_DESC.results, values: { count: count()! } }) }] : undefined,
         }}
       >
         <Show when={props.output}>
@@ -57,7 +61,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Edit",
+          title: TOOL_TITLE_DESC["edit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
         }}
@@ -83,7 +87,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "text-select",
-          title: "Write",
+          title: TOOL_TITLE_DESC["write"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
@@ -114,7 +118,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Multi Edit",
+          title: TOOL_TITLE_DESC["multiedit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >

@@ -37,7 +37,7 @@ This single-writer rule supports:
 
 - ordered task execution
 - deterministic message and part persistence
-- a loop-scoped in-memory message cache
+- a loop-scoped in-memory model working-set cache
 - safe abort and terminal repair
 - one status stream per session
 
@@ -107,18 +107,68 @@ Part origin answers who authored the text. It does not remove the part from mode
 
 Persisted histories may contain older metadata shapes. `MessageV2.deriveSemantics()` is the only read-time derivation for canonical message fields.
 
-It runs over the complete ordered raw message list before pagination or slicing so root ownership can be derived consistently. It:
+Full transcript reads run it over the complete ordered raw message list before pagination or slicing so root ownership can be derived consistently. It:
 
 - maps legacy source metadata into canonical `origin`;
 - derives `isRoot`, `rootID`, `visible`, and `includeInContext` when absent;
 - maps legacy synthetic text into part origin;
 - gives assistants the active root when an older record lacks `rootID`.
 
+The LLM loop uses a compaction-aware read boundary instead of materializing the full transcript. It restores chronological message-info order, applies rollback events, locates the latest committed compaction boundary, loads parts only for the boundary root, retained summaries, and active suffix, then derives semantics over that root-anchored working set. Generic `Session.messages()` remains the complete transcript path for UI, export, rollback, fork, and other history consumers.
+
 Downstream loop, compaction, history, and frontend code read canonical fields. They must not recreate the retired metadata heuristics.
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
-Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. The read boundary restores those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. Both full and model-working-set read boundaries restore those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+
+## Message Page API
+
+`Session.messagePage()` and `GET /session/:sessionID/message/page` (`operationId: session.messagePage`) provide additive cursor-based pagination over effective session history. The existing `Session.messages()` and `GET /session/:sessionID/message` remain unchanged and are the correct path for runtime loops, export, preview, and flat consumers that need the complete message array or a simple tail slice.
+
+### Query parameters
+
+| Parameter | Type     | Meaning                                                                                  |
+| --------- | -------- | ---------------------------------------------------------------------------------------- |
+| `cursor`  | `string` | Opaque cursor returned by the previous page. Omit it to request the latest message page. |
+| `limit`   | `number` | Page size from 1 to 500. Defaults to 200.                                                |
+
+### Cursor format
+
+Cursors are opaque base64url-encoded JSON with a v1 schema:
+
+```ts
+{ v: 1, a: "<message-ID>", d: "before" }
+```
+
+The anchor `a` is a message-ID equality boundary; the direction `d` is always `"before"`. A request without a cursor returns the latest (newest) page. A request with a cursor returns strictly older messages ending at the anchor; the anchor message itself is excluded.
+
+### Response
+
+| Field             | Type                    | Meaning                                                                              |
+| ----------------- | ----------------------- | ------------------------------------------------------------------------------------ |
+| `items`           | `MessageV2.WithParts[]` | Page of messages in canonical chronological order, oldest first.                     |
+| `referencedRoots` | `MessageV2.WithParts[]` | Root messages whose IDs appear as `rootID` in items but are not themselves in items. |
+| `nextCursor`      | `string \| null`        | Encoded cursor for the next older page, or `null` when no older messages remain.     |
+| `hasMore`         | `boolean`               | `true` when older messages exist beyond this page.                                   |
+| `total`           | `number`                | Total effective message count.                                                       |
+
+`referencedRoots` provide task identity for non-root items whose root lies outside the page. They do not determine `nextCursor` or `hasMore`.
+
+### Cursor lifecycle
+
+- An invalid cursor (bad encoding or unknown schema version) returns a 400 `SessionMessagePageCursorInvalidError`.
+- A stale cursor (anchor message no longer in effective history after rollback or compaction) returns a 400 `SessionMessagePageCursorStaleError`. The frontend recovers by refetching the latest page.
+
+### Relationship to messages()
+
+| Property              | `messages()`                   | `messagePage()`                  |
+| --------------------- | ------------------------------ | -------------------------------- |
+| Result                | Full history or tail slice     | Fixed-size page with cursor      |
+| Consumer              | Runtime, export, preview, flat | Bounded frontend window          |
+| Referenced roots      | Included inline                | Separate `referencedRoots` array |
+| Cursor pagination     | No                             | Yes — opaque base64url v1 cursor |
+| Stale-cursor recovery | N/A                            | Refetch latest                   |
 
 ## Message Parts
 
@@ -289,3 +339,5 @@ This separation exists because `SessionEvent.Idle` has side-effect consumers —
 - Parent lineage and fork lineage remain distinct.
 - Durable state must be sufficient to recover after the in-memory runtime disappears.
 - Only `SessionManager.release()` publishes `SessionEvent.Idle`; repair paths publish `SessionEvent.Status` only.
+- `Session.messages()` returns the complete effective array for runtime consumers; `Session.messagePage()` returns bounded cursor pages for the frontend window. Neither supersedes the other.
+- Cursors are opaque base64url v1 anchors. Consumers must not decode or derive meaning from cursor internals.

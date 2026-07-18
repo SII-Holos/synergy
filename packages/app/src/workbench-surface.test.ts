@@ -148,7 +148,9 @@ describe("workbench surface polarity", () => {
     expect(workbenchSurface).toContain("if (local.addOpen)")
     expect(workbenchSurfaceCss).toContain('.workbench-surface-add-menu [data-slot="popover-body"]')
     expect(builtinWorkbenchPanels).not.toContain("DialogSelectFile")
-    expect(builtinWorkbenchPanels).toContain('return { title: "Open file", source: "explorer" }')
+    expect(builtinWorkbenchPanels).toContain('return { title: i18n._(P.openFile), source: "explorer" }')
+    expect(builtinWorkbenchPanels).toContain("controller.activeLocale()")
+    expect(builtinWorkbenchPanels).toContain("label: i18n._(P.files)")
   })
 
   test("workbench surfaces close instead of persisting empty launchers", () => {

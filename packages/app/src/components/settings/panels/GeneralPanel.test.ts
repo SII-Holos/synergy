@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import type { ServerUpdateStatus } from "@ericsanchezok/synergy-sdk/client"
 import type { DesktopUpdateStatus } from "@/context/platform"
 import {
@@ -9,6 +10,12 @@ import {
   webUpdateNeedsRefresh,
   webVersionStatus,
 } from "./product-update-logic"
+
+const i18n = setupI18n({ locale: "en" })
+
+function render(descriptor: MessageDescriptor): string {
+  return i18n._(descriptor)
+}
 
 describe("General panel product update behavior", () => {
   test("uses the desktop update surface only when the bridge exists", () => {
@@ -22,8 +29,8 @@ describe("General panel product update behavior", () => {
     expect(webUpdateNeedsRefresh("1.2.3", "1.2.2")).toBe(false)
     expect(webUpdateNeedsRefresh("1.2.3", "local")).toBe(false)
     expect(webUpdateNeedsRefresh(undefined, "1.2.4")).toBe(false)
-    expect(webVersionStatus("1.2.3", "1.2.4")).toBe("Server 1.2.4 has a newer Web client.")
-    expect(webVersionStatus("1.2.3", "local")).toBe("Connected to local development server.")
+    expect(render(webVersionStatus("1.2.3", "1.2.4"))).toBe("Server 1.2.4 has a newer Web client.")
+    expect(render(webVersionStatus("1.2.3", "local"))).toBe("Connected to local development server.")
   })
 
   test("shows server update actions only for a managed daemon", () => {
@@ -34,7 +41,7 @@ describe("General panel product update behavior", () => {
   })
 
   test("keeps ordinary terminal-run server copy non-actionable", () => {
-    expect(serverUpdateStatusCopy(status({ capability: "not-managed", phase: "idle" }))).toBe(
+    expect(render(serverUpdateStatusCopy(status({ capability: "not-managed", phase: "idle" })))).toBe(
       "Server runtime is managed outside this Web client.",
     )
   })
@@ -52,7 +59,7 @@ describe("General panel product update behavior", () => {
     ).toMatchObject({
       visible: true,
       action: "install",
-      actionLabel: "Restart",
+      actionLabel: { message: "Restart" },
       progress: 100,
       tone: "ready",
     })

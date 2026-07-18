@@ -27,6 +27,9 @@ mock.module("@ericsanchezok/synergy-util/path", () => ({
   getDirectory: (path: string) => path.slice(0, path.lastIndexOf("/")),
   getFilename: (path: string) => path.slice(path.lastIndexOf("/") + 1),
 }))
+mock.module("@lingui/solid", () => ({
+  useLingui: () => ({ _: (descriptor: { message?: string; id: string }) => descriptor.message ?? descriptor.id }),
+}))
 mock.module("solid-js", () => ({
   createEffect: () => {},
   createMemo: (fn: () => unknown) => fn,

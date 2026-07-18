@@ -1,5 +1,6 @@
 import { createSignal, For, Show, createEffect, onCleanup } from "solid-js"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
+import { useLingui } from "@lingui/solid"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { SettingRow } from "@/components/settings/components/SettingRow"
 
@@ -10,6 +11,7 @@ interface DeclarativeSettingsFormProps {
 }
 
 export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
+  const { _ } = useLingui()
   const [local, setLocal] = createSignal(props.values)
   let committed = props.values
   let debounceTimer: ReturnType<typeof setTimeout>
@@ -37,7 +39,7 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
           setLocal(committed)
           showToast({
             type: "error",
-            title: "Setting not saved",
+            title: _({ id: "app.plugin.settings.saveFailed", message: "Setting not saved" }),
             description: error instanceof Error ? error.message : String(error),
           })
         })
@@ -106,7 +108,11 @@ export function DeclarativeSettingsForm(props: DeclarativeSettingsFormProps) {
       <SettingRow
         title={fieldTitle}
         description={showDescription ? fieldDescription! : ""}
-        stateLabel={local()[key] ? "On" : "Off"}
+        stateLabel={
+          local()[key]
+            ? _({ id: "app.plugin.settings.stateOn", message: "On" })
+            : _({ id: "app.plugin.settings.stateOff", message: "Off" })
+        }
         trailing={input}
       />
     ) : (

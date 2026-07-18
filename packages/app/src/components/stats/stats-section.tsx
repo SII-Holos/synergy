@@ -1,6 +1,8 @@
 import { createEffect, createMemo, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
 import { useStats } from "./use-stats"
+import { useLocale } from "@/context/locale"
+import { S } from "./stats-i18n"
 import { OverviewCards } from "./overview-cards"
 import { DailyTrend } from "./daily-trend"
 import { TokenRing } from "./token-ring"
@@ -23,11 +25,11 @@ function progressPercent(current: number, total: number) {
   return Math.max(4, Math.min(100, Math.round((current / total) * 100)))
 }
 
-function phaseLabel(phase: "scan" | "digest" | "bucket" | "snapshot") {
-  if (phase === "scan") return "Scanning sessions"
-  if (phase === "digest") return "Digesting activity"
-  if (phase === "bucket") return "Updating buckets"
-  return "Computing snapshot"
+function phaseLabel(phase: "scan" | "digest" | "bucket" | "snapshot", i18n: ReturnType<typeof useLocale>["i18n"]) {
+  if (phase === "scan") return i18n._(S.phaseScanning.id)
+  if (phase === "digest") return i18n._(S.phaseDigesting.id)
+  if (phase === "bucket") return i18n._(S.phaseBucketing.id)
+  return i18n._(S.phaseSnapshot.id)
 }
 
 export type WorkspaceStatsSyncHandle = {
@@ -45,6 +47,7 @@ function StatsSyncStatus(props: {
     message?: string
   } | null
   syncError: string | null
+  i18n: ReturnType<typeof useLocale>["i18n"]
 }) {
   const percent = createMemo(() => {
     const progress = props.progress
@@ -59,13 +62,13 @@ function StatsSyncStatus(props: {
           <div class="library-toolbar-left">
             <span class="library-toolbar-summary">
               {props.syncing
-                ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan"))
+                ? (props.progress?.message ?? phaseLabel(props.progress?.phase ?? "scan", props.i18n))
                 : (props.syncError ?? "")}
             </span>
             <Show when={props.syncing && props.progress}>
               {(progress) => (
                 <span class="library-toolbar-summary">
-                  {phaseLabel(progress().phase)} · {progress().current}/{progress().total}
+                  {phaseLabel(progress().phase, props.i18n)} · {progress().current}/{progress().total}
                 </span>
               )}
             </Show>
@@ -87,6 +90,7 @@ function StatsSyncStatus(props: {
 
 export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSyncHandle) => void }) {
   const { data, error, loading, refresh, sync, syncing, progress, syncError } = useStats()
+  const { i18n, fmt } = useLocale()
 
   createEffect(() => {
     props.registerSync?.({
@@ -98,14 +102,14 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
 
   return (
     <div>
-      <StatsSyncStatus syncing={syncing()} progress={progress()} syncError={syncError()} />
+      <StatsSyncStatus syncing={syncing()} progress={progress()} syncError={syncError()} i18n={i18n} />
       <Show
         when={data()}
         fallback={
           <div class="flex items-center justify-center py-12">
             <div class="flex max-w-sm flex-col items-center gap-2 text-center">
               <div class="text-12-medium text-text-base">
-                {loading ? "Loading usage stats…" : "Usage stats are unavailable right now"}
+                {loading ? i18n._(S.loadLoading.id) : i18n._(S.loadUnavailable.id)}
               </div>
               <Show when={error() && !loading}>
                 <div class="text-11-regular text-text-weak">{error()}</div>
@@ -116,25 +120,30 @@ export function StatsSection(props: { registerSync?: (handle: WorkspaceStatsSync
                   class="rounded-full bg-surface-inset-base/70 px-3 py-1.5 text-12-medium text-text-interactive-base transition hover:bg-surface-inset-base hover:text-text-interactive-base"
                   onClick={refresh}
                 >
-                  {loading ? "Loading…" : "Retry loading stats"}
+                  {loading ? i18n._(S.loadButtonLoading.id) : i18n._(S.loadButtonRetry.id)}
                 </button>
               </div>
             </div>
           </div>
         }
       >
-        {(snapshot) => <StatsContent snapshot={snapshot()} />}
+        {(snapshot) => <StatsContent snapshot={snapshot()} i18n={i18n} fmt={fmt} />}
       </Show>
     </div>
   )
 }
 
-function StatsContent(props: { snapshot: StatsSnapshot }) {
+function StatsContent(props: {
+  snapshot: StatsSnapshot
+  i18n: ReturnType<typeof useLocale>["i18n"]
+  fmt: ReturnType<typeof useLocale>["fmt"]
+}) {
+  const { i18n, fmt } = props
   const snapshot = () => props.snapshot
-  const overviewMetrics = createMemo(() => buildOverviewMetrics(snapshot()))
-  const modelRows = createMemo(() => buildModelRows(snapshot()))
-  const agentRows = createMemo(() => buildAgentRows(snapshot()))
-  const toolRows = createMemo(() => buildToolRows(snapshot()))
+  const overviewMetrics = createMemo(() => buildOverviewMetrics(snapshot(), i18n))
+  const modelRows = createMemo(() => buildModelRows(snapshot(), i18n))
+  const agentRows = createMemo(() => buildAgentRows(snapshot(), i18n))
+  const toolRows = createMemo(() => buildToolRows(snapshot(), fmt.number, i18n))
 
   return (
     <div class="library-stats-content flex flex-col gap-5 pb-5">
@@ -156,24 +165,24 @@ function StatsContent(props: { snapshot: StatsSnapshot }) {
       <TokenRing tokens={snapshot().tokenCost.tokens} cacheHitRate={snapshot().tokenCost.cacheHitRate} />
 
       <RankList
-        title="Models"
-        description="Compare which models you rely on most by calls, token volume, or spend."
+        title={i18n._(S.rankTitleModels.id)}
+        description={i18n._(S.rankDescModels.id)}
         metrics={MODEL_METRICS}
         rows={modelRows()}
         defaultMetric="messages"
       />
 
       <RankList
-        title="Agents"
-        description="See which agents carry the workload, cover the most sessions, or spend the most budget."
+        title={i18n._(S.rankTitleAgents.id)}
+        description={i18n._(S.rankDescAgents.id)}
         metrics={AGENT_METRICS}
         rows={agentRows()}
         defaultMetric="messages"
       />
 
       <RankList
-        title="Tools"
-        description="Switch between usage, latency, and reliability to understand your working rhythm."
+        title={i18n._(S.rankTitleTools.id)}
+        description={i18n._(S.rankDescTools.id)}
         metrics={TOOL_METRICS}
         rows={toolRows()}
         defaultMetric="calls"

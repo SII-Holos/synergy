@@ -60,13 +60,20 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run quality:quick
    ```
 
-   This checks formatting, linting, type-checking, monorepo dependency consistency, and package publishing validation. For a full check including all tests:
+   This checks formatting, linting, type-checking, monorepo dependency consistency, localization and package-guide contracts, and package publishing validation. For a full check including all tests:
 
    ```bash
    bun run quality
    ```
 
    CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
+
+   Frontend copy, accessibility text, and locale-sensitive formatting must also keep the localization catalogs and source contract current:
+
+   ```bash
+   bun run --cwd packages/app i18n:extract
+   bun run localization:check
+   ```
 
 3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
 
