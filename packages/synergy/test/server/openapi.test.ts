@@ -115,9 +115,10 @@ describe("OpenAPI spec generation", () => {
     expect(path).toBeDefined()
     expect(path!.get).toBeDefined()
     expect(path!.get!.operationId).toBe("global.nav.recent")
-    expect(path!.get!.parameters?.map((parameter) => ("name" in parameter ? parameter.name : undefined))).toContain(
-      "category",
-    )
+    const parameters = path!.get!.parameters ?? []
+    expect(parameters.map((parameter) => ("name" in parameter ? parameter.name : undefined))).toContain("category")
+    const parentOnly = parameters.find((parameter) => "name" in parameter && parameter.name === "parentOnly")
+    expect(parentOnly && "schema" in parentOnly ? parentOnly.schema : undefined).toMatchObject({ type: "boolean" })
   })
 
   test("includes a non-secret GitHub configured route", async () => {

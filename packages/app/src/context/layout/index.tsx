@@ -435,7 +435,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const res = await globalSdk.client.global.nav.recent({
-          parentOnly: "true",
+          parentOnly: true,
           limit: RECENT_LIMIT,
           ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
         })
@@ -486,7 +486,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       navPending.add(key)
       try {
         const res = await globalSdk.client.global.nav.recent({
-          parentOnly: "true",
+          parentOnly: true,
           limit: Math.max(RECENT_LIMIT, recentEntries.items.length),
         })
         if (!res.data) return

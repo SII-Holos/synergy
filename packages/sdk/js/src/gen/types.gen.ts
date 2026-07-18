@@ -8358,8 +8358,8 @@ export type GlobalNavRecentData = {
   body?: never
   path?: never
   query?: {
-    parentOnly?: "true" | "false"
-    includeArchived?: "true" | "false"
+    parentOnly?: boolean
+    includeArchived?: boolean
     category?: "project" | "home" | "channel" | "background" | "github"
     search?: string
     limit?: number

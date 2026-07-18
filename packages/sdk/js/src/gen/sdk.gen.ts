@@ -2863,8 +2863,8 @@ export class Nav extends HeyApiClient {
    */
   public recent<ThrowOnError extends boolean = false>(
     parameters?: {
-      parentOnly?: "true" | "false"
-      includeArchived?: "true" | "false"
+      parentOnly?: boolean
+      includeArchived?: boolean
       category?: "project" | "home" | "channel" | "background" | "github"
       search?: string
       limit?: number

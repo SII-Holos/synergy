@@ -43,7 +43,7 @@ describe("githubNavQuery", () => {
   test("requests GitHub sessions across parent and child scopes with cursor pagination", () => {
     expect(githubNavQuery(25, { lastActivityAt: 123, id: "ses_cursor" })).toEqual({
       category: "github",
-      parentOnly: "false",
+      parentOnly: false,
       limit: 25,
       cursorLastActivityAt: 123,
       cursorId: "ses_cursor",

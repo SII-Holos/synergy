@@ -77,7 +77,7 @@ export function applySessionToNavList(
 export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
   return {
     category: "github" as const,
-    parentOnly: "false" as const,
+    parentOnly: false,
     limit,
     ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
   }

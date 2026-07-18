@@ -1878,16 +1878,14 @@
             "in": "query",
             "name": "parentOnly",
             "schema": {
-              "type": "string",
-              "enum": ["true", "false"]
+              "type": "boolean"
             }
           },
           {
             "in": "query",
             "name": "includeArchived",
             "schema": {
-              "type": "string",
-              "enum": ["true", "false"]
+              "type": "boolean"
             }
           },
           {

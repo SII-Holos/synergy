@@ -3,7 +3,7 @@ import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { NavCategory, SessionNav, SessionNavResponse, SessionNavEntry } from "../session/nav"
 
-const booleanQuery = z.enum(["true", "false"]).transform((value) => value === "true")
+const booleanQuery = z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean())
 
 const GlobalRecentResponse = SessionNavResponse.extend({
   unreadCompletionCount: z.number().int().nonnegative(),
