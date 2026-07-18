@@ -5645,6 +5645,15 @@ export type BlueprintLoopInfo = {
   auditAgent: string
   auditSessionID?: string
   auditTaskID?: string
+  stopRequest?: {
+    summary: string
+    completed?: Array<string>
+    evidence?: Array<string>
+    remaining?: Array<string>
+    requestedAt: number
+    requesterSessionID: string
+    requesterMessageID: string
+  }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -7098,21 +7107,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
@@ -7131,6 +7125,21 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
@@ -7345,10 +7354,10 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventPluginEvent
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated

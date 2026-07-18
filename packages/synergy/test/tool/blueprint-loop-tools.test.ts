@@ -9,6 +9,7 @@ import { LatticeStore } from "../../src/lattice/store"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { BlueprintLoopReviewAccess } from "../../src/session/blueprint-loop-review-access"
+import { BlueprintContinuationPolicy } from "../../src/session/blueprint-continuation"
 import { SessionManager } from "../../src/session/manager"
 import { BlueprintLoopApproveTool } from "../../src/tool/blueprint-loop-approve"
 import { BlueprintLoopRejectTool } from "../../src/tool/blueprint-loop-reject"
@@ -17,18 +18,21 @@ import { ToolRegistry } from "../../src/tool/registry"
 import type { Tool } from "../../src/tool/tool"
 import { tmpdir } from "../fixture/fixture"
 
-let originalLaunch: typeof Cortex.launch
+let originalPrepare: typeof Cortex.prepare
+let originalStart: typeof Cortex.start
 let originalCancel: typeof Cortex.cancel
 let originalDeliver: typeof SessionManager.deliver
 
 beforeEach(() => {
-  originalLaunch = Cortex.launch
+  originalPrepare = Cortex.prepare
+  originalStart = Cortex.start
   originalCancel = Cortex.cancel
   originalDeliver = SessionManager.deliver
 })
 
 afterEach(() => {
-  ;(Cortex.launch as any) = originalLaunch
+  ;(Cortex.prepare as any) = originalPrepare
+  ;(Cortex.start as any) = originalStart
   ;(Cortex.cancel as any) = originalCancel
   ;(SessionManager.deliver as any) = originalDeliver
 })
@@ -62,24 +66,27 @@ async function createRunningLoop(input?: { auditAgent?: string; userPrompt?: str
   return { session, loop: running }
 }
 
-function installReviewerLaunch(launches: Parameters<typeof Cortex.launch>[0][] = []) {
-  ;(Cortex.launch as any) = mock(async (input: Parameters<typeof Cortex.launch>[0]) => {
+function installReviewerLaunch(launches: Parameters<typeof Cortex.prepare>[0][] = []) {
+  const tasks = new Map<string, Awaited<ReturnType<typeof Cortex.prepare>>>()
+  ;(Cortex.prepare as any) = mock(async (input: Parameters<typeof Cortex.prepare>[0]) => {
     launches.push(input)
+    const taskID = Identifier.short("cortex")
+    const startedAt = Date.now()
     const reviewSession = await Session.create({
       parentID: input.parentSessionID,
       cortex: {
-        taskID: `cortex-${input.parentMessageID}`,
+        taskID,
         parentSessionID: input.parentSessionID,
         parentMessageID: input.parentMessageID,
         description: input.description,
         agent: input.agent,
         executionRole: input.executionRole,
-        startedAt: Date.now(),
-        status: "running",
+        startedAt,
+        status: "queued",
       },
     })
-    return {
-      id: Identifier.short("cortex"),
+    const task = {
+      id: taskID,
       sessionID: reviewSession.id,
       parentSessionID: input.parentSessionID,
       parentMessageID: input.parentMessageID,
@@ -88,12 +95,33 @@ function installReviewerLaunch(launches: Parameters<typeof Cortex.launch>[0][] =
       agent: input.agent,
       executionRole: input.executionRole,
       category: input.category,
-      status: "running",
-      startedAt: Date.now(),
+      status: "queued" as const,
+      startedAt,
       notifyParentOnComplete: input.notifyParentOnComplete,
-    } as Awaited<ReturnType<typeof Cortex.launch>>
+    } as Awaited<ReturnType<typeof Cortex.prepare>>
+    tasks.set(taskID, task)
+    return task
+  })
+  ;(Cortex.start as any) = mock(async (taskID: string) => {
+    const task = tasks.get(taskID)
+    if (!task) throw new Error(`Cortex task ${taskID} not found`)
+    task.status = "running"
+    await Session.update(task.sessionID, (draft) => {
+      if (draft.cortex) draft.cortex.status = "running"
+    })
+    return task
   })
   return launches
+}
+
+async function startPendingReview(sessionID: string) {
+  const session = await Session.get(sessionID)
+  return BlueprintContinuationPolicy.handle({
+    session,
+    scopeID: ScopeContext.current.scope.id,
+    sessionID,
+    terminalMessageID: Identifier.ascending("message"),
+  })
 }
 
 async function requestReview(input?: { auditAgent?: string; userPrompt?: string }) {
@@ -109,6 +137,7 @@ async function requestReview(input?: { auditAgent?: string; userPrompt?: string 
     },
     ctx(running.session.id),
   )
+  await startPendingReview(running.session.id)
   const loop = await BlueprintLoopStore.get(ScopeContext.current.scope.id, running.loop.id)
   return { ...running, loop, launches, result, reviewSessionID: loop.auditSessionID! }
 }
@@ -128,31 +157,39 @@ describe("blueprint_loop_stop", () => {
     })
   })
 
-  test("launches the configured reviewer and records one auditing transition", async () => {
+  test("records a durable stop intent without launching the reviewer", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const { session, loop, launches, result, reviewSessionID } = await requestReview({
+        const { session, loop } = await createRunningLoop({
           auditAgent: "security-reviewer",
           userPrompt: "Do not change the public CLI contract.",
         })
+        const launches = installReviewerLaunch()
+        const tool = await BlueprintLoopStopTool.init()
+        const result = await tool.execute(
+          {
+            summary: "All Blueprint requirements are implemented.",
+            completed: ["Implemented the requested behavior"],
+            evidence: ["Focused tests pass"],
+            remaining: [],
+          },
+          ctx(session.id),
+        )
 
+        const updated = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
         expect(result.metadata.loopStopRequested).toBe(true)
-        expect(launches).toHaveLength(1)
-        expect(launches[0].agent).toBe("security-reviewer")
-        expect(launches[0].parentSessionID).toBe(session.id)
-        expect(launches[0].notifyParentOnComplete).toBe(false)
-        expect(launches[0].visibility).toBe("hidden")
-        expect(launches[0].prompt).toContain(`Session ID: ${session.id}`)
-        expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
-        expect(launches[0].prompt).toContain("blueprint_loop_approve")
-        expect(launches[0].prompt).toContain("blueprint_loop_reject")
-
-        expect(loop.status).toBe("auditing")
-        expect(loop.auditTaskID).toBeDefined()
-        const reviewSession = await Session.get(reviewSessionID)
-        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+        expect(launches).toHaveLength(0)
+        expect(updated.status).toBe("running")
+        expect(updated.auditSessionID).toBeUndefined()
+        expect(updated.auditTaskID).toBeUndefined()
+        expect((updated as any).stopRequest).toMatchObject({
+          summary: "All Blueprint requirements are implemented.",
+          completed: ["Implemented the requested behavior"],
+          evidence: ["Focused tests pass"],
+          requesterSessionID: session.id,
+        })
       },
     })
   })
@@ -320,6 +357,7 @@ describe("blueprint_loop_approve", () => {
         installReviewerLaunch()
         const stop = await BlueprintLoopStopTool.init()
         await stop.execute({ summary: "A is complete", evidence: ["Checks pass"] }, ctx(session.id))
+        await startPendingReview(session.id)
         const auditing = await BlueprintLoopStore.get(scopeID, loop.id)
         let phaseAtDelivery: string | undefined
         let deliveredText = ""

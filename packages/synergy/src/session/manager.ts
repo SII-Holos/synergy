@@ -601,8 +601,8 @@ export namespace SessionManager {
 
   // --- Pending Reply ---
 
-  export async function listPendingReply(): Promise<string[]> {
-    const scopeRoots = await Storage.scan(["sessions"])
+  export async function listPendingReply(scopeID?: string): Promise<string[]> {
+    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
     const sessionIDs = new Set<string>()
 
     for (const scopeID of scopeRoots) {
@@ -619,8 +619,8 @@ export namespace SessionManager {
     return Array.from(sessionIDs)
   }
 
-  export async function listInterruptedCortexDelegations(): Promise<string[]> {
-    const scopeRoots = await Storage.scan(["sessions"])
+  export async function listInterruptedCortexDelegations(scopeID?: string): Promise<string[]> {
+    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
     const sessionIDs = new Set<string>()
 
     for (const scopeID of scopeRoots) {
@@ -639,8 +639,8 @@ export namespace SessionManager {
     return Array.from(sessionIDs)
   }
 
-  export async function listCortexDelegationsForParentDelivery(): Promise<string[]> {
-    const scopeRoots = await Storage.scan(["sessions"])
+  export async function listCortexDelegationsForParentDelivery(scopeID?: string): Promise<string[]> {
+    const scopeRoots = scopeID ? [Identifier.asScopeID(scopeID)] : await Storage.scan(["sessions"])
     const sessionIDs = new Set<string>()
 
     for (const scopeID of scopeRoots) {
