@@ -657,12 +657,11 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         // doesn't lag the debounced refetch. The refetch below still runs as the
         // authority for ordering, new entries, and project aggregates.
         const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
-        const githubAffected =
-          properties?.navEntry?.category === "github" || githubEntries.items.some((entry) => entry.id === navUpdate.id)
+        const githubResult = applySessionToNavList(githubEntries, navUpdate)
+        const githubAffected = properties?.navEntry?.category === "github" || githubResult.applied
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
-          const githubResult = applySessionToNavList(githubEntries, navUpdate)
           if (githubResult.applied) setGitHubEntries(githubResult.list)
           const dir = scope.directory
           if (dir && navEntries[dir]) {
