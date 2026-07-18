@@ -11,12 +11,11 @@ import { SessionTimeline } from "./session-timeline"
 import { ConversationViewport } from "./conversation-viewport"
 import { navMark } from "@/utils/perf"
 import { BrowserViewEffects } from "@/components/workspace/browser/browser-view-effects"
-import { Icon } from "@ericsanchezok/synergy-ui/icon"
-import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
 import { SessionTransitionCard } from "./session-transition-card"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { PendingTimelineItem } from "./pending-timeline-item"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -210,23 +209,15 @@ export function SessionConversation(props: {
       <Show when={props.pendingTimeline?.()?.length}>
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>
-            {(item) => {
-              const isTask = () => item.mode === "task"
-              const guideLabel = () => (item.mode === "steer" ? _(S.convQueue) : _(S.convGuide))
-              const label = () =>
-                item.message?.parts?.[0]?.type === "text"
-                  ? (item.message!.parts[0] as { text: string }).text
-                  : (item.summary?.title ?? _(S.convPending))
-              return (
-                <div class="w-full flex items-center gap-4" style={{ animation: "fadeUp 0.3s ease-out both" }}>
-                  <div class="w-full px-3 md:px-1 max-w-[60rem] md:mx-auto flex items-center gap-6">
-                    <div class="w-full flex items-center gap-6 px-2 rounded-full">
-                      <div class="w-full min-w-0 text-14-regular line-clamp-2 text-text-weak">{label()}</div>
-                    </div>
-                  </div>
-                </div>
-              )
-            }}
+            {(item) => (
+              <PendingTimelineItem
+                item={item}
+                rollbackActive={props.rollbackActive === true}
+                translate={_}
+                onGuide={props.onPendingGuide}
+                onRemove={props.onPendingRemove}
+              />
+            )}
           </For>
         </div>
       </Show>
