@@ -1,3 +1,8 @@
+// i18n descriptors — resolved reactively by consumers via useLingui()._()
+export const clipboardCopyDescriptor = { id: "ui.clipboard.copy", message: "Copy" }
+export const clipboardCopiedDescriptor = { id: "ui.clipboard.copied", message: "Copied" }
+export const clipboardCopyFailedDescriptor = { id: "ui.clipboard.copyFailed", message: "Copy failed" }
+
 import { createMemo, createSignal, onCleanup } from "solid-js"
 import type { IconName } from "./icon"
 

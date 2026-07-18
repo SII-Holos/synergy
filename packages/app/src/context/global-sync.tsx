@@ -22,7 +22,9 @@ import {
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
-import { planCompactionReplace } from "./session-compaction"
+import { planMessagePageApply } from "./session-message-page"
+import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./global-config-sync"
+import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
 import {
   parseSyncVersion,
@@ -33,6 +35,14 @@ import {
 } from "./sync-resource-freshness"
 import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
+import {
+  applyLatestPage,
+  reconcileMessage,
+  removeMessageFromWindow,
+  type MessageWindowMetadata,
+  type MessageWindowState,
+} from "./session-message-window"
+import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "./session-message-total"
 import type { SessionWorkspace } from "@ericsanchezok/synergy-sdk/client"
 import {
   createPlanBlueprintOfferFromPart,
@@ -48,6 +58,8 @@ import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { useGlobalSDK } from "./global-sdk"
 import { ErrorPage, type InitError } from "../pages/error"
+import { AP } from "@/app-i18n"
+import { useLingui } from "@lingui/solid"
 import {
   batch,
   createEffect,
@@ -126,6 +138,9 @@ type State = {
   sessionTotal: number
   message: {
     [sessionID: string]: Message[]
+  }
+  messageWindow: {
+    [sessionID: string]: MessageWindowMetadata
   }
   part: {
     [messageID: string]: Part[]
@@ -208,6 +223,7 @@ function createGlobalSync() {
     ready: boolean
     error?: InitError
     paths: GlobalPaths
+    config: Config
     scope: Scope[]
     provider: ProviderListResponse
     provider_auth: ProviderAuthResponse
@@ -215,6 +231,7 @@ function createGlobalSync() {
   }>({
     ready: false,
     paths: { home: "", root: "", data: "", config: "", state: "", cache: "", log: "" },
+    config: {},
     scope: [],
     provider: {
       all: [],
@@ -378,6 +395,7 @@ function createGlobalSync() {
         vcs: undefined,
         sessionTotal: 0,
         message: {},
+        messageWindow: {},
         part: {},
       })
       scheduleBootstrap(scopeKey)
@@ -420,6 +438,12 @@ function createGlobalSync() {
       .catch((err) => {
         console.error("Failed to load global agenda", err)
       })
+  }
+
+  async function loadGlobalConfig() {
+    return globalSDK.client.config.global().then((x) => {
+      setGlobalStore("config", reconcile(x.data ?? {}))
+    })
   }
 
   async function loadGlobalProviders() {
@@ -864,6 +888,7 @@ function createGlobalSync() {
         produce((draft) => {
           if (msgs) for (const m of msgs) delete draft.part[m.id]
           delete draft.message[sessionID]
+          delete draft.messageWindow[sessionID]
         }),
       )
     }
@@ -963,6 +988,11 @@ function createGlobalSync() {
     }
 
     if (event?.type === "config.updated") {
+      const properties = event.properties as ConfigUpdatedProperties
+      if (shouldRefreshGlobalConfig(properties)) {
+        void loadGlobalConfig()
+        return
+      }
       void refreshAllConfigs()
       return
     }
@@ -1070,39 +1100,84 @@ function createGlobalSync() {
         break
       }
       case "message.updated": {
-        touchMessageBucket(scopeKey, event.properties.info.sessionID)
-        const messages = store.message[event.properties.info.sessionID]
-        if (!messages) {
-          setStore("message", event.properties.info.sessionID, [event.properties.info])
-          break
+        const info = event.properties.info as Message
+        const sessionID = info.sessionID
+        touchMessageBucket(scopeKey, sessionID)
+        const messages = store.message[sessionID] ?? []
+        const metadata = store.messageWindow[sessionID]
+        const existing = messages.some((message) => message.id === info.id)
+        const current: MessageWindowState<Message> = {
+          messages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
         }
-        const result = Binary.search(messages, event.properties.info.id, (m) => m.id)
-        if (result.found) {
-          setStore("message", event.properties.info.sessionID, result.index, reconcile(event.properties.info))
-          break
-        }
-        setStore(
-          "message",
-          event.properties.info.sessionID,
-          produce((draft) => {
-            draft.splice(result.index, 0, event.properties.info)
-          }),
-        )
+        const result = reconcileMessage(current, info)
+
+        batch(() => {
+          setStore(
+            produce((draft) => {
+              for (const messageID of result.droppedIds) delete draft.part[messageID]
+            }),
+          )
+          setStore("message", sessionID, reconcile(result.window.messages, { key: "id" }))
+          if (metadata) {
+            setStore(
+              "messageWindow",
+              sessionID,
+              reconcile({
+                ...metadata,
+                total: nextMessageWindowTotal({
+                  total: metadata.total,
+                  existing,
+                  visible: result.window.messages.some((message) => message.id === info.id),
+                }),
+                mode: result.window.mode,
+                pendingLatest: result.window.pendingLatest,
+                pendingLatestIds: result.window.pendingLatestIds,
+              }),
+            )
+          }
+        })
         break
       }
       case "message.removed": {
-        const messages = store.message[event.properties.sessionID]
+        const sessionID = event.properties.sessionID as string
+        const messageID = event.properties.messageID as string
+        const messages = store.message[sessionID]
         if (!messages) break
-        const result = Binary.search(messages, event.properties.messageID, (m) => m.id)
-        if (result.found) {
-          setStore(
-            "message",
-            event.properties.sessionID,
-            produce((draft) => {
-              draft.splice(result.index, 1)
-            }),
-          )
+        const metadata = store.messageWindow[sessionID]
+        const current: MessageWindowState<Message> = {
+          messages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
         }
+        const pending = current.pendingLatestIds.includes(messageID)
+        const result = removeMessageFromWindow(current, messageID)
+        const removedVisible = result.messages.length !== messages.length
+        batch(() => {
+          if (removedVisible) {
+            setStore(
+              produce((draft) => {
+                delete draft.part[messageID]
+              }),
+            )
+            setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
+          }
+          if (metadata) {
+            setStore(
+              "messageWindow",
+              sessionID,
+              reconcile({
+                ...metadata,
+                total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
+                pendingLatest: result.pendingLatest,
+                pendingLatestIds: result.pendingLatestIds,
+              }),
+            )
+          }
+        })
         break
       }
       case "message.part.delta": {
@@ -1142,6 +1217,7 @@ function createGlobalSync() {
       }
       case "message.part.updated": {
         const part = event.properties.part
+        if (!store.message[part.sessionID]?.some((message) => message.id === part.messageID)) break
         const parts = store.part[part.messageID]
         if (!parts) {
           if (part.type === "tool") {
@@ -1369,27 +1445,36 @@ function createGlobalSync() {
       }
       case "session.compacted": {
         const sessionID = event.properties.sessionID as string
-        if (!store.message[sessionID]) break
+        const currentMessages = store.message[sessionID]
+        if (!currentMessages) break
         const version = parseSyncVersion(event)
         const accepted = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
         if (!accepted) break
         const request = captureResourceRequest(scopeKey, sessionID, "inbox")
-        // Fetch first, then swap atomically. Deleting the messages up front left
-        // the timeline empty until the refetch returned — a visible flash (#319).
         const sdk = createScopedClient(scopeKey)
-        retry(() => sdk.session.messages({ sessionID, limit: 200 }))
+        retry(() => sdk.session.messagePage({ sessionID, limit: 200 }))
           .then((result) => {
-            const currentIds = (store.message[sessionID] ?? []).map((m) => m.id)
-            const plan = planCompactionReplace(currentIds, result.data ?? [])
+            if (!result.data) return
+            const metadata = store.messageWindow[sessionID]
+            const plan = planMessagePageApply({
+              page: result.data,
+              current: {
+                messages: currentMessages,
+                mode: metadata?.mode ?? "latest",
+                pendingLatest: metadata?.pendingLatest ?? false,
+                pendingLatestIds: metadata?.pendingLatestIds ?? [],
+              },
+            })
             batch(() => {
               setStore(
                 produce((draft) => {
-                  for (const messageID of plan.dropPartMessageIds) delete draft.part[messageID]
+                  for (const messageID of plan.droppedIds) delete draft.part[messageID]
                   delete draft.session_diff[sessionID]
                   if (isResourceRequestCurrent(scopeKey, sessionID, "inbox", request)) delete draft.inbox[sessionID]
                 }),
               )
-              setStore("message", sessionID, reconcile(plan.keep, { key: "id" }))
+              setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+              setStore("messageWindow", sessionID, reconcile(plan.metadata))
               for (const [messageID, parts] of Object.entries(plan.parts)) {
                 setStore("part", messageID, reconcile(parts, { key: "id" }))
               }
@@ -1496,6 +1581,7 @@ function createGlobalSync() {
     }
 
     return Promise.all([
+      retry(loadGlobalConfig),
       retry(() =>
         globalSDK.client.global.paths.get().then((x) => {
           setGlobalStore("paths", x.data!)
@@ -1578,11 +1664,12 @@ const GlobalSyncContext = createContext<ReturnType<typeof createGlobalSync>>()
 
 export function GlobalSyncProvider(props: ParentProps) {
   const value = createGlobalSync()
+  const { _ } = useLingui()
   return (
     <Switch
       fallback={
         <div class="synergy-workbench-canvas size-full flex items-center justify-center bg-background-stronger text-text-weak">
-          Loading...
+          {_(AP.appLoading)}
         </div>
       }
     >
@@ -1590,7 +1677,10 @@ export function GlobalSyncProvider(props: ParentProps) {
         <ErrorPage error={value.error} />
       </Match>
       <Match when={value.ready}>
-        <GlobalSyncContext.Provider value={value}>{props.children}</GlobalSyncContext.Provider>
+        <GlobalSyncContext.Provider value={value}>
+          <LocaleConfigReconciler preference={() => value.data.config.locale} />
+          {props.children}
+        </GlobalSyncContext.Provider>
       </Match>
     </Switch>
   )

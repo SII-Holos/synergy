@@ -1,3 +1,4 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { Platform, DesktopWindowState } from "@/context/platform"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 
@@ -13,6 +14,8 @@ export function desktopWindowToggleIcon(state: DesktopWindowState | null | undef
   return state?.maximized || state?.fullscreen ? "window.restore" : "window.maximize"
 }
 
-export function desktopWindowToggleLabel(state: DesktopWindowState | null | undefined): string {
-  return state?.maximized || state?.fullscreen ? "Restore" : "Maximize"
+export function desktopWindowToggleLabel(state: DesktopWindowState | null | undefined): MessageDescriptor {
+  return state?.maximized || state?.fullscreen
+    ? { id: "window.restore", message: "Restore" }
+    : { id: "window.maximize", message: "Maximize" }
 }

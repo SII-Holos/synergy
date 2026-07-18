@@ -7,7 +7,11 @@ import { ObservabilityStore } from "./store"
 
 export namespace ObservabilityMetrics {
   const AGGREGATE_FLUSH_MS = 1000
-  const AGGREGATED_COUNT_METRICS = new Set(["llm.stream.output_chars", "storage.operation.count"])
+  const AGGREGATED_COUNT_METRICS = new Set([
+    "llm.stream.output_chars",
+    "process.output.chars",
+    "storage.operation.count",
+  ])
   const aggregates = new Map<string, AggregatedMetric>()
   let aggregateTimer: ReturnType<typeof setTimeout> | undefined
 

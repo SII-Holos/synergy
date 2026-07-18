@@ -321,6 +321,133 @@ describe("SessionProcessor execution slot settlement", () => {
     }
   })
 
+  test("applies execution metadata staged before the running part exists", async () => {
+    const callID = "call_staged_execution_metadata"
+    const executionStartedAt = 123_456
+    const toolTimeout = {
+      toolTimeoutMs: 300_000,
+      operationTimeoutMs: 15_000,
+      displayMs: 15_000,
+      source: "search",
+    }
+    let runningPart: MessageV2.ToolPart | undefined
+
+    await runSettlementScenario({
+      messageID: "msg_assistant_staged_execution_metadata",
+      updatePart: async (input) => {
+        const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "running") {
+          runningPart = structuredClone(part)
+        }
+        return part
+      },
+      async *stream(processor) {
+        yield { type: "start" }
+        const slot = processor.beginExecution(callID)
+        await processor.updateToolCallState(callID, {
+          input: { pattern: "**/*.ts" },
+          metadata: { toolTimeout },
+          start: executionStartedAt,
+        })
+        await processor.updateToolCallState(callID, {
+          input: { pattern: "**/*.ts" },
+          title: "Glob files",
+          metadata: { approval: { status: "auto_allowed" } },
+        })
+        slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
+        yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
+      },
+    })
+
+    expect(runningPart?.state.status).toBe("running")
+    if (runningPart?.state.status === "running") {
+      expect(runningPart.state.metadata?.toolTimeout).toEqual(toolTimeout)
+      expect(runningPart.state.time.start).toBe(executionStartedAt)
+      expect(runningPart.state.title).toBe("Glob files")
+      expect(runningPart.state.metadata?.approval).toEqual({ status: "auto_allowed" })
+    }
+  })
+
+  test("applies execution metadata that arrives while the running part is persisted", async () => {
+    const callID = "call_inflight_execution_metadata"
+    const executionStartedAt = 456_789
+    const toolTimeout = {
+      toolTimeoutMs: 300_000,
+      operationTimeoutMs: 15_000,
+      displayMs: 15_000,
+      source: "search",
+    }
+    let processorDuringWrite: SessionProcessor.Info | undefined
+    let injected = false
+
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_inflight_execution_metadata",
+      updatePart: async (input) => {
+        const part = "part" in input ? input.part : input
+        if (
+          !injected &&
+          processorDuringWrite &&
+          part.type === "tool" &&
+          part.state.status === "running" &&
+          !part.state.metadata?.toolTimeout
+        ) {
+          injected = true
+          await processorDuringWrite.updateToolCallState(callID, {
+            input: { pattern: "**/*.ts" },
+            metadata: { toolTimeout },
+            start: executionStartedAt,
+          })
+        }
+        return part
+      },
+      async *stream(processor) {
+        yield { type: "start" }
+        processorDuringWrite = processor
+        const slot = processor.beginExecution(callID)
+        yield { type: "tool-call", toolCallId: callID, toolName: "glob", input: { pattern: "**/*.ts" } }
+        slot.complete({ pattern: "**/*.ts" }, completedOutcome("glob", "done"))
+      },
+    })
+
+    expect(injected).toBe(true)
+    const tool = firstTool(parts, callID)
+    expect(tool?.state.status).toBe("completed")
+    if (tool?.state.status === "completed") {
+      expect(tool.state.metadata.toolTimeout).toEqual(toolTimeout)
+      expect(tool.state.time.start).toBe(executionStartedAt)
+    }
+  })
+
+  test("preserves staged execution metadata when oversized input errors", async () => {
+    const callID = "call_oversized_execution_metadata"
+    const toolTimeout = {
+      toolTimeoutMs: 300_000,
+      operationTimeoutMs: 15_000,
+      displayMs: 15_000,
+      source: "search",
+    }
+    const parts = await runSettlementScenario({
+      messageID: "msg_assistant_oversized_execution_metadata",
+      async *stream(processor) {
+        yield { type: "start" }
+        await processor.updateToolCallState(callID, {
+          input: { value: "oversized" },
+          metadata: { toolTimeout },
+        })
+        yield {
+          type: "tool-call",
+          toolCallId: callID,
+          toolName: "glob",
+          input: { value: "x".repeat(SessionBounds.TOOL_INPUT_MAX_BYTES + 1) },
+        }
+      },
+    })
+
+    const tool = firstTool(parts, callID)
+    expect(tool?.state.status).toBe("error")
+    if (tool?.state.status === "error") expect(tool.state.metadata?.toolTimeout).toEqual(toolTimeout)
+  })
+
   test("settles a synthetic non-bash slot when the running part exists before resolution", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_assistant_part_first",

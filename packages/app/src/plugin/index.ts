@@ -45,6 +45,7 @@ export {
   type NavigationEntry,
   registerNavigation,
   listNavigation,
+  navigationEntryLabel,
   getNavigation,
   getPluginNavigation,
   getBuiltinNavigation,

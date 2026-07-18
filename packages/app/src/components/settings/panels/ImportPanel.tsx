@@ -1,4 +1,5 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -29,11 +30,79 @@ import {
   type ImportDomainID,
 } from "./import-panel-model"
 
+const pageTitle = { id: "settings.import.page.title", message: "Import" }
+const pageDescription = {
+  id: "settings.import.page.description",
+  message: "Review and import selected configuration domains.",
+}
+const targetTitle = { id: "settings.import.target.title", message: "Target" }
+const targetDescription = {
+  id: "settings.import.target.description",
+  message: "Choose whether imported values apply globally or to one project.",
+}
+const sourceTitle = { id: "settings.import.source.title", message: "Source" }
+const sourceDescription = {
+  id: "settings.import.source.description",
+  message: "Load JSON or JSONC from a file, a URL, or pasted text.",
+}
+const planTitle = { id: "settings.import.plan.title", message: "Plan" }
+const resultTitle = { id: "settings.import.result.title", message: "Result" }
+const importFailedTitle = { id: "settings.import.failed", message: "Import failed" }
+const configImportedTitle = { id: "settings.import.configImported", message: "Config imported" }
+const configImportedWarnTitle = { id: "settings.import.configImportedWarn", message: "Config imported with warnings" }
+const planRefreshedTitle = { id: "settings.import.planRefreshed", message: "Import plan refreshed" }
+const planRefreshedDesc = {
+  id: "settings.import.planRefreshedDesc",
+  message: "Configuration changed after review. Check the refreshed plan before applying again.",
+}
+const runtimeUpdatedText = { id: "settings.import.runtimeUpdated", message: "Runtime updated" }
+const runtimeNeedsAttentionText = {
+  id: "settings.import.runtimeNeedsAttention",
+  message: "Files imported; runtime needs attention",
+}
+const scopeLabel = { id: "settings.import.scope.label", message: "Scope" }
+const globalLabel = { id: "settings.import.global", message: "Global" }
+const projectLabel = { id: "settings.import.project", message: "Project" }
+const noProjectLabel = { id: "settings.import.noProject", message: "No project available" }
+const reviewTargetLabel = { id: "settings.import.reviewTarget", message: "Review Target" }
+const fileLabel = { id: "settings.import.file", message: "File" }
+const configUrlAria = { id: "settings.import.configUrl", message: "Config URL" }
+const urlPlaceholder = { id: "settings.import.urlPlaceholder", message: "https://..." }
+const loadUrlLabel = { id: "settings.import.loadUrl", message: "Load URL" }
+const pasteAria = { id: "settings.import.pasteJson", message: "Paste JSON or JSONC" }
+const pastePlaceholder = { id: "settings.import.pastePlaceholder", message: '{\n  "model": "provider/model"\n}' }
+const reviewPasteLabel = { id: "settings.import.reviewPaste", message: "Review Paste" }
+const conflictLabel = { id: "settings.import.conflict", message: "Conflict" }
+const currentLabel = { id: "settings.import.current", message: "Current" }
+const importedLabel = { id: "settings.import.imported", message: "Imported" }
+const importingLabel = { id: "settings.import.importing", message: "Importing..." }
+const applyLabel = { id: "settings.import.apply", message: "Apply" }
+const reviewSelectionLabel = { id: "settings.import.reviewSelection", message: "Review Selection" }
+const importSelectionChanged = { id: "settings.import.selectionChanged", message: "Selection changed" }
+const importChangedDetail = {
+  id: "settings.import.changedDetail",
+  message: "Changed {count} field(s) · Reloaded {executed}",
+}
+const importRestartRequired = {
+  id: "settings.import.restartRequired",
+  message: "Restart required for: {targets}",
+}
+function updatedDomainsDesc(count: number) {
+  return {
+    id: "settings.import.updatedDomains",
+    message: "Updated {count, plural, one {# domain} other {# domains}}.",
+    values: { count },
+  }
+}
+function detectedDomains(count: number) {
+  return { id: "settings.import.detectedDomains", message: "{count} detected domain(s)", values: { count } }
+}
 export function ImportPanel(props: {
   domains: ConfigDomainSummary[]
   scopes: Scope[]
   onImported: () => Promise<void>
 }) {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
   const [sourceLabel, setSourceLabel] = createSignal("")
@@ -94,7 +163,7 @@ export function ImportPanel(props: {
       setResult(undefined)
       return response.data
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -105,7 +174,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(await file.text(), file.name), file.name)
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
   }
 
@@ -117,7 +186,7 @@ export function ImportPanel(props: {
       const loaded = await loadImportUrl(value)
       await createPlan(loaded, value)
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -127,7 +196,7 @@ export function ImportPanel(props: {
     try {
       await createPlan(parseImportText(pasted(), "pasted"), "pasted")
     } catch (error) {
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
   }
 
@@ -165,8 +234,8 @@ export function ImportPanel(props: {
       setResult(response.data)
       showToast({
         type: response.data.reload.success ? "success" : "warning",
-        title: response.data.reload.success ? "Config imported" : "Config imported with warnings",
-        description: `Updated ${response.data.plan.domains.length} domain(s).`,
+        title: response.data.reload.success ? _(configImportedTitle) : _(configImportedWarnTitle),
+        description: _(updatedDomainsDesc(response.data.plan.domains.length)),
       })
       await props.onImported()
     } catch (error) {
@@ -175,12 +244,12 @@ export function ImportPanel(props: {
         if (!refreshed) return
         showToast({
           type: "warning",
-          title: "Import plan refreshed",
-          description: "Configuration changed after review. Check the refreshed plan before applying again.",
+          title: _(planRefreshedTitle),
+          description: _(planRefreshedDesc),
         })
         return
       }
-      showToast({ type: "error", title: "Import failed", description: requestErrorMessage(error) })
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setApplying(false)
     }
@@ -209,11 +278,11 @@ export function ImportPanel(props: {
   }
 
   return (
-    <SettingsPage title="Import" description="Review and import selected configuration domains.">
-      <SettingsSection title="Target" description="Choose whether imported values apply globally or to one project.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(targetTitle)} description={_(targetDescription)}>
         <div class="ds-import-target-row">
           <label class="ds-import-field">
-            <span>Scope</span>
+            <span>{_(scopeLabel)}</span>
             <select
               class="settings-select"
               value={scope()}
@@ -222,13 +291,13 @@ export function ImportPanel(props: {
                 clearReview()
               }}
             >
-              <option value="global">Global</option>
-              <option value="project">Project</option>
+              <option value="global">{_(globalLabel)}</option>
+              <option value="project">{_(projectLabel)}</option>
             </select>
           </label>
           <Show when={scope() === "project"}>
             <label class="ds-import-field">
-              <span>Project</span>
+              <span>{_(projectLabel)}</span>
               <select
                 class="settings-select"
                 value={project()?.id ?? ""}
@@ -239,7 +308,7 @@ export function ImportPanel(props: {
                 }}
               >
                 <Show when={projects().length === 0}>
-                  <option value="">No project available</option>
+                  <option value="">{_(noProjectLabel)}</option>
                 </Show>
                 <For each={projects()}>
                   {(item) => <option value={item.id}>{getScopeLabel(item, item.directory)}</option>}
@@ -255,17 +324,17 @@ export function ImportPanel(props: {
               disabled={loading() || (scope() === "project" && !project())}
               onClick={() => void reviewCurrentTarget()}
             >
-              Review Target
+              {_(reviewTargetLabel)}
             </Button>
           </Show>
         </div>
       </SettingsSection>
 
-      <SettingsSection title="Source" description="Load JSON or JSONC from a file, a URL, or pasted text.">
+      <SettingsSection title={_(sourceTitle)} description={_(sourceDescription)}>
         <div class="ds-import-source-row">
           <label class="ds-import-file-button">
             <Icon name={getSemanticIcon("settings.import")} size="small" />
-            File
+            {_(fileLabel)}
             <input
               type="file"
               accept=".json,.jsonc,application/json"
@@ -275,8 +344,8 @@ export function ImportPanel(props: {
           <input
             class="ds-import-url-input"
             value={url()}
-            aria-label="Config URL"
-            placeholder="https://..."
+            aria-label={_(configUrlAria)}
+            placeholder={_(urlPlaceholder)}
             onInput={(event) => setUrl(event.currentTarget.value)}
           />
           <Button
@@ -286,15 +355,15 @@ export function ImportPanel(props: {
             disabled={loading() || !url().trim() || (scope() === "project" && !project())}
             onClick={() => void handleUrl()}
           >
-            Load URL
+            {_(loadUrlLabel)}
           </Button>
         </div>
         <div class="ds-import-paste-row">
           <textarea
             class="ds-import-paste-input"
             value={pasted()}
-            aria-label="Paste JSON or JSONC"
-            placeholder={'{\n  "model": "provider/model"\n}'}
+            aria-label={_(pasteAria)}
+            placeholder={_(pastePlaceholder)}
             rows={7}
             onInput={(event) => setPasted(event.currentTarget.value)}
           />
@@ -305,19 +374,20 @@ export function ImportPanel(props: {
             disabled={loading() || !pasted().trim() || (scope() === "project" && !project())}
             onClick={() => void handlePaste()}
           >
-            Review Paste
+            {_(reviewPasteLabel)}
           </Button>
         </div>
       </SettingsSection>
 
       <Show when={plan()}>
-        <SettingsSection title="Plan">
+        <SettingsSection title={_(planTitle)}>
           <div class="ds-import-plan-header">
             <div>
               <div class="settings-import-source-title">{sourceLabel()}</div>
               <div class="settings-import-source-meta">
-                {plan()!.scope === "project" ? "Project" : "Global"} · {plan()!.domains.length} detected domain(s)
-                {!reviewedSelection() ? " · Selection changed" : ""}
+                {plan()!.scope === "project" ? _(projectLabel) : _(globalLabel)} ·{" "}
+                {_(detectedDomains(plan()!.domains.length))}
+                {!reviewedSelection() ? ` · ${_(importSelectionChanged)}` : ""}
               </div>
             </div>
             <Button
@@ -327,10 +397,9 @@ export function ImportPanel(props: {
               disabled={applying() || loading() || selected().length === 0}
               onClick={() => void applyImport()}
             >
-              {applying() ? "Importing..." : reviewedSelection() ? "Apply" : "Review Selection"}
+              {applying() ? _(importingLabel) : reviewedSelection() ? _(applyLabel) : _(reviewSelectionLabel)}
             </Button>
           </div>
-
           <div class="ds-import-domain-grid">
             <For each={props.domains}>
               {(domain) => (
@@ -375,16 +444,16 @@ export function ImportPanel(props: {
                           </span>
                           <span>{change.key}</span>
                           <Show when={change.conflict}>
-                            <span class="ds-inline-badge">Conflict</span>
+                            <span class="ds-inline-badge">{_(conflictLabel)}</span>
                           </Show>
                         </div>
                         <div class="ds-import-value-grid">
                           <div>
-                            <span>Current</span>
+                            <span>{_(currentLabel)}</span>
                             <pre>{formatImportValue(change.before)}</pre>
                           </div>
                           <div>
-                            <span>Imported</span>
+                            <span>{_(importedLabel)}</span>
                             <pre>{formatImportValue(change.after)}</pre>
                           </div>
                         </div>
@@ -407,17 +476,27 @@ export function ImportPanel(props: {
 
       <Show when={result()}>
         {(applied) => (
-          <SettingsSection title="Result">
+          <SettingsSection title={_(resultTitle)}>
             <div class="ds-import-result" data-success={applied().reload.success}>
               <div class="settings-import-source-title">
-                {applied().reload.success ? "Runtime updated" : "Files imported; runtime needs attention"}
+                {applied().reload.success ? _(runtimeUpdatedText) : _(runtimeNeedsAttentionText)}
               </div>
               <div class="settings-import-source-meta">
-                Changed {applied().reload.changedFields.length} field(s) · Reloaded{" "}
-                {applied().reload.executed.join(", ") || "none"}
+                {_({
+                  ...importChangedDetail,
+                  values: {
+                    count: applied().reload.changedFields.length,
+                    executed: applied().reload.executed.join(", ") || "none",
+                  },
+                })}
               </div>
               <Show when={applied().reload.restartRequired.length > 0}>
-                <div>Restart required for: {applied().reload.restartRequired.join(", ")}</div>
+                <div>
+                  {_({
+                    ...importRestartRequired,
+                    values: { targets: applied().reload.restartRequired.join(", ") },
+                  })}
+                </div>
               </Show>
               <For each={applied().reload.warnings}>
                 {(warning) => (

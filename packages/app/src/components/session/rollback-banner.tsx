@@ -5,7 +5,9 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { SessionRollbackSummary } from "@ericsanchezok/synergy-sdk/client"
 import type { useSDK } from "@/context/sdk"
+import { useLocale } from "@/context/locale"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { S } from "./session-i18n"
 
 interface RollbackBannerProps {
   sessionID: string
@@ -15,6 +17,8 @@ interface RollbackBannerProps {
 }
 
 export function RollbackBanner(props: RollbackBannerProps) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const { rollback } = props
   const numTurns = rollback.numTurns ?? 0
   const numMessages = rollback.droppedMessageIDs?.length ?? 0
@@ -24,8 +28,8 @@ export function RollbackBanner(props: RollbackBannerProps) {
     if (!rollback.canUnrollback) {
       showToast({
         type: "info",
-        title: "Cannot redo",
-        description: "A new task has been started. The rollback can no longer be redone.",
+        title: _(S.rollbackCannotRedo),
+        description: _(S.rollbackCannotRedoDesc),
         duration: 4000,
       })
       return
@@ -35,22 +39,18 @@ export function RollbackBanner(props: RollbackBannerProps) {
       await props.sdk.client.session.unrollback({ sessionID: props.sessionID })
       showToast({
         type: "success",
-        title: "Redo complete",
-        description: `Restored ${numMessages} message${numMessages === 1 ? "" : "s"}`,
+        title: _(S.rollbackRedoComplete),
+        description: i18n._({ ...S.rollbackRedoSuccessDesc, values: { count: numMessages } }),
       })
       props.onDismiss()
     } catch (err) {
       if (err instanceof Error && err.message?.includes("new session messages")) {
-        showToast({
-          type: "warning",
-          title: "Cannot redo",
-          description: "New messages have been added. This rollback can no longer be redone.",
-        })
+        showToast({ type: "warning", title: _(S.rollbackCannotRedo), description: _(S.rollbackCannotRedoNew) })
       } else {
         showToast({
           type: "error",
-          title: "Redo failed",
-          description: err instanceof Error ? err.message : "Request failed",
+          title: _(S.rollbackRedoFailed),
+          description: err instanceof Error ? err.message : _(S.rollbackRequestFailed),
         })
       }
     }
@@ -66,14 +66,14 @@ export function RollbackBanner(props: RollbackBannerProps) {
       const count = result.data?.restoredFiles?.length ?? 0
       showToast({
         type: "success",
-        title: "Files restored",
-        description: `${count} file${count === 1 ? "" : "s"} restored`,
+        title: _(S.rollbackFilesRestored),
+        description: i18n._({ ...S.rollbackRestoreSuccessDesc, values: { count } }),
       })
     } catch (err) {
       showToast({
         type: "error",
-        title: "Failed to restore files",
-        description: err instanceof Error ? err.message : "Request failed",
+        title: _(S.rollbackFilesRestoreFailed),
+        description: err instanceof Error ? err.message : _(S.rollbackRequestFailed),
       })
     }
   }
@@ -84,7 +84,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
         <div data-slot="rollback-banner-content">
           <Icon name={getSemanticIcon("session.rewind")} size="small" />
           <span data-slot="rollback-banner-text">
-            Rewound {numMessages} message{numMessages === 1 ? "" : "s"} ({numTurns} turn{numTurns === 1 ? "" : "s"})
+            {i18n._({ ...S.rollbackBannerText, values: { messages: numMessages, turns: numTurns } })}
           </span>
         </div>
         <div data-slot="rollback-banner-actions">
@@ -94,18 +94,14 @@ export function RollbackBanner(props: RollbackBannerProps) {
             size="small"
             data-tone={rollback.canUnrollback ? "neutral" : "disabled"}
             disabled={!rollback.canUnrollback}
-            title={
-              rollback.canUnrollback
-                ? "Restore the rewound messages"
-                : "New messages have been added; cannot redo this rollback"
-            }
+            title={rollback.canUnrollback ? _(S.rollbackRestoreTooltip) : _(S.rollbackCannotRedoTooltip)}
             onClick={() => void handleRedo()}
           >
-            Redo
+            {_(S.rollbackRedo)}
           </Button>
           <Show when={numFiles > 0}>
             <Button type="button" variant="ghost" size="small" onClick={() => void handleRestoreFiles()}>
-              Restore files ({numFiles})
+              {i18n._({ ...S.rollbackRestoreFiles, values: { count: numFiles } })}
             </Button>
           </Show>
           <Button
@@ -114,7 +110,7 @@ export function RollbackBanner(props: RollbackBannerProps) {
             size="small"
             class="rollback-banner-dismiss"
             onClick={props.onDismiss}
-            aria-label="Dismiss"
+            aria-label={_(S.rollbackDismiss)}
           >
             <Icon name={getSemanticIcon("action.close")} size="small" />
           </Button>

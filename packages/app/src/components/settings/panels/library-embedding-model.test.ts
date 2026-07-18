@@ -22,18 +22,24 @@ describe("embedding model presentation", () => {
       }),
     ).toEqual({
       title: "BAAI/bge-m3",
-      description: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
-      stateLabel: "Configured",
-      modeLabel: "Remote",
+      description: {
+        id: "settings.library.embedding.model.remote.desc",
+        message: "User-configured remote embedding model. It takes precedence over the built-in local fallback.",
+      },
+      stateLabel: { id: "settings.library.embedding.model.state.configured", message: "Configured" },
+      modeLabel: { id: "settings.library.embedding.model.mode.remote", message: "Remote" },
     })
   })
 
   test("presents the bundled local model as the zero-config fallback", () => {
     expect(describeEmbeddingModel(localStatus("missing"))).toEqual({
       title: "Xenova/all-MiniLM-L6-v2",
-      description: "Built-in local fallback used when no remote embedding model is configured.",
-      stateLabel: "Default",
-      modeLabel: "Local",
+      description: {
+        id: "settings.library.embedding.model.local.desc",
+        message: "Built-in local fallback used when no remote embedding model is configured.",
+      },
+      stateLabel: { id: "settings.library.embedding.model.state.default", message: "Default" },
+      modeLabel: { id: "settings.library.embedding.model.mode.local", message: "Local" },
     })
   })
 })

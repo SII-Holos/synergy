@@ -1,9 +1,11 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { resolveThemeColor, useTheme, type ResolvedTheme } from "@ericsanchezok/synergy-ui/theme"
 import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { getFileSourceModel, pruneFileSourceModels, setFileSourceModel } from "./source-model-cache"
+import { fileWorkbench as F } from "@/locales/messages"
 
 type Monaco = typeof import("monaco-editor")
 let monacoPromise: Promise<Monaco> | undefined
@@ -93,6 +95,7 @@ export function FileSourceView(props: { path: string; content: string }) {
   const file = useFile()
   const sdk = useSDK()
   const theme = useTheme()
+  const lingui = useLingui()
   const [loading, setLoading] = createSignal(true)
   let host!: HTMLDivElement
   let monacoInstance: Monaco | undefined
@@ -197,7 +200,7 @@ export function FileSourceView(props: { path: string; content: string }) {
       {loading() && (
         <div class="file-workbench-loading">
           <Spinner class="size-5" />
-          <span>Loading source viewer…</span>
+          <span>{lingui._({ id: F.loadingSourceViewer.id, message: F.loadingSourceViewer.message })}</span>
         </div>
       )}
     </div>

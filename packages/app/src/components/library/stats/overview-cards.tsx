@@ -1,4 +1,6 @@
 import { For } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
 
 type OverviewMetric = {
   id: string
@@ -7,39 +9,58 @@ type OverviewMetric = {
   sub?: string
 }
 
-function buildMetrics(overview: {
-  totalMemories: number
-  totalExperiences: number
-  evaluationRate: number
-  experiencesEvaluated: number
-  experiencesFailed: number
-  experiencesPending: number
-  scopeCount: number
-  activeDays: number
-}): OverviewMetric[] {
+function buildMetrics(
+  overview: {
+    totalMemories: number
+    totalExperiences: number
+    evaluationRate: number
+    experiencesEvaluated: number
+    experiencesFailed: number
+    experiencesPending: number
+    scopeCount: number
+    activeDays: number
+  },
+  _: ReturnType<typeof useLingui>["_"],
+  fmt: ReturnType<typeof useLocale>["fmt"],
+): OverviewMetric[] {
   const ratePct = overview.evaluationRate >= 0 ? `${(overview.evaluationRate * 100).toFixed(0)}%` : "—"
   return [
     {
       id: "memories",
-      label: "Memories",
-      value: overview.totalMemories.toLocaleString(),
-      sub: `${overview.scopeCount} scopes`,
+      label: _({ id: "app.library.stats.overview.memories", message: "Memories" }),
+      value: fmt.number(overview.totalMemories),
+      sub: _({
+        id: "app.library.stats.overview.scopeCount",
+        message: "{count} scopes",
+        values: { count: String(overview.scopeCount) },
+      }),
     },
     {
       id: "experiences",
-      label: "Experiences",
-      value: overview.totalExperiences.toLocaleString(),
-      sub: `${overview.experiencesEvaluated} eval · ${overview.experiencesPending} pend`,
+      label: _({ id: "app.library.stats.overview.experiences", message: "Experiences" }),
+      value: fmt.number(overview.totalExperiences),
+      sub: _({
+        id: "app.library.stats.overview.experienceDetails",
+        message: "{evaluated} eval · {pending} pend",
+        values: { evaluated: String(overview.experiencesEvaluated), pending: String(overview.experiencesPending) },
+      }),
     },
     {
       id: "eval-rate",
-      label: "Eval rate",
+      label: _({ id: "app.library.stats.overview.evalRate", message: "Eval rate" }),
       value: ratePct,
-      sub: overview.experiencesFailed > 0 ? `${overview.experiencesFailed} failed` : undefined,
+      sub:
+        overview.experiencesFailed > 0
+          ? _({
+              id: "app.library.stats.overview.failed",
+              message: "{count} failed",
+              values: { count: String(overview.experiencesFailed) },
+            })
+          : undefined,
     },
     {
       id: "active",
-      label: "Active days",
+      label: _({ id: "app.library.stats.overview.activeDays", message: "Active days" }),
       value: overview.activeDays.toString(),
     },
   ]
@@ -69,7 +90,9 @@ export function LibraryOverviewCards(props: {
     activeDays: number
   }
 }) {
-  const metrics = () => buildMetrics(props.overview)
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
+  const metrics = () => buildMetrics(props.overview, _, fmt)
 
   return (
     <>

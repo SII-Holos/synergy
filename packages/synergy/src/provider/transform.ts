@@ -425,6 +425,31 @@ export namespace ProviderTransform {
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
   const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
 
+  function modelIdentityTokens(model: Provider.Model) {
+    return [model.id, model.api.id, model.family ?? ""].map((id) => id.toLowerCase())
+  }
+
+  function directProviderReasoningVariants(model: Provider.Model): Record<string, Record<string, unknown>> | undefined {
+    const ids = modelIdentityTokens(model)
+    const isMiniMax = ids.some((id) => id.includes("minimax"))
+    const isKimi = ids.some((id) => id.includes("kimi"))
+    const isKimiK3 = ids.some((id) => id === "k3" || id.includes("kimi-k3"))
+
+    if (model.api.npm === "@ai-sdk/anthropic") {
+      if (isKimi) {
+        if (!isKimiK3 || model.capabilities.reasoningEfforts === undefined) return {}
+        return effortVariants(model.capabilities.reasoningEfforts, (effort) => (effort === "max" ? {} : { effort }))
+      }
+      if (isMiniMax && ids.some((id) => id.includes("minimax-m3"))) {
+        return { max: { thinking: { type: "adaptive" } } }
+      }
+      if (isMiniMax) return {}
+    }
+
+    if (model.api.npm === "@ai-sdk/openai-compatible" && isMiniMax) return {}
+    return undefined
+  }
+
   function effortVariants<T extends Record<string, unknown>>(
     efforts: readonly string[],
     options: (effort: string) => T,
@@ -450,13 +475,12 @@ export namespace ProviderTransform {
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
+    const directProviderVariants = directProviderReasoningVariants(model)
+    if (directProviderVariants) return directProviderVariants
 
     const id = model.id.toLowerCase()
     const modelEfforts = model.capabilities.reasoningEfforts
-    if (
-      modelEfforts === undefined &&
-      (id.includes("deepseek") || id.includes("minimax") || id.includes("glm") || id.includes("mistral"))
-    )
+    if (modelEfforts === undefined && (id.includes("deepseek") || id.includes("glm") || id.includes("mistral")))
       return {}
 
     switch (model.api.npm) {

@@ -85,6 +85,85 @@ describe("SessionMessageCache", () => {
     expect(SessionMessageCache.get(SID)).toBeUndefined()
   })
 
+  test("shrinks a populated cache to the completed compaction working set", () => {
+    const root = userMsg("msg_root", 1)
+    root.info = { ...root.info, isRoot: true, rootID: root.info.id } as MessageV2.User
+    root.parts = [{ ...part("prt_compact", root.info.id), type: "compaction", auto: true } as MessageV2.Part]
+    const old = userMsg("msg_old", 2)
+    const firstSummary: MessageV2.WithParts = {
+      info: {
+        id: "msg_summary_1",
+        sessionID: SID,
+        role: "assistant",
+        parentID: root.info.id,
+        rootID: root.info.id,
+        summary: true,
+        finish: "stop",
+        time: { created: 3, completed: 3 },
+      } as MessageV2.Assistant,
+      parts: [],
+    }
+    const continuation = userMsg("msg_continuation", 4)
+    const latestSummary: MessageV2.WithParts = {
+      info: {
+        ...firstSummary.info,
+        id: "msg_summary_2",
+        time: { created: 5, completed: 5 },
+      } as MessageV2.Assistant,
+      parts: [],
+    }
+
+    SessionMessageCache.enable(SID)
+    SessionMessageCache.set(SID, [root, old, firstSummary, continuation, latestSummary])
+
+    const cached = SessionMessageCache.get(SID)!
+    expect(cached.map((message) => message.info.id)).toEqual([
+      root.info.id,
+      firstSummary.info.id,
+      latestSummary.info.id,
+    ])
+    expect(cached[1].info.includeInContext).toBe(false)
+  })
+
+  test("shrinks when an incremental compaction summary completes", () => {
+    const root = userMsg("msg_root", 1)
+    root.info = { ...root.info, isRoot: true, rootID: root.info.id } as MessageV2.User
+    const old = userMsg("msg_old", 2)
+    const summary: MessageV2.WithParts = {
+      info: {
+        id: "msg_summary",
+        sessionID: SID,
+        role: "assistant",
+        parentID: root.info.id,
+        rootID: root.info.id,
+        summary: true,
+        time: { created: 3 },
+      } as MessageV2.Assistant,
+      parts: [],
+    }
+
+    SessionMessageCache.enable(SID)
+    SessionMessageCache.set(SID, [root, old, summary])
+    SessionMessageCache.upsertPart(SID, {
+      ...part("prt_compact", root.info.id),
+      type: "compaction",
+      auto: true,
+    } as MessageV2.Part)
+    expect(SessionMessageCache.get(SID)!.map((message) => message.info.id)).toEqual([
+      root.info.id,
+      old.info.id,
+      summary.info.id,
+    ])
+
+    SessionMessageCache.upsertMessage(SID, {
+      ...summary.info,
+      finish: "stop",
+      time: { created: 3, completed: 4 },
+    } as MessageV2.Assistant)
+
+    expect(SessionMessageCache.get(SID)!.map((message) => message.info.id)).toEqual([root.info.id, summary.info.id])
+  })
+
   test("evicts the least-recently-used session when over the byte budget", () => {
     const A = "ses_evict_a"
     const B = "ses_evict_b"

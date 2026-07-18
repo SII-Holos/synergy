@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test"
 
-import { resolveCompactionCardPresentation } from "./compaction-card-model"
+import { resolveCompactionCardPresentation, COMPACTION_CARD_DESC } from "./compaction-card-model"
 
 describe("compaction card presentation", () => {
   test("keeps a pending compaction in the running state", () => {
@@ -12,8 +12,8 @@ describe("compaction card presentation", () => {
       }),
     ).toEqual({
       status: "running",
-      title: "Compressing context...",
-      description: "Preparing a compact continuation summary",
+      title: COMPACTION_CARD_DESC.runningTitle,
+      description: COMPACTION_CARD_DESC.preparingDescription,
       canExpand: false,
     })
   })
@@ -27,8 +27,8 @@ describe("compaction card presentation", () => {
       }),
     ).toEqual({
       status: "complete",
-      title: "Context compressed",
-      description: "Summary ready",
+      title: COMPACTION_CARD_DESC.completeTitle,
+      description: COMPACTION_CARD_DESC.summaryReadyDescription,
       canExpand: true,
     })
   })
@@ -42,8 +42,8 @@ describe("compaction card presentation", () => {
       }),
     ).toEqual({
       status: "running",
-      title: "Compressing context...",
-      description: "Preparing a compact continuation summary",
+      title: COMPACTION_CARD_DESC.runningTitle,
+      description: COMPACTION_CARD_DESC.preparingDescription,
       canExpand: false,
     })
   })
