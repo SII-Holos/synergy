@@ -31,20 +31,20 @@ test("GitHub internal agents are hidden, tool-free, and use cost-appropriate mod
 })
 
 test("GitHub proposals launch as silent hidden structured Cortex work", () => {
-  expect(
-    buildGitHubProposalLaunchInput({
-      parentSessionID: "ses_parent",
-      parentMessageID: "msg_parent",
-      deliveryGuid: "delivery-1",
-      eventType: "issues.opened",
-      observation: { eventType: "issues.opened", repository: "owner/repo" },
-      maxOutputTokens: 512,
-      maxCost: 0.01,
-    }),
-  ).toMatchObject({
+  const input = buildGitHubProposalLaunchInput({
+    parentSessionID: "ses_parent",
+    parentMessageID: "msg_parent",
+    deliveryGuid: "delivery-1",
+    eventType: "issues.opened",
+    observation: { eventType: "issues.opened", repository: "owner/repo" },
+    maxOutputTokens: 512,
+    maxCost: 0.01,
+  })
+
+  expect(input).toMatchObject({
     agent: "github-shadow-proposer",
     executionRole: "delegated_subagent",
-    category: "background",
+    provenance: "github",
     visibility: "hidden",
     notifyParentOnComplete: false,
     tools: {},
@@ -52,6 +52,7 @@ test("GitHub proposals launch as silent hidden structured Cortex work", () => {
     maxOutputTokens: 512,
     maxCost: 0.01,
   })
+  expect(input).not.toHaveProperty("category")
 })
 
 test("GitHub fix workflow exposes a project-scoped locator contract", async () => {

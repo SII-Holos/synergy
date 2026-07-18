@@ -64,12 +64,13 @@ After each poll cycle's batch of synthesized deliveries is accepted through `Git
 
 ## Storage
 
-Three durable collections plus poll state:
+Four durable collections plus poll state:
 
 - `data/github/deliveries/<deliveryGuid>` — per-delivery records with full lifecycle state
 - `data/github/ci/<repository>/<workflowName>` — per-workflow CI failure timestamps within the configured window
 - `data/github/runtime.json` — persistent anchors (parent sessions/messages) for fix and review Cortex tasks
 - `data/github/poll-state/<encoded repository>` — per-repository cursors and bounded transition state
+- session metadata and navigation indexes — GitHub proposal, locator, fix, review, and anchor sessions persist `provenance: "github"` and derive the `github` navigation category through the normal Session storage owner
 
 ## Worker Lifecycle
 
@@ -127,11 +128,11 @@ When `proposalEnabled` and the gate or classifier decides a proposal is warrante
 
 The proposal Cortex task is launched with:
 
-- `visibility: "hidden"` — not shown in the session list
+- `visibility: "hidden"` — excluded from ordinary Cortex task lists and parent completion notifications, while remaining inspectable in the dedicated GitHub sidebar section
 - `notifyParentOnComplete: false` — silent completion
 - `tools: {}` — no tool access
 - `executionRole: "delegated_subagent"`
-- `category: "background"`
+- `provenance: "github"` — persists the session in the GitHub navigation category rather than generic Background
 - `output.mode: "structured"` with the `GitHubActionProposal` JSON Schema
 - `maxRepairTurns: 1`
 - `timeoutMs: 120_000`
@@ -154,7 +155,7 @@ When `fixWorkflow.enabled` and the delivery is routed into the fix workflow, the
 
 1. **Scope resolution**: The mapped directory is resolved to a git project Scope with `ensureProjectScope()`.
 
-2. **Anchor session**: A hidden autonomous parent session (`"GitHub Fix Deliveries — <repo>"`) is created lazily per repository and reused.
+2. **Anchor session**: An autonomous parent session (`"GitHub Fix Deliveries — <repo>"`) is created lazily per repository, marked with GitHub provenance, and reused.
 
 3. **Installation token**: An ephemeral GitHub App installation token is obtained from the installation ID synthesized in the delivery. This token is used for all GitHub API calls and git credential operations.
 
@@ -237,6 +238,12 @@ received → processing | processing_fix | processing_review → completed | ign
 - `retryable_failure`: processing error; increment `retryCount`; re-claimed on next notify
 - `permanent_failure`: retries exhausted for fix or review workflow
 
+## Session Navigation
+
+GitHub App configuration is exposed to the Web client only as `{ configured: boolean }` from `GET /github/configured`. The route reports true when both `SYNERGY_GITHUB_APP_ID` and `SYNERGY_GITHUB_APP_PRIVATE_KEY` are non-empty and never returns either credential value.
+
+When configured, the Web sidebar renders a collapsible GitHub section between Background and Projects. It queries `GET /global/recent?category=github&parentOnly=false`, so persisted GitHub anchor and Cortex child sessions are aggregated across Home and project Scopes with normal cursor ordering. Session updates use the standard navigation event/refetch path. The session's optional `provenance: "github"` field is the durable owner of this classification; titles and agent names are never used to infer it. Channel endpoints retain category precedence over GitHub provenance.
+
 ## Invariants
 
 - The integration is inactive until `enabled: true`. Each workflow (`fixWorkflow`, `reviewWorkflow`) is independently gated by its own `enabled` flag.
@@ -249,6 +256,8 @@ received → processing | processing_fix | processing_review → completed | ign
 - Deduplication is durable and lock-protected per delivery GUID.
 - The worker claims deliveries FIFO by received timestamp and processes at most four concurrently; failure and retry state remains isolated per delivery.
 - Classifier calls are sessionless and produce no durable transcript.
+- GitHub proposal, locator, fix, review, and anchor sessions persist explicit GitHub provenance; the sessionless classifier remains delivery-only.
+- The GitHub sidebar appears only when both environment credentials are configured, and the frontend receives only the boolean configuration state.
 - All GitHub agents are hidden, native, denied gh/push/remote, and use temperature 0.
 - GitHub tokens are ephemeral, injected through a credential helper, and never reach agent processes.
 - Host git subprocesses receive a minimal environment, disable repository hooks, and fetch without writing the shared `FETCH_HEAD`.

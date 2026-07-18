@@ -1878,16 +1878,24 @@
             "in": "query",
             "name": "parentOnly",
             "schema": {
-              "default": true,
-              "type": "boolean"
+              "type": "string",
+              "enum": ["true", "false"]
             }
           },
           {
             "in": "query",
             "name": "includeArchived",
             "schema": {
-              "default": false,
-              "type": "boolean"
+              "type": "string",
+              "enum": ["true", "false"]
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string",
+              "enum": ["project", "home", "channel", "background", "github"]
             }
           },
           {
@@ -1962,6 +1970,31 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.pinned({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/github/configured": {
+      "get": {
+        "operationId": "github.configured",
+        "summary": "Check whether the GitHub App is configured",
+        "description": "Reports whether both required GitHub App environment variables are present without exposing them.",
+        "responses": {
+          "200": {
+            "description": "GitHub App configuration status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubConfiguredResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.github.configured({\n  ...\n})"
           }
         ]
       }
@@ -4353,7 +4386,7 @@
             "name": "category",
             "schema": {
               "type": "string",
-              "enum": ["project", "home", "channel", "background"]
+              "enum": ["project", "home", "channel", "background", "github"]
             }
           },
           {
@@ -22311,7 +22344,7 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "github"]
           },
           "lastActivityAt": {
             "type": "number"
@@ -22422,6 +22455,15 @@
           }
         },
         "required": ["items", "total"]
+      },
+      "GitHubConfiguredResponse": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": ["configured"]
       },
       "AgendaWebhookResult": {
         "type": "object",
@@ -27876,7 +27918,11 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "github"]
+          },
+          "provenance": {
+            "type": "string",
+            "const": "github"
           },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"

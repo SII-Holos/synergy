@@ -36,7 +36,7 @@ export function buildGitHubProposalLaunchInput(input: BuildInput): CortexTypes.L
     ].join("\n"),
     agent: "github-shadow-proposer",
     executionRole: "delegated_subagent",
-    category: "background",
+    provenance: "github",
     parentSessionID: input.parentSessionID,
     parentMessageID: input.parentMessageID,
     visibility: "hidden",
@@ -62,6 +62,7 @@ async function proposalAnchor(): Promise<ProposalAnchor> {
 
   const parent = await Session.create({
     scope: Scope.home(),
+    provenance: "github",
     title: "GitHub Shadow Proposals",
     controlProfile: "autonomous",
     completionNotice: { silent: true },

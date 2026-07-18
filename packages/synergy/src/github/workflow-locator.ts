@@ -39,7 +39,7 @@ export namespace GitHubWorkflowLocator {
       ].join("\n"),
       agent: input.agent,
       executionRole: "delegated_subagent",
-      category: "background",
+      provenance: "github",
       parentSessionID: input.parentSessionID,
       parentMessageID: input.parentMessageID,
       visibility: "hidden",

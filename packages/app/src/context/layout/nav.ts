@@ -74,6 +74,15 @@ export function applySessionToNavList(
   return { list: { ...list, items }, applied: true }
 }
 
+export function githubNavQuery(limit: number, cursor?: { lastActivityAt: number; id: string }) {
+  return {
+    category: "github" as const,
+    parentOnly: "false" as const,
+    limit,
+    ...(cursor ? { cursorLastActivityAt: cursor.lastActivityAt, cursorId: cursor.id } : {}),
+  }
+}
+
 export function orderNavEntries(entries: readonly NavEntry[]): NavEntry[] {
   return entries.toSorted((a, b) => {
     if (a.pinned && !b.pinned) return -1

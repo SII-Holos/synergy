@@ -109,12 +109,22 @@ describe("OpenAPI spec generation", () => {
     expect(schema).toContain("NoteInfo")
   })
 
-  test("includes /global/recent route with operationId global.nav.recent", async () => {
+  test("includes /global/recent route with operationId and category filter", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/global/recent"]
     expect(path).toBeDefined()
     expect(path!.get).toBeDefined()
     expect(path!.get!.operationId).toBe("global.nav.recent")
+    expect(path!.get!.parameters?.map((parameter) => ("name" in parameter ? parameter.name : undefined))).toContain(
+      "category",
+    )
+  })
+
+  test("includes a non-secret GitHub configured route", async () => {
+    const spec = await Server.openapi()
+    const path = spec.paths["/github/configured"]
+    expect(path?.get?.operationId).toBe("github.configured")
+    expect(JSON.stringify(path?.get?.responses?.["200"])).toContain("GitHubConfiguredResponse")
   })
 
   test("includes /global/pinned route with operationId global.nav.pinned", async () => {

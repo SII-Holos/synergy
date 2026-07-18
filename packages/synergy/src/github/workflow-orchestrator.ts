@@ -144,6 +144,7 @@ async function ensureWorkflowAnchor(
       fn: () =>
         Session.create({
           scope,
+          provenance: "github",
           title,
           controlProfile: "autonomous",
           completionNotice: { silent: true },
@@ -223,7 +224,7 @@ async function launchFixTask(input: {
         }),
         agent: input.agent,
         executionRole: "delegated_subagent",
-        category: "background",
+        provenance: "github",
         parentSessionID: input.anchor.parentSessionID,
         parentMessageID: input.anchor.parentMessageID,
         visibility: "hidden",
@@ -280,7 +281,7 @@ async function launchReviewTask(input: {
         }),
         agent: input.config.agent,
         executionRole: "delegated_subagent",
-        category: "background",
+        provenance: "github",
         parentSessionID: input.anchor.parentSessionID,
         parentMessageID: input.anchor.parentMessageID,
         visibility: "hidden",

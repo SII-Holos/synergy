@@ -93,6 +93,8 @@ The review workflow, when enabled with `reviewWorkflow.repositoryMapping`, fetch
 
 GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) are environment variables only. See [GitHub Integration](../architecture/github-shadow.md) for the full polling architecture and processing pipeline.
 
+When both credentials are present, the Sidebar shows a GitHub section between Background and Projects. It aggregates the durable sessions created by shadow proposals, issue location/fix work, and PR reviews across Home and project Scopes, including their silent Cortex child sessions. Credential values never cross the server boundary.
+
 ## Boundaries
 
 - Channels translate external conversations into endpoint sessions.

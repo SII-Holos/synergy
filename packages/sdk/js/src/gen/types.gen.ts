@@ -1142,7 +1142,7 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
   archived: boolean
@@ -1172,6 +1172,10 @@ export type GlobalRecentResponse = {
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
+}
+
+export type GitHubConfiguredResponse = {
+  configured: boolean
 }
 
 export type AgendaWebhookResult = {
@@ -3907,7 +3911,8 @@ export type Session = {
     messageID?: string
     title?: string
   }
-  category?: "project" | "home" | "channel" | "background"
+  category?: "project" | "home" | "channel" | "background" | "github"
+  provenance?: "github"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -8353,8 +8358,9 @@ export type GlobalNavRecentData = {
   body?: never
   path?: never
   query?: {
-    parentOnly?: boolean
-    includeArchived?: boolean
+    parentOnly?: "true" | "false"
+    includeArchived?: "true" | "false"
+    category?: "project" | "home" | "channel" | "background" | "github"
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -8389,6 +8395,22 @@ export type GlobalNavPinnedResponses = {
 }
 
 export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
+
+export type GithubConfiguredData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/github/configured"
+}
+
+export type GithubConfiguredResponses = {
+  /**
+   * GitHub App configuration status
+   */
+  200: GitHubConfiguredResponse
+}
+
+export type GithubConfiguredResponse = GithubConfiguredResponses[keyof GithubConfiguredResponses]
 
 export type AgendaWebhookData = {
   body?: never
@@ -9497,7 +9519,7 @@ export type SessionIndexData = {
   query?: {
     directory?: string
     scopeID?: string
-    category?: "project" | "home" | "channel" | "background"
+    category?: "project" | "home" | "channel" | "background" | "github"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number
