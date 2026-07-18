@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { hasSessionRenderableContent, sessionLoadView, shouldSyncSessionRoute } from "./session-load-state"
+import { hasSessionRenderableContent, sessionLoadView } from "./session-load-state"
 
 const idle = { phase: "idle" as const, generation: 0, hasSnapshot: false }
 
@@ -48,15 +48,6 @@ describe("session renderable content", () => {
         hasTransition: false,
       }),
     ).toBe(false)
-  })
-})
-
-describe("session route sync", () => {
-  test("waits for a new session's first-message transition before loading its initial snapshot", () => {
-    expect(shouldSyncSessionRoute({ sessionID: "session_new", connected: true, transitionPending: true })).toBe(false)
-    expect(shouldSyncSessionRoute({ sessionID: "session_new", connected: true, transitionPending: false })).toBe(true)
-    expect(shouldSyncSessionRoute({ sessionID: "session_new", connected: false, transitionPending: false })).toBe(false)
-    expect(shouldSyncSessionRoute({ sessionID: undefined, connected: true, transitionPending: false })).toBe(false)
   })
 })
 

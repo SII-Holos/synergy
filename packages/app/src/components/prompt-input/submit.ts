@@ -1,7 +1,8 @@
 import { type Accessor, Setter } from "solid-js"
 import { produce, type SetStoreFunction } from "solid-js/store"
 import { useNavigate, useParams } from "@solidjs/router"
-import { createSynergyClient, type Part } from "@ericsanchezok/synergy-sdk/client"
+import { createSynergyClient, type Message, type Part } from "@ericsanchezok/synergy-sdk/client"
+import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { getFilename } from "@ericsanchezok/synergy-util/path"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -12,8 +13,6 @@ import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
 import { usePrompt } from "@/context/prompt"
 import { useSessionTransition } from "@/context/session-transition"
-import { createOptimisticRootMessage } from "@/context/session-optimistic-message"
-import { compareByTimeThenId } from "@/context/session-message-window"
 import type {
   FileAttachmentPart,
   NoteAttachmentPart,
@@ -848,16 +847,17 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       promptDraft: draftSnapshot,
     }
 
-    const optimisticMessage = messageID
-      ? createOptimisticRootMessage({
+    const optimisticMessage: Message | undefined = messageID
+      ? {
           id: messageID,
           sessionID: activeSession.id,
-          created: Date.now(),
+          role: "user",
+          time: { created: Date.now() },
           agent,
           model,
           variant,
           metadata: userMessageMetadata,
-        })
+        }
       : undefined
 
     const setSyncStore =
@@ -871,10 +871,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           if (!messages) {
             draft.message[activeSession.id] = [optimisticMessage]
           } else {
-            const index = messages.findIndex((message) => message.id === messageID)
-            if (index === -1) messages.push(optimisticMessage)
-            else messages[index] = optimisticMessage
-            messages.sort(compareByTimeThenId)
+            const result = Binary.search(messages, messageID, (m) => m.id)
+            messages.splice(result.index, 0, optimisticMessage)
           }
           draft.part[messageID] = optimisticParts
             .filter((p) => !!p?.id)
@@ -890,8 +888,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         produce((draft) => {
           const messages = draft.message[activeSession.id]
           if (messages) {
-            const index = messages.findIndex((message) => message.id === messageID)
-            if (index !== -1) messages.splice(index, 1)
+            const result = Binary.search(messages, messageID, (m) => m.id)
+            if (result.found) messages.splice(result.index, 1)
           }
           delete draft.part[messageID]
         }),

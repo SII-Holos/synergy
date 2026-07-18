@@ -25,14 +25,6 @@ export function hasSessionRenderableContent(input: {
   return input.hasActiveMessage || input.timelineCount > 0 || input.pendingTimelineCount > 0 || input.hasTransition
 }
 
-export function shouldSyncSessionRoute(input: {
-  sessionID: string | undefined
-  connected: boolean
-  transitionPending: boolean
-}) {
-  return !!input.sessionID && input.connected && !input.transitionPending
-}
-
 export function sessionLoadView(input: SessionLoadViewInput): SessionLoadView {
   if (input.hasRenderableContent) return { type: "conversation" }
 
