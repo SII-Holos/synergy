@@ -20,7 +20,7 @@ type BuildInput = ProposalAnchor & {
   maxCost?: number
 }
 
-export function buildGitHubProposalLaunchInput(input: BuildInput): CortexTypes.LaunchInput {
+export function buildGitHubProposalLaunchInput(input: BuildInput): CortexTypes.ParsedLaunchInput {
   return {
     description: `Shadow proposal for ${input.eventType}`,
     prompt: [

@@ -26,7 +26,9 @@ function completedStructuredOutput(task: CortexTypes.Task) {
 }
 
 export namespace GitHubWorkflowLocator {
-  export function buildLaunchInput(input: Omit<LocateIssueInput, "scope" | "onTaskStarted">): CortexTypes.LaunchInput {
+  export function buildLaunchInput(
+    input: Omit<LocateIssueInput, "scope" | "onTaskStarted">,
+  ): CortexTypes.ParsedLaunchInput {
     return {
       description: `Locate root cause for ${input.observation.repository} issue #${input.observation.issueNumber ?? "unknown"}`,
       prompt: [

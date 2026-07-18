@@ -75,6 +75,14 @@ The Web composer uses the same intent layering:
 
 An explicit selector choice persists as `modelOverride`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
 
+### Model variants and reasoning options
+
+Model capability metadata from catalogs such as models.dev describes what a model advertises, but it does not prove that a service reusing another provider's AI SDK package accepts the same provider option semantics. Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
+
+`ProviderTransform.variants()` applies transport-specific rules for third-party services on Anthropic and OpenAI-compatible wiring. Kimi K3 models on direct Anthropic transport expose catalog-declared `low`, `high`, and `max` variants. `low` and `high` map to Anthropic `effort`; `max` omits `effort` because Kimi's service default is already `max` and the locked Anthropic SDK accepts only `low`, `medium`, or `high`. Selecting no variant likewise uses Kimi's server-side `max` default. Kimi K2.x models remain provider-managed and receive no automatic Anthropic thinking variants. MiniMax M2.x models on direct Anthropic transport likewise produce no variants because reasoning is always on. MiniMax M3 on direct Anthropic transport exposes only a `max` variant mapped to `thinking: { type: "adaptive" }`; without it, reasoning defaults to off. MiniMax models on direct OpenAI-compatible Chat transport receive no `reasoningEffort` variants because that endpoint does not support `reasoning_effort`.
+
+When a third-party transport case returns no automatic variants, a configured `role_variant` such as `max` is applied only if the resolved model exposes a same-named variant; otherwise the provider receives no generated option and uses its server-side reasoning default. User-defined model `variants` are merged after automatic defaults and can add or override named variants for individual models.
+
 ## Internal LLM Invocation Paths
 
 Not every model call belongs to a persisted conversation, but every product inference must use a deliberate lifecycle boundary.
@@ -204,12 +212,13 @@ The compaction job:
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
 3. trims oldest summary input if even the compaction model cannot accept the full history;
-4. persists a hidden compaction attempt with `includeInContext = false` so streamed output and failures remain auditable without affecting later prompts;
+4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
-6. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant as a terminal boundary with `summary = true`, `parentID = R.id`, and `rootID = R.id`;
-7. publishes `session.compacted` only after that commit.
+6. records provider or processor failures as `failed` and empty output as `empty`, leaving those terminal attempts hidden and outside model context;
+7. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant with attempt state `committed`, `summary = true`, `visible = true`, `includeInContext = true`, `parentID = R.id`, and `rootID = R.id`;
+8. publishes `session.compacted` only after that commit.
 
-The `summary` flag is the commit marker, not an in-progress placeholder. A failed or empty attempt stays hidden and excluded from model context, does not fulfill the request, and does not establish a filtering or pruning boundary.
+The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed and empty attempts stay hidden and excluded from model context, do not fulfill the request, and do not establish a filtering or pruning boundary.
 
 The compaction agent cannot use tools or continue the user's task. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 

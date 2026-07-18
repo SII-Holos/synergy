@@ -1803,12 +1803,14 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     },
   )
 
-  export async function resumePending(): Promise<void> {
-    await reconcileInterruptedCortexDelegations()
+  export async function resumePending(input?: { scopeID?: string }): Promise<void> {
+    await reconcileInterruptedCortexDelegations(input?.scopeID)
+    const { SessionRecovery } = await import("./recovery")
+    await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     const { Cortex } = await import("../cortex/manager")
-    await Cortex.reconcileParentNotifications()
+    await Cortex.reconcileParentNotifications(input?.scopeID)
 
-    const sessionIDs = await SessionManager.listPendingReply()
+    const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
       if (!session) continue
@@ -1843,8 +1845,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     }
   }
 
-  async function reconcileInterruptedCortexDelegations(): Promise<void> {
-    const sessionIDs = await SessionManager.listInterruptedCortexDelegations()
+  async function reconcileInterruptedCortexDelegations(scopeID?: string): Promise<void> {
+    const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
       if (!session?.cortex) continue
