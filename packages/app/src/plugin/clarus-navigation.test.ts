@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { pluginNav } from "@/locales/messages"
 import { listNavigation, getBuiltinNavigation } from "./registries/navigation-registry"
 import "./builtin-navigation"
 
@@ -8,7 +9,8 @@ describe("Clarus built-in navigation", () => {
     expect(entry).toBeDefined()
     expect(entry!.id).toBe("clarus")
     expect(entry!.navigationId).toBe("clarus")
-    expect(entry!.label).toBe("Clarus")
+    expect(entry!.label).toBe(pluginNav.clarus.id)
+    expect(entry!.labelDescriptor).toBe(pluginNav.clarus)
     expect(entry!.path).toBe("/clarus")
     expect(entry!.placement).toBe("sidebar")
   })
