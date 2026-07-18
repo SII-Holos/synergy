@@ -24,7 +24,7 @@ Use `synergy config path` to print the active global roots.
 
 | File                   | Domain      | Owned configuration                                                                                                         |
 | ---------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `00-general.jsonc`     | General     | schema, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                                    |
+| `00-general.jsonc`     | General     | schema, UI locale, theme, keybinds, toast, log level, snapshot, username, layout, embedding, rerank                         |
 | `10-models.jsonc`      | Models      | default and role models, role variants, quick switcher                                                                      |
 | `20-providers.jsonc`   | Providers   | provider definitions, catalog, enabled/disabled providers                                                                   |
 | `30-library.jsonc`     | Library     | Memory, Experience, learning, recall, and autonomy settings                                                                 |
@@ -57,6 +57,20 @@ From lowest to highest precedence, a scoped config is assembled from:
 Objects merge deeply. Later scalar values win. `plugin`, `instructions`, and `project_doc_fallback_filenames` are combined and deduplicated rather than simply replaced; plugin specs with the same identity resolve to the later definition.
 
 Remote well-known config is cached for ten minutes and acts only as a base: local config can override it. A failed remote fetch is skipped with a warning.
+
+## Interface language
+
+`locale` is a global General preference with three accepted values:
+
+```jsonc
+{
+  "locale": "system", // system | en | zh-CN
+}
+```
+
+`system` is the default when the field is absent. A Chinese system or browser language resolves to Simplified Chinese; unsupported system languages resolve to English. The preference is installation-wide user interface state and does not follow project Scope overrides. It changes Web and Desktop product chrome only; it does not select the language used by agents or model replies.
+
+The frontend may mirror the value locally to choose a catalog before the server responds, but `00-general.jsonc` remains authoritative after global configuration synchronization. Locale changes are client-side and do not restart the server or providers.
 
 ## JSONC, Schema, and References
 
@@ -118,6 +132,14 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
 Static provider catalogs and live account-backed model discovery use separate cache entries. Live discovery can expose account-visible model slugs that are not present in a static catalog. Authentication health is driven by real provider requests rather than startup or periodic probes.
+
+### Model variants and role variants
+
+Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
+
+`ProviderTransform.variants()` applies transport-specific rules for third-party services on Anthropic and OpenAI-compatible wiring. Kimi K3 models on direct Anthropic transport expose catalog-declared `low`, `high`, and `max` variants. `low` and `high` map to Anthropic `effort`; `max` omits `effort` because Kimi's service default is already `max` and the locked Anthropic SDK accepts only `low`, `medium`, or `high`. Selecting no variant likewise uses Kimi's server-side `max` default. Kimi K2.x models remain provider-managed and receive no automatic Anthropic thinking variants. MiniMax M2.x models on direct Anthropic transport likewise produce no variants because reasoning is always on. MiniMax M3 on direct Anthropic transport exposes only a `max` variant mapped to `thinking: { type: "adaptive" }`; without it, reasoning defaults to off. MiniMax models on direct OpenAI-compatible Chat transport receive no `reasoningEffort` variants because that endpoint does not support `reasoning_effort`.
+
+`role_variant` selects a variant name for a model role only when the resolved model exposes that same variant. If a provider-managed reasoning model exposes no automatic variants, `role_variant: { "thinking": "max" }` does not synthesize provider options; the request uses the provider's default reasoning behavior. Explicit model `variants` configured under a provider model are merged after automatic defaults, so they can add or override named variants for that model.
 
 ## Control Profiles and Sandbox
 
@@ -296,16 +318,16 @@ Domain files are the durable configuration contract. Environment variables are p
 
 ### Experimental and diagnostic escape hatches
 
-| Variable                             | Effect                                                                            |
-| ------------------------------------ | --------------------------------------------------------------------------------- |
-| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it              |
-| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                     |
-| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                  |
-| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                         |
-| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped session-message cache and read storage directly            |
-| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare cached messages with disk and fall back when they diverge                 |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the message-cache byte budget; the default is 256 MiB                         |
-| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand            |
-| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two |
+| Variable                             | Effect                                                                                       |
+| ------------------------------------ | -------------------------------------------------------------------------------------------- |
+| `SYNERGY_EXPERIMENTAL=1`             | Enable the grouped experimental behaviors that explicitly consult it                         |
+| `SYNERGY_EXPERIMENTAL_OXFMT=1`       | Allow the experimental `oxfmt` formatter path                                                |
+| `SYNERGY_EXPERIMENTAL_LSP_TY=1`      | Prefer the experimental `ty` Python language server over Pyright                             |
+| `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                    |
+| `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read |
+| `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge            |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate model-working-set cache byte budget; the default is 256 MiB                |
+| `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                       |
+| `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two            |
 
 Experimental and diagnostic variables are not persisted preferences. Use them to isolate behavior, then fix or configure the owning subsystem instead of relying on them as permanent compatibility layers. Performance-specific environment variables are listed in [Performance Observability](../operations/performance-observability.md); Desktop build/release variables are listed in [Desktop Release](../operations/desktop-release.md).

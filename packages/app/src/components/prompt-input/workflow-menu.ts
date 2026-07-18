@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from "@lingui/core"
+import { PI } from "./prompt-input-i18n"
+
 export type LatticeWorkflowMenuAction = "open" | "cancel" | "none"
 
 export type LatticeWorkflowMenuStateInput = {
@@ -11,11 +14,9 @@ export type LatticeWorkflowMenuStateInput = {
 export type LatticeWorkflowMenuState = {
   action: LatticeWorkflowMenuAction
   ariaDisabled: boolean
-  description: string
-  title?: string
+  description: MessageDescriptor
+  title?: MessageDescriptor
 }
-
-const stopSessionTitle = "Stop the session before changing workflow modes."
 
 export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateInput): LatticeWorkflowMenuState {
   if (input.latticeActive) {
@@ -23,16 +24,16 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
       return {
         action: "none",
         ariaDisabled: true,
-        description: "Recursive Blueprint run active",
-        title: stopSessionTitle,
+        description: PI.wmRecursiveBpActive,
+        title: PI.wmStopSessionBeforeWorkflow,
       }
     }
 
     return {
       action: "cancel",
       ariaDisabled: false,
-      description: "Click to exit Lattice",
-      title: "Exit Lattice",
+      description: PI.wmClickExitLattice,
+      title: PI.wmExitLattice,
     }
   }
 
@@ -40,8 +41,8 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: "Run a goal as a recursive Blueprint",
-      title: "Lattice is unavailable while a Blueprint is equipped",
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailableBp,
     }
   }
 
@@ -49,8 +50,8 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: "Run a goal as a recursive Blueprint",
-      title: "Lattice is unavailable while Plan is active",
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailablePlan,
     }
   }
 
@@ -58,14 +59,14 @@ export function resolveLatticeWorkflowMenuState(input: LatticeWorkflowMenuStateI
     return {
       action: "none",
       ariaDisabled: true,
-      description: "Run a goal as a recursive Blueprint",
-      title: "Lattice is unavailable while Light Loop is active",
+      description: PI.wmRunGoal,
+      title: PI.wmLatticeUnavailableLl,
     }
   }
 
   return {
     action: "open",
     ariaDisabled: false,
-    description: "Run a goal as a recursive Blueprint",
+    description: PI.wmRunGoal,
   }
 }

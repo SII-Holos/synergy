@@ -1,5 +1,7 @@
 import { For, Show, createMemo } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type AccessibilityElement } from "./browser-store"
+import { elementsPanel as P } from "@/locales/messages"
 
 function flatten(elements: AccessibilityElement[], depth = 0): Array<AccessibilityElement & { depth: number }> {
   const rows: Array<AccessibilityElement & { depth: number }> = []
@@ -12,6 +14,7 @@ function flatten(elements: AccessibilityElement[], depth = 0): Array<Accessibili
 
 export function ElementsPanel() {
   const { pageId: currentPageId, elements } = useBrowser()
+  const lingui = useLingui()
   const rows = createMemo(() => {
     const pageId = currentPageId()
     if (!pageId) return []
@@ -24,7 +27,7 @@ export function ElementsPanel() {
         when={rows().length > 0}
         fallback={
           <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
-            Request a snapshot to inspect elements
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
           </div>
         }
       >

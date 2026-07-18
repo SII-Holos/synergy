@@ -15,6 +15,8 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
 import { SessionTransitionCard } from "./session-transition-card"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -34,6 +36,9 @@ export function SessionConversation(props: {
   onSetTurnStart: (start: number) => void
   historyMore: Accessor<boolean>
   historyLoading: Accessor<boolean>
+  historyMode: Accessor<"latest" | "history">
+  historyPendingLatest: Accessor<boolean>
+  onReturnLatest: () => void
   onLoadMore: () => void
   scrolledUp: Accessor<boolean>
   onScrolledUpChange: (val: boolean) => void
@@ -51,6 +56,8 @@ export function SessionConversation(props: {
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <ConversationViewport
@@ -93,21 +100,34 @@ export function SessionConversation(props: {
             class="text-12-medium opacity-50"
             onClick={() => props.onSetTurnStart(Math.max(0, props.turnStart - props.turnBatch))}
           >
-            Render earlier messages
+            {_(S.convRenderEarlier)}
           </Button>
         </div>
       </Show>
-      <Show when={props.historyMore()}>
-        <div class="w-full flex justify-center">
-          <Button
-            variant="ghost"
-            size="large"
-            class="text-12-medium opacity-50"
-            disabled={props.historyLoading()}
-            onClick={props.onLoadMore}
-          >
-            {props.historyLoading() ? "Loading earlier messages..." : "Load earlier messages"}
-          </Button>
+      <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
+        <div class="w-full flex flex-wrap justify-center gap-2">
+          <Show when={props.historyMore()}>
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
+          </Show>
+          <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
+            <Button
+              variant="secondary"
+              size="large"
+              class="text-12-medium"
+              disabled={props.historyLoading()}
+              onClick={props.onReturnLatest}
+            >
+              {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
+            </Button>
+          </Show>
         </div>
       </Show>
       <For each={props.timeline()}>
@@ -192,51 +212,17 @@ export function SessionConversation(props: {
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
               const isTask = () => item.mode === "task"
-              const guideLabel = () => (item.mode === "steer" ? "Queue" : "Guide")
+              const guideLabel = () => (item.mode === "steer" ? _(S.convQueue) : _(S.convGuide))
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
                   ? (item.message!.parts[0] as { text: string }).text
-                  : (item.summary?.title ?? "Pending…")
+                  : (item.summary?.title ?? _(S.convPending))
               return (
-                <div
-                  data-slot="pending-timeline-item"
-                  data-mode={item.mode}
-                  data-frozen={props.rollbackActive === true}
-                  class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
-                >
-                  <Show
-                    when={props.rollbackActive}
-                    fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}
-                  >
-                    <span
-                      class="text-xs opacity-70"
-                      title="Delivery paused during rollback. Will resume on redo or new task."
-                    >
-                      <Icon name={getSemanticIcon("agenda.main")} size="small" /> Paused
-                    </span>
-                  </Show>
-                  <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
-                    <span class="text-xs">{label()}</span>
-                  </Show>
-                  <div class="ml-auto flex items-center gap-1">
-                    <button
-                      type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title={item.mode === "steer" ? "Move back to queue" : "Guide current run"}
-                      onClick={() => props.onPendingGuide?.(item)}
-                    >
-                      <Icon name={item.mode === "steer" ? "corner-down-left" : "zap"} size="small" />
-                      <span>{guideLabel()}</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title="Remove pending message"
-                      onClick={() => props.onPendingRemove?.(item)}
-                    >
-                      <Icon name={getSemanticIcon("action.close")} size="small" />
-                      <span>Withdraw</span>
-                    </button>
+                <div class="w-full flex items-center gap-4" style={{ animation: "fadeUp 0.3s ease-out both" }}>
+                  <div class="w-full px-3 md:px-1 max-w-[60rem] md:mx-auto flex items-center gap-6">
+                    <div class="w-full flex items-center gap-6 px-2 rounded-full">
+                      <div class="w-full min-w-0 text-14-regular line-clamp-2 text-text-weak">{label()}</div>
+                    </div>
                   </div>
                 </div>
               )
@@ -244,7 +230,6 @@ export function SessionConversation(props: {
           </For>
         </div>
       </Show>
-      <MessageSlotOutlet slot="message.footer" sessionId={props.sessionID} />
     </ConversationViewport>
   )
 }

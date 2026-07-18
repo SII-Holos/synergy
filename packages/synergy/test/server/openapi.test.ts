@@ -29,6 +29,25 @@ describe("OpenAPI spec generation", () => {
     expect(path!.get!.operationId).toBe("session.index")
   })
 
+  test("includes cursor-paged session messages with a stable operation ID", async () => {
+    const spec = await Server.openapi()
+    const operation = spec.paths["/session/{sessionID}/message/page"]?.get
+    expect(operation?.operationId).toBe("session.messagePage")
+    expect(operation?.parameters?.map((item) => ("name" in item ? item.name : undefined))).toEqual([
+      "directory",
+      "scopeID",
+      "sessionID",
+      "cursor",
+      "limit",
+    ])
+
+    const response = operation?.responses?.["200"]
+    const schema = JSON.stringify(
+      response && "content" in response ? response.content?.["application/json"]?.schema : undefined,
+    )
+    expect(schema).toContain("SessionMessagePage")
+  })
+
   test("/session/index parameters include scopeID", async () => {
     const spec = await Server.openapi()
     const path = spec.paths["/session/index"]

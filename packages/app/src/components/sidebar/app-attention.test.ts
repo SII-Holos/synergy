@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test"
+import { setupI18n, type MessageDescriptor } from "@lingui/core"
 import type { ProviderAuthHealth } from "@ericsanchezok/synergy-sdk/client"
 import { selectAppAttention } from "./app-attention"
 
+const i18n = setupI18n({ locale: "en" })
+
+function msg(d: MessageDescriptor): string {
+  return i18n._(d)
+}
+
 const hiddenUpdate = {
   visible: false,
-  title: "",
-  detail: "",
+  title: { id: "test.productUpdate.hidden.title", message: "Product update available" },
+  detail: { id: "test.productUpdate.hidden.detail", message: "A new version is ready to install." },
   actionLabel: null,
   action: null,
   progress: null,
@@ -23,7 +30,7 @@ describe("app attention selector", () => {
       productUpdate: {
         ...hiddenUpdate,
         visible: true,
-        title: "Downloading Synergy",
+        title: { id: "test.productUpdate.active.title", message: "Downloading Synergy" },
         tone: "active",
         progress: 40,
       },
@@ -37,7 +44,13 @@ describe("app attention selector", () => {
   test("authentication is above update failures and ready updates", () => {
     for (const tone of ["error", "ready"] as const) {
       const notice = selectAppAttention({
-        productUpdate: { ...hiddenUpdate, visible: true, title: "Update", tone, action: "check" },
+        productUpdate: {
+          ...hiddenUpdate,
+          visible: true,
+          title: { id: "test.productUpdate.ready.title", message: "Update" },
+          tone,
+          action: "check",
+        },
         authHealth: { "openai-codex": auth("openai-codex") },
         providerNames: { "openai-codex": "OpenAI Codex" },
       })
@@ -51,7 +64,9 @@ describe("app attention selector", () => {
       authHealth: { github: auth("github"), anthropic: auth("anthropic"), "openai-codex": auth("openai-codex") },
       providerNames: {},
     })
-    expect(notice?.title).toBe("3 providers need attention")
+    expect(msg(notice!.title)).toBe("3 providers need attention")
+    expect(notice!.title.message).toContain("{count}")
+    expect(notice!.title.values).toEqual({ count: 3 })
     expect(notice?.action).toEqual({ type: "open-settings", section: "providers" })
   })
 
@@ -61,6 +76,9 @@ describe("app attention selector", () => {
       authHealth: { "openai-codex": auth("openai-codex") },
       providerNames: { "openai-codex": "OpenAI Codex" },
     })
+    expect(codex!.title.message).toContain("{providerName}")
+    expect(codex!.title.values).toEqual({ providerName: "OpenAI Codex" })
+    expect(msg(codex!.title)).toBe("OpenAI Codex needs sign-in")
     expect(codex?.action).toEqual({
       type: "open-settings",
       section: "providers",

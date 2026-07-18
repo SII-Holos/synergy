@@ -43,6 +43,8 @@ export function resolveBlueprintSlotDisplay(input: {
   }
 }
 
+export const BLUEPRINT_ERROR_DEFAULT = "Request failed"
+
 export function blueprintRequestErrorMessage(err: unknown) {
   if (err && typeof err === "object") {
     const data = (err as { data?: { message?: unknown } }).data
@@ -52,5 +54,5 @@ export function blueprintRequestErrorMessage(err: unknown) {
     if (typeof message === "string" && message.length > 0) return message
   }
   if (err instanceof Error && err.message) return err.message
-  return "Request failed"
+  return BLUEPRINT_ERROR_DEFAULT
 }
