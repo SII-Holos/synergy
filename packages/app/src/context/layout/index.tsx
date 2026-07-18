@@ -893,6 +893,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      const request = globalSync.captureResourceRequest(scopeKey, sessionID, "message")
       return retry(() =>
         globalSdk.client.session.messagePage({
           ...scopeRequest(scopeKey),
@@ -902,15 +903,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       )
         .then((response) => {
           if (prefetchToken.value !== token || !response.data) return
-          const plan = planMessagePageApply({ page: response.data })
-          batch(() => {
-            setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
-            setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
-            for (const [messageID, parts] of Object.entries(plan.parts)) {
-              setChildStore("part", messageID, reconcile(parts, { key: "id" }))
-            }
+          globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
+            const plan = planMessagePageApply({ page: response.data! })
+            batch(() => {
+              setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+              setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
+              for (const [messageID, parts] of Object.entries(plan.parts)) {
+                setChildStore("part", messageID, reconcile(parts, { key: "id" }))
+              }
+            })
+            globalSync.touchMessageBucket(scopeKey, sessionID)
           })
-          globalSync.touchMessageBucket(scopeKey, sessionID)
         })
         .catch(() => undefined)
     }
