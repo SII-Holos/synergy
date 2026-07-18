@@ -6,7 +6,8 @@ const builtinNavigation: Array<Parameters<typeof registerNavigation>[0]> = [
   {
     id: "clarus",
     navigationId: "clarus",
-    label: "Clarus",
+    label: pluginNav.clarus.id,
+    labelDescriptor: pluginNav.clarus,
     iconToken: "clarus.main",
     placement: "sidebar",
     path: "/clarus",

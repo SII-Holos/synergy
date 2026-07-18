@@ -3,13 +3,23 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useGlobalNavigateToSession } from "@/composables/use-global-navigate-to-session"
 import { useClarus } from "@/context/clarus"
-import { activateTaskSession, buildClarusProjectHierarchy, EMPTY_PROJECT_TASKS_TEXT } from "./hierarchy"
+import { useLingui } from "@lingui/solid"
+import { clarus as S } from "@/locales/messages"
+import {
+  activateTaskSession,
+  buildClarusProjectHierarchy,
+  hierarchyProjectKey,
+  taskStatusLabel,
+  type TaskLike,
+} from "./hierarchy"
+import { handleDisclosureKeyDown } from "./keyboard"
 
 export function ClarusSidebarSection(props: { activeSessionID?: string }) {
   const { store, selectProject, selectTask } = useClarus()
+  const { _ } = useLingui()
   const navigateToSession = useGlobalNavigateToSession()
   const [open, setOpen] = createSignal(true)
-  const [expandedProjectId, setExpandedProjectId] = createSignal<string>()
+  const [expandedProjectKey, setExpandedProjectKey] = createSignal<string>()
 
   const hierarchy = createMemo(() => {
     const snapshot = store.snapshot
@@ -23,23 +33,34 @@ export function ClarusSidebarSection(props: { activeSessionID?: string }) {
     return [...value.activeProjects, ...value.inactiveProjectsWithHistory]
   })
 
-  const openTask = (task: { taskId: string; sessionID: string; status: string }) =>
+  const openTask = (task: Pick<TaskLike, "agentId" | "projectId" | "taskId" | "sessionID" | "status">) =>
     activateTaskSession(task, { selectTask, navigateToSession })
 
   return (
     <div class="sb-clarus sb-root-section">
-      <div class="sb-projects-header" onClick={() => setOpen((value) => !value)} role="button" tabindex="0">
-        <span class="sb-section-title">Clarus</span>
+      <div
+        class="sb-projects-header"
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => handleDisclosureKeyDown(event, open(), setOpen)}
+        role="button"
+        tabindex="0"
+      >
+        <span class="sb-section-title">{_(S.title)}</span>
         <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
       </div>
       <Show when={open()}>
-        <Show when={store.snapshot} fallback={<div class="sb-section-empty">Loading Clarus…</div>}>
-          <Show when={projects().length > 0} fallback={<div class="sb-section-empty">No Clarus projects</div>}>
+        <Show when={store.snapshot} fallback={<div class="sb-section-empty">{_(S.loading)}</div>}>
+          <Show when={projects().length > 0} fallback={<div class="sb-section-empty">{_(S.noClarusProjects)}</div>}>
             <For each={projects()}>
               {(project) => {
-                const expanded = () => expandedProjectId() === project.projectId
+                const projectKey = hierarchyProjectKey(project)
+                const expanded = () => expandedProjectKey() === projectKey
                 return (
-                  <div class="sb-project-group" data-clarus-project-id={project.projectId}>
+                  <div
+                    class="sb-project-group"
+                    data-clarus-agent-id={project.agentId}
+                    data-clarus-project-id={project.projectId}
+                  >
                     <div
                       classList={{
                         "sb-project-row": true,
@@ -49,11 +70,11 @@ export function ClarusSidebarSection(props: { activeSessionID?: string }) {
                       <button
                         type="button"
                         class="sb-project-chevron-btn"
-                        aria-label={expanded() ? "Collapse Clarus project" : "Expand Clarus project"}
+                        aria-label={_(expanded() ? S.collapseProject : S.expandProject)}
                         aria-expanded={expanded()}
                         onClick={() => {
-                          const next = expanded() ? undefined : project.projectId
-                          setExpandedProjectId(next)
+                          const next = expanded() ? undefined : projectKey
+                          setExpandedProjectKey(next)
                           if (next) selectProject(next)
                         }}
                       >
@@ -63,8 +84,8 @@ export function ClarusSidebarSection(props: { activeSessionID?: string }) {
                         type="button"
                         class="sb-project-body"
                         onClick={() => {
-                          const next = expanded() ? undefined : project.projectId
-                          setExpandedProjectId(next)
+                          const next = expanded() ? undefined : projectKey
+                          setExpandedProjectKey(next)
                           if (next) selectProject(next)
                         }}
                       >
@@ -75,9 +96,7 @@ export function ClarusSidebarSection(props: { activeSessionID?: string }) {
                     <Show when={expanded()}>
                       <Show
                         when={project.tasks.length > 0}
-                        fallback={
-                          <div class="sb-section-empty sb-clarus-project-empty">{EMPTY_PROJECT_TASKS_TEXT}</div>
-                        }
+                        fallback={<div class="sb-section-empty sb-clarus-project-empty">{_(S.noTasks)}</div>}
                       >
                         <div class="sb-sessions">
                           <For each={project.tasks}>
@@ -95,7 +114,9 @@ export function ClarusSidebarSection(props: { activeSessionID?: string }) {
                                   <Icon name={getSemanticIcon("clarus.task")} size="small" class="sb-session-icon" />
                                 </span>
                                 <span class="sb-session-title">{task.title}</span>
-                                <span class="sb-clarus-task-status">{task.status}</span>
+                                <span class="sb-clarus-task-status">
+                                  {taskStatusLabel(task.status, task.resultState, _)}
+                                </span>
                               </button>
                             )}
                           </For>

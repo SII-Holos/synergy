@@ -59,6 +59,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   blueprint_loop_approve: d("tool.title.approve-blueprint-loop", "Approve BlueprintLoop"),
   blueprint_loop_reject: d("tool.title.reject-blueprint-loop", "Reject BlueprintLoop"),
   batch: d("tool.title.batch", "Batch"),
+  clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
 
   // Sessions
   session_list: d("tool.title.sessions", "Sessions"),
@@ -362,6 +363,8 @@ export const TOOL_MISC_DESC = {
   files: d("tool.misc.files", "files"),
   ready: d("tool.misc.ready", "Ready"),
   updated: d("tool.misc.updated", "updated"),
+  completed: d("tool.misc.completed", "Completed"),
+  failed: d("tool.misc.failed", "Failed"),
   visibleBackgroundTasks: d("tool.misc.visible-background-tasks", "Visible background tasks"),
   requested: d("tool.misc.requested", "Requested"),
   executed: d("tool.misc.executed", "Executed"),

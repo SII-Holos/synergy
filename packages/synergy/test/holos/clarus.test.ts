@@ -453,6 +453,56 @@ describe("Clarus adapter integration", () => {
     })
   })
 
+  test("preserves retry lineage on assigned-task semantic events", async () => {
+    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const events: Array<Record<string, unknown>> = []
+    let captureObserver: ((message: NativeMessage) => void) | null = null
+    const tunnel: NativeTunnelPort = {
+      registerNativeObserver: (handler) => {
+        captureObserver = handler
+        return () => {
+          captureObserver = null
+        }
+      },
+      registerConnectionObserver: () => () => {},
+      sendNativeRequest: () => ({ requestID: "unused", response: Promise.resolve({} as NativeMessage) }),
+    }
+    const port = createClarusAgentTunnelAdapter(tunnel)
+    port.registerEventHandler((event) => {
+      events.push(event as unknown as Record<string, unknown>)
+    })
+
+    captureObserver!({
+      type: "clarus.runtime.task.assigned",
+      requestID: null,
+      meta: {},
+      payload: {
+        run_id: "run-1",
+        project_id: "project-1",
+        task_id: "task-2",
+        phase: "execute",
+        subtask_id: "subtask-1",
+        attempt: 2,
+        attempt_mode: "retry",
+        retry_of_task_id: "task-1",
+        deadline_at: null,
+      },
+      caller: null,
+      agentID: "agent-1",
+      sessionID: "session-1",
+      generation: 1,
+      epoch: 1,
+    })
+
+    await waitFor(() => events.length === 1)
+    expect(events[0]).toMatchObject({
+      kind: "known",
+      type: "runtimeTaskAssigned",
+      attemptMode: "retry",
+      retryOfTaskID: "task-1",
+    })
+  })
+
   test("adapter unsubscribe returns functions", async () => {
     const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
     const tunnel: NativeTunnelPort = {
@@ -569,6 +619,52 @@ describe("Clarus adapter integration", () => {
 // ═════════════════════════════════════════════════════════════════════════
 
 describe("HolosProvider native tunnel", () => {
+  test("classifies requests that never leave the process as not dispatched", async () => {
+    const disconnected = new HolosProvider(createRuntimeConnection())
+    let notConnectedFailure: unknown
+    try {
+      disconnected.sendNativeRequest({
+        type: "clarus.project.subscribe",
+        payload: {},
+        requestID: "native-not-connected",
+        expectedResponseType: "clarus.project.subscribed",
+      })
+    } catch (error) {
+      notConnectedFailure = error
+    }
+    expect(notConnectedFailure).toEqual({
+      disposition: "not_dispatched",
+      requestID: "native-not-connected",
+      code: "NOT_CONNECTED",
+      message: "Holos Agent Tunnel is not connected",
+    })
+
+    const connection = createRuntimeConnection()
+    const { provider, socket } = await connectProvider(connection)
+    const sentBeforeAbort = socket.sent.length
+    const aborted = new AbortController()
+    aborted.abort()
+    let abortedFailure: unknown
+    try {
+      provider.sendNativeRequest({
+        type: "clarus.project.subscribe",
+        payload: {},
+        requestID: "native-aborted",
+        expectedResponseType: "clarus.project.subscribed",
+        signal: aborted.signal,
+      })
+    } catch (error) {
+      abortedFailure = error
+    }
+    expect(abortedFailure).toEqual({
+      disposition: "not_dispatched",
+      requestID: "native-aborted",
+      code: "ABORTED",
+      message: "Request aborted before dispatch",
+    })
+    expect(socket.sent).toHaveLength(sentBeforeAbort)
+  })
+
   test("registers native correlation before a synchronous socket response", async () => {
     const connection = createRuntimeConnection()
     const { provider, socket } = await connectProvider(connection)

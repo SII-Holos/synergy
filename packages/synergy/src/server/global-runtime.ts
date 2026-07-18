@@ -65,6 +65,7 @@ export namespace GlobalRuntime {
 
   export async function stop() {
     Agenda.stop()
+    ClarusRuntime.shutdown()
     ClarusRuntime.configureRest(null)
     await Promise.all([
       ScopeContext.provide({

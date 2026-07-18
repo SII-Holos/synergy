@@ -46,6 +46,7 @@ export type RecordTaskResultInput = ClarusRequestOptions & {
 export type ClarusRequestResult<T> = { requestID: string; response: Promise<T> }
 
 export type ClarusRequestFailure =
+  | { disposition: "not_dispatched"; requestID: string; code: string; message: string }
   | { disposition: "rejected"; requestID: string; code: string; message: string }
   | {
       disposition: "ambiguous"
@@ -60,13 +61,13 @@ export function parseClarusRequestFailure(error: unknown): ClarusRequestFailure 
   const requestID = error.requestID
   const message = error.message
   if (
-    (disposition !== "rejected" && disposition !== "ambiguous") ||
+    (disposition !== "not_dispatched" && disposition !== "rejected" && disposition !== "ambiguous") ||
     typeof requestID !== "string" ||
     typeof message !== "string"
   ) {
     return undefined
   }
-  if (disposition === "rejected" && typeof error.code === "string") {
+  if ((disposition === "not_dispatched" || disposition === "rejected") && typeof error.code === "string") {
     return { disposition, requestID, code: error.code, message }
   }
   if (
@@ -121,6 +122,8 @@ export type RuntimeTaskAssignedEvent = {
   phase: string
   subtaskID: string
   attempt: number
+  attemptMode?: string
+  retryOfTaskID?: string
   deadlineAt: string | null
   goal?: string | null
   instructions?: string | null

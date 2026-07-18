@@ -23494,7 +23494,7 @@
           },
           "disposition": {
             "type": "string",
-            "enum": ["rejected", "ambiguous"]
+            "enum": ["not_dispatched", "rejected", "ambiguous"]
           },
           "reason": {
             "type": "string",
@@ -23871,6 +23871,9 @@
       "ClarusNavigationProjectDto": {
         "type": "object",
         "properties": {
+          "agentId": {
+            "type": "string"
+          },
           "projectId": {
             "type": "string"
           },
@@ -23906,11 +23909,14 @@
             "type": "number"
           }
         },
-        "required": ["projectId", "activeGroup", "createdAt", "updatedAt"]
+        "required": ["agentId", "projectId", "activeGroup", "createdAt", "updatedAt"]
       },
       "ClarusNavigationTaskDto": {
         "type": "object",
         "properties": {
+          "agentId": {
+            "type": "string"
+          },
           "taskId": {
             "type": "string"
           },
@@ -23968,6 +23974,7 @@
           }
         },
         "required": [
+          "agentId",
           "taskId",
           "projectId",
           "sessionID",

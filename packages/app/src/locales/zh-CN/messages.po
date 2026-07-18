@@ -1114,6 +1114,150 @@ msgstr "宽"
 msgid "app.cancel"
 msgstr "取消"
 
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.action.refresh"
+msgstr "刷新"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.action.retry"
+msgstr "重试"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.connected"
+msgstr "已连接"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.connecting"
+msgstr "正在连接…"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.disabled"
+msgstr "已禁用"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.reconnecting"
+msgstr "正在重新连接"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.signInRequired"
+msgstr "需要登录"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.syncFailed"
+msgstr "同步失败"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.navigation"
+msgstr "暂无导航数据"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.projects"
+msgstr "暂无可用项目"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.sidebarProjects"
+msgstr "暂无 Clarus 项目"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.tasks"
+msgstr "暂无任务"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.error.loadFailed"
+msgstr "Clarus 数据加载失败"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.freshness.stale"
+msgstr "（非最新）"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.group.active"
+msgstr "活跃"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.group.history"
+msgstr "历史"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.loading"
+msgstr "正在加载 Clarus…"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.project.collapse"
+msgstr "折叠 Clarus 项目"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.project.expand"
+msgstr "展开 Clarus 项目"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.acknowledged"
+msgstr "已确认"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.ambiguous"
+msgstr "不明确"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.dispatched"
+msgstr "已发送"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.localOnly"
+msgstr "仅本地"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.notDispatched"
+msgstr "未发送"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.prepared"
+msgstr "已准备"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.rejected"
+msgstr "已拒绝"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.subtitle"
+msgstr "原生项目和任务导航"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.cancelled"
+msgstr "已取消"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.expired"
+msgstr "已过期"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.failed"
+msgstr "失败"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.needsAttention"
+msgstr "需要处理"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.running"
+msgstr "运行中"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.submitted"
+msgstr "已提交"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.submitting"
+msgstr "提交中"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.waiting"
+msgstr "等待中"
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.title"
+msgstr "Clarus"
+
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.command.category.suggested"
@@ -4342,6 +4486,10 @@ msgstr "未知"
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.agenda"
 msgstr "日程"
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.clarus"
+msgstr "Clarus"
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.library"
@@ -15232,8 +15380,16 @@ msgid "tool.misc.changed-fields"
 msgstr "已更改字段"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.completed"
+msgstr "已完成"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
 msgstr "已执行"
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.failed"
+msgstr "失败"
 
 #. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.files"
@@ -15350,6 +15506,10 @@ msgstr "取消日程"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
 msgstr "认领"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
+msgstr "提交 Clarus 结果"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"

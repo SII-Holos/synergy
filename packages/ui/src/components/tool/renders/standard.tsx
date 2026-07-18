@@ -247,8 +247,8 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "send",
-          title: "Submit Clarus Result",
-          subtitle: props.input.success === false ? "Failed" : "Completed",
+          title: TOOL_TITLE_DESC["clarus_submit_task_result"],
+          subtitle: props.input.success === false ? TOOL_MISC_DESC.failed : TOOL_MISC_DESC.completed,
           tags: props.metadata?.taskID ? [{ label: props.metadata.taskID as string }] : undefined,
         }}
       >

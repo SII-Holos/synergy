@@ -27,6 +27,7 @@ import type {
 
 export function makeNavTask(overrides: Partial<ClarusNavigationTaskDto> = {}): ClarusNavigationTaskDto {
   return {
+    agentId: "agent-1",
     taskId: "task-1",
     projectId: "proj-1",
     sessionID: "ses-1",
@@ -56,6 +57,7 @@ export function makeNavTasks(n: number, prefix = "task"): ClarusNavigationTaskDt
 
 export function makeNavProjectDto(overrides: Partial<ClarusNavigationProjectDto> = {}): ClarusNavigationProjectDto {
   return {
+    agentId: "agent-1",
     projectId: "proj-1",
     projectName: "Test Project",
     projectSlug: "test-project",
@@ -73,6 +75,7 @@ export function makeClarusProject(
   const { tasks, activeGroup, ...rest } = overrides
   const active = activeGroup ?? true
   return {
+    agentId: "agent-1",
     projectId: "proj-1",
     projectName: "Test Project",
     projectSlug: "test-project",

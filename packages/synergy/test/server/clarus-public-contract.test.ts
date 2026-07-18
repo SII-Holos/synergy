@@ -47,6 +47,7 @@ function homeContext(fn: () => Promise<void>): Promise<void> {
 // ── Fixtures ─────────────────────────────────────────────────
 
 const TEST_AGENT = "test-agent-pub-001"
+const TEST_AGENT_SECONDARY = "test-agent-pub-002"
 
 const TEST_PROJECT_ID = "pub-proj-001"
 
@@ -117,8 +118,13 @@ async function seedTaskBinding(
   return binding
 }
 
+type NavigationBody = {
+  projects: Array<Record<string, unknown>>
+  tasks: Array<Record<string, unknown>>
+}
+
 async function cleanupSeededData() {
-  for (const agentId of [TEST_AGENT, "agent-disabled"]) {
+  for (const agentId of [TEST_AGENT, TEST_AGENT_SECONDARY, "agent-disabled"]) {
     const projectRoot = StoragePath.clarusAgentProjectRoot(agentId)
     const projectKeys = await Storage.scan(projectRoot).catch(() => [] as string[])
     for (const key of projectKeys) {
@@ -251,6 +257,52 @@ describe("GET /global/clarus/navigation — public navigation snapshot", () => {
 
       // Inactive without history should be omitted
       expect(inactiveProjectIds).not.toContain("proj-inactive-no-history")
+    })
+  })
+
+  test("preserves composite agent/project/task identity across colliding IDs", async () => {
+    const projectId = "shared-project-id"
+    const taskId = "shared-task-id"
+    await seedProjectBinding(TEST_AGENT, projectId, { projectName: "Primary project" })
+    await seedTaskBinding(TEST_AGENT, projectId, taskId, { title: "Primary task" })
+    await seedProjectBinding(TEST_AGENT_SECONDARY, projectId, { projectName: "Secondary project" })
+    await seedTaskBinding(TEST_AGENT_SECONDARY, projectId, taskId, {
+      sessionID: "pub-ses-secondary",
+      title: "Secondary task",
+    })
+
+    await homeContext(async () => {
+      const res = await makeApp().request("/global/clarus/navigation")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as NavigationBody
+
+      const projects = body.projects.filter((project) => project.projectId === projectId)
+      const tasks = body.tasks.filter((task) => task.projectId === projectId && task.taskId === taskId)
+      expect(projects).toHaveLength(2)
+      expect(new Set(projects.map((project) => project.agentId))).toEqual(new Set([TEST_AGENT, TEST_AGENT_SECONDARY]))
+      expect(tasks).toHaveLength(2)
+      expect(new Set(tasks.map((task) => task.agentId))).toEqual(new Set([TEST_AGENT, TEST_AGENT_SECONDARY]))
+    })
+  })
+
+  test("returns retained tasks for inactive projects in History", async () => {
+    const projectId = "inactive-project-with-task-history"
+    const taskId = "inactive-history-task"
+    await seedProjectBinding(TEST_AGENT, projectId, {
+      lifecycle: "archived",
+      desiredSubscription: false,
+      lastProjectActivityAt: Date.now() - 60_000,
+    })
+    await seedTaskBinding(TEST_AGENT, projectId, taskId, { status: "submitted" })
+
+    await homeContext(async () => {
+      const res = await makeApp().request("/global/clarus/navigation")
+      expect(res.status).toBe(200)
+      const body = (await res.json()) as NavigationBody
+      expect(body.projects).toContainEqual(
+        expect.objectContaining({ agentId: TEST_AGENT, projectId, activeGroup: false }),
+      )
+      expect(body.tasks).toContainEqual(expect.objectContaining({ agentId: TEST_AGENT, projectId, taskId }))
     })
   })
 

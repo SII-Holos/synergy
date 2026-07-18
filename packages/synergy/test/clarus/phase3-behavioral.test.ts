@@ -131,7 +131,8 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
   readonly extendInputs: ExtendTaskInput[] = []
   readonly resultInputs: RecordTaskResultInput[] = []
   failSubscriptions = false
-  resultFailure: "sync_rejected" | "rejected" | "ambiguous" | null = null
+  failSubscriptionResponses = false
+  resultFailure: "sync_not_dispatched" | "sync_rejected" | "rejected" | "ambiguous" | null = null
   resultResponse:
     | Promise<{
         kind: "known"
@@ -188,6 +189,16 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
   ): ClarusRequestResult<Extract<ClarusObservedEvent, { type: "projectSubscribed" }>> {
     this.subscribeInputs.push(input)
     if (this.failSubscriptions) throw new Error("subscription unavailable")
+    if (this.failSubscriptionResponses) {
+      const response = Promise.reject({
+        disposition: "rejected" as const,
+        requestID: input.requestID,
+        code: "SUBSCRIPTION_DENIED",
+        message: "subscription denied",
+      })
+      void response.catch(() => undefined)
+      return { requestID: input.requestID, response }
+    }
     return {
       requestID: input.requestID,
       response: Promise.resolve({
@@ -261,6 +272,14 @@ class FakeClarusPort implements ClarusAgentTunnelPort {
     input: RecordTaskResultInput,
   ): ClarusRequestResult<Extract<ClarusObservedEvent, { type: "runtimeTaskResultRecorded" }>> {
     this.resultInputs.push(input)
+    if (this.resultFailure === "sync_not_dispatched") {
+      throw {
+        disposition: "not_dispatched",
+        requestID: input.requestID,
+        code: "CLARUS_TUNNEL_NOT_CONNECTED",
+        message: "Clarus tunnel is not connected",
+      } satisfies ClarusRequestFailure
+    }
     if (this.resultFailure === "sync_rejected") {
       throw {
         disposition: "rejected",
@@ -444,6 +463,62 @@ describe("Clarus Phase 3 discovery and reconciliation", () => {
     )
     expect(state.needsReconciliation).toBe(true)
     expect(state.lastError).toContain("subscription unavailable")
+  })
+
+  test("does not archive unseen projects when discovery pagination stops making progress", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const unseenProjectId = `${PROJECT_ID}_unseen`
+    const rest = new FakeRest([
+      { projects: [project(PROJECT_ID)], nextCursor: "stuck" },
+      { cursor: "stuck", projects: [project(PROJECT_ID)], nextCursor: "stuck" },
+    ])
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await ClarusBindingStore.ensureActive(AGENT_ID, unseenProjectId)
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(() => rest.projectCalls.length >= 4)
+      },
+    })
+
+    expect((await ClarusBindingStore.readV3(AGENT_ID, unseenProjectId))?.lifecycle).toBe("active")
+    expect(await Storage.read(StoragePath.clarusReconciliation(AGENT_ID))).toMatchObject({
+      needsReconciliation: true,
+    })
+  })
+
+  test("confirms subscription persistence only after the remote ACK", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const rest = new FakeRest([{ projects: [project(PROJECT_ID)], nextCursor: null }])
+    const port = new FakeClarusPort()
+    port.failSubscriptionResponses = true
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        ClarusRuntime.configureRest(rest)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await waitFor(async () => {
+          const state = await Storage.read<{ lastError?: string }>(StoragePath.clarusReconciliation(AGENT_ID))
+          return state.lastError === "subscription denied"
+        })
+      },
+    })
+
+    const index = await Storage.read([
+      "clarus",
+      "subscription_index",
+      encodeURIComponent(AGENT_ID),
+      encodeURIComponent(PROJECT_ID),
+    ]).catch(() => undefined)
+    expect(index).toBeUndefined()
   })
 
   test("enforces the aggregate backfill page budget and persists the continuation cursor", async () => {
@@ -723,10 +798,11 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
     })
   })
 
-  test("snapshot hydration failure preserves the message cursor for retry", async () => {
+  test("snapshot hydration failure defers the poison assignment without blocking later messages", async () => {
     const tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
     const downloadUrl = "/api/v1/holos/clarus/payload-snapshots/bad/download"
+    const healthyTaskId = "healthy_task_after_bad_snapshot"
     const rest = new FakeRest(
       [{ projects: [project(PROJECT_ID)], nextCursor: null }],
       new Map([
@@ -760,6 +836,23 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
                     },
                   },
                 },
+                {
+                  messageId: "healthy_dispatch",
+                  metadata: {
+                    event_type: "runtime.task.dispatched",
+                    assigned_agent_id: AGENT_ID,
+                    payload: {
+                      project_id: PROJECT_ID,
+                      run_id: "healthy_run",
+                      task_id: healthyTaskId,
+                      phase: "IMPLEMENT",
+                      subtask_id: "healthy_subtask",
+                      attempt: 1,
+                      deadline_at: null,
+                      goal: "Continue after poison message",
+                    },
+                  },
+                },
               ],
               nextCursor: "cursor_after_snapshot",
             },
@@ -776,15 +869,19 @@ describe("Clarus Phase 3 assignment, deadline, and events", () => {
         ClarusRuntime.configureRest(rest)
         await ClarusRuntime.attach(port)
         await port.connect()
-        await waitFor(async () => {
-          const state = await Storage.read<{ lastError?: string }>(StoragePath.clarusReconciliation(AGENT_ID))
-          return state.lastError?.includes("snapshot checksum mismatch") === true
-        })
+        await waitFor(
+          async () =>
+            (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, healthyTaskId))?.assignmentState === "enqueued",
+        )
       },
     })
 
     expect((await ClarusBindingStore.readV3(AGENT_ID, PROJECT_ID))?.messageCursor).toBeNull()
     expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "bad_snapshot_task")).toBeUndefined()
+    expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, healthyTaskId)).toMatchObject({
+      runID: "healthy_run",
+      assignmentState: "enqueued",
+    })
   })
 
   test("REST backfill rejects tasks assigned to another agent", async () => {
@@ -1214,12 +1311,15 @@ describe("Clarus Phase 3 result and recovery", () => {
             return (
               outbox?.state === failure &&
               bindingState?.status === "needs_attention" &&
-              bindingState.resultState === "idle"
+              bindingState.resultState === failure
             )
           })
-          const reverted = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
-          expect(reverted).toMatchObject({ status: "needs_attention", resultState: "idle" })
-          expect(reverted?.resultOutboxRequestID).toBeUndefined()
+          const settled = await ClarusTaskBindingStore.get(binding!.agentId, binding!.projectId, binding!.taskId)
+          expect(settled).toMatchObject({
+            status: "needs_attention",
+            resultState: failure,
+            resultOutboxRequestID: requestID,
+          })
         },
       })
       ClarusRuntime.detach()
@@ -1292,10 +1392,65 @@ describe("Clarus Phase 3 result and recovery", () => {
 
         await expect(tool.execute({ success: true, output: "Result ready" }, ctx)).rejects.toMatchObject({
           code: "ABORTED",
-          disposition: "rejected",
+          disposition: "not_dispatched",
           message: expect.stringContaining("The result was not dispatched"),
         })
         expect(port.resultInputs).toHaveLength(0)
+      },
+    })
+  })
+  test("Agent tool retries a known not-dispatched result with a new request ID", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+    port.resultFailure = "sync_not_dispatched"
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await prepareProject(scope)
+        await ClarusRuntime.attach(port)
+        await port.connect()
+        await port.emit(taskAssignedEvent({ context: { snapshot: true }, taskInput: { explicit: true } }))
+        await waitFor(
+          async () => (await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1"))?.status === "running",
+        )
+        const binding = await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")
+        const tool = await ClarusSubmitTaskResultTool.init()
+        const ctx: Tool.Context = {
+          sessionID: binding!.sessionID,
+          messageID: Identifier.ascending("message"),
+          agent: "synergy",
+          abort: new AbortController().signal,
+          metadata() {},
+          async ask() {},
+        }
+
+        await expect(tool.execute({ success: true, output: "First attempt" }, ctx)).rejects.toMatchObject({
+          code: "CLARUS_TUNNEL_NOT_CONNECTED",
+          disposition: "not_dispatched",
+        })
+        const firstRequestID = port.resultInputs[0]!.requestID
+        expect(await ClarusOutbox.get(firstRequestID)).toMatchObject({ state: "not_dispatched" })
+        expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")).toMatchObject({
+          status: "running",
+          resultState: "not_dispatched",
+          resultOutboxRequestID: firstRequestID,
+        })
+
+        port.resultFailure = null
+        port.resultResponse = new Promise(() => {})
+        const result = await tool.execute({ success: true, output: "Second attempt" }, ctx)
+        const secondRequestID = String(result.metadata.requestID)
+        expect(secondRequestID).not.toBe(firstRequestID)
+        expect(port.resultInputs).toHaveLength(2)
+        expect(await ClarusOutbox.get(firstRequestID)).toMatchObject({ state: "not_dispatched" })
+        expect(await ClarusOutbox.get(secondRequestID)).toMatchObject({ state: "dispatched" })
+        expect(await ClarusTaskBindingStore.get(AGENT_ID, PROJECT_ID, "task_1")).toMatchObject({
+          status: "submitting",
+          resultState: "prepared",
+          resultOutboxRequestID: secondRequestID,
+        })
       },
     })
   })

@@ -112,6 +112,26 @@ describe("outbox terminal-state immutability", () => {
     )
   })
 
+  test("not-dispatched state allows only exact idempotent replay", async () => {
+    await ClarusOutbox.preallocate({
+      requestID: "term_not_dispatched",
+      action: "task_result",
+      agentId: AGENT_ID,
+      projectId: PROJECT_ID,
+      payload: {},
+    })
+    const first = await ClarusOutbox.markNotDispatched("term_not_dispatched", "OFFLINE", "tunnel unavailable")
+    expect(first.state).toBe("not_dispatched")
+
+    const replay = await ClarusOutbox.markNotDispatched("term_not_dispatched", "OFFLINE", "tunnel unavailable")
+    expect(replay.state).toBe("not_dispatched")
+    await expect(
+      ClarusOutbox.markNotDispatched("term_not_dispatched", "OFFLINE", "different failure"),
+    ).rejects.toMatchObject({ code: "CLARUS_OUTBOX_TERMINAL" })
+    await expect(ClarusOutbox.markAcknowledged("term_not_dispatched")).rejects.toMatchObject({
+      code: "CLARUS_OUTBOX_TERMINAL",
+    })
+  })
   test("terminal outbox record rejects acknowledged transition and state remains unchanged", async () => {
     await ClarusOutbox.preallocate({
       requestID: "term_dispatch_1",
@@ -215,6 +235,45 @@ describe("submitting rollback", () => {
     expect(reverted?.status).toBe("needs_attention")
     expect(reverted?.resultState).toBe("idle")
     expect(reverted?.resultOutboxRequestID).toBeUndefined()
+  })
+})
+
+describe("not-dispatched retry state", () => {
+  test("preserves the failed request for audit until a new submission claims the binding", async () => {
+    const taskId = "task_retry_not_dispatched"
+    await ClarusTaskBindingStore.ensureAssigned(
+      AGENT_ID,
+      PROJECT_ID,
+      taskId,
+      "ses_retry_not_dispatched",
+      "/tmp/clarus-retry-not-dispatched",
+      "scope_retry_not_dispatched",
+    )
+    await ClarusTaskBindingStore.markSubmitting({
+      agentId: AGENT_ID,
+      projectId: PROJECT_ID,
+      taskId,
+      resultOutboxRequestID: "result_failed_local",
+    })
+
+    const retryable = await ClarusTaskBindingStore.markResultNotDispatched(AGENT_ID, PROJECT_ID, taskId)
+    expect(retryable).toMatchObject({
+      status: "running",
+      resultState: "not_dispatched",
+      resultOutboxRequestID: "result_failed_local",
+    })
+
+    const claimed = await ClarusTaskBindingStore.markSubmitting({
+      agentId: AGENT_ID,
+      projectId: PROJECT_ID,
+      taskId,
+      resultOutboxRequestID: "result_retry",
+    })
+    expect(claimed).toMatchObject({
+      status: "submitting",
+      resultState: "prepared",
+      resultOutboxRequestID: "result_retry",
+    })
   })
 })
 
@@ -692,12 +751,13 @@ describe("correct task-message dedup path", () => {
 // Invariant 8: Terminal-state predicates for runtime cache/timer eviction
 // =============================================================================
 describe("terminal-state predicates", () => {
-  test("isResultTerminal returns true for acknowledged, rejected, ambiguous, local_only", async () => {
+  test("isResultTerminal distinguishes terminal outcomes from retryable not-dispatched state", async () => {
     const { isResultTerminal } = await import("../../src/clarus/binding")
     expect(isResultTerminal("acknowledged")).toBe(true)
     expect(isResultTerminal("rejected")).toBe(true)
     expect(isResultTerminal("ambiguous")).toBe(true)
     expect(isResultTerminal("local_only")).toBe(true)
+    expect(isResultTerminal("not_dispatched")).toBe(false)
     expect(isResultTerminal("idle")).toBe(false)
     expect(isResultTerminal("prepared")).toBe(false)
     expect(isResultTerminal("dispatched")).toBe(false)

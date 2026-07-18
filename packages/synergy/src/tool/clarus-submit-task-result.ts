@@ -50,7 +50,12 @@ export const ClarusSubmitTaskResultTool = Tool.define(
       if (!binding) {
         throw toolError("CLARUS_TOOL_NOT_IN_TASK_SESSION", "This session is not bound to a Clarus task")
       }
-      if (binding.status !== "running" || binding.resultState !== "idle" || binding.resultOutboxRequestID) {
+      const retryingNotDispatched = binding.resultState === "not_dispatched"
+      if (
+        binding.status !== "running" ||
+        (binding.resultState !== "idle" && !retryingNotDispatched) ||
+        (binding.resultOutboxRequestID !== undefined && !retryingNotDispatched)
+      ) {
         throw toolError("CLARUS_TOOL_TASK_NOT_RUNNING", "This Clarus task is not accepting a new result")
       }
 
@@ -74,11 +79,15 @@ export const ClarusSubmitTaskResultTool = Tool.define(
         })
       } catch (error) {
         const failure = parseClarusRequestFailure(error)
+        if (failure?.disposition === "not_dispatched") {
+          throw toolError(
+            failure.code,
+            `${failure.code}: ${failure.message}. The result was not dispatched and may be submitted again after the local transport is ready.`,
+            { disposition: failure.disposition, requestID: failure.requestID },
+          )
+        }
         if (failure?.disposition === "rejected") {
-          const message =
-            failure.code === "ABORTED"
-              ? `${failure.code}: ${failure.message}. The result was not dispatched.`
-              : `${failure.code}: ${failure.message}. The Clarus server definitively rejected this result. Do not retry unless Clarus reassigns the task.`
+          const message = `${failure.code}: ${failure.message}. The Clarus server definitively rejected this result. Do not retry unless Clarus reassigns the task.`
           throw toolError(failure.code, message, {
             disposition: failure.disposition,
             requestID: failure.requestID,

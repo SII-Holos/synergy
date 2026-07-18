@@ -590,7 +590,7 @@ export class HolosProvider {
   }): { response: Promise<NativeMessage>; requestID: string } {
     if (!this.isCurrent() || !this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
       throw {
-        disposition: "rejected" as const,
+        disposition: "not_dispatched" as const,
         requestID: input.requestID,
         code: "NOT_CONNECTED",
         message: "Holos Agent Tunnel is not connected",
@@ -598,7 +598,7 @@ export class HolosProvider {
     }
     if (this.pending.has(input.requestID)) {
       throw {
-        disposition: "rejected" as const,
+        disposition: "not_dispatched" as const,
         requestID: input.requestID,
         code: "DUPLICATE_REQUEST_ID",
         message: `Duplicate in-flight request ID: ${input.requestID}`,
@@ -606,7 +606,7 @@ export class HolosProvider {
     }
     if (input.signal?.aborted) {
       throw {
-        disposition: "rejected" as const,
+        disposition: "not_dispatched" as const,
         requestID: input.requestID,
         code: "ABORTED",
         message: "Request aborted before dispatch",
@@ -664,7 +664,7 @@ export class HolosProvider {
     } catch (error) {
       this.takePending(input.requestID)
       throw {
-        disposition: "rejected" as const,
+        disposition: "not_dispatched" as const,
         requestID: input.requestID,
         code: "TRANSPORT_ERROR",
         message: error instanceof Error ? error.message : "Native request dispatch failed",

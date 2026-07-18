@@ -51,6 +51,7 @@ export type ClarusTaskStatusV4 = z.infer<typeof ClarusTaskStatusV4Schema>
 
 export const ClarusResultStateV4Schema = z.enum([
   "idle",
+  "not_dispatched",
   "prepared",
   "dispatched",
   "acknowledged",
@@ -273,6 +274,7 @@ export const ClarusOutboxStateV2 = z.enum([
   "prepared",
   "dispatched",
   "acknowledged",
+  "not_dispatched",
   "rejected",
   "ambiguous",
   "local_only",
@@ -299,6 +301,7 @@ export const ClarusOutboxRecordV2 = z
     dispatchedAt: z.number().optional(),
     acknowledgedAt: z.number().optional(),
     acknowledgedPayload: z.record(z.string(), z.unknown()).optional(),
+    notDispatchedAt: z.number().optional(),
     rejectedAt: z.number().optional(),
     ambiguousAt: z.number().optional(),
     localOnlyAt: z.number().optional(),

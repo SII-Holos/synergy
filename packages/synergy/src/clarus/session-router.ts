@@ -175,7 +175,9 @@ export async function deliverProjectMessage(input: {
   agentId: string
   projectId: string
   messageId: string
+  senderId?: string
   text: string
+  receivedAt?: number
 }): Promise<ClarusDelivery> {
   validateSegment(input.agentId)
   validateSegment(input.projectId)
@@ -197,8 +199,9 @@ export async function deliverProjectMessage(input: {
       agentId: input.agentId,
       projectId: input.projectId,
       messageId: input.messageId,
+      senderId: input.senderId,
       content: input.text,
-      receivedAt: Date.now(),
+      receivedAt: input.receivedAt ?? Date.now(),
     })
 
     const bindings = await ClarusTaskBindingStore.listTaskBindings(input.agentId, input.projectId)

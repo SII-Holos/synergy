@@ -135,6 +135,8 @@ let holosTransportStatus: HolosRuntimeType.Status = { status: "disconnected" }
 let wasConnected = false
 
 function errorMessage(error: unknown): string {
+  const failure = parseClarusRequestFailure(error)
+  if (failure) return failure.message
   return error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown Clarus request failure"
 }
 
@@ -283,6 +285,10 @@ function sanitizeErrorText(text: string): string {
 
 async function settleOutboxFailure(requestID: string, error: unknown): Promise<void> {
   const failure = parseClarusRequestFailure(error)
+  if (failure?.disposition === "not_dispatched") {
+    await ClarusOutbox.markNotDispatched(requestID, failure.code, sanitizeErrorText(failure.message))
+    return
+  }
   if (failure?.disposition === "rejected") {
     await ClarusOutbox.markRejected(requestID, failure.code, sanitizeErrorText(failure.message))
     return
@@ -567,7 +573,7 @@ export namespace ClarusRuntime {
     if (!transport) throw new Error("ClarusRuntime is not attached")
     if (input.signal?.aborted) {
       throw {
-        disposition: "rejected" as const,
+        disposition: "not_dispatched" as const,
         requestID: input.requestID,
         code: "ABORTED",
         message: "Request aborted before dispatch",
@@ -587,7 +593,12 @@ export namespace ClarusRuntime {
     ) {
       throw new Error("Clarus result identity does not match the active task binding")
     }
-    if (binding.status !== "running" || binding.resultState !== "idle" || binding.resultOutboxRequestID !== undefined) {
+    const retryingNotDispatched = binding.resultState === "not_dispatched"
+    if (
+      binding.status !== "running" ||
+      (binding.resultState !== "idle" && !retryingNotDispatched) ||
+      (binding.resultOutboxRequestID !== undefined && !retryingNotDispatched)
+    ) {
       throw new Error("Clarus task result is already terminal or in flight")
     }
 
@@ -645,7 +656,16 @@ export namespace ClarusRuntime {
       if (record?.state !== "ambiguous" && record?.state !== "acknowledged") {
         await settleOutboxFailure(requestID, error)
       }
-      await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskID)
+      const settled = await ClarusOutbox.get(requestID)
+      if (settled?.state === "not_dispatched") {
+        await ClarusTaskBindingStore.markResultNotDispatched(input.agentId, input.projectId, input.taskID)
+      } else if (settled?.state === "rejected") {
+        await ClarusTaskBindingStore.markResultRejected(input.agentId, input.projectId, input.taskID)
+      } else if (settled?.state === "ambiguous") {
+        await ClarusTaskBindingStore.markResultAmbiguous(input.agentId, input.projectId, input.taskID)
+      } else {
+        await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskID)
+      }
       publishNavigationUpdated()
       throw error
     }
@@ -691,7 +711,12 @@ export namespace ClarusRuntime {
       const record = await ClarusOutbox.get(input.requestID)
       if (!record || isTerminalOutboxState(record.state)) return
       await settleOutboxFailure(input.requestID, error)
-      await ClarusTaskBindingStore.revertSubmitting(input.agentId, input.projectId, input.taskId)
+      const settled = await ClarusOutbox.get(input.requestID)
+      if (settled?.state === "rejected") {
+        await ClarusTaskBindingStore.markResultRejected(input.agentId, input.projectId, input.taskId)
+      } else if (settled?.state === "ambiguous") {
+        await ClarusTaskBindingStore.markResultAmbiguous(input.agentId, input.projectId, input.taskId)
+      }
       publishNavigationUpdated()
     } catch (settlementError) {
       const record = await ClarusOutbox.get(input.requestID)
@@ -754,6 +779,13 @@ export namespace ClarusRuntime {
           epoch: existing.connectionEpoch ? Number(existing.connectionEpoch) : connectedEpoch,
           generation: existing.generation ?? connectedGeneration,
         }
+      }
+      if (existing.state === "not_dispatched") {
+        throw Object.assign(new Error(existing.errorMessage ?? "Clarus outbound message request was not dispatched"), {
+          disposition: "not_dispatched",
+          requestID,
+          code: existing.errorCode ?? "NOT_DISPATCHED",
+        })
       }
       if (existing.state === "rejected") {
         throw Object.assign(new Error(existing.errorMessage ?? "Clarus outbound message request was rejected"), {
@@ -1209,15 +1241,14 @@ async function handleProjectMessageCreated(event: ProjectMessageCreatedEvent): P
   }
   const binding = await ClarusBindingStore.readV3(agentId, projectId)
   if (!binding || !isActiveLifecycle(binding.lifecycle)) return
-  await ClarusProjectActivityStore.upsert({
+  await deliverProjectMessage({
     agentId,
     projectId,
     messageId: messageID,
     senderId: senderID,
-    content,
+    text: content,
     receivedAt: Date.now(),
   })
-  await deliverProjectMessage({ agentId, projectId, messageId: messageID, text: content })
   await ClarusBindingStore.touchLastActivity(agentId, projectId, Date.now())
   publishNavigationUpdated()
 }
@@ -1297,6 +1328,8 @@ function deriveTaskInput(event: RuntimeTaskAssignedEvent): Record<string, unknow
   if (event.taskInput) Object.assign(taskInput, event.taskInput)
   if (event.goal !== null && event.goal !== undefined) taskInput.goal = event.goal
   if (event.instructions !== null && event.instructions !== undefined) taskInput.instructions = event.instructions
+  if (event.attemptMode !== undefined) taskInput.attempt_mode = event.attemptMode
+  if (event.retryOfTaskID !== undefined) taskInput.retry_of_task_id = event.retryOfTaskID
   if (event.input) taskInput.input = event.input
   if (event.context) taskInput.context = event.context
   return taskInput
@@ -1449,7 +1482,10 @@ async function reconcile(input: { port: ClarusAgentTunnelPort; run: ActiveReconc
       discoveryPages++
       if (page.nextCursor === previousCursor) {
         nonProgressingCount++
-        if (nonProgressingCount >= MAX_NON_PROGRESSING_PAGES) break
+        if (nonProgressingCount >= MAX_NON_PROGRESSING_PAGES) {
+          discoveryTruncated = true
+          break
+        }
       } else {
         nonProgressingCount = 0
       }
@@ -1473,6 +1509,13 @@ async function reconcile(input: { port: ClarusAgentTunnelPort; run: ActiveReconc
     if (!discoveryTruncated) {
       await ClarusBindingStore.archiveMissing(run.agentId, knownProjectIds)
     }
+    const reconciliationError =
+      subscriptionError ??
+      (discoveryTruncated
+        ? "project discovery did not reach the end of pagination"
+        : run.overflowed
+          ? "reconciliation event queue overflow"
+          : undefined)
 
     // Read active bindings with bounded cursor
     let bc: string | undefined
@@ -1495,17 +1538,16 @@ async function reconcile(input: { port: ClarusAgentTunnelPort; run: ActiveReconc
           schemaVersion: 1,
           agentId: run.agentId,
           generation: run.generation,
-          needsReconciliation: subscriptionError !== undefined || run.overflowed,
-          ...(subscriptionError || run.overflowed
-            ? { lastError: subscriptionError ?? "reconciliation event queue overflow" }
-            : {}),
-          ...(subscriptionError || run.overflowed ? {} : { lastReconciledAt: Date.now() }),
+          needsReconciliation: reconciliationError !== undefined,
+          ...(reconciliationError ? { lastError: reconciliationError } : {}),
+          ...(reconciliationError ? {} : { lastReconciledAt: Date.now() }),
         } satisfies ClarusReconciliationState)
       }
       if (!isRunAbortedOrStale(run)) await drainBufferedEvents(run)
       return
     }
     let exhausted = false
+    let deferred = false
     rotationIndex = await loadRotationIndex(run.agentId)
     let projectIndex = rotationIndex
     const budget = { remaining: BACKFILL_PAGE_BUDGET_PER_CYCLE }
@@ -1517,12 +1559,9 @@ async function reconcile(input: { port: ClarusAgentTunnelPort; run: ActiveReconc
       const before = budget.remaining
       const result = await backfillProjectMessages(binding, budget)
       const consumed = before - budget.remaining
-      if (result === "exhausted") {
-        exhausted = true
-      }
-      if (result === "complete" || consumed === 0) {
-        completedProjects++
-      }
+      if (result === "exhausted") exhausted = true
+      if (result === "deferred") deferred = true
+      if (result !== "exhausted" || consumed === 0) completedProjects++
       projectIndex++
     }
 
@@ -1535,11 +1574,13 @@ async function reconcile(input: { port: ClarusAgentTunnelPort; run: ActiveReconc
         schemaVersion: 1,
         agentId: run.agentId,
         generation: run.generation,
-        needsReconciliation: exhausted || subscriptionError !== undefined || run.overflowed,
-        ...(subscriptionError || run.overflowed
-          ? { lastError: subscriptionError ?? "reconciliation event queue overflow" }
-          : {}),
-        ...(exhausted ? {} : { lastReconciledAt: Date.now() }),
+        needsReconciliation: exhausted || deferred || reconciliationError !== undefined,
+        ...(reconciliationError
+          ? { lastError: reconciliationError }
+          : deferred
+            ? { lastError: "assignment backfill deferred" }
+            : {}),
+        ...(exhausted || deferred || reconciliationError ? {} : { lastReconciledAt: Date.now() }),
       } satisfies ClarusReconciliationState)
     }
     if (!isRunAbortedOrStale(run)) await drainBufferedEvents(run)
@@ -1613,7 +1654,6 @@ async function reconcileProjectSubscription(
       return { ok: false, error }
     }
     await ClarusOutbox.markDispatched(requestID)
-    await persistSubscriptionIndex(run.agentId, binding.projectId, run.epoch, run.generation)
   } catch (error) {
     await settleOutboxFailure(requestID, error)
     return { ok: false, error: errorMessage(error) }
@@ -1626,6 +1666,7 @@ async function reconcileProjectSubscription(
       return { ok: false, error }
     }
     await ClarusOutbox.markAcknowledged(requestID)
+    await persistSubscriptionIndex(run.agentId, binding.projectId, run.epoch, run.generation)
     return { ok: true }
   } catch (error) {
     await settleOutboxFailure(requestID, error)
@@ -1636,7 +1677,7 @@ async function reconcileProjectSubscription(
 async function backfillProjectMessages(
   binding: ClarusProjectBindingV3,
   budget: { remaining: number },
-): Promise<"complete" | "exhausted"> {
+): Promise<"complete" | "exhausted" | "deferred"> {
   const rest = restPort
   if (!rest) return "complete"
   let cursor = binding.messageCursor ?? undefined
@@ -1657,6 +1698,7 @@ async function backfillProjectMessages(
       nonProgressingPages = 0
     }
     budget.remaining--
+    let pageCanAdvance = true
     for (const message of page.messages) {
       await ClarusProjectActivityStore.upsert({
         agentId: binding.agentId,
@@ -1669,8 +1711,9 @@ async function backfillProjectMessages(
         createdAt: message.createdAt,
         receivedAt: Date.now(),
       })
-      await backfillAssignment(binding, message)
+      if (!(await backfillAssignment(binding, message))) pageCanAdvance = false
     }
+    if (!pageCanAdvance) return "deferred"
     if (cursor !== binding.messageCursor) {
       using _ = await Lock.write(
         `clarus:backfill:${encodeURIComponent(binding.agentId)}:${encodeURIComponent(binding.projectId)}`,
@@ -1739,6 +1782,8 @@ function assignmentFromPayloads(
     subtaskID: routing.subtask_id,
     attempt: routing.attempt,
     deadlineAt: routing.deadline_at,
+    attemptMode: typeof routing.attempt_mode === "string" ? routing.attempt_mode : undefined,
+    retryOfTaskID: typeof routing.retry_of_task_id === "string" ? routing.retry_of_task_id : undefined,
     goal: typeof payload.goal === "string" ? payload.goal : null,
     instructions: typeof payload.instructions === "string" ? payload.instructions : null,
     input: isRecord(payload.input) ? payload.input : null,
@@ -1775,14 +1820,18 @@ async function backfilledAssignment(
   return assignment
 }
 
-async function backfillAssignment(binding: ClarusProjectBindingV3, message: ClarusRestPort.MessageDto): Promise<void> {
+async function backfillAssignment(
+  binding: ClarusProjectBindingV3,
+  message: ClarusRestPort.MessageDto,
+): Promise<boolean> {
   try {
     const assignment = await backfilledAssignment(binding, message)
-    if (!assignment) return
+    if (!assignment) return true
     await handleTaskAssigned(assignment)
     await ClarusBindingStore.touchLastActivity(binding.agentId, binding.projectId, Date.now())
+    return true
   } catch (error) {
     log.info("Clarus assignment backfill deferred", { projectId: binding.projectId, error: errorMessage(error) })
-    throw error
+    return false
   }
 }
