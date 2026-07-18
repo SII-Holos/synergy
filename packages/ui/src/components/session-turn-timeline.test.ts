@@ -9,14 +9,6 @@ import type {
 
 const Empty = () => null
 
-mock.module("@ericsanchezok/synergy-util/binary", () => ({
-  Binary: {
-    search: <T>(items: T[], value: string, getValue: (item: T) => string) => {
-      const index = items.findIndex((item) => getValue(item) === value)
-      return index >= 0 ? { found: true, index } : { found: false, index: -1 }
-    },
-  },
-}))
 mock.module("@ericsanchezok/synergy-util/model-limit", () => ({
   ModelLimit: {
     actualInput: (tokens: { input: number; cache: { read: number; write: number } }) =>
@@ -293,11 +285,20 @@ function ordinaryTool(input: {
 }
 
 describe("session turn assistant collection", () => {
-  test("keeps guided inbox context inside the active turn", () => {
-    const firstUser = user("msg_001_user")
-    const toolStep = assistantFor("msg_002_assistant_tool", firstUser.id)
-    const guided = user("msg_003_user_guided", { isRoot: false, rootID: firstUser.id })
-    const final = assistantFor("msg_004_assistant_final", firstUser.id)
+  test("keeps guided inbox context inside the active turn when canonical order differs from ID order", () => {
+    const firstUser = { ...user("msg_z_user"), time: { created: 1 } } as UserMessage
+    const toolStep = {
+      ...assistantFor("msg_1_assistant_tool", firstUser.id),
+      time: { created: 2 },
+    } as AssistantMessage
+    const guided = {
+      ...user("msg_a_user_guided", { isRoot: false, rootID: firstUser.id }),
+      time: { created: 3 },
+    } as UserMessage
+    const final = {
+      ...assistantFor("msg_b_assistant_final", firstUser.id),
+      time: { created: 4 },
+    } as AssistantMessage
 
     expect(isGuidedContextUserMessage(guided)).toBe(true)
     expect(collectMessagesForTurnDisplay([firstUser, toolStep, guided, final] as MessageType[], firstUser.id)).toEqual([

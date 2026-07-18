@@ -15,7 +15,6 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 
-import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import {
@@ -367,14 +366,18 @@ function chipLabelFromOrigin(origin: { type: string; label?: string; detail?: st
   }
 }
 
+function findMessageIndex(messages: readonly MessageType[], messageID: string) {
+  return messages.findIndex((message) => message.id === messageID)
+}
+
 export function collectMessagesForTurnDisplay(
   messages: MessageType[],
   userMessageID: string,
 ): SessionTurnDisplayMessage[] {
-  const search = Binary.search(messages, userMessageID, (m) => m.id)
-  if (!search.found) return []
+  const userMessageIndex = findMessageIndex(messages, userMessageID)
+  if (userMessageIndex === -1) return []
 
-  const userMessage = messages[search.index]
+  const userMessage = messages[userMessageIndex]
   if (!userMessage || userMessage.role !== "user") return []
 
   const user = userMessage as UserMessage
@@ -388,7 +391,7 @@ export function collectMessagesForTurnDisplay(
   // task root pre-allocates its message id, so a still-running earlier task can
   // emit assistants whose ids fall after this root but before this task's own
   // replies. Breaking on the first foreign message would drop those replies.
-  for (let i = search.index + 1; i < messages.length; i++) {
+  for (let i = userMessageIndex + 1; i < messages.length; i++) {
     const item = messages[i]
     if (!item) continue
 
@@ -649,13 +652,13 @@ export function SessionTurn(
 
   const messageIndex = createMemo(() => {
     const messages = allMessages()
-    const result = Binary.search(messages, props.messageID, (m) => m.id)
-    if (!result.found) return -1
+    const index = findMessageIndex(messages, props.messageID)
+    if (index === -1) return -1
 
-    const msg = messages[result.index]
+    const msg = messages[index]
     if (msg.role !== "user") return -1
 
-    return result.index
+    return index
   })
 
   const message = createMemo(() => {
