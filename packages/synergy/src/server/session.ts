@@ -6,6 +6,7 @@ import { Command } from "../command/command"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
+import { SessionAbort } from "../session/abort"
 import { SessionInbox } from "../session/inbox"
 import { shell as invokeShell, ShellInput } from "../session/shell"
 import { SessionHistory } from "../session/history"
@@ -576,13 +577,7 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      SessionInvoke.cancel(sessionID)
-      const { Cortex } = await import("../cortex")
-      await Cortex.cancelAll(sessionID)
-      // Repair the persisted incomplete assistant so the frontend sees the
-      // session as stopped (not "recovering"), even if the processor is stuck.
-      await SessionInvoke.repairAfterAbort(sessionID)
+      await SessionAbort.abort(c.req.valid("param").sessionID)
       return c.json(true)
     },
   )

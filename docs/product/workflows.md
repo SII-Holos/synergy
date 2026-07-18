@@ -56,6 +56,7 @@ Completion is a review request, not a claim. Calling `loop_stop` launches a hidd
 - rejection records the review attempt, clears the pending stop request, and delivers actionable remaining work so the loop continues
 
 Light Loop does not require an authored Blueprint or a multi-step Pathway. Use it for one task whose scope is already sufficiently clear.
+When Light Loop is armed, the composer shows its workflow chip. After the first message commits the workflow, a task control also appears beside Submit. Click that control to inspect the task; it is editable while the session is idle and read-only while the session is running, completion review is pending, or the workflow has exited elsewhere. Hold it for two seconds to stop active work, cancel completion review, and exit Light Loop safely.
 
 ## Lattice and the Pathway
 

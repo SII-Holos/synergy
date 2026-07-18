@@ -90,6 +90,8 @@ import { restoreNewSessionRecovery } from "@/components/session/new-session-reco
 import { PlanBlueprintOfferControl } from "@/components/prompt-input/plan-blueprint-offer"
 import { emptyPlanBlueprintOfferState, shouldDisplayPlanBlueprintOffer } from "@/context/plan-blueprint-offer"
 import { ComposerSlotOutlet } from "@ericsanchezok/synergy-ui/composer-slots"
+import { EditLightLoopDialog } from "@/components/prompt-input/edit-light-loop-dialog"
+import { LightLoopSubmitControl } from "@/components/prompt-input/light-loop-submit-control"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -159,7 +161,7 @@ function WorkflowChip(props: {
 
 export const PromptInput: Component<PromptInputProps> = (props) => {
   const sdk = useSDK()
-  const latticeDialog = useDialog()
+  const workflowDialog = useDialog()
   const globalSync = useGlobalSync()
   const sync = useSync()
   const input = useInput()
@@ -199,6 +201,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   const lightLoopTaskDesc = createMemo(() => {
     const workflow = activeWorkflow()
     return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : undefined
+  })
+  const persistedLightLoopActive = createMemo(() => activeWorkflow()?.kind === "lightloop")
+  const lightLoopReviewPending = createMemo(() => {
+    const workflow = activeWorkflow()
+    return workflow?.kind === "lightloop" && !!workflow.stopRequest
   })
   const storedPlan = createMemo(() => (params.id ? activeWorkflow()?.kind === "plan" : pendingPlan()))
   const planActive = createMemo(() => !blueprintModeLocked() && storedPlan())
@@ -658,7 +665,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       event?.preventDefault()
       return
     }
-    latticeDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
+    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
   }
 
   const selectLatticeFromMenu = (event?: Event) => {
@@ -702,10 +709,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       return true
     }
     try {
-      await sdk.client.workflow.session.set({
-        id: params.id,
-        workflowSetInput: { kind: "none" },
-      })
+      await sdk.client.workflow.session.cancelLightloop({ id: params.id })
       setPendingLightLoop(false)
       return true
     } catch (err) {
@@ -728,6 +732,44 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
 
   const cancelLightLoop = async () => {
     await setLightLoop(false)
+  }
+
+  const safelyCancelLightLoop = async () => {
+    if (!params.id) return
+    try {
+      const cancelled = await setLightLoop(false)
+      if (!cancelled) return
+      showToast({
+        type: "info",
+        title: "Light Loop stopped",
+        description: "The session and completion review were cancelled.",
+      })
+    } catch {
+      return
+    }
+  }
+
+  const updateLightLoopTask = async (taskDescription: string) => {
+    const sessionID = params.id
+    if (!sessionID) throw new Error("Light Loop session is no longer available.")
+    await sdk.client.workflow.session.updateLightloop({
+      id: sessionID,
+      lightloopUpdateInput: { taskDescription },
+    })
+  }
+
+  const openLightLoopDialog = () => {
+    const workflow = activeWorkflow()
+    if (!params.id || workflow?.kind !== "lightloop") return
+    workflowDialog.show(() => (
+      <EditLightLoopDialog
+        taskDescription={workflow.taskDescription}
+        active={persistedLightLoopActive}
+        working={working}
+        reviewPending={lightLoopReviewPending}
+        onSave={updateLightLoopTask}
+      />
+    ))
   }
 
   const sessionHasMessages = createMemo(() => {
@@ -1917,6 +1959,15 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                         />
                       </button>
                     </Tooltip>
+                  )}
+                </Show>
+                <Show when={lightLoopTaskDesc()}>
+                  {(taskDescription) => (
+                    <LightLoopSubmitControl
+                      taskDescription={taskDescription()}
+                      onEdit={openLightLoopDialog}
+                      onCancel={safelyCancelLightLoop}
+                    />
                   )}
                 </Show>
                 <Tooltip

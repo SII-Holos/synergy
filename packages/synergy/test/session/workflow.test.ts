@@ -48,6 +48,68 @@ describe("SessionWorkflowService", () => {
     })
   })
 
+  test("updates an active Light Loop task description from the next model step", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      const lease = SessionManager.acquire(session.id)
+      expect(lease).toBeDefined()
+
+      try {
+        const updated = await SessionWorkflowService.updateLightloopTaskDescription(session.id, "  Revised task  ")
+        expect(updated.workflow).toEqual({ kind: "lightloop", taskDescription: "Revised task" })
+      } finally {
+        await SessionManager.release(lease!, { requestNextWork: false })
+        SessionManager.unregisterRuntime(session.id)
+      }
+    })
+  })
+
+  test("rejects task description updates while Light Loop review is pending", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enableLightloop(session.id, "Original task")
+      await Session.update(session.id, (draft) => {
+        if (draft.workflow?.kind !== "lightloop") return
+        draft.workflow.stopRequest = {
+          summary: "Ready for review",
+          requestedAt: Date.now(),
+          requesterSessionID: session.id,
+          requesterMessageID: "msg_request",
+          reviewTaskID: "ctx_review",
+          reviewSessionID: "ses_review",
+        }
+      })
+
+      await expect(SessionWorkflowService.updateLightloopTaskDescription(session.id, "Revised task")).rejects.toThrow(
+        "review is pending",
+      )
+      const unchanged = await Session.get(session.id)
+      expect(unchanged.workflow?.kind === "lightloop" && unchanged.workflow.taskDescription).toBe("Original task")
+    })
+  })
+
+  test("cancels a running Light Loop and remains idempotent", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await SessionWorkflowService.enableLightloop(session.id, "Finish the task")
+      const lease = SessionManager.acquire(session.id)
+      expect(lease).toBeDefined()
+
+      try {
+        const cancelled = await SessionWorkflowService.cancelLightloop(session.id)
+        expect(lease!.signal.aborted).toBe(true)
+        expect(cancelled.workflow).toBeUndefined()
+
+        const repeated = await SessionWorkflowService.cancelLightloop(session.id)
+        expect(repeated.workflow).toBeUndefined()
+      } finally {
+        await SessionManager.release(lease!, { requestNextWork: false })
+        SessionManager.unregisterRuntime(session.id)
+      }
+    })
+  })
+
   test("rejects plan and lightloop when a BlueprintLoop is active", async () => {
     await withScope(async () => {
       const planSession = await Session.create({})
