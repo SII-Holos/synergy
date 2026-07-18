@@ -15,6 +15,17 @@ export const Info = z
     auditAgent: z.string(),
     auditSessionID: z.string().optional(),
     auditTaskID: z.string().optional(),
+    stopRequest: z
+      .object({
+        summary: z.string(),
+        completed: z.array(z.string()).optional(),
+        evidence: z.array(z.string()).optional(),
+        remaining: z.array(z.string()).optional(),
+        requestedAt: z.number(),
+        requesterSessionID: z.string(),
+        requesterMessageID: z.string(),
+      })
+      .optional(),
     scopeID: z.string(),
     status: LoopStatus,
     runMode: z.enum(["current", "new", "worktree"]).optional(),

@@ -5913,6 +5913,15 @@ export type BlueprintLoopInfo = {
   auditAgent: string
   auditSessionID?: string
   auditTaskID?: string
+  stopRequest?: {
+    summary: string
+    completed?: Array<string>
+    evidence?: Array<string>
+    remaining?: Array<string>
+    requestedAt: number
+    requesterSessionID: string
+    requesterMessageID: string
+  }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -7366,6 +7375,27 @@ export type EventAgendaItemDeleted = {
   }
 }
 
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
+  }
+}
+
 export type EventHolosContactAdded = {
   type: "holos.contact.added"
   properties: {
@@ -7429,27 +7459,6 @@ export type EventPluginEvent = {
     sequence: number
     timestamp: number
     payload: unknown
-  }
-}
-
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
   }
 }
 
@@ -7620,6 +7629,9 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
   | EventHolosContactAdded
   | EventHolosContactRemoved
   | EventHolosContactUpdated
@@ -7628,9 +7640,6 @@ export type Event =
   | EventHolosPresence
   | EventClarusNavigationUpdated
   | EventPluginEvent
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
