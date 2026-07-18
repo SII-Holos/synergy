@@ -30,6 +30,7 @@ import {
   subsessionRangeLabel,
   type SubsessionCursor,
 } from "./subsession"
+import { createSubsessionController } from "./subsession-controller"
 
 function statusDotClass(status: "success" | "danger" | "muted" | "active") {
   return {
@@ -270,16 +271,23 @@ function SubsessionsButton(props: {
   const sdk = useSDK()
   const { fmt, i18n } = useLocale()
   const [open, setOpen] = createSignal(false)
-  const [items, setItems] = createSignal<Session[]>([])
-  const [total, setTotal] = createSignal<number | undefined>()
-  const [nextCursor, setNextCursor] = createSignal<SubsessionCursor | null>(null)
-  const [pageIndex, setPageIndex] = createSignal(0)
-  const [startCursors, setStartCursors] = createSignal<(SubsessionCursor | null)[]>([null])
-  const [loading, setLoading] = createSignal(false)
-  const [error, setError] = createSignal(false)
   const [search, setSearch] = createSignal("")
   const [debouncedSearch, setDebouncedSearch] = createSignal("")
-  let requestSeq = 0
+  const controller = createSubsessionController({
+    sessionID: () => props.sessionID,
+    pageSize,
+    loadChildren: async ({ sessionID, limit, search, cursor }) => {
+      const response = await sdk.client.session.children({
+        sessionID,
+        limit,
+        search,
+        ...subsessionCursorParams(cursor),
+      })
+      if (!response.data) throw new Error("Missing subsession page response")
+      return response.data
+    },
+  })
+  const { items, total, nextCursor, pageIndex, startCursors, loading, error, loadPage, retry, reset } = controller
 
   function preview(session: Session): string | undefined {
     return session.lastExchange?.assistant ?? session.lastExchange?.user
@@ -291,63 +299,13 @@ function SubsessionsButton(props: {
     return "text-icon-weak-base"
   }
 
-  function resetPageState() {
-    requestSeq += 1
-    setItems([])
-    setTotal(undefined)
-    setNextCursor(null)
-    setPageIndex(0)
-    setStartCursors([null])
-    setLoading(false)
-    setError(false)
-  }
-
-  async function loadPage(input: {
-    pageIndex: number
-    cursor: SubsessionCursor | null
-    starts?: (SubsessionCursor | null)[]
-    query?: string
-    sessionID?: string
-  }) {
-    const sessionID = input.sessionID ?? props.sessionID
-    if (!sessionID) return
-    const query = input.query ?? debouncedSearch()
-
-    const seq = ++requestSeq
-    setLoading(true)
-    setError(false)
-
-    try {
-      const response = await sdk.client.session.children({
-        sessionID,
-        limit: pageSize,
-        search: query || undefined,
-        ...subsessionCursorParams(input.cursor),
-      })
-      const page = response.data
-      if (!page) throw new Error("Missing subsession page response")
-      if (seq !== requestSeq) return
-
-      setItems(page.items)
-      setTotal(page.total)
-      setNextCursor(page.nextCursor)
-      setPageIndex(input.pageIndex)
-      if (input.starts) setStartCursors(input.starts)
-      setLoading(false)
-    } catch {
-      if (seq !== requestSeq) return
-      setLoading(false)
-      setError(true)
-    }
-  }
-
   createEffect((previousID: string | undefined) => {
     const sessionID = props.sessionID
     if (previousID !== undefined && previousID !== sessionID) {
       setOpen(false)
       setSearch("")
       setDebouncedSearch("")
-      resetPageState()
+      reset()
     }
     return sessionID
   })
@@ -364,35 +322,25 @@ function SubsessionsButton(props: {
     const query = debouncedSearch()
     if (!active) return
 
-    setItems([])
-    setTotal(undefined)
-    setNextCursor(null)
-    setPageIndex(0)
-    setStartCursors([null])
-    setError(false)
-    void loadPage({ pageIndex: 0, cursor: null, starts: [null], query, sessionID })
+    void loadPage({ pageIndex: 0, cursor: null, startCursors: [null], query })
   })
 
   function nextPage() {
     const cursor = nextCursor()
     if (!cursor || loading()) return
     const next = pageIndex() + 1
-    const starts = [...startCursors()]
-    starts[next] = cursor
-    void loadPage({ pageIndex: next, cursor, starts })
+    const nextStartCursors = [...startCursors()]
+    nextStartCursors[next] = cursor
+    void loadPage({ pageIndex: next, cursor, startCursors: nextStartCursors, query: debouncedSearch() })
   }
 
   function previousPage() {
     if (pageIndex() === 0 || loading()) return
     const previous = pageIndex() - 1
-    void loadPage({ pageIndex: previous, cursor: startCursors()[previous] ?? null })
+    void loadPage({ pageIndex: previous, cursor: startCursors()[previous] ?? null, query: debouncedSearch() })
   }
 
-  const tooltip = () => {
-    const loadedTotal = total()
-    if (loadedTotal === undefined) return i18n._(copy.subsessions)
-    return i18n._({ ...copy.subsessionsCount, values: { count: loadedTotal } })
-  }
+  const tooltip = () => i18n._(copy.subsessions)
   const rangeText = () => subsessionRangeLabel(pageIndex(), pageSize, items().length, total() ?? 0, i18n)
   const emptyText = () => (debouncedSearch() ? i18n._(copy.noMatching) : i18n._(copy.noSubsessions))
 
@@ -404,19 +352,15 @@ function SubsessionsButton(props: {
       gutter={10}
       class="statusbar-subsession-popover"
       trigger={
-        <Tooltip placement="top" value={tooltip()}>
-          <button
-            type="button"
-            class="flex h-7 items-center gap-1.5 rounded-full px-2 text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
-            onClick={() => setOpen(true)}
-            aria-label={tooltip()}
-          >
-            <Icon name={getSemanticIcon("session.child")} size="small" />
-            <Show when={total() !== undefined}>
-              <span class="text-11-medium">{total()}</span>
-            </Show>
-          </button>
-        </Tooltip>
+        <button
+          type="button"
+          class="flex size-7 items-center justify-center rounded-full text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+          aria-label={tooltip()}
+          aria-expanded={open()}
+          title={tooltip()}
+        >
+          <Icon name={getSemanticIcon("session.child")} size="small" />
+        </button>
       }
     >
       <div class="w-72">
@@ -456,12 +400,7 @@ function SubsessionsButton(props: {
                   <button
                     type="button"
                     class="rounded-md px-2 py-1 text-12-medium text-text-interactive-base transition-colors hover:bg-surface-raised-base-hover focus:outline-none focus-visible:ring-1 focus-visible:ring-border-strong-base"
-                    onClick={() =>
-                      void loadPage({
-                        pageIndex: pageIndex(),
-                        cursor: startCursors()[pageIndex()] ?? null,
-                      })
-                    }
+                    onClick={() => void retry()}
                   >
                     {i18n._(copy.retry)}
                   </button>
