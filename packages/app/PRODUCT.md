@@ -36,6 +36,7 @@ Keep dense surfaces quiet enough for repeated daily use.
 Use one neutral surface system: light mode reads as a near-white canvas with white or transparent rows, hairline borders, and very light hover/selected fills; dark mode reads inward by getting brighter than its shell.
 Treat that surface model as a hierarchy invariant, not a per-page decoration choice; if a page drifts blue-gray or slab-heavy, audit the token source first, then the component consumer.
 Treat the semantic color palette as one complete theme contract. Every product color utility must resolve through that contract in light and dark mode; alternate themes change seeds or declared semantic overrides without bypassing the token graph. Generated boot fallbacks, runtime colors, utility mappings, and imperative renderers such as charts, terminals, editors, and embedded documents must stay synchronized from the same selected theme. Common text/background and status foreground/surface pairs meet WCAG AA contrast in every supported theme.
+Paginated result sets are identified by their owning resource plus the normalized query. Same-query refresh or retry may preserve visible rows while pending. A different query is a different result set: old rows, pagination cursors, and interaction state must become invalid immediately and must never be combined with the new query.
 
 ## Interaction & Visual Principles
 

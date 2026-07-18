@@ -1,6 +1,6 @@
 import { createSignal, type Accessor } from "solid-js"
 import type { Session, SessionChildrenPage } from "@ericsanchezok/synergy-sdk/client"
-import type { SubsessionCursor } from "./subsession"
+import { normalizeSubsessionSearch, type SubsessionCursor } from "./subsession"
 
 export type SubsessionPageRequest = {
   sessionID: string
@@ -31,15 +31,23 @@ export function createSubsessionController(options: {
   const [error, setError] = createSignal(false)
   let requestSeq = 0
   let latestRequest: LoadSubsessionPageInput | undefined
+  let resultSessionID: string | undefined
+  let resultQuery: string | undefined
 
-  function reset() {
-    requestSeq += 1
-    latestRequest = undefined
+  function clearResults() {
     setItems([])
     setTotal(undefined)
     setNextCursor(null)
     setPageIndex(0)
     setStartCursors([null])
+  }
+
+  function reset() {
+    requestSeq += 1
+    latestRequest = undefined
+    resultSessionID = undefined
+    resultQuery = undefined
+    clearResults()
     setLoading(false)
     setError(false)
   }
@@ -47,9 +55,16 @@ export function createSubsessionController(options: {
   async function loadPage(input: LoadSubsessionPageInput) {
     const sessionID = options.sessionID()
     if (!sessionID) return
+    const query = normalizeSubsessionSearch(input.query ?? "")
     const requested = {
       ...input,
+      query: query || undefined,
       startCursors: input.startCursors ? [...input.startCursors] : undefined,
+    }
+    if (sessionID !== resultSessionID || query !== resultQuery) {
+      resultSessionID = sessionID
+      resultQuery = query
+      clearResults()
     }
     latestRequest = requested
 
@@ -61,7 +76,7 @@ export function createSubsessionController(options: {
       const page = await options.loadChildren({
         sessionID,
         limit: pageSize,
-        search: requested.query || undefined,
+        search: requested.query,
         cursor: requested.cursor,
       })
       if (seq !== requestSeq || options.sessionID() !== sessionID) return
