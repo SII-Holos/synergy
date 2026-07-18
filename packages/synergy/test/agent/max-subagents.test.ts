@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { createBuiltinLegacySubagents } from "../../src/agent/builtin-legacy-subagents"
 import { PermissionNext } from "../../src/permission/next"
 
 const ctx = {
@@ -36,6 +37,14 @@ describe("synergy-max subagents", () => {
       }
       expect(action(agent, "arxiv_download")).toBe("ask")
       expect(action(agent, "mcp__any_server__any_tool")).toBe("allow")
+    }
+  })
+
+  test("all max subagents can discover and expand deferred tools", () => {
+    for (const [name, agent] of Object.entries(agents)) {
+      for (const permission of ["search_tools", "expand_tools"]) {
+        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+      }
     }
   })
 
@@ -120,6 +129,18 @@ describe("synergy-max subagents", () => {
     expect(ordinary).toBeDefined()
     for (const permission of coordinatorTools) {
       expect(action(ordinary, permission), `implementation-engineer:${permission}`).toBe("deny")
+    }
+  })
+})
+
+describe("synergy subagents", () => {
+  const agents = createBuiltinLegacySubagents(ctx)
+
+  test("all classic subagents can discover and expand deferred tools", () => {
+    for (const [name, agent] of Object.entries(agents)) {
+      for (const permission of ["search_tools", "expand_tools"]) {
+        expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
+      }
     }
   })
 })

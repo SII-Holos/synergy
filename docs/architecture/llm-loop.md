@@ -217,7 +217,7 @@ The compaction job:
 
 The `summary` flag is the commit marker, not an in-progress placeholder. A failed or empty attempt stays hidden and excluded from model context, does not fulfill the request, and does not establish a filtering or pruning boundary.
 
-The compaction agent cannot use tools or continue the user's task. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
+The compaction agent cannot use tools or continue the user's task. Its built-in permission layer denies every tool subject to normal configuration precedence, while the invocation independently passes an empty tool set so no configured permission can equip the compaction model with tools. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 
 If the summarization call itself exceeds context, Synergy writes a deterministic mechanical fallback and commits it through the same boundary. Other compaction-model failures remain explicit failures.
 

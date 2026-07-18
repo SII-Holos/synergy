@@ -93,6 +93,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
   const common = PermissionNext.fromConfig({
     "*": "deny",
     "mcp__*": "allow",
+    expand_tools: "allow",
+    search_tools: "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",

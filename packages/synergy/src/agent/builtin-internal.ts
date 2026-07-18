@@ -42,16 +42,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       native: true,
       hidden: true,
       prompt: buildCompactionPrompt(),
-      permission: PermissionNext.merge(
-        ctx.defaults,
-        PermissionNext.fromConfig({
-          "*": "deny",
-          session_list: "allow",
-          session_read: "allow",
-          session_send: "allow",
-        }),
-        ctx.user,
-      ),
+      permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       options: {},
       ...resolveAgentModelRole(ctx, "long"),
     },

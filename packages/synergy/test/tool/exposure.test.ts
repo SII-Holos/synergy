@@ -261,6 +261,30 @@ describe("tool exposure", () => {
     })
   })
 
+  test("native subagents can expand only deferred tools they are allowed to use", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+        const session = await Session.create({})
+        let ids = await definitionIDs(session, { agent })
+
+        expect(ids.has("search_tools")).toBe(true)
+        expect(ids.has("expand_tools")).toBe(true)
+        expect(ids.has("note_read")).toBe(false)
+
+        await Session.update(session.id, (draft) => {
+          draft.toolState = { expandedGroups: ["note", "browser"] }
+        })
+
+        ids = await definitionIDs(await Session.get(session.id), { agent })
+        expect(ids.has("note_read")).toBe(true)
+        expect(ids.has("browser_navigation")).toBe(false)
+      },
+    })
+  })
+
   test("search-only tools are visible only after explicit activation", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
