@@ -39,6 +39,7 @@ const PRIORITY_RANK = new Map(TASK_PRIORITY_ORDER.map((s, i) => [s, i]))
 // ── DTO types ────────────────────────────────────────────────
 
 export interface NavigationProjectDto {
+  agentId: string
   projectId: string
   projectName: string | undefined
   projectSlug: string | undefined
@@ -51,6 +52,7 @@ export interface NavigationProjectDto {
 }
 
 export interface NavigationTaskDto {
+  agentId: string
   taskId: string
   projectId: string
   sessionID: string
@@ -104,6 +106,7 @@ export function toNavigationConnectionStatus(runtimeStatus: ClarusRuntimeStatus)
 /** Map a project binding to the public navigation project DTO (strict allowlist). */
 export function toNavigationProjectDto(binding: ClarusProjectBindingV3): NavigationProjectDto {
   return {
+    agentId: binding.agentId,
     projectId: binding.projectId,
     projectName: binding.projectName,
     projectSlug: binding.projectSlug,
@@ -119,6 +122,7 @@ export function toNavigationProjectDto(binding: ClarusProjectBindingV3): Navigat
 /** Map a task binding to the public navigation task DTO (strict allowlist). */
 export function toNavigationTaskDto(binding: ClarusTaskBindingV4): NavigationTaskDto {
   return {
+    agentId: binding.agentId,
     taskId: binding.taskId,
     projectId: binding.projectId,
     sessionID: binding.sessionID,

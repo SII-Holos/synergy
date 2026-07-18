@@ -194,6 +194,92 @@ describe("Clarus hierarchy model: buildHierarchy grouping", () => {
   })
 })
 
+describe("Clarus hierarchy model: composite identity", () => {
+  test("keeps projects and tasks distinct when IDs collide across agents", async () => {
+    const { buildClarusProjectHierarchy } = await import("../clarus/hierarchy")
+    const common = {
+      projectId: "shared-project",
+      projectName: "Shared",
+      activeGroup: true,
+      lifecycle: "active" as const,
+      createdAt: 1,
+      updatedAt: 1,
+      lastProjectActivityAt: 1,
+    }
+    const projects = [
+      {
+        ...common,
+        agentId: "agent-a",
+        tasks: [
+          {
+            agentId: "agent-a",
+            projectId: "shared-project",
+            taskId: "shared-task",
+            sessionID: "session-a",
+            title: "Agent A task",
+            status: "running",
+            resultState: "idle",
+            updatedAt: 1,
+            phase: "",
+            attempt: 1,
+            contextHydration: "unavailable",
+            runID: "run-a",
+            subtaskID: "sub-a",
+            createdAt: 1,
+          },
+        ],
+      },
+      {
+        ...common,
+        agentId: "agent-b",
+        tasks: [
+          {
+            agentId: "agent-b",
+            projectId: "shared-project",
+            taskId: "shared-task",
+            sessionID: "session-b",
+            title: "Agent B task",
+            status: "waiting",
+            resultState: "idle",
+            updatedAt: 1,
+            phase: "",
+            attempt: 1,
+            contextHydration: "unavailable",
+            runID: "run-b",
+            subtaskID: "sub-b",
+            createdAt: 1,
+          },
+        ],
+      },
+    ]
+
+    const hierarchy = buildClarusProjectHierarchy(projects, "connected")
+    expect(hierarchy.activeProjects).toHaveLength(2)
+    expect(hierarchy.activeProjects.map((project) => project.agentId)).toEqual(["agent-a", "agent-b"])
+    expect(hierarchy.activeProjects.map((project) => project.tasks[0]?.sessionID)).toEqual(["session-a", "session-b"])
+  })
+})
+
+describe("Clarus hierarchy model: status presentation", () => {
+  test("maps every connection status and exposes sync failure detail", async () => {
+    const { CLARUS_STATUS_ICON, connectionStatusLabel, connectionStatusDetail } = await import("../clarus/hierarchy")
+    for (const status of ["disabled", "connected", "reconnecting", "sign_in_required", "sync_failed"] as const) {
+      expect(connectionStatusLabel(status)).not.toBe("")
+      expect(CLARUS_STATUS_ICON[status]).toBeDefined()
+    }
+    expect(connectionStatusLabel("sync_failed")).toBe("Sync Failed")
+    expect(connectionStatusDetail("sync_failed", "subscription denied")).toBe("subscription denied")
+    expect(connectionStatusDetail("connected", "stale error")).toBeUndefined()
+  })
+
+  test("includes non-idle result state in task status labels", async () => {
+    const { taskStatusLabel } = await import("../clarus/hierarchy")
+    expect(taskStatusLabel("running", "idle")).toBe("Running")
+    expect(taskStatusLabel("submitted", "acknowledged")).toBe("Submitted · Acknowledged")
+    expect(taskStatusLabel("needs_attention", "rejected")).toBe("Needs attention · Rejected")
+  })
+})
+
 describe("Clarus hierarchy model: empty project text", () => {
   test("EMPTY_PROJECT_TASKS_TEXT is 'No tasks yet'", async () => {
     const { EMPTY_PROJECT_TASKS_TEXT } = await import("../clarus/hierarchy")

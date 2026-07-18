@@ -7,6 +7,7 @@
 
 import { onCleanup } from "solid-js"
 import { createStore } from "solid-js/store"
+import { clarusProjectKey } from "./identity"
 import type {
   ClarusNavigationResponse,
   ClarusNavigationProjectDto,
@@ -22,6 +23,7 @@ import type {
 // ---------------------------------------------------------------------------
 
 export interface ClarusProject {
+  agentId: string
   projectId: string
   projectName?: string
   projectSlug?: string
@@ -74,8 +76,8 @@ export interface ClarusStore {
   error: string | undefined
   stale: boolean
   loading: boolean
-  selectedProjectId: string | undefined
-  selectedTaskId: string | undefined
+  selectedProjectKey: string | undefined
+  selectedTaskKey: string | undefined
   composerUsers: ClarusComposerUserItem[]
   composerProjects: ClarusComposerProjectItem[]
 }
@@ -96,11 +98,11 @@ export interface ClarusModel {
    */
   invalidateAndRefresh(): Promise<void>
 
-  /** Select a project (navigation data is read from snapshot). */
-  selectProject(projectId: string): void
+  /** Select a project by its composite navigation key. */
+  selectProject(projectKey: string): void
 
-  /** Select a task within the current project. */
-  selectTask(taskId: string): void
+  /** Select a task by its composite navigation key. */
+  selectTask(taskKey: string): void
 
   /** Lookup composer users, capped at 5. */
   lookupUsers(search: string): Promise<void>
@@ -133,26 +135,28 @@ function groupTasksIntoProjects(
   tasks: ClarusNavigationTaskDto[],
 ): ClarusProject[] {
   const taskMap = new Map<string, ClarusNavigationTaskDto[]>()
-  for (const t of tasks) {
-    const list = taskMap.get(t.projectId)
+  for (const task of tasks) {
+    const key = clarusProjectKey(task.agentId, task.projectId)
+    const list = taskMap.get(key)
     if (list) {
-      list.push(t)
+      list.push(task)
     } else {
-      taskMap.set(t.projectId, [t])
+      taskMap.set(key, [task])
     }
   }
-  return projects.map((p) => ({
-    projectId: p.projectId,
-    projectName: p.projectName,
-    projectSlug: p.projectSlug,
-    activeGroup: p.activeGroup,
-    lifecycle: lifecycle(p.activeGroup),
-    projectStatus: p.projectStatus,
-    primaryAgent: p.primaryAgent,
-    lastProjectActivityAt: p.lastProjectActivityAt,
-    createdAt: p.createdAt,
-    updatedAt: p.updatedAt,
-    tasks: taskMap.get(p.projectId) ?? [],
+  return projects.map((project) => ({
+    agentId: project.agentId,
+    projectId: project.projectId,
+    projectName: project.projectName,
+    projectSlug: project.projectSlug,
+    activeGroup: project.activeGroup,
+    lifecycle: lifecycle(project.activeGroup),
+    projectStatus: project.projectStatus,
+    primaryAgent: project.primaryAgent,
+    lastProjectActivityAt: project.lastProjectActivityAt,
+    createdAt: project.createdAt,
+    updatedAt: project.updatedAt,
+    tasks: taskMap.get(clarusProjectKey(project.agentId, project.projectId)) ?? [],
   }))
 }
 
@@ -166,8 +170,8 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
     error: undefined,
     stale: false,
     loading: false,
-    selectedProjectId: undefined,
-    selectedTaskId: undefined,
+    selectedProjectKey: undefined,
+    selectedTaskKey: undefined,
     composerUsers: [],
     composerProjects: [],
   })
@@ -198,6 +202,7 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
           projects: groupTasksIntoProjects(res.data.projects, res.data.tasks),
         }
         setStore("snapshot", snapshot)
+        setStore("stale", res.data.connection.status === "reconnecting")
       }
     } catch (e: unknown) {
       // Only surface error for the latest request; older ones are ignored
@@ -248,12 +253,12 @@ export function createClarusModel(deps: ClarusModelDeps): ClarusModel {
     }
   }
 
-  function selectProject(projectId: string): void {
-    setStore("selectedProjectId", projectId)
+  function selectProject(projectKey: string): void {
+    setStore("selectedProjectKey", projectKey)
   }
 
-  function selectTask(taskId: string): void {
-    setStore("selectedTaskId", taskId)
+  function selectTask(taskKey: string): void {
+    setStore("selectedTaskKey", taskKey)
   }
 
   async function lookupUsers(search: string): Promise<void> {

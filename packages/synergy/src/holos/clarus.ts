@@ -91,6 +91,8 @@ const RuntimeTaskAssignedPayload = z
     subtask_id: z.string(),
     attempt: z.number(),
     deadline_at: z.string().nullable(),
+    attempt_mode: z.string().optional(),
+    retry_of_task_id: z.string().optional(),
   })
   .passthrough()
 
@@ -300,6 +302,8 @@ function toSemanticDTO(
         subtaskID: Bounds.id(p.subtask_id),
         attempt: p.attempt,
         deadlineAt: p.deadline_at,
+        attemptMode: p.attempt_mode === undefined ? undefined : Bounds.id(p.attempt_mode),
+        retryOfTaskID: p.retry_of_task_id === undefined ? undefined : Bounds.id(p.retry_of_task_id),
         goal,
         instructions,
         input,

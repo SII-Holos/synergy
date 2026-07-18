@@ -1080,6 +1080,22 @@ describe("ClarusRuntime init/reconnect lifecycle", () => {
     })
     expect(ClarusRuntime.isAttached()).toBe(true)
   })
+  test("GlobalRuntime.stop detaches the Clarus runtime", async () => {
+    const tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const port = new FakeClarusPort()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        await ClarusRuntime.attach(port)
+        expect(ClarusRuntime.isAttached()).toBe(true)
+
+        await GlobalRuntime.stop()
+        expect(ClarusRuntime.isAttached()).toBe(false)
+      },
+    })
+  })
 })
 
 // ── GlobalRuntime.start() REST wiring test ───────────────────────────

@@ -53,7 +53,7 @@ interface PermissionItem {
 export function PermissionDock(props: PermissionDockProps) {
   const data = useData()
   const { _ } = useLingui()
-  const toolTitle = (title: string | MessageDescriptor) => (typeof title === "string" ? title : _(title))
+  const toolLabel = (label: string | MessageDescriptor) => (typeof label === "string" ? label : _(label))
 
   const childSessions = createMemo(() => (data.store.session ?? []).filter((s) => s.parentID === props.sessionID))
 
@@ -108,13 +108,13 @@ export function PermissionDock(props: PermissionDockProps) {
     const part = toolPart()
     if (part) {
       const info = getToolInfo(part.tool, part.state?.input, item.permission.metadata)
-      const title = toolTitle(info.title)
-      if (info.subtitle) return `${title} ${info.subtitle}`
+      const title = toolLabel(info.title)
+      if (info.subtitle) return `${title} ${toolLabel(info.subtitle)}`
       return title
     }
     const info = getToolInfo(item.permission.permission, {}, item.permission.metadata ?? {})
-    const title = toolTitle(info.title)
-    if (info.subtitle) return `${title} ${info.subtitle}`
+    const title = toolLabel(info.title)
+    if (info.subtitle) return `${title} ${toolLabel(info.subtitle)}`
     return title
   })
 
@@ -161,14 +161,20 @@ export function PermissionDock(props: PermissionDockProps) {
       for (const part of parts) {
         if (part?.type === "tool" && (part as ToolPart).callID === callID) {
           const info = getToolInfo((part as ToolPart).tool, (part as ToolPart).state?.input, perm.metadata)
-          if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-          return toolTitle(info.title)
+          if (info.subtitle) {
+            const subtitle = toolLabel(info.subtitle)
+            return subtitle.split("/").pop() ?? subtitle
+          }
+          return toolLabel(info.title)
         }
       }
     }
     const info = getToolInfo(perm.permission, {}, perm.metadata ?? {})
-    if (info.subtitle) return info.subtitle.split("/").pop() ?? info.subtitle
-    return toolTitle(info.title)
+    if (info.subtitle) {
+      const subtitle = toolLabel(info.subtitle)
+      return subtitle.split("/").pop() ?? subtitle
+    }
+    return toolLabel(info.title)
   }
 
   const multi = createMemo(() => permissions().length > 1)

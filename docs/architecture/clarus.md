@@ -42,10 +42,11 @@ The Agent Tunnel supports five typed Clarus outbound operations dispatched throu
 Every request carries a caller-chosen `requestID`, optional `timeoutMs`, and optional `AbortSignal`. The response is correlated to the request:
 
 - A matched response DTO with the expected `responseType` resolves the promise.
-- A `rejected` failure means the Holos gateway rejected the request with a known `code` and message.
-- An `ambiguous` failure means the request may or may not have been processed: `timeout`, `aborted_after_dispatch`, `disconnected`, `invalid_response`, or `unexpected_response`.
+- A `not_dispatched` failure means the request never left the local process. The failed outbox record remains immutable for audit, while a task-result binding returns to `running` and may be submitted again with a new `requestID` after the local transport recovers.
+- A `rejected` failure means the Holos gateway definitively rejected the request with a known `code` and message. The task result moves to `needs_attention` and is not retryable without a new Clarus assignment.
+- An `ambiguous` failure means the request may or may not have been processed: `timeout`, `aborted_after_dispatch`, `disconnected`, `invalid_response`, or `unexpected_response`. The task result moves to `needs_attention` and must not be retried automatically.
 
-Callers must treat ambiguous outcomes as potentially-in-effect. Clarus adopts **Scheme A**: an ambiguous request may have already succeeded at the remote side, so retry decisions are the caller's responsibility after inspecting persisted state and the target channel. The transport does not auto-retry ambiguous requests.
+Clarus adopts **Scheme A** for ambiguous outcomes: an ambiguous request may have already succeeded remotely, so callers inspect persisted state and wait for external confirmation or reassignment. Only `not_dispatched` task-result outcomes are retry-safe, and each retry creates a new outbox record instead of rewriting the prior attempt.
 
 ## Inbound Events
 
@@ -91,7 +92,7 @@ Persisted under the same sharded agent/project scope, task bindings (V4 schema) 
 
 - `agentId`, `projectId`, `taskId` — primary identity
 - `sessionID`, `workspacePath`, `owningScopeID` — home-Scope session binding
-- `title`, `status` (waiting|running|needs_attention|submitting|submitted|failed|expired|cancelled), `resultState` (idle|prepared|dispatched|acknowledged|ambiguous|rejected|local_only), `phase`, `attempt` — Blueprint task state
+- `title`, `status` (waiting|running|needs_attention|submitting|submitted|failed|expired|cancelled), `resultState` (idle|prepared|dispatched|acknowledged|not_dispatched|ambiguous|rejected|local_only), `phase`, `attempt` — Blueprint task state
 - `contextHydration`, `localContinuationEnabledAt`, `resultRecordedAt` — lifecycle timestamps
 - `assignmentState`, `assignmentInboxItemID` — assignment delivery and recovery
 - `taskSessionOwnershipClaim` — crash-recovery ownership marker
@@ -100,11 +101,11 @@ The migration `20260715-clarus-v4-forward` upgraded task bindings from V3 to V4.
 
 ### Activity Timeline Index
 
-Project activity records (project messages with content, metadata, and file references) are stored under `StoragePath.clarusProjectActivityRoot()`. Each record is indexed by agent, project, and message ID. The migration `20260715-clarus-activity-timeline-index` built a chronological sort-key-based index for efficient paginated timeline queries.
+Project activity records (project messages with content, metadata, and file references) are stored under `StoragePath.clarusProjectActivityRoot()`. Each record is indexed by the composite agent/project/message identity and by a chronological sort key. Paginated reads use bounded scan, ghost cleanup, and orphan-index repair budgets. Cursors advance over the inspected sort-key window so corrupt entries cannot stall progress. The migration `20260715-clarus-activity-timeline-index` built the index.
 
 ### Outbox
 
-The Clarus outbox stores outbound project messages before they are sent through the tunnel. The migration `20260715-clarus-v4-forward` upgraded outbox records to V2 format.
+The Clarus V2 outbox stores every outbound operation before tunnel dispatch. Its terminal states are `acknowledged`, `not_dispatched`, `rejected`, `ambiguous`, and `local_only`; terminal records accept only exact idempotent replay. A retry after `not_dispatched` allocates a new request ID so the original failed attempt remains auditable.
 
 ### Dedup and Fanout Progress
 
@@ -112,9 +113,9 @@ Project-level message deduplication uses a per-message record under the agent/pr
 
 ## Reconciliation
 
-The runtime periodically reconciles each actively-subscribed project's messages from the Clarus REST API. It uses a stored message cursor to request new messages since the last sync point, delivers them through the session router, and updates the cursor on success. Reconciliation is bounded by page size and per-project message limits.
+The runtime periodically reconciles each actively subscribed project's messages from the Clarus REST API. Discovery and message backfill are bounded by page and aggregate cycle budgets. A discovery sweep that stops at a pagination cap or non-progressing cursor records a reconciliation error and does not archive unseen projects. Subscription failures preserve their structured remote message in reconciliation state.
 
-The `lastReconciliationAt` timestamp and `lastReconciliationError` string on each project binding record reconciliation health.
+Message cursors advance only after every assignment in the page is safely handled. If payload hydration or assignment ingestion fails, the project is marked deferred and keeps its previous cursor, while rotation allows other projects to continue making progress. The reconciliation record remains unhealthy until a complete cycle succeeds.
 
 ## Session Integration
 
@@ -129,6 +130,8 @@ When a `runtimeTaskAssigned` event arrives, or when the user continues a task lo
 
 All Clarus task sessions use the Home Scope regardless of which project Scope is currently active. They carry a `SessionEndpoint` with `kind: "clarus"` and `role: "task"`, not a directory-based endpoint.
 
+Live and backfilled assignment events preserve `attempt_mode` and `retry_of_task_id` from the Clarus wire contract in the task input, so retry lineage reaches the task session without changing the composite binding identity.
+
 ### Project Message Delivery
 
 When a `projectMessageCreated` event arrives, the session router delivers the message to all non-terminal task bindings within the project. Delivery uses the persistent session inbox with `source: { type: "clarus" }`. Project messages use deterministic inbox item and message IDs derived via SHA-256 from the composite identity to prevent duplicate delivery across process restarts.
@@ -140,10 +143,10 @@ Each Clarus task session receives a dedicated directory under the Synergy config
 The public `/global/clarus/navigation` endpoint produces a single snapshot containing:
 
 - `connection` — public connection status (`disabled | connected | reconnecting | sign_in_required | sync_failed`), agent ID, and optional error.
-- `projects` — all project bindings with strict allowlist DTO fields.
-- `tasks` — all task bindings with strict allowlist DTO fields including `status`, `resultState`, `localContinuationEnabledAt`, and `resultRecordedAt`.
+- `projects` — project bindings with strict allowlist DTO fields including `agentId`.
+- `tasks` — task bindings with strict allowlist DTO fields including `agentId`, `status`, `resultState`, `localContinuationEnabledAt`, and `resultRecordedAt`.
 
-Navigation is bounded: at most 16 agents, 500 projects, and paginated reads with 5 project pages and 3 task pages.
+Navigation identity is composite end to end. The frontend keys projects by encoded `(agentId, projectId)` and tasks by encoded `(agentId, projectId, taskId)`, so IDs that collide across agents cannot overwrite grouping or selection state. Active projects remain visible even with no tasks; inactive projects appear in the History group only when durable task bindings remain. Navigation reads are bounded to at most 16 agents, 500 projects, 5 project pages, and 3 task pages.
 
 ### Task Priority
 
@@ -162,14 +165,14 @@ Tasks are sorted by status priority:
 
 Within the same priority band, tasks are ordered by most recent `updatedAt` first. Terminal statuses (`submitted`, `failed`, `expired`, `cancelled`) are not eligible for project message fanout.
 
-`GET /global/clarus/projects/{projectId}/tasks/{taskId}` returns the full task binding DTO with session binding and workspace path.
+`GET /global/clarus/projects/{projectId}/tasks/{taskId}` returns a bounded task detail DTO with the session binding needed for navigation; internal workspace and Scope paths are excluded.
 
 `POST /global/clarus/projects/{projectId}/tasks/{taskId}/continue-local` enables local continuation of a `submitted`+`acknowledged` task. Possible responses:
 
 - `200` — full updated navigation task DTO returned (resultState → local_only).
 - `400 CLARUS_CONTINUE_LOCAL_INELIGIBLE` — task not in `submitted`/`acknowledged` state.
 
-Already-local-only tasks return the existing binding (idempotent). Ambiguous or rejected result states are terminal read-only and never auto-retried.
+Already-local-only tasks return the existing binding (idempotent). `not_dispatched` results remain running and accept a new submission with a fresh request ID; `ambiguous` and `rejected` results are terminal read-only and never auto-retried.
 
 ### Composer
 
@@ -187,12 +190,12 @@ Clarus registers as a sidebar navigation entry immediately after Home and before
 
 The navigation surfaces render:
 
-- A **connection status bar** showing the five public states.
-- **Active projects** with their tasks sorted by priority.
-- **Inactive projects** with history — only when they have durable task records.
-- Task rows that open the native Clarus Task Session in the standard session page.
+- A **connection status bar** showing the five public states and the stored synchronization error for `sync_failed`.
+- **Active projects** with their tasks sorted by priority, including empty projects with a `No tasks yet` state.
+- A **History** group containing only inactive projects with durable task records.
+- Task rows that include non-idle result state in the status label and open the native Clarus Task Session in the standard session page.
 
-Clarus task sessions use the standard session prompt surface. Clarus-specific completion controls do not gate or replace normal session navigation; the Agent follows its assignment instructions and submits through `clarus_submit_task_result`.
+Project and task selection uses composite keys that include `agentId`. Sidebar disclosure controls are keyboard-operable with Enter and Space. Clarus task sessions use the standard session prompt surface; Clarus-specific completion controls do not gate or replace normal session navigation, and the Agent submits through `clarus_submit_task_result`.
 
 ### Event-Driven Invalidation
 
@@ -249,9 +252,10 @@ All routes use bounded Zod schemas with strict allowlist fields, limit validatio
 - Session navigation indexes are rebuildable V2 caches; reading a legacy V1 index rebuilds it from authoritative Session endpoint data so existing Clarus sessions self-heal into the native `clarus` category.
 - There is exactly one Holos Agent Tunnel WebSocket. Clarus is a native capability on that transport; there is no separate Clarus daemon, adapter process, polling loop, or second WebSocket.
 - Every `clarus.*` wire frame enters through `packages/synergy/src/holos/envelope.ts` native fallthrough and reaches `createClarusAgentTunnelAdapter` for bounded DTO conversion.
-- Ambiguous request outcomes follow Scheme A: no auto-retry; callers inspect persisted state.
+- Clarus request outcomes have three transport semantics: `not_dispatched` is locally retry-safe with a new request ID, `rejected` is a definitive remote refusal, and `ambiguous` follows Scheme A with no automatic retry.
 - Project and task bindings are stored under sharded paths using URL-encoded agent ID and project ID segments validated to 512 characters max.
+- Live and backfilled assignment ingestion preserves retry lineage (`attempt_mode`, `retry_of_task_id`) in the task input.
 - Task sessions always use the Home Scope; they are never bound to a project-directory Scope.
 - The frontend refreshes through the generated SDK and single `clarus.navigation.updated` event, plus reconnect-version invalidation. No raw fetch, no poll, no second socket.
-- Navigation DTOs use strict Zod allowlists: no `z.unknown()`, no passthrough on navigation response.
-- Continue-local requires `submitted` + `acknowledged`; `ambiguous` and `rejected` are terminal read-only.
+- Navigation DTOs use strict Zod allowlists, and frontend identity is composite across agent, project, and task IDs.
+- Continue-local requires `submitted` + `acknowledged`; `ambiguous` and `rejected` are terminal read-only, while `not_dispatched` remains retryable.

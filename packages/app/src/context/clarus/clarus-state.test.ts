@@ -12,6 +12,7 @@ import { describe, expect, test } from "bun:test"
 import { createRoot } from "solid-js"
 import { createClarusModel } from "./clarus-model"
 import type { ClarusComposerSubmitInput } from "./clarus-model"
+import { clarusProjectKey, clarusTaskKey } from "./identity"
 import {
   createMockClarusDeps,
   makeNavResponse,
@@ -70,6 +71,22 @@ describe("Clarus state model", () => {
         expect(model.store.snapshot).toBeDefined()
         expect(model.store.snapshot!.connection.agentId).toBe("agent-a")
         expect(model.store.snapshot!.connection.status).toBe("connected")
+        dispose()
+      })
+    })
+
+    test("marks a reconnecting snapshot as stale while preserving its data", async () => {
+      const { deps, navigationMock } = createMockClarusDeps()
+      navigationMock.mockResolvedValue({
+        data: makeNavResponse({ connection: { status: "reconnecting", agentId: "agent-a" } }),
+      })
+
+      await createRoot(async (dispose) => {
+        const model = createClarusModel(deps)
+        await model.refreshNavigation()
+
+        expect(model.store.snapshot?.connection.status).toBe("reconnecting")
+        expect(model.store.stale).toBe(true)
         dispose()
       })
     })
@@ -315,11 +332,62 @@ describe("Clarus state model", () => {
     })
   })
 
+  describe("composite navigation identity", () => {
+    test("groups colliding project and task IDs by agent", async () => {
+      const { deps, navigationMock } = createMockClarusDeps()
+      navigationMock.mockResolvedValue({
+        data: makeNavResponse({
+          projects: [
+            { agentId: "agent-a", projectId: "shared", activeGroup: true, createdAt: 1, updatedAt: 1 },
+            { agentId: "agent-b", projectId: "shared", activeGroup: true, createdAt: 1, updatedAt: 1 },
+          ],
+          tasks: [
+            makeNavTask({ agentId: "agent-a", projectId: "shared", taskId: "task", sessionID: "session-a" }),
+            makeNavTask({ agentId: "agent-b", projectId: "shared", taskId: "task", sessionID: "session-b" }),
+          ],
+        }),
+      })
+
+      await createRoot(async (dispose) => {
+        const model = createClarusModel(deps)
+        await model.refreshNavigation()
+
+        expect(model.store.snapshot?.projects).toHaveLength(2)
+        expect(model.store.snapshot?.projects.map((project) => project.tasks.map((task) => task.sessionID))).toEqual([
+          ["session-a"],
+          ["session-b"],
+        ])
+        dispose()
+      })
+    })
+
+    test("keeps selection distinct when project and task IDs collide across agents", async () => {
+      const { deps } = createMockClarusDeps()
+
+      await createRoot(async (dispose) => {
+        const model = createClarusModel(deps)
+        const projectA = clarusProjectKey("agent-a", "shared")
+        const projectB = clarusProjectKey("agent-b", "shared")
+        const taskA = clarusTaskKey("agent-a", "shared", "task")
+        const taskB = clarusTaskKey("agent-b", "shared", "task")
+
+        model.selectProject(projectA)
+        expect(model.store.selectedProjectKey).toBe(projectA)
+        expect(model.store.selectedProjectKey).not.toBe(projectB)
+
+        model.selectTask(taskA)
+        expect(model.store.selectedTaskKey).toBe(taskA)
+        expect(model.store.selectedTaskKey).not.toBe(taskB)
+        dispose()
+      })
+    })
+  })
+
   // =====================================================================
   // Project and task selection
   // =====================================================================
   describe("project and task selection", () => {
-    test("selectProject sets selectedProjectId from snapshot data", async () => {
+    test("selectProject stores the composite project key", async () => {
       const { deps, navigationMock } = createMockClarusDeps()
       const projects = [
         makeClarusProject({
@@ -345,14 +413,15 @@ describe("Clarus state model", () => {
         // (The model maps SDK response → store snapshot; here we test selection
         // regardless of how the snapshot was populated.)
         await model.refreshNavigation()
-        model.selectProject("proj-a")
+        const key = clarusProjectKey("agent-1", "proj-a")
+        model.selectProject(key)
 
-        expect(model.store.selectedProjectId).toBe("proj-a")
+        expect(model.store.selectedProjectKey).toBe(key)
         dispose()
       })
     })
 
-    test("selectTask sets selectedTaskId", async () => {
+    test("selectTask stores the composite task key", async () => {
       const { deps, navigationMock } = createMockClarusDeps()
       navigationMock.mockResolvedValue({
         data: makeNavResponse(),
@@ -361,10 +430,11 @@ describe("Clarus state model", () => {
       await createRoot(async (dispose) => {
         const model = createClarusModel(deps)
         await model.refreshNavigation()
-        model.selectProject("proj-a")
-        model.selectTask("t-2")
+        model.selectProject(clarusProjectKey("agent-1", "proj-a"))
+        const key = clarusTaskKey("agent-1", "proj-a", "t-2")
+        model.selectTask(key)
 
-        expect(model.store.selectedTaskId).toBe("t-2")
+        expect(model.store.selectedTaskKey).toBe(key)
         dispose()
       })
     })
@@ -377,6 +447,7 @@ describe("Clarus state model", () => {
         data: makeNavResponse({
           projects: [
             {
+              agentId: "agent-1",
               projectId: "proj-a",
               projectName: "Alpha",
               projectSlug: "alpha",
@@ -385,6 +456,7 @@ describe("Clarus state model", () => {
               updatedAt: Date.now(),
             },
             {
+              agentId: "agent-1",
               projectId: "proj-b",
               projectName: "Beta",
               projectSlug: "beta",
@@ -555,8 +627,8 @@ describe("Clarus state model", () => {
         expect(model.store.error).toBeUndefined()
         expect(model.store.stale).toBe(false)
         expect(model.store.loading).toBe(false)
-        expect(model.store.selectedProjectId).toBeUndefined()
-        expect(model.store.selectedTaskId).toBeUndefined()
+        expect(model.store.selectedProjectKey).toBeUndefined()
+        expect(model.store.selectedTaskKey).toBeUndefined()
         expect(model.store.composerUsers).toEqual([])
         expect(model.store.composerProjects).toEqual([])
         dispose()

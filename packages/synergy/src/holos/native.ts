@@ -53,6 +53,7 @@ export type HolosConnectionEvent =
 export type RequestID = string
 
 export type NativeRequestFailure =
+  | { disposition: "not_dispatched"; requestID: RequestID; code: string; message: string }
   | { disposition: "rejected"; requestID: RequestID; code: string; message: string }
   | {
       disposition: "ambiguous"

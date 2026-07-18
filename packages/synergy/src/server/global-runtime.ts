@@ -71,6 +71,7 @@ export namespace GlobalRuntime {
     await GitHubPollRuntime.stop()
     await GitHubRuntime.stop()
     Agenda.stop()
+    ClarusRuntime.shutdown()
     ClarusRuntime.configureRest(null)
     await Promise.all([
       ScopeContext.provide({

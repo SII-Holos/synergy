@@ -1358,7 +1358,7 @@ export type ClarusErrorDetail = {
   code: string
   message: string
   recoverable: boolean
-  disposition?: "rejected" | "ambiguous"
+  disposition?: "not_dispatched" | "rejected" | "ambiguous"
   reason?:
     | "timeout"
     | "aborted_after_dispatch"
@@ -1471,6 +1471,7 @@ export type ClarusComposerSubmitInput = {
 }
 
 export type ClarusNavigationProjectDto = {
+  agentId: string
   projectId: string
   projectName?: string
   projectSlug?: string
@@ -1483,6 +1484,7 @@ export type ClarusNavigationProjectDto = {
 }
 
 export type ClarusNavigationTaskDto = {
+  agentId: string
   taskId: string
   projectId: string
   sessionID: string

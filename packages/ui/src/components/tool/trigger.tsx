@@ -9,7 +9,7 @@ export interface ToolTriggerProps {
   icon: IconName
   title: string | MessageDescriptor
   titleClass?: string
-  subtitle?: string
+  subtitle?: string | MessageDescriptor
   subtitleClass?: string
   /** When set, renders a path with directory/filename split instead of plain subtitle */
   subtitlePath?: string
@@ -26,15 +26,15 @@ function directoryLabel(path: string): string {
   return path.slice(0, idx).replace(/\/$/, "")
 }
 
-/** Resolve a title prop — MessageDescriptor or plain string — through i18n. */
-function resolveTitle(title: string | MessageDescriptor, _: (desc: MessageDescriptor) => string): string {
-  if (typeof title === "string") return title
-  return _(title)
+function resolveDescriptor(value: string | MessageDescriptor, _: (desc: MessageDescriptor) => string): string {
+  if (typeof value === "string") return value
+  return _(value)
 }
 
 export function ToolTrigger(props: ToolTriggerProps) {
   const { _ } = useLingui()
-  const title = () => resolveTitle(props.title, _)
+  const title = () => resolveDescriptor(props.title, _)
+  const subtitle = () => (props.subtitle ? resolveDescriptor(props.subtitle, _) : undefined)
   return (
     <div data-component="tool-trigger">
       <div data-slot="tool-trigger-left">
@@ -58,7 +58,7 @@ export function ToolTrigger(props: ToolTriggerProps) {
                 <span data-slot="tool-trigger-path-file">{getFilename(props.subtitlePath!)}</span>
               </div>
             </Show>
-            <Show when={!props.subtitlePath && props.subtitle}>
+            <Show when={!props.subtitlePath && subtitle()}>
               <span
                 data-slot="tool-trigger-subtitle"
                 classList={{
@@ -72,7 +72,7 @@ export function ToolTrigger(props: ToolTriggerProps) {
                   }
                 }}
               >
-                {props.subtitle}
+                {subtitle()}
               </span>
             </Show>
             <For each={props.tags ?? []}>

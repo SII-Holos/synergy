@@ -130,8 +130,9 @@ describe("Outbox safe request keys", () => {
 // 2. Terminal outbox state enforcement
 // =========================================================================
 describe("Outbox terminal state enforcement", () => {
-  test("TERMINAL_STATES includes acknowledged, rejected, ambiguous, local_only", () => {
+  test("TERMINAL_STATES includes acknowledged, not_dispatched, rejected, ambiguous, local_only", () => {
     expect(isTerminalOutboxState("acknowledged")).toBe(true)
+    expect(isTerminalOutboxState("not_dispatched")).toBe(true)
     expect(isTerminalOutboxState("rejected")).toBe(true)
     expect(isTerminalOutboxState("ambiguous")).toBe(true)
     expect(isTerminalOutboxState("local_only")).toBe(true)
@@ -1025,9 +1026,10 @@ describe("Outbox V2 local_only state", () => {
     expect(result.success).toBe(true)
   })
 
-  test("ClarusOutboxStateV2 includes local_only", () => {
+  test("ClarusOutboxStateV2 includes all terminal outcomes", () => {
     const stateField = ClarusOutboxRecordV2.shape.state
     expect(stateField.options).toContain("local_only")
+    expect(stateField.options).toContain("not_dispatched")
     expect(stateField.options).toContain("prepared")
     expect(stateField.options).toContain("dispatched")
     expect(stateField.options).toContain("acknowledged")

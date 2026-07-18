@@ -55,8 +55,7 @@ import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
 import { getTaskToolInfo } from "./tool/task-info"
 import type { MessageDescriptor } from "@lingui/core"
-import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
-import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
+import { MESSAGE_PART_DESC, TOOL_MISC_DESC, TOOL_TITLE_DESC } from "./tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
 import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
 
@@ -192,7 +191,7 @@ import type { IconName } from "./icon"
 export type ToolInfo = {
   icon: IconName
   title: string | MessageDescriptor
-  subtitle?: string
+  subtitle?: string | MessageDescriptor
 }
 
 export type ToolTriggerInfo = ToolInfo & {
@@ -641,8 +640,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "clarus_submit_task_result":
       return {
         icon: "send",
-        title: "Submit Clarus Result",
-        subtitle: input.success === false ? "Failed" : "Completed",
+        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
+        subtitle: input.success === false ? TOOL_MISC_DESC.failed : TOOL_MISC_DESC.completed,
       }
     case "websearch":
       return {

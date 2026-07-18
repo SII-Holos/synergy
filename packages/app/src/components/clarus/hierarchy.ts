@@ -2,7 +2,10 @@
  * Native Clarus hierarchy model — pure functions for project/task grouping,
  * priority sorting, route construction, and stale-data retention.
  */
+import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { clarus as S, type AppMessageDescriptor } from "@/locales/messages"
 import type { ClarusProject } from "@/context/clarus/clarus-model"
+import { clarusProjectKey, clarusTaskKey } from "@/context/clarus/identity"
 
 // ---------------------------------------------------------------------------
 // Connection status constants
@@ -17,6 +20,83 @@ export const CLARUS_CONNECTION_STATUSES = [
 ] as const
 
 export type ClarusConnectionStatus = (typeof CLARUS_CONNECTION_STATUSES)[number]
+
+export const CLARUS_STATUS_ICON: Record<ClarusConnectionStatus, SemanticIconTokenName> = {
+  disabled: "clarus.status.disabled",
+  connected: "clarus.status.connected",
+  reconnecting: "clarus.status.reconnecting",
+  sign_in_required: "clarus.status.sign_in_required",
+  sync_failed: "clarus.status.sync_failed",
+}
+
+const CLARUS_CONNECTION_LABELS: Record<ClarusConnectionStatus, AppMessageDescriptor> = {
+  connected: S.connectionConnected,
+  reconnecting: S.connectionReconnecting,
+  sign_in_required: S.connectionSignInRequired,
+  sync_failed: S.connectionSyncFailed,
+  disabled: S.connectionDisabled,
+}
+
+function sourceMessage(descriptor: AppMessageDescriptor): string {
+  return descriptor.message ?? descriptor.id
+}
+
+export function connectionStatusLabel(
+  status: ClarusConnectionStatus,
+  translate: (descriptor: AppMessageDescriptor) => string = sourceMessage,
+): string {
+  return translate(CLARUS_CONNECTION_LABELS[status])
+}
+
+export function connectionStatusDetail(status: ClarusConnectionStatus, error?: string): string | undefined {
+  return status === "sync_failed" ? error : undefined
+}
+
+const TASK_STATUS_LABELS: Record<string, AppMessageDescriptor> = {
+  waiting: S.taskWaiting,
+  running: S.taskRunning,
+  needs_attention: S.taskNeedsAttention,
+  submitting: S.taskSubmitting,
+  submitted: S.taskSubmitted,
+  failed: S.taskFailed,
+  expired: S.taskExpired,
+  cancelled: S.taskCancelled,
+}
+
+const RESULT_STATE_LABELS: Record<string, AppMessageDescriptor> = {
+  not_dispatched: S.resultNotDispatched,
+  prepared: S.resultPrepared,
+  dispatched: S.resultDispatched,
+  acknowledged: S.resultAcknowledged,
+  ambiguous: S.resultAmbiguous,
+  rejected: S.resultRejected,
+  local_only: S.resultLocalOnly,
+}
+
+function fallbackStatusLabel(status: string): string {
+  const label = status.replaceAll("_", " ")
+  return label.charAt(0).toUpperCase() + label.slice(1)
+}
+
+function statusLabel(
+  status: string,
+  labels: Record<string, AppMessageDescriptor>,
+  translate: (descriptor: AppMessageDescriptor) => string,
+): string {
+  const descriptor = labels[status]
+  return descriptor ? translate(descriptor) : fallbackStatusLabel(status)
+}
+
+export function taskStatusLabel(
+  status: string,
+  resultState: string,
+  translate: (descriptor: AppMessageDescriptor) => string = sourceMessage,
+): string {
+  const taskLabel = statusLabel(status, TASK_STATUS_LABELS, translate)
+  return resultState === "idle"
+    ? taskLabel
+    : `${taskLabel} · ${statusLabel(resultState, RESULT_STATE_LABELS, translate)}`
+}
 
 // ---------------------------------------------------------------------------
 // Task priority ordering
@@ -37,13 +117,15 @@ export const TASK_PRIORITY_ORDER: Record<string, number> = {
 // Empty project placeholder text
 // ---------------------------------------------------------------------------
 
-export const EMPTY_PROJECT_TASKS_TEXT = "No tasks yet"
+export const EMPTY_PROJECT_TASKS_TEXT = S.noTasks.message
 
 // ---------------------------------------------------------------------------
 // Task shape (minimal contract for sorting)
 // ---------------------------------------------------------------------------
 
-interface TaskLike {
+export interface TaskLike {
+  agentId?: string
+  projectId?: string
   taskId: string
   sessionID: string
   title: string
@@ -57,6 +139,7 @@ interface TaskLike {
 // ---------------------------------------------------------------------------
 
 interface ProjectLike {
+  agentId?: string
   projectId: string
   projectName: string
   lifecycle: "active" | "inactive"
@@ -70,6 +153,7 @@ interface ProjectLike {
 
 export interface ClarusHierarchy {
   activeProjects: Array<{
+    agentId?: string
     projectId: string
     projectName: string
     lifecycle: "active" | "inactive"
@@ -77,6 +161,7 @@ export interface ClarusHierarchy {
     tasks: TaskLike[]
   }>
   inactiveProjectsWithHistory: Array<{
+    agentId?: string
     projectId: string
     projectName: string
     lifecycle: "active" | "inactive"
@@ -91,14 +176,15 @@ export interface ClarusHierarchy {
 // ---------------------------------------------------------------------------
 
 export function activateTaskSession(
-  task: Pick<TaskLike, "taskId" | "sessionID" | "status">,
+  task: Pick<TaskLike, "agentId" | "projectId" | "taskId" | "sessionID" | "status">,
   actions: {
-    selectTask(taskId: string): void
+    selectTask(taskKey: string): void
     navigateToSession(sessionID: string): void
   },
 ): void {
   if (!task.sessionID) throw new Error("sessionID must be non-empty")
-  actions.selectTask(task.taskId)
+  const taskKey = hierarchyTaskKey(task)
+  actions.selectTask(taskKey)
   actions.navigateToSession(task.sessionID)
 }
 
@@ -120,6 +206,14 @@ export function sortTasksByPriority(tasks: TaskLike[]): TaskLike[] {
 // Build the active/inactive project hierarchy
 // ---------------------------------------------------------------------------
 
+export function hierarchyProjectKey(project: Pick<ProjectLike, "agentId" | "projectId">): string {
+  return project.agentId ? clarusProjectKey(project.agentId, project.projectId) : project.projectId
+}
+
+export function hierarchyTaskKey(task: Pick<TaskLike, "agentId" | "projectId" | "taskId">): string {
+  return task.agentId && task.projectId ? clarusTaskKey(task.agentId, task.projectId, task.taskId) : task.taskId
+}
+
 export function buildHierarchy(
   projects: ProjectLike[],
   projectTasks: Record<string, TaskLike[]>,
@@ -129,10 +223,12 @@ export function buildHierarchy(
   const inactiveProjectsWithHistory: ClarusHierarchy["inactiveProjectsWithHistory"] = []
 
   for (const project of projects) {
-    const tasks = projectTasks[project.projectId] ? sortTasksByPriority(projectTasks[project.projectId]) : []
+    const projectKey = hierarchyProjectKey(project)
+    const tasks = projectTasks[projectKey] ? sortTasksByPriority(projectTasks[projectKey]) : []
 
     if (project.lifecycle === "active") {
       activeProjects.push({
+        agentId: project.agentId,
         projectId: project.projectId,
         projectName: project.projectName,
         lifecycle: project.lifecycle,
@@ -142,6 +238,7 @@ export function buildHierarchy(
     } else if (tasks.length > 0) {
       // Inactive projects appear only when they have retained task history
       inactiveProjectsWithHistory.push({
+        agentId: project.agentId,
         projectId: project.projectId,
         projectName: project.projectName,
         lifecycle: project.lifecycle,
@@ -160,13 +257,16 @@ export function buildClarusProjectHierarchy(
 ): ClarusHierarchy {
   return buildHierarchy(
     projects.map((project) => ({
+      agentId: project.agentId,
       projectId: project.projectId,
       projectName: project.projectName ?? project.projectId,
       lifecycle: project.lifecycle,
       desiredSubscription: project.activeGroup,
       lastProjectActivityAt: project.lastProjectActivityAt ?? 0,
     })),
-    Object.fromEntries(projects.map((project) => [project.projectId, project.tasks])),
+    Object.fromEntries(
+      projects.map((project) => [clarusProjectKey(project.agentId, project.projectId), project.tasks]),
+    ),
     connectionStatus,
   )
 }

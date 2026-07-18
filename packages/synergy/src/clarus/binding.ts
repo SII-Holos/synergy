@@ -559,6 +559,25 @@ export namespace ClarusTaskBindingStore {
     return updated
   }
 
+  export async function markResultNotDispatched(
+    agentId: string,
+    projectId: string,
+    taskId: string,
+  ): Promise<ClarusTaskBindingV4 | undefined> {
+    using _ = await Lock.write(lockKey("task-binding", agentId, projectId, taskId))
+    const existing = await read(agentId, projectId, taskId)
+    if (!existing) return undefined
+    if (existing.resultState === "not_dispatched" || existing.resultState === "local_only") return existing
+    const updated: ClarusTaskBindingV4 = {
+      ...existing,
+      status: "running",
+      resultState: "not_dispatched",
+      updatedAt: Date.now(),
+    }
+    await write(updated)
+    return updated
+  }
+
   export async function markResultRejected(
     agentId: string,
     projectId: string,
@@ -570,6 +589,7 @@ export namespace ClarusTaskBindingStore {
     if (existing.resultState === "rejected" || existing.resultState === "local_only") return existing
     const updated: ClarusTaskBindingV4 = {
       ...existing,
+      status: "needs_attention",
       resultState: "rejected",
       updatedAt: Date.now(),
     }
@@ -588,6 +608,7 @@ export namespace ClarusTaskBindingStore {
     if (existing.resultState === "ambiguous" || existing.resultState === "local_only") return existing
     const updated: ClarusTaskBindingV4 = {
       ...existing,
+      status: "needs_attention",
       resultState: "ambiguous",
       updatedAt: Date.now(),
     }

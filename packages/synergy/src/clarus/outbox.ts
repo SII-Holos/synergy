@@ -17,7 +17,13 @@ function payloadEqual(a: Record<string, unknown> | undefined, b: Record<string, 
 }
 
 /** Terminal outbox states — once reached, the record is immutable except exact idempotent replay. */
-const TERMINAL_STATES: Set<ClarusOutboxStateV2> = new Set(["acknowledged", "rejected", "ambiguous", "local_only"])
+const TERMINAL_STATES: Set<ClarusOutboxStateV2> = new Set([
+  "acknowledged",
+  "not_dispatched",
+  "rejected",
+  "ambiguous",
+  "local_only",
+])
 
 export function isTerminalOutboxState(state: ClarusOutboxStateV2): boolean {
   return TERMINAL_STATES.has(state)
@@ -195,6 +201,49 @@ export namespace ClarusOutbox {
       state: "acknowledged",
       acknowledgedAt: now,
       ...(acknowledgedPayload !== undefined ? { acknowledgedPayload } : {}),
+    }
+    await write(updated)
+    return updated
+  }
+
+  export async function markNotDispatched(
+    requestID: string,
+    errorCode?: string,
+    errorMessage?: string,
+  ): Promise<ClarusOutboxRecordV2> {
+    validateRequestID(requestID)
+    using _ = await Lock.write(outboxLockKey(requestID))
+    const existing = await read(requestID)
+    if (!existing) throw new Error(`Clarus outbox record not found: ${requestID}`)
+    if (isTerminalOutboxState(existing.state)) {
+      if (existing.state === "not_dispatched") {
+        const normalizedCode = errorCode ? errorCode.slice(0, 128) : undefined
+        const normalizedMessage = errorMessage ? errorMessage.replace(/[\r\n]/g, " ").slice(0, 512) : undefined
+        if (existing.errorCode !== normalizedCode || existing.errorMessage !== normalizedMessage) {
+          throw Object.assign(
+            new Error(
+              `Clarus outbox record ${requestID} is terminal (${existing.state}): cannot rewrite terminal state with different error details`,
+            ),
+            { code: "CLARUS_OUTBOX_TERMINAL" },
+          )
+        }
+      } else {
+        throw Object.assign(
+          new Error(
+            `Clarus outbox record ${requestID} is terminal (${existing.state}): cannot transition to not_dispatched`,
+          ),
+          { code: "CLARUS_OUTBOX_TERMINAL" },
+        )
+      }
+      return existing
+    }
+
+    const updated: ClarusOutboxRecordV2 = {
+      ...existing,
+      state: "not_dispatched",
+      notDispatchedAt: Date.now(),
+      ...(errorCode ? { errorCode: errorCode.slice(0, 128) } : {}),
+      ...(errorMessage ? { errorMessage: errorMessage.replace(/[\r\n]/g, " ").slice(0, 512) } : {}),
     }
     await write(updated)
     return updated

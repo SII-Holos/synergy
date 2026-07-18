@@ -29,27 +29,17 @@ export namespace ClarusProjectActivityStore {
     const validated = ClarusProjectActivitySchema.parse(activity)
     const lockKey = upsertLockKey(validated.agentId, validated.projectId, validated.messageId)
     using _ = await Lock.write(lockKey)
-    // 1. Persist canonical record first (idempotent by messageId).
-    await Storage.write(
-      StoragePath.clarusProjectActivity(validated.agentId, validated.projectId, validated.messageId),
-      validated,
-    )
-    // 2. Clean up any stale timeline entries for this messageId (handles receivedAt change).
+    const canonicalPath = StoragePath.clarusProjectActivity(validated.agentId, validated.projectId, validated.messageId)
+    const previous = await get(validated.agentId, validated.projectId, validated.messageId)
+    await Storage.write(canonicalPath, validated)
+
     const timelinePrefix = StoragePath.clarusActivityTimelineIndex(validated.agentId, validated.projectId)
-    const existingKeys = await Storage.scan(timelinePrefix)
-    let cleaned = 0
-    for (const key of existingKeys) {
-      const parsed = parseActivitySortKey(key)
-      if (parsed?.messageId === validated.messageId) {
-        await Storage.remove([...timelinePrefix, key])
-        cleaned++
-      }
+    if (previous && previous.receivedAt !== validated.receivedAt) {
+      const previousSortKey = buildActivitySortKey(previous.receivedAt, previous.messageId)
+      await Storage.remove([...timelinePrefix, previousSortKey]).catch(() => undefined)
     }
-    // 3. Write new timeline index entry.
     const sortKey = buildActivitySortKey(validated.receivedAt, validated.messageId)
     await Storage.write([...timelinePrefix, sortKey], { messageId: validated.messageId })
-    // If we had stale entries, the clean count is for instrumentation.
-    void cleaned
     return validated
   }
 

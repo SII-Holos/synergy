@@ -218,7 +218,7 @@ const ClarusErrorDetail = z
     code: z.string(),
     message: z.string().max(MAX_WIRE_STRING_ERROR_MESSAGE),
     recoverable: z.boolean(),
-    disposition: z.enum(["rejected", "ambiguous"]).optional(),
+    disposition: z.enum(["not_dispatched", "rejected", "ambiguous"]).optional(),
     reason: z
       .enum(["timeout", "aborted_after_dispatch", "disconnected", "invalid_response", "unexpected_response", "unknown"])
       .optional(),
@@ -283,6 +283,7 @@ const COMPOSER_TIMEOUT_MS = 30_000
 
 const ClarusNavigationProjectDto = z
   .object({
+    agentId: z.string(),
     projectId: z.string(),
     projectName: z.string().optional(),
     projectSlug: z.string().optional(),
@@ -297,6 +298,7 @@ const ClarusNavigationProjectDto = z
 
 const ClarusNavigationTaskDto = z
   .object({
+    agentId: z.string(),
     taskId: z.string(),
     projectId: z.string(),
     sessionID: z.string(),
@@ -378,7 +380,7 @@ function createError(
   code: string,
   message: string,
   recoverable: boolean,
-  opts?: { disposition?: "rejected" | "ambiguous"; reason?: string },
+  opts?: { disposition?: "not_dispatched" | "rejected" | "ambiguous"; reason?: string },
 ): { code: string; message: string; recoverable: boolean; disposition?: string; reason?: string } {
   return {
     code,
@@ -395,7 +397,7 @@ function errorResponse(
   code: string,
   message: string,
   recoverable: boolean,
-  opts?: { disposition?: "rejected" | "ambiguous"; reason?: string },
+  opts?: { disposition?: "not_dispatched" | "rejected" | "ambiguous"; reason?: string },
 ) {
   return c.json(createError(code, message, recoverable, opts), status as any)
 }
@@ -1080,6 +1082,16 @@ export const ClarusRoute = new Hono()
           })
         } catch (sendErr: any) {
           // Map Scheme A disposition to structured error
+          if (sendErr.disposition === "not_dispatched") {
+            return errorResponse(
+              c,
+              400,
+              sendErr.code ?? "CLARUS_SUBMIT_NOT_DISPATCHED",
+              sendErr.message ?? "Composer submission was not dispatched",
+              true,
+              { disposition: "not_dispatched" },
+            )
+          }
           if (sendErr.disposition === "rejected") {
             return errorResponse(
               c,
@@ -1186,9 +1198,9 @@ export const ClarusRoute = new Hono()
         const inactiveWithHistory = inactiveProjects.filter((p) => p.lastProjectActivityAt !== undefined)
         const projectDtos = [...activeProjects, ...inactiveWithHistory].map(toNavigationProjectDto)
 
-        // Tasks from active projects — group once by agent (O(A+P) not O(A×P))
+        // Tasks from every displayed project — group once by agent (O(A+P) not O(A×P))
         const projectsByAgent = new Map<string, ClarusProjectBindingV3[]>()
-        for (const project of activeProjects) {
+        for (const project of [...activeProjects, ...inactiveWithHistory]) {
           const list = projectsByAgent.get(project.agentId)
           if (list) list.push(project)
           else projectsByAgent.set(project.agentId, [project])
