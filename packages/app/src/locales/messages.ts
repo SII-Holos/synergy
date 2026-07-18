@@ -612,6 +612,7 @@ export const sidebar = {
   home: { id: "app.sidebar.section.home", message: "Home" },
   channel: { id: "app.sidebar.section.channel", message: "Channel" },
   background: { id: "app.sidebar.section.background", message: "Background" },
+  github: { id: "app.sidebar.section.github", message: "GitHub" },
   // Empty states
   noRecentSessions: { id: "app.sidebar.empty.recent", message: "No recent sessions" },
   noSessions: { id: "app.sidebar.empty.sessions", message: "No sessions" },

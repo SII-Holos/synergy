@@ -68,6 +68,7 @@ export type PlanBlueprintOfferEvent =
   | { type: "muted" }
   | { type: "equipped"; key: string }
   | { type: "plan_exited" }
+  | { type: "session_removed" }
 
 export const emptyPlanBlueprintOfferState: PlanBlueprintOfferState = {
   offer: null,
@@ -124,6 +125,8 @@ export function reducePlanBlueprintOfferState(
       if (state.offer?.key !== event.key) return state
       return { ...state, offer: null }
     case "plan_exited":
+      return { ...state, offer: null, muted: false }
+    case "session_removed":
       return emptyPlanBlueprintOfferState
   }
 }

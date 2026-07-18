@@ -5939,6 +5939,10 @@ msgid "app.sidebar.section.channel"
 msgstr "频道"
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.section.github"
+msgstr "GitHub"
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
 msgstr "首页"
 
@@ -11106,6 +11110,14 @@ msgstr "会话"
 #. js-lingui-explicit-id
 msgid "session.state.default.unread"
 msgstr "会话；响应已就绪"
+
+#. js-lingui-explicit-id
+msgid "session.state.github"
+msgstr "GitHub 会话"
+
+#. js-lingui-explicit-id
+msgid "session.state.github.unread"
+msgstr "GitHub 会话；响应已就绪"
 
 #. js-lingui-explicit-id
 msgid "session.state.home"

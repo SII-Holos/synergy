@@ -12,6 +12,7 @@ import { Session } from "./index"
 import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { NoteStore } from "../note"
+import { ScopeContext } from "../scope/context"
 
 export namespace SessionRecovery {
   export interface Location {
@@ -343,6 +344,66 @@ export namespace SessionRecovery {
       })
     }
     return report
+  }
+
+  export async function resumePendingStopRequests(targetScopeID?: string): Promise<number> {
+    let requested = 0
+    for (const scopeID of await scopeIDsForRuntimeRecovery(targetScopeID)) {
+      const [sessions, loops] = await Promise.all([
+        sessionInfos(scopeID),
+        BlueprintLoopStore.list(scopeID).catch(() => [] as BlueprintLoopInfo[]),
+      ])
+      const sessionsByID = new Map(sessions.map((session) => [session.id, session]))
+      const pending = new Map<string, Info>()
+
+      for (const session of sessions) {
+        if (!session.time || session.time.archived || session.workflow?.kind !== "lightloop") continue
+        const stopRequest = session.workflow.stopRequest
+        if (!stopRequest) continue
+        if (stopRequest.reviewSessionID) {
+          const reviewer = sessionsByID.get(stopRequest.reviewSessionID)
+          if (reviewer?.cortex?.status !== "interrupted") continue
+          await Session.update(session.id, (draft) => {
+            if (draft.workflow?.kind !== "lightloop") return
+            const current = draft.workflow.stopRequest
+            if (!current || current.reviewSessionID !== stopRequest.reviewSessionID) return
+            current.reviewTaskID = undefined
+            current.reviewSessionID = undefined
+          })
+        }
+        pending.set(session.id, session)
+      }
+
+      for (const loop of loops) {
+        if (!loop.stopRequest) continue
+        if (loop.status === "auditing" && loop.auditSessionID) {
+          const reviewer = sessionsByID.get(loop.auditSessionID)
+          if (reviewer?.cortex?.status !== "interrupted") continue
+          await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+            status: "running",
+            auditSessionID: null,
+            auditTaskID: null,
+            stopRequest: loop.stopRequest,
+          })
+        } else if (loop.status !== "running") {
+          continue
+        }
+        const execution = sessionsByID.get(loop.sessionID)
+        if (execution?.time && !execution.time.archived) pending.set(execution.id, execution)
+      }
+
+      for (const session of pending.values()) {
+        await ScopeContext.provide({
+          scope: session.scope,
+          fn: async () => {
+            const { SessionDrive } = await import("./drive")
+            await SessionDrive.request(session.id, "stop-review-recovery")
+          },
+        })
+        requested++
+      }
+    }
+    return requested
   }
 
   export async function recoverableStatuses(scopeID: string): Promise<Record<string, StatusInfo>> {

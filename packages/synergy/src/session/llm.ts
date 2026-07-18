@@ -175,6 +175,7 @@ export namespace LLM {
     activeToolIDs?: string[]
     retries?: number
     contextUsageProvenance?: ContextUsage.Provenance
+    maxOutputTokens?: number
   }
 
   export interface PromptLayoutInput {
@@ -371,12 +372,13 @@ export namespace LLM {
     })
     optionsTimer.stop()
 
-    const maxOutputTokens = ProviderTransform.maxOutputTokens(
+    const providerMaxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
       params.options,
       input.model.limit.output,
       OUTPUT_TOKEN_MAX,
     )
+    const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
 
     const tools = input.tools
     const contextUsageDraft = input.contextUsageProvenance

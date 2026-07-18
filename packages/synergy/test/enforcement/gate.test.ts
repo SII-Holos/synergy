@@ -2429,6 +2429,17 @@ describe("EnforcementGate new tool classification", () => {
     expect(cap.nonBypassable).toBe(false)
   })
 
+  test.each(["loop_stop", "blueprint_loop_stop"])("%s classifies as session_state", async (tool) => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify(tool, {})
+    const cap = result.capabilities.find((candidate: any) => candidate.class === "session_state")
+    expect(cap).toBeDefined()
+    expect(cap?.nonBypassable).toBe(false)
+  })
+
   test("dagpatch classifies as session_state (lightweight DAG patching)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",

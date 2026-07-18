@@ -5,15 +5,15 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
 import { planSessionSyncReload } from "./session-sync-plan"
-import { reconcileMessage, type MessageWindowState } from "./session-message-window"
+import type { MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
-import { nextMessageWindowTotal } from "./session-message-total"
+import type { SyncResourceRequest } from "./sync-resource-freshness"
 
 type RefreshOptions = { force?: boolean }
 type SessionSyncOptions = { refreshVolatile?: boolean }
@@ -99,17 +99,20 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
+    type SessionMessagePageLoadResult = {
+      response: SessionMessagePageResponse
+      request?: SyncResourceRequest
+      contextProjectionRevision?: number
+    }
     type MessagePageLoadInput = {
       mode: "latest" | "history"
       cursor?: string
       limit: number
     }
-    type SessionMessagePageLoadResult = {
-      response: SessionMessagePageResponse
-      contextProjectionRevision?: number
-    }
     const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
       request: async (sessionID, signal, input) => {
+        const request =
+          input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
         const contextProjectionRevision =
           input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
         const response = await retry(() =>
@@ -122,42 +125,60 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             { signal, throwOnError: true },
           ),
         )
-        return { response, contextProjectionRevision }
+        return { response, request, contextProjectionRevision }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
         if (!page) return
-        const currentMetadata = store.messageWindow[sessionID]
-        const current: MessageWindowState<Message> = {
-          messages: store.message[sessionID] ?? [],
-          mode: currentMetadata?.mode ?? "latest",
-          pendingLatest: currentMetadata?.pendingLatest ?? false,
-          pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
-        }
-        const plan = planMessagePageApply({ page, current, mode: input?.mode })
+        const apply = () => {
+          const currentMetadata = store.messageWindow[sessionID]
+          const current: MessageWindowState<Message> = {
+            messages: store.message[sessionID] ?? [],
+            mode: currentMetadata?.mode ?? "latest",
+            pendingLatest: currentMetadata?.pendingLatest ?? false,
+            pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
+          }
+          const plan = planMessagePageApply({ page, current, mode: input?.mode })
 
-        batch(() => {
-          setStore(
-            produce((draft) => {
-              for (const messageID of plan.droppedIds) delete draft.part[messageID]
-            }),
-          )
-          setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
-          setStore("messageWindow", sessionID, reconcile(plan.metadata))
-          if (plan.latestContextMessage !== undefined) {
-            globalSync.setLatestContextMessage(
-              sdk.scopeKey,
-              sessionID,
-              plan.latestContextMessage,
-              result.contextProjectionRevision,
+          batch(() => {
+            setStore(
+              produce((draft) => {
+                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+              }),
             )
-          }
-          for (const [messageID, parts] of Object.entries(plan.parts)) {
-            setStore("part", messageID, reconcile(parts, { key: "id" }))
-          }
-        })
-        globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
-        refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+            setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setStore("messageWindow", sessionID, reconcile(plan.metadata))
+            if (plan.latestContextMessage !== undefined) {
+              globalSync.setLatestContextMessage(
+                sdk.scopeKey,
+                sessionID,
+                plan.latestContextMessage,
+                result.contextProjectionRevision,
+              )
+            }
+            for (const [messageID, parts] of Object.entries(plan.parts)) {
+              setStore("part", messageID, reconcile(parts, { key: "id" }))
+            }
+          })
+          globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        }
+
+        if (input?.mode === "latest" && result.request) {
+          globalSync.applyResourceResponse(
+            sdk.scopeKey,
+            sessionID,
+            "message",
+            result.request,
+            result.response.response?.headers,
+            apply,
+          )
+          return
+        }
+        // A history prepend changes the window outside latest-page ordering;
+        // invalidate any concurrent latest request before applying it.
+        globalSync.invalidateResource(sdk.scopeKey, sessionID, "message")
+        apply()
       },
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
@@ -183,9 +204,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightInbox.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "inbox")
       const promise = retry(() => sdk.client.session.inbox({ sessionID }))
         .then((result) => {
-          setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "inbox", request, result.response?.headers, () => {
+            setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
@@ -202,9 +226,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightTodo.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "todo")
       const promise = retry(() => sdk.client.session.todo({ sessionID }))
-        .then((todo) => {
-          setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "todo", request, result.response?.headers, () => {
+            setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
@@ -221,16 +248,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       const pending = inflightDag.get(sessionID)
       if (pending) return pending
 
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
       const promise = retry(() =>
-        sdk.client.session
-          .dag({
-            sessionID,
-            ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
-          })
-          .then((r) => r.data as any),
+        sdk.client.session.dag({
+          sessionID,
+          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+        }),
       )
-        .then((nodes) => {
-          setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "dag", request, result.response?.headers, () => {
+            setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
         })
         .catch(() => {})
         .finally(() => {
@@ -294,60 +322,6 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             return { phase: "ready", generation: 0, hasSnapshot: true }
           }
           return { phase: "idle", generation: 0, hasSnapshot: false }
-        },
-        addOptimisticMessage(input: {
-          sessionID: string
-          messageID: string
-          parts: Part[]
-          agent: string
-          model: { providerID: string; modelID: string }
-        }) {
-          const message: Message = {
-            id: input.messageID,
-            sessionID: input.sessionID,
-            role: "user",
-            time: { created: Date.now() },
-            agent: input.agent,
-            model: input.model,
-          }
-          const metadata = store.messageWindow[input.sessionID]
-          const current: MessageWindowState<Message> = {
-            messages: store.message[input.sessionID] ?? [],
-            mode: metadata?.mode ?? "latest",
-            pendingLatest: metadata?.pendingLatest ?? false,
-            pendingLatestIds: metadata?.pendingLatestIds ?? [],
-          }
-          const existing = current.messages.some((item) => item.id === message.id)
-          const result = reconcileMessage(current, message)
-          const visible = result.window.messages.some((item) => item.id === message.id)
-          batch(() => {
-            setStore(
-              produce((draft) => {
-                for (const messageID of result.droppedIds) delete draft.part[messageID]
-                if (visible)
-                  draft.part[input.messageID] = input.parts
-                    .filter((part) => !!part?.id)
-                    .toSorted((a, b) => a.id.localeCompare(b.id))
-              }),
-            )
-            setStore("message", input.sessionID, reconcile(result.window.messages, { key: "id" }))
-            setStore(
-              "messageWindow",
-              input.sessionID,
-              reconcile({
-                nextCursor: metadata?.nextCursor ?? null,
-                hasMore: metadata?.hasMore ?? false,
-                total: nextMessageWindowTotal({
-                  total: metadata?.total ?? current.messages.length,
-                  existing,
-                  visible,
-                }),
-                mode: result.window.mode,
-                pendingLatest: result.window.pendingLatest,
-                pendingLatestIds: result.window.pendingLatestIds,
-              }),
-            )
-          })
         },
         async sync(sessionID: string, options?: SessionSyncOptions) {
           const syncPermissions = () =>

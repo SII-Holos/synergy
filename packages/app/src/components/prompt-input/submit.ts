@@ -58,6 +58,8 @@ import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/comp
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
+import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
+import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -860,38 +862,75 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
       : undefined
 
-    const setSyncStore =
-      sessionScopeKey === currentScopeKey ? sync.set : globalSync.ensureScopeState(sessionScopeKey)[1]
+    const [syncStore, setSyncStore] =
+      sessionScopeKey === currentScopeKey ? [sync.data, sync.set] : globalSync.ensureScopeState(sessionScopeKey)
 
     const addOptimisticMessage = () => {
       if (!messageID || !optimisticMessage) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const current: MessageWindowState<Message> = {
+        messages: syncStore.message[activeSession.id] ?? [],
+        mode: metadata?.mode ?? "latest",
+        pendingLatest: metadata?.pendingLatest ?? false,
+        pendingLatestIds: metadata?.pendingLatestIds ?? [],
+      }
+      const existing = current.messages.some((message) => message.id === messageID)
+      const result = reconcileMessage(current, optimisticMessage)
+      const visible = result.window.messages.some((message) => message.id === messageID)
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (!messages) {
-            draft.message[activeSession.id] = [optimisticMessage]
-          } else {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            messages.splice(result.index, 0, optimisticMessage)
+          for (const droppedID of result.droppedIds) delete draft.part[droppedID]
+          draft.message[activeSession.id] = result.window.messages
+          draft.messageWindow[activeSession.id] = {
+            nextCursor: metadata?.nextCursor ?? null,
+            hasMore: metadata?.hasMore ?? false,
+            total: nextMessageWindowTotal({
+              total: metadata?.total ?? current.messages.length,
+              existing,
+              visible,
+            }),
+            mode: result.window.mode,
+            pendingLatest: result.window.pendingLatest,
+            pendingLatestIds: result.window.pendingLatestIds,
           }
-          draft.part[messageID] = optimisticParts
-            .filter((p) => !!p?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
+          if (visible) {
+            draft.part[messageID] = optimisticParts
+              .filter((part) => !!part?.id)
+              .slice()
+              .sort((a, b) => a.id.localeCompare(b.id))
+          }
         }),
       )
     }
 
     const removeOptimisticMessage = () => {
       if (!messageID) return
+      const messages = syncStore.message[activeSession.id]
+      if (!messages) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const current: MessageWindowState<Message> = {
+        messages,
+        mode: metadata?.mode ?? "latest",
+        pendingLatest: metadata?.pendingLatest ?? false,
+        pendingLatestIds: metadata?.pendingLatestIds ?? [],
+      }
+      const pending = current.pendingLatestIds.includes(messageID)
+      const result = removeMessageFromWindow(current, messageID)
+      const removed = result.messages.length !== messages.length
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (messages) {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            if (result.found) messages.splice(result.index, 1)
-          }
+          draft.message[activeSession.id] = result.messages
           delete draft.part[messageID]
+          if (metadata) {
+            draft.messageWindow[activeSession.id] = {
+              ...metadata,
+              total: removed ? nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }) : metadata.total,
+              pendingLatest: result.pendingLatest,
+              pendingLatestIds: result.pendingLatestIds,
+            }
+          }
         }),
       )
     }
