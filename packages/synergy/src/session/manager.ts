@@ -101,6 +101,7 @@ export namespace SessionManager {
   // session info. Entries are tiny (ULID -> scopeID strings) and dropped when a
   // session is deleted (`forgetSession`).
   const scopeIDCache = new Map<string, string>()
+  const historyRevisions = new Map<string, number>()
 
   function rememberScopeID(sessionID: string, scopeID: string) {
     scopeIDCache.set(sessionID, scopeID)
@@ -108,11 +109,22 @@ export namespace SessionManager {
 
   export function forgetSession(sessionID: string) {
     scopeIDCache.delete(sessionID)
+    historyRevisions.delete(sessionID)
   }
 
   /** Cached scopeID lookup, warm during an active loop. */
   export function cachedScopeID(sessionID: string): string | undefined {
     return scopeIDCache.get(sessionID)
+  }
+
+  export function historyRevision(sessionID: string) {
+    return historyRevisions.get(sessionID) ?? 0
+  }
+
+  export function bumpHistoryRevision(sessionID: string) {
+    const revision = historyRevision(sessionID) + 1
+    historyRevisions.set(sessionID, revision)
+    return revision
   }
 
   /**

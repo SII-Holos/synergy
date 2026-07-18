@@ -39,8 +39,10 @@ describe("SessionTopBar contract", () => {
     const src = await fs.readFile(topbarPath, "utf-8")
 
     expect(src).not.toContain("Toggle workspace")
-    expect(src).toContain("Open side workspace")
-    expect(src).toContain("Open BottomSpace")
+    expect(src).toContain("topBar.openSideWorkspace")
+    expect(src).toContain("topBar.openBottomSpace")
+    expect(src).toContain("sideSurface().toggle()")
+    expect(src).toContain("bottomSurface().toggle()")
   })
 })
 

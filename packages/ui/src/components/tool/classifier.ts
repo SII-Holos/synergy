@@ -1,5 +1,7 @@
 import type { IconName } from "../icon"
+import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
+import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
 /**
  * Semantic tool classification system.
@@ -39,7 +41,7 @@ export type SemanticCategory =
 
 export interface CategorySpec {
   icon: IconName
-  label: string
+  descriptor: MessageDescriptor
   /** Human-readable label for the category (used as fallback title) */
   subtitleKeys: string[]
   /** Ordered list of input keys to try for subtitle extraction */
@@ -50,122 +52,122 @@ export interface CategorySpec {
 export const CATEGORIES: Record<SemanticCategory, CategorySpec> = {
   "file-read": {
     icon: "glasses",
-    label: "Read",
+    descriptor: CLASSIFIER_LABEL_DESC["file-read"],
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
   "file-write": {
     icon: "file-pen",
-    label: "Write",
+    descriptor: CLASSIFIER_LABEL_DESC["file-write"],
     subtitleKeys: ["filePath", "file_path", "path", "filename"],
   },
   shell: {
     icon: "terminal",
-    label: "Shell",
+    descriptor: CLASSIFIER_LABEL_DESC["shell"],
     subtitleKeys: ["description", "command", "cmd", "script"],
   },
   search: {
     icon: "regex",
-    label: "Search",
+    descriptor: CLASSIFIER_LABEL_DESC["search"],
     subtitleKeys: ["pattern", "query", "regex", "search"],
     argsKeys: ["include", "lang", "language"],
   },
   web: {
     icon: "globe",
-    label: "Web",
+    descriptor: CLASSIFIER_LABEL_DESC["web"],
     subtitleKeys: ["url", "query"],
     argsKeys: ["format", "categories"],
   },
   browser: {
     icon: "panel-right",
-    label: "Browser",
+    descriptor: CLASSIFIER_LABEL_DESC["browser"],
     subtitleKeys: ["url", "title", "action", "type"],
     argsKeys: ["action", "kind", "captureKind"],
   },
   memory: {
     icon: "brain",
-    label: "Memory",
+    descriptor: CLASSIFIER_LABEL_DESC["memory"],
     subtitleKeys: ["query", "title"],
   },
   note: {
     icon: "notebook-pen",
-    label: "Note",
+    descriptor: CLASSIFIER_LABEL_DESC["note"],
     subtitleKeys: ["title", "pattern"],
     argsKeys: ["scope", "mode"],
   },
   blueprint: {
     icon: getSemanticIcon("blueprint.main"),
-    label: "Blueprint",
+    descriptor: CLASSIFIER_LABEL_DESC["blueprint"],
     subtitleKeys: ["title", "loopID", "id"],
     argsKeys: ["status"],
   },
   task: {
     icon: "list-todo",
-    label: "Task",
+    descriptor: CLASSIFIER_LABEL_DESC["task"],
     subtitleKeys: ["description", "prompt"],
   },
   dag: {
     icon: "route",
-    label: "DAG",
+    descriptor: CLASSIFIER_LABEL_DESC["dag"],
     subtitleKeys: [],
   },
   schedule: {
     icon: "clipboard-check",
-    label: "Schedule",
+    descriptor: CLASSIFIER_LABEL_DESC["schedule"],
     subtitleKeys: ["title", "id"],
     argsKeys: ["status"],
   },
   session: {
     icon: "message-square",
-    label: "Session",
+    descriptor: CLASSIFIER_LABEL_DESC["session"],
     subtitleKeys: ["target", "pattern"],
     argsKeys: ["scope"],
   },
   "session-control": {
     icon: "radar",
-    label: "Control",
+    descriptor: CLASSIFIER_LABEL_DESC["session-control"],
     subtitleKeys: ["target"],
     argsKeys: ["action"],
   },
   community: {
     icon: "compass",
-    label: "Agora",
+    descriptor: CLASSIFIER_LABEL_DESC["community"],
     subtitleKeys: ["keyword", "post_id", "title", "comment"],
   },
   network: {
     icon: "cable",
-    label: "Connect",
+    descriptor: CLASSIFIER_LABEL_DESC["network"],
     subtitleKeys: ["linkID"],
     argsKeys: ["action"],
   },
   analyze: {
     icon: "scan-eye",
-    label: "Analyze",
+    descriptor: CLASSIFIER_LABEL_DESC["analyze"],
     subtitleKeys: ["goal", "file_path", "description"],
   },
   config: {
     icon: "rotate-cw",
-    label: "Config",
+    descriptor: CLASSIFIER_LABEL_DESC["config"],
     subtitleKeys: ["target", "name", "reason"],
   },
   communication: {
     icon: "mail",
-    label: "Send",
+    descriptor: CLASSIFIER_LABEL_DESC["communication"],
     subtitleKeys: ["to", "target", "subject", "output_path", "input_paths", "prompt"],
   },
   skill: {
     icon: "sparkles",
-    label: "Skill",
+    descriptor: CLASSIFIER_LABEL_DESC["skill"],
     subtitleKeys: ["name"],
   },
   research: {
     icon: "flask-conical",
-    label: "Research",
+    descriptor: CLASSIFIER_LABEL_DESC["research"],
     subtitleKeys: ["action", "title", "project"],
     argsKeys: ["action"],
   },
   generic: {
     icon: "settings",
-    label: "",
+    descriptor: CLASSIFIER_LABEL_DESC["generic"],
     subtitleKeys: [],
   },
 }
@@ -300,14 +302,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   inspire_notebook: "shell",
   inspire_models: "analyze",
   inspire_inference: "shell",
-  //  agora_search: "community",
-  //  agora_read: "community",
-  //  agora_post: "community",
-  //  agora_join: "community",
-  //  agora_sync: "community",
-  //  agora_submit: "community",
-  //  agora_accept: "community",
-  //  agora_comment: "community",
 
   // communication
   question: "communication",
@@ -341,8 +335,6 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
 }
 
 // ── Pattern fallbacks ────────────────────────────────────────────────
-// When a tool isn't in TOOL_CATEGORIES, infer category from name.
-// Checked in order; first match wins.
 
 const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(web)?search/i, category: "web" },
@@ -363,6 +355,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^(memory|library|remember|recall)/i, category: "memory" },
   { pattern: /^note[-_]/i, category: "note" },
   { pattern: /^skill/i, category: "skill" },
+  { pattern: /^blueprint[-_]/i, category: "blueprint" },
   { pattern: /^(task|delegate|dispatch|spawn)/i, category: "task" },
   { pattern: /^(dag|plan)/i, category: "dag" },
   { pattern: /^todo/i, category: "dag" },
@@ -372,7 +365,6 @@ const PATTERN_FALLBACKS: { pattern: RegExp; category: SemanticCategory }[] = [
   { pattern: /^research[-_]/i, category: "research" },
   { pattern: /^(config|setting|profile|runtime)/i, category: "config" },
   { pattern: /^inspire[-_]/i, category: "shell" },
-  //  { pattern: /^agora[-_]/i, category: "community" },
   { pattern: /^(email|mail)/i, category: "communication" },
   { pattern: /^(send|notify|message)/i, category: "communication" },
   { pattern: /^question/i, category: "communication" },
@@ -400,17 +392,17 @@ const INPUT_HEURISTICS: { keys: string[]; writeHint?: string[]; category: Semant
 export interface ClassifiedTool {
   category: SemanticCategory
   spec: CategorySpec
+  /** English fallback or pass-through title. */
   title: string
+  /** Static descriptor for Synergy-owned tools; absent for external tool names. */
+  titleDescriptor?: MessageDescriptor
   subtitle?: string
   args?: string[]
+  /** ICU plural count descriptor to resolve at render time, plus values. */
+  countDescriptor?: MessageDescriptor
+  countValues?: Record<string, number>
 }
 
-/**
- * Classify a tool call by its semantic category.
- *
- * Returns a structured result with icon, title, subtitle, and args
- * extracted from the tool name, input, and metadata.
- */
 export function classifyTool(
   toolName: string,
   input: Record<string, any> = {},
@@ -450,42 +442,33 @@ export function classifyTool(
 
   const spec = CATEGORIES[category]
 
-  const title = humanizeToolName(toolName, category, spec)
+  const titleDescriptor = toolTitleDescriptor(toolName, spec)
+  const title = titleDescriptor?.message ?? humanizeToolName(toolName)
 
   const subtitle = extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys)
 
   const args = buildArgs(input, metadata, spec)
+  const count = classifyCount(toolName, category, metadata)
 
-  return { category, spec, title, subtitle, args }
+  return { category, spec, title, titleDescriptor, subtitle, args, ...count }
 }
 
-/**
- * Turn a tool name into a human-readable title.
- *
- * Examples:
- *   "read_file" → "Read File"
- *   "execute_command" → "Execute Command"
- *   "bash" → "Shell"  (uses category label when it's more descriptive)
- *   "my_custom_tool" → "My Custom Tool"
- */
-function humanizeToolName(name: string, category: SemanticCategory, spec: CategorySpec): string {
-  // If the category has a label and the tool is a known short name,
-  // prefer the label
-  if (spec.label && TOOL_CATEGORIES[name]) {
-    if (name.length <= 6) return spec.label
-  }
+function toolTitleDescriptor(name: string, spec: CategorySpec): MessageDescriptor | undefined {
+  const exactDescriptor: MessageDescriptor | undefined = Object.hasOwn(TOOL_TITLE_DESC, name)
+    ? TOOL_TITLE_DESC[name]
+    : undefined
+  if (exactDescriptor) return exactDescriptor
+  return Object.hasOwn(TOOL_CATEGORIES, name) ? spec.descriptor : undefined
+}
 
-  // Convert snake_case/camelCase/kebab-case to Title Case
+function humanizeToolName(name: string): string {
   return name
     .replace(/[-_]/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/\b\w/g, (c) => c.toUpperCase())
+    .replace(/\b\w/g, (char) => char.toUpperCase())
     .trim()
 }
 
-/**
- * Extract the first non-empty string value from input matching the key list.
- */
 function extractField(input: Record<string, any>, keys: string[]): string | undefined {
   for (const key of keys) {
     const val = input[key]
@@ -494,15 +477,49 @@ function extractField(input: Record<string, any>, keys: string[]): string | unde
   }
   return undefined
 }
+type CountPresentation = Pick<ClassifiedTool, "countDescriptor" | "countValues">
 
-/**
- * Build args badges from input + metadata.
- *
- * Merges three sources:
- * 1. Category-specific input keys (e.g. `scope`, `format`)
- * 2. Metadata count badges (e.g. `3 results`, `5 notes`)
- * 3. Metadata status/action labels (e.g. `Created`, `Connected`)
- */
+const TOOL_COUNT_DESCRIPTORS: Partial<Record<string, MessageDescriptor>> = {
+  session_list: TOOL_LABEL_DESC.sessions,
+  scope_list: TOOL_LABEL_DESC.scopes,
+  task_list: TOOL_LABEL_DESC.tasks,
+  note_list: TOOL_LABEL_DESC.notes,
+  worktree_list: TOOL_LABEL_DESC.targets,
+}
+
+const CATEGORY_COUNT_DESCRIPTORS: Partial<Record<SemanticCategory, MessageDescriptor>> = {
+  session: TOOL_LABEL_DESC.sessions,
+  note: TOOL_LABEL_DESC.notes,
+  blueprint: TOOL_LABEL_DESC.blueprints,
+  task: TOOL_LABEL_DESC.tasks,
+  memory: TOOL_LABEL_DESC.results,
+  search: TOOL_LABEL_DESC.results,
+  community: TOOL_LABEL_DESC.posts,
+  schedule: TOOL_LABEL_DESC.items,
+  "file-read": TOOL_LABEL_DESC.files,
+  "file-write": TOOL_LABEL_DESC.files,
+}
+
+function classifyCount(toolName: string, category: SemanticCategory, metadata: Record<string, any>): CountPresentation {
+  const count = metadata.matchCount ?? metadata.count ?? metadata.total
+  if (typeof count !== "number") return {}
+
+  if (typeof metadata.noteCount === "number") {
+    return {
+      countDescriptor:
+        category === "blueprint" || toolName.includes("blueprint")
+          ? TOOL_LABEL_DESC.matchesInBlueprints
+          : TOOL_LABEL_DESC.matchesInNotes,
+      countValues: { matchCount: count, noteCount: metadata.noteCount },
+    }
+  }
+
+  return {
+    countDescriptor: TOOL_COUNT_DESCRIPTORS[toolName] ?? CATEGORY_COUNT_DESCRIPTORS[category] ?? TOOL_LABEL_DESC.items,
+    countValues: { count },
+  }
+}
+
 function buildArgs(
   input: Record<string, any>,
   metadata: Record<string, any>,
@@ -510,7 +527,6 @@ function buildArgs(
 ): string[] | undefined {
   const args: string[] = []
 
-  // From input args keys
   if (spec.argsKeys) {
     for (const k of spec.argsKeys) {
       const v = input[k]
@@ -518,18 +534,6 @@ function buildArgs(
     }
   }
 
-  // Metadata count badge — many tools return { count: N } or { total: N }
-  const count = metadata.count ?? metadata.total ?? metadata.matchCount
-  if (typeof count === "number") {
-    // Try to infer a unit from the tool context
-    const unit =
-      metadata.noteCount != null
-        ? `${count} match${count === 1 ? "" : "es"} in ${metadata.noteCount} note${metadata.noteCount === 1 ? "" : "s"}`
-        : inferCountUnit(count, spec)
-    args.push(unit)
-  }
-
-  // Metadata status/action label
   const status = metadata.status ?? metadata.action
   if (typeof status === "string" && status.length > 0 && status.length < 20) {
     args.push(status.charAt(0).toUpperCase() + status.slice(1))
@@ -538,19 +542,5 @@ function buildArgs(
   return args.length > 0 ? args : undefined
 }
 
-/**
- * Produce a count badge like "3 sessions" or "5 items".
- */
-function inferCountUnit(count: number, spec: CategorySpec): string {
-  const unitMap: Partial<Record<SemanticCategory, string>> = {
-    session: "session",
-    note: "note",
-    memory: "result",
-    search: "result",
-    community: "post",
-    schedule: "item",
-    task: "task",
-  }
-  const unit = unitMap[spec.label.toLowerCase() as SemanticCategory] ?? "item"
-  return `${count} ${unit}${count === 1 ? "" : "s"}`
-}
+// Re-export for convenient access
+export { CLASSIFIER_LABEL_DESC }

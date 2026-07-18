@@ -1,4 +1,5 @@
 import type { Component } from "solid-js"
+import type { MessageDescriptor } from "@lingui/core"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { SurfaceRegistry } from "@/surface/registry"
 import type { SurfaceEntry } from "@/surface/types"
@@ -19,6 +20,7 @@ export interface NavigationEntry extends SurfaceEntry {
   path: string
   active?: (pathname: string) => boolean
   iconToken?: SemanticIconTokenName
+  labelDescriptor?: MessageDescriptor
   component?: Component<NavigationContentProps>
   loader?: () => Promise<{ default: Component<NavigationContentProps> }>
   exportName?: string
@@ -28,6 +30,13 @@ const registry = new SurfaceRegistry<NavigationEntry>()
 
 export function registerNavigation(entry: NavigationEntry): () => void {
   return registry.register(entry)
+}
+
+export function navigationEntryLabel(
+  entry: Pick<NavigationEntry, "label" | "labelDescriptor">,
+  translate: (descriptor: MessageDescriptor) => string,
+): string {
+  return entry.labelDescriptor ? translate(entry.labelDescriptor) : entry.label
 }
 
 export function listNavigation(placement?: NavigationPlacement): NavigationEntry[] {

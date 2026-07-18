@@ -1,7 +1,6 @@
 import { createMemo, createEffect, on, onCleanup, For, Show } from "solid-js"
 import type { JSX } from "solid-js"
 import { useParams } from "@solidjs/router"
-import { DateTime } from "luxon"
 import { useSync } from "@/context/sync"
 import { useLayout } from "@/context/layout"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
@@ -13,6 +12,8 @@ import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import type { AssistantMessage, Message, Part, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 interface SessionContextTabProps {
   messages: () => Message[]
@@ -24,6 +25,8 @@ interface SessionContextTabProps {
 export function SessionContextTab(props: SessionContextTabProps) {
   const params = useParams()
   const sync = useSync()
+  const { i18n, fmt } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
 
   const ctx = createMemo(() => {
     const last = props.messages().findLast((x) => {
@@ -63,10 +66,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
   const cost = createMemo(() => {
     const total = props.messages().reduce((sum, x) => sum + (x.role === "assistant" ? x.cost : 0), 0)
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(total)
+    return fmt.currency(total, "USD")
   })
 
   const counts = createMemo(() => {
@@ -90,20 +90,18 @@ export function SessionContextTab(props: SessionContextTabProps) {
   })
 
   const number = (value: number | null | undefined) => {
-    if (value === undefined) return "—"
-    if (value === null) return "—"
-    return value.toLocaleString()
+    if (value === undefined || value === null) return "—"
+    return fmt.number(value)
   }
 
   const percent = (value: number | null | undefined) => {
-    if (value === undefined) return "—"
-    if (value === null) return "—"
-    return value.toString() + "%"
+    if (value === undefined || value === null) return "—"
+    return fmt.percent(value / 100)
   }
 
   const time = (value: number | undefined) => {
     if (!value) return "—"
-    return DateTime.fromMillis(value).toLocaleString(DateTime.DATETIME_MED)
+    return fmt.dateTime(value)
   }
 
   const providerLabel = createMemo(() => {
@@ -169,13 +167,20 @@ export function SessionContextTab(props: SessionContextTabProps) {
         const estimated = system + user + assistant + tool
 
         const pct = (tokens: number) => (tokens / input) * 100
-        const pctLabel = (tokens: number) => (Math.round(pct(tokens) * 10) / 10).toString() + "%"
+        const pctLabel = (tokens: number) => fmt.percent(pct(tokens) / 100, { maximumFractionDigits: 1 })
 
         const build = (tokens: { system: number; user: number; assistant: number; tool: number; other: number }) => {
+          const labelMap: Record<string, string> = {
+            system: _(S.contextTabSystem),
+            user: _(S.contextTabUser),
+            assistant: _(S.contextTabAssistant),
+            tool: _(S.contextTabToolCalls),
+            other: _(S.contextTabOther),
+          }
           return [
             {
               key: "system",
-              label: "System",
+              label: labelMap.system,
               tokens: tokens.system,
               width: pct(tokens.system),
               percent: pctLabel(tokens.system),
@@ -183,7 +188,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
             },
             {
               key: "user",
-              label: "User",
+              label: labelMap.user,
               tokens: tokens.user,
               width: pct(tokens.user),
               percent: pctLabel(tokens.user),
@@ -191,7 +196,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
             },
             {
               key: "assistant",
-              label: "Assistant",
+              label: labelMap.assistant,
               tokens: tokens.assistant,
               width: pct(tokens.assistant),
               percent: pctLabel(tokens.assistant),
@@ -199,7 +204,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
             },
             {
               key: "tool",
-              label: "Tool Calls",
+              label: labelMap.tool,
               tokens: tokens.tool,
               width: pct(tokens.tool),
               percent: pctLabel(tokens.tool),
@@ -207,7 +212,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
             },
             {
               key: "other",
-              label: "Other",
+              label: labelMap.other,
               tokens: tokens.other,
               width: pct(tokens.other),
               percent: pctLabel(tokens.other),
@@ -246,22 +251,22 @@ export function SessionContextTab(props: SessionContextTabProps) {
     const c = ctx()
     const count = counts()
     return [
-      { label: "Session", value: props.info()?.title ?? params.id ?? "—" },
-      { label: "Messages", value: count.all.toLocaleString() },
-      { label: "Provider", value: providerLabel() },
-      { label: "Model", value: modelLabel() },
-      { label: "Context Limit", value: number(c?.limit) },
-      { label: "Total Tokens", value: number(c?.total) },
-      { label: "Usage", value: percent(c?.usage) },
-      { label: "Input Tokens", value: number(c?.input) },
-      { label: "Output Tokens", value: number(c?.output) },
-      { label: "Reasoning Tokens", value: number(c?.reasoning) },
-      { label: "Cache Tokens (read/write)", value: `${number(c?.cacheRead)} / ${number(c?.cacheWrite)}` },
-      { label: "User Messages", value: count.user.toLocaleString() },
-      { label: "Assistant Messages", value: count.assistant.toLocaleString() },
-      { label: "Total Cost", value: cost() },
-      { label: "Session Created", value: time(props.info()?.time.created) },
-      { label: "Last Activity", value: time(c?.message.time.created) },
+      { label: _(S.contextTabSession), value: props.info()?.title ?? params.id ?? "—" },
+      { label: _(S.contextTabMessages), value: number(count.all) },
+      { label: _(S.contextTabProvider), value: providerLabel() },
+      { label: _(S.contextTabModel), value: modelLabel() },
+      { label: _(S.contextTabContextLimit), value: number(c?.limit) },
+      { label: _(S.contextTabTotalTokens), value: number(c?.total) },
+      { label: _(S.contextTabUsage), value: percent(c?.usage) },
+      { label: _(S.contextTabInputTokens), value: number(c?.input) },
+      { label: _(S.contextTabOutputTokens), value: number(c?.output) },
+      { label: _(S.contextTabReasoningTokens), value: number(c?.reasoning) },
+      { label: _(S.contextTabCacheTokens), value: `${number(c?.cacheRead)} / ${number(c?.cacheWrite)}` },
+      { label: _(S.contextTabUserMessages), value: number(count.user) },
+      { label: _(S.contextTabAssistantMessages), value: number(count.assistant) },
+      { label: _(S.contextTabTotalCost), value: cost() },
+      { label: _(S.contextTabSessionCreated), value: time(props.info()?.time.created) },
+      { label: _(S.contextTabLastActivity), value: time(c?.message.time.created) },
     ] satisfies { label: string; value: JSX.Element }[]
   })
 
@@ -315,7 +320,6 @@ export function SessionContextTab(props: SessionContextTabProps) {
     const s = props.view()?.scroll("context")
     if (!s) return
 
-    // Wait for content to be scrollable - content may not have rendered yet
     if (el.scrollHeight <= el.clientHeight && retries < 10) {
       requestAnimationFrame(() => restoreScroll(retries + 1))
       return
@@ -374,7 +378,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
 
         <Show when={breakdown().length > 0}>
           <div class="flex flex-col gap-2">
-            <div class="text-12-regular text-text-weak">Context Breakdown</div>
+            <div class="text-12-regular text-text-weak">{_(S.contextTabBreakdown)}</div>
             <div class="h-2 w-full rounded-full bg-surface-base overflow-hidden flex">
               <For each={breakdown()}>
                 {(segment) => (
@@ -399,16 +403,14 @@ export function SessionContextTab(props: SessionContextTabProps) {
                 )}
               </For>
             </div>
-            <div class="hidden text-11-regular text-text-weaker">
-              Approximate breakdown of input tokens. "Other" includes tool definitions and overhead.
-            </div>
+            <div class="hidden text-11-regular text-text-weaker">{_(S.contextTabBreakdownHint)}</div>
           </div>
         </Show>
 
         <Show when={systemPrompt()}>
           {(prompt) => (
             <div class="flex flex-col gap-2">
-              <div class="text-12-regular text-text-weak">System Prompt</div>
+              <div class="text-12-regular text-text-weak">{_(S.contextTabSysPrompt)}</div>
               <div class="border border-border-base rounded-md bg-surface-base px-3 py-2">
                 <Markdown text={prompt()} class="text-12-regular" />
               </div>
@@ -417,7 +419,7 @@ export function SessionContextTab(props: SessionContextTabProps) {
         </Show>
 
         <div class="flex flex-col gap-2">
-          <div class="text-12-regular text-text-weak">Raw messages</div>
+          <div class="text-12-regular text-text-weak">{_(S.contextTabRawMessages)}</div>
           <Accordion multiple>
             <For each={props.messages()}>{(message) => <RawMessage message={message} />}</For>
           </Accordion>

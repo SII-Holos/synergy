@@ -486,6 +486,8 @@ import type {
   SessionInputResponses,
   SessionListResponses,
   SessionMessageErrors,
+  SessionMessagePageErrors,
+  SessionMessagePageResponses,
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
@@ -2412,6 +2414,42 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get a page of session messages
+   *
+   * Retrieve a bounded session message window and an opaque cursor for loading older history.
+   */
+  public messagePage<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionMessagePageResponses, SessionMessagePageErrors, ThrowOnError>({
+      url: "/session/{sessionID}/message/page",
+      ...options,
+      ...params,
     })
   }
 

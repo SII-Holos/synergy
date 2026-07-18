@@ -1,6 +1,8 @@
+import { useLingui } from "@lingui/solid"
 import BubbleMenuExtension from "@tiptap/extension-bubble-menu"
 import type { Editor } from "@tiptap/core"
 import { createEffect, createSignal, For, onCleanup, onMount, Show } from "solid-js"
+import { bubbleMenu as B } from "@/locales/messages"
 
 export function createBubbleMenu(element: HTMLElement) {
   return BubbleMenuExtension.configure({
@@ -94,7 +96,7 @@ function BubbleButton(props: { active?: boolean; onMouseDown: (e: MouseEvent) =>
   )
 }
 
-function TextFormatMenu(props: { editor: Editor }) {
+function TextFormatMenu(props: { editor: Editor; lingui: ReturnType<typeof useLingui> }) {
   const isActive = (name: string) => props.editor.isActive(name)
 
   function toggle(name: string) {
@@ -128,27 +130,54 @@ function TextFormatMenu(props: { editor: Editor }) {
 
   return (
     <>
-      <BubbleButton active={isActive("bold")} onMouseDown={toggle("bold")} title="Bold">
-        <span class="font-bold">B</span>
+      <BubbleButton
+        active={isActive("bold")}
+        onMouseDown={toggle("bold")}
+        title={props.lingui._({ id: B.bold.id, message: B.bold.message })}
+      >
+        <span class="font-bold">{props.lingui._({ id: B.boldSymbol.id, message: B.boldSymbol.message })}</span>
       </BubbleButton>
-      <BubbleButton active={isActive("italic")} onMouseDown={toggle("italic")} title="Italic">
-        <span class="italic">I</span>
+      <BubbleButton
+        active={isActive("italic")}
+        onMouseDown={toggle("italic")}
+        title={props.lingui._({ id: B.italic.id, message: B.italic.message })}
+      >
+        <span class="italic">{props.lingui._({ id: B.italicSymbol.id, message: B.italicSymbol.message })}</span>
       </BubbleButton>
-      <BubbleButton active={isActive("strike")} onMouseDown={toggle("strike")} title="Strikethrough">
-        <span class="line-through">S</span>
+      <BubbleButton
+        active={isActive("strike")}
+        onMouseDown={toggle("strike")}
+        title={props.lingui._({ id: B.strikethrough.id, message: B.strikethrough.message })}
+      >
+        <span class="line-through">
+          {props.lingui._({ id: B.strikethroughSymbol.id, message: B.strikethroughSymbol.message })}
+        </span>
       </BubbleButton>
-      <BubbleButton active={isActive("code")} onMouseDown={toggle("code")} title="Code">
-        <span class="font-mono text-11">&lt;&gt;</span>
+      <BubbleButton
+        active={isActive("code")}
+        onMouseDown={toggle("code")}
+        title={props.lingui._({ id: B.code.id, message: B.code.message })}
+      >
+        <span class="font-mono text-11">{props.lingui._({ id: B.codeSymbol.id, message: B.codeSymbol.message })}</span>
       </BubbleButton>
       <div class="w-px h-4 bg-border-base/30 mx-0.5" />
-      <BubbleButton active={isActive("link")} onMouseDown={toggle("link")} title="Link">
+      <BubbleButton
+        active={isActive("link")}
+        onMouseDown={toggle("link")}
+        title={props.lingui._({ id: B.link.id, message: B.link.message })}
+      >
         <span class="text-13">🔗</span>
       </BubbleButton>
     </>
   )
 }
 
-function FormulaMenu(props: { editor: Editor; selected: SelectedMath; onSync: () => void }) {
+function FormulaMenu(props: {
+  editor: Editor
+  selected: SelectedMath
+  onSync: () => void
+  lingui: ReturnType<typeof useLingui>
+}) {
   const [draft, setDraft] = createSignal(props.selected.latex)
   const [display, setDisplay] = createSignal(props.selected.display)
 
@@ -192,32 +221,36 @@ function FormulaMenu(props: { editor: Editor; selected: SelectedMath; onSync: ()
   return (
     <div class="w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-border-base/55 bg-surface-raised-stronger-non-alpha p-3 shadow-[0_18px_60px_-30px_rgba(28,34,48,0.45)]">
       <div class="mb-2 flex items-center gap-2">
-        <span class="text-11-medium text-text-weak">LaTeX</span>
+        <span class="text-11-medium text-text-weak">
+          {props.lingui._({ id: B.latex.id, message: B.latex.message })}
+        </span>
         <span class="flex-1" />
         <button
           type="button"
           class="rounded-md px-2 py-1 text-11-medium text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong"
           classList={{ "bg-surface-raised-base-hover text-text-strong": display() }}
           onMouseDown={toggleDisplay}
-          title="Toggle block formula"
+          title={props.lingui._({ id: B.toggleBlockFormula.id, message: B.toggleBlockFormula.message })}
         >
-          {display() ? "Block" : "Inline"}
+          {display()
+            ? props.lingui._({ id: B.block.id, message: B.block.message })
+            : props.lingui._({ id: B.inline.id, message: B.inline.message })}
         </button>
         <button
           type="button"
           class="rounded-md px-2 py-1 text-11-medium text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-strong"
           onMouseDown={deleteFormula}
-          title="Delete formula"
+          title={props.lingui._({ id: B.deleteFormula.id, message: B.deleteFormula.message })}
         >
-          Delete
+          {props.lingui._({ id: B.delete.id, message: B.delete.message })}
         </button>
         <button
           type="button"
           class="rounded-md bg-surface-raised-base-hover px-2 py-1 text-11-medium text-text-strong transition-colors hover:bg-surface-raised-base-hover"
           onMouseDown={finishInput}
-          title="Finish editing formula"
+          title={props.lingui._({ id: B.finishEditing.id, message: B.finishEditing.message })}
         >
-          Done
+          {props.lingui._({ id: B.done.id, message: B.done.message })}
         </button>
       </div>
       <textarea
@@ -232,15 +265,15 @@ function FormulaMenu(props: { editor: Editor; selected: SelectedMath; onSync: ()
         onMouseDown={(e) => e.stopPropagation()}
       />
       <div class="mt-2 flex items-center gap-2 text-11-regular text-text-weaker">
-        <span>Esc moves the cursor after the formula</span>
+        <span>{props.lingui._({ id: B.escHint.id, message: B.escHint.message })}</span>
         <span class="flex-1" />
-        <span>⌘/Ctrl + Enter also works</span>
+        <span>{props.lingui._({ id: B.ctrlEnterHint.id, message: B.ctrlEnterHint.message })}</span>
       </div>
     </div>
   )
 }
 
-function TableMenu(props: { editor: Editor }) {
+function TableMenu(props: { editor: Editor; lingui: ReturnType<typeof useLingui> }) {
   type Action = {
     label: string
     symbol: string
@@ -250,37 +283,37 @@ function TableMenu(props: { editor: Editor }) {
 
   const actions: Action[] = [
     {
-      label: "Add row before",
+      label: props.lingui._({ id: B.addRowBefore.id, message: B.addRowBefore.message }),
       symbol: "↑+",
       action: () => props.editor.chain().focus().addRowBefore().run(),
     },
     {
-      label: "Add row after",
+      label: props.lingui._({ id: B.addRowAfter.id, message: B.addRowAfter.message }),
       symbol: "↓+",
       action: () => props.editor.chain().focus().addRowAfter().run(),
     },
     {
-      label: "Add column before",
+      label: props.lingui._({ id: B.addColumnBefore.id, message: B.addColumnBefore.message }),
       symbol: "←+",
       action: () => props.editor.chain().focus().addColumnBefore().run(),
     },
     {
-      label: "Add column after",
+      label: props.lingui._({ id: B.addColumnAfter.id, message: B.addColumnAfter.message }),
       symbol: "→+",
       action: () => props.editor.chain().focus().addColumnAfter().run(),
     },
     {
-      label: "Delete row",
+      label: props.lingui._({ id: B.deleteRow.id, message: B.deleteRow.message }),
       symbol: "−⃗",
       action: () => props.editor.chain().focus().deleteRow().run(),
     },
     {
-      label: "Delete column",
+      label: props.lingui._({ id: B.deleteColumn.id, message: B.deleteColumn.message }),
       symbol: "−⃖",
       action: () => props.editor.chain().focus().deleteColumn().run(),
     },
     {
-      label: "Delete table",
+      label: props.lingui._({ id: B.deleteTable.id, message: B.deleteTable.message }),
       symbol: "✕",
       action: () => props.editor.chain().focus().deleteTable().run(),
       canRun: () => {
@@ -292,7 +325,7 @@ function TableMenu(props: { editor: Editor }) {
       },
     },
     {
-      label: "Merge cells",
+      label: props.lingui._({ id: B.mergeCells.id, message: B.mergeCells.message }),
       symbol: "⊞",
       action: () => props.editor.chain().focus().mergeCells().run(),
       canRun: () => {
@@ -304,7 +337,7 @@ function TableMenu(props: { editor: Editor }) {
       },
     },
     {
-      label: "Split cell",
+      label: props.lingui._({ id: B.splitCell.id, message: B.splitCell.message }),
       symbol: "⊟",
       action: () => props.editor.chain().focus().splitCell().run(),
       canRun: () => {
@@ -316,7 +349,7 @@ function TableMenu(props: { editor: Editor }) {
       },
     },
     {
-      label: "Toggle header row",
+      label: props.lingui._({ id: B.toggleHeaderRow.id, message: B.toggleHeaderRow.message }),
       symbol: "H",
       action: () => props.editor.chain().focus().toggleHeaderRow().run(),
     },
@@ -341,6 +374,7 @@ function TableMenu(props: { editor: Editor }) {
 
 export function BubbleMenuContent(props: { editor: Editor }) {
   const [math, setMath] = createSignal<SelectedMath | null>(selectedMath(props.editor))
+  const lingui = useLingui()
 
   function syncMathSelection() {
     setMath(selectedMath(props.editor))
@@ -370,15 +404,17 @@ export function BubbleMenuContent(props: { editor: Editor }) {
       keyed
       fallback={
         <div class="flex items-center gap-0.5 rounded-lg border border-border-base/50 bg-surface-raised-stronger-non-alpha px-1 py-0.5 shadow-lg">
-          <TextFormatMenu editor={props.editor} />
+          <TextFormatMenu editor={props.editor} lingui={lingui} />
           <Show when={inTable()}>
             <div class="mx-0.5 h-4 w-px bg-border-base/30" />
-            <TableMenu editor={props.editor} />
+            <TableMenu editor={props.editor} lingui={lingui} />
           </Show>
         </div>
       }
     >
-      {(selected) => <FormulaMenu editor={props.editor} selected={selected} onSync={syncMathSelection} />}
+      {(selected) => (
+        <FormulaMenu editor={props.editor} selected={selected} onSync={syncMathSelection} lingui={lingui} />
+      )}
     </Show>
   )
 }

@@ -1,10 +1,45 @@
+import type { MessageDescriptor } from "@lingui/core"
 import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
-import type { ModelKey, ModelsStore, ProviderGroup } from "./types"
+import { getModelRoleDefinition, type ModelKey, type ModelsStore, type ProviderGroup } from "./types"
 
 type ModelRef = {
   providerID: string
   modelID: string
 }
+
+export type TranslateModelRoleDescriptor = (descriptor: MessageDescriptor) => string
+
+type ModelRoleCopySource = Pick<ModelRoleSummary, "label" | "summary"> & { field: string }
+
+export const modelRoleDraftCopy = {
+  useFallback: { id: "settings.modelRole.fallback", message: "Use fallback" },
+  willUseAfterSaving: { id: "settings.modelRole.willUseAfterSaving", message: "Will use {model} after saving" },
+  willResolveToVia: {
+    id: "settings.modelRole.willResolveToVia",
+    message: "Will resolve to {model} via {role}",
+  },
+  willResolveAfterSaving: {
+    id: "settings.modelRole.willResolveAfterSaving",
+    message: "Will resolve after saving",
+  },
+  notConfigured: { id: "settings.modelRole.notConfigured", message: "Not configured" },
+  imageAnalysisDisabled: {
+    id: "settings.modelRole.imageAnalysisDisabled",
+    message: "Image analysis disabled",
+  },
+  visionModelRequired: {
+    id: "settings.modelRole.visionModelRequired",
+    message: "Configure a vision model to enable image analysis.",
+  },
+  noModelConfigured: {
+    id: "settings.modelRole.noModelConfigured",
+    message: "No model is configured for this role.",
+  },
+  runtimeDefault: { id: "settings.modelRole.runtimeDefault", message: "Runtime default" },
+  resolvesTo: { id: "settings.modelRole.resolvesTo", message: "Resolves to {model}" },
+  modelViaRole: { id: "settings.modelRole.modelViaRole", message: "{model} via {role}" },
+  customValue: { id: "settings.modelRole.customValue", message: "Custom value" },
+} as const satisfies Record<string, MessageDescriptor>
 
 export type ProviderModelIndex = Map<string, { providerName: string; modelName: string }>
 
@@ -28,97 +63,116 @@ export function createProviderModelIndex(providers: ProviderGroup[]): ProviderMo
   return models
 }
 
-export function resolveModelRoleDraftDisplay(params: {
-  summary: ModelRoleSummary
-  value: string
-  draftModels: ModelsStore
-  savedModels: ModelsStore
-  providerIndex: ProviderModelIndex
-}): ModelRoleDraftDisplay {
+export function resolveModelRoleDraftDisplay(
+  params: {
+    summary: ModelRoleSummary
+    value: string
+    draftModels: ModelsStore
+    savedModels: ModelsStore
+    providerIndex: ProviderModelIndex
+  },
+  translate: TranslateModelRoleDescriptor,
+): ModelRoleDraftDisplay {
   const { summary, value, draftModels, savedModels, providerIndex } = params
   const field = summary.field as ModelKey
 
   if (value) {
-    const model = modelDisplayValue(value, providerIndex)
+    const model = modelDisplayValue(value, providerIndex, translate)
     const unchanged = value === savedModels[field]
     return {
       triggerLabel: model.label,
       triggerDetail: model.detail,
-      fallbackDescription: fallbackDescription(summary, providerIndex),
+      fallbackDescription: fallbackDescription(summary, providerIndex, translate),
       resolutionDescription: unchanged
-        ? `${model.label} via ${fieldLabel(field)}`
-        : `Will use ${model.label} after saving`,
+        ? translate({
+            ...modelRoleDraftCopy.modelViaRole,
+            values: { model: model.label, role: fieldLabel(field, translate) },
+          })
+        : translate({ ...modelRoleDraftCopy.willUseAfterSaving, values: { model: model.label } }),
     }
   }
 
   if (fallbackChainChanged(summary, draftModels, savedModels)) {
-    const draftFallback = resolveDraftFallback(summary, draftModels, providerIndex)
+    const draftFallback = resolveDraftFallback(summary, draftModels, providerIndex, translate)
     if (draftFallback) {
-      const detail = `Will resolve to ${draftFallback.model.label} via ${fieldLabel(draftFallback.field)}`
+      const detail = translate({
+        ...modelRoleDraftCopy.willResolveToVia,
+        values: { model: draftFallback.model.label, role: fieldLabel(draftFallback.field, translate) },
+      })
       return {
-        triggerLabel: "Use fallback",
+        triggerLabel: translate(modelRoleDraftCopy.useFallback),
         triggerDetail: detail,
         fallbackDescription: detail,
         resolutionDescription: detail,
       }
     }
 
+    const pendingResolution = translate(modelRoleDraftCopy.willResolveAfterSaving)
     return {
-      triggerLabel: "Use fallback",
-      triggerDetail: "Will resolve after saving",
-      fallbackDescription: "Will resolve after saving",
-      resolutionDescription: "Will resolve after saving",
+      triggerLabel: translate(modelRoleDraftCopy.useFallback),
+      triggerDetail: pendingResolution,
+      fallbackDescription: pendingResolution,
+      resolutionDescription: pendingResolution,
     }
   }
 
   if (summary.id === "vision" && !summary.resolvedModel) {
+    const disabled = translate(modelRoleDraftCopy.imageAnalysisDisabled)
     return {
-      triggerLabel: "Not configured",
-      triggerDetail: "Image analysis disabled",
-      fallbackDescription: "Image analysis disabled",
-      resolutionDescription: summary.disabledReason ?? "No model is configured for this role.",
+      triggerLabel: translate(modelRoleDraftCopy.notConfigured),
+      triggerDetail: disabled,
+      fallbackDescription: disabled,
+      resolutionDescription: summary.disabledReason ?? translate(modelRoleDraftCopy.visionModelRequired),
     }
   }
 
   if (!summary.resolvedModel) {
+    const runtimeDefault = translate(modelRoleDraftCopy.runtimeDefault)
     return {
-      triggerLabel: "Use fallback",
-      triggerDetail: "Runtime default",
-      fallbackDescription: "Runtime default",
-      resolutionDescription: summary.disabledReason ?? "No model is configured for this role.",
+      triggerLabel: translate(modelRoleDraftCopy.useFallback),
+      triggerDetail: runtimeDefault,
+      fallbackDescription: runtimeDefault,
+      resolutionDescription: summary.disabledReason ?? translate(modelRoleDraftCopy.noModelConfigured),
     }
   }
 
   const model = modelDisplay(summary.resolvedModel, providerIndex)
+  const resolved = translate({ ...modelRoleDraftCopy.resolvesTo, values: { model: model.label } })
   return {
-    triggerLabel: "Use fallback",
-    triggerDetail: `Resolves to ${model.label}`,
-    fallbackDescription: `Resolves to ${model.label}`,
-    resolutionDescription: `${model.label} via ${fieldLabel(summary.resolvedModel.via)}`,
+    triggerLabel: translate(modelRoleDraftCopy.useFallback),
+    triggerDetail: resolved,
+    fallbackDescription: resolved,
+    resolutionDescription: translate({
+      ...modelRoleDraftCopy.modelViaRole,
+      values: { model: model.label, role: fieldLabel(summary.resolvedModel.via, translate) },
+    }),
   }
 }
 
-export function fieldLabel(field: string) {
-  const labels: Record<string, string> = {
-    model: "Default",
-    nano_model: "Nano",
-    mini_model: "Mini",
-    mid_model: "Mid",
-    thinking_model: "Thinking",
-    long_context_model: "Long context",
-    creative_model: "Creative",
-    vision_model: "Vision",
-  }
-  return labels[field] ?? field
+export function fieldLabel(field: string, translate: TranslateModelRoleDescriptor): string {
+  const definition = getModelRoleDefinition(field)
+  return definition ? translate(definition.label) : field
 }
 
-function resolveDraftFallback(summary: ModelRoleSummary, draftModels: ModelsStore, providerIndex: ProviderModelIndex) {
+export function modelRoleCopy(summary: ModelRoleCopySource, translate: TranslateModelRoleDescriptor) {
+  const definition = getModelRoleDefinition(summary.field)
+  return definition
+    ? { label: translate(definition.label), description: translate(definition.description) }
+    : { label: summary.label, description: summary.summary }
+}
+
+function resolveDraftFallback(
+  summary: ModelRoleSummary,
+  draftModels: ModelsStore,
+  providerIndex: ProviderModelIndex,
+  translate: TranslateModelRoleDescriptor,
+) {
   for (const field of summary.fallbackChain) {
     const value = draftModels[field as ModelKey]
     if (!value) continue
     return {
       field,
-      model: modelDisplayValue(value, providerIndex),
+      model: modelDisplayValue(value, providerIndex, translate),
     }
   }
   return undefined
@@ -128,17 +182,21 @@ function fallbackChainChanged(summary: ModelRoleSummary, draftModels: ModelsStor
   return summary.fallbackChain.some((field) => draftModels[field as ModelKey] !== savedModels[field as ModelKey])
 }
 
-function fallbackDescription(summary: ModelRoleSummary, models: ProviderModelIndex) {
-  if (summary.id === "vision" && !summary.resolvedModel) return "Image analysis disabled"
-  if (!summary.resolvedModel) return "Runtime default"
+function fallbackDescription(
+  summary: ModelRoleSummary,
+  models: ProviderModelIndex,
+  translate: TranslateModelRoleDescriptor,
+) {
+  if (summary.id === "vision" && !summary.resolvedModel) return translate(modelRoleDraftCopy.imageAnalysisDisabled)
+  if (!summary.resolvedModel) return translate(modelRoleDraftCopy.runtimeDefault)
   const model = modelDisplay(summary.resolvedModel, models)
-  return `Resolves to ${model.label}`
+  return translate({ ...modelRoleDraftCopy.resolvesTo, values: { model: model.label } })
 }
 
-function modelDisplayValue(value: string, models: ProviderModelIndex) {
+function modelDisplayValue(value: string, models: ProviderModelIndex, translate: TranslateModelRoleDescriptor) {
   const found = models.get(value)
   if (found) return { label: found.modelName, detail: found.providerName }
-  return { label: value, detail: "Custom value" }
+  return { label: value, detail: translate(modelRoleDraftCopy.customValue) }
 }
 
 function modelDisplay(ref: ModelRef, models: ProviderModelIndex) {

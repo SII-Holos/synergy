@@ -392,3 +392,38 @@ describe("settings config patch", () => {
     ).toEqual({ local: { source: "huggingface" } })
   })
 })
+
+describe("settings config patch locale", () => {
+  test("does not emit locale patch when server has no locale and form is at system default", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
+
+  test("emits locale patch when form diverges from absent server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: {} as Config, state, originalMcps: {} }).locale).toBe("en")
+  })
+
+  test("emits locale patch when form diverges from explicit server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "zh-CN"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("zh-CN")
+  })
+
+  test("emits explicit system locale when switching from en back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("emits explicit system locale when switching from zh-CN back to system", () => {
+    const state = defaultSettingsState("enter")
+    expect(buildPatch({ cfg: { locale: "zh-CN" } as Config, state, originalMcps: {} }).locale).toBe("system")
+  })
+
+  test("does not emit locale patch when form value matches server locale", () => {
+    const state = defaultSettingsState("enter")
+    state.general.locale = "en"
+    expect(buildPatch({ cfg: { locale: "en" } as Config, state, originalMcps: {} })).not.toHaveProperty("locale")
+  })
+})

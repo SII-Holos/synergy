@@ -36,7 +36,7 @@ describe("special user messages", () => {
     const originalParts = [textPart("Create a Blueprint")]
     const view = getSpecialUserMessageBubbleView(message, originalParts)
 
-    expect(view?.label).toBe("Plan")
+    expect(view?.label.id).toBe("special-user.label.plan")
     expect(view?.kind).toBe("plan-request")
     expect(view?.parts).toBe(originalParts)
     expect(projectedText(view)).toContain("Create a Blueprint")
@@ -54,7 +54,7 @@ describe("special user messages", () => {
       textPart("Execute the coding Blueprint with a long internal prompt."),
     ])
 
-    expect(view?.label).toBe("Blueprint")
+    expect(view?.label.id).toBe("special-user.label.blueprint")
     expect(view?.kind).toBe("blueprint-control")
     expect(projectedText(view)).toContain("Implement this directly in the worktree.")
     expect(projectedText(view)).not.toContain("Execute the coding Blueprint")
@@ -64,9 +64,9 @@ describe("special user messages", () => {
 
   test("projects Blueprint controls into concise badged user bubbles", () => {
     const cases = [
-      ["blueprint_loop_continuation", "Blueprint · Continue", "Check progress"],
-      ["blueprint_loop_rejected", "Blueprint · Changes requested", "Run the suite again"],
-      ["blueprint_loop_completed", "Blueprint · Completed", "Shipped the change"],
+      ["blueprint_loop_continuation", "special-user.label.blueprint-continue", "Check progress"],
+      ["blueprint_loop_rejected", "special-user.label.blueprint-changes", "Run the suite again"],
+      ["blueprint_loop_completed", "special-user.label.blueprint-completed", "Shipped the change"],
     ] as const
 
     for (const [source, label, expected] of cases) {
@@ -81,7 +81,7 @@ describe("special user messages", () => {
       })
       const view = getSpecialUserMessageBubbleView(message, [textPart("Raw internal control prompt")])
 
-      expect(view?.label).toBe(label)
+      expect(view?.label.id).toBe(label)
       expect(view?.kind).toBe("blueprint-control")
       expect(projectedText(view)).toContain(expected)
       expect(projectedText(view)).not.toContain("Raw internal control prompt")
@@ -92,9 +92,9 @@ describe("special user messages", () => {
 
   test("projects workflow continuation controls into concise user bubbles", () => {
     const cases = [
-      ["light_loop_continuation", "Light Loop · Continue", "keep going"],
-      ["lattice_continuation", "Lattice · Continue", "Current phase: result_analysis"],
-      ["lattice_planning_kick", "Lattice", "Start planning: Ship the project"],
+      ["light_loop_continuation", "special-user.label.lightloop-continue", "keep going"],
+      ["lattice_continuation", "special-user.label.lattice-continue", "Current phase: result_analysis"],
+      ["lattice_planning_kick", "special-user.label.lattice", "Start planning: Ship the project"],
     ] as const
 
     for (const [source, label, expected] of cases) {
@@ -105,7 +105,7 @@ describe("special user messages", () => {
       })
       const view = getSpecialUserMessageBubbleView(message, [textPart("Raw workflow control prompt")])
 
-      expect(view?.label).toBe(label)
+      expect(view?.label.id).toBe(label)
       expect(projectedText(view)).toContain(expected)
       expect(projectedText(view)).not.toContain("Raw workflow control prompt")
     }

@@ -17,6 +17,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "@/tool/tool"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
+import { SessionHistory } from "./history"
 
 const log = Log.create({ service: "session.input" })
 
@@ -705,6 +706,5 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
 }
 
 async function effectiveMessages(sessionID: string) {
-  const { Session } = await import(".")
-  return Session.messages({ sessionID })
+  return SessionHistory.modelMessages({ sessionID })
 }

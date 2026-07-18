@@ -684,6 +684,15 @@ export namespace Session {
     },
   )
 
+  export const messagePage = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    async (input) => SessionHistory.messagePage(input),
+  )
+
   export const rollback = SessionHistory.rollback
   export const unrollback = SessionHistory.unrollback
   export const restoreFiles = SessionHistory.restoreFiles
@@ -848,7 +857,7 @@ export namespace Session {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
-    const msgs = await messages({ sessionID })
+    const msgs = await SessionHistory.modelMessages({ sessionID })
     for (let i = msgs.length - 1; i >= 0; i--) {
       const msg = msgs[i]
       if (!lastExchange.assistant && msg.info.role === "assistant") {

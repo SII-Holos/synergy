@@ -1,5 +1,7 @@
 import { createResource, createSignal } from "solid-js"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useLocale } from "@/context/locale"
+import { S } from "./stats-i18n"
 
 type StatsSnapshot = import("@ericsanchezok/synergy-sdk").StatsSnapshot
 
@@ -15,14 +17,9 @@ type StatsProgressEvent =
   | { type: "done"; snapshot?: StatsSnapshot }
   | { type: "error"; message?: string }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) return error.message
-  if (typeof error === "string") return error
-  return "Unable to load usage stats right now."
-}
-
 export function useStats() {
   const sdk = useGlobalSDK()
+  const { i18n } = useLocale()
   const [error, setError] = createSignal<string | null>(null)
   const [syncError, setSyncError] = createSignal<string | null>(null)
   const [syncing, setSyncing] = createSignal(false)
@@ -34,7 +31,8 @@ export function useStats() {
       const res = await sdk.client.global.stats.get()
       return res.data ?? null
     } catch (err) {
-      setError(getErrorMessage(err))
+      const msg = err instanceof Error && err.message ? err.message : String(err)
+      setError(msg || i18n._(S.loadFetchError.id))
       return null
     }
   })
@@ -45,7 +43,7 @@ export function useStats() {
     if (syncing()) return
     setSyncing(true)
     setSyncError(null)
-    setProgress({ phase: "scan", current: 0, total: 1, message: "Starting stats sync..." })
+    setProgress({ phase: "scan", current: 0, total: 1, message: i18n._(S.syncStarting.id) })
 
     const stream = new EventSource(`${sdk.url}/global/stats/progress`)
 
@@ -74,19 +72,19 @@ export function useStats() {
             mutate(() => payload.snapshot)
             setError(null)
           }
-          setProgress({ phase: "snapshot", current: 1, total: 1, message: "Stats synced" })
+          setProgress({ phase: "snapshot", current: 1, total: 1, message: i18n._(S.syncDone.id) })
           finish()
           return
         }
 
         if (payload.type === "error") {
-          setSyncError(payload.message ?? "Stats sync failed.")
+          setSyncError(payload.message ?? i18n._(S.syncFailed.id))
           finish()
         }
       }
 
       stream.onerror = () => {
-        setSyncError("Stats sync connection dropped.")
+        setSyncError(i18n._(S.syncDropped.id))
         finish()
       }
     })
@@ -107,7 +105,7 @@ export function useStats() {
 export function formatCompact(n: number): string {
   if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + "M"
   if (n >= 1_000) return (n / 1_000).toFixed(1) + "K"
-  return n.toLocaleString()
+  return String(n)
 }
 
 export function formatCost(n: number): string {

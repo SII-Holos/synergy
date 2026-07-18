@@ -1,40 +1,24 @@
 import { MessageV2 } from "./message-v2"
+import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
 
-// Loop-scoped in-memory session message cache (issue #350 D2).
+// Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
-// The invoke loop re-reads the entire session history from disk on every step
-// (every tool call) to assemble the model prompt — O(messages × parts) file
-// reads per step, thousands of reads for a long session (#350 H2). This cache
-// holds the assembled list in memory and is maintained by the loop's own
-// writes, so subsequent steps read from memory.
+// The invoke loop assembles model context on every step. The cache holds only
+// the compaction-aware working set and is maintained by the loop's own writes,
+// avoiding both repeated disk reads and retention of the full transcript.
 //
-// Correctness rests on the #281 single-active-loop invariant (I1): the cache is
-// trusted ONLY while a loop actively owns the session, during which that loop is
-// the sole writer. Every message/part write in that window flows through
-// Session.updatePart / updateMessage (compaction and summary included), which
-// maintain the cache here; anything structural (removal, session delete)
-// invalidates it; and the loop drops the whole entry on exit. Any uncertainty
-// falls back to a fresh disk read — the cache is an accelerator, never the
-// source of truth (disk remains authoritative for recovery, R3).
+// Correctness rests on the single-active-loop invariant: the cache is trusted
+// only while a loop owns the session and is its sole writer. Structural changes
+// invalidate it, loop exit drops it, and disk remains authoritative for recovery.
 //
-// Stored value: the raw, pre-`deriveSemantics` list ordered oldest→newest — the
-// exact shape produced by the disk read in SessionHistory.rawMessages, so
-// callers get identical results whether served from cache or disk.
-//
-// Maintenance is IMMUTABLE: arrays are copied on write, never mutated in place.
-// A WithParts[] already handed to a caller (which then derives/copies it) stays
-// a valid snapshot even as later writes advance the cache.
+// Maintenance is immutable so a list already handed to a caller remains a valid
+// snapshot while later writes advance the cache.
 export namespace SessionMessageCache {
   const active = new Set<string>()
   const cache = new Map<string, MessageV2.WithParts[]>()
 
-  // Global memory bound (issue #350 P2-8). Each active loop holds its full raw
-  // history in memory; N concurrent long sessions would otherwise grow without
-  // limit. We track an approximate byte footprint per session and evict the
-  // least-recently-used entry once the total exceeds the budget. Eviction is
-  // transparent: a dropped entry is re-read from disk on the next `get` (the
-  // cache is an accelerator, never the source of truth — R3), so the only cost
-  // is one extra read for the coldest session under pressure.
+  // Bound the aggregate footprint of concurrent model working sets. Eviction is
+  // transparent because the next read reconstructs the working set from disk.
   const sizes = new Map<string, number>()
   const lru: string[] = []
   let totalBytes = 0
@@ -66,7 +50,7 @@ export namespace SessionMessageCache {
     return active.has(sessionID)
   }
 
-  /** Cached raw list, or undefined when the window is closed or unpopulated. */
+  /** Cached model working set, or undefined when closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
     if (!active.has(sessionID)) return undefined
     const hit = cache.get(sessionID)
@@ -74,11 +58,12 @@ export namespace SessionMessageCache {
     return hit
   }
 
-  /** Seed the cache from a fresh disk read (no-op outside the window). */
+  /** Seed from a fresh compaction-aware disk read (no-op outside the window). */
   export function set(sessionID: string, messages: MessageV2.WithParts[]) {
     if (!active.has(sessionID)) return
-    cache.set(sessionID, messages)
-    setSize(sessionID, estimateList(messages))
+    const workingSet = projectModelWorkingSet(messages)
+    cache.set(sessionID, workingSet)
+    setSize(sessionID, estimateList(workingSet))
     touch(sessionID)
     evict(sessionID)
   }
@@ -88,16 +73,18 @@ export namespace SessionMessageCache {
     if (!list) return
     const idx = list.findIndex((m) => m.info.id === info.id)
     const next = list.slice()
-    let delta: number
+    const previous = idx >= 0 ? list[idx].info : undefined
     if (idx >= 0) {
       next[idx] = { info, parts: list[idx].parts }
-      delta = estimateInfo(info) - estimateInfo(list[idx].info)
     } else {
       next.splice(messageInsertionIndex(list, info), 0, { info, parts: [] })
-      delta = estimateInfo(info)
+    }
+    if (info.role === "assistant" && info.summary && info.finish) {
+      replaceProjected(sessionID, next)
+      return
     }
     cache.set(sessionID, next)
-    addSize(sessionID, delta)
+    addSize(sessionID, estimateInfo(info) - (previous ? estimateInfo(previous) : 0))
     touch(sessionID)
     evict(sessionID)
   }
@@ -114,10 +101,9 @@ export namespace SessionMessageCache {
     }
     const msg = list[mi]
     const pi = msg.parts.findIndex((p) => p.id === part.id)
+    const previous = pi >= 0 ? msg.parts[pi] : undefined
     const parts = msg.parts.slice()
-    let delta: number
     if (pi >= 0) {
-      delta = estimatePart(part) - estimatePart(parts[pi])
       parts[pi] = part
     } else {
       parts.splice(
@@ -125,14 +111,38 @@ export namespace SessionMessageCache {
         0,
         part,
       )
-      delta = estimatePart(part)
     }
     const next = list.slice()
     next[mi] = { info: msg.info, parts }
+    if (part.type === "compaction") {
+      replaceProjected(sessionID, next)
+      return
+    }
     cache.set(sessionID, next)
-    addSize(sessionID, delta)
+    addSize(sessionID, estimatePart(part) - (previous ? estimatePart(previous) : 0))
     touch(sessionID)
     evict(sessionID)
+  }
+
+  function replaceProjected(sessionID: string, messages: MessageV2.WithParts[]) {
+    const workingSet = projectModelWorkingSet(messages)
+    cache.set(sessionID, workingSet)
+    setSize(sessionID, estimateList(workingSet))
+    touch(sessionID)
+    evict(sessionID)
+  }
+
+  function projectModelWorkingSet(messages: MessageV2.WithParts[]) {
+    const projection = modelWorkingSetProjection(messages.map((message) => message.info))
+    if (!projection) return messages
+    const boundary = messages[projection.boundaryIndex]
+    if (!boundary.parts.some((part) => part.type === "compaction")) return messages
+    return applyModelWorkingSetProjection(
+      messages,
+      projection,
+      (message) => message.info,
+      (message) => ({ ...message, info: { ...message.info, includeInContext: false } }),
+    )
   }
 
   // --- Footprint accounting & LRU eviction ---
@@ -159,11 +169,11 @@ export namespace SessionMessageCache {
     sizes.set(sessionID, bytes)
   }
 
-  function addSize(sessionID: string, delta: number) {
+  function addSize(sessionID: string, bytes: number) {
     const current = sizes.get(sessionID)
     if (current === undefined) return
-    sizes.set(sessionID, Math.max(0, current + delta))
-    totalBytes = Math.max(0, totalBytes + delta)
+    totalBytes += bytes
+    sizes.set(sessionID, current + bytes)
   }
 
   // Evict least-recently-used entries until under budget, never evicting the

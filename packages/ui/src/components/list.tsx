@@ -1,9 +1,15 @@
+import { LIST_DESC } from "./tool-title-descriptors"
+
 import { type FilteredListProps, useFilteredList } from "../hooks"
 import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
 import { Icon, type IconProps, type IconName } from "./icon"
 import { IconButton } from "./icon-button"
 import { TextField } from "./text-field"
+
+const listLoadingDescriptor = { id: "ui.list.loading", message: "Loading" }
+const listNoResultsDescriptor = { id: "ui.list.noResults", message: "No results" }
 
 export interface ListSearchProps {
   placeholder?: string
@@ -28,6 +34,7 @@ export interface ListRef {
 }
 
 export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) {
+  const { _ } = useLingui()
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [internalFilter, setInternalFilter] = createSignal("")
   const [store, setStore] = createStore({
@@ -214,8 +221,8 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           fallback={
             <div data-slot="list-empty-state">
               <div data-slot="list-message">
-                {props.emptyMessage ?? (grouped.loading ? "Loading" : "No results")} for{" "}
-                <span data-slot="list-filter">&quot;{filter()}&quot;</span>
+                {props.emptyMessage ?? _(grouped.loading ? listLoadingDescriptor : listNoResultsDescriptor)}{" "}
+                {_(LIST_DESC.forLabel)}{" "}
               </div>
             </div>
           }

@@ -11,8 +11,8 @@ describe("Sidebar account menu", () => {
     const loggedInBranch = sidebar.slice(loggedInBranchStart)
     const fallback = loggedInBranch.match(/fallback=\{\s*<>\s*([\s\S]*?)\s*<\/>\s*\}\s*>\s*<button/)
 
-    expect(fallback?.[1]).toContain("Create Agent")
-    expect(fallback?.[1]).toContain("Import Agent")
+    expect(fallback?.[1]).toContain("sidebar.createAgent")
+    expect(fallback?.[1]).toContain("sidebar.importAgent")
     expect(fallback?.[1]).toContain('openSettings("general")')
     expect(fallback?.[1]).toContain('openSettings("providers")')
     expect(fallback?.[1]).toContain("openRepository")

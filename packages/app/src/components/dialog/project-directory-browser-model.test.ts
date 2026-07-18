@@ -43,7 +43,7 @@ describe("project directory browser model", () => {
 
   test("idle state does not show no-results copy", () => {
     const copy = directoryBrowserStatusCopy(createInitialDirectoryBrowserState(home))
-    expect(copy.title).toBe("Search the server filesystem")
+    expect(copy.title.message).toBe("Search the server filesystem")
   })
 
   test("empty submitted result shows no-folders copy", () => {
@@ -51,7 +51,7 @@ describe("project directory browser model", () => {
     const empty = directoryBrowserSubmitSuccess(loading, loading.requestID, [])
     const copy = directoryBrowserStatusCopy(empty)
     expect(empty.status).toBe("empty")
-    expect(copy.title).toBe("No folders found")
+    expect(copy.title.message).toBe("No folders found")
   })
 
   test("failed browse gives recoverable error state", () => {
@@ -60,7 +60,7 @@ describe("project directory browser model", () => {
     const copy = directoryBrowserStatusCopy(failed)
     expect(failed.status).toBe("error")
     expect(failed.error).toBe("denied")
-    expect(copy.title).toBe("Search failed")
+    expect(copy.title.message).toBe("Search failed")
   })
 
   test("stale request result is ignored", () => {

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { createAnthropic } from "@ai-sdk/anthropic"
 import { ProviderTransform } from "../../src/provider/transform"
 import type { Provider } from "../../src/provider/provider"
 
@@ -946,6 +947,217 @@ describe("ProviderTransform.variants", () => {
     const result = ProviderTransform.variants(model)
     expect(result).toEqual({})
   })
+  test("Kimi K3 exposes catalog reasoning efforts on Anthropic-compatible endpoints", () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: {},
+    })
+
+    const variants = ProviderTransform.variants(model)
+    expect(ProviderTransform.providerOptions(model, variants.high)).toEqual({
+      anthropic: { effort: "high" },
+    })
+    expect(ProviderTransform.providerOptions(model, variants.max)).toEqual({ anthropic: {} })
+  })
+
+  test("Kimi K3 effort variants pass the locked Anthropic SDK validator", async () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    for (const [variant, options] of Object.entries(ProviderTransform.variants(model))) {
+      let requestBody: Record<string, unknown> | undefined
+      const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        })
+      }) as unknown as typeof fetch
+      const anthropic = createAnthropic({
+        apiKey: "test",
+        baseURL: "https://example.invalid",
+        fetch: fetchFn,
+      })
+
+      try {
+        await anthropic("k3").doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+          maxOutputTokens: 16,
+          providerOptions: ProviderTransform.providerOptions(model, options),
+        })
+      } catch {}
+
+      expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+      expect(requestBody?.output_config).toEqual(variant === "max" ? undefined : { effort: variant })
+    }
+  })
+
+  test("custom Kimi K3 aliases retain catalog reasoning efforts", () => {
+    const model = createMockModel({
+      id: "custom-kimi-k3",
+      family: "kimi-k3",
+      providerID: "custom-provider",
+      api: {
+        id: "k3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: {},
+    })
+  })
+
+  test("Kimi K3 without catalog efforts does not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("Kimi Coding Plan leaves K2 reasoning provider-managed without catalog efforts", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test.each(["minimax", "minimax-cn", "minimax-coding-plan", "minimax-cn-coding-plan", "minimax-oauth"])(
+    "%s leaves Anthropic-compatible reasoning provider-managed",
+    (providerID) => {
+      const model = createMockModel({
+        id: "MiniMax-M2.1",
+        providerID,
+        api: {
+          id: "MiniMax-M2.1",
+          url: "https://api.minimax.io/anthropic/v1",
+          npm: "@ai-sdk/anthropic",
+        },
+        capabilities: { reasoningEfforts: ["max"] },
+      })
+
+      expect(ProviderTransform.variants(model)).toEqual({})
+    },
+  )
+
+  test("MiniMax M3 exposes adaptive thinking on Anthropic-compatible endpoints", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "minimax-oauth",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://api.minimax.io/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom MiniMax aliases do not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "MiniMax-M2.1",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M2.1",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("custom MiniMax M3 aliases preserve adaptive thinking", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom Kimi aliases keep reasoning provider-managed", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "custom-provider",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test.each(["zhipuai-coding-plan", "zai-coding-plan"])("%s keeps OpenAI-compatible effort variants", (providerID) => {
+    const model = createMockModel({
+      id: "glm-5.2",
+      providerID,
+      api: {
+        id: "glm-5.2",
+        url: "https://api.z.ai/api/coding/paas/v4",
+        npm: "@ai-sdk/openai-compatible",
+      },
+      capabilities: { reasoningEfforts: ["high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      high: { reasoningEffort: "high" },
+      max: { reasoningEffort: "max" },
+    })
+  })
 
   test("deepseek returns empty object", () => {
     const model = createMockModel({
@@ -961,7 +1173,7 @@ describe("ProviderTransform.variants", () => {
     expect(result).toEqual({})
   })
 
-  test("minimax returns empty object", () => {
+  test("MiniMax OpenAI-compatible Chat models do not expose reasoning effort variants", () => {
     const model = createMockModel({
       id: "minimax/minimax-model",
       providerID: "minimax",
@@ -971,8 +1183,8 @@ describe("ProviderTransform.variants", () => {
         npm: "@ai-sdk/openai-compatible",
       },
     })
-    const result = ProviderTransform.variants(model)
-    expect(result).toEqual({})
+
+    expect(ProviderTransform.variants(model)).toEqual({})
   })
 
   test("glm returns empty object", () => {
@@ -1365,7 +1577,7 @@ describe("ProviderTransform.variants", () => {
   })
 
   describe("@ai-sdk/anthropic", () => {
-    test("explicit efforts enable future model families without guessing thinking mode", () => {
+    test("official Anthropic models keep catalog effort variants", () => {
       const model = createMockModel({
         id: "anthropic/claude-future",
         providerID: "anthropic",

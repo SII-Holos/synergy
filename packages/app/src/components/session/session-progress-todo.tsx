@@ -1,5 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { useSync } from "@/context/sync"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 import type { TodoItem, TodoSummary } from "./session-progress-summary"
 
 interface SessionProgressTodoProps {
@@ -20,7 +22,6 @@ function statusIcon(status: string): string {
       return "○"
   }
 }
-
 function statusClass(status: string): string {
   switch (status) {
     case "completed":
@@ -33,7 +34,6 @@ function statusClass(status: string): string {
       return "text-text-weak"
   }
 }
-
 function contentClass(status: string): string {
   switch (status) {
     case "completed":
@@ -44,7 +44,6 @@ function contentClass(status: string): string {
       return "text-text-base"
   }
 }
-
 function statusLabel(status: string): string | undefined {
   switch (status) {
     case "in_progress":
@@ -57,7 +56,6 @@ function statusLabel(status: string): string | undefined {
       return undefined
   }
 }
-
 function labelClass(status: string): string {
   switch (status) {
     case "in_progress":
@@ -73,7 +71,8 @@ function labelClass(status: string): string {
 
 export function SessionProgressTodo(props: SessionProgressTodoProps) {
   const sync = useSync()
-
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const todos = createMemo<TodoItem[]>(() => sync.data.todo[props.sessionID] ?? [])
 
   const summaryParts = createMemo(() => {
@@ -86,22 +85,18 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
   })
 
   const [expandedTodoId, setExpandedTodoId] = createSignal<string | undefined>(undefined)
-
   const toggleTodo = (id: string) => {
     setExpandedTodoId((prev) => (prev === id ? undefined : id))
   }
 
   return (
     <div class={`flex flex-col min-h-0 ${props.class ?? ""}`}>
-      {/* Header */}
       <Show
         when={summaryParts().length > 0}
-        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">No active tasks</div>}
+        fallback={<div class="text-text-weaker text-xs px-2.5 py-1">{_(S.progressNoActiveTasks)}</div>}
       >
         <div class="text-xs text-text-weaker px-2.5 py-1 shrink-0">{summaryParts().join(" · ")}</div>
       </Show>
-
-      {/* List */}
       <Show when={todos().length > 0}>
         <div class="flex flex-col divide-y divide-border-weak-base/60 overflow-y-auto min-h-0">
           <For each={todos()}>
@@ -121,29 +116,20 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
                       }
                     }}
                     class="workbench-control-surface-hover flex items-center gap-2 px-2.5 py-1.5 transition-colors cursor-pointer select-none"
-                    classList={{
-                      "workbench-selected-surface ring-1 ring-inset ring-border-base/32": isActive(),
-                    }}
+                    classList={{ "workbench-selected-surface ring-1 ring-inset ring-border-base/32": isActive() }}
                   >
-                    {/* Status icon */}
                     <span
                       class={`shrink-0 text-sm leading-none ${statusClass(todo.status)}`}
                       classList={{ "animate-pulse": isActive() }}
                     >
                       {statusIcon(todo.status)}
                     </span>
-
-                    {/* Content */}
                     <span class={`text-xs leading-snug truncate flex-1 min-w-0 ${contentClass(todo.status)}`}>
                       {todo.content}
                     </span>
-
-                    {/* Priority */}
                     <Show when={todo.priority === "high"}>
                       <span class="shrink-0 size-1.5 rounded-full bg-border-warning-base/70" />
                     </Show>
-
-                    {/* Status label */}
                     <Show when={statusLabel(todo.status)}>
                       {(label) => (
                         <span class={`shrink-0 text-11-medium px-1.5 py-0.5 rounded-full ${labelClass(todo.status)}`}>
@@ -152,8 +138,6 @@ export function SessionProgressTodo(props: SessionProgressTodoProps) {
                       )}
                     </Show>
                   </div>
-
-                  {/* Expanded detail for long content */}
                   <Show when={isExpanded()}>
                     <div class="workbench-card-surface flex items-center gap-2 px-2.5 py-1.5 border-t border-border-weak-base/40">
                       <span class="shrink-0 text-sm leading-none text-text-weaker"> </span>
