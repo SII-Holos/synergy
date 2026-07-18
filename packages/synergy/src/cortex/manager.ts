@@ -88,11 +88,25 @@ export namespace Cortex {
     ].join("\n")
   }
 
-  export const launch = fn(CortexTypes.LaunchInput, async (input) => {
+  export const prepare = fn(CortexTypes.LaunchInput, async (input) => {
+    using _ = input.reuseInterrupted
+      ? await Lock.write(`cortex-task-prepare:${input.parentSessionID}:${input.agent}:${input.parentMessageID}`)
+      : undefined
+    if (input.reuseInterrupted) {
+      const active = Array.from(tasks.values()).find(
+        (task) =>
+          task.parentSessionID === input.parentSessionID &&
+          task.parentMessageID === input.parentMessageID &&
+          task.agent === input.agent &&
+          (task.status === "queued" || task.status === "running"),
+      )
+      if (active) return active
+    }
+
     const taskID = Identifier.short("cortex")
     const executionRole = input.executionRole ?? "primary"
     const notifyParentOnComplete = input.notifyParentOnComplete ?? input.visibility !== "hidden"
-    log.info("launching", {
+    log.info("preparing", {
       taskID,
       description: input.description,
       agent: input.agent,
@@ -105,10 +119,19 @@ export namespace Cortex {
       new Set([...(config.experimental?.primary_tools ?? []), ...DEFAULT_SUBAGENT_BLOCKED_TOOLS]),
     )
 
+    const reusableSession = input.reuseInterrupted
+      ? (await Session.children(input.parentSessionID)).find(
+          (child) =>
+            child.cortex?.parentMessageID === input.parentMessageID &&
+            child.cortex.agent === input.agent &&
+            (child.cortex.status === "queued" || child.cortex.status === "interrupted"),
+        )
+      : undefined
+
     let session: import("../session/types").Info
 
-    if (input.sessionID) {
-      const existing = await Session.get(input.sessionID)
+    if (input.sessionID || reusableSession) {
+      const existing = reusableSession ?? (await Session.get(input.sessionID!))
       if (!existing) {
         throw new Error(`Session ${input.sessionID} not found`)
       }
@@ -118,8 +141,8 @@ export namespace Cortex {
             `Reuse is only allowed for sessions created by the same parent.`,
         )
       }
-      if (SessionManager.isRunning(input.sessionID)) {
-        throw new BusyError(input.sessionID)
+      if (SessionManager.isRunning(existing.id)) {
+        throw new BusyError(existing.id)
       }
       session = existing
       log.info("reusing existing session", {
@@ -242,19 +265,28 @@ export namespace Cortex {
       Bus.publish(Event.TaskCreated, { task })
     }
 
-    await CortexConcurrency.acquire(input.agent)
+    return task
+  })
+
+  export async function start(taskID: string): Promise<CortexTypes.Task> {
+    using _ = await Lock.write(`cortex-task-start:${taskID}`)
+    const task = tasks.get(taskID)
+    if (!task) throw new Error(`Cortex task ${taskID} not found`)
+    if (task.status !== "queued") return task
+
+    await CortexConcurrency.acquire(task.agent)
     acquiredTasks.add(taskID)
 
     const current = tasks.get(taskID)
     if (!current || current.status === "cancelled") {
       acquiredTasks.delete(taskID)
-      CortexConcurrency.release(input.agent)
+      CortexConcurrency.release(task.agent)
       return current ?? task
     }
 
     setTaskStatus(taskID, "running")
 
-    const run = runTask(current, input.model)
+    const run = runTask(current, current.model)
       .catch(async (error) => {
         log.error("task error", { taskID, error })
         await updateTaskStatus(taskID, "error", String(error))
@@ -264,17 +296,22 @@ export namespace Cortex {
       })
     taskRuns.set(taskID, run)
 
-    if (input.timeoutMs) {
+    if (current.timeoutMs) {
       const timeout = setTimeout(() => {
         const active = tasks.get(taskID)
         if (!active || isTerminal(active.status)) return
         SessionInvoke.cancel(active.sessionID)
-        void updateTaskStatus(taskID, "error", `Task exceeded its ${input.timeoutMs}ms runtime limit.`)
-      }, input.timeoutMs)
+        void updateTaskStatus(taskID, "error", `Task exceeded its ${current.timeoutMs}ms runtime limit.`)
+      }, current.timeoutMs)
       taskTimeouts.set(taskID, timeout)
     }
 
     return current
+  }
+
+  export const launch = fn(CortexTypes.LaunchInput, async (input) => {
+    const task = await prepare(input)
+    return start(task.id)
   })
 
   function setTaskStatus(taskID: string, status: CortexTypes.TaskStatus): void {
@@ -768,8 +805,8 @@ export namespace Cortex {
     return true
   }
 
-  export async function reconcileParentNotifications(): Promise<void> {
-    const sessionIDs = await SessionManager.listCortexDelegationsForParentDelivery()
+  export async function reconcileParentNotifications(scopeID?: string): Promise<void> {
+    const sessionIDs = await SessionManager.listCortexDelegationsForParentDelivery(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await Session.get(sessionID).catch(() => undefined)
       const delegation = session?.cortex

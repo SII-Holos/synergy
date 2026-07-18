@@ -116,6 +116,24 @@ export namespace BlueprintLoopStore {
     return results.filter((l): l is Info => l !== undefined)
   }
 
+  export async function recordStopRequest(
+    scopeID: string,
+    id: string,
+    stopRequest: NonNullable<Info["stopRequest"]>,
+  ): Promise<Info> {
+    const sid = Identifier.asScopeID(scopeID)
+    const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
+      if (draft.status !== "running") {
+        throw new Error(`Cannot request review for BlueprintLoop ${draft.id} while its status is "${draft.status}"`)
+      }
+      if (draft.stopRequest) return
+      draft.stopRequest = stopRequest
+      draft.time.updated = Date.now()
+    })
+    await Bus.publish(LoopEvent.Updated, { loop: updated })
+    return updated
+  }
+
   export async function updateStatus(
     scopeID: string,
     id: string,
@@ -126,6 +144,7 @@ export namespace BlueprintLoopStore {
       auditSessionID?: string | null
       auditTaskID?: string | null
       userPrompt?: string | null
+      stopRequest?: Info["stopRequest"] | null
     },
   ): Promise<Info> {
     const sid = Identifier.asScopeID(scopeID)
@@ -146,6 +165,7 @@ export namespace BlueprintLoopStore {
       if (isTerminal) {
         draft.time.completed = Date.now()
         draft.auditTaskID = undefined
+        draft.stopRequest = undefined
       }
       if (patch.status === "running" && !draft.time.started) {
         draft.time.started = Date.now()
@@ -153,11 +173,13 @@ export namespace BlueprintLoopStore {
       if (patch.status === "running" && current.status === "auditing" && patch.auditSessionID === undefined) {
         draft.auditSessionID = undefined
         draft.auditTaskID = undefined
+        draft.stopRequest = undefined
       }
       if (patch.audit) draft.audit = patch.audit
       if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
       if (patch.auditTaskID !== undefined) draft.auditTaskID = patch.auditTaskID ?? undefined
       if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
+      if (patch.stopRequest !== undefined) draft.stopRequest = patch.stopRequest ?? undefined
       if (patch.error !== undefined) draft.error = patch.error
     })
 

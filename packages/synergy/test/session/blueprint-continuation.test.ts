@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { BlueprintLoopStore } from "../../src/blueprint"
 import { Cortex } from "../../src/cortex/manager"
 import { Identifier } from "../../src/id/id"
-import { BlueprintContinuation } from "../../src/session/blueprint-continuation"
+import { BlueprintContinuation, BlueprintContinuationPolicy } from "../../src/session/blueprint-continuation"
 import { Session } from "../../src/session"
 import { SessionManager } from "../../src/session/manager"
 import { MessageV2 } from "../../src/session/message-v2"
@@ -15,16 +15,22 @@ const tokens = { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 }
 
 let originalDeliver: typeof SessionManager.deliver
 let originalGetTasksForSession: typeof Cortex.getTasksForSession
+let originalPrepare: unknown
+let originalStart: unknown
 
 beforeEach(() => {
   originalDeliver = SessionManager.deliver
   originalGetTasksForSession = Cortex.getTasksForSession
+  originalPrepare = (Cortex as any).prepare
+  originalStart = (Cortex as any).start
   ;(Cortex.getTasksForSession as any) = mock(() => [])
 })
 
 afterEach(() => {
   ;(SessionManager.deliver as any) = originalDeliver
   ;(Cortex.getTasksForSession as any) = originalGetTasksForSession
+  ;(Cortex as any).prepare = originalPrepare
+  ;(Cortex as any).start = originalStart
 })
 
 async function setupLoop(status: "running" | "auditing" | "completed" = "running") {
@@ -120,6 +126,58 @@ describe("BlueprintContinuation", () => {
         expect(part.text).not.toContain("implementation work")
         expect(part.text).toContain("blueprint_loop_stop")
         expect(part.text).not.toContain('status: "failed"')
+      },
+    })
+  })
+
+  test("prepares, binds, and starts the audit reviewer for a pending stop intent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop } = await setupLoop()
+        const scopeID = ScopeContext.current.scope.id
+        await (BlueprintLoopStore as any).recordStopRequest(scopeID, loop.id, {
+          summary: "Blueprint complete",
+          completed: ["Implemented the requested behavior"],
+          evidence: ["Focused tests pass"],
+          requestedAt: Date.now(),
+          requesterSessionID: session.id,
+          requesterMessageID: "msg_stop",
+        })
+        const order: string[] = []
+        let reviewSessionID = ""
+        ;(Cortex as any).prepare = mock(async (input: any) => {
+          order.push("prepare")
+          expect(input.agent).toBe("supervisor")
+          expect(input.parentSessionID).toBe(session.id)
+          expect(input.parentMessageID).toBe("msg_stop")
+          expect(input.prompt).toContain("Focused tests pass")
+          const reviewSession = await Session.create({ parentID: session.id })
+          reviewSessionID = reviewSession.id
+          return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }
+        })
+        ;(Cortex as any).start = mock(async (taskID: string) => {
+          order.push("start")
+          expect(taskID).toBe("ctx_audit")
+          const boundLoop = await BlueprintLoopStore.get(scopeID, loop.id)
+          const reviewSession = await Session.get(reviewSessionID)
+          expect(boundLoop.status).toBe("auditing")
+          expect(boundLoop.auditTaskID).toBe("ctx_audit")
+          expect(boundLoop.auditSessionID).toBe(reviewSessionID)
+          expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
+        })
+
+        const refreshed = await Session.get(session.id)
+        const proposal = await BlueprintContinuationPolicy.handle({
+          session: refreshed,
+          scopeID,
+          sessionID: session.id,
+          terminalMessageID: "msg_terminal",
+        })
+
+        expect(proposal).toEqual({ kind: "handled" })
+        expect(order).toEqual(["prepare", "start"])
       },
     })
   })
