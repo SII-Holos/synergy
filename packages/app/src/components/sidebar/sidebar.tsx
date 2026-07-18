@@ -129,6 +129,7 @@ export function Sidebar(props: SidebarProps) {
   const [channelSectionOpen, setChannelSectionOpen] = createSignal(false)
   const [feishuGroupOpen, setFeishuGroupOpen] = createSignal(true)
   const [backgroundSectionOpen, setBackgroundSectionOpen] = createSignal(false)
+  const [githubSectionOpen, setGitHubSectionOpen] = createSignal(false)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
 
@@ -539,6 +540,20 @@ export function Sidebar(props: SidebarProps) {
               onSessionClick={handleNavEntryClick}
             />
 
+            {/* GitHub */}
+            <Show when={layout.nav.githubConfigured()}>
+              <RootNavSection
+                title={_(sidebar.github)}
+                open={githubSectionOpen}
+                onToggle={() => setGitHubSectionOpen((value) => !value)}
+                entries={layout.nav.githubEntries()}
+                hasMore={layout.nav.hasMoreGitHub()}
+                onLoadMore={() => layout.nav.loadMoreGitHub()}
+                activeID={params.id}
+                onSessionClick={handleNavEntryClick}
+              />
+            </Show>
+
             {/* Projects */}
             <div class="sb-projects">
               <div
@@ -928,7 +943,7 @@ function SidebarSessionList(props: {
   )
 }
 
-// --- RootNavSection: reusable collapsible section for Home / Channel / Background ---
+// --- RootNavSection: reusable collapsible section for Home / Channel / Background / GitHub ---
 
 function RootNavSection(props: {
   title: string

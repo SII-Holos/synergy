@@ -215,6 +215,80 @@ describe("SessionRecovery.reconcileRuntimeState", () => {
   })
 })
 
+describe("SessionRecovery.resumePendingStopRequests", () => {
+  test("re-drives an unbound Light Loop stop intent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            taskDescription: "Finish the task",
+            stopRequest: {
+              summary: "Task complete",
+              requestedAt: Date.now(),
+              requesterSessionID: session.id,
+              requesterMessageID: Identifier.ascending("message"),
+            },
+          }
+        })
+        expect(await SessionRecovery.resumePendingStopRequests(ScopeContext.current.scope.id)).toBe(1)
+      },
+    })
+  })
+
+  test("re-drives an interrupted Blueprint audit without losing its stop intent", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "cortex-interrupted-blueprint-review",
+            parentSessionID: execution.id,
+            parentMessageID: Identifier.ascending("message"),
+            description: "Audit BlueprintLoop",
+            agent: "supervisor",
+            startedAt: Date.now(),
+            completedAt: Date.now(),
+            status: "interrupted",
+          },
+        })
+        const note = await createBlueprintNote()
+        const loop = await BlueprintLoopStore.create({
+          noteID: note.id,
+          noteVersion: note.version,
+          title: note.title,
+          sessionID: execution.id,
+        })
+        const scopeID = ScopeContext.current.scope.id
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running" })
+        await BlueprintLoopStore.recordStopRequest(scopeID, loop.id, {
+          summary: "Blueprint complete",
+          requestedAt: Date.now(),
+          requesterSessionID: execution.id,
+          requesterMessageID: Identifier.ascending("message"),
+        })
+        await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+          status: "auditing",
+          auditSessionID: reviewer.id,
+          auditTaskID: reviewer.cortex?.taskID,
+        })
+        expect(await SessionRecovery.resumePendingStopRequests(scopeID)).toBe(1)
+        const recovered = await BlueprintLoopStore.get(scopeID, loop.id)
+        expect(recovered.status).toBe("running")
+        expect(recovered.auditSessionID).toBeUndefined()
+        expect(recovered.auditTaskID).toBeUndefined()
+        expect(recovered.stopRequest?.summary).toBe("Blueprint complete")
+      },
+    })
+  })
+})
+
 describe("SessionRecovery.recoverableStatuses", () => {
   test("returns recovering statuses for sessions with active BlueprintLoops", async () => {
     await using tmp = await tmpdir({ git: true })

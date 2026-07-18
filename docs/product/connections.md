@@ -81,6 +81,20 @@ Email is an optional direct integration configured in `110-email.jsonc`. SMTP ow
 
 The `email_send` and `email_read` tools share the `communication.email` taxonomy. Reads are external I/O. Sending is both stateful and external, and it asks through a non-bypassable communication permission containing the recipient and subject. Email credentials remain config secrets; they are redacted from normal config responses and are not supplied by a Holos account or Channel provider.
 
+## GitHub Integration
+
+Synergy polls GitHub repositories outbound using GitHub App installation tokens. It requires no public inbound listener. Events are synthesized from REST API responses and processed through three independent pipelines: shadow-only diagnostic proposals, opt-in autonomous issue fix delivery, and opt-in automatic PR review and testing. All pipelines are disabled by default. Configuration is in `130-github.jsonc`.
+
+The shadow pipeline classifies issues and CI failures, then optionally produces hidden Cortex structured proposals. It is read-only and never performs GitHub API writes.
+
+The fix workflow, when enabled with `fixWorkflow.repositoryMapping`, inspects opened issues, locates root causes, posts a proposed-fix comment, implements and tests the fix in an isolated worktree, commits, pushes a branch with an ephemeral GitHub App installation token, opens a deduplicated pull request, and posts a completion comment. Agents never receive the token and cannot run `gh`, `git push`, or `git remote` operations.
+
+The review workflow, when enabled with `reviewWorkflow.repositoryMapping`, fetches exact PR head and base SHAs, runs a read-only reviewer in an isolated worktree, executes configured verification commands, and publishes a pull request review comment and a check run.
+
+GitHub App credentials (`SYNERGY_GITHUB_APP_ID`, `SYNERGY_GITHUB_APP_PRIVATE_KEY`) are environment variables only. See [GitHub Integration](../architecture/github-shadow.md) for the full polling architecture and processing pipeline.
+
+When both credentials are present, the Sidebar shows a GitHub section between Background and Projects. It aggregates the durable sessions created by shadow proposals, issue location/fix work, and PR reviews across Home and project Scopes, including their silent Cortex child sessions. Credential values never cross the server boundary.
+
 ## Boundaries
 
 - Channels translate external conversations into endpoint sessions.
@@ -88,4 +102,5 @@ The `email_send` and `email_read` tools share the `communication.email` taxonomy
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
+- GitHub integration supports shadow diagnostics plus opt-in autonomous fix delivery and PR review through outbound API polling, not a Channel endpoint or inbound webhook.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

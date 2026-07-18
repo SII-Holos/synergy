@@ -6,6 +6,7 @@ import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
+import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 
 export const McpRetry = z
   .object({
@@ -1328,6 +1329,9 @@ export const QuickSwitcher = z
   .meta({ ref: "QuickSwitcherConfig" })
 export type QuickSwitcher = z.infer<typeof QuickSwitcher>
 
+export const GitHubIntegrationConfig = GitHubIntegrationConfigSchema
+export type GitHubIntegrationConfig = z.infer<typeof GitHubIntegrationConfig>
+
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
@@ -1410,6 +1414,7 @@ export const Info = z
       .strict()
       .optional()
       .describe("Cortex task scheduling configuration"),
+    github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),

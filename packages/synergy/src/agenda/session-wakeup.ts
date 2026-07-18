@@ -56,8 +56,7 @@ export namespace AgendaSessionWakeup {
   }): Promise<LoopInstruction | undefined> {
     if (!isBlocker(input.item)) return undefined
     const loopID = input.session.blueprint?.loopID
-    const lightLoopActive =
-      input.session.workflow?.kind === "lightloop" && !input.session.workflow.stopRequest?.reviewSessionID
+    const lightLoopActive = input.session.workflow?.kind === "lightloop" && !input.session.workflow.stopRequest
     if (!loopID && !lightLoopActive) return undefined
 
     const scopeID = input.session.scope.id
@@ -67,7 +66,7 @@ export namespace AgendaSessionWakeup {
     if (loopID && input.session.blueprint?.loopRole === "execution") {
       const { BlueprintLoopStore } = await import("../blueprint")
       const loop = await BlueprintLoopStore.get(scopeID, loopID).catch(() => undefined)
-      if (loop?.status === "running" && loop.sessionID === input.session.id) {
+      if (loop?.status === "running" && !loop.stopRequest && loop.sessionID === input.session.id) {
         return {
           text: [
             "<blueprint-loop-agenda-wakeup>",
