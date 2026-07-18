@@ -17,6 +17,7 @@ import type { SessionTransitionActions, SessionTransitionProgress } from "./sess
 import { SessionTransitionCard } from "./session-transition-card"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { pendingTimelineItemView } from "./conversation-pending"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -211,18 +212,54 @@ export function SessionConversation(props: {
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
-              const isTask = () => item.mode === "task"
-              const guideLabel = () => (item.mode === "steer" ? _(S.convQueue) : _(S.convGuide))
+              const view = () => pendingTimelineItemView(item.mode, props.rollbackActive === true)
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
-                  ? (item.message!.parts[0] as { text: string }).text
+                  ? (item.message.parts[0] as { text: string }).text
                   : (item.summary?.title ?? _(S.convPending))
               return (
-                <div class="w-full flex items-center gap-4" style={{ animation: "fadeUp 0.3s ease-out both" }}>
-                  <div class="w-full px-3 md:px-1 max-w-[60rem] md:mx-auto flex items-center gap-6">
-                    <div class="w-full flex items-center gap-6 px-2 rounded-full">
-                      <div class="w-full min-w-0 text-14-regular line-clamp-2 text-text-weak">{label()}</div>
-                    </div>
+                <div
+                  data-slot="pending-timeline-item"
+                  data-mode={item.mode}
+                  data-frozen={view().frozen}
+                  class="flex w-full items-center gap-2 rounded-lg bg-background-weak px-3 py-2 text-sm text-text-weak"
+                  style={{ animation: "fadeUp 0.3s ease-out both" }}
+                >
+                  <Show when={view().frozen} fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}>
+                    <span class="inline-flex items-center gap-1 text-11-medium" title={_(S.convPausedTooltip)}>
+                      <Icon name={getSemanticIcon("agenda.main")} size="small" />
+                      {_(S.convPaused)}
+                    </span>
+                  </Show>
+                  <div class="min-w-0 flex-1 text-14-regular line-clamp-2">{label()}</div>
+                  <div class="ml-auto flex shrink-0 items-center gap-1">
+                    <Show when={view().primaryAction}>
+                      {(primaryAction) => (
+                        <button
+                          type="button"
+                          class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
+                          title={primaryAction() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
+                          onClick={() => props.onPendingGuide?.(item)}
+                        >
+                          <Icon
+                            name={getSemanticIcon(primaryAction() === "queue" ? "prompt.submit" : "command.start")}
+                            size="small"
+                          />
+                          <span>{primaryAction() === "queue" ? _(S.convQueue) : _(S.convGuide)}</span>
+                        </button>
+                      )}
+                    </Show>
+                    <Show when={view().canWithdraw}>
+                      <button
+                        type="button"
+                        class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
+                        title={_(S.convRemovePendingTitle)}
+                        onClick={() => props.onPendingRemove?.(item)}
+                      >
+                        <Icon name={getSemanticIcon("action.close")} size="small" />
+                        <span>{_(S.convWithdraw)}</span>
+                      </button>
+                    </Show>
                   </div>
                 </div>
               )
@@ -230,6 +267,7 @@ export function SessionConversation(props: {
           </For>
         </div>
       </Show>
+      <MessageSlotOutlet slot="message.footer" sessionId={props.sessionID} />
     </ConversationViewport>
   )
 }
