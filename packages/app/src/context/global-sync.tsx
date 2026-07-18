@@ -1030,8 +1030,8 @@ function createGlobalSync() {
               }),
             )
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
-            updatePlanBlueprintOfferState(store, setStore, info.id, { type: "plan_exited" })
           }
+          updatePlanBlueprintOfferState(store, setStore, info.id, { type: "session_removed" })
           break
         }
         if (result.found) {
