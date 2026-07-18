@@ -365,7 +365,7 @@ function chipLabelFromOrigin(origin: { type: string; label?: string; detail?: st
   }
 }
 
-export function collectMessagesForTurnDisplay(
+export function collectMessagesForTurnLifecycle(
   messages: MessageType[],
   userMessageID: string,
 ): SessionTurnDisplayMessage[] {
@@ -388,33 +388,61 @@ export function collectMessagesForTurnDisplay(
   // replies. Breaking on the first foreign message would drop those replies.
   for (let i = search.index + 1; i < messages.length; i++) {
     const item = messages[i]
-    if (!item) continue
+    if (!item || item.rootID !== rootID) continue
 
-    const itemRootID = item.rootID
-    if (itemRootID === undefined || itemRootID !== rootID) continue
-
-    if (item.role === "user") {
-      // Non-root user messages become chips; skip root user messages
-      const userItem = item as UserMessage
-      if (!userItem.isRoot && userItem.visible !== false) {
-        result.push(userItem)
-      }
-      continue
-    }
-
-    if ((item as { visible?: boolean }).visible === false) continue
-
-    // Assistant message
-    result.push(item as AssistantMessage)
+    if (item.role === "user" && (item as UserMessage).isRoot) continue
+    result.push(item as SessionTurnDisplayMessage)
   }
 
   return result
+}
+
+function filterMessagesForTurnDisplay(messages: readonly SessionTurnDisplayMessage[]): SessionTurnDisplayMessage[] {
+  return messages.filter((message) => (message as { visible?: boolean }).visible !== false)
+}
+
+export function collectMessagesForTurnDisplay(
+  messages: MessageType[],
+  userMessageID: string,
+): SessionTurnDisplayMessage[] {
+  return filterMessagesForTurnDisplay(collectMessagesForTurnLifecycle(messages, userMessageID))
 }
 
 export function collectAssistantMessagesForTurn(messages: MessageType[], userMessageID: string): AssistantMessage[] {
   return collectMessagesForTurnDisplay(messages, userMessageID).filter(
     (message): message is AssistantMessage => message.role === "assistant",
   )
+}
+
+function isTerminalAssistant(message: AssistantMessage): boolean {
+  return !!message.finish && message.finish !== "tool-calls" && message.finish !== "unknown"
+}
+
+export function resolveTurnWorking(input: {
+  isLastUserMessage: boolean
+  messages: readonly SessionTurnDisplayMessage[]
+  sessionStatus?: SessionStatus
+}): boolean {
+  if (!input.isLastUserMessage) return false
+
+  let latestUserIndex = -1
+  let lastAssistant: AssistantMessage | undefined
+  for (let index = 0; index < input.messages.length; index++) {
+    const message = input.messages[index]
+    if (message.role === "user") {
+      latestUserIndex = index
+      continue
+    }
+    lastAssistant = message
+  }
+
+  const hasTerminalReply = input.messages.slice(latestUserIndex + 1).some((message) => {
+    return message.role === "assistant" && isTerminalAssistant(message)
+  })
+  if (hasTerminalReply) return false
+
+  if (lastAssistant?.time.completed == null) return input.sessionStatus?.type !== "idle"
+  return !!input.sessionStatus && input.sessionStatus.type !== "idle"
 }
 
 export function providerPreludeText(status: SessionStatus | undefined): string {
@@ -688,15 +716,19 @@ export function SessionTurn(
     return data.store.part[msg.id] ?? emptyParts
   })
 
-  const displayMessages = createMemo(
+  const turnMessages = createMemo(
     () => {
       const msg = message()
       if (!msg) return emptyDisplayMessages
-      return collectMessagesForTurnDisplay(allMessages(), msg.id)
+      return collectMessagesForTurnLifecycle(allMessages(), msg.id)
     },
     emptyDisplayMessages,
     { equals: same },
   )
+
+  const displayMessages = createMemo(() => filterMessagesForTurnDisplay(turnMessages()), emptyDisplayMessages, {
+    equals: same,
+  })
 
   const assistantMessages = createMemo(
     () => {
@@ -729,18 +761,13 @@ export function SessionTurn(
 
   const isShellMode = createMemo(() => !!shellModePart())
 
-  const working = createMemo(() => {
-    if (!isLastUserMessage()) return false
-    const last = lastAssistantMessage()
-    if (last?.time.completed == null) {
-      const s = data.store.session_status[props.sessionID]
-      if (s && s.type === "idle") return false
-      return true
-    }
-    const s = data.store.session_status[props.sessionID]
-    if (s && s.type !== "idle") return true
-    return false
-  })
+  const working = createMemo(() =>
+    resolveTurnWorking({
+      isLastUserMessage: isLastUserMessage(),
+      messages: turnMessages(),
+      sessionStatus: data.store.session_status[props.sessionID],
+    }),
+  )
 
   const timelineItems = createMemo(
     () => {
