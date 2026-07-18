@@ -363,7 +363,7 @@ function SubsessionsButton(props: {
         </button>
       }
     >
-      <div class="w-72">
+      <div>
         <div class="flex items-center justify-between gap-2 px-1">
           <span class="truncate text-12-medium text-text-base">{i18n._(copy.subsessions)}</span>
           <span class="shrink-0 text-11-regular text-text-subtle">

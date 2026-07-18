@@ -78,6 +78,14 @@ const rootRuleContracts: CssRuleContract[] = [
     ],
   },
   {
+    selector: ".statusbar-subsession-popover[data-component=popover-content]",
+    declarations: ["width:min(24rem,100vw - 24px)", "max-width:min(24rem,100vw - 24px)"],
+  },
+  {
+    selector: ".statusbar-subsession-popover[data-component=popover-content] [data-slot=popover-body]>*",
+    declarations: ["width:100%"],
+  },
+  {
     selector: "[data-component=session-turn]",
     declarations: [
       "height:100%",
@@ -371,6 +379,47 @@ async function expectSessionInboxBadgePreservesIconCenter(css: string) {
   }
 }
 
+async function expectStatusbarSubsessionContentFillsBody(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 800, height: 600 } })
+    for (const width of [800, 375]) {
+      await page.setViewportSize({ width, height: 600 })
+      await page.setContent(`
+        <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
+        <div class="statusbar-subsession-popover" data-component="popover-content">
+          <div data-slot="popover-body">
+            <div data-content></div>
+          </div>
+        </div>
+      `)
+
+      const layout = await page.evaluate(() => {
+        const body = document.querySelector<HTMLElement>('[data-slot="popover-body"]')
+        const content = document.querySelector<HTMLElement>("[data-content]")
+        if (!body || !content) throw new Error("Missing subsession popover fixture")
+
+        const bodyStyle = getComputedStyle(body)
+        const bodyRect = body.getBoundingClientRect()
+        const contentRect = content.getBoundingClientRect()
+        const paddingLeft = Number.parseFloat(bodyStyle.paddingLeft)
+        const paddingRight = Number.parseFloat(bodyStyle.paddingRight)
+        return {
+          availableWidth: bodyRect.width - paddingLeft - paddingRight,
+          contentWidth: contentRect.width,
+          rightInset: bodyRect.right - paddingRight - contentRect.right,
+        }
+      })
+
+      expect(Math.abs(layout.contentWidth - layout.availableWidth)).toBeLessThanOrEqual(0.5)
+      expect(Math.abs(layout.rightInset)).toBeLessThanOrEqual(0.5)
+    }
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
     cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
@@ -461,6 +510,7 @@ describe("app production build contract", () => {
       expect(markdownChunk).toBeDefined()
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
+      await expectStatusbarSubsessionContentFillsBody(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })
