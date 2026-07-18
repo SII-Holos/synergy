@@ -189,7 +189,7 @@ describe("plan blueprint offer model", () => {
     ).toBe(true)
   })
 
-  test("dismiss, mute, and equip only clear the active offer while preserving seen keys", () => {
+  test("dismiss, mute, equip, and Plan exit preserve seen keys", () => {
     const offer = createPlanBlueprintOfferFromPart({
       part: toolPart({ action: "create", kind: "blueprint", noteID: "note_123" }),
       sessionID: "ses_current",
@@ -213,7 +213,75 @@ describe("plan blueprint offer model", () => {
       muted: true,
       seenKeys: [offer.key],
     })
-    expect(reducePlanBlueprintOfferState(captured, { type: "plan_exited" })).toEqual(emptyPlanBlueprintOfferState)
+    expect(reducePlanBlueprintOfferState(captured, { type: "plan_exited" })).toEqual({
+      offer: null,
+      muted: false,
+      seenKeys: [offer.key],
+    })
+  })
+
+  test("clears the complete offer state when the owning session is removed", () => {
+    const offer = createPlanBlueprintOfferFromPart({
+      part: toolPart({ action: "create", kind: "blueprint", noteID: "note_123" }),
+      sessionID: "ses_current",
+      workflowKind: "plan",
+    })!
+    const captured = reducePlanBlueprintOfferState(emptyPlanBlueprintOfferState, { type: "captured", offer })
+
+    expect(reducePlanBlueprintOfferState(captured, { type: "session_removed" })).toEqual(emptyPlanBlueprintOfferState)
+  })
+
+  test("does not re-offer historical Blueprint parts after Plan re-entry", () => {
+    const oldPart = toolPart({
+      messageID: "msg_1",
+      partID: "part_old",
+      action: "create",
+      kind: "blueprint",
+      noteID: "note_old",
+      title: "Old plan",
+    })
+    const oldOffer = createPlanBlueprintOfferFromPart({
+      part: oldPart,
+      sessionID: "ses_current",
+      workflowKind: "plan",
+    })!
+    const captured = reducePlanBlueprintOfferState(emptyPlanBlueprintOfferState, { type: "captured", offer: oldOffer })
+    const equipped = reducePlanBlueprintOfferState(captured, { type: "equipped", key: oldOffer.key })
+    const exited = reducePlanBlueprintOfferState(equipped, { type: "plan_exited" })
+
+    expect(
+      findLatestPlanBlueprintOfferFromParts({
+        messages: [message("msg_1")],
+        partsByMessage: { msg_1: [oldPart] },
+        sessionID: "ses_current",
+        workflowKind: "plan",
+        state: exited,
+      }),
+    ).toBeUndefined()
+
+    const newPart = toolPart({
+      messageID: "msg_1",
+      partID: "part_new",
+      action: "create",
+      kind: "blueprint",
+      noteID: "note_new",
+      title: "New plan",
+    })
+    const newOffer = createPlanBlueprintOfferFromPart({
+      part: newPart,
+      sessionID: "ses_current",
+      workflowKind: "plan",
+    })!
+
+    expect(
+      findLatestPlanBlueprintOfferFromParts({
+        messages: [message("msg_1")],
+        partsByMessage: { msg_1: [oldPart, newPart] },
+        sessionID: "ses_current",
+        workflowKind: "plan",
+        state: exited,
+      }),
+    ).toEqual(newOffer)
   })
 
   test("does not display a captured offer when the Blueprint slot is occupied", () => {

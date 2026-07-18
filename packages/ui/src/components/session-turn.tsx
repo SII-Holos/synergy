@@ -172,6 +172,12 @@ function isCompactionAssistant(message: AssistantMessage): boolean {
   return message.mode === "compaction" || message.agent === "compaction"
 }
 
+function isRunningCompactionAttempt(message: AssistantMessage): boolean {
+  if (!isCompactionAssistant(message)) return false
+  const attempt = message.metadata?.compactionAttempt as { state?: unknown } | undefined
+  return attempt?.state === "running"
+}
+
 export function isCompactionBoundaryUser(message: Pick<UserMessage, "metadata">): boolean {
   return message.metadata?.compactionBoundary === true
 }
@@ -407,10 +413,10 @@ export function collectMessagesForTurnDisplay(
       continue
     }
 
-    if ((item as { visible?: boolean }).visible === false) continue
+    const assistant = item as AssistantMessage
+    if (assistant.visible === false && !isRunningCompactionAttempt(assistant)) continue
 
-    // Assistant message
-    result.push(item as AssistantMessage)
+    result.push(assistant)
   }
 
   return result

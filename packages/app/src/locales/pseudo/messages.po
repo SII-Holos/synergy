@@ -5563,6 +5563,10 @@ msgid "app.sidebar.section.channel"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.section.github"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.section.home"
 msgstr ""
 
@@ -10807,6 +10811,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "session.state.default.unread"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.github"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "session.state.github.unread"
 msgstr ""
 
 #. js-lingui-explicit-id
