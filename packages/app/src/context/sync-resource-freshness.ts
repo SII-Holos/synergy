@@ -1,4 +1,4 @@
-export type SyncResource = "dag" | "todo" | "inbox"
+export type SyncResource = "dag" | "todo" | "inbox" | "message"
 
 export type SyncVersion = {
   epoch: string
@@ -66,6 +66,10 @@ export class SyncResourceFreshness {
       this.generation(input.scopeKey) === request.generation &&
       (this.revisions.get(resourceKey(input)) ?? 0) === request.revision
     )
+  }
+  invalidate(input: SyncResourceKey) {
+    this.resources.delete(resourceKey(input))
+    this.bumpRevision(input)
   }
 
   acceptResponse(input: SyncResourceKey, request: SyncResourceRequest, version: SyncVersion | undefined): boolean {

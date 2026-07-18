@@ -92,8 +92,7 @@ The `messages` array in the store contains only the visible window messages, not
 
 ### Page size and cap
 
-- Default page size is 200; the store cap is 500.
-- `Session.messagePage()` defaults `limit` to 200 and caps it at 500.
+- Frontend page loads use `limit: 200`; the store cap is 500.
 - The store's `DEFAULT_CAP` of 500 applies to both latest loads and history prepends.
 
 ### Latest mode
@@ -106,6 +105,8 @@ Initial load and reconnect recovery use latest mode (`mode: "latest"`). Incoming
 
 The window cursor (`nextCursor`) is recorded from each page response so older pages can be loaded later.
 
+Latest page loads and background prefetches capture a `message` resource request token before the request. A latest response may replace the visible window only if no newer message event, authoritative part checkpoint/removal, history prepend, or optimistic local message write invalidated that token while it was in flight. Background prefetches additionally run only when no message window exists, so they populate an initially empty bucket rather than displace a loaded conversation.
+
 ### History mode
 
 When the user requests older messages via "Load earlier", the frontend switches to history mode (`mode: "history"`):
@@ -114,6 +115,8 @@ When the user requests older messages via "Load earlier", the frontend switches 
 - The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages).
 - A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted.
 - `total` excludes those suppressed live arrivals while history mode remains active. Older-page responses are normalized by `pendingLatestIds`; returning to latest replaces the metadata with the server total and clears the pending IDs.
+
+History page responses are intentionally applied without snapshot-version ordering because they extend the existing window rather than replace it. Applying a history page invalidates the `message` resource revision so a concurrent latest-page response cannot subsequently overwrite the prepended window.
 
 ### Return to latest
 
@@ -201,11 +204,11 @@ The live gap detector currently adopts the newly received sequence before it sta
 
 ## Resource-Level Snapshot Freshness
 
-The sync layer applies a freshness gate to DAG, Todo, and Inbox snapshots and live events. Each resource is scoped to `(scopeKey, sessionID, resource)`.
+The sync layer applies a freshness gate to DAG, Todo, Inbox, and Message snapshots and live events. Each resource is scoped to `(scopeKey, sessionID, resource)`.
 
 ### Response headers
 
-Scoped GET responses for these resources expose:
+Scoped GET responses for these resources, including `session.messagePage()`, expose:
 
 - `x-synergy-seq`
 - `x-synergy-epoch`
@@ -219,7 +222,7 @@ A response is unversioned when either header is absent or the epoch/sequence val
 Every snapshot request captures a `SyncResourceRequest` token:
 
 - `generation` — a Scope-level monotonic counter. A new Scope epoch or `releaseScope` advances the generation, invalidating all in-flight requests for that Scope.
-- `revision` — a per-resource counter that increments on every accepted event or snapshot for that resource. A revision mismatch means the resource was written between request capture and response arrival.
+- `revision` — a per-resource counter that increments on every accepted event or snapshot and on local invalidation. A revision mismatch means the resource was written between request capture and response arrival.
 
 ### Response acceptance
 
@@ -230,6 +233,12 @@ Every snapshot request captures a `SyncResourceRequest` token:
 2. **Revision check.** If the resource revision changed while the request was in flight, an unversioned response is rejected. A versioned response may continue only when the resource has a known current version to compare against.
 
 3. **Snapshot version guard.** Responses that pass the request-token checks still go through the epoch and sequence checks below.
+
+### Local invalidation
+
+Optimistic message insertion/removal, authoritative part checkpoints/removals, and history prepends call `invalidate()` for the session's `message` resource. Invalidation clears the stored resource version and advances its revision without changing the Scope epoch. Requests captured before that local write are therefore rejected, including versioned responses, because no current resource version remains to prove that they include the local mutation.
+
+Streaming `message.part.delta` frames do not invalidate freshness. They remain unsequenced, append-only projections whose next full checkpoint converges authoritative part state.
 
 ### Snapshot version guard
 
@@ -242,7 +251,7 @@ Every snapshot request captures a `SyncResourceRequest` token:
 
 ### Scope-level event pre-filter
 
-Before any event reaches `applyEvent()`, the global listener calls `acceptScopeEvent(scopeKey, version)`. This applies to every incoming event, not only DAG, Todo, and Inbox updates:
+Before any event reaches `applyEvent()`, the global listener calls `acceptScopeEvent(scopeKey, version)`. This applies to every incoming event, not only resource-gated updates:
 
 - events from retired epochs are dropped without changing the watermark or triggering replay;
 - an event from a new epoch retires the old epoch, advances the Scope generation, invalidates in-flight resource requests, clears per-resource versions, and establishes the new epoch floor;
@@ -252,7 +261,7 @@ This pre-filter runs before watermark observation and before the resource-specif
 
 ### Event acceptance
 
-Live events (`todo.updated`, `dag.updated`, `session.inbox.updated`) pass through `acceptEvent()`:
+Live events (`todo.updated`, `dag.updated`, `session.inbox.updated`, `message.updated`, and `message.removed`) pass through `acceptEvent()` for their owning resource:
 
 - **Epoch advance.** An event with a new epoch retires the old epoch, advances the Scope generation (invalidating in-flight snapshot requests), clears all resource versions for that Scope, and establishes the new epoch.
 - **Ordered only.** Within the same epoch, an event with `seq <= current.seq` for that resource is a duplicate and discarded.
@@ -261,7 +270,7 @@ Live events (`todo.updated`, `dag.updated`, `session.inbox.updated`) pass throug
 
 ### Resource scope
 
-Per-resource snapshot/event ordering applies only to `dag`, `todo`, and `inbox`. All incoming events still pass through the Scope-level epoch pre-filter. Snapshots for other resources remain governed by the existing replay/resync behavior and are not subject to resource freshness checks.
+Per-resource snapshot/event ordering applies to `dag`, `todo`, `inbox`, and `message`. Message replacement snapshots include latest page loads, background prefetches, and post-compaction page loads. Message part checkpoints/removals and local optimistic writes invalidate concurrent message requests without becoming sequenced resource events; streaming deltas remain outside resource freshness. All incoming events still pass through the Scope-level epoch pre-filter.
 
 ## Streaming Delta Protocol
 
@@ -306,16 +315,16 @@ This removes quadratic full-part disk writes without weakening terminal persiste
 
 `session.compacted` means the visible effective message set changed at a summary boundary.
 
-The compaction event is first gated through `acceptEvent()` using the session's `inbox` resource key. A duplicate, older, or retired-epoch compaction event is discarded before any message swap or cleanup runs.
+The compaction event is gated through `acceptEvent()` using both the session's `inbox` and `message` resource keys. A duplicate, older, or retired-epoch compaction event is discarded before any message swap or cleanup runs.
 
 The frontend:
 
-1. fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
-2. computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
+1. captures separate Inbox and Message request tokens, then fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
+2. accepts the page through the Message freshness gate and computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
 3. applies one Solid batch that deletes stale parts and diff state, and deletes inbox state only if no newer inbox event arrived while the fetch was in flight;
 4. reconciles the retained messages, their authoritative parts, and the message window metadata atomically.
 
-Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`) is replaced atomically in the same batch, while newer Inbox state is preserved.
+Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`) is replaced atomically in the same batch, while newer Message state rejects the whole stale swap and newer Inbox state preserves only the inbox bucket.
 
 ## Message Bucket Eviction
 
@@ -349,7 +358,7 @@ Variant display resolves the explicit or historical session variant first, then 
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
-- Every event passes the Scope epoch pre-filter; DAG, Todo, and Inbox additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Unversioned snapshots are accepted only when no intervening same-resource write occurred.
+- Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.
 - Streaming deltas converge through full checkpoints.
 - Active text rendering processes appended suffixes rather than rescanning accumulated snapshots.

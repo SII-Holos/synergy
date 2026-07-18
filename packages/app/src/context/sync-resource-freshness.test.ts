@@ -5,6 +5,7 @@ const scope = "/workspace/project"
 const session = "ses_progress"
 const dag = { scopeKey: scope, sessionID: session, resource: "dag" as const }
 const todo = { scopeKey: scope, sessionID: session, resource: "todo" as const }
+const messages = { scopeKey: scope, sessionID: session, resource: "message" as const }
 const version = (seq: number, epoch = "epoch-1"): SyncVersion => ({ epoch, seq })
 
 describe("SyncResourceFreshness", () => {
@@ -141,6 +142,24 @@ describe("SyncResourceFreshness", () => {
     expect(freshness.acceptSnapshot(dag, version(4, "epoch-new"))).toBe(false)
     expect(freshness.acceptSnapshot(dag, version(5, "epoch-new"))).toBe(true)
     expect(freshness.acceptScopeEvent(scope, version(21, "epoch-old"))).toBe(false)
+  })
+
+  test("rejects the initial message page after an optimistic first message is inserted", () => {
+    const freshness = new SyncResourceFreshness()
+    const request = freshness.capture(messages)
+
+    freshness.invalidate(messages)
+
+    expect(freshness.acceptResponse(messages, request, version(1))).toBe(false)
+  })
+
+  test("rejects a stale latest message page after the first message event", () => {
+    const freshness = new SyncResourceFreshness()
+    const request = freshness.capture(messages)
+
+    expect(freshness.acceptEvent(messages, version(2))).toBe(true)
+    expect(freshness.acceptResponse(messages, request, version(1))).toBe(false)
+    expect(freshness.current(messages)).toEqual(version(2))
   })
 
   test("release removes the scope epoch and all resource versions", () => {

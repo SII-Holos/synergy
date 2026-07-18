@@ -308,6 +308,9 @@ function createGlobalSync() {
     apply()
     return true
   }
+  function invalidateResource(scopeKey: string, sessionID: string, resource: SyncResource) {
+    resourceFreshness.invalidate({ scopeKey, sessionID, resource })
+  }
 
   function applyResourceEvent(
     scopeKey: string,
@@ -1102,81 +1105,85 @@ function createGlobalSync() {
       case "message.updated": {
         const info = event.properties.info as Message
         const sessionID = info.sessionID
-        touchMessageBucket(scopeKey, sessionID)
-        const messages = store.message[sessionID] ?? []
-        const metadata = store.messageWindow[sessionID]
-        const existing = messages.some((message) => message.id === info.id)
-        const current: MessageWindowState<Message> = {
-          messages,
-          mode: metadata?.mode ?? "latest",
-          pendingLatest: metadata?.pendingLatest ?? false,
-          pendingLatestIds: metadata?.pendingLatestIds ?? [],
-        }
-        const result = reconcileMessage(current, info)
+        applyResourceEvent(scopeKey, sessionID, "message", event, () => {
+          touchMessageBucket(scopeKey, sessionID)
+          const messages = store.message[sessionID] ?? []
+          const metadata = store.messageWindow[sessionID]
+          const existing = messages.some((message) => message.id === info.id)
+          const current: MessageWindowState<Message> = {
+            messages,
+            mode: metadata?.mode ?? "latest",
+            pendingLatest: metadata?.pendingLatest ?? false,
+            pendingLatestIds: metadata?.pendingLatestIds ?? [],
+          }
+          const result = reconcileMessage(current, info)
 
-        batch(() => {
-          setStore(
-            produce((draft) => {
-              for (const messageID of result.droppedIds) delete draft.part[messageID]
-            }),
-          )
-          setStore("message", sessionID, reconcile(result.window.messages, { key: "id" }))
-          if (metadata) {
+          batch(() => {
             setStore(
-              "messageWindow",
-              sessionID,
-              reconcile({
-                ...metadata,
-                total: nextMessageWindowTotal({
-                  total: metadata.total,
-                  existing,
-                  visible: result.window.messages.some((message) => message.id === info.id),
-                }),
-                mode: result.window.mode,
-                pendingLatest: result.window.pendingLatest,
-                pendingLatestIds: result.window.pendingLatestIds,
+              produce((draft) => {
+                for (const messageID of result.droppedIds) delete draft.part[messageID]
               }),
             )
-          }
+            setStore("message", sessionID, reconcile(result.window.messages, { key: "id" }))
+            if (metadata) {
+              setStore(
+                "messageWindow",
+                sessionID,
+                reconcile({
+                  ...metadata,
+                  total: nextMessageWindowTotal({
+                    total: metadata.total,
+                    existing,
+                    visible: result.window.messages.some((message) => message.id === info.id),
+                  }),
+                  mode: result.window.mode,
+                  pendingLatest: result.window.pendingLatest,
+                  pendingLatestIds: result.window.pendingLatestIds,
+                }),
+              )
+            }
+          })
         })
         break
       }
       case "message.removed": {
         const sessionID = event.properties.sessionID as string
         const messageID = event.properties.messageID as string
-        const messages = store.message[sessionID]
-        if (!messages) break
-        const metadata = store.messageWindow[sessionID]
-        const current: MessageWindowState<Message> = {
-          messages,
-          mode: metadata?.mode ?? "latest",
-          pendingLatest: metadata?.pendingLatest ?? false,
-          pendingLatestIds: metadata?.pendingLatestIds ?? [],
-        }
-        const pending = current.pendingLatestIds.includes(messageID)
-        const result = removeMessageFromWindow(current, messageID)
-        const removedVisible = result.messages.length !== messages.length
-        batch(() => {
-          if (removedVisible) {
-            setStore(
-              produce((draft) => {
-                delete draft.part[messageID]
-              }),
-            )
-            setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
+        applyResourceEvent(scopeKey, sessionID, "message", event, () => {
+          const messages = store.message[sessionID]
+          if (!messages) return
+          const metadata = store.messageWindow[sessionID]
+          const current: MessageWindowState<Message> = {
+            messages,
+            mode: metadata?.mode ?? "latest",
+            pendingLatest: metadata?.pendingLatest ?? false,
+            pendingLatestIds: metadata?.pendingLatestIds ?? [],
           }
-          if (metadata) {
-            setStore(
-              "messageWindow",
-              sessionID,
-              reconcile({
-                ...metadata,
-                total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
-                pendingLatest: result.pendingLatest,
-                pendingLatestIds: result.pendingLatestIds,
-              }),
-            )
-          }
+          const pending = current.pendingLatestIds.includes(messageID)
+          const result = removeMessageFromWindow(current, messageID)
+          const removedVisible = result.messages.length !== messages.length
+          batch(() => {
+            if (removedVisible) {
+              setStore(
+                produce((draft) => {
+                  delete draft.part[messageID]
+                }),
+              )
+              setStore("message", sessionID, reconcile(result.messages, { key: "id" }))
+            }
+            if (metadata) {
+              setStore(
+                "messageWindow",
+                sessionID,
+                reconcile({
+                  ...metadata,
+                  total: nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }),
+                  pendingLatest: result.pendingLatest,
+                  pendingLatestIds: result.pendingLatestIds,
+                }),
+              )
+            }
+          })
         })
         break
       }
@@ -1217,6 +1224,7 @@ function createGlobalSync() {
       }
       case "message.part.updated": {
         const part = event.properties.part
+        invalidateResource(scopeKey, part.sessionID, "message")
         if (!store.message[part.sessionID]?.some((message) => message.id === part.messageID)) break
         const parts = store.part[part.messageID]
         if (!parts) {
@@ -1286,6 +1294,7 @@ function createGlobalSync() {
         break
       }
       case "message.part.removed": {
+        invalidateResource(scopeKey, event.properties.sessionID, "message")
         const parts = store.part[event.properties.messageID]
         if (!parts) break
         const result = Binary.search(parts, event.properties.partID, (p) => p.id)
@@ -1448,36 +1457,42 @@ function createGlobalSync() {
         const currentMessages = store.message[sessionID]
         if (!currentMessages) break
         const version = parseSyncVersion(event)
-        const accepted = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
-        if (!accepted) break
-        const request = captureResourceRequest(scopeKey, sessionID, "inbox")
+        const acceptedInbox = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
+        const acceptedMessages = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "message" }, version)
+        if (!acceptedInbox || !acceptedMessages) break
+        const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
+        const messageRequest = captureResourceRequest(scopeKey, sessionID, "message")
         const sdk = createScopedClient(scopeKey)
         retry(() => sdk.session.messagePage({ sessionID, limit: 200 }))
           .then((result) => {
             if (!result.data) return
-            const metadata = store.messageWindow[sessionID]
-            const plan = planMessagePageApply({
-              page: result.data,
-              current: {
-                messages: currentMessages,
-                mode: metadata?.mode ?? "latest",
-                pendingLatest: metadata?.pendingLatest ?? false,
-                pendingLatestIds: metadata?.pendingLatestIds ?? [],
-              },
-            })
-            batch(() => {
-              setStore(
-                produce((draft) => {
-                  for (const messageID of plan.droppedIds) delete draft.part[messageID]
-                  delete draft.session_diff[sessionID]
-                  if (isResourceRequestCurrent(scopeKey, sessionID, "inbox", request)) delete draft.inbox[sessionID]
-                }),
-              )
-              setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
-              setStore("messageWindow", sessionID, reconcile(plan.metadata))
-              for (const [messageID, parts] of Object.entries(plan.parts)) {
-                setStore("part", messageID, reconcile(parts, { key: "id" }))
-              }
+            applyResourceResponse(scopeKey, sessionID, "message", messageRequest, result.response?.headers, () => {
+              const metadata = store.messageWindow[sessionID]
+              const plan = planMessagePageApply({
+                page: result.data!,
+                current: {
+                  messages: currentMessages,
+                  mode: metadata?.mode ?? "latest",
+                  pendingLatest: metadata?.pendingLatest ?? false,
+                  pendingLatestIds: metadata?.pendingLatestIds ?? [],
+                },
+              })
+              batch(() => {
+                setStore(
+                  produce((draft) => {
+                    for (const messageID of plan.droppedIds) delete draft.part[messageID]
+                    delete draft.session_diff[sessionID]
+                    if (isResourceRequestCurrent(scopeKey, sessionID, "inbox", inboxRequest)) {
+                      delete draft.inbox[sessionID]
+                    }
+                  }),
+                )
+                setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+                setStore("messageWindow", sessionID, reconcile(plan.metadata))
+                for (const [messageID, parts] of Object.entries(plan.parts)) {
+                  setStore("part", messageID, reconcile(parts, { key: "id" }))
+                }
+              })
             })
           })
           .catch(() => {})
@@ -1646,6 +1661,7 @@ function createGlobalSync() {
     reconnectVersion,
     captureResourceRequest,
     applyResourceResponse,
+    invalidateResource,
     get agenda() {
       return globalStore.agenda
     },
