@@ -454,7 +454,7 @@ describe("SessionWorking", () => {
             tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
           })
 
-          await SessionInvoke.resumePending()
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
 
           const refreshed = await Session.get(child.id)
           expect(refreshed.cortex?.status).toBe("interrupted")
@@ -470,6 +470,53 @@ describe("SessionWorking", () => {
           assertExists(assistant)
           expect(assistant.time.completed).toBeNumber()
           expect(assistant.finish).toBe("error")
+        },
+      })
+    })
+
+    test("resumePending re-drives Light Loop review after marking its reviewer interrupted", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const parent = await Session.create({})
+          const parentMessageID = Identifier.ascending("message")
+          const child = await Session.create({
+            parentID: parent.id,
+            cortex: {
+              taskID: "cortex-interrupted-light-loop-review",
+              parentSessionID: parent.id,
+              parentMessageID,
+              description: "Review LightLoop",
+              agent: "lightloop-reviewer",
+              startedAt: Date.now(),
+              status: "running",
+            },
+          })
+          await Session.update(parent.id, (draft) => {
+            draft.workflow = {
+              kind: "lightloop",
+              taskDescription: "Finish the task",
+              stopRequest: {
+                summary: "Task complete",
+                requestedAt: Date.now(),
+                requesterSessionID: parent.id,
+                requesterMessageID: parentMessageID,
+                reviewTaskID: child.cortex?.taskID,
+                reviewSessionID: child.id,
+              },
+            }
+          })
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+          const childSession = await Session.get(child.id)
+          const parentSession = await Session.get(parent.id)
+          const workflow = parentSession.workflow
+          expect(childSession.cortex?.status).toBe("interrupted")
+          expect(workflow?.kind).toBe("lightloop")
+          if (workflow?.kind === "lightloop") {
+            expect(workflow.stopRequest?.reviewTaskID).toBeUndefined()
+            expect(workflow.stopRequest?.reviewSessionID).toBeUndefined()
+          }
         },
       })
     })
@@ -498,7 +545,7 @@ describe("SessionWorking", () => {
           })
           Cortex.reset()
 
-          await SessionInvoke.resumePending()
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
 
           const firstItems = await SessionInbox.list(parent.id)
           expect(firstItems).toHaveLength(1)
@@ -508,7 +555,7 @@ describe("SessionWorking", () => {
           expect(delivered.cortex?.deliveryNotifiedAt).toBeNumber()
           const deliveredAt = delivered.cortex?.deliveryNotifiedAt
 
-          await SessionInvoke.resumePending()
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
 
           expect(await SessionInbox.list(parent.id)).toHaveLength(1)
           expect((await Session.get(child.id)).cortex?.deliveryNotifiedAt).toBe(deliveredAt)
