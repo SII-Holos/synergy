@@ -318,6 +318,48 @@ async function expectSessionWorkbenchPaneTracksBottomSurface(css: string) {
   }
 }
 
+async function expectPromptDockKeepsReadableWidth(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1200, height: 240 } })
+    await page.setContent(`
+      <style>
+        html, body { width: 100%; height: 100%; margin: 0; }
+        ${css}
+      </style>
+      <main data-frame style="display: flex; justify-content: center; width: 100%;">
+        <div data-prompt class="session-prompt-dock-content w-full" style="height: 80px;"></div>
+      </main>
+    `)
+
+    const measure = () =>
+      page.evaluate(() => {
+        const frame = document.querySelector<HTMLElement>("[data-frame]")
+        const prompt = document.querySelector<HTMLElement>("[data-prompt]")
+        if (!frame || !prompt) throw new Error("Missing prompt dock layout fixture")
+        const frameRect = frame.getBoundingClientRect()
+        const promptRect = prompt.getBoundingClientRect()
+        return {
+          frameWidth: frameRect.width,
+          promptWidth: promptRect.width,
+          leftInset: promptRect.left - frameRect.left,
+          rightInset: frameRect.right - promptRect.right,
+        }
+      })
+
+    const desktop = await measure()
+    expect(desktop.promptWidth).toBe(864)
+    expect(Math.abs(desktop.leftInset - desktop.rightInset)).toBeLessThanOrEqual(1)
+
+    await page.setViewportSize({ width: 640, height: 240 })
+    const narrow = await measure()
+    expect(narrow.promptWidth).toBe(narrow.frameWidth)
+  } finally {
+    await browser.close()
+  }
+}
+
 async function expectSessionInboxBadgePreservesIconCenter(css: string) {
   const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
   const browser = await browserType.launch({ headless: true })
@@ -461,6 +503,7 @@ describe("app production build contract", () => {
       expect(markdownChunk).toBeDefined()
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
+      await expectPromptDockKeepsReadableWidth(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })

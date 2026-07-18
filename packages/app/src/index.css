@@ -177,6 +177,12 @@ a:active,
   min-height: 0;
 }
 
+@media (min-width: 48rem) {
+  .session-prompt-dock-content {
+    max-width: 54rem;
+  }
+}
+
 .synergy-workbench-canvas :where(.workbench-panel-surface) {
   background-color: var(--workbench-panel-bg);
   border-color: var(--workbench-border);

@@ -85,7 +85,7 @@ export function PromptDock(props: {
     >
       <div
         classList={{
-          "w-full min-w-0 px-3 md:px-6 pointer-events-auto relative": true,
+          "session-prompt-dock-content w-full min-w-0 px-3 md:px-6 pointer-events-auto relative": true,
         }}
       >
         <Show when={props.sessionID}>
