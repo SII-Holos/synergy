@@ -247,6 +247,12 @@ Network streaming and disk persistence are separate optimizations.
 
 This removes quadratic full-part disk writes without weakening terminal persistence.
 
+## Compaction Attempt Projection
+
+Compaction assistants remain canonically hidden until a non-empty summary commits, but the shared timeline makes one narrow presentation exception: a hidden compaction assistant whose persisted `metadata.compactionAttempt.state` is `running` projects as the running compaction card. Raw streamed compaction text stays suppressed behind that card. The same message ID and timeline key remain mounted when the backend changes the attempt to `committed`, makes the message visible, and adds the recovery part.
+
+The processor's terminal message checkpoint does not end this presentation lifecycle. The compaction owner resolves `running` to `committed`, `failed`, or `empty`; hidden failed and empty attempts therefore disappear instead of remaining as stale progress. Ordinary `visible = false` messages never receive this exception.
+
 ## Compaction Swap
 
 `session.compacted` means the visible effective message set changed at a summary boundary.
