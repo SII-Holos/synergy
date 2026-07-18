@@ -120,6 +120,7 @@ export namespace CortexTypes {
     agent: z.string(),
     executionRole: ExecutionRole.optional(),
     category: z.string().optional(),
+    provenance: z.literal("github").optional(),
     parentSessionID: Identifier.schema("session"),
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),
@@ -136,6 +137,8 @@ export namespace CortexTypes {
         create: z.literal(true),
         name: z.string().optional(),
         baseRef: z.enum(["current", "fresh"]).optional().default("current"),
+        baseRevision: z.string().min(1).optional(),
+        failOnError: z.boolean().optional().default(false),
       })
       .optional(),
     notifyParentOnComplete: z.boolean().optional(),
@@ -144,6 +147,9 @@ export namespace CortexTypes {
     output: OutputConfig.optional(),
     owner: PluginTaskOwner.optional(),
     timeoutMs: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    maxCost: z.number().nonnegative().optional(),
   })
-  export type LaunchInput = z.infer<typeof LaunchInput>
+  export type LaunchInput = z.input<typeof LaunchInput>
+  export type ParsedLaunchInput = z.output<typeof LaunchInput>
 }

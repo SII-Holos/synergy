@@ -94,6 +94,43 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("channel")
   })
 
+  // ── GitHub provenance ─────────────────────────────────────────────────
+  test("GitHub provenance maps to the GitHub category", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      provenance: "github",
+      parentID: undefined,
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("github")
+  })
+
+  test("GitHub provenance takes precedence over generic background signals", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "project",
+      endpointKind: undefined,
+      provenance: "github",
+      parentID: "ses_parent",
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("github")
+  })
+
+  test("channel endpoints take precedence over GitHub provenance", () => {
+    const cat = SessionNav.deriveCategory({
+      scopeType: "home",
+      endpointKind: "channel",
+      provenance: "github",
+      parentID: "ses_parent",
+      cortex: undefined,
+      agenda: undefined,
+    })
+    expect(cat).toBe("channel")
+  })
+
   // ── Background (child / cortex / agenda) ──────────────────────────────
   test("background: child session with parentID maps to background", () => {
     const cat = SessionNav.deriveCategory({
@@ -206,8 +243,8 @@ describe("SessionNav.deriveCategory", () => {
     expect(cat).toBe("project")
   })
 
-  // ── Type narrowing (only 4 categories exist) ──────────────────────────
-  const validCategories = ["project", "home", "channel", "background"] as const
+  // ── Type narrowing ────────────────────────────────────────────────────
+  const validCategories = ["project", "home", "channel", "background", "github"] as const
 
   test("deriveCategory never returns a separate channel category name", () => {
     // Channel sessions must return "channel", never anything else

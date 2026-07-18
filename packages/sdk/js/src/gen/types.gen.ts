@@ -1142,7 +1142,7 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
   archived: boolean
@@ -1172,6 +1172,10 @@ export type GlobalRecentResponse = {
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
+}
+
+export type GitHubConfiguredResponse = {
+  configured: boolean
 }
 
 export type AgendaWebhookResult = {
@@ -1600,6 +1604,58 @@ export type ServerConfig = {
    * Additional domains to allow for CORS
    */
   cors?: Array<string>
+}
+
+/**
+ * Outbound GitHub App polling and automation configuration
+ */
+export type GitHubIntegrationConfig = {
+  enabled?: boolean
+  watchedRepositories?: Array<string>
+  eventTypes?: Array<string>
+  ciFailureThreshold?: number
+  ciFailureWindowHours?: number
+  modelBudgetNano?: {
+    maxTokens: number
+    maxCost: number
+  }
+  modelBudgetProposal?: {
+    maxTokens: number
+    maxCost: number
+  }
+  classifierEnabled?: boolean
+  proposalEnabled?: boolean
+  polling?: {
+    enabled?: boolean
+    intervalMs?: number
+    overlapWindowMs?: number
+    pageSize?: number
+    maxPages?: number
+  }
+  fixWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    maxRetries?: number
+    timeoutMs?: number
+    locatorAgent?: string
+    agent?: string
+    pushBranchPrefix?: string
+  }
+  reviewWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    eventTypes?: Array<string>
+    reviewCommands?: Array<string>
+    maxRetries?: number
+    timeoutMs?: number
+    agent?: string
+    publishReviewComment?: boolean
+    publishCheckRun?: boolean
+  }
 }
 
 /**
@@ -2915,6 +2971,7 @@ export type Config = {
      */
     maxConcurrentTasks?: number
   }
+  github?: GitHubIntegrationConfig
   watcher?: {
     ignore?: Array<string>
   }
@@ -3209,6 +3266,7 @@ export type ConfigDomainSummary = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   label: string
   path: string
@@ -3270,6 +3328,7 @@ export type ConfigDomainImportDomainPlan = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -3327,6 +3386,7 @@ export type ConfigDomainImportPlanInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -3407,6 +3467,7 @@ export type ConfigImportRevisionConflictError = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
     >
   }
 }
@@ -3435,6 +3496,7 @@ export type ConfigDomainImportApplyInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -3849,7 +3911,8 @@ export type Session = {
     messageID?: string
     title?: string
   }
-  category?: "project" | "home" | "channel" | "background"
+  category?: "project" | "home" | "channel" | "background" | "github"
+  provenance?: "github"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -8306,6 +8369,7 @@ export type GlobalNavRecentData = {
   query?: {
     parentOnly?: boolean
     includeArchived?: boolean
+    category?: "project" | "home" | "channel" | "background" | "github"
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -8340,6 +8404,22 @@ export type GlobalNavPinnedResponses = {
 }
 
 export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
+
+export type GithubConfiguredData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/github/configured"
+}
+
+export type GithubConfiguredResponses = {
+  /**
+   * GitHub App configuration status
+   */
+  200: GitHubConfiguredResponse
+}
+
+export type GithubConfiguredResponse = GithubConfiguredResponses[keyof GithubConfiguredResponses]
 
 export type AgendaWebhookData = {
   body?: never
@@ -8847,6 +8927,7 @@ export type ConfigDomainGetData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8890,6 +8971,7 @@ export type ConfigDomainUpdateData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8933,6 +9015,7 @@ export type ConfigDomainOpenData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -9445,7 +9528,7 @@ export type SessionIndexData = {
   query?: {
     directory?: string
     scopeID?: string
-    category?: "project" | "home" | "channel" | "background"
+    category?: "project" | "home" | "channel" | "background" | "github"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import type { NavEntry, NavListState, ScopeNavEntry } from "./index"
 import {
   applySessionToNavList,
+  githubNavQuery,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
@@ -37,6 +38,18 @@ function scopeEntry(input: Partial<ScopeNavEntry> & Pick<ScopeNavEntry, "scopeID
     icon: input.icon,
   }
 }
+
+describe("githubNavQuery", () => {
+  test("requests GitHub sessions across parent and child scopes with cursor pagination", () => {
+    expect(githubNavQuery(25, { lastActivityAt: 123, id: "ses_cursor" })).toEqual({
+      category: "github",
+      parentOnly: false,
+      limit: 25,
+      cursorLastActivityAt: 123,
+      cursorId: "ses_cursor",
+    })
+  })
+})
 
 describe("orderNavEntries", () => {
   test("orders pinned entries first, then by activity and id", () => {

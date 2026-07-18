@@ -51,7 +51,7 @@ describe("Cortex worktree creation", () => {
           agent: "developer",
           parentSessionID: parentSession.id,
           parentMessageID: "msg_test01234567890abc",
-          worktree: { create: true, name: "child-worktree", baseRef: "current" },
+          worktree: { create: true, name: "child-worktree", baseRef: "current", failOnError: false },
         }).catch(() => undefined)
 
         expect(task).toBeDefined()
@@ -111,7 +111,7 @@ describe("Cortex worktree creation", () => {
           agent: "developer",
           parentSessionID: parentSession.id,
           parentMessageID: "msg_test01234567890abc",
-          worktree: { create: true, name: "will-fail", baseRef: "current" },
+          worktree: { create: true, name: "will-fail", baseRef: "current", failOnError: false },
         }).catch(() => undefined)
 
         expect(task).toBeDefined()
@@ -144,7 +144,7 @@ describe("Cortex worktree creation", () => {
           agent: "developer",
           parentSessionID: parentSession.id,
           parentMessageID: "msg_test01234567890abc",
-          worktree: { create: true, baseRef: "fresh" },
+          worktree: { create: true, baseRef: "fresh", failOnError: false },
         }).catch(() => undefined)
 
         expect(task).toBeDefined()

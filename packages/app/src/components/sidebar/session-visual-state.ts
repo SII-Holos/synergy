@@ -129,6 +129,16 @@ export function resolveSessionVisualState(store: SessionVisualStore | undefined,
     }
   }
 
+  if (entry.category === "github") {
+    return {
+      icon: getSemanticIcon("github.main"),
+      label: unread
+        ? { id: "session.state.github.unread", message: "GitHub session; response ready" }
+        : { id: "session.state.github", message: "GitHub session" },
+      tone: "muted",
+      completionUnread: unread || undefined,
+    }
+  }
   if (entry.category === "background") {
     return {
       icon: getSemanticIcon("session.background"),

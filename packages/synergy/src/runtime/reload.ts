@@ -53,6 +53,7 @@ export namespace RuntimeReload {
     "library",
     "external_agent",
     "email",
+    "github",
   ])
   export const CONFIG_CLIENT_SIDE = new Set(["theme", "keybinds", "layout", "toast", "locale"])
 
@@ -288,6 +289,15 @@ export namespace RuntimeReload {
         }
         if (resolvedScope === "global" && result.changedFields.includes("cortex")) {
           CortexConcurrency.configure(result.config.cortex?.maxConcurrentTasks)
+        }
+        if (resolvedScope === "global" && result.changedFields.includes("github")) {
+          const [{ GitHubPollRuntime }, { GitHubRuntime }] = await Promise.all([
+            import("../github/poll-runtime"),
+            import("../github/runtime"),
+          ])
+          await GitHubPollRuntime.stop()
+          await GitHubRuntime.reload(result.config.github)
+          await GitHubPollRuntime.start(result.config.github)
         }
         // Infer cascades from changed config fields
         for (const cascadedTarget of inferConfigCascades(result.changedFields)) {

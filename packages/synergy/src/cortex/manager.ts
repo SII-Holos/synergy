@@ -32,6 +32,7 @@ export namespace Cortex {
   const tasks: Map<string, CortexTypes.Task> = new Map()
   const taskWaiters: Map<string, Set<{ resolve: (task: CortexTypes.Task) => void; timeout: Timer }>> = new Map()
   const taskRuns: Map<string, Promise<void>> = new Map()
+  const taskBudgets = new Map<string, { maxOutputTokens?: number; maxCost?: number }>()
   const acquiredTasks = new Set<string>()
   const taskTimeouts = new Map<string, ReturnType<typeof setTimeout>>()
   const finalizingTasks = new Set<string>()
@@ -154,6 +155,7 @@ export namespace Cortex {
       session = await Session.create({
         scope: parent.scope as import("@/scope").Scope,
         parentID: input.parentSessionID,
+        provenance: input.provenance,
         title: `[Cortex] ${input.description} (@${input.agent})`,
         permission: [
           { permission: "question", pattern: "*", action: "deny" },
@@ -189,10 +191,13 @@ export namespace Cortex {
     if (input.worktree?.create) {
       const parentWorkspace = (parent as import("../session/types").Info).workspace
       if (parentWorkspace?.type !== "git_worktree") {
-        try {
+        const createWorktree = async () => {
           const created = await Worktree.create({
-            name: input.worktree.name,
-            baseRef: input.worktree.baseRef,
+            name: input.worktree?.name,
+            sessionID: session.id,
+            owner: { type: "session", sessionID: session.id },
+            baseRef: input.worktree?.baseRef ?? "current",
+            baseRevision: input.worktree?.baseRevision,
             bind: false,
           })
           await Worktree.enter({ sessionID: session.id, target: created.id, force: false })
@@ -201,8 +206,13 @@ export namespace Cortex {
             worktreeID: created.id,
             worktreeName: created.name,
           })
-        } catch (error) {
-          log.warn("failed to create worktree for child session", { taskID, error })
+        }
+        if (input.worktree.failOnError) {
+          await createWorktree()
+        } else {
+          await createWorktree().catch((error) => {
+            log.warn("failed to create worktree for child session", { taskID, error })
+          })
         }
       } else {
         log.info("parent already in worktree, child inherits parent workspace", { taskID })
@@ -255,6 +265,10 @@ export namespace Cortex {
       draft.cortex.owner = input.owner
       draft.cortex.timeoutMs = input.timeoutMs
     })
+    taskBudgets.set(taskID, {
+      maxOutputTokens: input.maxOutputTokens,
+      maxCost: input.maxCost,
+    })
 
     tasks.set(taskID, task)
     emitPluginTaskObservability(task, "started")
@@ -279,6 +293,7 @@ export namespace Cortex {
 
     const current = tasks.get(taskID)
     if (!current || current.status === "cancelled") {
+      taskBudgets.delete(taskID)
       acquiredTasks.delete(taskID)
       CortexConcurrency.release(task.agent)
       return current ?? task
@@ -286,7 +301,9 @@ export namespace Cortex {
 
     setTaskStatus(taskID, "running")
 
-    const run = runTask(current, current.model)
+    const budget = taskBudgets.get(taskID)
+    taskBudgets.delete(taskID)
+    const run = runTask(current, current.model, budget?.maxOutputTokens, budget?.maxCost)
       .catch(async (error) => {
         log.error("task error", { taskID, error })
         await updateTaskStatus(taskID, "error", String(error))
@@ -370,7 +387,12 @@ export namespace Cortex {
     }, PROGRESS_UPDATE_EVENT_DELAY_MS)
   }
 
-  async function runTask(task: CortexTypes.Task, model?: { providerID: string; modelID: string }): Promise<void> {
+  async function runTask(
+    task: CortexTypes.Task,
+    model?: { providerID: string; modelID: string },
+    maxOutputTokens?: number,
+    maxCost?: number,
+  ): Promise<void> {
     log.info("running task", { taskID: task.id, sessionID: task.sessionID })
 
     const initial = tasks.get(task.id)
@@ -460,6 +482,7 @@ export namespace Cortex {
         parts,
         tools: invokeTools,
         ephemeralTools,
+        maxOutputTokens,
       })
 
       let outputResolution = await CortexOutput.resolve({
@@ -482,6 +505,7 @@ export namespace Cortex {
             parts: repairParts,
             tools: CortexOutput.repairTools(),
             ephemeralTools,
+            maxOutputTokens,
           })
           outputResolution = await CortexOutput.resolve({
             sessionID: task.sessionID,
@@ -505,6 +529,13 @@ export namespace Cortex {
       unsub()
       unsub = undefined
 
+      if (maxCost !== undefined) {
+        const usage = await taskUsage(task.sessionID)
+        if (usage.cost > maxCost) {
+          await updateTaskStatus(task.id, "error", `Task exceeded its ${maxCost} cost budget.`)
+          return
+        }
+      }
       const completedOutput = await completedTaskOutput(task, agent, outputConfig, outputResolution)
       await updateTaskStatus(task.id, "completed", undefined, completedOutput)
     } catch (error) {
@@ -731,6 +762,7 @@ export namespace Cortex {
 
       setTimeout(() => {
         tasks.delete(taskID)
+        taskBudgets.delete(taskID)
         acquiredTasks.delete(taskID)
         SessionManager.unregisterRuntime(terminalTask.sessionID)
         log.info("task cleaned up", { taskID })
@@ -1149,6 +1181,7 @@ export namespace Cortex {
   export function reset(): void {
     tasks.clear()
     taskRuns.clear()
+    taskBudgets.clear()
     acquiredTasks.clear()
     finalizingTasks.clear()
     cancellationRequests.clear()

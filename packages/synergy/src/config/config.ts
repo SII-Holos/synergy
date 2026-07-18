@@ -58,6 +58,8 @@ export namespace Config {
   export type SandboxConfig = Schema.SandboxConfig
   export const ObservabilityConfig = Schema.ObservabilityConfig
   export type ObservabilityConfig = Schema.ObservabilityConfig
+  export const GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
+  export type GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
   export const Channel = Schema.Channel
   export type Channel = Schema.Channel
   export const EmailSmtp = Schema.EmailSmtp
