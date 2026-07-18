@@ -1,7 +1,19 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, test } from "bun:test"
+import { Cortex } from "../../src/cortex"
+import { Session } from "../../src/session"
 import { LightLoopContinuationPolicy } from "../../src/session/light-loop-continuation"
 import type { ContinuationKernel } from "../../src/session/continuation-kernel"
 import type { Info as SessionInfo } from "../../src/session/types"
+
+const originalPrepare = (Cortex as any).prepare
+const originalStart = (Cortex as any).start
+const originalUpdate = Session.update
+
+afterEach(() => {
+  ;(Cortex as any).prepare = originalPrepare
+  ;(Cortex as any).start = originalStart
+  ;(Session.update as any) = originalUpdate
+})
 
 function gate(session: Partial<SessionInfo>): ContinuationKernel.Gate {
   return {
@@ -65,24 +77,45 @@ describe("LightLoopContinuationPolicy", () => {
     expect(proposal).toBeUndefined()
   })
 
-  test("continues a partially persisted stop request without a reviewer session", async () => {
-    const proposal = await LightLoopContinuationPolicy.handle(
-      gate({
-        id: "ses_partial_review",
-        workflow: {
-          kind: "lightloop",
-          taskDescription: "Write unit tests",
-          stopRequest: {
-            summary: "done",
-            requestedAt: Date.now(),
-            requesterSessionID: "ses_partial_review",
-            requesterMessageID: "msg_123",
-            reviewTaskID: "ctx_partial",
-          },
+  test("prepares, binds, and starts a reviewer for a pending stop intent", async () => {
+    const order: string[] = []
+    const session = {
+      id: "ses_partial_review",
+      workflow: {
+        kind: "lightloop" as const,
+        taskDescription: "Write unit tests",
+        stopRequest: {
+          summary: "done",
+          completed: ["Implemented the behavior"],
+          evidence: ["Focused tests pass"],
+          requestedAt: Date.now(),
+          requesterSessionID: "ses_partial_review",
+          requesterMessageID: "msg_123",
         },
-      }),
-    )
+      },
+    }
+    ;(Cortex as any).prepare = mock(async (input: any) => {
+      order.push("prepare")
+      expect(input.parentSessionID).toBe(session.id)
+      expect(input.parentMessageID).toBe("msg_123")
+      expect(input.agent).toBe("lightloop-reviewer")
+      expect(input.prompt).toContain("Focused tests pass")
+      return { id: "ctx_review", sessionID: "ses_reviewer", status: "queued" }
+    })
+    ;(Session.update as any) = mock(async (_sessionID: string, fn: (draft: any) => void) => {
+      order.push("bind")
+      fn(session)
+    })
+    ;(Cortex as any).start = mock(async (taskID: string) => {
+      order.push("start")
+      expect(taskID).toBe("ctx_review")
+      expect((session.workflow.stopRequest as any).reviewTaskID).toBe("ctx_review")
+      expect((session.workflow.stopRequest as any).reviewSessionID).toBe("ses_reviewer")
+    })
 
-    expect(proposal && proposal.kind).toBe("inbox")
+    const proposal = await LightLoopContinuationPolicy.handle(gate(session))
+
+    expect(proposal).toEqual({ kind: "handled" })
+    expect(order).toEqual(["prepare", "bind", "start"])
   })
 })
