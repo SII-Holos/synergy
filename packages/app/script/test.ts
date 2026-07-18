@@ -5,6 +5,7 @@ import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
 const isolated = "src/app-build-css-contract.test.ts"
+const browserOnly = "src/plugin/builtin-navigation.test.ts"
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
@@ -17,8 +18,8 @@ async function collectTests(directory: string): Promise<string[]> {
   return tests
 }
 
-async function run(tests: string[]) {
-  const child = Bun.spawn([process.execPath, "test", ...tests], {
+async function run(tests: string[], options: { browser?: boolean } = {}) {
+  const child = Bun.spawn([process.execPath, "test", ...(options.browser ? ["--conditions=browser"] : []), ...tests], {
     cwd: root,
     stdin: "inherit",
     stdout: "inherit",
@@ -29,5 +30,6 @@ async function run(tests: string[]) {
 }
 
 const tests = (await collectTests("src")).toSorted()
-await run(tests.filter((test) => test !== isolated))
+await run(tests.filter((test) => test !== isolated && test !== browserOnly))
+await run([browserOnly], { browser: true })
 await run([isolated])

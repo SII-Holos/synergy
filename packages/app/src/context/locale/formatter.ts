@@ -9,6 +9,24 @@ function optionsKey(options: object | undefined): string {
     .join("|")
 }
 
+const dateTimeComponentKeys = [
+  "weekday",
+  "era",
+  "year",
+  "month",
+  "day",
+  "dayPeriod",
+  "hour",
+  "minute",
+  "second",
+  "fractionalSecondDigits",
+  "timeZoneName",
+] as const
+
+function hasDateTimeComponents(options: Intl.DateTimeFormatOptions | undefined): boolean {
+  return dateTimeComponentKeys.some((key) => options?.[key] !== undefined)
+}
+
 export interface IntlFormatter {
   number(value: number, options?: Intl.NumberFormatOptions): string
   percent(value: number, options?: Intl.NumberFormatOptions): string
@@ -105,12 +123,18 @@ export function createIntlFormatter(getLocale: () => ActiveLocale): IntlFormatte
 
     dateTime(value, options?) {
       ensureLocale()
-      return getDTF({ dateStyle: "medium", timeStyle: "short", ...options }).format(value)
+      const resolved: Intl.DateTimeFormatOptions | undefined = hasDateTimeComponents(options)
+        ? options
+        : { dateStyle: "medium", timeStyle: "short", ...options }
+      return getDTF(resolved).format(value)
     },
 
     time(value, options?) {
       ensureLocale()
-      return getDTF({ timeStyle: "short", ...options }).format(value)
+      const resolved: Intl.DateTimeFormatOptions | undefined = hasDateTimeComponents(options)
+        ? options
+        : { timeStyle: "short", ...options }
+      return getDTF(resolved).format(value)
     },
 
     relative(value, base?) {

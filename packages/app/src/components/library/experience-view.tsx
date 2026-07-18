@@ -637,8 +637,6 @@ export function ExperienceView(props: {
     </div>
   )
 }
-const { _ } = useLingui()
-const { fmt } = useLocale()
 function RewardDimensions(props: { rewards: RewardsInfo }) {
   const valueTone = (value: number) => {
     if (value > 0) return "text-text-on-success-base"
@@ -691,6 +689,7 @@ function ExperienceCard(props: {
   onDelete: (e: MouseEvent) => void
 }) {
   const { _ } = useLingui()
+  const { fmt } = useLocale()
   const reward = () => props.item.reward
   const rewards = () => props.item.rewards
   const qValue = () => props.item.qValue
