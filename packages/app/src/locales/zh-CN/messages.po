@@ -1270,6 +1270,10 @@ msgid "app.context.details.latestOutputReasoning"
 msgstr "最近输出 / 推理"
 
 #. js-lingui-explicit-id
+msgid "app.context.details.loadedMessagesCost"
+msgstr "已加载消息费用"
+
+#. js-lingui-explicit-id
 msgid "app.context.details.model"
 msgstr "模型"
 
@@ -1280,10 +1284,6 @@ msgstr "提供商"
 #. js-lingui-explicit-id
 msgid "app.context.details.remainingInput"
 msgstr "剩余输入"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.sessionTotalCost"
-msgstr "会话总费用"
 
 #. js-lingui-explicit-id
 msgid "app.context.details.usage"
@@ -1362,8 +1362,8 @@ msgid "app.context.instructions.empty"
 msgstr "没有可用的系统指令。"
 
 #. js-lingui-explicit-id
-msgid "app.context.instructions.title"
-msgstr "系统指令"
+msgid "app.context.instructions.latestUserOverride"
+msgstr "最新用户系统指令覆盖"
 
 #. js-lingui-explicit-id
 msgid "app.context.model.label"
@@ -1372,6 +1372,10 @@ msgstr "模型 {model}"
 #. js-lingui-explicit-id
 msgid "app.context.session.untitled"
 msgstr "未命名会话"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacted"
+msgstr "对话已压缩；下次回复后可查看用量"
 
 #. js-lingui-explicit-id
 msgid "app.context.status.compacting"

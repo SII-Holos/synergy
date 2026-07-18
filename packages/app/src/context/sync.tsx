@@ -104,9 +104,15 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       cursor?: string
       limit: number
     }
-    const messageLoader = createSessionMessageLoader<SessionMessagePageResponse, MessagePageLoadInput>({
-      request: (sessionID, signal, input) =>
-        retry(() =>
+    type SessionMessagePageLoadResult = {
+      response: SessionMessagePageResponse
+      contextProjectionRevision?: number
+    }
+    const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
+      request: async (sessionID, signal, input) => {
+        const contextProjectionRevision =
+          input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
+        const response = await retry(() =>
           sdk.client.session.messagePage(
             {
               sessionID,
@@ -115,9 +121,11 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             },
             { signal, throwOnError: true },
           ),
-        ),
-      apply: (sessionID, response, input) => {
-        const page = response.data
+        )
+        return { response, contextProjectionRevision }
+      },
+      apply: (sessionID, result, input) => {
+        const page = result.response.data
         if (!page) return
         const currentMetadata = store.messageWindow[sessionID]
         const current: MessageWindowState<Message> = {
@@ -137,7 +145,12 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
           setStore("messageWindow", sessionID, reconcile(plan.metadata))
           if (plan.latestContextMessage !== undefined) {
-            globalSync.setLatestContextMessage(sdk.scopeKey, sessionID, plan.latestContextMessage)
+            globalSync.setLatestContextMessage(
+              sdk.scopeKey,
+              sessionID,
+              plan.latestContextMessage,
+              result.contextProjectionRevision,
+            )
           }
           for (const [messageID, parts] of Object.entries(plan.parts)) {
             setStore("part", messageID, reconcile(parts, { key: "id" }))

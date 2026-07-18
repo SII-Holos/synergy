@@ -74,8 +74,8 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
     const id = sessionID()
     if (id) dialog.show(() => <RawMessagesDialog sessionID={id} />)
   }
-  const copySystemInstructions = async () => {
-    const instructions = model().systemInstructions
+  const copyLatestUserSystemOverride = async () => {
+    const instructions = model().latestUserSystemOverride
     if (!instructions) return
     const result = await copyTextToClipboard(instructions, {
       label: i18n._(C.copySystemInstructions),
@@ -225,7 +225,7 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
               value={`${n(model().usage.cacheReadTokens)} / ${n(model().usage.cacheWriteTokens)}`}
             />
             <DetailRow label={i18n._(C.latestCallCost)} value={model().usage.latestCallCost} />
-            <DetailRow label={i18n._(C.sessionTotalCost)} value={model().usage.sessionTotalCost} />
+            <DetailRow label={i18n._(C.loadedMessagesCost)} value={model().usage.loadedMessagesCost} />
           </div>
         </section>
 
@@ -247,11 +247,11 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
           </div>
           <details class="mt-4 rounded-lg bg-surface-raised-base px-3 py-3">
             <summary class="cursor-pointer text-12-medium text-text-strong marker:text-text-weaker">
-              {i18n._(C.systemInstructions)}
+              {i18n._(C.latestUserSystemOverride)}
             </summary>
             <div class="mt-3 flex flex-col gap-3">
               <Show
-                when={model().systemInstructions}
+                when={model().latestUserSystemOverride}
                 fallback={<p class="text-12-regular text-text-weak">{i18n._(C.noSystemInstructions)}</p>}
               >
                 {(instructions) => (
@@ -266,7 +266,7 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
                         variant="secondary"
                         class="min-h-11"
                         icon={getSemanticIcon("action.copy")}
-                        onClick={() => void copySystemInstructions()}
+                        onClick={() => void copyLatestUserSystemOverride()}
                       >
                         {i18n._(C.copy)}
                       </Button>

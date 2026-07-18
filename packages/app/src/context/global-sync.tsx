@@ -47,6 +47,7 @@ import {
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
 import {
+  createSessionContextProjectionRevision,
   invalidateLatestSessionContextUsageMessage,
   reduceLatestSessionContextUsageMessage,
 } from "./session-context-usage"
@@ -216,6 +217,7 @@ export function refreshPlanBlueprintOfferFromLoadedParts(
 }
 
 function createGlobalSync() {
+  const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
@@ -356,7 +358,13 @@ function createGlobalSync() {
     }
     return children[scopeKey]
   }
-  function setLatestContextMessage(scopeKey: string, sessionID: string, message: Message | null | undefined) {
+  function setLatestContextMessage(
+    scopeKey: string,
+    sessionID: string,
+    message: Message | null | undefined,
+    revision?: number,
+  ) {
+    if (revision !== undefined && !contextProjectionRevision.isCurrent(scopeKey, sessionID, revision)) return
     const state = children[scopeKey]
     if (!state) return
     const [store, setStore] = state
@@ -378,6 +386,13 @@ function createGlobalSync() {
   }
 
   function releaseScopeState(scopeKey: string) {
+    const store = children[scopeKey]?.[0]
+    const sessionIDs = new Set([
+      ...Object.keys(store?.message ?? {}),
+      ...Object.keys(store?.messageWindow ?? {}),
+      ...Object.keys(store?.latestContextMessage ?? {}),
+    ])
+    for (const sessionID of sessionIDs) contextProjectionRevision.release(scopeKey, sessionID)
     delete children[scopeKey]
     bootstrapQueued.delete(scopeKey)
   }
@@ -1049,6 +1064,7 @@ function createGlobalSync() {
         const info = event.properties.info as Message
         const sessionID = info.sessionID
         touchMessageBucket(scopeKey, sessionID)
+        contextProjectionRevision.invalidate(scopeKey, sessionID)
         const latestContextMessage = reduceLatestSessionContextUsageMessage(store.latestContextMessage[sessionID], info)
         const messages = store.message[sessionID] ?? []
         const metadata = store.messageWindow[sessionID]
@@ -1092,6 +1108,7 @@ function createGlobalSync() {
       case "message.removed": {
         const sessionID = event.properties.sessionID as string
         const messageID = event.properties.messageID as string
+        contextProjectionRevision.invalidate(scopeKey, sessionID)
         const latestContextMessage = invalidateLatestSessionContextUsageMessage(
           store.latestContextMessage[sessionID],
           messageID,
@@ -1400,6 +1417,7 @@ function createGlobalSync() {
         const sessionID = event.properties.sessionID as string
         const currentMessages = store.message[sessionID]
         if (!currentMessages) break
+        const revision = contextProjectionRevision.begin(scopeKey, sessionID)
         const sdk = createScopedClient(scopeKey)
         retry(() => sdk.session.messagePage({ sessionID, limit: 200 }))
           .then((result) => {
@@ -1424,7 +1442,7 @@ function createGlobalSync() {
               )
               setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
               setStore("messageWindow", sessionID, reconcile(plan.metadata))
-              setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage)
+              setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
               for (const [messageID, parts] of Object.entries(plan.parts)) {
                 setStore("part", messageID, reconcile(parts, { key: "id" }))
               }
@@ -1586,6 +1604,7 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
+    beginContextProjection: contextProjectionRevision.begin,
     setLatestContextMessage,
     bootstrap,
     reconnectVersion,

@@ -3,6 +3,7 @@ import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 import type { I18n } from "@lingui/core"
 import type { IntlFormatter } from "@/context/locale/formatter"
 import { contextWorkspace as C } from "@/locales/messages"
+import { isSessionContextUsageBarrier } from "@/context/session-context-usage"
 
 type ProviderCatalog = Record<
   string,
@@ -33,6 +34,7 @@ export type ContextPanelPresentation = {
   overheadDescription: string
   statusPartiallyKnown: string
   statusCompacting: string
+  statusCompacted: string
   statusCritical: string
   statusWarning: string
   statusReady: string
@@ -58,6 +60,7 @@ export function createContextPanelPresentation(i18n: I18n, fmt: IntlFormatter): 
     overheadDescription: i18n._(C.categoryOverheadDescription),
     statusPartiallyKnown: i18n._(C.statusPartiallyKnown),
     statusCompacting: i18n._(C.statusCompacting),
+    statusCompacted: i18n._(C.statusCompacted),
     statusCritical: i18n._(C.statusCritical),
     statusWarning: i18n._(C.statusWarning),
     statusReady: i18n._(C.statusReady),
@@ -74,13 +77,14 @@ function latestTokenMessage(messages: Message[]): AssistantMessage | undefined {
   return messages.findLast((message): message is AssistantMessage => {
     if (message.role !== "assistant") return false
     if (message.includeInContext === false) return false
+    if (isSessionContextUsageBarrier(message)) return true
     if (message.contextUsage) return true
     const input = ModelLimit.actualInput(message.tokens)
     return input + message.tokens.output + message.tokens.reasoning > 0
   })
 }
 
-function latestSystemInstructions(messages: Message[]): string | undefined {
+function latestUserSystemOverride(messages: Message[]): string | undefined {
   const message = messages.findLast(
     (candidate): candidate is UserMessage =>
       candidate.role === "user" &&
@@ -129,16 +133,30 @@ export function buildContextPanelModel(input: {
   presentation: ContextPanelPresentation
 }) {
   const projectedLatest = input.latestMessage
-  const latest =
+  const projectedAssistant =
     projectedLatest === undefined
       ? latestTokenMessage(input.messages)
       : projectedLatest?.role === "assistant"
         ? projectedLatest
         : undefined
+  const compacted = projectedAssistant ? isSessionContextUsageBarrier(projectedAssistant) : false
+  const latest = compacted ? undefined : projectedAssistant
   const snapshot = latest?.contextUsage
-  const provider = latest ? input.providers[latest.providerID] : undefined
-  const catalogModel = latest ? provider?.models?.[latest.modelID] : undefined
-  const legacyExactInput = latest ? ModelLimit.actualInput(latest.tokens) : null
+  const sessionModel =
+    input.session?.modelOverride ??
+    input.messages.findLast(
+      (message): message is UserMessage =>
+        message.role === "user" && message.isRoot === true && message.model !== undefined,
+    )?.model
+  const selectedModel = latest
+    ? { providerID: latest.providerID, modelID: latest.modelID }
+    : compacted
+      ? sessionModel
+      : undefined
+  const provider = selectedModel ? input.providers[selectedModel.providerID] : undefined
+  const catalogModel = selectedModel ? provider?.models?.[selectedModel.modelID] : undefined
+  const legacyActualInput = latest ? ModelLimit.actualInput(latest.tokens) : 0
+  const legacyExactInput = latest && legacyActualInput > 0 ? legacyActualInput : null
   const exactInputTokens = snapshot?.totalInput ?? legacyExactInput
   const outputTokens = latest?.tokens.output ?? null
   const reasoningTokens = latest?.tokens.reasoning ?? null
@@ -155,7 +173,7 @@ export function buildContextPanelModel(input: {
       : null
   const remainingInputTokens =
     exactInputTokens !== null && usableInputLimit !== null ? Math.max(0, usableInputLimit - exactInputTokens) : null
-  const sessionTotalCost = input.messages.reduce(
+  const loadedMessagesCost = input.messages.reduce(
     (sum, message) => sum + (message.role === "assistant" ? message.cost : 0),
     0,
   )
@@ -176,6 +194,8 @@ export function buildContextPanelModel(input: {
   if (compacting) {
     statusSummary = input.presentation.statusCompacting
     statusTone = "progress"
+  } else if (compacted) {
+    statusSummary = input.presentation.statusCompacted
   } else if (contextPercentage !== null && contextPercentage >= 95) {
     statusSummary = input.presentation.statusCritical
     statusTone = "critical"
@@ -223,9 +243,9 @@ export function buildContextPanelModel(input: {
 
   return {
     latest,
-    providerLabel: latest ? provider?.name || latest.providerID : "—",
-    modelLabel: latest ? catalogModel?.name || latest.modelID : "—",
-    systemInstructions: latestSystemInstructions(input.messages),
+    providerLabel: selectedModel ? provider?.name || selectedModel.providerID : "—",
+    modelLabel: selectedModel ? catalogModel?.name || selectedModel.modelID : "—",
+    latestUserSystemOverride: latestUserSystemOverride(input.messages),
     statusSummary,
     statusTone,
     breakdownAvailable: Boolean(snapshot),
@@ -247,8 +267,8 @@ export function buildContextPanelModel(input: {
       usableInputLimit,
       remainingInputTokens,
       latestCallCost: cost(latest?.cost ?? null, input.presentation),
-      sessionTotalCost: cost(
-        input.messages.some((message) => message.role === "assistant") ? sessionTotalCost : null,
+      loadedMessagesCost: cost(
+        input.messages.some((message) => message.role === "assistant") ? loadedMessagesCost : null,
         input.presentation,
       ),
       cacheReadTokens: latest?.tokens.cache.read ?? null,

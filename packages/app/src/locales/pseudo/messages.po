@@ -1270,6 +1270,10 @@ msgid "app.context.details.latestOutputReasoning"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.context.details.loadedMessagesCost"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.context.details.model"
 msgstr ""
 
@@ -1279,10 +1283,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.context.details.remainingInput"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.context.details.sessionTotalCost"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -1362,7 +1362,7 @@ msgid "app.context.instructions.empty"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.context.instructions.title"
+msgid "app.context.instructions.latestUserOverride"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -1371,6 +1371,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.context.session.untitled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacted"
 msgstr ""
 
 #. js-lingui-explicit-id

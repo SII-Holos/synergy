@@ -1235,7 +1235,7 @@ msgstr "Compact the conversation to recover context space."
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.description"
-msgstr "Inspect normalized persisted messages and effective instructions."
+msgstr "Inspect normalized persisted messages and the latest user system override."
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.rawMessages"
@@ -1270,6 +1270,10 @@ msgid "app.context.details.latestOutputReasoning"
 msgstr "Latest output / reasoning"
 
 #. js-lingui-explicit-id
+msgid "app.context.details.loadedMessagesCost"
+msgstr "Loaded messages cost"
+
+#. js-lingui-explicit-id
 msgid "app.context.details.model"
 msgstr "Model"
 
@@ -1280,10 +1284,6 @@ msgstr "Provider"
 #. js-lingui-explicit-id
 msgid "app.context.details.remainingInput"
 msgstr "Remaining input"
-
-#. js-lingui-explicit-id
-msgid "app.context.details.sessionTotalCost"
-msgstr "Session total cost"
 
 #. js-lingui-explicit-id
 msgid "app.context.details.usage"
@@ -1351,19 +1351,19 @@ msgstr "User messages"
 
 #. js-lingui-explicit-id
 msgid "app.context.instructions.copy"
-msgstr "Copy system instructions"
+msgstr "Copy user system override"
 
 #. js-lingui-explicit-id
 msgid "app.context.instructions.copyFailed"
-msgstr "Unable to copy system instructions."
+msgstr "Unable to copy user system override."
 
 #. js-lingui-explicit-id
 msgid "app.context.instructions.empty"
-msgstr "No system instructions are available."
+msgstr "No user system override is available."
 
 #. js-lingui-explicit-id
-msgid "app.context.instructions.title"
-msgstr "System instructions"
+msgid "app.context.instructions.latestUserOverride"
+msgstr "Latest user system override"
 
 #. js-lingui-explicit-id
 msgid "app.context.model.label"
@@ -1372,6 +1372,10 @@ msgstr "Model {model}"
 #. js-lingui-explicit-id
 msgid "app.context.session.untitled"
 msgstr "Untitled session"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacted"
+msgstr "Conversation compacted; usage available after the next response"
 
 #. js-lingui-explicit-id
 msgid "app.context.status.compacting"

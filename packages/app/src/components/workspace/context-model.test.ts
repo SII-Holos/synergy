@@ -28,6 +28,7 @@ const presentation: ContextPanelPresentation = {
   overheadDescription: "Overhead description",
   statusPartiallyKnown: "Context size is partially known",
   statusCompacting: "Compacting conversation…",
+  statusCompacted: "Conversation compacted; usage available after the next response",
   statusCritical: "Very little context space remains",
   statusWarning: "This context is getting full",
   statusReady: "Enough room to continue",
@@ -205,6 +206,32 @@ describe("buildContextPanelModel", () => {
     expect(model.breakdownAvailable).toBe(false)
   })
 
+  test("uses a completed compaction projection as a barrier instead of stale usage", () => {
+    const barrier = assistant({
+      id: "msg_compaction",
+      mode: "compaction",
+      modelID: "compaction_model",
+      providerID: "compaction_provider",
+      time: { created: 40, completed: 50 },
+      tokens: { input: 900, output: 50, reasoning: 0, cache: { read: 0, write: 0 } },
+    })
+    const model = buildContextPanelModel({
+      session: session({ modelOverride: { providerID: "provider_a", modelID: "model_a" } }),
+      messages: [user(), assistant({ contextUsage: contextUsage({ totalInput: 760 }) })],
+      latestMessage: barrier,
+      providers,
+    })
+
+    expect(model.latest).toBeUndefined()
+    expect(model.providerLabel).toBe("Provider A")
+    expect(model.modelLabel).toBe("Model A")
+    expect(model.usage.exactInputTokens).toBeNull()
+    expect(model.usage.contextPercentage).toBeNull()
+    expect(model.usage.latestCallCost).toBe("—")
+    expect(model.statusSummary).toBe("Conversation compacted; usage available after the next response")
+    expect(model.compact.visible).toBe(false)
+  })
+
   test("uses locked status summaries and compact eligibility thresholds", () => {
     const at80 = buildContextPanelModel({
       session: session(),
@@ -285,6 +312,19 @@ describe("buildContextPanelModel", () => {
     expect(model.compact.visible).toBe(false)
   })
 
+  test("treats output-only legacy provider usage as unknown input", () => {
+    const model = buildContextPanelModel({
+      session: session(),
+      messages: [user(), assistant({ tokens: { input: 0, output: 80, reasoning: 20, cache: { read: 0, write: 0 } } })],
+      providers,
+    })
+
+    expect(model.usage.exactInputTokens).toBeNull()
+    expect(model.usage.contextPercentage).toBeNull()
+    expect(model.usage.outputTokens).toBe(80)
+    expect(model.statusSummary).toBe("Context size is partially known")
+  })
+
   test("returns safe defaults for a session with no messages", () => {
     const model = buildContextPanelModel({ session: undefined, messages: [], providers: {} })
 
@@ -333,7 +373,8 @@ describe("buildContextPanelModel", () => {
       providers,
     })
 
-    expect(model.systemInstructions).toBe("Effective instructions")
+    expect(model.latestUserSystemOverride).toBe("Effective instructions")
+    expect(model.usage.loadedMessagesCost).toBe("USD 0.12")
     expect(model.developerDetails).toMatchObject({
       title: "Detailed",
       sessionID: "ses_context",

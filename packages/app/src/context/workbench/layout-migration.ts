@@ -35,6 +35,28 @@ function normalizeWorkbenchSurfaces(value: Record<string, unknown>) {
   return next
 }
 
+function legacyFilePath(value: string) {
+  if (!value.startsWith("file://")) return undefined
+  const withoutSuffix = value.slice("file://".length).split(/[?#]/, 1)[0] ?? ""
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(withoutSuffix)
+  } catch {
+    console.warn("Dropping invalid legacy file tab during layout migration")
+    return undefined
+  }
+  const normalized = decoded.replaceAll("\\", "/").replace(/^\.\//, "").replace(/^\/+/, "")
+  if (!normalized || normalized.includes("\0") || normalized.split("/").includes("..")) {
+    console.warn("Dropping unsafe legacy file tab during layout migration")
+    return undefined
+  }
+  return normalized
+}
+
+function basename(value: string) {
+  return value.split("/").at(-1) ?? value
+}
+
 const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView"] as const
 
 export function migrateWorkbenchLayout(value: unknown): unknown {
@@ -78,6 +100,42 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
           size: typeof bottom.size === "number" ? bottom.size : height,
         },
       }
+    }
+  }
+
+  const sessionTabs = isRecord(value.sessionTabs) ? value.sessionTabs : {}
+  for (const [sessionKey, raw] of Object.entries(sessionTabs)) {
+    if (!isRecord(raw)) continue
+    const all = Array.isArray(raw.all) ? raw.all.filter((tab): tab is string => typeof tab === "string") : []
+    const legacyFiles = all.map(legacyFilePath).filter((file): file is string => !!file)
+    if (legacyFiles.length === 0) continue
+
+    const current = isRecord(existingSurfaces[sessionKey]) ? existingSurfaces[sessionKey] : {}
+    const currentSide = normalizeSurfaceState(current.side) ?? { opened: false, tabs: [] }
+    const tabs = [...(currentSide.tabs ?? [])]
+    for (const file of legacyFiles) {
+      if (tabs.some((tab) => tab.panelId === "file" && tab.resourceId === file)) continue
+      tabs.push({
+        id: `file:${file}`,
+        panelId: "file",
+        resourceId: file,
+        title: basename(file),
+        source: "migration",
+      })
+    }
+
+    const activeLegacyFile = typeof raw.active === "string" ? legacyFilePath(raw.active) : undefined
+    const activeFileTab = activeLegacyFile
+      ? tabs.find((tab) => tab.panelId === "file" && tab.resourceId === activeLegacyFile)
+      : undefined
+    existingSurfaces[sessionKey] = {
+      ...current,
+      side: {
+        ...currentSide,
+        tabs,
+        opened: activeFileTab ? true : currentSide.opened,
+        active: activeFileTab?.id ?? currentSide.active,
+      },
     }
   }
 

@@ -4,10 +4,11 @@ import type { MessageWindowState } from "./session-message-window"
 
 type TestMessage = {
   id: string
-  time: { created: number }
+  time: { created: number; completed?: number }
   role: "user" | "assistant"
   includeInContext?: boolean
   contextUsage?: unknown
+  mode?: string
   tokens?: { input: number; output: number; reasoning: number }
   label?: string
 }
@@ -177,6 +178,23 @@ describe("planMessagePageApply", () => {
 
     expect(latest.latestContextMessage?.id).toBe("newer")
     expect(history.latestContextMessage).toBeUndefined()
+  })
+
+  test("projects a completed compaction message as an ordered invalidation barrier", () => {
+    const usage = message("usage", 2)
+    usage.info = { ...usage.info, role: "assistant", contextUsage: { total: 10 } }
+    const barrier = message("barrier", 3)
+    barrier.info = {
+      ...barrier.info,
+      role: "assistant",
+      mode: "compaction",
+      time: { created: 3, completed: 4 },
+      tokens: { input: 0, output: 0, reasoning: 0 },
+    }
+
+    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [usage, barrier] }) })
+
+    expect(plan.latestContextMessage?.id).toBe("barrier")
   })
 
   test("projects null when an authoritative latest page has no eligible assistant", () => {

@@ -166,6 +166,7 @@ export type CopyControllerOptions = {
 export function createCopyController(options: CopyControllerOptions) {
   const [state, setState] = createSignal<CopyState>("idle")
   let resetTimer: ReturnType<typeof setTimeout> | undefined
+  let operation = 0
 
   const text = createMemo(() => resolveText(options.text))
   const disabled = createMemo(() => text().length === 0)
@@ -183,26 +184,32 @@ export function createCopyController(options: CopyControllerOptions) {
   })
 
   function reset() {
+    operation += 1
     if (resetTimer) clearTimeout(resetTimer)
     resetTimer = undefined
     setState("idle")
   }
 
-  function scheduleReset() {
+  function scheduleReset(token: number) {
     if (resetTimer) clearTimeout(resetTimer)
     resetTimer = setTimeout(() => {
+      if (token !== operation) return
       resetTimer = undefined
       setState("idle")
     }, options.resetDelayMs ?? defaultCopyResetDelay)
   }
 
   async function copy(source?: CopyTextSource): Promise<ClipboardCopyResult> {
+    const token = ++operation
+    if (resetTimer) clearTimeout(resetTimer)
+    resetTimer = undefined
     const value = resolveText(source ?? options.text)
     const result = await copyTextToClipboard(value, {
       label: options.copyLabel,
       failureDescription: options.failureDescription,
     })
 
+    if (token !== operation) return result
     if (result.ok) {
       setState("copied")
       options.onCopied?.(result)
@@ -211,11 +218,12 @@ export function createCopyController(options: CopyControllerOptions) {
       options.onFailed?.(result)
     }
 
-    if (result.ok || result.reason !== "empty") scheduleReset()
+    if (result.ok || result.reason !== "empty") scheduleReset(token)
     return result
   }
 
   onCleanup(() => {
+    operation += 1
     if (resetTimer) clearTimeout(resetTimer)
   })
 

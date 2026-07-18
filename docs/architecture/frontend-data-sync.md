@@ -109,11 +109,11 @@ The window cursor (`nextCursor`) is recorded from each page response so older pa
 
 ### Latest Context projection
 
-Context status and workbench consumers read `sync.session.latestContextMessage(sessionID)` rather than normally deriving latest usage from the bounded `messages` viewport. The projection is owned by sync and has three states: a missing key (`undefined`) is uninitialized and permits a temporary fallback to an already-loaded eligible viewport message, `null` means an authoritative latest page contained no eligible assistant and forbids that fallback, and a message is the latest eligible snapshot.
+Context status and workbench consumers read `sync.session.latestContextMessage(sessionID)` rather than normally deriving latest usage from the bounded `messages` viewport. The projection is owned by sync and has three states: a missing key (`undefined`) is uninitialized and permits a temporary fallback to an already-loaded eligible viewport message, `null` means an authoritative latest page contained no eligible assistant and forbids that fallback, and a message is the latest ordered context-usage record.
 
-An eligible snapshot is an assistant message with `includeInContext !== false` and either structured `contextUsage` or a non-zero legacy input, output, or reasoning token total. Canonical chronology is `time.created`, then `id`; a later ineligible zero-usage assistant does not erase an earlier eligible snapshot.
+Eligible usage snapshots are assistant messages with `includeInContext !== false` and either structured `contextUsage` or a non-zero legacy input, output, or reasoning token total. A completed included compaction assistant is instead an ordered invalidation barrier: it sorts after pre-compaction usage but does not expose the compaction call's own tokens as conversation context usage. Consumers show usage as unknown until the next ordinary assistant snapshot. Canonical chronology is `time.created`, then `id`; a later ineligible zero-usage assistant does not erase an earlier eligible snapshot.
 
-Every no-cursor latest page apply seeds the projection, including normal session loads, navigation prefetch, reconnect/recovery refreshes, return-to-latest, stale-cursor recovery, and compaction reloads. Cursor/history pages never replace it. Complete persisted `message.updated` events reduce the projection before or alongside viewport reconciliation even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page re-establishes a message or `null`.
+Every no-cursor latest page apply seeds the projection, including normal session loads, navigation prefetch, reconnect/recovery refreshes, return-to-latest, stale-cursor recovery, and compaction reloads. Cursor/history pages never replace it. Each asynchronous latest-page request captures a per-session projection revision when the request starts. A newer latest-page request or a persisted `message.updated`/`message.removed` event advances that revision, so an older response may still reconcile its bounded message window but cannot overwrite a newer event-driven context projection. Complete persisted `message.updated` events reduce the projection before or alongside viewport reconciliation even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page restores it.
 
 ### History mode
 
@@ -122,7 +122,7 @@ When the user requests older messages via "Load earlier", the frontend switches 
 - The existing window messages are preserved; older fetched messages are prepended.
 - The combined set is capped at 500 by dropping the newest overflow (not the just-loaded older messages).
 - A subsequent `message.updated` event for a message not already in the window sets `pendingLatest: true` instead of inserting it. The metadata retains the exact unseen IDs in `pendingLatestIds`, so duplicate updates do not add state and a matching `message.removed` clears only that notice without decrementing the window total for a message it never counted.
-- `total` excludes those suppressed live arrivals while history mode remains active. Older-page responses are normalized by `pendingLatestIds`; returning to latest replaces the metadata with the server total and clears the pending IDs.
+- `total` excludes those suppressed live arrivals while history mode remains active. Older-page totals are reduced by the count of remaining `pendingLatestIds` so suppressed live arrivals do not inflate the displayed total; returning to latest replaces the metadata with the server total and clears the pending IDs.
 
 ### Return to latest
 
@@ -130,7 +130,7 @@ When the user requests older messages via "Load earlier", the frontend switches 
 
 ### Scroll anchor
 
-Successful prepend in history mode captures the DOM offset of the first visible message before the fetch and restores it afterward, keeping the visible conversation stable. `turnStart` is reset to 0 only after a successful load so failed loads do not disturb the turn pagination state.
+Successful prepend in history mode captures the DOM offset of the first visible message before the fetch and restores it afterward, keeping the visible conversation stable. The session page's `turnStart`, which controls how many user turns are visible in the scroller, is reset to 0 only after a successful load so failed loads do not disturb the turn pagination state.
 
 ## Initial and Explicit Loads
 
@@ -215,7 +215,7 @@ Scoped GET responses expose:
 
 The server captures the sequence before the route reads its snapshot, so the value is a conservative lower bound for that response.
 
-The current Web SDK/sync layer does not consume these headers and does not apply a snapshot-versus-event gate. They are an advertised server contract for future or other clients, not an implemented Web stale-snapshot rejection mechanism. Documentation and agent guidance must not claim otherwise.
+The current Web SDK/sync layer does not consume these headers and does not apply a general snapshot-versus-event gate. The `latestContextMessage` projection has a narrower local per-session revision gate that is independent of these headers. Documentation and agent guidance must not claim header-based Web stale-snapshot rejection is implemented.
 
 ## Streaming Delta Protocol
 
@@ -264,10 +264,10 @@ The frontend:
 
 1. fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
 2. computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
-3. applies one Solid batch that deletes stale parts, diff, and inbox state;
+3. applies one Solid batch that deletes stale part buckets for dropped message IDs, session-level diffs, and inbox items;
 4. reconciles the retained messages, their authoritative parts, message window metadata, and latest Context projection atomically.
 
-Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`) is replaced atomically in the same batch.
+Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`, `pendingLatestIds`) is replaced atomically in the same batch.
 
 ## Message Bucket Eviction
 

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import {
+  createSessionContextProjectionRevision,
   findLatestSessionContextUsageMessage,
   invalidateLatestSessionContextUsageMessage,
+  isSessionContextUsageBarrier,
   isSessionContextUsageMessage,
   reduceLatestSessionContextUsageMessage,
 } from "./session-context-usage"
@@ -12,6 +14,7 @@ type TestMessage = {
   role: "user" | "assistant"
   includeInContext?: boolean
   contextUsage?: unknown
+  mode?: string
   tokens?: {
     input: number
     output: number
@@ -56,6 +59,23 @@ describe("isSessionContextUsageMessage", () => {
     expect(isSessionContextUsageMessage(assistant("unfinished", 3, { time: { created: 3 } }))).toBe(false)
     expect(isSessionContextUsageMessage(assistant("finished", 4))).toBe(false)
   })
+
+  test("treats only completed compaction assistants as ordered usage barriers", () => {
+    const running = assistant("running", 5, {
+      mode: "compaction",
+      time: { created: 5 },
+      tokens: { input: 100, output: 10, reasoning: 0 },
+    })
+    const completed = assistant("completed", 6, {
+      mode: "compaction",
+      tokens: { input: 0, output: 0, reasoning: 0 },
+    })
+
+    expect(isSessionContextUsageMessage(running)).toBe(false)
+    expect(isSessionContextUsageBarrier(running)).toBe(false)
+    expect(isSessionContextUsageMessage(completed)).toBe(true)
+    expect(isSessionContextUsageBarrier(completed)).toBe(true)
+  })
 })
 
 describe("findLatestSessionContextUsageMessage", () => {
@@ -73,6 +93,16 @@ describe("findLatestSessionContextUsageMessage", () => {
 
   test("returns null for an authoritative page without eligible assistants", () => {
     expect(findLatestSessionContextUsageMessage([user("user", 1), assistant("zero", 2)])).toBeNull()
+  })
+
+  test("keeps a completed compaction barrier newer than the previous usage snapshot", () => {
+    const usage = assistant("usage", 2, { contextUsage: {} })
+    const barrier = assistant("barrier", 3, {
+      mode: "compaction",
+      tokens: { input: 0, output: 0, reasoning: 0 },
+    })
+
+    expect(findLatestSessionContextUsageMessage([usage, barrier])?.id).toBe("barrier")
   })
 })
 
@@ -105,5 +135,26 @@ describe("invalidateLatestSessionContextUsageMessage", () => {
     expect(invalidateLatestSessionContextUsageMessage(current, "other")).toBe(current)
     expect(invalidateLatestSessionContextUsageMessage(current, "current")).toBeUndefined()
     expect(invalidateLatestSessionContextUsageMessage(null, "current")).toBeNull()
+  })
+})
+
+describe("context projection revision", () => {
+  test("invalidates stale latest-page snapshots when an event or newer snapshot starts", () => {
+    const revision = createSessionContextProjectionRevision()
+    const first = revision.begin("scope", "session")
+    expect(revision.isCurrent("scope", "session", first)).toBe(true)
+
+    revision.invalidate("scope", "session")
+    expect(revision.isCurrent("scope", "session", first)).toBe(false)
+
+    const second = revision.begin("scope", "session")
+    const third = revision.begin("scope", "session")
+    expect(revision.isCurrent("scope", "session", second)).toBe(false)
+    expect(revision.isCurrent("scope", "session", third)).toBe(true)
+
+    revision.release("scope", "session")
+    const afterRelease = revision.begin("scope", "session")
+    expect(afterRelease).not.toBe(first)
+    expect(revision.isCurrent("scope", "session", first)).toBe(false)
   })
 })

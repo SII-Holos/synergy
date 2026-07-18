@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
 import { migrateWorkbenchLayout } from "./layout-migration"
 
 describe("migrateWorkbenchLayout", () => {
@@ -74,6 +75,63 @@ describe("migrateWorkbenchLayout", () => {
     expect(migrated.terminal).toBeUndefined()
     expect(migrated.workbenchSurfaces["home/session-1"].bottom.opened).toBe(false)
     expect(migrated.workbenchSurfaces["home/session-1"].bottom.size).toBe(360)
+  })
+
+  test("migrates legacy file tabs while dropping sessionTabs from current output", () => {
+    const input = {
+      sessionTabs: {
+        "home/session-1": {
+          opened: true,
+          active: "file://src/app.ts",
+          all: ["context", "file://src/app.ts", "file://tests/app.ts", "file://src/app.ts"],
+        },
+      },
+      workbenchSurfaces: {
+        "home/session-1": {
+          side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+        },
+      },
+    }
+    const migrated = migrateWorkbenchLayout(input) as {
+      sessionTabs?: unknown
+      workbenchSurfaces: Record<
+        string,
+        {
+          side: { opened: boolean; active?: string; tabs: WorkbenchPanelTab[] }
+        }
+      >
+    }
+
+    expect(migrated.sessionTabs).toBeUndefined()
+    expect(migrated.workbenchSurfaces["home/session-1"].side.opened).toBe(true)
+    expect(migrated.workbenchSurfaces["home/session-1"].side.active).toBe("file:src/app.ts")
+    expect(migrated.workbenchSurfaces["home/session-1"].side.tabs).toEqual([
+      { id: "notes", panelId: "notes" },
+      { id: "file:src/app.ts", panelId: "file", resourceId: "src/app.ts", title: "app.ts", source: "migration" },
+      {
+        id: "file:tests/app.ts",
+        panelId: "file",
+        resourceId: "tests/app.ts",
+        title: "app.ts",
+        source: "migration",
+      },
+    ])
+    expect(migrateWorkbenchLayout(migrated)).toEqual(migrated)
+  })
+
+  test("does not let a legacy Context tab steal an existing side-panel activation", () => {
+    const migrated = migrateWorkbenchLayout({
+      sessionTabs: {
+        "home/session-1": { active: "context", all: ["context", "file://README.md"] },
+      },
+      workbenchSurfaces: {
+        "home/session-1": {
+          side: { opened: true, active: "notes", tabs: [{ id: "notes", panelId: "notes" }] },
+        },
+      },
+    }) as { workbenchSurfaces: Record<string, { side: { active?: string } }> }
+
+    expect(migrated.workbenchSurfaces["home/session-1"].side.active).toBe("notes")
   })
 
   test("drops unsupported persisted layout fields", () => {

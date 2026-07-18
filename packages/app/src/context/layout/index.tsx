@@ -882,6 +882,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      const revision = globalSync.beginContextProjection(scopeKey, sessionID)
       return retry(() =>
         globalSdk.client.session.messagePage({
           ...scopeRequest(scopeKey),
@@ -895,7 +896,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
           batch(() => {
             setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
             setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
-            globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage)
+            globalSync.setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               setChildStore("part", messageID, reconcile(parts, { key: "id" }))
             }
