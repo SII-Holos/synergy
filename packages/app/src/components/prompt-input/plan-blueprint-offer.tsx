@@ -2,7 +2,9 @@ import { createSignal } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLocale } from "@/context/locale"
 import type { PlanBlueprintOffer } from "@/context/plan-blueprint-offer"
+import { PI } from "./prompt-input-i18n"
 import "./plan-blueprint-offer.css"
 
 export function PlanBlueprintOfferControl(props: {
@@ -11,6 +13,7 @@ export function PlanBlueprintOfferControl(props: {
   onDismiss: () => void
   onMute: () => void
 }) {
+  const { i18n } = useLocale()
   const [equipping, setEquipping] = createSignal(false)
 
   const equip = async () => {
@@ -24,35 +27,37 @@ export function PlanBlueprintOfferControl(props: {
   }
 
   return (
-    <div class="plan-blueprint-offer statusbar-glass" role="status" aria-label="Blueprint ready to equip">
+    <div class="plan-blueprint-offer statusbar-glass" role="status" aria-label={i18n._(PI.planOfferAria)}>
       <Icon name={getSemanticIcon("blueprint.main")} size="small" class="shrink-0 text-icon-base" />
       <span class="plan-blueprint-offer-title">{props.offer.title}</span>
-      <Tooltip
-        value="Equip this Blueprint in the current composer. Send when you are ready to start it."
-        placement="top"
-      >
+      <Tooltip value={i18n._(PI.planOfferEquipTooltip)} placement="top">
         <button
           type="button"
           class="plan-blueprint-offer-action"
           disabled={equipping()}
-          aria-label="Equip Blueprint"
+          aria-label={i18n._(PI.planOfferEquipAria)}
           onClick={() => void equip()}
         >
           <Icon name={getSemanticIcon("prompt.blueprintEquip")} size="small" />
-          <span class="text-12-medium">Equip</span>
+          <span class="text-12-medium">{i18n._(PI.planOfferEquip)}</span>
         </button>
       </Tooltip>
-      <Tooltip value="Do not show Blueprint equip offers again until Plan is turned on again." placement="top">
-        <button type="button" class="plan-blueprint-offer-action" aria-label="Do not ask again" onClick={props.onMute}>
+      <Tooltip value={i18n._(PI.planOfferMuteTooltip)} placement="top">
+        <button
+          type="button"
+          class="plan-blueprint-offer-action"
+          aria-label={i18n._(PI.planOfferMuteAria)}
+          onClick={props.onMute}
+        >
           <Icon name={getSemanticIcon("action.hide")} size="small" />
-          <span class="text-12-medium">Don't ask</span>
+          <span class="text-12-medium">{i18n._(PI.planOfferMute)}</span>
         </button>
       </Tooltip>
-      <Tooltip value="Dismiss this offer" placement="top">
+      <Tooltip value={i18n._(PI.planOfferDismissTooltip)} placement="top">
         <button
           type="button"
           class="plan-blueprint-offer-icon-button"
-          aria-label="Dismiss Blueprint offer"
+          aria-label={i18n._(PI.planOfferDismissAria)}
           onClick={props.onDismiss}
         >
           <Icon name={getSemanticIcon("action.close")} size="small" />

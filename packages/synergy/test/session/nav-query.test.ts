@@ -35,4 +35,39 @@ describe("SessionNav.queryGlobal", () => {
       },
     })
   })
+
+  test("persists GitHub provenance and queries GitHub sessions across parent and child entries", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const token = `github-provenance-${crypto.randomUUID()}`
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({ title: `${token} parent`, provenance: "github" })
+        const child = await Session.create({
+          title: `${token} child`,
+          parentID: parent.id,
+          provenance: "github",
+        })
+        const background = await Session.create({ title: `${token} background`, parentID: parent.id })
+
+        expect(await Session.get(child.id)).toMatchObject({ provenance: "github", category: "github" })
+
+        const result = await SessionNav.queryGlobal({
+          category: "github",
+          parentOnly: false,
+          search: token,
+        })
+
+        expect(result.total).toBe(2)
+        expect(result.items.map((entry) => entry.id).sort()).toEqual([child.id, parent.id].sort())
+        expect(result.items.every((entry) => entry.category === "github")).toBe(true)
+
+        await Session.remove(background.id)
+        await Session.remove(child.id)
+        await Session.remove(parent.id)
+      },
+    })
+  })
 })

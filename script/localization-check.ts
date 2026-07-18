@@ -1,0 +1,961 @@
+#!/usr/bin/env bun
+
+import { readFile } from "node:fs/promises"
+import path from "node:path"
+import ts from "typescript"
+
+export type LocalizationViolationKind =
+  | "chinese-literal"
+  | "dynamic-message-id"
+  | "hardcoded-locale"
+  | "invalid-message-descriptor"
+  | "invalid-message-id"
+  | "jsx-attribute"
+  | "jsx-text"
+  | "macro-import"
+  | "missing-default-message"
+  | "user-visible-property"
+
+export type LocalizationViolation = {
+  path: string
+  kind: LocalizationViolationKind
+  literal: string
+  occurrence: number
+  line: number
+  column: number
+}
+
+export type LocalizationAllowlistCategory =
+  | "brand"
+  | "code"
+  | "developer-output"
+  | "machine-identifier"
+  | "language-self-name"
+  | "plugin-content"
+  | "raw-error"
+  | "user-content"
+
+const LOCALIZATION_ALLOWLIST_CATEGORIES = new Set<LocalizationAllowlistCategory>([
+  "brand",
+  "code",
+  "developer-output",
+  "machine-identifier",
+  "language-self-name",
+  "plugin-content",
+  "raw-error",
+  "user-content",
+])
+
+export function isLocalizationAllowlistCategory(value: unknown): value is LocalizationAllowlistCategory {
+  return typeof value === "string" && LOCALIZATION_ALLOWLIST_CATEGORIES.has(value as LocalizationAllowlistCategory)
+}
+
+export type LocalizationAllowlistEntry = {
+  path: string
+  kind: LocalizationViolationKind
+  literal: string
+  occurrence: number
+  category: LocalizationAllowlistCategory
+  reason: string
+}
+
+const MESSAGE_ID = /^[a-z][a-z0-9]*(?:\.[a-z][a-zA-Z0-9]*){2,}$/
+const CHINESE_TEXT = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]/
+const MACRO_MODULE = /^@lingui\/(?:core|solid)(?:\/macro)?$/
+const USER_VISIBLE_ATTRIBUTES = new Set([
+  "alt",
+  "aria-label",
+  "ariaLabel",
+  "description",
+  "label",
+  "placeholder",
+  "title",
+])
+const USER_VISIBLE_PROPERTIES = new Set([
+  "ariaLabel",
+  "description",
+  "emptyDescription",
+  "emptyTitle",
+  "errorDescription",
+  "errorTitle",
+  "label",
+  "placeholder",
+  "successDescription",
+  "successTitle",
+  "title",
+])
+const EXCLUDED_JSX_ELEMENTS = new Set(["code", "pre", "script", "style"])
+const TO_LOCALE_METHOD = /^toLocale(?:DateString|String|TimeString)$/
+const INTL_FORMATTER =
+  /^(?:Collator|DateTimeFormat|DisplayNames|ListFormat|NumberFormat|PluralRules|RelativeTimeFormat|Segmenter)$/
+const TRANSLATABLE_CHARACTER = /\p{L}/u
+const REPOSITORY_ROOT = path.resolve(import.meta.dir, "..")
+type DescriptorTypeDeclaration = ts.InterfaceDeclaration | ts.TypeAliasDeclaration
+
+type DescriptorEnvironment = {
+  sourceFile: ts.SourceFile
+  imports: Set<string>
+  variables: Map<string, ts.Expression>
+  functions: Map<string, ts.FunctionLikeDeclaration>
+  types: Map<string, DescriptorTypeDeclaration>
+}
+
+export function analyzeLocalizationSource(filePath: string, source: string): LocalizationViolation[] {
+  const normalizedPath = normalizePath(filePath)
+  const sourceFile = ts.createSourceFile(
+    normalizedPath,
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    normalizedPath.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+  )
+  const violations: Omit<LocalizationViolation, "occurrence">[] = []
+  const descriptorEnvironment = createDescriptorEnvironment(sourceFile)
+
+  function report(kind: LocalizationViolationKind, node: ts.Node, literal: string) {
+    const location = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile))
+    violations.push({
+      path: normalizedPath,
+      kind,
+      literal: normalizeLiteral(literal),
+      line: location.line + 1,
+      column: location.character + 1,
+    })
+  }
+
+  function visit(node: ts.Node) {
+    if (ts.isImportDeclaration(node) && ts.isStringLiteral(node.moduleSpecifier)) {
+      const moduleName = node.moduleSpecifier.text
+      if (moduleName.endsWith("/macro") && MACRO_MODULE.test(moduleName)) {
+        report("macro-import", node.moduleSpecifier, moduleName)
+      }
+    }
+
+    if (ts.isJsxText(node) && !isInsideExcludedJsx(node)) {
+      const text = normalizeLiteral(node.text)
+      if (text) report("jsx-text", node, text)
+    }
+
+    if (ts.isJsxAttribute(node)) analyzeJsxAttribute(node, report)
+
+    if (ts.isStringLiteralLike(node) && !isModuleSpecifier(node) && CHINESE_TEXT.test(node.text)) {
+      report("chinese-literal", node, node.text)
+    }
+
+    if (ts.isPropertyAssignment(node)) analyzeUserVisibleProperty(node, report)
+
+    if (ts.isNewExpression(node) || ts.isCallExpression(node)) analyzeHardcodedLocale(node, report)
+
+    if (ts.isCallExpression(node) && isTranslationCall(node.expression)) {
+      analyzeMessageCall(node, descriptorEnvironment, report)
+    }
+
+    if (ts.isJsxSelfClosingElement(node) || ts.isJsxOpeningElement(node)) {
+      if (jsxTagName(node.tagName) === "Trans") analyzeTransElement(node, descriptorEnvironment, report)
+    }
+
+    if (ts.isObjectLiteralExpression(node) && hasI18nMarker(node, source)) {
+      analyzeMessageDescriptor(node, descriptorEnvironment, node, report)
+    }
+
+    ts.forEachChild(node, visit)
+  }
+
+  visit(sourceFile)
+
+  const occurrences = new Map<string, number>()
+  return violations.map((violation) => {
+    const key = `${violation.kind}\u0000${violation.literal}`
+    const occurrence = (occurrences.get(key) ?? 0) + 1
+    occurrences.set(key, occurrence)
+    return { ...violation, occurrence }
+  })
+}
+
+export function applyLocalizationAllowlist(
+  violations: LocalizationViolation[],
+  allowlist: LocalizationAllowlistEntry[],
+): LocalizationViolation[] {
+  const allowed = new Set(
+    allowlist.map((entry) =>
+      allowlistKey({
+        ...entry,
+        path: normalizePath(entry.path),
+      }),
+    ),
+  )
+  return violations.filter((violation) => !allowed.has(allowlistKey(violation)))
+}
+
+export function findUnusedLocalizationAllowlistEntries(
+  violations: LocalizationViolation[],
+  allowlist: LocalizationAllowlistEntry[],
+): LocalizationAllowlistEntry[] {
+  const observed = new Set(violations.map(allowlistKey))
+  return allowlist.filter((entry) => !observed.has(allowlistKey(entry)))
+}
+
+function analyzeJsxAttribute(
+  node: ts.JsxAttribute,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const name = node.name.getText()
+  if (!USER_VISIBLE_ATTRIBUTES.has(name) || !node.initializer) return
+
+  if (ts.isStringLiteral(node.initializer)) {
+    const value = normalizeLiteral(node.initializer.text)
+    if (value) report("jsx-attribute", node.initializer, value)
+    return
+  }
+
+  if (!ts.isJsxExpression(node.initializer) || !node.initializer.expression) return
+  for (const literal of visibleStringLiterals(node.initializer.expression)) {
+    const value = normalizeLiteral(literal.text)
+    if (value) report("jsx-attribute", literal, value)
+  }
+}
+
+function analyzeUserVisibleProperty(
+  node: ts.PropertyAssignment,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const name = propertyName(node.name)
+  if (!name || !USER_VISIBLE_PROPERTIES.has(name)) return
+  if (isMessageDescriptorProperty(node) || isInsideTestData(node)) return
+
+  if (ts.isStringLiteralLike(node.initializer)) {
+    const value = normalizeLiteral(node.initializer.text)
+    if (value) report("user-visible-property", node.initializer, value)
+    return
+  }
+
+  for (const literal of visibleStringLiterals(node.initializer)) {
+    const value = normalizeLiteral(literal.text)
+    if (value) report("user-visible-property", literal, value)
+  }
+}
+
+function analyzeHardcodedLocale(
+  node: ts.CallExpression | ts.NewExpression,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const first = node.arguments?.[0]
+  if (!first || !ts.isStringLiteral(first)) return
+
+  if (ts.isPropertyAccessExpression(node.expression)) {
+    const owner = node.expression.expression.getText()
+    const method = node.expression.name.text
+    if ((owner === "Intl" && INTL_FORMATTER.test(method)) || TO_LOCALE_METHOD.test(method)) {
+      report("hardcoded-locale", first, first.text)
+    }
+  }
+}
+
+function analyzeMessageCall(
+  node: ts.CallExpression,
+  environment: DescriptorEnvironment,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const descriptor = node.arguments[0]
+  if (!descriptor || !isStaticMessageDescriptorExpression(descriptor, environment, node, new Set())) {
+    report("invalid-message-descriptor", node, descriptor?.getText() ?? "<missing>")
+    return
+  }
+
+  for (const object of resolveDescriptorObjects(descriptor, environment, node, new Set())) {
+    analyzeMessageDescriptor(object, environment, object, report)
+  }
+}
+
+function analyzeTransElement(
+  node: ts.JsxSelfClosingElement | ts.JsxOpeningElement,
+  environment: DescriptorEnvironment,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const id = jsxAttribute(node, "id")
+  const message = jsxAttribute(node, "message")
+
+  if (
+    id?.initializer &&
+    message?.initializer &&
+    isDescriptorPropertyPair(id.initializer, message.initializer, environment, node)
+  ) {
+    const owner = descriptorPropertyOwner(id.initializer)!
+    for (const object of resolveDescriptorObjects(owner, environment, node, new Set())) {
+      analyzeMessageDescriptor(object, environment, object, report)
+    }
+    return
+  }
+
+  if (!id) {
+    report("dynamic-message-id", node, "<missing>")
+  } else if (!id.initializer || !ts.isStringLiteral(id.initializer)) {
+    report("dynamic-message-id", id.attribute, id.initializer?.getText() ?? "<missing>")
+  } else if (!MESSAGE_ID.test(id.initializer.text)) {
+    report("invalid-message-id", id.initializer, id.initializer.text)
+  }
+
+  if (
+    !message ||
+    !message.initializer ||
+    !ts.isStringLiteral(message.initializer) ||
+    !message.initializer.text.trim()
+  ) {
+    report("missing-default-message", message?.attribute ?? node, message?.initializer?.getText() ?? "<missing>")
+  }
+}
+
+function descriptorPropertyOwner(expression: ts.Expression): ts.Expression | undefined {
+  const current = unwrapExpression(expression)
+  if (ts.isPropertyAccessExpression(current)) return current.expression
+  if (
+    ts.isElementAccessExpression(current) &&
+    current.argumentExpression &&
+    ts.isStringLiteralLike(current.argumentExpression)
+  ) {
+    return current.expression
+  }
+  return
+}
+
+function descriptorPropertyKey(expression: ts.Expression): string | undefined {
+  const current = unwrapExpression(expression)
+  if (ts.isPropertyAccessExpression(current)) return current.name.text
+  if (
+    ts.isElementAccessExpression(current) &&
+    current.argumentExpression &&
+    ts.isStringLiteralLike(current.argumentExpression)
+  ) {
+    return current.argumentExpression.text
+  }
+  return
+}
+
+function isDescriptorPropertyPair(
+  id: ts.Expression,
+  message: ts.Expression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  if (descriptorPropertyKey(id) !== "id" || descriptorPropertyKey(message) !== "message") return false
+  const idOwner = descriptorPropertyOwner(id)
+  const messageOwner = descriptorPropertyOwner(message)
+  if (!idOwner || !messageOwner || idOwner.getText() !== messageOwner.getText()) return false
+  return isStaticMessageDescriptorExpression(idOwner, environment, context, new Set())
+}
+
+function analyzeMessageDescriptor(
+  node: ts.ObjectLiteralExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+  report: (kind: LocalizationViolationKind, node: ts.Node, literal: string) => void,
+) {
+  const id = objectProperty(node, "id")
+  const message = objectProperty(node, "message")
+  const inheritsDescriptor = node.properties.some(
+    (property) =>
+      ts.isSpreadAssignment(property) &&
+      isStaticMessageDescriptorExpression(property.expression, environment, context, new Set()),
+  )
+
+  if (id && message && isDescriptorPropertyPair(id.initializer, message.initializer, environment, context)) {
+    const owner = descriptorPropertyOwner(id.initializer)!
+    for (const object of resolveDescriptorObjects(owner, environment, context, new Set())) {
+      analyzeMessageDescriptor(object, environment, object, report)
+    }
+    return
+  }
+
+  if (id) {
+    if (!ts.isStringLiteralLike(id.initializer)) {
+      report("dynamic-message-id", id, id.initializer.getText())
+    } else if (!MESSAGE_ID.test(id.initializer.text)) {
+      report("invalid-message-id", id.initializer, id.initializer.text)
+    }
+  } else if (!inheritsDescriptor) {
+    report("dynamic-message-id", node, "<missing>")
+  }
+
+  if (message) {
+    if (ts.isStringLiteralLike(message.initializer) && message.initializer.text.trim()) return
+    const owner = descriptorPropertyOwner(message.initializer)
+    if (descriptorPropertyKey(message.initializer) === "message" && owner) {
+      if (isStaticMessageDescriptorExpression(owner, environment, context, new Set())) return
+    }
+    report("missing-default-message", message, message.initializer.getText())
+  } else if (!inheritsDescriptor) {
+    report("missing-default-message", node, "<missing>")
+  }
+}
+
+function isTranslationCall(expression: ts.LeftHandSideExpression): boolean {
+  if (ts.isIdentifier(expression)) return expression.text === "_"
+  if (!ts.isPropertyAccessExpression(expression)) return false
+  if (expression.name.text !== "_" && expression.name.text !== "t") return false
+
+  const owner = expression.expression
+  if (ts.isCallExpression(owner) && ts.isIdentifier(owner.expression)) return owner.expression.text === "i18n"
+  return /(?:^|\.)i18n$/.test(owner.getText())
+}
+
+function createDescriptorEnvironment(sourceFile: ts.SourceFile): DescriptorEnvironment {
+  const imports = new Set<string>()
+  const variables = new Map<string, ts.Expression>()
+  const functions = new Map<string, ts.FunctionLikeDeclaration>()
+  const types = new Map<string, DescriptorTypeDeclaration>()
+
+  function collect(node: ts.Node) {
+    if (ts.isImportDeclaration(node) && node.importClause && !node.importClause.isTypeOnly) {
+      if (node.importClause.name) imports.add(node.importClause.name.text)
+      const bindings = node.importClause.namedBindings
+      if (bindings && ts.isNamespaceImport(bindings)) imports.add(bindings.name.text)
+      if (bindings && ts.isNamedImports(bindings)) {
+        for (const element of bindings.elements) {
+          if (!element.isTypeOnly) imports.add(element.name.text)
+        }
+      }
+    }
+
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+      variables.set(node.name.text, node.initializer)
+    }
+
+    if (ts.isFunctionDeclaration(node) && node.name) functions.set(node.name.text, node)
+    if (ts.isInterfaceDeclaration(node) || ts.isTypeAliasDeclaration(node)) types.set(node.name.text, node)
+    ts.forEachChild(node, collect)
+  }
+
+  collect(sourceFile)
+  return { sourceFile, imports, variables, functions, types }
+}
+
+function isStaticMessageDescriptorExpression(
+  expression: ts.Expression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+  seen: Set<ts.Node>,
+): boolean {
+  const current = unwrapExpression(expression)
+  if (seen.has(current)) return false
+  seen.add(current)
+
+  if (ts.isObjectLiteralExpression(current)) {
+    if (objectProperty(current, "id") || objectProperty(current, "message")) return true
+    return current.properties.some(
+      (property) =>
+        ts.isSpreadAssignment(property) &&
+        isStaticMessageDescriptorExpression(property.expression, environment, context, new Set(seen)),
+    )
+  }
+
+  if (ts.isIdentifier(current)) {
+    if (environment.imports.has(current.text)) return true
+    if (isTypedMessageDescriptorParameter(current.text, context)) return true
+    if (isStaticDescriptorCollectionParameter(current, environment, context)) return true
+    const initializer = environment.variables.get(current.text)
+    return initializer ? isStaticMessageDescriptorExpression(initializer, environment, context, new Set(seen)) : false
+  }
+
+  if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (isTypedMessageDescriptorProperty(current, environment, context)) return true
+    if (isKeyofStaticDescriptorMap(current, environment, context)) return true
+    if (isImportedReference(current, environment)) return true
+    const resolved = resolvePropertyInitializer(current, environment, seen)
+    return resolved ? isStaticMessageDescriptorExpression(resolved, environment, context, new Set(seen)) : false
+  }
+
+  if (ts.isCallExpression(current)) {
+    const returns = resolveFactoryReturns(current.expression, environment)
+    return (
+      returns.length > 0 &&
+      returns.every((value) => isStaticMessageDescriptorExpression(value, environment, context, new Set(seen)))
+    )
+  }
+
+  if (ts.isConditionalExpression(current)) {
+    return (
+      isStaticMessageDescriptorExpression(current.whenTrue, environment, context, new Set(seen)) &&
+      isStaticMessageDescriptorExpression(current.whenFalse, environment, context, new Set(seen))
+    )
+  }
+
+  return false
+}
+
+function resolveDescriptorObjects(
+  expression: ts.Expression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+  seen: Set<ts.Node>,
+): ts.ObjectLiteralExpression[] {
+  const current = unwrapExpression(expression)
+  if (seen.has(current)) return []
+  seen.add(current)
+
+  if (ts.isObjectLiteralExpression(current)) {
+    if (objectProperty(current, "id") || objectProperty(current, "message")) return [current]
+    return current.properties.flatMap((property) =>
+      ts.isSpreadAssignment(property)
+        ? resolveDescriptorObjects(property.expression, environment, context, new Set(seen))
+        : [],
+    )
+  }
+
+  if (ts.isIdentifier(current)) {
+    if (environment.imports.has(current.text) || isTypedMessageDescriptorParameter(current.text, context)) return []
+    const initializer = environment.variables.get(current.text)
+    return initializer ? resolveDescriptorObjects(initializer, environment, context, new Set(seen)) : []
+  }
+
+  if (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    if (isImportedReference(current, environment)) return []
+    const resolved = resolvePropertyInitializer(current, environment, seen)
+    return resolved ? resolveDescriptorObjects(resolved, environment, context, new Set(seen)) : []
+  }
+
+  if (ts.isCallExpression(current)) {
+    return resolveFactoryReturns(current.expression, environment).flatMap((value) =>
+      resolveDescriptorObjects(value, environment, context, new Set(seen)),
+    )
+  }
+
+  if (ts.isConditionalExpression(current)) {
+    return [
+      ...resolveDescriptorObjects(current.whenTrue, environment, context, new Set(seen)),
+      ...resolveDescriptorObjects(current.whenFalse, environment, context, new Set(seen)),
+    ]
+  }
+
+  return []
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+  let current = expression
+  while (
+    ts.isParenthesizedExpression(current) ||
+    ts.isAsExpression(current) ||
+    ts.isSatisfiesExpression(current) ||
+    ts.isTypeAssertionExpression(current)
+  ) {
+    current = current.expression
+  }
+  return current
+}
+
+function isTypedMessageDescriptorParameter(name: string, context: ts.Node): boolean {
+  for (let current: ts.Node | undefined = context; current; current = current.parent) {
+    if (!ts.isFunctionLike(current)) continue
+    const parameter = current.parameters.find((item) => ts.isIdentifier(item.name) && item.name.text === name)
+    if (!parameter?.type) continue
+    if (/(?:^|\W)MessageDescriptor(?:\W|$)/.test(parameter.type.getText())) return true
+    if (!ts.isTypeLiteralNode(parameter.type)) return false
+    const members = new Map(
+      parameter.type.members.flatMap((member) => {
+        if (!ts.isPropertySignature(member) || !member.type || !member.name) return []
+        const key = propertyName(member.name)
+        return key ? ([[key, member.type]] as const) : []
+      }),
+    )
+    return ["id", "message"].every((key) => members.get(key)?.kind === ts.SyntaxKind.StringKeyword)
+  }
+  return false
+}
+
+function isTypedMessageDescriptorProperty(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  const property = ts.isPropertyAccessExpression(expression)
+    ? expression.name.text
+    : expression.argumentExpression && ts.isStringLiteralLike(expression.argumentExpression)
+      ? expression.argumentExpression.text
+      : undefined
+  const owner = unwrapExpression(expression.expression)
+  if (!property || !ts.isIdentifier(owner)) return false
+
+  const parameter = enclosingParameter(owner.text, context)
+  if (!parameter?.type) return false
+  const members = resolveTypeMembers(parameter.type, environment)
+  const member = members.find(
+    (item): item is ts.PropertySignature => ts.isPropertySignature(item) && propertyName(item.name) === property,
+  )
+  return !!member?.type && isMessageDescriptorType(member.type)
+}
+
+function isKeyofStaticDescriptorMap(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  if (!ts.isElementAccessExpression(expression) || !expression.argumentExpression) return false
+  const owner = unwrapExpression(expression.expression)
+  const key = unwrapExpression(expression.argumentExpression)
+  if (!ts.isIdentifier(owner) || !ts.isIdentifier(key)) return false
+
+  const parameter = enclosingParameter(key.text, context)
+  if (!parameter?.type || !isKeyofTypeQuery(parameter.type, owner.text)) return false
+  const initializer = environment.variables.get(owner.text)
+  const map = initializer && unwrapExpression(initializer)
+  if (!map || !ts.isObjectLiteralExpression(map) || map.properties.length === 0) return false
+  return map.properties.every(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      isStaticMessageDescriptorExpression(property.initializer, environment, context, new Set()),
+  )
+}
+
+function enclosingParameter(name: string, context: ts.Node): ts.ParameterDeclaration | undefined {
+  for (let current: ts.Node | undefined = context; current; current = current.parent) {
+    if (!ts.isFunctionLike(current)) continue
+    return current.parameters.find((item) => ts.isIdentifier(item.name) && item.name.text === name)
+  }
+}
+
+function resolveTypeMembers(type: ts.TypeNode, environment: DescriptorEnvironment): ts.NodeArray<ts.TypeElement> {
+  if (ts.isTypeLiteralNode(type)) return type.members
+  if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return ts.factory.createNodeArray()
+  const declaration = environment.types.get(type.typeName.text)
+  if (declaration && ts.isInterfaceDeclaration(declaration)) return declaration.members
+  if (declaration && ts.isTypeAliasDeclaration(declaration) && ts.isTypeLiteralNode(declaration.type)) {
+    return declaration.type.members
+  }
+  return ts.factory.createNodeArray()
+}
+
+function isMessageDescriptorType(type: ts.TypeNode): boolean {
+  if (ts.isUnionTypeNode(type)) {
+    const concrete = type.types.filter(
+      (item) => item.kind !== ts.SyntaxKind.UndefinedKeyword && item.kind !== ts.SyntaxKind.NullKeyword,
+    )
+    return concrete.length > 0 && concrete.every(isMessageDescriptorType)
+  }
+  if (ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName)) {
+    return type.typeName.text === "MessageDescriptor"
+  }
+  if (!ts.isTypeLiteralNode(type)) return false
+  const members = new Map(
+    type.members.flatMap((member) => {
+      if (!ts.isPropertySignature(member) || !member.type || !member.name) return []
+      const key = propertyName(member.name)
+      return key ? ([[key, member.type]] as const) : []
+    }),
+  )
+  return ["id", "message"].every((key) => members.get(key)?.kind === ts.SyntaxKind.StringKeyword)
+}
+
+function isKeyofTypeQuery(type: ts.TypeNode, owner: string): boolean {
+  return (
+    ts.isTypeOperatorNode(type) &&
+    type.operator === ts.SyntaxKind.KeyOfKeyword &&
+    ts.isTypeQueryNode(type.type) &&
+    ts.isIdentifier(type.type.exprName) &&
+    type.type.exprName.text === owner
+  )
+}
+
+function isStaticDescriptorCollectionParameter(
+  identifier: ts.Identifier,
+  environment: DescriptorEnvironment,
+  context: ts.Node,
+): boolean {
+  for (let current: ts.Node | undefined = context; current; current = current.parent) {
+    if (!ts.isArrowFunction(current) && !ts.isFunctionExpression(current)) continue
+    const parameterIndex = current.parameters.findIndex(
+      (parameter) => ts.isIdentifier(parameter.name) && parameter.name.text === identifier.text,
+    )
+    if (parameterIndex !== 0) continue
+
+    const parentNode: ts.Node = current.parent
+    if (!ts.isCallExpression(parentNode) || !parentNode.arguments.includes(current)) continue
+    const call: ts.CallExpression = parentNode
+    if (!ts.isPropertyAccessExpression(call.expression)) continue
+    if (
+      !new Set(["map", "flatMap", "filter", "find", "findIndex", "some", "every", "forEach"]).has(
+        call.expression.name.text,
+      )
+    ) {
+      continue
+    }
+
+    const collection = resolveCollectionExpression(call.expression.expression, environment, new Set())
+    if (!collection || !ts.isArrayLiteralExpression(collection) || collection.elements.length === 0) return false
+    return collection.elements.every(
+      (element) =>
+        ts.isExpression(element) && isStaticMessageDescriptorExpression(element, environment, current, new Set()),
+    )
+  }
+  return false
+}
+
+function resolveCollectionExpression(
+  expression: ts.Expression,
+  environment: DescriptorEnvironment,
+  seen: Set<ts.Node>,
+): ts.Expression | undefined {
+  const current = unwrapExpression(expression)
+  if (seen.has(current)) return
+  seen.add(current)
+  if (ts.isIdentifier(current)) {
+    const initializer = environment.variables.get(current.text)
+    return initializer ? resolveCollectionExpression(initializer, environment, seen) : undefined
+  }
+  return current
+}
+
+function isImportedReference(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+): boolean {
+  let current: ts.Expression = expression.expression
+  while (ts.isPropertyAccessExpression(current) || ts.isElementAccessExpression(current)) {
+    current = current.expression
+  }
+  return ts.isIdentifier(current) && environment.imports.has(current.text)
+}
+
+function resolvePropertyInitializer(
+  expression: ts.PropertyAccessExpression | ts.ElementAccessExpression,
+  environment: DescriptorEnvironment,
+  seen: Set<ts.Node>,
+): ts.Expression | undefined {
+  const name = ts.isPropertyAccessExpression(expression)
+    ? expression.name.text
+    : expression.argumentExpression && ts.isStringLiteralLike(expression.argumentExpression)
+      ? expression.argumentExpression.text
+      : undefined
+  if (!name) return
+
+  const owner = unwrapExpression(expression.expression)
+  const container = ts.isIdentifier(owner)
+    ? environment.variables.get(owner.text)
+    : ts.isPropertyAccessExpression(owner) || ts.isElementAccessExpression(owner)
+      ? resolvePropertyInitializer(owner, environment, seen)
+      : owner
+  if (!container) return
+
+  const value = unwrapExpression(container)
+  if (!ts.isObjectLiteralExpression(value)) return
+  const property = value.properties.find(
+    (item): item is ts.PropertyAssignment => ts.isPropertyAssignment(item) && propertyName(item.name) === name,
+  )
+  return property?.initializer
+}
+
+function resolveFactoryReturns(
+  expression: ts.LeftHandSideExpression,
+  environment: DescriptorEnvironment,
+): ts.Expression[] {
+  if (!ts.isIdentifier(expression)) return []
+  const declaration = environment.functions.get(expression.text)
+  if (declaration) return functionReturnExpressions(declaration)
+
+  const initializer = environment.variables.get(expression.text)
+  const value = initializer && unwrapExpression(initializer)
+  if (!value || (!ts.isArrowFunction(value) && !ts.isFunctionExpression(value))) return []
+  return functionReturnExpressions(value)
+}
+
+function functionReturnExpressions(node: ts.FunctionLikeDeclaration): ts.Expression[] {
+  if (!node.body) return []
+  if (!ts.isBlock(node.body)) return [node.body]
+  const returns: ts.Expression[] = []
+  function collect(current: ts.Node) {
+    if (current !== node.body && ts.isFunctionLike(current)) return
+    if (ts.isReturnStatement(current) && current.expression) returns.push(current.expression)
+    ts.forEachChild(current, collect)
+  }
+  collect(node.body)
+  return returns
+}
+
+function isInsideExcludedJsx(node: ts.Node): boolean {
+  for (let current: ts.Node | undefined = node.parent; current; current = current.parent) {
+    if (ts.isJsxElement(current)) {
+      const name = jsxTagName(current.openingElement.tagName)
+      if (EXCLUDED_JSX_ELEMENTS.has(name) || name === "Trans") return true
+    }
+    if (ts.isJsxSelfClosingElement(current)) {
+      const name = jsxTagName(current.tagName)
+      if (EXCLUDED_JSX_ELEMENTS.has(name) || name === "Trans") return true
+    }
+  }
+  return false
+}
+
+function isModuleSpecifier(node: ts.StringLiteralLike): boolean {
+  return (
+    (ts.isImportDeclaration(node.parent) || ts.isExportDeclaration(node.parent)) && node.parent.moduleSpecifier === node
+  )
+}
+
+function isMessageDescriptorProperty(node: ts.PropertyAssignment): boolean {
+  const parent = node.parent
+  if (!ts.isObjectLiteralExpression(parent)) return false
+  const keys = new Set(
+    parent.properties.flatMap((property) => {
+      if (!ts.isPropertyAssignment(property)) return []
+      const name = propertyName(property.name)
+      return name ? [name] : []
+    }),
+  )
+  return keys.has("id") && keys.has("message")
+}
+
+function isInsideTestData(node: ts.Node): boolean {
+  const sourcePath = normalizePath(node.getSourceFile().fileName)
+  return /(?:^|\/)(?:test|testing|__tests__)(?:\/|\.)/.test(sourcePath) || /\.test\.[cm]?[jt]sx?$/.test(sourcePath)
+}
+
+function visibleStringLiterals(node: ts.Expression): ts.StringLiteralLike[] {
+  if (ts.isStringLiteralLike(node)) return [node]
+  if (ts.isParenthesizedExpression(node)) return visibleStringLiterals(node.expression)
+  if (ts.isAsExpression(node) || ts.isSatisfiesExpression(node) || ts.isTypeAssertionExpression(node)) {
+    return visibleStringLiterals(node.expression)
+  }
+  if (ts.isConditionalExpression(node)) {
+    return [...visibleStringLiterals(node.whenTrue), ...visibleStringLiterals(node.whenFalse)]
+  }
+  if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
+    return [...visibleStringLiterals(node.left), ...visibleStringLiterals(node.right)]
+  }
+  return []
+}
+
+function jsxAttribute(
+  node: ts.JsxSelfClosingElement | ts.JsxOpeningElement,
+  name: string,
+): { attribute: ts.JsxAttribute; initializer: ts.Expression | undefined } | undefined {
+  for (const property of node.attributes.properties) {
+    if (!ts.isJsxAttribute(property) || property.name.getText() !== name) continue
+    if (!property.initializer) return { attribute: property, initializer: undefined }
+    if (ts.isStringLiteral(property.initializer)) return { attribute: property, initializer: property.initializer }
+    if (ts.isJsxExpression(property.initializer))
+      return { attribute: property, initializer: property.initializer.expression }
+    return { attribute: property, initializer: undefined }
+  }
+  return
+}
+
+function objectProperty(node: ts.ObjectLiteralExpression, name: string): ts.PropertyAssignment | undefined {
+  return node.properties.find(
+    (property): property is ts.PropertyAssignment =>
+      ts.isPropertyAssignment(property) && propertyName(property.name) === name,
+  )
+}
+
+function propertyName(name: ts.PropertyName): string | undefined {
+  if (ts.isIdentifier(name) || ts.isStringLiteralLike(name)) return name.text
+  return
+}
+
+function jsxTagName(name: ts.JsxTagNameExpression): string {
+  if (ts.isIdentifier(name)) return name.text
+  return name.getText()
+}
+
+function hasI18nMarker(node: ts.ObjectLiteralExpression, source: string): boolean {
+  const prefix = source.slice(Math.max(0, node.getFullStart() - 32), node.getStart())
+  return /\/\*\*\s*i18n\s*\*\//.test(prefix)
+}
+
+function normalizeLiteral(value: string): string {
+  const normalized = value.replace(/\s+/g, " ").trim()
+  return TRANSLATABLE_CHARACTER.test(normalized) ? normalized : ""
+}
+
+function normalizePath(value: string): string {
+  return value.split(path.sep).join("/")
+}
+
+function allowlistKey(value: Pick<LocalizationViolation, "path" | "kind" | "literal" | "occurrence">): string {
+  return `${normalizePath(value.path)}\u0000${value.kind}\u0000${value.literal}\u0000${value.occurrence}`
+}
+
+async function loadAllowlist(filePath: string): Promise<LocalizationAllowlistEntry[]> {
+  const file = Bun.file(filePath)
+  if (!(await file.exists())) return []
+  const parsed = JSON.parse(await file.text()) as unknown
+  if (!Array.isArray(parsed)) throw new Error(`${filePath}: expected a JSON array`)
+
+  return parsed.map((entry, index) => validateAllowlistEntry(entry, filePath, index))
+}
+
+function validateAllowlistEntry(value: unknown, filePath: string, index: number): LocalizationAllowlistEntry {
+  if (!value || typeof value !== "object") throw new Error(`${filePath}[${index}]: expected an object`)
+  const entry = value as Record<string, unknown>
+  const required = ["path", "kind", "literal", "occurrence", "category", "reason"] as const
+  for (const key of required) {
+    if (entry[key] === undefined) throw new Error(`${filePath}[${index}]: missing ${key}`)
+  }
+  if (typeof entry.path !== "string" || typeof entry.kind !== "string" || typeof entry.literal !== "string") {
+    throw new Error(`${filePath}[${index}]: path, kind, and literal must be strings`)
+  }
+  if (!Number.isInteger(entry.occurrence) || Number(entry.occurrence) < 1) {
+    throw new Error(`${filePath}[${index}]: occurrence must be a positive integer`)
+  }
+  if (
+    !isLocalizationAllowlistCategory(entry.category) ||
+    typeof entry.reason !== "string" ||
+    entry.reason.trim().length < 12
+  ) {
+    throw new Error(`${filePath}[${index}]: a supported category and a specific reason are required`)
+  }
+  return entry as LocalizationAllowlistEntry
+}
+
+async function scanRepository() {
+  const strict = process.argv.includes("--strict")
+  const json = process.argv.includes("--json")
+  const allowlistArg = process.argv.find((argument: string) => argument.startsWith("--allowlist="))
+  const allowlistPath = path.resolve(
+    REPOSITORY_ROOT,
+    allowlistArg?.slice("--allowlist=".length) ?? "script/localization-allowlist.json",
+  )
+  const allowlist = await loadAllowlist(allowlistPath)
+  const violations: LocalizationViolation[] = []
+  const glob = new Bun.Glob("**/*.{ts,tsx}")
+
+  for (const relativeRoot of ["packages/app/src", "packages/ui/src"]) {
+    const sourceRoot = path.join(REPOSITORY_ROOT, relativeRoot)
+    for await (const relativePath of glob.scan({ cwd: sourceRoot })) {
+      if (relativePath.endsWith(".test.ts") || relativePath.endsWith(".test.tsx")) continue
+      if (relativePath.includes("/testing/") || relativePath.startsWith("testing/")) continue
+      const projectPath = normalizePath(path.join(relativeRoot, relativePath))
+      const source = await readFile(path.join(sourceRoot, relativePath), "utf8")
+      violations.push(...analyzeLocalizationSource(projectPath, source))
+    }
+  }
+
+  const remaining = applyLocalizationAllowlist(violations, allowlist).toSorted(
+    (a, b) => a.path.localeCompare(b.path) || a.line - b.line || a.column - b.column,
+  )
+  const unusedAllowlist = findUnusedLocalizationAllowlistEntries(violations, allowlist)
+
+  if (json) {
+    console.log(JSON.stringify(remaining, null, 2))
+  } else {
+    if (remaining.length === 0 && unusedAllowlist.length === 0) {
+      console.log("Localization contract passed with no unclassified violations or stale allowlist entries.")
+    }
+    for (const violation of remaining) {
+      console.error(
+        `${violation.path}:${violation.line}:${violation.column} [${violation.kind}] ${JSON.stringify(violation.literal)} (occurrence ${violation.occurrence})`,
+      )
+    }
+    if (remaining.length > 0) {
+      console.error(`Localization contract found ${remaining.length} unclassified violation(s).`)
+    }
+  }
+
+  if (unusedAllowlist.length > 0) {
+    console.error("Localization allowlist contains stale entries:")
+    for (const entry of unusedAllowlist) {
+      console.error(`  ${entry.path} [${entry.kind}] ${JSON.stringify(entry.literal)} (occurrence ${entry.occurrence})`)
+    }
+  }
+
+  if (strict && (remaining.length > 0 || unusedAllowlist.length > 0)) process.exit(1)
+}
+
+if (import.meta.main) await scanRepository()

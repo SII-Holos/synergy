@@ -15,6 +15,9 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import type { SessionTransitionActions, SessionTransitionProgress } from "./session-transition-progress"
 import { SessionTransitionCard } from "./session-transition-card"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
+import { pendingTimelineItemView } from "./conversation-pending"
 
 export function SessionConversation(props: {
   sessionID: string
@@ -34,6 +37,9 @@ export function SessionConversation(props: {
   onSetTurnStart: (start: number) => void
   historyMore: Accessor<boolean>
   historyLoading: Accessor<boolean>
+  historyMode: Accessor<"latest" | "history">
+  historyPendingLatest: Accessor<boolean>
+  onReturnLatest: () => void
   onLoadMore: () => void
   scrolledUp: Accessor<boolean>
   onScrolledUpChange: (val: boolean) => void
@@ -51,6 +57,8 @@ export function SessionConversation(props: {
   onPendingRemove?: (item: SessionInboxItem) => void
   rollbackActive?: boolean
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const workspaceOpen = createMemo(() => props.workspaceOpen?.() ?? false)
   return (
     <ConversationViewport
@@ -93,21 +101,34 @@ export function SessionConversation(props: {
             class="text-12-medium opacity-50"
             onClick={() => props.onSetTurnStart(Math.max(0, props.turnStart - props.turnBatch))}
           >
-            Render earlier messages
+            {_(S.convRenderEarlier)}
           </Button>
         </div>
       </Show>
-      <Show when={props.historyMore()}>
-        <div class="w-full flex justify-center">
-          <Button
-            variant="ghost"
-            size="large"
-            class="text-12-medium opacity-50"
-            disabled={props.historyLoading()}
-            onClick={props.onLoadMore}
-          >
-            {props.historyLoading() ? "Loading earlier messages..." : "Load earlier messages"}
-          </Button>
+      <Show when={props.historyMore() || props.historyMode() === "history" || props.historyPendingLatest()}>
+        <div class="w-full flex flex-wrap justify-center gap-2">
+          <Show when={props.historyMore()}>
+            <Button
+              variant="ghost"
+              size="large"
+              class="text-12-medium opacity-50"
+              disabled={props.historyLoading()}
+              onClick={props.onLoadMore}
+            >
+              {props.historyLoading() ? _(S.convLoadingEarlier) : _(S.convLoadEarlier)}
+            </Button>
+          </Show>
+          <Show when={props.historyMode() === "history" || props.historyPendingLatest()}>
+            <Button
+              variant="secondary"
+              size="large"
+              class="text-12-medium"
+              disabled={props.historyLoading()}
+              onClick={props.onReturnLatest}
+            >
+              {props.historyPendingLatest() ? _(S.convNewMessagesReturnLatest) : _(S.convReturnLatest)}
+            </Button>
+          </Show>
         </div>
       </Show>
       <For each={props.timeline()}>
@@ -191,52 +212,54 @@ export function SessionConversation(props: {
         <div class="w-full flex flex-col items-start gap-2 opacity-50">
           <For each={props.pendingTimeline?.() ?? []}>
             {(item) => {
-              const isTask = () => item.mode === "task"
-              const guideLabel = () => (item.mode === "steer" ? "Queue" : "Guide")
+              const view = () => pendingTimelineItemView(item.mode, props.rollbackActive === true)
               const label = () =>
                 item.message?.parts?.[0]?.type === "text"
-                  ? (item.message!.parts[0] as { text: string }).text
-                  : (item.summary?.title ?? "Pending…")
+                  ? (item.message.parts[0] as { text: string }).text
+                  : (item.summary?.title ?? _(S.convPending))
               return (
                 <div
                   data-slot="pending-timeline-item"
                   data-mode={item.mode}
-                  data-frozen={props.rollbackActive === true}
-                  class="flex items-center gap-2 px-3 py-2 rounded-lg bg-background-weak text-text-weak text-sm"
+                  data-frozen={view().frozen}
+                  class="flex w-full items-center gap-2 rounded-lg bg-background-weak px-3 py-2 text-sm text-text-weak"
+                  style={{ animation: "fadeUp 0.3s ease-out both" }}
                 >
-                  <Show
-                    when={props.rollbackActive}
-                    fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}
-                  >
-                    <span
-                      class="text-xs opacity-70"
-                      title="Delivery paused during rollback. Will resume on redo or new task."
-                    >
-                      <Icon name={getSemanticIcon("agenda.main")} size="small" /> Paused
+                  <Show when={view().frozen} fallback={<Icon name={getSemanticIcon("agenda.main")} size="small" />}>
+                    <span class="inline-flex items-center gap-1 text-11-medium" title={_(S.convPausedTooltip)}>
+                      <Icon name={getSemanticIcon("agenda.main")} size="small" />
+                      {_(S.convPaused)}
                     </span>
                   </Show>
-                  <Show when={isTask()} fallback={<span class="text-xs">{label()}</span>}>
-                    <span class="text-xs">{label()}</span>
-                  </Show>
-                  <div class="ml-auto flex items-center gap-1">
-                    <button
-                      type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title={item.mode === "steer" ? "Move back to queue" : "Guide current run"}
-                      onClick={() => props.onPendingGuide?.(item)}
-                    >
-                      <Icon name={item.mode === "steer" ? "corner-down-left" : "zap"} size="small" />
-                      <span>{guideLabel()}</span>
-                    </button>
-                    <button
-                      type="button"
-                      class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium text-text-weak hover:bg-background-base hover:text-text-base"
-                      title="Remove pending message"
-                      onClick={() => props.onPendingRemove?.(item)}
-                    >
-                      <Icon name={getSemanticIcon("action.close")} size="small" />
-                      <span>Withdraw</span>
-                    </button>
+                  <div class="min-w-0 flex-1 text-14-regular line-clamp-2">{label()}</div>
+                  <div class="ml-auto flex shrink-0 items-center gap-1">
+                    <Show when={view().primaryAction}>
+                      {(primaryAction) => (
+                        <button
+                          type="button"
+                          class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
+                          title={primaryAction() === "queue" ? _(S.convMoveToQueueTitle) : _(S.convGuideRunTitle)}
+                          onClick={() => props.onPendingGuide?.(item)}
+                        >
+                          <Icon
+                            name={getSemanticIcon(primaryAction() === "queue" ? "prompt.submit" : "command.start")}
+                            size="small"
+                          />
+                          <span>{primaryAction() === "queue" ? _(S.convQueue) : _(S.convGuide)}</span>
+                        </button>
+                      )}
+                    </Show>
+                    <Show when={view().canWithdraw}>
+                      <button
+                        type="button"
+                        class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-11-medium hover:bg-background-base hover:text-text-base"
+                        title={_(S.convRemovePendingTitle)}
+                        onClick={() => props.onPendingRemove?.(item)}
+                      >
+                        <Icon name={getSemanticIcon("action.close")} size="small" />
+                        <span>{_(S.convWithdraw)}</span>
+                      </button>
+                    </Show>
                   </div>
                 </div>
               )

@@ -152,6 +152,7 @@ import type {
   ExperienceListSort,
   ExperimentalResourceListResponses,
   FormatterStatusResponses,
+  GithubConfiguredResponses,
   GlobalAgendaListErrors,
   GlobalAgendaListResponses,
   GlobalDisposeResponses,
@@ -455,6 +456,8 @@ import type {
   SessionInputResponses,
   SessionListResponses,
   SessionMessageErrors,
+  SessionMessagePageErrors,
+  SessionMessagePageResponses,
   SessionMessageResponses,
   SessionMessagesErrors,
   SessionMessagesResponses,
@@ -1528,7 +1531,7 @@ export class Session extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
-      category?: "project" | "home" | "channel" | "background"
+      category?: "project" | "home" | "channel" | "background" | "github"
       parentOnly?: "true" | "false"
       includeArchived?: "true" | "false"
       limit?: number
@@ -2389,6 +2392,42 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Get a page of session messages
+   *
+   * Retrieve a bounded session message window and an opaque cursor for loading older history.
+   */
+  public messagePage<ThrowOnError extends boolean = false>(
+    parameters: {
+      sessionID: string
+      directory?: string
+      scopeID?: string
+      cursor?: string
+      limit?: number
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "sessionID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "cursor" },
+            { in: "query", key: "limit" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SessionMessagePageResponses, SessionMessagePageErrors, ThrowOnError>({
+      url: "/session/{sessionID}/message/page",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
    * Get session diff
    *
    * Get all file changes (diffs) made during this session.
@@ -2910,6 +2949,7 @@ export class Nav extends HeyApiClient {
     parameters?: {
       parentOnly?: boolean
       includeArchived?: boolean
+      category?: "project" | "home" | "channel" | "background" | "github"
       search?: string
       limit?: number
       cursorLastActivityAt?: number
@@ -2924,6 +2964,7 @@ export class Nav extends HeyApiClient {
           args: [
             { in: "query", key: "parentOnly" },
             { in: "query", key: "includeArchived" },
+            { in: "query", key: "category" },
             { in: "query", key: "search" },
             { in: "query", key: "limit" },
             { in: "query", key: "cursorLastActivityAt" },
@@ -4367,6 +4408,20 @@ export class Holos extends HeyApiClient {
   thread = new Thread({ client: this.client })
 }
 
+export class Github extends HeyApiClient {
+  /**
+   * Check whether the GitHub App is configured
+   *
+   * Reports whether both required GitHub App environment variables are present without exposing them.
+   */
+  public configured<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<GithubConfiguredResponses, unknown, ThrowOnError>({
+      url: "/github/configured",
+      ...options,
+    })
+  }
+}
+
 export class Runtime extends HeyApiClient {
   /**
    * Reload runtime state
@@ -5096,6 +5151,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
     },
@@ -5141,6 +5197,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
       configDomainUpdateInput?: ConfigDomainUpdateInput
@@ -5193,6 +5250,7 @@ export class Domain extends HeyApiClient {
         | "holos"
         | "email"
         | "runtime"
+        | "github"
       directory?: string
       scopeID?: string
     },
@@ -10421,6 +10479,8 @@ export class SynergyClient extends HeyApiClient {
   performance = new Performance({ client: this.client })
 
   holos = new Holos({ client: this.client })
+
+  github = new Github({ client: this.client })
 
   agenda = new Agenda({ client: this.client })
 

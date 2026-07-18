@@ -1,9 +1,11 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
+import { useLingui } from "@lingui/solid"
 import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import "./session-resonance-popover.css"
 import { getSemanticIcon } from "./semantic-icon"
+import { RESONANCE_DESC } from "./tool-title-descriptors"
 
 export interface InjectedContext {
   memory?: string
@@ -58,6 +60,7 @@ function tone(value: number): "pos" | "neg" | "neutral" {
 }
 
 export function ResonancePopover(props: { context?: InjectedContext }) {
+  const { _ } = useLingui()
   const [open, setOpen] = createSignal(false)
 
   const memories = createMemo(() => (props.context?.memory ? parseMemories(props.context.memory) : []))
@@ -74,8 +77,8 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
   }
   const copy = createCopyController({
     text: copyText,
-    copyLabel: "Copy all",
-    failureDescription: "Unable to copy resonance context.",
+    copyLabel: _(RESONANCE_DESC.copyAll),
+    failureDescription: _(RESONANCE_DESC.copyFail),
   })
 
   return (
@@ -84,7 +87,7 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
         as="button"
         data-component="resonance-trigger"
         data-empty={!hasContent()}
-        title="Resonance"
+        title={_(RESONANCE_DESC.title)}
         onClick={(e: MouseEvent) => e.stopPropagation()}
       >
         <Icon name={getSemanticIcon("memory.main")} size="small" />
@@ -95,7 +98,7 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
       <Popover.Portal>
         <Popover.Content data-component="resonance-popover" onClick={(e: MouseEvent) => e.stopPropagation()}>
           <div data-slot="resonance-header">
-            <span data-slot="resonance-title">Resonance</span>
+            <span data-slot="resonance-title">{_(RESONANCE_DESC.title)}</span>
             <div data-slot="resonance-header-actions">
               <Show when={hasContent()}>
                 <button
@@ -114,10 +117,10 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
             </div>
           </div>
           <div data-slot="resonance-body">
-            <Show when={hasContent()} fallback={<div data-slot="resonance-empty">No resonance for this turn</div>}>
+            <Show when={hasContent()} fallback={<div data-slot="resonance-empty">{_(RESONANCE_DESC.empty)}</div>}>
               <Show when={memories().length > 0}>
                 <div data-slot="resonance-section">
-                  <div data-slot="resonance-section-label">Memories</div>
+                  <div data-slot="resonance-section-label">{_(RESONANCE_DESC.memories)}</div>
                   <For each={memories()}>
                     {(memory) => (
                       <div data-slot="resonance-item">
@@ -136,7 +139,7 @@ export function ResonancePopover(props: { context?: InjectedContext }) {
               </Show>
               <Show when={experiences().length > 0}>
                 <div data-slot="resonance-section">
-                  <div data-slot="resonance-section-label">Experiences</div>
+                  <div data-slot="resonance-section-label">{_(RESONANCE_DESC.experiences)}</div>
                   <For each={experiences()}>
                     {(exp) => {
                       const sim = parseFloat(exp.similarity)

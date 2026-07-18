@@ -1,14 +1,16 @@
 import { For, Show, createMemo } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type AssetEntry } from "./browser-store"
+import { assetsPanel as P } from "@/locales/messages"
 
-const TYPE_LABELS: Record<string, string> = {
-  image: "Images",
-  script: "Scripts",
-  stylesheet: "Stylesheets",
-  font: "Fonts",
-  media: "Media",
-  document: "Documents",
-  other: "Other",
+const TYPE_LABELS: Record<string, { id: string; message: string }> = {
+  image: P.typeImages,
+  script: P.typeScripts,
+  stylesheet: P.typeStylesheets,
+  font: P.typeFonts,
+  media: P.typeMedia,
+  document: P.typeDocuments,
+  other: P.typeOther,
 }
 
 const TYPE_ICONS: Record<string, string> = {
@@ -52,6 +54,7 @@ function shortenUrl(url: string, max = 60): string {
 
 export function AssetsPanel() {
   const { pageId: currentPageId, pageAssets } = useBrowser()
+  const lingui = useLingui()
 
   const entries = createMemo((): AssetEntry[] => {
     const pageId = currentPageId()
@@ -76,7 +79,9 @@ export function AssetsPanel() {
       <Show
         when={totalCount() > 0}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">No page assets</div>
+          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
+          </div>
         }
       >
         <div class="flex-1 overflow-y-auto">
@@ -89,7 +94,7 @@ export function AssetsPanel() {
                 <div class="border-b border-border-weaker-base last:border-b-0">
                   <div class="sticky top-0 z-10 flex items-center gap-2 px-3 py-1.5 bg-surface-raised-base border-b border-border-weak-base text-11-medium text-text-weak uppercase tracking-wider">
                     <span class="text-text-subtle">{TYPE_ICONS[type]}</span>
-                    <span>{TYPE_LABELS[type]}</span>
+                    <span>{lingui._(TYPE_LABELS[type])}</span>
                     <span class="ml-auto tabular-nums text-text-weaker">{count()}</span>
                   </div>
                   <For each={items()}>

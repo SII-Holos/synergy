@@ -22,7 +22,7 @@ import { Log } from "../util/log"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
-import { errors } from "./error"
+import { BadRequestError, errors } from "./error"
 
 const log = Log.create({ service: "session" })
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
@@ -31,6 +31,11 @@ const booleanQuery = z.preprocess((value) => {
   if (value === "false" || value === false) return false
   return value
 }, z.boolean())
+const SessionMessagePageBadRequestError = z.union([
+  BadRequestError,
+  SessionHistory.MessagePageCursorInvalidError.Schema,
+  SessionHistory.MessagePageCursorStaleError.Schema,
+])
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
   if (SessionManager.isRunning(input.sessionID)) {
@@ -824,6 +829,61 @@ export const SessionRoute = new Hono()
         raw: query.raw,
       })
       return c.json(messages)
+    },
+  )
+  .get(
+    "/:sessionID/message/page",
+    describeRoute({
+      summary: "Get a page of session messages",
+      description: "Retrieve a bounded session message window and an opaque cursor for loading older history.",
+      operationId: "session.messagePage",
+      responses: {
+        200: {
+          description: "Cursor-paged session messages",
+          content: {
+            "application/json": {
+              schema: resolver(SessionHistory.MessagePage),
+            },
+          },
+        },
+        400: {
+          description: "Invalid or stale message cursor",
+          content: {
+            "application/json": {
+              schema: resolver(SessionMessagePageBadRequestError),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: Session.messagePage.schema.shape.sessionID,
+      }),
+    ),
+    validator(
+      "query",
+      z.object({
+        cursor: Session.messagePage.schema.shape.cursor,
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const query = c.req.valid("query")
+      try {
+        return c.json(await Session.messagePage({ sessionID, ...query }))
+      } catch (error) {
+        if (
+          error instanceof SessionHistory.MessagePageCursorInvalidError ||
+          error instanceof SessionHistory.MessagePageCursorStaleError
+        ) {
+          return c.json(error.toObject(), 400)
+        }
+        throw error
+      }
     },
   )
   .get(

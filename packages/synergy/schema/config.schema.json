@@ -7,6 +7,11 @@
       "description": "JSON schema reference for configuration validation",
       "type": "string"
     },
+    "locale": {
+      "description": "UI locale (system = follow OS, default: system)",
+      "type": "string",
+      "enum": ["system", "en", "zh-CN"]
+    },
     "theme": {
       "description": "Theme name to use for the interface",
       "type": "string"
@@ -142,6 +147,19 @@
             }
           },
           "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "cortex": {
+      "description": "Cortex task scheduling configuration",
+      "type": "object",
+      "properties": {
+        "maxConcurrentTasks": {
+          "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false
@@ -739,6 +757,12 @@
                   "required": ["input", "output"],
                   "additionalProperties": false
                 },
+                "supported_image_media_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
@@ -1069,6 +1093,36 @@
                 },
                 "encoderRetries": {
                   "description": "LLM retry count for intent/script/reward generation (default: 3)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "encoderTimeoutMs": {
+                  "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "encoderMaxOutputChars": {
+                  "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "reencodeConcurrency": {
+                  "description": "Maximum concurrent experience reencode workers (default: 5)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "reencodeRetries": {
+                  "description": "Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "reencodeRetryBackoffMs": {
+                  "description": "Initial backoff for transient reencode stage retries in milliseconds (default: 1000)",
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 9007199254740991
@@ -1883,28 +1937,28 @@
       "additionalProperties": false
     },
     "observability": {
-      "description": "Local logs, traces, and diagnostics settings",
+      "description": "Local logs, indexed telemetry, and diagnostics settings",
       "ref": "ObservabilityConfig",
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Enable local observability trace JSONL events (default: true)",
+          "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
           "type": "boolean"
         },
         "retentionDays": {
-          "description": "Days to retain local trace files (default: 7)",
+          "description": "Days to retain optional observability mirror files (default: 7)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "maxBytes": {
-          "description": "Maximum total trace storage in bytes (default: 250MB)",
+          "description": "Maximum total local observability storage in bytes (default: 250MB)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "stalledToolMs": {
-          "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+          "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
@@ -2020,6 +2074,7 @@
                   "type": "boolean"
                 },
                 "jsonlMirrorEnabled": {
+                  "description": "Enable optional JSONL mirror files for debugging exports",
                   "type": "boolean"
                 },
                 "maxSqliteBytes": {
@@ -2284,6 +2339,25 @@
           }
         }
       ]
+    },
+    "lspWriteDiagnostics": {
+      "description": "Include LSP diagnostics after file-writing tools complete (default: true)",
+      "type": "boolean"
+    },
+    "lspDiagnostics": {
+      "description": "Severity and scope policy for diagnostics returned after file-writing tools",
+      "type": "object",
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["error", "warning"]
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["delta", "file", "project"]
+        }
+      },
+      "additionalProperties": false
     },
     "instructions": {
       "description": "Additional instruction files or patterns to include",

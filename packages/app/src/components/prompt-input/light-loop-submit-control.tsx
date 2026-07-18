@@ -2,6 +2,8 @@ import { createSignal, onCleanup } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 
 const HOLD_DURATION_MS = 2000
 
@@ -10,6 +12,7 @@ export function LightLoopSubmitControl(props: {
   onEdit: () => void
   onCancel: () => Promise<void>
 }) {
+  const { i18n } = useLocale()
   const [holdTimer, setHoldTimer] = createSignal<ReturnType<typeof setTimeout> | null>(null)
   const [holdProgress, setHoldProgress] = createSignal(0)
   let holdFrame: number | undefined
@@ -72,15 +75,15 @@ export function LightLoopSubmitControl(props: {
       value={
         <div class="min-w-56 max-w-72">
           <div class="text-12-medium text-text-strong line-clamp-2">{props.taskDescription}</div>
-          <div class="mt-2 text-10-regular text-text-weak">Click to view or edit the task.</div>
-          <div class="mt-1 text-10-regular text-text-weak">Hold for 2 seconds to stop and exit Light Loop.</div>
+          <div class="mt-2 text-10-regular text-text-weak">{i18n._(PI.lightLoopTaskClick)}</div>
+          <div class="mt-1 text-10-regular text-text-weak">{i18n._(PI.lightLoopTaskHold)}</div>
         </div>
       }
     >
       <button
         type="button"
         class="prompt-input-toolbar-icon-button group relative flex size-8 items-center justify-center overflow-hidden select-none"
-        aria-label="Light Loop task. Click to edit; hold for 2 seconds to stop and exit."
+        aria-label={i18n._(PI.lightLoopTaskAria)}
         onPointerDown={startHold}
         onPointerUp={cancelHold}
         onPointerCancel={cancelHold}

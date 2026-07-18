@@ -48,15 +48,15 @@ armed/running/waiting/auditing → failed | cancelled
 
 The execution session is marked with `loopRole: "execution"`; the hidden review child is marked with `loopRole: "audit"`. Only the execution session can call `blueprint_loop_stop`, and only the recorded audit session can approve or reject.
 
-`blueprint_loop_stop` moves the loop to `auditing` only after its hidden Cortex reviewer has been launched and bound. Rejection increments the audit attempt record, returns the loop to `running`, and delivers instructions. Approval marks it `completed` and emits a terminal loop event.
+`blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the hidden Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. Rejection increments the audit attempt record, clears the accepted stop intent, returns the loop to `running`, and delivers instructions. Approval marks it `completed` and emits a terminal loop event.
 
 For user-owned loops, approval returns a completion notice to the execution session. For Lattice-owned loops, approval tells the session to analyze and record the step result instead of stopping at a user-facing summary.
 
 ## Light Loop State
 
-Light Loop stores its task description directly on the session workflow. A stop request contains the executor's summary, claimed completed work, evidence, limitations, request identity, and the hidden review task/session IDs.
+Light Loop stores its task description directly on the session workflow. A stop request first records the executor's summary, claimed completed work, evidence, limitations, and request identity without reviewer IDs.
 
-The write that records a stop request includes both reviewer IDs atomically. Repeated `loop_stop` calls are idempotent while that review is pending.
+After the execution-session lease is released, the Light Loop continuation prepares a hidden reviewer, durably binds its task and session IDs to the stop request, then starts it. Repeated `loop_stop` calls are idempotent while either the unbound stop intent or bound review is pending.
 
 The `lightloop-reviewer` has exclusive access to `light_loop_approve` and `light_loop_reject` for its parent stop request. Approval clears the workflow even though the review child is running. Rejection clears `stopRequest`, records attempt metadata, and delivers the reason, remaining items, and concrete instructions to the execution session.
 The active task description may be updated without restarting the workflow; the next model step re-reads the session and uses the revised task. The product surface permits editing only while the session is idle, and the service rejects updates while a stop request is under review. Light Loop cancellation is idempotent and uses the shared session-abort path to stop the active turn and descendant Cortex review tasks before conditionally clearing the workflow.
@@ -98,7 +98,7 @@ Policies run in descending priority:
 
 The first policy that returns a proposal wins. Per-session, per-policy deduplication keys the decision to the terminal assistant message, while Inbox delivery keys make persistence idempotent across concurrent requests and restart recovery.
 
-BlueprintLoop continues only a `running` bound loop. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or proposes a phase continuation. Light Loop proposes its task check only when no completion review is pending.
+BlueprintLoop normally continues a `running` bound loop, but an unbound stop intent is handled first by preparing, binding, and starting its reviewer. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or proposes a phase continuation. Light Loop similarly handles an unbound stop intent before proposing its ordinary task check.
 
 ### Agenda Wait Ownership
 
@@ -109,6 +109,7 @@ The wait check deliberately ignores `nextRunAt`, so an overdue or just-fired one
 When Agenda delivery wakes an active Light Loop or running BlueprintLoop execution session, the delivery appends system-origin cleanup guidance: it lists remaining one-shot waits with their `agenda_cancel` commands, exposes `agenda_cancel`, `agenda_list`, and the correct stop tool, and instructs the loop to cancel those waits before requesting review.
 
 `loop_stop` and `blueprint_loop_stop` call `AgendaSessionWakeup.assertClear` to reject the request while any one-shot wait remains, showing the cancellation commands in the error message.
+Pending stop intents suppress Agenda wake guidance and are re-driven through `SessionDrive` during startup recovery. A reviewer task interrupted after its durable binding is replaced from the surviving parent stop intent rather than treated as completed review work.
 
 ## Invariants
 

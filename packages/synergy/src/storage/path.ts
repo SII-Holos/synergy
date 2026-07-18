@@ -50,6 +50,10 @@ export namespace StoragePath {
     ...sessionRoot(scopeID, sessionID),
     "summary",
   ]
+  export const sessionSummaryCursor = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "summary_cursor",
+  ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
   export const sessionInboxRoot = (scopeID: ScopeID, sessionID: SessionID) => [
@@ -164,6 +168,17 @@ export namespace StoragePath {
     "outbox",
     contactId,
     messageId,
+  ]
+
+  export const githubDeliveriesRoot = () => ["github", "deliveries"]
+  export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]
+  export const githubRuntimeState = () => ["github", "runtime"]
+  export const githubPollState = (repository: string) => ["github", "poll-state", encodeURIComponent(repository)]
+  export const githubCiState = (repository: string, workflowName: string) => [
+    "github",
+    "ci",
+    encodeURIComponent(repository),
+    encodeURIComponent(workflowName),
   ]
 
   // Stats

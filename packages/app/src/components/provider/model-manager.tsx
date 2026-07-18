@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import { createMemo, Show, type Component } from "solid-js"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -7,6 +8,12 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useLocal, type LocalModel, type ModelKey } from "@/context/local"
 import { useProviders } from "@/hooks/use-providers"
 
+const freeTag = { id: "model.manager.tag.free", message: "Free" }
+const latestTag = { id: "model.manager.tag.latest", message: "Latest" }
+const quickLabel = { id: "model.manager.quick", message: "Quick" }
+const searchModelsPlaceholder = { id: "model.manager.search.placeholder", message: "Search models" }
+const noQuickSwitchLabel = { id: "model.manager.empty.quickSwitch", message: "No quick-switch models" }
+const noConnectedLabel = { id: "model.manager.empty.connected", message: "No connected model results" }
 export function sortModelGroups(profiles: ProviderRecommendationMap) {
   return (a: { category: string; items: LocalModel[] }, b: { category: string; items: LocalModel[] }) => {
     if (a.category === "Recent" && b.category !== "Recent") return -1
@@ -24,6 +31,7 @@ export function sortModelGroups(profiles: ProviderRecommendationMap) {
 }
 
 export function ModelManagerRow(props: { model: LocalModel; compact?: boolean }) {
+  const { _ } = useLingui()
   const showFree =
     (props.model.cost?.input ?? 0) === 0 &&
     (props.model.cost?.output ?? 0) === 0 &&
@@ -33,10 +41,10 @@ export function ModelManagerRow(props: { model: LocalModel; compact?: boolean })
     <div class="model-manager-name w-full min-w-0 flex items-center gap-x-2 text-left text-13-regular">
       <span class="model-manager-model-name min-w-0 truncate flex-1">{props.model.name}</span>
       <Show when={showFree}>
-        <Tag>Free</Tag>
+        <Tag>{_(freeTag)}</Tag>
       </Show>
       <Show when={!props.compact && props.model.latest}>
-        <Tag>Latest</Tag>
+        <Tag>{_(latestTag)}</Tag>
       </Show>
     </div>
   )
@@ -86,11 +94,12 @@ export const QuickSwitcherList: Component<{
     return models().find((model) => model.provider.id === selected.provider.id && model.id === selected.id)
   })
 
+  const { _ } = useLingui()
   return (
     <List<QuickSwitcherEntry>
       class={`flex-1 min-h-0 [&_[data-slot=list-scroll]]:flex-1 [&_[data-slot=list-scroll]]:min-h-0 ${props.class ?? ""}`}
-      search={{ placeholder: "Search models", autofocus: true }}
-      emptyMessage="No quick-switch models"
+      search={{ placeholder: _(searchModelsPlaceholder), autofocus: true }}
+      emptyMessage={_(noQuickSwitchLabel)}
       key={(x) => x.listKey}
       items={models}
       current={current()}
@@ -255,11 +264,12 @@ export const ConnectedModelManager: Component<{
     local?.model.set(model, { recent: true })
   }
 
+  const { _ } = useLingui()
   return (
     <List
       class={props.class}
-      search={{ placeholder: "Search models", autofocus: props.searchAutofocus }}
-      emptyMessage="No connected model results"
+      search={{ placeholder: _(searchModelsPlaceholder), autofocus: props.searchAutofocus }}
+      emptyMessage={_(noConnectedLabel)}
       key={(x) => `${x.provider.id}:${x.id}`}
       items={models}
       current={currentModel()}
@@ -287,7 +297,7 @@ export const ConnectedModelManager: Component<{
                 setQuickSwitcher({ modelID: model.id, providerID: model.provider.id }, checked)
               }}
             >
-              <span class="model-manager-quick-label text-12-regular text-text-weak">Quick</span>
+              <span class="model-manager-quick-label text-12-regular text-text-weak">{_(quickLabel)}</span>
             </Switch>
           </div>
         </div>

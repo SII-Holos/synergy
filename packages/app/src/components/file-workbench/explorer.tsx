@@ -1,3 +1,4 @@
+import { useLingui } from "@lingui/solid"
 import { For, Show, createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
@@ -7,6 +8,7 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
 import { useFile } from "@/context/file"
+import { fileExplorer as X } from "@/locales/messages"
 
 type TreeNodeRow = { kind: "node"; path: string; level: number; parent: string }
 type TreeStateRow = { kind: "loading" | "error" | "more"; path: string; level: number }
@@ -23,6 +25,7 @@ function gitStatus(status: string | undefined) {
 
 export function FileExplorer(props: { onClose: () => void }) {
   const file = useFile()
+  const lingui = useLingui()
   const [query, setQuery] = createSignal("")
   const [searching, setSearching] = createSignal(false)
   const [searchError, setSearchError] = createSignal<string>()
@@ -143,11 +146,15 @@ export function FileExplorer(props: { onClose: () => void }) {
 
   const loadMoreOnMount = (path: string) => {
     onMount(() => void file.explorer.loadChildren(path))
-    return <span>Loading more…</span>
+    return <span>{lingui._({ id: X.loadingMore.id, message: X.loadingMore.message })}</span>
   }
 
   return (
-    <aside class="file-explorer" aria-label="Files" style={{ width: `${file.explorer.width()}px` }}>
+    <aside
+      class="file-explorer"
+      aria-label={lingui._({ id: X.label.id, message: X.label.message })}
+      style={{ width: `${file.explorer.width()}px` }}
+    >
       <ResizeHandle
         direction="horizontal"
         edge="start"
@@ -159,31 +166,31 @@ export function FileExplorer(props: { onClose: () => void }) {
         onCollapse={props.onClose}
       />
       <div class="file-explorer-header">
-        <span class="file-explorer-title">Files</span>
+        <span class="file-explorer-title">{lingui._({ id: X.title.id, message: X.title.message })}</span>
         <div class="file-explorer-actions">
           <IconButton
             icon={getSemanticIcon(file.explorer.showHidden() ? "action.hide" : "action.view")}
             variant="ghost"
-            aria-label="Show hidden and ignored files"
+            aria-label={lingui._({ id: X.showHidden.id, message: X.showHidden.message })}
             aria-pressed={file.explorer.showHidden()}
             onClick={() => file.explorer.setShowHidden(!file.explorer.showHidden())}
           />
           <IconButton
             icon={getSemanticIcon("action.refresh")}
             variant="ghost"
-            aria-label="Refresh files"
+            aria-label={lingui._({ id: X.refresh.id, message: X.refresh.message })}
             onClick={file.explorer.refresh}
           />
           <IconButton
             icon={getSemanticIcon("navigation.collapse")}
             variant="ghost"
-            aria-label="Collapse all folders"
+            aria-label={lingui._({ id: X.collapseAll.id, message: X.collapseAll.message })}
             onClick={file.explorer.collapseAll}
           />
           <IconButton
             icon={getSemanticIcon("action.close")}
             variant="ghost"
-            aria-label="Close file tree"
+            aria-label={lingui._({ id: X.closeTree.id, message: X.closeTree.message })}
             onClick={props.onClose}
           />
         </div>
@@ -194,8 +201,8 @@ export function FileExplorer(props: { onClose: () => void }) {
           class="file-explorer-search-input"
           type="search"
           value={query()}
-          placeholder="Search files"
-          aria-label="Search files"
+          placeholder={lingui._({ id: X.searchPlaceholder.id, message: X.searchPlaceholder.message })}
+          aria-label={lingui._({ id: X.searchLabel.id, message: X.searchLabel.message })}
           onInput={(event) => setQuery(event.currentTarget.value)}
           onKeyDown={(event) => {
             if (event.key !== "Escape") return
@@ -211,9 +218,9 @@ export function FileExplorer(props: { onClose: () => void }) {
       </div>
       <Show when={activeHidden()}>
         <div class="file-explorer-hidden-notice">
-          <span>The active file is hidden by Explorer filters.</span>
+          <span>{lingui._({ id: X.hiddenNotice.id, message: X.hiddenNotice.message })}</span>
           <button type="button" onClick={() => file.explorer.setShowHidden(true)}>
-            Show it
+            {lingui._({ id: X.showIt.id, message: X.showIt.message })}
           </button>
         </div>
       </Show>
@@ -221,7 +228,13 @@ export function FileExplorer(props: { onClose: () => void }) {
         <Show
           when={query().trim()}
           fallback={
-            <div class="file-tree" role="tree" aria-label="Workspace files" tabIndex={0} onKeyDown={handleTreeKey}>
+            <div
+              class="file-tree"
+              role="tree"
+              aria-label={lingui._({ id: X.workspaceFiles.id, message: X.workspaceFiles.message })}
+              tabIndex={0}
+              onKeyDown={handleTreeKey}
+            >
               <VList
                 ref={(handle) => (listHandle = handle)}
                 data={rows()}
@@ -235,12 +248,13 @@ export function FileExplorer(props: { onClose: () => void }) {
                     fallback={
                       <div class="file-tree-state" style={{ "padding-left": `${row.level * 14 + 8}px` }}>
                         <Show when={row.kind === "loading"}>
-                          <Spinner class="size-3.5" /> <span>Loading…</span>
+                          <Spinner class="size-3.5" />{" "}
+                          <span>{lingui._({ id: X.loading.id, message: X.loading.message })}</span>
                         </Show>
                         <Show when={row.kind === "more"}>{loadMoreOnMount(row.path)}</Show>
                         <Show when={row.kind === "error"}>
                           <button type="button" onClick={() => file.explorer.loadChildren(row.path, { force: true })}>
-                            Retry loading folder
+                            {lingui._({ id: X.retryLoadingFolder.id, message: X.retryLoadingFolder.message })}
                           </button>
                         </Show>
                       </div>
@@ -284,7 +298,10 @@ export function FileExplorer(props: { onClose: () => void }) {
                           />
                           <span class="file-tree-name">{node()?.name ?? nodeRow().path.split("/").at(-1)}</span>
                           <Show when={node()?.symlink}>
-                            <span class="file-tree-link" aria-label="Symbolic link">
+                            <span
+                              class="file-tree-link"
+                              aria-label={lingui._({ id: X.symbolicLink.id, message: X.symbolicLink.message })}
+                            >
                               ↗
                             </span>
                           </Show>
@@ -300,13 +317,19 @@ export function FileExplorer(props: { onClose: () => void }) {
             </div>
           }
         >
-          <div class="file-search-results" role="listbox" aria-label="File search results">
+          <div
+            class="file-search-results"
+            role="listbox"
+            aria-label={lingui._({ id: X.searchResults.id, message: X.searchResults.message })}
+          >
             <Show when={!searchError()} fallback={<div class="file-explorer-message">{searchError()}</div>}>
               <For
                 each={searchResults()}
                 fallback={
                   <Show when={!searching()}>
-                    <div class="file-explorer-message">No matching files</div>
+                    <div class="file-explorer-message">
+                      {lingui._({ id: X.noMatchingFiles.id, message: X.noMatchingFiles.message })}
+                    </div>
                   </Show>
                 }
               >

@@ -1878,7 +1878,6 @@
             "in": "query",
             "name": "parentOnly",
             "schema": {
-              "default": true,
               "type": "boolean"
             }
           },
@@ -1886,8 +1885,15 @@
             "in": "query",
             "name": "includeArchived",
             "schema": {
-              "default": false,
               "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "schema": {
+              "type": "string",
+              "enum": ["project", "home", "channel", "background", "github"]
             }
           },
           {
@@ -1962,6 +1968,31 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.global.nav.pinned({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/github/configured": {
+      "get": {
+        "operationId": "github.configured",
+        "summary": "Check whether the GitHub App is configured",
+        "description": "Reports whether both required GitHub App environment variables are present without exposing them.",
+        "responses": {
+          "200": {
+            "description": "GitHub App configuration status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GitHubConfiguredResponse"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.github.configured({\n  ...\n})"
           }
         ]
       }
@@ -3064,7 +3095,8 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime"
+                "runtime",
+                "github"
               ]
             },
             "required": true
@@ -3136,7 +3168,8 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime"
+                "runtime",
+                "github"
               ]
             },
             "required": true
@@ -3219,7 +3252,8 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime"
+                "runtime",
+                "github"
               ]
             },
             "required": true
@@ -4350,7 +4384,7 @@
             "name": "category",
             "schema": {
               "type": "string",
-              "enum": ["project", "home", "channel", "background"]
+              "enum": ["project", "home", "channel", "background", "github"]
             }
           },
           {
@@ -6266,6 +6300,102 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.prompt({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/session/{sessionID}/message/page": {
+      "get": {
+        "operationId": "session.messagePage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "sessionID",
+            "schema": {
+              "type": "string",
+              "pattern": "^ses.*"
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500
+            }
+          }
+        ],
+        "summary": "Get a page of session messages",
+        "description": "Retrieve a bounded session message window and an opaque cursor for loading older history.",
+        "responses": {
+          "200": {
+            "description": "Cursor-paged session messages",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionMessagePage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or stale message cursor",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/BadRequestError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionMessagePageCursorInvalidError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SessionMessagePageCursorStaleError"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.messagePage({\n  ...\n})"
           }
         ]
       }
@@ -22361,7 +22491,7 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "github"]
           },
           "lastActivityAt": {
             "type": "number"
@@ -22472,6 +22602,15 @@
           }
         },
         "required": ["items", "total"]
+      },
+      "GitHubConfiguredResponse": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          }
+        },
+        "required": ["configured"]
       },
       "AgendaWebhookResult": {
         "type": "object",
@@ -23094,6 +23233,265 @@
             "items": {
               "type": "string"
             }
+          }
+        },
+        "additionalProperties": false
+      },
+      "GitHubIntegrationConfig": {
+        "description": "Outbound GitHub App polling and automation configuration",
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "watchedRepositories": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "eventTypes": {
+            "default": ["issues.opened", "workflow_run.completed"],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "ciFailureThreshold": {
+            "default": 3,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "ciFailureWindowHours": {
+            "default": 24,
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "modelBudgetNano": {
+            "default": {
+              "maxTokens": 256,
+              "maxCost": 0.001
+            },
+            "type": "object",
+            "properties": {
+              "maxTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxCost": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": ["maxTokens", "maxCost"],
+            "additionalProperties": false
+          },
+          "modelBudgetProposal": {
+            "default": {
+              "maxTokens": 2048,
+              "maxCost": 0.02
+            },
+            "type": "object",
+            "properties": {
+              "maxTokens": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "maxCost": {
+                "type": "number",
+                "minimum": 0
+              }
+            },
+            "required": ["maxTokens", "maxCost"],
+            "additionalProperties": false
+          },
+          "classifierEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "proposalEnabled": {
+            "default": false,
+            "type": "boolean"
+          },
+          "polling": {
+            "default": {
+              "enabled": true,
+              "intervalMs": 60000,
+              "overlapWindowMs": 300000,
+              "pageSize": 100,
+              "maxPages": 30
+            },
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "default": true,
+                "type": "boolean"
+              },
+              "intervalMs": {
+                "default": 60000,
+                "type": "integer",
+                "minimum": 15000,
+                "maximum": 300000
+              },
+              "overlapWindowMs": {
+                "default": 300000,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 600000
+              },
+              "pageSize": {
+                "default": 100,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "maxPages": {
+                "default": 30,
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              }
+            },
+            "additionalProperties": false
+          },
+          "fixWorkflow": {
+            "default": {
+              "enabled": false,
+              "repositoryMapping": {},
+              "maxRetries": 3,
+              "timeoutMs": 900000,
+              "locatorAgent": "github-issue-locator",
+              "agent": "github-fix-coder",
+              "pushBranchPrefix": "synergy/fix/"
+            },
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
+              "repositoryMapping": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "maxRetries": {
+                "default": 3,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "timeoutMs": {
+                "default": 900000,
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "locatorAgent": {
+                "default": "github-issue-locator",
+                "type": "string",
+                "minLength": 1
+              },
+              "agent": {
+                "default": "github-fix-coder",
+                "type": "string",
+                "minLength": 1
+              },
+              "pushBranchPrefix": {
+                "default": "synergy/fix/",
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "additionalProperties": false
+          },
+          "reviewWorkflow": {
+            "default": {
+              "enabled": false,
+              "repositoryMapping": {},
+              "eventTypes": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
+              "reviewCommands": ["bun test", "bun run typecheck"],
+              "maxRetries": 3,
+              "timeoutMs": 900000,
+              "agent": "github-review-agent",
+              "publishReviewComment": true,
+              "publishCheckRun": true
+            },
+            "type": "object",
+            "properties": {
+              "enabled": {
+                "default": false,
+                "type": "boolean"
+              },
+              "repositoryMapping": {
+                "default": {},
+                "type": "object",
+                "propertyNames": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "additionalProperties": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "eventTypes": {
+                "default": ["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "reviewCommands": {
+                "default": ["bun test", "bun run typecheck"],
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "maxRetries": {
+                "default": 3,
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 20
+              },
+              "timeoutMs": {
+                "default": 900000,
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "agent": {
+                "default": "github-review-agent",
+                "type": "string",
+                "minLength": 1
+              },
+              "publishReviewComment": {
+                "default": true,
+                "type": "boolean"
+              },
+              "publishCheckRun": {
+                "default": true,
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
           }
         },
         "additionalProperties": false
@@ -25055,6 +25453,11 @@
             "description": "JSON schema reference for configuration validation",
             "type": "string"
           },
+          "locale": {
+            "description": "UI locale (system = follow OS, default: system)",
+            "type": "string",
+            "enum": ["system", "en", "zh-CN"]
+          },
           "theme": {
             "description": "Theme name to use for the interface",
             "type": "string"
@@ -25175,6 +25578,9 @@
               }
             },
             "additionalProperties": false
+          },
+          "github": {
+            "$ref": "#/components/schemas/GitHubIntegrationConfig"
           },
           "watcher": {
             "type": "object",
@@ -25761,7 +26167,8 @@
               "channels",
               "holos",
               "email",
-              "runtime"
+              "runtime",
+              "github"
             ]
           },
           "filename": {
@@ -25921,7 +26328,8 @@
               "channels",
               "holos",
               "email",
-              "runtime"
+              "runtime",
+              "github"
             ]
           },
           "filename": {
@@ -26069,7 +26477,8 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime"
+                "runtime",
+                "github"
               ]
             }
           },
@@ -26286,7 +26695,8 @@
                     "channels",
                     "holos",
                     "email",
-                    "runtime"
+                    "runtime",
+                    "github"
                   ]
                 }
               }
@@ -26341,7 +26751,8 @@
                 "channels",
                 "holos",
                 "email",
-                "runtime"
+                "runtime",
+                "github"
               ]
             }
           },
@@ -27654,7 +28065,11 @@
           },
           "category": {
             "type": "string",
-            "enum": ["project", "home", "channel", "background"]
+            "enum": ["project", "home", "channel", "background", "github"]
+          },
+          "provenance": {
+            "type": "string",
+            "const": "github"
           },
           "endpoint": {
             "$ref": "#/components/schemas/SessionEndpoint"
@@ -29820,6 +30235,107 @@
             "$ref": "#/components/schemas/CompactionRecoveryPart"
           }
         ]
+      },
+      "SessionMessagePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "info": {
+                  "$ref": "#/components/schemas/Message"
+                },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Part"
+                  }
+                }
+              },
+              "required": ["info", "parts"]
+            }
+          },
+          "referencedRoots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "info": {
+                  "$ref": "#/components/schemas/Message"
+                },
+                "parts": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Part"
+                  }
+                }
+              },
+              "required": ["info", "parts"]
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["items", "referencedRoots", "nextCursor", "hasMore", "total"]
+      },
+      "SessionMessagePageCursorInvalidError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionMessagePageCursorInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SessionMessagePageCursorStaleError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SessionMessagePageCursorStaleError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "anchorID": {
+                "type": "string"
+              }
+            },
+            "required": ["message", "anchorID"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "SessionRollbackEvent": {
         "type": "object",

@@ -1,3 +1,5 @@
+export const errorUnknownDescriptor = { id: "ui.errorCard.unknownError", message: "Unknown error" }
+
 export function errorPreview(error: string) {
   const line = error
     .replace(/^error:\s*/i, "")

@@ -1,3 +1,7 @@
+import { LoopEvent } from "../blueprint/event"
+import { Bus } from "../bus"
+import { Cortex } from "../cortex"
+import { Session } from "./index"
 import { BlueprintLoopStore, type Info as BlueprintLoopInfo } from "../blueprint"
 import { ContinuationKernel } from "./continuation-kernel"
 
@@ -10,9 +14,68 @@ export const BlueprintContinuationPolicy: ContinuationKernel.Policy = {
 
     const loop = await BlueprintLoopStore.get(gate.scopeID, loopID).catch(() => undefined)
     if (!loop || loop.status !== "running") return undefined
+    if (!loop.stopRequest) return continuationProposal(loop)
 
-    return continuationProposal(loop)
+    const task = await Cortex.prepare({
+      description: `[Review] Audit BlueprintLoop ${loop.id}`,
+      prompt: reviewPrompt(loop),
+      agent: loop.auditAgent || "supervisor",
+      executionRole: "delegated_subagent",
+      category: "general",
+      parentSessionID: loop.sessionID,
+      parentMessageID: loop.stopRequest.requesterMessageID,
+      reuseInterrupted: true,
+      notifyParentOnComplete: false,
+      visibility: "hidden",
+    })
+    await Session.update(task.sessionID, (draft) => {
+      draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+    })
+    await BlueprintLoopStore.updateStatus(gate.scopeID, loop.id, {
+      status: "auditing",
+      auditSessionID: task.sessionID,
+      auditTaskID: task.id,
+    })
+    await Bus.publish(LoopEvent.Auditing, { loopID: loop.id })
+    await Cortex.start(task.id)
+    return { kind: "handled" }
   },
+}
+
+function reviewPrompt(loop: BlueprintLoopInfo): string {
+  const stopRequest = loop.stopRequest
+  if (!stopRequest) throw new Error(`BlueprintLoop ${loop.id} has no pending stop request`)
+  return [
+    "## Task",
+    `Audit BlueprintLoop ${loop.id}.`,
+    "",
+    "## Blueprint",
+    `Note ID: ${loop.noteID}. Read the complete Blueprint with note_read.`,
+    loop.userPrompt ? "" : undefined,
+    loop.userPrompt ? "## Start user instruction" : undefined,
+    loop.userPrompt,
+    "",
+    "## Stop request",
+    `**Summary:** ${stopRequest.summary}`,
+    stopRequest.completed?.length
+      ? `**Completed:**\n${stopRequest.completed.map((item) => `- ${item}`).join("\n")}`
+      : "",
+    stopRequest.evidence?.length ? `**Evidence:**\n${stopRequest.evidence.map((item) => `- ${item}`).join("\n")}` : "",
+    stopRequest.remaining?.length
+      ? `**Remaining:**\n${stopRequest.remaining.map((item) => `- ${item}`).join("\n")}`
+      : "**Remaining:** none claimed",
+    "",
+    "## Execution session",
+    `Session ID: ${loop.sessionID}. Use session_read to inspect the execution trajectory.`,
+    "",
+    "## Instructions",
+    "1. Inspect the Blueprint, start user instruction, execution trajectory, delivered artifacts, workspace changes, and domain-appropriate verification evidence.",
+    "2. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
+    "3. If all required outcomes are complete and verified, call blueprint_loop_approve with the execution session ID and a verdict summary.",
+    "4. If anything required is missing, incorrect, or unverified, call blueprint_loop_reject with concrete remaining work and instructions.",
+  ]
+    .filter((line): line is string => line !== undefined && line !== "")
+    .join("\n")
 }
 
 function continuationProposal(loop: BlueprintLoopInfo): ContinuationKernel.InboxProposal {

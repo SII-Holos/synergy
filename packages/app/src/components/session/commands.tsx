@@ -14,6 +14,8 @@ import type { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import type { UserMessage } from "@ericsanchezok/synergy-sdk"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { useNavigate } from "@solidjs/router"
+import { useLocale } from "@/context/locale"
+import { S } from "./session-i18n"
 
 export function useSessionCommands(params: {
   command: ReturnType<typeof useCommand>
@@ -57,12 +59,13 @@ export function useSessionCommands(params: {
 
   const workbench = useWorkbenchPanels()
   const file = useFile()
+  const { i18n } = useLocale()
 
   command.register(() => [
     {
       id: "session.new",
-      title: "New session",
-      description: "Start a fresh conversation",
+      title: S.cmdNewSession.message,
+      description: S.cmdNewSessionDesc.message,
       category: "Session",
       keybind: "mod+shift+s",
       slash: "new",
@@ -72,8 +75,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "file.open",
-      title: "Open file",
-      description: "Search and open a file",
+      title: S.cmdOpenFile.message,
+      description: S.cmdOpenFileDesc.message,
       category: "File",
       keybind: "mod+p",
       slash: "open",
@@ -81,29 +84,29 @@ export function useSessionCommands(params: {
     },
     {
       id: "file.refresh",
-      title: "Refresh current file",
-      description: "Reload the active file and expanded folders",
+      title: S.cmdRefreshFile.message,
+      description: S.cmdRefreshFileDesc.message,
       category: "File",
       onSelect: file.explorer.refresh,
     },
     {
       id: "file.tree.toggle",
-      title: "Toggle file tree",
-      description: "Show or hide the file explorer",
+      title: S.cmdToggleFileTree.message,
+      description: S.cmdToggleFileTreeDesc.message,
       category: "View",
       onSelect: () => file.explorer.setOpen(!file.explorer.open()),
     },
     {
       id: "file.tree.collapse",
-      title: "Collapse folders",
-      description: "Collapse all folders in the file explorer",
+      title: S.cmdCollapseFolders.message,
+      description: S.cmdCollapseFoldersDesc.message,
       category: "View",
       onSelect: file.explorer.collapseAll,
     },
     {
       id: "terminal.toggle",
-      title: "Toggle terminal",
-      description: "Show or hide the terminal",
+      title: S.cmdToggleTerminal.message,
+      description: S.cmdToggleTerminalDesc.message,
       category: "View",
       keybind: "ctrl+`",
       slash: "terminal",
@@ -119,8 +122,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "workspace.close",
-      title: "Close side workspace",
-      description: "Close the side workspace",
+      title: S.cmdCloseSideWs.message,
+      description: S.cmdCloseSideWsDesc.message,
       category: "View",
       keybind: "mod+shift+w",
       disabled: !workbench.surface("side").opened(),
@@ -131,8 +134,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "terminal.new",
-      title: "New terminal",
-      description: "Create a new terminal tab",
+      title: S.cmdNewTerminal.message,
+      description: S.cmdNewTerminalDesc.message,
       category: "Terminal",
       keybind: "ctrl+shift+`",
       onSelect: () => {
@@ -141,8 +144,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "message.previous",
-      title: "Previous message",
-      description: "Go to the previous user message",
+      title: S.cmdPrevMessage.message,
+      description: S.cmdPrevMessageDesc.message,
       category: "Session",
       keybind: "mod+arrowup",
       disabled: !routeParams.id,
@@ -150,8 +153,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "message.next",
-      title: "Next message",
-      description: "Go to the next user message",
+      title: S.cmdNextMessage.message,
+      description: S.cmdNextMessageDesc.message,
       category: "Session",
       keybind: "mod+arrowdown",
       disabled: !routeParams.id,
@@ -159,8 +162,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "model.choose",
-      title: "Choose model",
-      description: "Select a different model",
+      title: S.cmdChooseModel.message,
+      description: S.cmdChooseModelDesc.message,
       category: "Model",
       keybind: "mod+'",
       slash: "model",
@@ -168,8 +171,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "mcp.toggle",
-      title: "Toggle MCPs",
-      description: "Toggle MCPs",
+      title: S.cmdToggleMcp.message,
+      description: S.cmdToggleMcpDesc.message,
       category: "MCP",
       keybind: "mod+;",
       slash: "mcp",
@@ -177,8 +180,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "agent.cycle",
-      title: "Cycle agent",
-      description: "Switch to the next agent",
+      title: S.cmdCycleAgent.message,
+      description: S.cmdCycleAgentDesc.message,
       category: "Agent",
       keybind: "mod+.",
       slash: "agent",
@@ -186,31 +189,34 @@ export function useSessionCommands(params: {
     },
     {
       id: "agent.cycle.reverse",
-      title: "Cycle agent backwards",
-      description: "Switch to the previous agent",
+      title: S.cmdCycleAgentRev.message,
+      description: S.cmdCycleAgentRevDesc.message,
       category: "Agent",
       keybind: "shift+mod+.",
       onSelect: () => local.agent.move(-1),
     },
     {
       id: "model.variant.cycle",
-      title: "Cycle thinking effort",
-      description: "Switch to the next effort level",
+      title: S.cmdCycleEffort.message,
+      description: S.cmdCycleEffortDesc.message,
       category: "Model",
       keybind: "shift+mod+t",
       onSelect: () => {
         local.model.variant.cycle()
         showToast({
           type: "info",
-          title: "Thinking effort changed",
-          description: "The thinking effort has been changed to " + (local.model.variant.displayed() ?? "Default"),
+          title: S.cmdToastEffortChanged.message,
+          description: i18n._({
+            ...S.cmdToastEffortChangedDesc,
+            values: { effort: local.model.variant.displayed() ?? "Default" },
+          }),
         })
       },
     },
     {
       id: "session.undo",
-      title: "Undo",
-      description: "Undo the last message turn",
+      title: S.cmdUndo.message,
+      description: S.cmdUndoDesc.message,
       category: "Session",
       slash: "undo",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
@@ -223,8 +229,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.redo",
-      title: "Redo",
-      description: "Restore the last undone message turn",
+      title: S.cmdRedo.message,
+      description: S.cmdRedoDesc.message,
       category: "Session",
       slash: "redo",
       disabled: !routeParams.id || info()?.history?.rollback?.canUnrollback !== true,
@@ -238,8 +244,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.rewind_to_here",
-      title: "Rewind to here",
-      description: "Rewind session to the active message",
+      title: S.cmdRewindToHere.message,
+      description: S.cmdRewindToHereDesc.message,
       category: "Session",
       disabled: !routeParams.id || !activeMessage(),
       onSelect: async () => {
@@ -251,8 +257,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.restore_files",
-      title: "Restore files",
-      description: "Restore files changed by the undone turn",
+      title: S.cmdRestoreFiles.message,
+      description: S.cmdRestoreFilesDesc.message,
       category: "Session",
       disabled: !routeParams.id || (info()?.history?.rollback?.patchPartIDs.length ?? 0) === 0,
       onSelect: async () => {
@@ -263,15 +269,15 @@ export function useSessionCommands(params: {
         const restoredFiles = result.data?.restoredFiles.length ?? 0
         showToast({
           type: "success",
-          title: "Files restored",
-          description: `${restoredFiles} file${restoredFiles === 1 ? "" : "s"} restored`,
+          title: S.cmdToastFilesRestored.message,
+          description: i18n._({ ...S.cmdToastFilesRestoredDesc, values: { count: restoredFiles } }),
         })
       },
     },
     {
       id: "session.compact",
-      title: "Compact session",
-      description: "Summarize the session to reduce context size",
+      title: S.cmdCompact.message,
+      description: S.cmdCompactDesc.message,
       category: "Session",
       slash: "compact",
       disabled: !routeParams.id || (visibleUserMessages()?.length ?? 0) === 0,
@@ -282,8 +288,8 @@ export function useSessionCommands(params: {
         if (!model) {
           showToast({
             type: "warning",
-            title: "No model selected",
-            description: "Connect a provider to summarize this session",
+            title: S.cmdToastNoModel.message,
+            description: S.cmdToastNoModelDesc.message,
           })
           return
         }
@@ -296,8 +302,8 @@ export function useSessionCommands(params: {
     },
     {
       id: "session.fork",
-      title: "Fork session",
-      description: "Fork the current message history",
+      title: S.cmdFork.message,
+      description: S.cmdForkDesc.message,
       category: "Session",
       keybind: "mod+shift+f",
       disabled: !routeParams.id,

@@ -229,6 +229,7 @@ export namespace Session {
       SessionNav.deriveCategory({
         scopeType,
         endpointKind: session.endpoint?.kind,
+        provenance: session.provenance,
         parentID: session.parentID,
         cortex: session.cortex,
         agenda: session.agenda,
@@ -320,6 +321,7 @@ export namespace Session {
   export async function create(input?: {
     scope?: Scope
     parentID?: string
+    provenance?: Info["provenance"]
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
@@ -359,6 +361,7 @@ export namespace Session {
     const category = SessionNav.deriveCategory({
       scopeType,
       endpointKind: endpoint?.kind,
+      provenance: input?.provenance,
       parentID: input?.parentID,
       cortex: input?.cortex,
       agenda: input?.agenda,
@@ -370,6 +373,7 @@ export namespace Session {
       scope,
       parentID: input?.parentID,
       forkedFrom: input?.forkedFrom,
+      provenance: input?.provenance,
       category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
@@ -679,6 +683,15 @@ export namespace Session {
     },
   )
 
+  export const messagePage = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    async (input) => SessionHistory.messagePage(input),
+  )
+
   export const rollback = SessionHistory.rollback
   export const unrollback = SessionHistory.unrollback
   export const restoreFiles = SessionHistory.restoreFiles
@@ -843,7 +856,7 @@ export namespace Session {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
-    const msgs = await messages({ sessionID })
+    const msgs = await SessionHistory.modelMessages({ sessionID })
     for (let i = msgs.length - 1; i >= 0; i--) {
       const msg = msgs[i]
       if (!lastExchange.assistant && msg.info.role === "assistant") {

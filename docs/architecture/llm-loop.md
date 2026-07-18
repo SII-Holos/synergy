@@ -16,11 +16,11 @@ During ownership:
 
 - the lease abort signal is shared by the session run;
 - status changes are published as busy, retry, idle, or recovering;
-- the loop-scoped message cache holds the assembled raw history;
+- the loop-scoped message cache holds the compaction-aware model working set;
 - all loop writes update that cache and durable storage;
 - cache and recall state are released when the loop exits.
 
-The message cache is valid because the active loop is the sole session writer. Paths that rewrite history in ways the incremental cache does not model, especially compaction, invalidate it and force an authoritative reread.
+The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed.
 
 ## Root Selection
 
@@ -75,18 +75,28 @@ The Web composer uses the same intent layering:
 
 An explicit selector choice persists as `modelOverride`. Provider authentication remains provider-specific; the `openai-codex` native Codex path does not receive the normal OpenAI API-key/base-URL override.
 
+### Model variants and reasoning options
+
+Model capability metadata from catalogs such as models.dev describes what a model advertises, but it does not prove that a service reusing another provider's AI SDK package accepts the same provider option semantics. Automatic reasoning variants are derived from model identity (`model.id`, API model ID, or model family) combined with the direct transport. They are not selected from provider IDs, and a shared npm package alone does not establish option compatibility, so custom provider aliases retain correct behavior.
+
+`ProviderTransform.variants()` applies transport-specific rules for third-party services on Anthropic and OpenAI-compatible wiring. Kimi K3 models on direct Anthropic transport expose catalog-declared `low`, `high`, and `max` variants. `low` and `high` map to Anthropic `effort`; `max` omits `effort` because Kimi's service default is already `max` and the locked Anthropic SDK accepts only `low`, `medium`, or `high`. Selecting no variant likewise uses Kimi's server-side `max` default. Kimi K2.x models remain provider-managed and receive no automatic Anthropic thinking variants. MiniMax M2.x models on direct Anthropic transport likewise produce no variants because reasoning is always on. MiniMax M3 on direct Anthropic transport exposes only a `max` variant mapped to `thinking: { type: "adaptive" }`; without it, reasoning defaults to off. MiniMax models on direct OpenAI-compatible Chat transport receive no `reasoningEffort` variants because that endpoint does not support `reasoning_effort`.
+
+When a third-party transport case returns no automatic variants, a configured `role_variant` such as `max` is applied only if the resolved model exposes a same-named variant; otherwise the provider receives no generated option and uses its server-side reasoning default. User-defined model `variants` are merged after automatic defaults and can add or override named variants for individual models.
+
 ## Internal LLM Invocation Paths
 
 Not every model call belongs to a persisted conversation, but every product inference must use a deliberate lifecycle boundary.
 
-| Lifecycle                      | Current boundary                                                                                                                     | Examples and properties                                                                                                                                        |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sessionless derived work       | Resolve a hidden internal agent and model, then call `LLM.stream()` without creating a session or persisting an inference transcript | title and turn summaries, Experience encoding, SmartAllow classification, and agent generation; no resumable transcript, Cortex progress, or completion notice |
-| Existing durable work          | `SessionInvoke` and the owning session loop                                                                                          | user/API input, Channel or Agenda execution, workflow continuation, and in-place compaction                                                                    |
-| New delegated or reviewed work | `Cortex.launch()`                                                                                                                    | a child session with lineage, visibility, concurrency, progress, cancellation, timeout, cleanup, and a summary/final/structured output contract                |
-| Provider/bootstrap probe       | a narrow direct AI SDK call                                                                                                          | setup capability probing before the normal agent/session runtime is available                                                                                  |
+| Lifecycle                      | Current boundary                                                                                                                     | Examples and properties                                                                                                                                                                            |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sessionless derived work       | Resolve a hidden internal agent and model, then call `LLM.stream()` without creating a session or persisting an inference transcript | title and turn summaries, Experience encoding, SmartAllow classification, agent generation, and GitHub shadow issue classification; no resumable transcript, Cortex progress, or completion notice |
+| Existing durable work          | `SessionInvoke` and the owning session loop                                                                                          | user/API input, Channel or Agenda execution, workflow continuation, and in-place compaction                                                                                                        |
+| New delegated or reviewed work | `Cortex.launch()`                                                                                                                    | a child session with lineage, visibility, concurrency, progress, cancellation, timeout, cleanup, and a summary/final/structured output contract                                                    |
+| Provider/bootstrap probe       | a narrow direct AI SDK call                                                                                                          | setup capability probing before the normal agent/session runtime is available                                                                                                                      |
 
 `library/experience-encoder.ts` currently defines a private `callAgent()` helper for its own three encoders. It is not a shared repository API. Other sessionless callers use the same underlying resolution and `LLM.stream()` pattern independently. They may pass an existing or request-scoped session/message identity because the shared API requires context, but they do not create a durable session or store the inference exchange. That shared LLM boundary preserves provider transforms, model variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization; direct product calls to `generateText()` or `streamText()` would bypass part of that contract.
+
+The GitHub shadow classifier (`classifyGitHubObservation()`) is a sessionless caller in this family: it resolves the hidden `github-shadow-classifier` agent through the nano model role, calls `LLM.stream()` with an ephemeral session/message identity, passes `maxOutputTokens` from its budget config, and discards the exchange. No session or message record persists.
 
 Sessionless work is appropriate only when the result is derived data and a durable transcript would be noise. Work that users or parent agents must inspect, resume, cancel, audit, or receive as a task belongs in a session. New ordinary child work uses Cortex rather than manually composing `Session.create()` with `SessionInvoke`; specialized existing flows such as `look_at` and Chronicler are explicit exceptions, not the default delegation contract.
 
@@ -167,7 +177,7 @@ The `summarize` post-step job computes file diffs and derives title/body for eac
 
 Concurrent summarizations for the same session use a FIFO queue keyed by terminal assistant revision, allowing later continuations of one root turn while coalescing duplicate triggers. Cancellation propagates through snapshot and LLM work, and a worker settles before the queue advances so late writes cannot overwrite a newer revision. A stale persisted `pending` state is projected to `error/timeout` at the backend read boundary. The frontend renders that server-owned state without comparing `deadlineAt` to its local clock. Each run owns a `diffCache` so its session-level and turn-level computations can share an identical in-flight snapshot range. See [Sessions and Messages — Turn Diffs](session-and-messages.md#turn-diffs) for the schema and contract.
 
-The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. A later queued assistant revision drops that older snapshot and rereads authoritative durable history, so it sees the complete continuation without retaining multiple full histories in memory. Direct callers without a snapshot also use durable history.
+The post-job gives the first worker the loop's existing top-level message snapshot instead of rereading complete session history. It treats message entries and nested info/parts as immutable while deriving summaries. Later queued revisions retain only their bounded root-turn snapshot rather than another full working set; session aggregation extends the discardable persisted summary cursor, while direct callers without a snapshot read authoritative durable history. If an existing session aggregation has no cursor, one bounded call rebuilds it from complete history before incremental updates resume.
 
 ## Prompt Budget
 
@@ -202,12 +212,13 @@ The compaction job:
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
 3. trims oldest summary input if even the compaction model cannot accept the full history;
-4. persists a hidden compaction attempt with `includeInContext = false` so streamed output and failures remain auditable without affecting later prompts;
+4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
-6. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant as a terminal boundary with `summary = true`, `parentID = R.id`, and `rootID = R.id`;
-7. publishes `session.compacted` only after that commit.
+6. records provider or processor failures as `failed` and empty output as `empty`, leaving those terminal attempts hidden and outside model context;
+7. after a non-empty summary is complete, writes a `compaction_recovery` part and commits the assistant with attempt state `committed`, `summary = true`, `visible = true`, `includeInContext = true`, `parentID = R.id`, and `rootID = R.id`;
+8. publishes `session.compacted` only after that commit.
 
-The `summary` flag is the commit marker, not an in-progress placeholder. A failed or empty attempt stays hidden and excluded from model context, does not fulfill the request, and does not establish a filtering or pruning boundary.
+The `summary` flag is the context-boundary commit marker, not an in-progress placeholder. The attempt state is the presentation lifecycle: `running` survives the processor's terminal checkpoint until the compaction owner resolves it to `committed`, `failed`, or `empty`. Failed and empty attempts stay hidden and excluded from model context, do not fulfill the request, and do not establish a filtering or pruning boundary.
 
 The compaction agent cannot use tools or continue the user's task. Its prompt requires observed facts, completed work, current state, next steps, constraints, and relevant files without inventing progress.
 
@@ -221,7 +232,9 @@ Automatic compaction writes a hidden non-root system continuation belonging to `
 
 ### Filtering and pruning
 
-Later model projection keeps the completed summary and messages after that boundary. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+Later model projection keeps the boundary root, completed summaries for that root, and messages after the latest summary. Earlier completed summaries remain available for audit but are marked out of context. The underlying pre-compaction messages remain in durable storage and can still be inspected through raw/full history paths.
+
+Model working-set loading applies rollback before boundary selection and restores legacy stable-ID chronology from message creation time. It scans all small message-info records but loads parts only for the selected working set. The active loop caches that projected set and maintains it incrementally; it never retains the full pre-compaction transcript.
 
 Separately, asynchronous pruning clears large outputs from older completed tool parts when all of these conditions hold:
 
@@ -232,7 +245,7 @@ Separately, asynchronous pruning clears large outputs from older completed tool 
 - accumulated protected and prunable token thresholds are exceeded.
 
 Pruning is configurable and records a compaction timestamp on the tool state.
-It operates on the loop's existing immutable message snapshot, and its `Session.updatePart()` writes maintain the loop-scoped message cache incrementally. Running a prune job does not invalidate or reread the complete session history.
+It operates on the loop's existing immutable working-set snapshot, and its `Session.updatePart()` writes maintain the loop-scoped cache incrementally. Running a prune job does not invalidate or reread the complete session history.
 
 ## Streaming and Persistence
 
