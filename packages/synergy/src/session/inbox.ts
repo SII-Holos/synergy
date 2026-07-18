@@ -1,4 +1,5 @@
 import z from "zod"
+import { canonicalEqual, canonicalHash } from "@/util/canonical"
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { GlobalBus } from "@/bus/global"
@@ -47,6 +48,11 @@ export namespace SessionInbox {
     id: true,
   })
   const PayloadPart = z.discriminatedUnion("type", [PayloadTextPart, PayloadAttachmentPart])
+  export type PayloadPartType = z.infer<typeof PayloadPart>
+
+  export function toPayloadParts(parts: MessageV2.Part[]): PayloadPartType[] {
+    return parts.map((part) => PayloadPart.parse(part))
+  }
 
   export const Item = z
     .object({
@@ -780,5 +786,163 @@ export namespace SessionInbox {
       {},
     )
     return { info, parts }
+  }
+
+  // --- Deterministic Clarus task enqueue ---
+
+  export const DeterministicEnqueueInput = z.object({
+    sessionID: Identifier.schema("session"),
+    itemID: z.string().min(1),
+    messageID: z.string().min(1),
+    mode: z.enum(["task", "context"]),
+    message: z.object({
+      parts: z.array(PayloadPart),
+      role: z.enum(["user", "assistant"]).default("user"),
+      agent: z.string().optional(),
+      model: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional(),
+      origin: MessageV2.OriginUser.optional(),
+      visible: z.boolean().default(true),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+      summary: z
+        .object({
+          title: z.string().optional(),
+          body: z.string().optional(),
+        })
+        .optional(),
+      system: z.string().optional(),
+      tools: z.record(z.string(), z.boolean()).optional(),
+      variant: z.string().optional(),
+    }),
+    source: z.object({
+      type: z.string(),
+      label: z.string().optional(),
+    }),
+  })
+
+  export const DeterministicEnqueueOutput = z.object({
+    sessionID: Identifier.schema("session"),
+    itemID: z.string().min(1),
+    messageID: z.string().min(1),
+    outcome: z.enum(["created", "existing"]),
+  })
+
+  /** Normalize a message for deterministic comparison and storage.
+   *  Applies defaults for origin, visible, and source label so callers
+   *  do not need to supply them manually for replay to work. */
+  function normalizeMessage(input: z.input<typeof DeterministicEnqueueInput>): {
+    message: NonNullable<StoredItem["message"]>
+    source: ItemSource
+  } {
+    const role = input.message.role ?? "user"
+    const origin = role === "user" ? (input.message.origin ?? { type: "user" as const }) : undefined
+    const visible = visibleFor(input.mode, origin, input.message.visible ?? true)
+    const source: ItemSource = {
+      type: input.source.type || "clarus",
+      label: input.source.label ?? input.source.type ?? "Clarus",
+    }
+    const message: NonNullable<StoredItem["message"]> = {
+      parts: input.message.parts,
+      role,
+      ...(origin !== undefined ? { origin } : {}),
+      visible,
+      ...(input.message.agent !== undefined ? { agent: input.message.agent } : {}),
+      ...(input.message.model !== undefined ? { model: input.message.model } : {}),
+      ...(input.message.metadata !== undefined ? { metadata: input.message.metadata } : {}),
+      ...(input.message.summary !== undefined ? { summary: input.message.summary } : {}),
+      ...(input.message.system !== undefined ? { system: input.message.system } : {}),
+      ...(input.message.tools !== undefined ? { tools: input.message.tools } : {}),
+      ...(input.message.variant !== undefined ? { variant: input.message.variant } : {}),
+    }
+    return { message, source }
+  }
+
+  /** Build the identity+payload object used for collision comparison.
+   *  Key ordering is irrelevant — canonicalEqual handles that. */
+  function identityPayload(
+    sessionID: string,
+    itemID: string,
+    messageID: string,
+    mode: string,
+    normalized: ReturnType<typeof normalizeMessage>,
+  ): Record<string, unknown> {
+    return {
+      sessionID,
+      itemID,
+      messageID,
+      mode,
+      message: normalized.message,
+      source: normalized.source,
+    }
+  }
+
+  /** Enqueue a deterministic inbox item for Clarus task delivery.
+   *  Uses a global itemID -> sessionID index so the same itemID
+   *  in a different session throws CLARUS_INBOX_COLLISION.
+   *  Same identity returns existing; any mismatch throws. */
+  export async function enqueueDeterministic(
+    input: z.input<typeof DeterministicEnqueueInput>,
+  ): Promise<z.infer<typeof DeterministicEnqueueOutput>> {
+    DeterministicEnqueueInput.parse(input)
+    using _ = await Lock.write(`session-inbox:deterministic:${encodeURIComponent(input.itemID)}`)
+
+    const normalized = normalizeMessage(input)
+    const fullPayload = identityPayload(input.sessionID, input.itemID, input.messageID, input.mode, normalized)
+    const fullPayloadHash = canonicalHash(fullPayload)
+    const indexPath = StoragePath.clarusInboxItemIndex(input.itemID)
+    const indexEntry = await Storage.read<{ sessionID: string; payloadHash: string }>(indexPath).catch(() => undefined)
+
+    if (indexEntry) {
+      if (indexEntry.sessionID !== input.sessionID || indexEntry.payloadHash !== fullPayloadHash) {
+        throw Object.assign(new Error(`Clarus deterministic inbox collision for item ${input.itemID}`), {
+          code: "CLARUS_INBOX_COLLISION",
+        })
+      }
+
+      const existing = await getStored(input.sessionID, input.itemID).catch(() => undefined)
+      if (existing) {
+        if (!existing.message) {
+          throw Object.assign(new Error(`Clarus deterministic inbox collision for item ${input.itemID}`), {
+            code: "CLARUS_INBOX_COLLISION",
+          })
+        }
+        const existingPayload = identityPayload(existing.sessionID, existing.id, existing.messageID, existing.mode, {
+          message: existing.message,
+          source: existing.source,
+        })
+        if (!canonicalEqual(fullPayload, existingPayload)) {
+          throw Object.assign(new Error(`Clarus deterministic inbox collision for item ${input.itemID}`), {
+            code: "CLARUS_INBOX_COLLISION",
+          })
+        }
+        return { sessionID: input.sessionID, itemID: input.itemID, messageID: input.messageID, outcome: "existing" }
+      }
+      log.warn("inbox item claim exists but item is missing, recovering", { itemID: input.itemID })
+    } else {
+      await Storage.write(indexPath, { sessionID: input.sessionID, payloadHash: fullPayloadHash })
+    }
+
+    const summarized = summarizeParts(input.message.parts)
+    const item: StoredItem = {
+      id: input.itemID,
+      sessionID: input.sessionID,
+      mode: input.mode,
+      message: normalized.message,
+      summaryPreview: summarized.preview,
+      summary: { title: summarized.title, preview: summarized.preview },
+      detail: summarized.detail,
+      source: normalized.source,
+      time: { created: Date.now() },
+      orderKey: input.itemID,
+      messageID: input.messageID,
+    }
+
+    await writeItem(item)
+    log.info("deterministic inbox item created", { sessionID: input.sessionID, itemID: input.itemID, mode: input.mode })
+    return { sessionID: input.sessionID, itemID: input.itemID, messageID: input.messageID, outcome: "created" }
   }
 }

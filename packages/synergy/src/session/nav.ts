@@ -5,8 +5,8 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import type { Info as SessionInfo } from "./types"
 
-export type NavCategory = "project" | "home" | "channel" | "background"
-export const NavCategory = z.enum(["project", "home", "channel", "background"])
+export type NavCategory = "project" | "home" | "channel" | "background" | "clarus"
+export const NavCategory = z.enum(["project", "home", "channel", "background", "clarus"])
 export const SessionNavEntry = z
   .object({
     id: z.string(),
@@ -18,10 +18,12 @@ export const SessionNavEntry = z
     pinned: z.number(),
     archived: z.boolean(),
     parentID: z.string().optional(),
-    endpointKind: z.literal("channel").optional(),
+    endpointKind: z.enum(["channel", "clarus"]).optional(),
     chatId: z.string().optional(),
     chatName: z.string().optional(),
     chatType: z.enum(["dm", "group"]).optional(),
+    clarusProjectId: z.string().optional(),
+    clarusTaskId: z.string().optional(),
     completionNotice: z.object({
       unread: z.boolean(),
       unreadCount: z.number().int().nonnegative(),
@@ -63,7 +65,7 @@ export const ScopeNavEntry = z
 
 export interface DeriveCategoryInput {
   scopeType: "home" | "project"
-  endpointKind?: "channel"
+  endpointKind?: "channel" | "clarus"
   parentID?: string
   cortex?: {
     parentSessionID: string
@@ -90,10 +92,12 @@ export interface SessionNavEntry {
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel"
+  endpointKind?: "channel" | "clarus"
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  clarusProjectId?: string
+  clarusTaskId?: string
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -109,7 +113,7 @@ export interface ScopeNavEntry {
   icon?: { url?: string; color?: string }
 }
 export interface ScopeNavIndex {
-  version: 1
+  version: 2
   scopeID: string
   updatedAt: number
   entries: SessionNavEntry[]
@@ -121,9 +125,9 @@ export interface NavCursor {
 
 export namespace SessionNav {
   const log = Log.create({ service: "session.nav" })
-
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
+    if (input.endpointKind === "clarus") return "clarus"
     if (input.parentID || input.cortex || input.agenda) return "background"
     if (input.scopeType === "home") return "home"
     return "project"
@@ -163,9 +167,11 @@ export namespace SessionNav {
           continue
         }
         const scopeType: "home" | "project" = scopeID === "home" ? "home" : "project"
+        const endpointIsChannel = session.endpoint?.kind === "channel"
+        const endpointIsClarus = session.endpoint?.kind === "clarus"
         const category = deriveCategory({
           scopeType,
-          endpointKind: session.endpoint?.kind,
+          endpointKind: endpointIsChannel ? "channel" : endpointIsClarus ? "clarus" : undefined,
           parentID: session.parentID,
           cortex: session.cortex,
           agenda: session.agenda,
@@ -177,6 +183,7 @@ export namespace SessionNav {
           })
         }
         const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
+        const clarusEndpoint = session.endpoint?.kind === "clarus" ? session.endpoint : undefined
         entries.push({
           id: session.id,
           scopeID,
@@ -187,10 +194,12 @@ export namespace SessionNav {
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           parentID: session.parentID,
-          endpointKind: channelEndpoint ? "channel" : undefined,
+          endpointKind: endpointIsChannel ? "channel" : endpointIsClarus ? "clarus" : undefined,
           chatId: channelEndpoint?.chatId,
           chatName: channelEndpoint?.chatName,
           chatType: channelEndpoint?.chatType,
+          clarusProjectId: clarusEndpoint?.projectId,
+          clarusTaskId: clarusEndpoint?.taskId,
           completionNotice: {
             unread: session.completionNotice.unread,
             unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
@@ -199,7 +208,7 @@ export namespace SessionNav {
       }
     }
     entries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
-    const index: ScopeNavIndex = { version: 1, scopeID, updatedAt: Date.now(), entries }
+    const index: ScopeNavIndex = { version: 2, scopeID, updatedAt: Date.now(), entries }
     await Storage.write(StoragePath.sessionNavIndex(sid), index)
     return index
   }
@@ -207,11 +216,11 @@ export namespace SessionNav {
   export async function readNavIndex(scopeID: string): Promise<ScopeNavIndex> {
     const sid = Identifier.asScopeID(scopeID)
     const key = StoragePath.sessionNavIndex(sid)
-    const existing = await Storage.read<ScopeNavIndex>(key).catch(() => undefined)
-    if (existing) return existing
+    const existing = await Storage.read<ScopeNavIndex | { version?: number }>(key).catch(() => undefined)
+    if (existing?.version === 2) return existing as ScopeNavIndex
     return buildNavIndex(scopeID).catch<ScopeNavIndex>((error) => {
       log.warn("failed to lazily build nav index", { scopeID, error: String(error) })
-      return { version: 1, scopeID, updatedAt: 0, entries: [] }
+      return { version: 2, scopeID, updatedAt: 0, entries: [] }
     })
   }
 

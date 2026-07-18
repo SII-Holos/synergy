@@ -1114,6 +1114,150 @@ msgstr ""
 msgid "app.cancel"
 msgstr ""
 
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.action.refresh"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.action.retry"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.connected"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.connecting"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.disabled"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.reconnecting"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.signInRequired"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.connection.syncFailed"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.navigation"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.projects"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.sidebarProjects"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.empty.tasks"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.error.loadFailed"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.freshness.stale"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.group.active"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.group.history"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.loading"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.project.collapse"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.project.expand"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.acknowledged"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.ambiguous"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.dispatched"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.localOnly"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.notDispatched"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.prepared"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.result.status.rejected"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.subtitle"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.cancelled"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.expired"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.failed"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.needsAttention"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.running"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.submitted"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.submitting"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.task.status.waiting"
+msgstr ""
+
+#. ── Clarus ───────────────────────────────────────────────────────────────────
+msgid "app.clarus.title"
+msgstr ""
+
 #. Runtime Lingui descriptors for app shell, entry, commands, and pages.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.command.category.suggested"
@@ -4341,6 +4485,10 @@ msgstr ""
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
 msgid "app.plugin.builtin.agenda"
+msgstr ""
+
+#. ── Plugin builtin navigation ─────────────────────────────────────────────────
+msgid "app.plugin.builtin.clarus"
 msgstr ""
 
 #. ── Plugin builtin navigation ─────────────────────────────────────────────────
@@ -15232,7 +15380,15 @@ msgid "tool.misc.changed-fields"
 msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.completed"
+msgstr ""
+
+#. ── Tool misc labels ────────────────────────────────────────────────
 msgid "tool.misc.executed"
+msgstr ""
+
+#. ── Tool misc labels ────────────────────────────────────────────────
+msgid "tool.misc.failed"
 msgstr ""
 
 #. ── Tool misc labels ────────────────────────────────────────────────
@@ -15349,6 +15505,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

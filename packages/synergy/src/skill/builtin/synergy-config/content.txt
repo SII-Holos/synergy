@@ -44,9 +44,8 @@ Web Settings shows each canonical domain path with a Copy Path action. Managed-l
 | `70-commands.jsonc` | `command` |
 | `80-permissions.jsonc` | `permission`, `tools`, `controlProfile`, `sandbox`, `smartAllow` |
 | `90-channels.jsonc` | `channel` |
-| `100-holos.jsonc` | `holos`, `enterprise` |
+| `105-clarus.jsonc` | `clarus` |
 | `110-email.jsonc` | `email` |
-| `120-runtime.jsonc` | `server`, `timeout`, `watcher`, `formatter`, `lsp`, `question`, `compaction`, `experimental`, `observability` |
 
 ### Key data paths
 

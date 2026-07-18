@@ -624,6 +624,7 @@ function SessionPageContent() {
   })
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
+
   const focusedBlueprintWriteParts = new Set<string>()
   const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {
     const sessionID = params.id

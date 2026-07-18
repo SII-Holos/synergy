@@ -1,5 +1,6 @@
 import { Log } from "../util/log"
 import z from "zod"
+import { validateHolosEndpoint } from "../holos/security"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
@@ -203,8 +204,70 @@ export const Holos = z
       .describe("Holos portal URL for browser-facing pages (bind/start)"),
   })
   .strict()
+  .superRefine((value, ctx) => {
+    for (const [key, kind] of [
+      ["apiUrl", "api"],
+      ["wsUrl", "ws"],
+    ] as const) {
+      try {
+        validateHolosEndpoint(value[key], kind)
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: [key],
+          message: error instanceof Error ? error.message : "Invalid Holos endpoint",
+        })
+      }
+    }
+    try {
+      const portal = new URL(value.portalUrl)
+      if (portal.protocol !== "https:" || portal.username || portal.password)
+        throw new Error("Invalid Holos portal URL")
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["portalUrl"],
+        message: error instanceof Error ? error.message : "Invalid Holos portal URL",
+      })
+    }
+  })
   .meta({ ref: "HolosConfig" })
 export type Holos = z.infer<typeof Holos>
+
+export const ClarusConfig = z
+  .object({
+    enabled: z.boolean().optional().default(true).describe("Enable Clarus project binding and task session routing"),
+    workspaceRoot: z
+      .string()
+      .optional()
+      .describe(
+        "Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)",
+      ),
+    apiUrl: z
+      .string()
+      .optional()
+      .describe(
+        "Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.",
+      ),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (!value.apiUrl) return
+    try {
+      const url = validateHolosEndpoint(value.apiUrl, "api")
+      if (url.pathname !== "/" || url.search || url.hash) {
+        throw new Error("Clarus apiUrl must be an origin")
+      }
+    } catch (error) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["apiUrl"],
+        message: error instanceof Error ? error.message : "Invalid Clarus apiUrl",
+      })
+    }
+  })
+  .meta({ ref: "ClarusConfig" })
+export type ClarusConfig = z.infer<typeof ClarusConfig>
 
 export const SandboxConfig = z
   .object({
@@ -1537,6 +1600,7 @@ export const Info = z
     observability: ObservabilityConfig.optional().describe("Local logs, indexed telemetry, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
+    clarus: ClarusConfig.optional().describe("Clarus project binding and task session routing configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
     formatter: z
       .union([

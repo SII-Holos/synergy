@@ -566,6 +566,20 @@
   text-align: left;
 }
 
+.sb-clarus-project-empty {
+  padding-left: 42px;
+}
+
+.sb-clarus-task-status {
+  flex-shrink: 0;
+  max-width: 84px;
+  overflow: hidden;
+  color: var(--text-weaker);
+  font-size: var(--font-size-x-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Dropdown menu */
 .sb-project-menu-backdrop {
   position: fixed;

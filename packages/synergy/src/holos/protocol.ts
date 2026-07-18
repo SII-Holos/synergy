@@ -91,7 +91,7 @@ export namespace HolosProtocol {
     request_id: z.string().nullable(),
     meta: z.record(z.string(), z.unknown()),
     payload: z.unknown().nullable(),
-    caller: Caller.nullable().optional(),
+    caller: z.unknown().nullable().optional(),
   })
   export type Envelope = z.infer<typeof Envelope>
 

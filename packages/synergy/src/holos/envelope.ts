@@ -1,3 +1,4 @@
+import { NATIVE_FRAME_SIZE_LIMIT } from "./native"
 import { Log } from "@/util/log"
 import { HolosProtocol } from "./protocol"
 
@@ -23,20 +24,34 @@ export namespace Envelope {
         payload: unknown
         caller: Caller
       }
+    | {
+        kind: "native"
+        type: string
+        requestID: string | null
+        meta: Record<string, unknown>
+        payload: unknown
+        caller: unknown
+      }
     | { kind: "unknown"; raw: unknown }
 
   export function parse(raw: string): Parsed | null {
+    // Reject oversized frames before JSON.parse — never log raw content.
+    const byteLength = new TextEncoder().encode(raw).length
+    if (byteLength > NATIVE_FRAME_SIZE_LIMIT) {
+      log.warn("oversized native frame rejected", { byteLength, limit: NATIVE_FRAME_SIZE_LIMIT })
+      return null
+    }
     let data: unknown
     try {
       data = JSON.parse(raw)
     } catch {
-      log.warn("invalid json from gateway", { raw: raw.slice(0, 200) })
+      log.warn("invalid json from gateway", { byteLength })
       return null
     }
 
     const result = HolosProtocol.Envelope.safeParse(data)
     if (!result.success) {
-      log.warn("envelope parse failed", { error: result.error })
+      log.warn("envelope parse failed", { issueCount: result.error.issues.length })
       return null
     }
 
@@ -55,16 +70,18 @@ export namespace Envelope {
           kind: "pong",
           sessionId: meta.session_id ? String(meta.session_id) : undefined,
         }
-      case "error":
-        return {
-          kind: "error",
-          requestId: env.request_id,
-          code: String(meta.code ?? "UNKNOWN"),
-          message: String(meta.message ?? "Unknown error"),
-        }
+      case "error": {
+        // Normalize code/message from payload first, then meta
+        const errorPayload = env.payload as Record<string, unknown> | null
+        const code = errorPayload?.code != null ? String(errorPayload.code) : String(meta.code ?? "UNKNOWN")
+        const message =
+          errorPayload?.message != null ? String(errorPayload.message) : String(meta.message ?? "Unknown error")
+        return { kind: "error", requestId: env.request_id, code, message }
+      }
       case "ws_send": {
-        if (!env.caller) {
-          log.warn("ws_send missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("ws_send missing or invalid caller", { requestId: env.request_id })
           return null
         }
         return {
@@ -72,7 +89,7 @@ export namespace Envelope {
           requestId: env.request_id ?? "",
           event: String(meta.event ?? ""),
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
       case "ws_failed":
@@ -83,8 +100,9 @@ export namespace Envelope {
           message: String(meta.message ?? "Unknown failure"),
         }
       case "http_request": {
-        if (!env.caller) {
-          log.warn("http_request missing caller", { requestId: env.request_id })
+        const caller = HolosProtocol.Caller.safeParse(env.caller)
+        if (!caller.success) {
+          log.warn("http_request missing or invalid caller", { requestId: env.request_id })
           return null
         }
         return {
@@ -96,11 +114,23 @@ export namespace Envelope {
           headers: (meta.headers as Record<string, string>) ?? {},
           contentType: meta.content_type ? String(meta.content_type) : undefined,
           payload: env.payload,
-          caller: env.caller,
+          caller: caller.data,
         }
       }
-      default:
+      case "http_response":
+      case "ping":
+        // Internal only — treated as unknown at the envelope level
         return { kind: "unknown", raw: data }
+      default:
+        // All native operation families (clarus.*, future types, etc.)
+        return {
+          kind: "native",
+          type: env.type,
+          requestID: env.request_id,
+          meta,
+          payload: env.payload,
+          caller: env.caller,
+        }
     }
   }
 
@@ -150,6 +180,23 @@ export namespace Envelope {
       meta: { timestamp: Date.now() },
       payload: null,
       caller: null,
+    })
+  }
+
+  /** Serialize a generic native outbound frame to the Agent Tunnel envelope format. */
+  export function native(input: {
+    type: string
+    requestID: string
+    meta: Record<string, unknown>
+    payload: unknown
+    caller?: unknown
+  }): string {
+    return JSON.stringify({
+      type: input.type,
+      request_id: input.requestID,
+      meta: input.meta,
+      payload: input.payload,
+      caller: input.caller ?? null,
     })
   }
 }

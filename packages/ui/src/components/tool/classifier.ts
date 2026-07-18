@@ -305,6 +305,7 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
 
   // communication
   question: "communication",
+  clarus_submit_task_result: "communication",
   email_send: "communication",
   email_read: "communication",
   openai_image_gen: "communication",

@@ -1018,13 +1018,23 @@ export type ChannelInfo = {
   createdAt?: number
 }
 
-/**
- * Endpoint context if created from a session endpoint
- */
-export type SessionEndpoint = {
+export type SessionChannelEndpoint = {
   kind: "channel"
   channel: ChannelInfo
 }
+
+export type SessionClarusEndpoint = {
+  kind: "clarus"
+  role: "project" | "task"
+  agentId: string
+  projectId: string
+  taskId?: string
+}
+
+/**
+ * Endpoint context if created from a session endpoint
+ */
+export type SessionEndpoint = SessionChannelEndpoint | SessionClarusEndpoint
 
 /**
  * Context captured at creation time
@@ -1142,15 +1152,17 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "clarus"
   lastActivityAt: number
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel"
+  endpointKind?: "channel" | "clarus"
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  clarusProjectId?: string
+  clarusTaskId?: string
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -1172,6 +1184,205 @@ export type GlobalRecentResponse = {
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
+}
+
+export type ClarusStatusResponse = {
+  agentId: string | null
+  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked" | "sync_failed"
+  epoch: number
+  generation: number
+  isReconciling: boolean
+  error?: string
+}
+
+export type ClarusReconnectResponse = {
+  agentId: string | null
+  status: "disabled" | "disconnected" | "connecting" | "connected" | "reconnecting" | "blocked" | "sync_failed"
+  epoch: number
+  generation: number
+  isReconciling: boolean
+  error?: string
+}
+
+export type ClarusProjectBindingItem = {
+  agentId: string
+  projectId: string
+  lifecycle: string
+  projectName?: string
+  projectSlug?: string
+  projectStatus?: string
+  primaryAgent?: string | null
+  desiredSubscription: boolean
+  messageCursor?: string | null
+  lastProjectActivityAt?: number
+  lastReconciliationAt?: number
+  lastReconciliationError?: string | null
+  createdAt: number
+  updatedAt: number
+}
+
+export type ClarusProjectBindingListResponse = {
+  items: Array<ClarusProjectBindingItem>
+  nextCursor: string | null
+}
+
+export type ClarusErrorDetail = {
+  code: string
+  message: string
+  recoverable: boolean
+  disposition?: "not_dispatched" | "rejected" | "ambiguous"
+  reason?:
+    | "timeout"
+    | "aborted_after_dispatch"
+    | "disconnected"
+    | "invalid_response"
+    | "unexpected_response"
+    | "unknown"
+}
+
+export type ClarusProjectBindingCreateInput = {
+  projectId: string
+  projectName: string
+  projectSlug?: string
+  projectStatus?: string
+  primaryAgent?: string | null
+}
+
+export type ClarusProjectBindingUpdateInput = {
+  projectName?: string
+  projectSlug?: string
+  projectStatus?: string
+  primaryAgent?: string | null
+}
+
+export type ClarusWireMetadataValue =
+  | string
+  | number
+  | boolean
+  | null
+  | Array<unknown>
+  | {
+      [key: string]: unknown
+    }
+
+export type ClarusProjectActivityItem = {
+  agentId: string
+  projectId: string
+  messageId: string
+  senderType?: string
+  senderId?: string
+  messageType?: string
+  content?: string
+  fileRefs?: Array<ClarusWireMetadataValue>
+  metadata?: {
+    [key: string]: ClarusWireMetadataValue
+  }
+  createdAt?: string
+  receivedAt: number
+}
+
+export type ClarusProjectActivityResponse = {
+  items: Array<ClarusProjectActivityItem>
+  nextCursor: string | null
+}
+
+export type ClarusTaskBindingItem = {
+  agentId: string
+  projectId: string
+  taskId: string
+  sessionID: string
+  runID: string
+  subtaskID: string
+  phase: string
+  attempt: number
+  deadlineAt?: string | null
+  title: string
+  status: string
+  resultState: string
+  contextHydration: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type ClarusTaskBindingListResponse = {
+  items: Array<ClarusTaskBindingItem>
+  nextCursor: string | null
+  total: number
+}
+
+export type ClarusComposerUserItem = {
+  userId: string
+  userName: string
+  agentId: string
+}
+
+export type ClarusComposerProjectItem = {
+  projectId: string
+  projectName: string
+}
+
+export type ClarusComposerSubmitResponse = {
+  requestID: string
+  messageId: string
+  projectId: string
+  senderId: string
+  userId?: string
+  epoch: number
+  generation: number
+}
+
+export type ClarusComposerSubmitInput = {
+  projectId: string
+  agentId: string
+  userId: string
+  content: string
+  messageType?: string
+  fileRefs?: Array<{
+    [key: string]: ClarusWireMetadataValue
+  }>
+}
+
+export type ClarusNavigationProjectDto = {
+  agentId: string
+  projectId: string
+  projectName?: string
+  projectSlug?: string
+  activeGroup: boolean
+  projectStatus?: string
+  primaryAgent?: string | null
+  lastProjectActivityAt?: number
+  createdAt: number
+  updatedAt: number
+}
+
+export type ClarusNavigationTaskDto = {
+  agentId: string
+  taskId: string
+  projectId: string
+  sessionID: string
+  title: string
+  status: string
+  resultState: string
+  phase: string
+  attempt: number
+  deadlineAt?: string | null
+  contextHydration: string
+  localContinuationEnabledAt?: number
+  resultRecordedAt?: number
+  runID: string
+  subtaskID: string
+  createdAt: number
+  updatedAt: number
+}
+
+export type ClarusNavigationResponse = {
+  connection: {
+    status: "disabled" | "connected" | "reconnecting" | "sign_in_required" | "sync_failed"
+    agentId: string | null
+    error?: string
+  }
+  projects: Array<ClarusNavigationProjectDto>
+  tasks: Array<ClarusNavigationTaskDto>
 }
 
 export type AgendaWebhookResult = {
@@ -2736,6 +2947,24 @@ export type HolosConfig = {
 }
 
 /**
+ * Clarus project binding and task session routing configuration
+ */
+export type ClarusConfig = {
+  /**
+   * Enable Clarus project binding and task session routing
+   */
+  enabled?: boolean
+  /**
+   * Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)
+   */
+  workspaceRoot?: string
+  /**
+   * Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.
+   */
+  apiUrl?: string
+}
+
+/**
  * Sender identity for outgoing emails
  */
 export type EmailFromConfig = {
@@ -3030,6 +3259,7 @@ export type Config = {
   observability?: ObservabilityConfig
   controlProfile?: ControlProfileId
   holos?: HolosConfig
+  clarus?: ClarusConfig
   email?: EmailConfig
   formatter?:
     | false
@@ -3207,6 +3437,7 @@ export type ConfigDomainSummary = {
     | "permissions"
     | "channels"
     | "holos"
+    | "clarus"
     | "email"
     | "runtime"
   filename: string
@@ -3268,6 +3499,7 @@ export type ConfigDomainImportDomainPlan = {
     | "permissions"
     | "channels"
     | "holos"
+    | "clarus"
     | "email"
     | "runtime"
   filename: string
@@ -3325,6 +3557,7 @@ export type ConfigDomainImportPlanInput = {
     | "permissions"
     | "channels"
     | "holos"
+    | "clarus"
     | "email"
     | "runtime"
   >
@@ -3405,6 +3638,7 @@ export type ConfigImportRevisionConflictError = {
       | "permissions"
       | "channels"
       | "holos"
+      | "clarus"
       | "email"
       | "runtime"
     >
@@ -3433,6 +3667,7 @@ export type ConfigDomainImportApplyInput = {
     | "permissions"
     | "channels"
     | "holos"
+    | "clarus"
     | "email"
     | "runtime"
   >
@@ -3849,7 +4084,7 @@ export type Session = {
     messageID?: string
     title?: string
   }
-  category?: "project" | "home" | "channel" | "background"
+  category?: "project" | "home" | "channel" | "background" | "clarus"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -7161,6 +7396,57 @@ export type EventCortexTasksUpdated = {
   }
 }
 
+export type EventHolosContactAdded = {
+  type: "holos.contact.added"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosContactRemoved = {
+  type: "holos.contact.removed"
+  properties: {
+    id: string
+  }
+}
+
+export type EventHolosContactUpdated = {
+  type: "holos.contact.updated"
+  properties: {
+    contact: Contact
+  }
+}
+
+export type EventHolosConnected = {
+  type: "holos.connected"
+  properties: {
+    peerId: string
+  }
+}
+
+export type EventHolosConnectionStatusChanged = {
+  type: "holos.connection.status_changed"
+  properties: {
+    status: string
+    error?: string
+  }
+}
+
+export type EventHolosPresence = {
+  type: "holos.presence"
+  properties: {
+    peerId: string
+    status: "online" | "offline"
+  }
+}
+
+export type EventClarusNavigationUpdated = {
+  type: "clarus.navigation.updated"
+  properties: {
+    timestamp?: number
+  }
+}
+
 export type EventPluginEvent = {
   type: "plugin.event"
   properties: {
@@ -7274,50 +7560,6 @@ export type EventChannelMessageReceived = {
   }
 }
 
-export type EventHolosContactAdded = {
-  type: "holos.contact.added"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosContactRemoved = {
-  type: "holos.contact.removed"
-  properties: {
-    id: string
-  }
-}
-
-export type EventHolosContactUpdated = {
-  type: "holos.contact.updated"
-  properties: {
-    contact: Contact
-  }
-}
-
-export type EventHolosConnected = {
-  type: "holos.connected"
-  properties: {
-    peerId: string
-  }
-}
-
-export type EventHolosConnectionStatusChanged = {
-  type: "holos.connection.status_changed"
-  properties: {
-    status: string
-    error?: string
-  }
-}
-
-export type EventHolosPresence = {
-  type: "holos.presence"
-  properties: {
-    peerId: string
-    status: "online" | "offline"
-  }
-}
-
 export type EventServerConnected = {
   type: "server.connected"
   properties: {
@@ -7390,6 +7632,13 @@ export type Event =
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventHolosContactAdded
+  | EventHolosContactRemoved
+  | EventHolosContactUpdated
+  | EventHolosConnected
+  | EventHolosConnectionStatusChanged
+  | EventHolosPresence
+  | EventClarusNavigationUpdated
   | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
@@ -7402,12 +7651,6 @@ export type Event =
   | EventChannelConnected
   | EventChannelDisconnected
   | EventChannelMessageReceived
-  | EventHolosContactAdded
-  | EventHolosContactRemoved
-  | EventHolosContactUpdated
-  | EventHolosConnected
-  | EventHolosConnectionStatusChanged
-  | EventHolosPresence
   | EventServerConnected
   | EventGlobalDisposed
 
@@ -8341,6 +8584,469 @@ export type GlobalNavPinnedResponses = {
 
 export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
 
+export type GlobalClarusStatusData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/clarus/status"
+}
+
+export type GlobalClarusStatusResponses = {
+  /**
+   * Clarus status
+   */
+  200: ClarusStatusResponse
+}
+
+export type GlobalClarusStatusResponse = GlobalClarusStatusResponses[keyof GlobalClarusStatusResponses]
+
+export type GlobalClarusReconnectData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/clarus/reconnect"
+}
+
+export type GlobalClarusReconnectResponses = {
+  /**
+   * Full Clarus status after reconnect attempt
+   */
+  200: ClarusReconnectResponse
+}
+
+export type GlobalClarusReconnectResponse = GlobalClarusReconnectResponses[keyof GlobalClarusReconnectResponses]
+
+export type GlobalClarusProjectsListData = {
+  body?: never
+  path?: never
+  query?: {
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/clarus/projects"
+}
+
+export type GlobalClarusProjectsListErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsListError = GlobalClarusProjectsListErrors[keyof GlobalClarusProjectsListErrors]
+
+export type GlobalClarusProjectsListResponses = {
+  /**
+   * Bounded project bindings
+   */
+  200: ClarusProjectBindingListResponse
+}
+
+export type GlobalClarusProjectsListResponse =
+  GlobalClarusProjectsListResponses[keyof GlobalClarusProjectsListResponses]
+
+export type GlobalClarusProjectsCreateData = {
+  body?: ClarusProjectBindingCreateInput
+  path?: never
+  query?: never
+  url: "/global/clarus/projects"
+}
+
+export type GlobalClarusProjectsCreateErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsCreateError = GlobalClarusProjectsCreateErrors[keyof GlobalClarusProjectsCreateErrors]
+
+export type GlobalClarusProjectsCreateResponses = {
+  /**
+   * Created or activated project binding
+   */
+  200: ClarusProjectBindingItem
+}
+
+export type GlobalClarusProjectsCreateResponse =
+  GlobalClarusProjectsCreateResponses[keyof GlobalClarusProjectsCreateResponses]
+
+export type GlobalClarusProjectsGetData = {
+  body?: never
+  path: {
+    projectId: string
+  }
+  query?: never
+  url: "/global/clarus/projects/{projectId}"
+}
+
+export type GlobalClarusProjectsGetErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsGetError = GlobalClarusProjectsGetErrors[keyof GlobalClarusProjectsGetErrors]
+
+export type GlobalClarusProjectsGetResponses = {
+  /**
+   * Project binding
+   */
+  200: ClarusProjectBindingItem
+}
+
+export type GlobalClarusProjectsGetResponse = GlobalClarusProjectsGetResponses[keyof GlobalClarusProjectsGetResponses]
+
+export type GlobalClarusProjectsUpdateData = {
+  body?: ClarusProjectBindingUpdateInput
+  path: {
+    projectId: string
+  }
+  query?: never
+  url: "/global/clarus/projects/{projectId}"
+}
+
+export type GlobalClarusProjectsUpdateErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsUpdateError = GlobalClarusProjectsUpdateErrors[keyof GlobalClarusProjectsUpdateErrors]
+
+export type GlobalClarusProjectsUpdateResponses = {
+  /**
+   * Updated project binding
+   */
+  200: ClarusProjectBindingItem
+}
+
+export type GlobalClarusProjectsUpdateResponse =
+  GlobalClarusProjectsUpdateResponses[keyof GlobalClarusProjectsUpdateResponses]
+
+export type GlobalClarusProjectsDeactivateData = {
+  body?: never
+  path: {
+    projectId: string
+  }
+  query?: never
+  url: "/global/clarus/projects/{projectId}/deactivate"
+}
+
+export type GlobalClarusProjectsDeactivateErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsDeactivateError =
+  GlobalClarusProjectsDeactivateErrors[keyof GlobalClarusProjectsDeactivateErrors]
+
+export type GlobalClarusProjectsDeactivateResponses = {
+  /**
+   * Deactivated project binding
+   */
+  200: ClarusProjectBindingItem
+}
+
+export type GlobalClarusProjectsDeactivateResponse =
+  GlobalClarusProjectsDeactivateResponses[keyof GlobalClarusProjectsDeactivateResponses]
+
+export type GlobalClarusProjectsActivityData = {
+  body?: never
+  path: {
+    projectId: string
+  }
+  query?: {
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/clarus/projects/{projectId}/activity"
+}
+
+export type GlobalClarusProjectsActivityErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsActivityError =
+  GlobalClarusProjectsActivityErrors[keyof GlobalClarusProjectsActivityErrors]
+
+export type GlobalClarusProjectsActivityResponses = {
+  /**
+   * Paginated project activity
+   */
+  200: ClarusProjectActivityResponse
+}
+
+export type GlobalClarusProjectsActivityResponse =
+  GlobalClarusProjectsActivityResponses[keyof GlobalClarusProjectsActivityResponses]
+
+export type GlobalClarusTasksListData = {
+  body?: never
+  path?: never
+  query: {
+    projectId: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/global/clarus/tasks"
+}
+
+export type GlobalClarusTasksListErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusTasksListError = GlobalClarusTasksListErrors[keyof GlobalClarusTasksListErrors]
+
+export type GlobalClarusTasksListResponses = {
+  /**
+   * Task bindings
+   */
+  200: ClarusTaskBindingListResponse
+}
+
+export type GlobalClarusTasksListResponse = GlobalClarusTasksListResponses[keyof GlobalClarusTasksListResponses]
+
+export type GlobalClarusTasksGetData = {
+  body?: never
+  path: {
+    taskId: string
+  }
+  query: {
+    projectId: string
+  }
+  url: "/global/clarus/tasks/{taskId}"
+}
+
+export type GlobalClarusTasksGetErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusTasksGetError = GlobalClarusTasksGetErrors[keyof GlobalClarusTasksGetErrors]
+
+export type GlobalClarusTasksGetResponses = {
+  /**
+   * Task binding
+   */
+  200: ClarusTaskBindingItem
+}
+
+export type GlobalClarusTasksGetResponse = GlobalClarusTasksGetResponses[keyof GlobalClarusTasksGetResponses]
+
+export type GlobalClarusComposerLookupUsersData = {
+  body?: never
+  path?: never
+  query?: {
+    search?: string
+    limit?: number
+  }
+  url: "/global/clarus/composer/users"
+}
+
+export type GlobalClarusComposerLookupUsersErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusComposerLookupUsersError =
+  GlobalClarusComposerLookupUsersErrors[keyof GlobalClarusComposerLookupUsersErrors]
+
+export type GlobalClarusComposerLookupUsersResponses = {
+  /**
+   * Matching user candidates
+   */
+  200: Array<ClarusComposerUserItem>
+}
+
+export type GlobalClarusComposerLookupUsersResponse =
+  GlobalClarusComposerLookupUsersResponses[keyof GlobalClarusComposerLookupUsersResponses]
+
+export type GlobalClarusComposerLookupProjectsData = {
+  body?: never
+  path?: never
+  query?: {
+    search?: string
+    limit?: number
+  }
+  url: "/global/clarus/composer/projects"
+}
+
+export type GlobalClarusComposerLookupProjectsErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+}
+
+export type GlobalClarusComposerLookupProjectsError =
+  GlobalClarusComposerLookupProjectsErrors[keyof GlobalClarusComposerLookupProjectsErrors]
+
+export type GlobalClarusComposerLookupProjectsResponses = {
+  /**
+   * Matching project candidates
+   */
+  200: Array<ClarusComposerProjectItem>
+}
+
+export type GlobalClarusComposerLookupProjectsResponse =
+  GlobalClarusComposerLookupProjectsResponses[keyof GlobalClarusComposerLookupProjectsResponses]
+
+export type GlobalClarusComposerSubmitData = {
+  body?: ClarusComposerSubmitInput
+  path?: never
+  query?: never
+  url: "/global/clarus/composer/submit"
+}
+
+export type GlobalClarusComposerSubmitErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+  /**
+   * Clarus conflict error
+   */
+  409: ClarusErrorDetail
+  /**
+   * Clarus ambiguous or server error
+   */
+  500: ClarusErrorDetail
+}
+
+export type GlobalClarusComposerSubmitError = GlobalClarusComposerSubmitErrors[keyof GlobalClarusComposerSubmitErrors]
+
+export type GlobalClarusComposerSubmitResponses = {
+  /**
+   * Submission result with reconciliation identifiers
+   */
+  200: ClarusComposerSubmitResponse
+}
+
+export type GlobalClarusComposerSubmitResponse =
+  GlobalClarusComposerSubmitResponses[keyof GlobalClarusComposerSubmitResponses]
+
+export type GlobalClarusNavigationData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/global/clarus/navigation"
+}
+
+export type GlobalClarusNavigationResponses = {
+  /**
+   * Bounded navigation snapshot
+   */
+  200: ClarusNavigationResponse
+}
+
+export type GlobalClarusNavigationResponse = GlobalClarusNavigationResponses[keyof GlobalClarusNavigationResponses]
+
+export type GlobalClarusProjectsTaskDetailData = {
+  body?: never
+  path: {
+    projectId: string
+    taskId: string
+  }
+  query?: never
+  url: "/global/clarus/projects/{projectId}/tasks/{taskId}"
+}
+
+export type GlobalClarusProjectsTaskDetailErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsTaskDetailError =
+  GlobalClarusProjectsTaskDetailErrors[keyof GlobalClarusProjectsTaskDetailErrors]
+
+export type GlobalClarusProjectsTaskDetailResponses = {
+  /**
+   * Safe bounded task detail
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type GlobalClarusProjectsTaskDetailResponse =
+  GlobalClarusProjectsTaskDetailResponses[keyof GlobalClarusProjectsTaskDetailResponses]
+
+export type GlobalClarusProjectsContinueLocalData = {
+  body?: never
+  path: {
+    projectId: string
+    taskId: string
+  }
+  query?: never
+  url: "/global/clarus/projects/{projectId}/tasks/{taskId}/continue-local"
+}
+
+export type GlobalClarusProjectsContinueLocalErrors = {
+  /**
+   * Clarus error
+   */
+  400: ClarusErrorDetail
+  /**
+   * Clarus not found error
+   */
+  404: ClarusErrorDetail
+}
+
+export type GlobalClarusProjectsContinueLocalError =
+  GlobalClarusProjectsContinueLocalErrors[keyof GlobalClarusProjectsContinueLocalErrors]
+
+export type GlobalClarusProjectsContinueLocalResponses = {
+  /**
+   * Local continuation enabled
+   */
+  200: {
+    [key: string]: unknown
+  }
+}
+
+export type GlobalClarusProjectsContinueLocalResponse =
+  GlobalClarusProjectsContinueLocalResponses[keyof GlobalClarusProjectsContinueLocalResponses]
+
 export type AgendaWebhookData = {
   body?: never
   path: {
@@ -8845,6 +9551,7 @@ export type ConfigDomainGetData = {
       | "permissions"
       | "channels"
       | "holos"
+      | "clarus"
       | "email"
       | "runtime"
   }
@@ -8888,6 +9595,7 @@ export type ConfigDomainUpdateData = {
       | "permissions"
       | "channels"
       | "holos"
+      | "clarus"
       | "email"
       | "runtime"
   }
@@ -8931,6 +9639,7 @@ export type ConfigDomainOpenData = {
       | "permissions"
       | "channels"
       | "holos"
+      | "clarus"
       | "email"
       | "runtime"
   }
@@ -9445,7 +10154,7 @@ export type SessionIndexData = {
   query?: {
     directory?: string
     scopeID?: string
-    category?: "project" | "home" | "channel" | "background"
+    category?: "project" | "home" | "channel" | "background" | "clarus"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number

@@ -192,7 +192,7 @@ export const Info = z
           title: z.string().optional(),
         })
         .optional(),
-      category: z.enum(["project", "home", "channel", "background"]).optional(),
+      category: z.enum(["project", "home", "channel", "background", "clarus"]).optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z
         .object({

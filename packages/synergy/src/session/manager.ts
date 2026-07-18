@@ -5,7 +5,7 @@ import { Identifier } from "@/id/id"
 import { Log } from "@/util/log"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
-import type { MessageV2 } from "./message-v2"
+import { MessageV2 } from "./message-v2"
 import { BusyError } from "./error"
 import { SessionEvent } from "./event"
 import type { Scope } from "@/scope"
@@ -33,8 +33,8 @@ export namespace SessionManager {
       }
       model?: Model
       metadata?: Record<string, any>
-      inboxItemID?: string
       tools?: Record<string, boolean>
+      inboxItemID?: string
     }
 
     export interface Assistant {
@@ -472,7 +472,16 @@ export namespace SessionManager {
     await SessionInvoke.loop(sessionID)
   }
 
+  let scheduleWakeObserver: ((sessionID: string, reason: string) => void) | undefined
+
+  /** Test seam: register an observer notified on every scheduleWake call.
+   *  Set to undefined to clear. Not part of the public production API. */
+  export function __setScheduleWakeObserver(observer: ((sessionID: string, reason: string) => void) | undefined): void {
+    scheduleWakeObserver = observer
+  }
+
   export function scheduleWake(sessionID: string, reason: string): void {
+    scheduleWakeObserver?.(sessionID, reason)
     setTimeout(() => {
       void wake(sessionID).catch((error) => {
         log.error("async session wake failed", { sessionID, reason, error })
@@ -571,7 +580,7 @@ export namespace SessionManager {
         mode: "context",
         message: {
           role: "assistant",
-          parts: input.mail.parts as any,
+          parts: SessionInbox.toPayloadParts(input.mail.parts),
           agent: input.mail.agentID,
           model: input.mail.model,
           metadata: input.mail.metadata,
@@ -611,6 +620,175 @@ export namespace SessionManager {
     await wake(session.id)
   }
 
+  // --- Clarus delivery extensions ---
+
+  /** Result type for deliverWithResult — returns stable identifiers. */
+  export interface DeliveryResult {
+    sessionID: string
+    itemID: string
+    messageID: string
+    outcome: "created" | "existing"
+  }
+
+  /**
+   * Deliver mail into the persistent inbox and return the stable
+   * {sessionID, itemID, messageID} identifiers. Unlike deliver(),
+   * this always returns a result even when the session is running
+   * and does NOT wake an idle session unless the item mode is "task".
+   */
+  export async function deliverWithResult(input: {
+    target: string | SessionEndpoint.Info
+    mail: SessionMail
+    inboxItemID?: string
+    inboxMessageID?: string
+  }): Promise<DeliveryResult> {
+    const session = await getSession(input.target)
+    if (!session) {
+      throw new Error(
+        `deliverWithResult: session not found for target ${
+          typeof input.target === "string" ? input.target : SessionEndpoint.toKey(input.target)
+        }`,
+      )
+    }
+
+    const runtime = registerRuntime(session.id)
+    runtime.lastActiveAt = Date.now()
+    const releaseIfIdle = () => {
+      if (!occupied(runtime)) unregisterRuntime(session.id)
+    }
+
+    const itemID = input.inboxItemID ?? Identifier.ascending("inbox")
+    const messageID = input.inboxMessageID ?? Identifier.ascending("message")
+
+    if (input.mail.type === "assistant") {
+      const result = await SessionInbox.deliver({
+        sessionID: session.id,
+        mode: "context",
+        message: {
+          role: "assistant",
+          parts: SessionInbox.toPayloadParts(input.mail.parts),
+          agent: input.mail.agentID,
+          model: input.mail.model,
+          metadata: input.mail.metadata,
+        },
+      })
+      releaseIfIdle()
+      return {
+        sessionID: session.id,
+        itemID: result.itemID,
+        messageID: result.messageID,
+        outcome: "created",
+      }
+    }
+
+    // For deterministic delivery with pre-allocated IDs, use enqueueDeterministic
+    if (input.inboxItemID && input.inboxMessageID) {
+      const userMail = input.mail as SessionMail.User
+      const mode: "task" | "context" = "task"
+      const origin = input.mail.type === "user" ? MessageV2.originFromMetadata(input.mail.metadata) : undefined
+      const result = await SessionInbox.enqueueDeterministic({
+        sessionID: session.id,
+        itemID,
+        messageID,
+        mode,
+        message: {
+          parts: SessionInbox.toPayloadParts(input.mail.parts),
+          role: "user",
+          agent: userMail.agent,
+          model: input.mail.model,
+          origin,
+          visible: true,
+          metadata: input.mail.metadata,
+          summary: userMail.summary,
+          tools: userMail.tools,
+        },
+        source: { type: "clarus", label: "Clarus Task" },
+      })
+      if (result.outcome === "created" && !isRunning(session.id)) {
+        scheduleWake(session.id, "deliverWithResult")
+      } else {
+        releaseIfIdle()
+      }
+      return {
+        sessionID: result.sessionID,
+        itemID: result.itemID,
+        messageID: result.messageID,
+        outcome: result.outcome === "created" ? "created" : "existing",
+      }
+    }
+
+    const item = await SessionInbox.enqueueMail({ sessionID: session.id, mail: input.mail })
+
+    if (isRunning(session.id)) {
+      log.info("mail queued (deliverWithResult, session running)", { sessionID: session.id })
+      return { sessionID: session.id, itemID: item.id, messageID: item.messageID, outcome: "created" }
+    }
+
+    if (item.mode === "context") {
+      log.info("context mail queued without waking session", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
+      return { sessionID: session.id, itemID: item.id, messageID: item.messageID, outcome: "created" }
+    }
+
+    if (item.mode === "steer" && !(await SessionInbox.latestRootID(session.id))) {
+      log.info("steer mail queued without root to resume", { sessionID: session.id, itemID: item.id })
+      releaseIfIdle()
+      return { sessionID: session.id, itemID: item.id, messageID: item.messageID, outcome: "created" }
+    }
+
+    log.info("mail queued (session idle), waking", { sessionID: session.id })
+    scheduleWake(session.id, "deliverWithResult")
+    return { sessionID: session.id, itemID: item.id, messageID: item.messageID, outcome: "created" }
+  }
+
+  /**
+   * Deliver context-only material (mode=context) that is durably persisted
+   * but MUST NOT wake an idle loop. Used for Clarus project activity delivery.
+   */
+  export async function deliverContext(input: {
+    target: string | SessionEndpoint.Info
+    inboxItemID: string
+    inboxMessageID: string
+    parts: SessionInbox.PayloadPartType[]
+    agent?: string
+    model?: SessionMail.Model
+    metadata?: Record<string, unknown>
+    source?: { type: string; label?: string }
+  }): Promise<{ sessionID: string; itemID: string; messageID: string }> {
+    const session = await getSession(input.target)
+    if (!session) {
+      throw new Error(
+        `deliverContext: session not found for target ${
+          typeof input.target === "string" ? input.target : SessionEndpoint.toKey(input.target)
+        }`,
+      )
+    }
+
+    const runtime = registerRuntime(session.id)
+    runtime.lastActiveAt = Date.now()
+    const releaseIfIdle = () => {
+      if (!occupied(runtime)) unregisterRuntime(session.id)
+    }
+
+    const result = await SessionInbox.enqueueDeterministic({
+      sessionID: session.id,
+      itemID: input.inboxItemID,
+      messageID: input.inboxMessageID,
+      mode: "context",
+      message: {
+        parts: input.parts,
+        role: "user" as const,
+        agent: input.agent,
+        model: input.model,
+        metadata: input.metadata,
+        visible: false,
+      },
+      source: input.source ?? { type: "clarus", label: "Clarus Activity" },
+    })
+
+    releaseIfIdle()
+    return { sessionID: result.sessionID, itemID: result.itemID, messageID: result.messageID }
+  }
   // --- Pending Reply ---
 
   export async function listPendingReply(scopeID?: string): Promise<string[]> {

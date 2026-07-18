@@ -33,6 +33,7 @@ import {
   scopeKeyForNavEntry,
   type SessionVisualStore,
 } from "@/components/sidebar/session-visual-state"
+import { ClarusSidebarSection } from "@/components/clarus/sidebar-section"
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import "./sidebar.css"
 
@@ -466,6 +467,9 @@ export function Sidebar(props: SidebarProps) {
               activeID={params.id}
               onSessionClick={handleNavEntryClick}
             />
+
+            {/* Clarus */}
+            <ClarusSidebarSection activeSessionID={params.id} />
 
             {/* Channel */}
             <div class="sb-root-section">

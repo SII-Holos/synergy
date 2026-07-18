@@ -67,6 +67,63 @@ Bash and process calls require an active Link session ID. Every request carries 
 
 Synergy Link does not make the remote filesystem part of the local Scope. It is an explicit execution boundary with its own session lifecycle, transport failures, and remote error semantics. When the Holos connection is disposed, pending requests fail and active local Link-session state is cleared.
 
+## Clarus
+
+Clarus is a native Holos Agent Tunnel capability for managing projects, task assignments, and project activity. It uses the same authenticated Holos WebSocket connection as identity, messaging, and Synergy Link — there is no standalone Clarus daemon or separate transport.
+
+### Connection States
+
+The Clarus navigation surface shows one of five public connection states:
+
+| State              | Meaning                                                                |
+| ------------------ | ---------------------------------------------------------------------- |
+| `disabled`         | Holos is not enabled or Clarus is unavailable.                         |
+| `connected`        | The tunnel is open and Clarus is receiving events.                     |
+| `reconnecting`     | The tunnel is connecting or reconnecting. Navigation remains viewable. |
+| `sign_in_required` | Holos authentication is needed.                                        |
+| `sync_failed`      | The tunnel connection is blocked or has failed after retries.          |
+
+### Projects
+
+A Clarus project is a collaboration surface identified by an agent ID and project ID. Projects have:
+
+- **Lifecycle**: `active`, `archived`, `exited`, `revoked`, or `deleted`. Only `active` projects are subscribed through the Agent Tunnel to receive task assignments, messages, and status changes.
+- **Subscription**: active projects are subscribed through the Agent Tunnel to receive task assignments, messages, and status changes.
+- **Metadata**: cached project name, slug, status, and primary agent.
+
+Projects and their task bindings are persisted locally through sharded storage, so navigation remains available without a live connection.
+
+### Tasks
+
+Clarus tasks flow from `runtimeTaskAssigned` events through the Agent Tunnel. Each task is bound to a Home Scope Synergy session and tracked through eight priority-ordered statuses:
+
+1. `needs_attention` — task requires user review
+2. `running` — an agent is actively working on the task
+3. `submitting` — result submission is in progress
+4. `waiting` — task is paused pending external input
+5. `submitted` — result has been submitted and acknowledged
+6. `failed` — execution terminated with an error
+7. `expired` — deadline passed without completion
+8. `cancelled` — task was explicitly cancelled
+
+Terminal statuses (`submitted`, `failed`, `expired`, `cancelled`) stop receiving project message fanout. Within the same status, tasks are ordered by most recent activity first.
+
+### Continue Locally
+
+A task in `submitted` status with `acknowledged` result state can be continued locally. This is an **explicit, irreversible** action that transitions the task to `running` and starts execution in the bound session. Ambiguous or rejected result states are terminal read-only and are never auto-retried.
+
+### Project Activity
+
+Each project maintains a chronological activity feed of messages received through the tunnel, with content, metadata, file references, and timestamps. Activity records are indexed for paginated timeline queries.
+
+### Composer
+
+The Clarus composer lets users send messages to a Clarus project or agent. The composer supports user and project search (capped at 5 candidates) and submits messages with optional file references through the Agent Tunnel.
+
+### Navigation
+
+Clarus appears as a dedicated sidebar navigation entry after Home. It presents a project/task hierarchy grouped by active and inactive projects, a connection status bar, and detailed task views. Navigation data is refreshed through the `clarus.navigation.updated` server event and Holos reconnect-version changes rather than polling.
+
 ## MCP and Model Providers
 
 MCP connections add external tools and resources to the agent runtime; model providers supply language and embedding models. Both are configured independently of Holos and Channels. A Holos identity does not provide model billing or API credentials, and a Channel account is not a model provider.
@@ -88,4 +145,5 @@ The `email_send` and `email_read` tools share the `communication.email` taxonomy
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
+- Clarus manages projects, task assignments, and activity through the same Holos tunnel.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

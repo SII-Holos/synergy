@@ -224,15 +224,18 @@ export namespace Session {
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
+    const endpointKind = session.endpoint?.kind
     const category =
-      session.category ??
-      SessionNav.deriveCategory({
-        scopeType,
-        endpointKind: session.endpoint?.kind,
-        parentID: session.parentID,
-        cortex: session.cortex,
-        agenda: session.agenda,
-      })
+      endpointKind === "clarus"
+        ? SessionNav.deriveCategory({ scopeType, endpointKind })
+        : (session.category ??
+          SessionNav.deriveCategory({
+            scopeType,
+            endpointKind,
+            parentID: session.parentID,
+            cortex: session.cortex,
+            agenda: session.agenda,
+          }))
     return {
       id: session.id,
       scopeID: scope.id,
@@ -243,10 +246,12 @@ export namespace Session {
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
       parentID: session.parentID,
-      endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+      endpointKind,
       chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
       chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
       chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
+      clarusProjectId: session.endpoint?.kind === "clarus" ? session.endpoint.projectId : undefined,
+      clarusTaskId: session.endpoint?.kind === "clarus" ? session.endpoint.taskId : undefined,
       completionNotice: {
         unread: session.completionNotice.unread,
         unreadCount: session.completionNotice.unreadCount,

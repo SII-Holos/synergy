@@ -882,6 +882,24 @@
         "model": {
           "description": "Embedding model name",
           "type": "string"
+        },
+        "local": {
+          "description": "Bundled local embedding model download settings",
+          "ref": "LocalEmbeddingConfig",
+          "type": "object",
+          "properties": {
+            "source": {
+              "description": "Download source for the bundled local embedding model (default: huggingface)",
+              "type": "string",
+              "enum": ["huggingface", "hf-mirror", "custom"]
+            },
+            "remoteHost": {
+              "description": "Public HTTPS origin used when source is custom",
+              "type": "string",
+              "format": "uri"
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -2139,6 +2157,28 @@
         }
       },
       "required": ["enabled", "apiUrl", "wsUrl", "portalUrl"],
+      "additionalProperties": false
+    },
+    "clarus": {
+      "description": "Clarus project binding and task session routing configuration",
+      "ref": "ClarusConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable Clarus project binding and task session routing",
+          "default": true,
+          "type": "boolean"
+        },
+        "workspaceRoot": {
+          "description": "Absolute path where Clarus project workspaces are stored (defaults to ~/.synergy/data/clarus-workspaces)",
+          "type": "string"
+        },
+        "apiUrl": {
+          "description": "Clarus REST API origin override (defaults to holos.apiUrl). Must be an HTTPS origin or loopback HTTP.",
+          "type": "string"
+        }
+      },
+      "required": ["enabled"],
       "additionalProperties": false
     },
     "email": {

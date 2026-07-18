@@ -1,4 +1,4 @@
-# Synergy Architecture
+# Architecture
 
 These documents define the current implementation invariants of the Synergy runtime. They describe supported behavior directly; design exploration, issue history, and retired schemas belong in research or migration documents.
 
@@ -31,6 +31,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                   |
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                   |
 | [Browser runtime](browser-runtime.md)            | Page ownership, control, native/WebRTC presentation, navigation policy, input, and lifecycle.                          |
+| [Clarus](clarus.md)                              | Native Holos Agent Tunnel project/task operations, persistence, reconciliation, navigation, and session integration.   |
 
 ## Cross-Cutting Invariants
 
@@ -48,25 +49,26 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Ownership Map
 
-| Area                     | Primary implementation                                                             |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                               |
-| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                  |
-| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools  |
-| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                        |
-| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                     |
-| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/` |
-| Delegation               | `packages/synergy/src/cortex/`                                                     |
-| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`            |
-| Knowledge                | `packages/synergy/src/library/`, `note/`                                           |
-| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components           |
-| Automation               | `packages/synergy/src/agenda/`                                                     |
-| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `remote/`, `mcp/`             |
-| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                     |
-| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules            |
-| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes      |
-| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`           |
-| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI    |
+| Area                     | Primary implementation                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                                         |
+| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                                            |
+| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools                            |
+| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                                                  |
+| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                                               |
+| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/`                           |
+| Delegation               | `packages/synergy/src/cortex/`                                                                               |
+| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`                                      |
+| Knowledge                | `packages/synergy/src/library/`, `note/`                                                                     |
+| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                                     |
+| Automation               | `packages/synergy/src/agenda/`                                                                               |
+| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `remote/`, `mcp/`                                       |
+| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                                               |
+| Clarus                   | `packages/synergy/src/clarus/`, `packages/synergy/src/holos/clarus.ts`, `clarus-route.ts`, Clarus UI modules |
+| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                                      |
+| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes                                |
+| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                                     |
+| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI                              |
 
 ## Related Contracts
 
