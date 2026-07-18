@@ -3,16 +3,19 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
 import { useFile } from "@/context/file"
 
 export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
   const file = useFile()
-  const dialog = useDialog()
+  const dialogContext = useDialog()
+  const { _ } = useLingui()
   return (
-    <Dialog title="Select file" size="list">
+    <Dialog title={_(dialog.selectFile)} size="list">
       <List
-        search={{ placeholder: "Search files", autofocus: true }}
-        emptyMessage="No files found"
+        search={{ placeholder: _(dialog.searchFiles), autofocus: true }}
+        emptyMessage={_(dialog.noFilesFound)}
         items={(query) =>
           file
             .searchFiles(query)
@@ -27,7 +30,7 @@ export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
           if (path) {
             props.onSelect?.(path)
           }
-          dialog.close()
+          dialogContext.close()
         }}
       >
         {(i) => (

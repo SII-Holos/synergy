@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import type { I18n, MessageDescriptor } from "@lingui/core"
 import {
   browserMetricPoints,
   buildLineChartModel,
@@ -8,9 +9,28 @@ import {
   summaryQualityMessage,
   type ChartDatasetSpec,
 } from "./chart-model"
+import { P } from "./performance-i18n"
 import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories } from "./tool-failure-model"
 import type { PerformanceSummary, PerformanceTimeline } from "./types"
+
+function mockI18n(): I18n {
+  const pMessages = new Map<string, string>()
+  for (const d of Object.values(P)) pMessages.set(d.id, d.message)
+
+  return {
+    _: (id: string | MessageDescriptor, values?: Record<string, unknown>) => {
+      const key = typeof id === "string" ? id : id.id
+      let msg: string = pMessages.get(key) ?? (typeof id === "object" ? (id.message ?? key) : key)
+      if (values) {
+        for (const [k, v] of Object.entries(values)) {
+          msg = msg.replace(`{${k}}`, String(v))
+        }
+      }
+      return msg
+    },
+  } as I18n
+}
 
 function summary(runtime: Partial<PerformanceSummary["runtime"]>): PerformanceSummary {
   return {
@@ -77,6 +97,7 @@ const datasetSpecs: ChartDatasetSpec[] = [
   },
 ]
 const chartTheme = { axisText: "#6b7280", gridColor: "#d1d5db" }
+const formatTime = (value: number) => `time:${value}`
 
 function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
   return { generatedAt: new Date(0).toISOString(), from: 1000, to: 3000, bucketMs: 1000, series }
@@ -88,6 +109,7 @@ describe("performance chart model", () => {
       points: [{ timestamp: 1000, cpu: 25, memory: 512, eventLoopLag: 12 }],
       datasets: datasetSpecs,
       theme: chartTheme,
+      formatTime,
     })
     expect(model.data.datasets.every((dataset) => dataset.yAxisID)).toBe(true)
     const scales = model.options.scales ?? {}
@@ -186,6 +208,7 @@ describe("performance chart model", () => {
         },
       ],
       theme: chartTheme,
+      formatTime,
     })
     expect(points[0]).toMatchObject({ memory: 1, domNodes: 42, latency: 120 })
     expect(new Set(model.data.datasets.map((dataset) => dataset.yAxisID))).toEqual(
@@ -202,6 +225,7 @@ describe("performance chart model", () => {
       ],
       datasets: [datasetSpecs[0]],
       theme: chartTheme,
+      formatTime,
     })
     expect(model.data.datasets[0].data).toEqual([
       { x: 1000, y: null },
@@ -210,10 +234,10 @@ describe("performance chart model", () => {
     ])
   })
 
-  test("summary quality warning uses quiet partial copy", () => {
+  test("summary quality warning uses quiet partial copy as a MessageDescriptor", () => {
     const baseSummary = summary({ mirrorFiles: 0, recentErrors: 0, pendingSessions: 0 })
-    expect(summaryQualityMessage({ ...baseSummary, quality: { partial: true, truncated: true } })).toBe(
-      "Summary is partial because the metric volume exceeded the dashboard cap.",
+    expect(summaryQualityMessage({ ...baseSummary, quality: { partial: true, truncated: true } })).toEqual(
+      P.qualitySummaryPartial,
     )
     expect(summaryQualityMessage(baseSummary)).toBeUndefined()
   })
@@ -235,14 +259,16 @@ describe("performance dashboard tool failures", () => {
     ).toBe("TimeoutError ×2 · PolicyDenied ×1")
   })
 
-  test("reports a quiet fallback when no error category was captured", () => {
-    expect(toolFailureCategories({ tool: "bash", callCount: 0, errorCount: 1, errorRate: 1, categories: [] })).toBe(
-      "No error category reported",
+  test("reports a quiet i18n fallback when no error category was captured", () => {
+    expect(toolFailureCategories({ tool: "bash", callCount: 0, errorCount: 1, errorRate: 1, categories: [] })).toEqual(
+      P.toolFailuresNone,
     )
   })
 })
 
 describe("performance dashboard runtime support", () => {
+  const i18n = mockI18n()
+
   test("surfaces diagnostics-derived runtime health fields", () => {
     const items = runtimeSupportItems(
       summary({
@@ -254,12 +280,13 @@ describe("performance dashboard runtime support", () => {
         recentErrors: 0,
         pendingSessions: 2,
       }),
+      i18n,
     )
-    expect(items).toContainEqual({ label: "Mirror files", value: "3 files", tone: "default" })
-    expect(items).toContainEqual({ label: "Recent errors", value: "0", tone: "default" })
-    expect(items).toContainEqual({ label: "Pending sessions", value: "2", tone: "warning" })
-    expect(items).toContainEqual({ label: "Session runtimes", value: "0 total · 0 running", tone: "default" })
-    expect(items).toContainEqual({ label: "Cortex tasks", value: "0 retained · 0 running", tone: "default" })
+    expect(items).toContainEqual({ label: P.runtimeMirrorFiles, value: "3 files", tone: "default" })
+    expect(items).toContainEqual({ label: P.runtimeRecentErrors, value: "0", tone: "default" })
+    expect(items).toContainEqual({ label: P.runtimePendingSessions, value: "2", tone: "warning" })
+    expect(items).toContainEqual({ label: P.runtimeSessionRuntimes, value: "0 total · 0 running", tone: "default" })
+    expect(items).toContainEqual({ label: P.runtimeCortexTasks, value: "0 retained · 0 running", tone: "default" })
     expect(items[0].value).toContain("Alive")
     expect(items[0].value).toContain("pid 42")
     expect(items[0].tone).toBe("success")
@@ -268,9 +295,10 @@ describe("performance dashboard runtime support", () => {
   test("marks unhealthy runtime support state as warning", () => {
     const items = runtimeSupportItems(
       summary({ alive: false, healthy: false, mirrorFiles: 0, recentErrors: 5, pendingSessions: 0 }),
+      i18n,
     )
     expect(items[0].tone).toBe("warning")
     expect(items[0].value).toContain("Not running")
-    expect(items[2]).toEqual({ label: "Recent errors", value: "5", tone: "warning" })
+    expect(items[2]).toEqual({ label: P.runtimeRecentErrors, value: "5", tone: "warning" })
   })
 })

@@ -26,6 +26,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [Sessions and messages](session-and-messages.md) | Durable session state, canonical message semantics, task roots, inbox modes, history, fork, and recovery.              |
 | [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.             |
 | [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.          |
+| [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.        |
 | [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.              |
 | [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                   |
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                   |

@@ -3,6 +3,8 @@ import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { ToolbarSelectorPopover } from "@/components/toolbar-selector"
+import { useLocale } from "@/context/locale"
+import { PI } from "./prompt-input-i18n"
 
 export type PromptStartOption = {
   id: string
@@ -23,14 +25,10 @@ export type PromptStartOptionGroup = {
 
 function PromptStartModeItem(props: { option: PromptStartOption }) {
   const disabled = () => !!props.option.disabled
-
   const row = (
     <div
       title={props.option.tooltip}
-      classList={{
-        "flex items-center justify-between gap-3 px-2 py-1.5": true,
-        "opacity-45": disabled(),
-      }}
+      classList={{ "flex items-center justify-between gap-3 px-2 py-1.5": true, "opacity-45": disabled() }}
     >
       <div class="flex min-w-0 items-center gap-2">
         <Icon name={props.option.icon} size="small" class="shrink-0 text-icon-base" />
@@ -38,7 +36,6 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
       </div>
     </div>
   )
-
   return (
     <Tooltip placement="right" inactive={!props.option.tooltip} value={props.option.tooltip}>
       {row}
@@ -47,6 +44,7 @@ function PromptStartModeItem(props: { option: PromptStartOption }) {
 }
 
 export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[] }) {
+  const { i18n } = useLocale()
   const options = () => props.groups.flatMap((group) => group.options)
   const selectedOption = () => props.groups.flatMap((group) => group.options).find((option) => option.selected)
 
@@ -54,21 +52,21 @@ export function PromptStartModeSelector(props: { groups: PromptStartOptionGroup[
     <Show when={props.groups.length > 0}>
       <ToolbarSelectorPopover
         trigger={
-          <Tooltip placement="top" value="Start mode">
+          <Tooltip placement="top" value={i18n._(PI.startMode)}>
             <button
               type="button"
-              aria-label="Start mode"
+              aria-label={i18n._(PI.startMode)}
               class="prompt-input-toolbar-button prompt-input-compact-control flex items-center gap-1.5 transition-colors"
             >
               <Icon name={selectedOption()?.icon ?? "circle"} size="small" class="shrink-0 text-icon-base" />
               <span class="prompt-input-compact-label text-12-medium whitespace-nowrap text-text-base">
-                {selectedOption()?.label ?? "Start"}
+                {selectedOption()?.label ?? i18n._(PI.startDefault)}
               </span>
               <Icon name="chevron-down" size="small" class="prompt-input-compact-chevron opacity-70 shrink-0" />
             </button>
           </Tooltip>
         }
-        title="Start mode"
+        title={i18n._(PI.startMode)}
         contentClass="w-52 max-h-80"
         placement="top-start"
       >

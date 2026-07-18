@@ -1,6 +1,9 @@
-import { createMemo, createSignal, Show } from "solid-js"
+import { createMemo, Show } from "solid-js"
 import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import { useParams } from "@solidjs/router"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
+import { statusBar as copy } from "@/locales/messages"
 import { useSync } from "@/context/sync"
 import type { AssistantMessage } from "@ericsanchezok/synergy-sdk/client"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
@@ -9,6 +12,8 @@ import "./context-bar.css"
 export function ContextBar() {
   const sync = useSync()
   const params = useParams()
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
 
   const messages = createMemo(() => (params.id ? (sync.data.message[params.id] ?? []) : []))
 
@@ -22,10 +27,11 @@ export function ContextBar() {
     const total = ModelLimit.actualInput(last.tokens) + last.tokens.output + last.tokens.reasoning
     const model = sync.data.provider.all.find((x) => x.id === last.providerID)?.models[last.modelID]
     const limit = model?.limit
-    if (!limit || limit.context === 0) return { tokens: total.toLocaleString(), percentage: null }
+    if (!limit || limit.context === 0) return { tokens: fmt.number(total), total, percentage: null }
     const usable = ModelLimit.usableInput(limit)
     return {
-      tokens: total.toLocaleString(),
+      tokens: fmt.number(total),
+      total,
       percentage: Math.round((total / usable) * 100),
     }
   })
@@ -46,12 +52,15 @@ export function ContextBar() {
         openDelay={0}
         placement="top"
         value={
-          <div class="flex items-center gap-1.5">
-            <span class="text-text-invert-strong">{context()?.tokens}</span>
-            <span class="text-text-invert-base">tokens</span>
-            <span class="text-text-invert-base">·</span>
-            <span class="text-text-invert-strong">{percentage()}%</span>
-            <span class="text-text-invert-base">used</span>
+          <div class="text-text-invert-base">
+            {_({
+              ...copy.contextUsage,
+              values: {
+                tokens: context()?.tokens ?? "0",
+                count: context()?.total ?? 0,
+                percentage: fmt.percent((percentage() ?? 0) / 100),
+              },
+            })}
           </div>
         }
       >

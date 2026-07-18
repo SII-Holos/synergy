@@ -1,3 +1,5 @@
+import { useLingui } from "@lingui/solid"
+import { browser as B } from "@/locales/messages"
 import { BROWSER_PROTOCOL_VERSION } from "@ericsanchezok/synergy-browser"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -37,6 +39,7 @@ export function RemoteBrowserSurface(props: {
 
   const browser = useBrowser()
   const sdk = useSDK()
+  const lingui = useLingui()
   const [webrtcStatus, setWebrtcStatus] = createSignal<BrowserWebRTCStatus>("idle")
   const [webrtcDetail, setWebrtcDetail] = createSignal<unknown>(null)
   const [textInputPosition, setTextInputPosition] = createSignal({ x: 0, y: 0 })
@@ -378,12 +381,12 @@ export function RemoteBrowserSurface(props: {
     if (typeof detail === "object" && detail !== null && "message" in detail) {
       return String((detail as { message: unknown }).message)
     }
-    if (webrtcStatus() === "host_pending") return "Waiting for Browser Host"
-    if (webrtcStatus() === "host_ready") return "Preparing remote browser stream"
-    if (webrtcStatus() === "negotiating") return "Negotiating remote browser stream"
-    if (webrtcStatus() === "signaling") return "Connecting to remote browser"
-    if (webrtcStatus() === "error") return "Remote browser stream unavailable"
-    return "Preparing remote browser"
+    if (webrtcStatus() === "host_pending") return lingui._(B.remoteWaiting.id)
+    if (webrtcStatus() === "host_ready") return lingui._(B.remoteStreamPreparing.id)
+    if (webrtcStatus() === "negotiating") return lingui._(B.remoteNegotiating.id)
+    if (webrtcStatus() === "signaling") return lingui._(B.remoteConnecting.id)
+    if (webrtcStatus() === "error") return lingui._(B.remoteUnavailable.id)
+    return lingui._(B.remotePreparing.id)
   }
 
   const streamReady = () => webrtcStatus() === "stream_ready"
@@ -392,7 +395,7 @@ export function RemoteBrowserSurface(props: {
     <>
       <textarea
         ref={textInputRef}
-        aria-label="Remote browser text input"
+        aria-label={lingui._(B.remoteTextInput.id)}
         autocomplete="off"
         autocapitalize="off"
         autocorrect="off"

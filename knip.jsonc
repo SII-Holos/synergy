@@ -100,7 +100,7 @@
     "pkg",
     "HEAD",
   ],
-  "ignoreUnresolved": [".json", ".svg"],
+  "ignoreUnresolved": [".json", ".svg", "\\.po\\?lingui$"],
   "rules": {
     "catalog": "off",
   },
@@ -110,7 +110,7 @@
       "project": ["src/**/*.ts", "script/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
     },
     "packages/app": {
-      "entry": ["src/**/*.{ts,tsx}", "script/**/*.ts"],
+      "entry": ["lingui.config.ts", "src/**/*.{ts,tsx}", "script/**/*.ts"],
       "project": ["src/**/*.{ts,tsx}", "script/**/*.ts"],
     },
     "packages/desktop": {

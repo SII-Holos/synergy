@@ -17,6 +17,7 @@ import { ConfigMarkdown } from "@/config/markdown"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "@/tool/tool"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
+import { SessionHistory } from "./history"
 
 const log = Log.create({ service: "session.input" })
 
@@ -144,6 +145,28 @@ export async function lastModel(sessionID: string) {
   }
   const { Provider } = await import("@/provider/provider")
   return Provider.defaultModel()
+}
+
+function attachmentExtractionFailure(input: {
+  sessionID: string
+  messageID: string
+  filename?: string
+  error: unknown
+}): MessageV2.TextPart {
+  const filename = input.filename ?? "attachment"
+  log.warn("attachment text extraction failed", {
+    sessionID: input.sessionID,
+    filename,
+    error: input.error,
+  })
+  return {
+    id: Identifier.ascending("part"),
+    messageID: input.messageID,
+    sessionID: input.sessionID,
+    type: "text",
+    origin: "system",
+    text: `Failed to extract text from ${filename}: The original attachment was preserved.`,
+  }
 }
 
 export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
@@ -324,34 +347,51 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
             }
             const dataPolicy = Attachment.policy(part)
             if (dataPolicy.extractText) {
-              const text = await Attachment.extractTextFromDataPart(part)
-              const pieces: MessageV2.Part[] = [
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
-                },
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text,
-                },
-              ]
-              if (dataPolicy.keepBinary) {
-                pieces.push({
-                  ...part,
-                  id: part.id ?? Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                })
+              try {
+                const text = await Attachment.extractTextFromDataPart(part)
+                const pieces: MessageV2.Part[] = [
+                  {
+                    id: Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    origin: "system" as const,
+                    text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: part.filename })}`,
+                  },
+                  {
+                    id: Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    origin: "system" as const,
+                    text,
+                  },
+                ]
+                if (dataPolicy.keepBinary) {
+                  pieces.push({
+                    ...part,
+                    id: part.id ?? Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                  })
+                }
+                return pieces
+              } catch (error) {
+                return [
+                  attachmentExtractionFailure({
+                    sessionID: input.sessionID,
+                    messageID: info.id,
+                    filename: part.filename,
+                    error,
+                  }),
+                  {
+                    ...part,
+                    id: part.id ?? Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                  },
+                ]
               }
-              return pieces
             }
             if (dataPolicy.saveLocal) {
               try {
@@ -537,28 +577,49 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
 
             const filePolicy = Attachment.policy({ filepath, filename: part.filename, mime: part.mime })
             if (filePolicy.extractText) {
-              const text = await Attachment.extractTextFromFile(filepath)
               FileTime.read(input.sessionID, filepath)
-              const pieces: MessageV2.Part[] = [
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
-                },
-                {
-                  id: Identifier.ascending("part"),
-                  messageID: info.id,
-                  sessionID: input.sessionID,
-                  type: "text",
-                  origin: "system" as const,
-                  text,
-                },
-              ]
-              if (filePolicy.keepBinary) {
-                pieces.push(
+              try {
+                const text = await Attachment.extractTextFromFile(filepath)
+                const pieces: MessageV2.Part[] = [
+                  {
+                    id: Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    origin: "system" as const,
+                    text: `Called the Read tool with the following input: ${JSON.stringify({ filePath: filepath })}`,
+                  },
+                  {
+                    id: Identifier.ascending("part"),
+                    messageID: info.id,
+                    sessionID: input.sessionID,
+                    type: "text",
+                    origin: "system" as const,
+                    text,
+                  },
+                ]
+                if (filePolicy.keepBinary) {
+                  pieces.push(
+                    await Attachment.toPart({
+                      filepath,
+                      mime: part.mime,
+                      filename: part.filename,
+                      sessionID: input.sessionID,
+                      messageID: info.id,
+                      id: part.id,
+                      source: part.source,
+                    }),
+                  )
+                }
+                return pieces
+              } catch (error) {
+                return [
+                  attachmentExtractionFailure({
+                    sessionID: input.sessionID,
+                    messageID: info.id,
+                    filename: part.filename,
+                    error,
+                  }),
                   await Attachment.toPart({
                     filepath,
                     mime: part.mime,
@@ -567,10 +628,12 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
                     messageID: info.id,
                     id: part.id,
                     source: part.source,
+                    presentation: part.presentation,
+                    model: part.model,
+                    metadata: part.metadata,
                   }),
-                )
+                ]
               }
-              return pieces
             }
 
             FileTime.read(input.sessionID, filepath)
@@ -643,6 +706,5 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
 }
 
 async function effectiveMessages(sessionID: string) {
-  const { Session } = await import(".")
-  return Session.messages({ sessionID })
+  return SessionHistory.modelMessages({ sessionID })
 }

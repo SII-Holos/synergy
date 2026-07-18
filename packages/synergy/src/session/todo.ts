@@ -1,3 +1,4 @@
+import { emptyOnNotFound } from "./storage-read"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import z from "zod"
@@ -41,6 +42,6 @@ export namespace Todo {
     const scopeID = Identifier.asScopeID((session.scope as Scope).id)
     return Storage.read<Info[]>(StoragePath.sessionTodo(scopeID, asSessionID(sessionID)))
       .then((x) => x || [])
-      .catch(() => [])
+      .catch(emptyOnNotFound<Info>)
   }
 }

@@ -12,6 +12,8 @@ import { createStore } from "solid-js/store"
 import { type FileDiff } from "@ericsanchezok/synergy-sdk"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
 import { getSemanticIcon } from "./semantic-icon"
+import { useLingui } from "@lingui/solid"
+import { SESSION_REVIEW_DESC } from "./tool-title-descriptors"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -33,6 +35,7 @@ export interface SessionReviewProps {
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
+  const { _ } = useLingui()
   const [store, setStore] = createStore({
     open: props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file),
   })
@@ -68,21 +71,21 @@ export const SessionReview = (props: SessionReviewProps) => {
           [props.classes?.header ?? ""]: !!props.classes?.header,
         }}
       >
-        <div data-slot="session-review-title">Session changes</div>
+        <div data-slot="session-review-title">{_(SESSION_REVIEW_DESC.title)}</div>
         <div data-slot="session-review-actions">
           <Show when={props.onDiffStyleChange}>
             <RadioGroup
               options={["unified", "split"] as const}
               current={diffStyle()}
               value={(style) => style}
-              label={(style) => (style === "unified" ? "Unified" : "Split")}
+              label={(style) => (style === "unified" ? _(SESSION_REVIEW_DESC.unified) : _(SESSION_REVIEW_DESC.split))}
               onSelect={(style) => style && props.onDiffStyleChange?.(style)}
             />
           </Show>
           <Button size="normal" icon="grip-vertical" onClick={handleExpandOrCollapseAll}>
             <Switch>
-              <Match when={open().length > 0}>Collapse all</Match>
-              <Match when={true}>Expand all</Match>
+              <Match when={open().length > 0}>{_(SESSION_REVIEW_DESC.collapseAll)}</Match>
+              <Match when={true}>{_(SESSION_REVIEW_DESC.expandAll)}</Match>
             </Switch>
           </Button>
           {props.actions}

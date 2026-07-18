@@ -7,6 +7,9 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { CortexTask, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { getAgentVisual } from "@/components/agent-visual"
 import { resolveRuntimeIconState } from "@/components/status-bar"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
 import "./subagent-dock.css"
 
 type RetrySessionStatus = Extract<SessionStatus, { type: "retry" }>
@@ -34,10 +37,12 @@ interface SubagentAvatarProps {
 function SubagentAvatar(props: SubagentAvatarProps) {
   const sync = useSync()
   const navigateToSession = useNavigateToSession()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const config = createMemo(() => getAgentVisual(props.task.agent))
   const isQueued = () => props.task.status === "queued"
   const sessionStatus = createMemo<SessionStatus | undefined>(() => sync.data.session_status[props.task.sessionID])
-  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false))
+  const runtimeState = createMemo(() => resolveRuntimeIconState(sessionStatus(), false, i18n))
   const isRetrying = () => sessionStatus()?.type === "retry"
   const [elapsed, setElapsed] = createSignal(formatElapsed(props.task.startedAt))
   const [holdProgress, setHoldProgress] = createSignal(0)
@@ -143,7 +148,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
             <span class="select-none leading-none" style={{ "font-size": "14px" }}>
               {cfg.emoji}
             </span>
-            <span>{cfg.label}</span>
+            <span>{translateDescriptor(cfg.label, i18n)}</span>
           </span>
 
           <span class="text-11-regular text-text-subtle">{elapsed()}</span>
@@ -152,7 +157,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
         <Show when={!isQueued() && task.progress}>
           <div class="flex items-center gap-2 text-11-regular text-text-subtle">
             <Show when={task.progress!.toolCalls > 0}>
-              <span>{task.progress!.toolCalls} tools</span>
+              <span>{i18n._({ ...S.subagentToolsCount, values: { count: task.progress!.toolCalls } })}</span>
             </Show>
             <Show when={task.progress!.lastTool}>
               <span class="truncate max-w-28">{task.progress!.lastTool}</span>
@@ -166,7 +171,7 @@ function SubagentAvatar(props: SubagentAvatarProps) {
               <div class="flex flex-col gap-0.5">
                 <div class="flex items-center gap-1.5 text-11-medium text-text-on-critical-base">
                   <Icon name={state.icon} size="small" />
-                  <span>Retry #{s.attempt}</span>
+                  <span>{i18n._({ ...S.subagentRetry, values: { attempt: s.attempt } })}</span>
                 </div>
                 <Show when={s.message}>
                   <span class="text-11-regular text-text-on-critical-base leading-relaxed break-words line-clamp-3">
@@ -178,19 +183,27 @@ function SubagentAvatar(props: SubagentAvatarProps) {
           }}
         </Show>
         <span class="text-11-regular text-text-interactive-base">
-          {isQueued() ? "Queued — waiting for slot" : "Tap to open · press and hold to cancel"}
+          {isQueued() ? _(S.subagentQueuedWait) : _(S.subagentTapToOpen)}
         </span>
       </div>
     )
   }
 
   const ariaLabel = createMemo(() => {
-    if (isQueued()) return `${config().label} queued`
+    if (isQueued())
+      return i18n._({ ...S.subagentAriaQueued, values: { agent: translateDescriptor(config().label, i18n) } })
     const status = sessionStatus()
     if (isRetryStatus(status)) {
-      return `${config().label}: Retry #${status.attempt} — ${status.message}`
+      return i18n._({
+        ...S.subagentRetryAria,
+        values: {
+          agent: translateDescriptor(config().label, i18n),
+          attempt: status.attempt,
+          message: status.message ?? "",
+        },
+      })
     }
-    return `Open ${props.task.description}. Press and hold to cancel.`
+    return i18n._({ ...S.subagentAriaLabel, values: { description: props.task.description } })
   })
 
   return (
@@ -257,7 +270,9 @@ export function SubagentDock(props: SubagentDockProps) {
 
   const activeTasks = createMemo(() =>
     sync.data.cortex
-      .filter((t) => t.parentSessionID === props.sessionID && (t.status === "running" || t.status === "queued"))
+      .filter(
+        (task) => task.parentSessionID === props.sessionID && (task.status === "running" || task.status === "queued"),
+      )
       .sort((a, b) => a.startedAt - b.startedAt),
   )
 

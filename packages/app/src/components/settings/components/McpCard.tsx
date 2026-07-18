@@ -1,4 +1,5 @@
 import { createMemo, createSignal, Show } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
@@ -9,17 +10,71 @@ import { SegmentPill } from "./SegmentPill"
 import { SettingsSubsection } from "./SettingsPrimitives"
 import { SettingRow } from "./SettingRow"
 
+const newServerLabel = { id: "settings.mcp.card.newServer", message: "New server" }
+const localTypeLabel = { id: "settings.mcp.card.type.local", message: "Local command" }
+const remoteTypeLabel = { id: "settings.mcp.card.type.remote", message: "Remote endpoint" }
+const commandNotSet = { id: "settings.mcp.card.commandNotSet", message: "Command not set" }
+const urlNotSet = { id: "settings.mcp.card.urlNotSet", message: "URL not set" }
+const localPillLabel = { id: "settings.mcp.card.pill.local", message: "Local" }
+const remotePillLabel = { id: "settings.mcp.card.pill.remote", message: "Remote" }
+const enabledLabel = { id: "settings.mcp.card.enabled", message: "Enabled" }
+const pausedLabel = { id: "settings.mcp.card.paused", message: "Paused" }
+const collapseLabel = { id: "settings.mcp.card.collapse", message: "Collapse server details" }
+const expandLabel = { id: "settings.mcp.card.expand", message: "Expand server details" }
+const serverNameLabel = { id: "settings.mcp.card.serverName", message: "Server name" }
+const serverNamePlaceholder = { id: "settings.mcp.card.serverName.placeholder", message: "filesystem" }
+const serverNameDesc = {
+  id: "settings.mcp.card.serverName.description",
+  message: "Used in menus, logs, and saved configuration.",
+}
+const connectionTypeTitle = { id: "settings.mcp.card.connectionType", message: "Connection type" }
+const localCmdDesc = { id: "settings.mcp.card.local.description", message: "Starts a command on this machine." }
+const remoteUrlDesc = { id: "settings.mcp.card.remote.description", message: "Connects to an HTTP or SSE endpoint." }
+const startCommandLabel = { id: "settings.mcp.card.startCommand", message: "Start command" }
+const startCommandDesc = {
+  id: "settings.mcp.card.startCommand.description",
+  message: "Command and arguments Synergy runs when this server is needed.",
+}
+const envLabel = { id: "settings.mcp.card.env", message: "Environment" }
+const envDesc = {
+  id: "settings.mcp.card.env.description",
+  message: "Optional variables passed only to this server process.",
+}
+const serverUrlLabel = { id: "settings.mcp.card.serverUrl", message: "Server URL" }
+const serverUrlDesc = {
+  id: "settings.mcp.card.serverUrl.description",
+  message: "HTTP or SSE endpoint for the remote server.",
+}
+const headersLabel = { id: "settings.mcp.card.headers", message: "Headers" }
+const headersDesc = { id: "settings.mcp.card.headers.description", message: "Optional request headers, one per line." }
+const startupTimeoutLabel = { id: "settings.mcp.card.startupTimeout", message: "Startup timeout" }
+const startupTimeoutDesc = {
+  id: "settings.mcp.card.startupTimeout.description",
+  message: "Milliseconds to wait before treating the server as unavailable.",
+}
+const startCmdPlaceholder = {
+  id: "settings.mcp.card.startCmd.placeholder",
+  message: "npx -y @modelcontextprotocol/server-filesystem C:\\Projects",
+}
+const envPlaceholder = { id: "settings.mcp.card.env.placeholder", message: "KEY=value ANOTHER=value" }
+const serverUrlPlaceholder = { id: "settings.mcp.card.serverUrl.placeholder", message: "https://mcp.example.com/sse" }
+const headersPlaceholder = {
+  id: "settings.mcp.card.headers.placeholder",
+  message: "Authorization: Bearer token X-Custom: value",
+}
+
 export function McpCard(props: {
   entry: McpEntry
   onChange: (field: string, value: string | boolean) => void
   onRemove: () => void
 }) {
+  const { _ } = useLingui()
   const [expanded, setExpanded] = createSignal(!props.entry.key)
-  const name = createMemo(() => props.entry.key.trim() || "New server")
-  const typeLabel = createMemo(() => (props.entry.type === "local" ? "Local command" : "Remote endpoint"))
+  const name = createMemo(() => props.entry.key.trim() || _(newServerLabel))
+  const typeLabel = createMemo(() => (props.entry.type === "local" ? _(localTypeLabel) : _(remoteTypeLabel)))
   const destination = createMemo(() => {
-    if (props.entry.type === "local") return props.entry.command.trim() || "Command not set"
-    return props.entry.url.trim() || "URL not set"
+    if (props.entry.type === "local") return props.entry.command.trim() || _(commandNotSet)
+    return props.entry.url.trim() || _(urlNotSet)
   })
 
   return (
@@ -45,7 +100,7 @@ export function McpCard(props: {
 
         <div class="settings-mcp-actions">
           <span class="settings-mcp-state" classList={{ "settings-mcp-state-paused": !props.entry.enabled }}>
-            {props.entry.enabled ? "Enabled" : "Paused"}
+            {props.entry.enabled ? _(enabledLabel) : _(pausedLabel)}
           </span>
           <Switch checked={props.entry.enabled} hideLabel onChange={(value) => props.onChange("enabled", value)}>
             {`${name()} server`}
@@ -54,7 +109,7 @@ export function McpCard(props: {
           <button
             type="button"
             class="settings-mcp-expand"
-            aria-label={expanded() ? "Collapse server details" : "Expand server details"}
+            aria-label={expanded() ? _(collapseLabel) : _(expandLabel)}
             onClick={() => setExpanded((value) => !value)}
           >
             <Icon
@@ -70,26 +125,22 @@ export function McpCard(props: {
         <SettingsSubsection>
           <TextField
             type="text"
-            label="Server name"
-            placeholder="filesystem"
-            description="Used in menus, logs, and saved configuration."
+            label={_(serverNameLabel)}
+            placeholder={_(serverNamePlaceholder)}
+            description={_(serverNameDesc)}
             value={props.entry.key}
             onChange={(value) => props.onChange("key", value)}
           />
 
           <SettingRow
-            title="Connection type"
-            description={
-              props.entry.type === "local"
-                ? "Starts a command on this machine."
-                : "Connects to an HTTP or SSE endpoint."
-            }
+            title={_(connectionTypeTitle)}
+            description={props.entry.type === "local" ? _(localCmdDesc) : _(remoteUrlDesc)}
             trailing={
               <SegmentPill
                 value={props.entry.type}
                 options={[
-                  { value: "local", label: "Local" },
-                  { value: "remote", label: "Remote" },
+                  { value: "local", label: _(localPillLabel) },
+                  { value: "remote", label: _(remotePillLabel) },
                 ]}
                 onChange={(value) => props.onChange("type", value)}
               />
@@ -99,18 +150,18 @@ export function McpCard(props: {
           <Show when={props.entry.type === "local"}>
             <TextField
               type="text"
-              label="Start command"
-              placeholder="npx -y @modelcontextprotocol/server-filesystem C:\\Projects"
-              description="Command and arguments Synergy runs when this server is needed."
+              label={_(startCommandLabel)}
+              placeholder={_(startCmdPlaceholder)}
+              description={_(startCommandDesc)}
               value={props.entry.command}
               onChange={(value) => props.onChange("command", value)}
             />
             <TextField
               type="text"
               multiline
-              label="Environment"
-              placeholder={"KEY=value\nANOTHER=value"}
-              description="Optional variables passed only to this server process."
+              label={_(envLabel)}
+              placeholder={_(envPlaceholder)}
+              description={_(envDesc)}
               value={props.entry.environment}
               onChange={(value) => props.onChange("environment", value)}
             />
@@ -119,18 +170,18 @@ export function McpCard(props: {
           <Show when={props.entry.type === "remote"}>
             <TextField
               type="text"
-              label="Server URL"
-              placeholder="https://mcp.example.com/sse"
-              description="HTTP or SSE endpoint for the remote server."
+              label={_(serverUrlLabel)}
+              placeholder={_(serverUrlPlaceholder)}
+              description={_(serverUrlDesc)}
               value={props.entry.url}
               onChange={(value) => props.onChange("url", value)}
             />
             <TextField
               type="text"
               multiline
-              label="Headers"
-              placeholder={"Authorization: Bearer token\nX-Custom: value"}
-              description="Optional request headers, one per line."
+              label={_(headersLabel)}
+              placeholder={_(headersPlaceholder)}
+              description={_(headersDesc)}
               value={props.entry.headers}
               onChange={(value) => props.onChange("headers", value)}
             />
@@ -138,9 +189,9 @@ export function McpCard(props: {
 
           <TextField
             type="text"
-            label="Startup timeout"
+            label={_(startupTimeoutLabel)}
             placeholder="30000"
-            description="Milliseconds to wait before treating the server as unavailable."
+            description={_(startupTimeoutDesc)}
             value={props.entry.timeout}
             onChange={(value) => props.onChange("timeout", value)}
           />

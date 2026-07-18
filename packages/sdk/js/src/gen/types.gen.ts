@@ -2844,6 +2844,10 @@ export type Config = {
    */
   $schema?: string
   /**
+   * UI locale (system = follow OS, default: system)
+   */
+  locale?: "system" | "en" | "zh-CN"
+  /**
    * Theme name to use for the interface
    */
   theme?: string
@@ -4629,6 +4633,35 @@ export type Part =
   | CompactionPart
   | CompactionRecoveryPart
 
+export type SessionMessagePage = {
+  items: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  referencedRoots: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+}
+
+export type SessionMessagePageCursorInvalidError = {
+  name: "SessionMessagePageCursorInvalidError"
+  data: {
+    message: string
+  }
+}
+
+export type SessionMessagePageCursorStaleError = {
+  name: "SessionMessagePageCursorStaleError"
+  data: {
+    message: string
+    anchorID: string
+  }
+}
+
 export type SessionRollbackEvent = {
   id: string
   sessionID: string
@@ -5645,6 +5678,15 @@ export type BlueprintLoopInfo = {
   auditAgent: string
   auditSessionID?: string
   auditTaskID?: string
+  stopRequest?: {
+    summary: string
+    completed?: Array<string>
+    evidence?: Array<string>
+    remaining?: Array<string>
+    requestedAt: number
+    requesterSessionID: string
+    requesterMessageID: string
+  }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -7098,21 +7140,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
@@ -7131,6 +7158,21 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
@@ -7345,10 +7387,10 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventPluginEvent
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
@@ -10242,6 +10284,42 @@ export type SessionPromptResponses = {
 }
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
+
+export type SessionMessagePageData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/message/page"
+}
+
+export type SessionMessagePageErrors = {
+  /**
+   * Invalid or stale message cursor
+   */
+  400: BadRequestError | SessionMessagePageCursorInvalidError | SessionMessagePageCursorStaleError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionMessagePageError = SessionMessagePageErrors[keyof SessionMessagePageErrors]
+
+export type SessionMessagePageResponses = {
+  /**
+   * Cursor-paged session messages
+   */
+  200: SessionMessagePage
+}
+
+export type SessionMessagePageResponse = SessionMessagePageResponses[keyof SessionMessagePageResponses]
 
 export type SessionDiffData = {
   body?: never

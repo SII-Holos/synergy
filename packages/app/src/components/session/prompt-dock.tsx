@@ -20,6 +20,8 @@ import type { SessionTransitionActions, SessionTransitionProgress } from "./sess
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
 import { PromptDockFloatLayer } from "./prompt-dock-float-layer"
+import { S } from "./session-i18n"
+import { useLocale } from "@/context/locale"
 
 export function PromptDock(props: {
   ref: (el: HTMLDivElement) => void
@@ -55,6 +57,8 @@ export function PromptDock(props: {
   lastModified: Accessor<string | null | undefined>
   rollbackActive?: boolean
 }) {
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
   const nav = useNavigate()
   const meta = createMemo(() => props.meta())
   const backToParentID = createMemo(() => promptDockBackToParentID(meta()))
@@ -96,7 +100,7 @@ export function PromptDock(props: {
           when={props.prompt.ready()}
           fallback={
             <div class="w-full min-h-32 md:min-h-40 rounded-md border border-border-weak-base bg-background-base/50 px-4 py-3 text-text-weak whitespace-pre-wrap pointer-events-none">
-              {props.handoffPrompt || "Loading prompt..."}
+              {props.handoffPrompt || _(S.dockLoadingPrompt)}
             </div>
           }
         >
@@ -117,7 +121,7 @@ export function PromptDock(props: {
                 <Show when={backToParentID()}>
                   {(parentID) => (
                     <div class="flex items-center justify-center pb-2">
-                      <Tooltip value={props.parentTitle || "Parent session"} placement="top">
+                      <Tooltip value={props.parentTitle || _(S.dockParentSession)} placement="top">
                         <button
                           type="button"
                           class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
@@ -128,7 +132,7 @@ export function PromptDock(props: {
                           onClick={() => props.navigate(untrack(parentID), "return-to-parent")}
                         >
                           <Icon name={getSemanticIcon("navigation.back")} size="small" />
-                          <span>Back to parent</span>
+                          <span>{_(S.dockBackToParent)}</span>
                         </button>
                       </Tooltip>
                     </div>
@@ -137,7 +141,7 @@ export function PromptDock(props: {
                 <Show when={forkSourceID()}>
                   {(sourceID) => (
                     <div class="flex items-center justify-center pb-2">
-                      <Tooltip value={props.forkedFromTitle || "Fork source"} placement="top">
+                      <Tooltip value={props.forkedFromTitle || _(S.dockForkSourceTooltip)} placement="top">
                         <button
                           type="button"
                           class="workbench-control-surface workbench-control-surface-hover flex items-center justify-center gap-1.5 h-8 px-3 rounded-full
@@ -148,7 +152,7 @@ export function PromptDock(props: {
                           onClick={() => props.navigate(untrack(sourceID))}
                         >
                           <Icon name={getSemanticIcon("workspace.worktree")} size="small" />
-                          <span>Forked from</span>
+                          <span>{_(S.dockForkedFrom)}</span>
                         </button>
                       </Tooltip>
                     </div>
@@ -167,7 +171,7 @@ export function PromptDock(props: {
                         onClick={() => nav(untrack(from))}
                       >
                         <Icon name={getSemanticIcon("navigation.back")} size="small" />
-                        <span>Back</span>
+                        <span>{_(S.dockBack)}</span>
                       </button>
                     </div>
                   )}

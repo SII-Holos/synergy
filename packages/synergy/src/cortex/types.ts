@@ -124,6 +124,7 @@ export namespace CortexTypes {
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),
     sessionID: Identifier.schema("session").optional(),
+    reuseInterrupted: z.boolean().optional(),
     model: z
       .object({
         providerID: z.string(),

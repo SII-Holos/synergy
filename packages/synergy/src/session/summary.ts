@@ -32,7 +32,14 @@ export namespace SessionSummary {
     revisionID?: string
     messages?: MessageV2.WithParts[]
   }
-  type ActiveSummary = { promise: Promise<void>; pending: SummaryInput[] }
+  type QueuedSummaryInput = SummaryInput & { historyRevision: number }
+  type ActiveSummary = { promise: Promise<void>; pending: QueuedSummaryInput[] }
+  const SummaryCursor = z.object({
+    from: z.string().optional(),
+    to: z.string().optional(),
+    files: z.array(z.string()),
+  })
+  type SummaryCursor = z.infer<typeof SummaryCursor>
   const active = new Map<string, ActiveSummary>()
 
   // Snapshot and LLM work receive the per-run abort signal so the queue only
@@ -86,6 +93,12 @@ export namespace SessionSummary {
     return { user, assistants }
   }
 
+  function compactQueuedMessages(messages: MessageV2.WithParts[], rootMessageID: string) {
+    const turn = collectRootTurn(messages, rootMessageID)
+    if (!turn) return
+    return [turn.user, ...turn.assistants]
+  }
+
   export const summarize = fn(
     z.object({
       sessionID: z.string(),
@@ -94,6 +107,7 @@ export namespace SessionSummary {
       messages: z.custom<MessageV2.WithParts[]>().optional(),
     }),
     async (input) => {
+      const historyRevision = SessionManager.historyRevision(input.sessionID)
       const current = active.get(input.sessionID)
       if (current) {
         const key = input.revisionID ?? input.messageID
@@ -103,12 +117,14 @@ export namespace SessionSummary {
             sessionID: input.sessionID,
             messageID: input.messageID,
             revisionID: input.revisionID,
+            messages: input.messages ? compactQueuedMessages(input.messages, input.messageID) : undefined,
+            historyRevision,
           })
         }
         return current.promise
       }
 
-      const pending = [input]
+      const pending: QueuedSummaryInput[] = [{ ...input, historyRevision }]
       const promise = Promise.resolve().then(() => runSummaries(input.sessionID))
       active.set(input.sessionID, { promise, pending })
       return promise
@@ -141,7 +157,8 @@ export namespace SessionSummary {
     }
   }
 
-  async function summarizeNow(input: SummaryInput, abort: AbortSignal) {
+  async function summarizeNow(input: QueuedSummaryInput, abort: AbortSignal) {
+    const completeHistory = input.messages === undefined
     const all = input.messages ?? (await Session.messages({ sessionID: input.sessionID }))
     abort.throwIfAborted()
     const diffCache = new Map<string, Promise<SnapshotSchema.FileDiff[]>>()
@@ -156,7 +173,14 @@ export namespace SessionSummary {
     })
     await pendingWritten.promise
     const settled = await Promise.allSettled([
-      summarizeSession({ sessionID: input.sessionID, messages: all, diffCache, abort }),
+      summarizeSession({
+        sessionID: input.sessionID,
+        messages: all,
+        completeHistory,
+        diffCache,
+        historyRevision: input.historyRevision,
+        abort,
+      }),
       messageSummary,
     ])
     const failed = settled.find((result): result is PromiseRejectedResult => result.status === "rejected")
@@ -166,44 +190,120 @@ export namespace SessionSummary {
   async function summarizeSession(input: {
     sessionID: string
     messages: MessageV2.WithParts[]
+    completeHistory: boolean
     diffCache: Map<string, Promise<SnapshotSchema.FileDiff[]>>
+    historyRevision: number
     abort: AbortSignal
   }) {
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
     const session = await SessionManager.requireSession(input.sessionID)
     const directory = (session.scope as Scope).directory
     const scopeID = asScopeID((session.scope as Scope).id)
-    const files = new Set(
-      input.messages
-        .flatMap((x) => x.parts)
-        .filter((x) => x.type === "patch")
-        .flatMap((x) => x.files)
-        .map((x) => path.relative(directory, x)),
-    )
-    const diffs = await computeDiff({
-      messages: input.messages,
-      sessionID: input.sessionID,
-      cache: input.diffCache,
-      abort: input.abort,
-    }).then((x) =>
-      x.filter((x) => {
-        return files.has(x.file)
-      }),
+    let cursor = await readSummaryCursor(scopeID, input.sessionID)
+    if (!cursor) {
+      const history = await cursorHistory(input, session)
+      cursor = cursorFromMessages(history, directory)
+    }
+    cursor = mergeSummaryCursor(cursor, input.messages, directory)
+    const files = new Set(cursor.files)
+    const diffs = (await computeCursorDiff(cursor, input.sessionID, input.diffCache, input.abort)).filter((diff) =>
+      files.has(diff.file),
     )
     input.abort.throwIfAborted()
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
+    let applied = false
     await Session.update(input.sessionID, (draft) => {
+      if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) return
       draft.summary = {
-        additions: diffs.reduce((sum, x) => sum + x.additions, 0),
-        deletions: diffs.reduce((sum, x) => sum + x.deletions, 0),
+        additions: diffs.reduce((sum, diff) => sum + diff.additions, 0),
+        deletions: diffs.reduce((sum, diff) => sum + diff.deletions, 0),
         files: diffs.length,
       }
+      applied = true
     })
+    if (!applied) return
     input.abort.throwIfAborted()
-    await Storage.write(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)), diffs)
+    await Promise.all([
+      Storage.write(StoragePath.sessionSummary(scopeID, asSessionID(input.sessionID)), diffs),
+      Storage.write(StoragePath.sessionSummaryCursor(scopeID, asSessionID(input.sessionID)), cursor),
+    ])
     input.abort.throwIfAborted()
+    if (input.historyRevision !== SessionManager.historyRevision(input.sessionID)) {
+      await invalidateDerivedState(input.sessionID, scopeID)
+      return
+    }
     Bus.publish(SessionEvent.Diff, {
       sessionID: input.sessionID,
       diff: diffs,
     })
+  }
+
+  async function cursorHistory(
+    input: Pick<Parameters<typeof summarizeSession>[0], "sessionID" | "messages" | "completeHistory">,
+    session: Session.Info,
+  ) {
+    if (input.completeHistory) return input.messages
+    if (session.summary !== undefined) return Session.messages({ sessionID: input.sessionID })
+    const { SessionHistory } = await import("./history")
+    const snapshotIDs = new Set(input.messages.map((message) => message.info.id))
+    const infos = await SessionHistory.messageInfos(input.sessionID)
+    if (infos.some((info) => !snapshotIDs.has(info.id))) {
+      return Session.messages({ sessionID: input.sessionID })
+    }
+    return input.messages
+  }
+
+  function cursorFromMessages(messages: MessageV2.WithParts[], directory: string): SummaryCursor {
+    const range = diffRange(messages)
+    return {
+      from: range?.from,
+      to: range?.to,
+      files: summaryFiles(messages, directory),
+    }
+  }
+
+  function mergeSummaryCursor(cursor: SummaryCursor, messages: MessageV2.WithParts[], directory: string) {
+    const next = cursorFromMessages(messages, directory)
+    return {
+      from: cursor.from ?? next.from,
+      to: next.to ?? cursor.to,
+      files: Array.from(new Set([...cursor.files, ...next.files])),
+    }
+  }
+
+  function summaryFiles(messages: MessageV2.WithParts[], directory: string) {
+    return messages
+      .flatMap((message) => message.parts)
+      .filter((part) => part.type === "patch")
+      .flatMap((part) => part.files)
+      .map((file) => path.relative(directory, file))
+  }
+
+  export async function invalidateDerivedState(sessionID: string, scopeID?: Identifier.ScopeID) {
+    const resolvedScopeID = scopeID ?? asScopeID(((await SessionManager.requireSession(sessionID)).scope as Scope).id)
+    await Promise.all([
+      Session.update(sessionID, (draft) => {
+        draft.summary = undefined
+      }),
+      Storage.remove(StoragePath.sessionSummary(resolvedScopeID, asSessionID(sessionID))),
+      Storage.remove(StoragePath.sessionSummaryCursor(resolvedScopeID, asSessionID(sessionID))),
+    ])
+  }
+
+  async function readSummaryCursor(scopeID: Identifier.ScopeID, sessionID: string) {
+    return Storage.read<unknown>(StoragePath.sessionSummaryCursor(scopeID, asSessionID(sessionID)))
+      .then((value) => SummaryCursor.parse(value))
+      .catch(() => undefined)
+  }
+
+  function computeCursorDiff(
+    cursor: SummaryCursor,
+    sessionID: string,
+    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>,
+    abort: AbortSignal,
+  ) {
+    if (!cursor.from || !cursor.to) return Promise.resolve([])
+    return computeSnapshotDiff({ from: cursor.from, to: cursor.to }, sessionID, cache, abort)
   }
 
   type UserSummary = NonNullable<MessageV2.User["summary"]>
@@ -431,13 +531,22 @@ export namespace SessionSummary {
   }) {
     const range = diffRange(input.messages)
     if (!range) return []
+    return computeSnapshotDiff(range, input.sessionID, input.cache, input.abort)
+  }
+
+  function computeSnapshotDiff(
+    range: { from: string; to: string },
+    sessionID: string,
+    cache: Map<string, Promise<SnapshotSchema.FileDiff[]>>,
+    abort: AbortSignal,
+  ) {
     const key = `${range.from}:${range.to}`
-    let cached = input.cache.get(key)
+    let cached = cache.get(key)
     if (!cached) {
-      cached = Snapshot.diffSummary(range.from, range.to, input.sessionID, input.abort)
-      input.cache.set(key, cached)
+      cached = Snapshot.diffSummary(range.from, range.to, sessionID, abort)
+      cache.set(key, cached)
     }
-    return abortable(cached, input.abort)
+    return abortable(cached, abort)
   }
 
   function diffRange(messages: MessageV2.WithParts[]) {

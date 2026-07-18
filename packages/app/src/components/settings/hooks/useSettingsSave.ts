@@ -1,10 +1,22 @@
 import { createEffect, createSignal, onCleanup } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { getToastConfig, showToast } from "@ericsanchezok/synergy-ui/toast"
 import type { ConfirmOptions } from "@/components/dialog/confirm-dialog"
 import { discardSettingsConfirm } from "@/components/dialog/confirm-copy"
 import { groupPatchByDomain, strategyForPatch } from "../domain-routing"
+import { requestErrorMessage } from "@/utils/error"
+
+const copy = {
+  autoSaveFailed: { id: "settings.save.auto.failed", message: "Auto-save failed" },
+  backgroundSaveFailed: { id: "settings.save.background.failed", message: "Background save failed" },
+  saveFailed: { id: "settings.save.explicit.failed", message: "Failed to save" },
+  requestFailed: { id: "settings.save.request.failed", message: "The settings request failed." },
+  saved: { id: "settings.save.success.title", message: "Saved {label}" },
+  updated: { id: "settings.save.background.updated", message: "Updated: {fields}" },
+  changed: { id: "settings.save.explicit.changed", message: "Changed: {fields}" },
+}
 
 export type ShowConfirmFn = (params: ConfirmOptions) => void
 
@@ -17,12 +29,14 @@ export type SaveContext = {
   editingLabel: () => string
   setSaving: (value: boolean) => void
   refreshAfterConfigChange: () => Promise<void>
+  onPatchFailed: (patch: Record<string, unknown>) => void | Promise<void>
   closeDialog: () => void
   showConfirm: ShowConfirmFn
 }
 
 export function useSettingsSave(ctx: SaveContext) {
   const globalSDK = useGlobalSDK()
+  const { _ } = useLingui()
   const [autoStatus, setAutoStatus] = createSignal<SaveStatus>("idle")
   const [bgStatus, setBgStatus] = createSignal<SaveStatus>("idle")
   const [explicitDirty, setExplicitDirty] = createSignal(false)
@@ -76,10 +90,15 @@ export function useSettingsSave(ctx: SaveContext) {
       autoResetTimer = setTimeout(() => {
         if (saveGen === gen) setAutoStatus("idle")
       }, 2000)
-    } catch (error: any) {
+    } catch (error) {
+      await ctx.onPatchFailed(patch)
       if (saveGen !== gen) return
       setAutoStatus("error")
-      showToast({ type: "error", title: "Auto-save failed", description: error.message })
+      showToast({
+        type: "error",
+        title: _(copy.autoSaveFailed),
+        description: requestErrorMessage(error, _(copy.requestFailed)),
+      })
     }
   }
 
@@ -99,14 +118,19 @@ export function useSettingsSave(ctx: SaveContext) {
       if (!getToastConfig()?.muted?.includes("success")) {
         showToast({
           type: "success",
-          title: `Saved ${ctx.editingLabel()}`,
-          description: `Updated: ${Object.keys(patch).join(", ")}`,
+          title: _({ ...copy.saved, values: { label: ctx.editingLabel() } }),
+          description: _({ ...copy.updated, values: { fields: Object.keys(patch).join(", ") } }),
         })
       }
-    } catch (error: any) {
+    } catch (error) {
+      await ctx.onPatchFailed(patch)
       if (saveGen !== gen) return
       setBgStatus("error")
-      showToast({ type: "error", title: "Background save failed", description: error.message })
+      showToast({
+        type: "error",
+        title: _(copy.backgroundSaveFailed),
+        description: requestErrorMessage(error, _(copy.requestFailed)),
+      })
     }
   }
 
@@ -154,32 +178,37 @@ export function useSettingsSave(ctx: SaveContext) {
       setExplicitDirty(false)
       showToast({
         type: "success",
-        title: `Saved ${ctx.editingLabel()}`,
-        description: `Changed: ${Object.keys(patch).join(", ")}`,
+        title: _({ ...copy.saved, values: { label: ctx.editingLabel() } }),
+        description: _({ ...copy.changed, values: { fields: Object.keys(patch).join(", ") } }),
       })
       return true
-    } catch (error: any) {
-      showToast({ type: "error", title: "Failed to save", description: error.message })
+    } catch (error) {
+      await ctx.onPatchFailed(patch)
+      showToast({
+        type: "error",
+        title: _(copy.saveFailed),
+        description: requestErrorMessage(error, _(copy.requestFailed)),
+      })
       return false
     } finally {
       ctx.setSaving(false)
     }
   }
 
-  function runDiscardGuard(action: string, onConfirm: () => void | Promise<void>) {
+  function runDiscardGuard(onConfirm: () => void | Promise<void>) {
     if (!ctx.hasAnyChanges()) {
       void onConfirm()
       return
     }
 
     ctx.showConfirm({
-      ...discardSettingsConfirm(action),
+      ...discardSettingsConfirm(),
       onConfirm,
     })
   }
 
   function closeWithGuard() {
-    runDiscardGuard("close Settings", () => ctx.closeDialog())
+    runDiscardGuard(() => ctx.closeDialog())
   }
 
   return {
