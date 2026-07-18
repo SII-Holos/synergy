@@ -5,6 +5,7 @@ import { Collapsible } from "./collapsible"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
 import { ToolTrigger, type ToolTriggerProps } from "./tool/trigger"
+import { withSubtitleClickHandler } from "./tool/trigger-normalization"
 import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
@@ -62,7 +63,7 @@ function fromTrigger(
   // ToolTriggerProps — non-function object with icon field
   if (typeof trigger === "object" && !Array.isArray(trigger) && !("$$typeof" in (trigger as any))) {
     const t = trigger as any
-    if (t.icon) return trigger as ToolTriggerProps
+    if (t.icon) return withSubtitleClickHandler(trigger as ToolTriggerProps, onSubtitleClick)
     if (typeof t.title === "string") {
       return {
         icon: icon ?? "settings",
