@@ -55,6 +55,11 @@ import {
   type SessionTransitionProgress,
 } from "@/components/session/session-transition-progress"
 import { createNewSessionRecoveryActions, type NewSessionRecovery } from "@/components/session/new-session-recovery"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { PI } from "./prompt-input-i18n"
+import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
+import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -100,6 +105,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
   const prompt = usePrompt()
   const sessionTransition = useSessionTransition()
   const params = useParams()
+  const { i18n } = useLocale()
 
   return async (event: Event) => {
     event.preventDefault()
@@ -108,8 +114,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (input.props.sessionTransitionPending) {
       showToast({
         type: "warning",
-        title: "Session transition in progress",
-        description: "Wait for the current session transition to finish before sending another message.",
+        title: i18n._(PI.submitTransitionPendingTitle),
+        description: i18n._(PI.submitTransitionPendingDesc),
       })
       return
     }
@@ -121,8 +127,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (!newSessionSubmitLease) {
       showToast({
         type: "warning",
-        title: "Session start in progress",
-        description: "Wait for this session to finish starting before sending another prompt.",
+        title: i18n._(PI.submitInProgress),
+        description: i18n._(PI.submitInProgressDesc),
       })
       return
     }
@@ -181,8 +187,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (input.pendingLightLoop()) {
         showToast({
           type: "warning",
-          title: "Describe the Light Loop task",
-          description: "Write the task first; attachments and references can only add context.",
+          title: i18n._(PI.submitLightLoopTitle),
+          description: i18n._(PI.submitLightLoopDesc),
         })
         releaseNewSessionSubmit()
         return
@@ -196,8 +202,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (hasContextOnlyInput) {
         showToast({
           type: "warning",
-          title: "Add a message",
-          description: "Attachments and references need a text prompt.",
+          title: i18n._(PI.submitAddMessage),
+          description: i18n._(PI.submitAddMessageDesc),
         })
       }
       releaseNewSessionSubmit()
@@ -206,8 +212,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (input.pendingLightLoop() && !blueprintSlot && mode !== "normal") {
       showToast({
         type: "warning",
-        title: "Use a normal message",
-        description: "Light Loop starts from the next text prompt, not shell mode.",
+        title: i18n._(PI.submitNormalMessage),
+        description: i18n._(PI.submitNormalMessageDesc),
       })
       releaseNewSessionSubmit()
       return
@@ -217,8 +223,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (pendingLightLoopSlashBlock) {
       showToast({
         type: "warning",
-        title: pendingLightLoopSlashBlock.title,
-        description: pendingLightLoopSlashBlock.description,
+        title: translateDescriptor(pendingLightLoopSlashBlock.title, i18n),
+        description: translateDescriptor(pendingLightLoopSlashBlock.description, i18n),
       })
       releaseNewSessionSubmit()
       return
@@ -229,14 +235,18 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (!currentModel || !currentAgent) {
       showToast({
         type: "warning",
-        title: "Select an agent and model",
-        description: "Choose an agent and model before sending a prompt.",
+        title: i18n._(PI.submitSelectAgent),
+        description: i18n._(PI.submitSelectAgentDesc),
       })
       releaseNewSessionSubmit()
       return
     }
 
     const selectedVariant = local.model.variant.current()
+    const selectedModel = {
+      modelID: currentModel.id,
+      providerID: currentModel.provider.id,
+    }
     input.addToHistory(currentPrompt, mode)
     input.setStore("historyIndex", -1)
     input.setStore("savedPrompt", null)
@@ -264,8 +274,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
       showToast({
         type: "warning",
-        title: "Describe the Light Loop task",
-        description: "Write the task first; attachments and references can only add context.",
+        title: i18n._(PI.submitLightLoopTitle),
+        description: i18n._(PI.submitLightLoopDesc),
       })
       releaseNewSessionSubmit()
       return
@@ -284,7 +294,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           lightLoop: armedLightLoop,
           blueprintSlot,
           agent: currentAgent.name,
-          model: { providerID: currentModel.provider.id, modelID: currentModel.id },
+          model: selectedModel,
           variant: selectedVariant,
           autoSubmit: false,
         }
@@ -351,7 +361,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       releaseNewSessionSubmit()
     }
     const sessionStartFailureMessage = (message: string) =>
-      createdSessionForSubmit ? `Session was not started. ${message}` : message
+      createdSessionForSubmit ? `${i18n._(PI.submitSessionNotStarted)} ${message}` : message
 
     let session: (typeof sync.session.get extends (...args: any[]) => infer R ? R : never) | null | undefined =
       params.id ? sync.session.get(params.id) : undefined
@@ -366,7 +376,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           releaseNewSessionSubmit()
           showToast({
             type: "error",
-            title: "Failed to start session",
+            title: i18n._(PI.submitFailedStart),
             description: errorMessage(err),
           })
           return null
@@ -375,6 +385,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       if (session) {
         createdSessionForSubmit = true
         client = resolveSessionClient(sessionCreateScopeKey)
+        local.handoffNewSessionIntent(session.id)
+        if (selectedVariant) {
+          local.model.variant.setForSession(session.id, selectedVariant, selectedModel, sessionScopeKey)
+        }
         input.props.onNewSessionWorkspaceSelectionReset?.()
         publishNewSessionTransition(
           session.id,
@@ -408,10 +422,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
             const message = errorMessage(err)
             showToast({
               type: "error",
-              title: "Failed to prepare worktree",
+              title: i18n._(PI.submitFailedWorktree),
               description: sessionStartFailureMessage(message),
             })
-            failCreatedSessionSetup(session.id, "Failed to prepare worktree", message)
+            failCreatedSessionSetup(session.id, i18n._(PI.submitFailedWorktree), message)
             return
           }
         }
@@ -449,10 +463,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: `Failed to exit ${workflowName}`,
+            title: i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
             description: sessionStartFailureMessage(message),
           })
-          failSessionSetup(sessionID, `Failed to exit ${workflowName}`, message)
+          failSessionSetup(
+            sessionID,
+            i18n._({ ...PI.submitFailedExitWorkflow, values: { workflow: workflowName } }),
+            message,
+          )
           return undefined
         })
       if (!session) return
@@ -467,10 +485,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to toggle Plan",
+            title: i18n._(PI.submitFailedTogglePlan),
             description: sessionStartFailureMessage(message),
           })
-          failSessionSetup(sessionID, "Failed to toggle Plan", message)
+          failSessionSetup(sessionID, i18n._(PI.submitFailedTogglePlan), message)
           return undefined
         })
       if (!session) return
@@ -492,10 +510,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to enable Lattice",
+            title: i18n._(PI.submitFailedEnableLattice),
             description: sessionStartFailureMessage(message),
           })
-          failSessionSetup(sessionID, "Failed to enable Lattice", message)
+          failSessionSetup(sessionID, i18n._(PI.submitFailedEnableLattice), message)
           return undefined
         })
       if (!session) return
@@ -517,25 +535,19 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to enable Light Loop",
+            title: i18n._(PI.submitFailedLightLoop),
             description: sessionStartFailureMessage(message),
           })
-          failSessionSetup(sessionID, "Failed to enable Light Loop", message)
+          failSessionSetup(sessionID, i18n._(PI.submitFailedLightLoop), message)
           return undefined
         })
       if (!session) return
     }
     const activeSession = session!
 
-    const model = {
-      modelID: currentModel.id,
-      providerID: currentModel.provider.id,
-    }
+    const model = selectedModel
     const agent = currentAgent.name
     const variant = selectedVariant
-    if (createdSessionForSubmit && variant) {
-      local.model.variant.setForSession(activeSession.id, variant, model, sessionScopeKey)
-    }
     const clearInput = () => {
       prompt.resetDraft()
       input.setStore("mode", "normal")
@@ -605,10 +617,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
         showToast({
           type: "error",
-          title: "Failed to start Blueprint",
+          title: i18n._(PI.submitFailedBlueprint),
           description: sessionStartFailureMessage(message),
         })
-        failActiveSessionSubmit("Failed to start Blueprint", message)
+        failActiveSessionSubmit(i18n._(PI.submitFailedBlueprint), message)
       } finally {
         input.setBlueprintLoading(false)
       }
@@ -632,10 +644,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           const message = errorMessage(err)
           showToast({
             type: "error",
-            title: "Failed to send shell command",
+            title: i18n._(PI.submitFailedShell),
             description: sessionStartFailureMessage(message),
           })
-          failActiveSessionSubmit("Failed to send shell command", message)
+          failActiveSessionSubmit(i18n._(PI.submitFailedShell), message)
         })
       return
     }
@@ -664,10 +676,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
           await rollbackLightLoopForSubmit()
           showToast({
             type: "error",
-            title: "Failed to send command",
+            title: i18n._(PI.submitFailedCommand),
             description: sessionStartFailureMessage(message),
           })
-          failActiveSessionSubmit("Failed to send command", message)
+          failActiveSessionSubmit(i18n._(PI.submitFailedCommand), message)
         })
       return
     }
@@ -850,38 +862,75 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
       : undefined
 
-    const setSyncStore =
-      sessionScopeKey === currentScopeKey ? sync.set : globalSync.ensureScopeState(sessionScopeKey)[1]
+    const [syncStore, setSyncStore] =
+      sessionScopeKey === currentScopeKey ? [sync.data, sync.set] : globalSync.ensureScopeState(sessionScopeKey)
 
     const addOptimisticMessage = () => {
       if (!messageID || !optimisticMessage) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const current: MessageWindowState<Message> = {
+        messages: syncStore.message[activeSession.id] ?? [],
+        mode: metadata?.mode ?? "latest",
+        pendingLatest: metadata?.pendingLatest ?? false,
+        pendingLatestIds: metadata?.pendingLatestIds ?? [],
+      }
+      const existing = current.messages.some((message) => message.id === messageID)
+      const result = reconcileMessage(current, optimisticMessage)
+      const visible = result.window.messages.some((message) => message.id === messageID)
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (!messages) {
-            draft.message[activeSession.id] = [optimisticMessage]
-          } else {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            messages.splice(result.index, 0, optimisticMessage)
+          for (const droppedID of result.droppedIds) delete draft.part[droppedID]
+          draft.message[activeSession.id] = result.window.messages
+          draft.messageWindow[activeSession.id] = {
+            nextCursor: metadata?.nextCursor ?? null,
+            hasMore: metadata?.hasMore ?? false,
+            total: nextMessageWindowTotal({
+              total: metadata?.total ?? current.messages.length,
+              existing,
+              visible,
+            }),
+            mode: result.window.mode,
+            pendingLatest: result.window.pendingLatest,
+            pendingLatestIds: result.window.pendingLatestIds,
           }
-          draft.part[messageID] = optimisticParts
-            .filter((p) => !!p?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
+          if (visible) {
+            draft.part[messageID] = optimisticParts
+              .filter((part) => !!part?.id)
+              .slice()
+              .sort((a, b) => a.id.localeCompare(b.id))
+          }
         }),
       )
     }
 
     const removeOptimisticMessage = () => {
       if (!messageID) return
+      const messages = syncStore.message[activeSession.id]
+      if (!messages) return
+      const metadata = syncStore.messageWindow[activeSession.id]
+      const current: MessageWindowState<Message> = {
+        messages,
+        mode: metadata?.mode ?? "latest",
+        pendingLatest: metadata?.pendingLatest ?? false,
+        pendingLatestIds: metadata?.pendingLatestIds ?? [],
+      }
+      const pending = current.pendingLatestIds.includes(messageID)
+      const result = removeMessageFromWindow(current, messageID)
+      const removed = result.messages.length !== messages.length
+      globalSync.invalidateResource(sessionScopeKey, activeSession.id, "message")
       setSyncStore(
         produce((draft) => {
-          const messages = draft.message[activeSession.id]
-          if (messages) {
-            const result = Binary.search(messages, messageID, (m) => m.id)
-            if (result.found) messages.splice(result.index, 1)
-          }
+          draft.message[activeSession.id] = result.messages
           delete draft.part[messageID]
+          if (metadata) {
+            draft.messageWindow[activeSession.id] = {
+              ...metadata,
+              total: removed ? nextMessageWindowTotalAfterRemoval({ total: metadata.total, pending }) : metadata.total,
+              pendingLatest: result.pendingLatest,
+              pendingLatestIds: result.pendingLatestIds,
+            }
+          }
         }),
       )
     }
@@ -916,8 +965,8 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         if (!wsConnected) {
           showToast({
             type: "warning",
-            title: "Message queued",
-            description: "Response will appear after reconnection",
+            title: i18n._(PI.submitQueued),
+            description: i18n._(PI.submitSentDesc),
           })
         }
       })
@@ -926,11 +975,11 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         await rollbackLightLoopForSubmit()
         showToast({
           type: "error",
-          title: "Failed to send prompt",
+          title: i18n._(PI.submitFailedSend),
           description: sessionStartFailureMessage(message),
         })
         if (optimisticAdded) removeOptimisticMessage()
-        failActiveSessionSubmit("Failed to send prompt", message)
+        failActiveSessionSubmit(i18n._(PI.submitFailedSend), message)
       })
   }
 }

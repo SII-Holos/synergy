@@ -1,5 +1,7 @@
+import { useLingui } from "@lingui/solid"
 import { For, Show, createMemo, createSignal, onMount, onCleanup } from "solid-js"
 import "./diagram.css"
+import { DIAGRAM_DESC } from "./tool-title-descriptors"
 
 interface NormalizedNode {
   label: string
@@ -1500,6 +1502,7 @@ function ChartLine(props: { labels: string[]; series: ChartSeries[] }) {
 }
 
 function ChartPie(props: { segments: ChartSegment[] }) {
+  const { _ } = useLingui()
   const total = () => props.segments.reduce((sum, s) => sum + s.value, 0)
   const R = 80
   const IR = 48
@@ -1550,7 +1553,7 @@ function ChartPie(props: { segments: ChartSegment[] }) {
           {formatTickValue(total())}
         </text>
         <text x={CX} y={CY + 10} data-slot="chart-pie-total-label">
-          Total
+          {_(DIAGRAM_DESC.totalLabel)}
         </text>
       </svg>
       <div data-slot="chart-pie-labels">

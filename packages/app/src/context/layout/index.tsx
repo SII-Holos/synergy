@@ -19,6 +19,7 @@ import { migrateWorkbenchLayout } from "../workbench/layout-migration"
 import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
+  githubNavQuery,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
@@ -26,6 +27,7 @@ import {
 } from "./nav"
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { planMessagePageApply } from "../session-message-page"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -74,7 +76,7 @@ export interface NavEntry {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
   archived: boolean
@@ -281,6 +283,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       nextCursor: null,
       total: 0,
     })
+    const [githubEntries, setGitHubEntries] = createStore<NavListState>(emptyNavList())
+    const [githubConfigured, setGitHubConfigured] = createSignal(false)
     const [unreadCompletionCount, setUnreadCompletionCount] = createSignal<number>()
     const syncDesktopBadge = createDesktopBadgeSync(platform.desktopBadge?.setState)
     createEffect(() => {
@@ -301,6 +305,18 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         // fall through; supplemental scope discovery will be unavailable until next reconnection
       } finally {
         setScopeIndexLoaded(true)
+      }
+    }
+
+    async function loadGitHubConfiguration() {
+      try {
+        const res = await globalSdk.client.github.configured()
+        const configured = res.data?.configured === true
+        setGitHubConfigured(configured)
+        if (configured) await loadGitHubSection()
+      } catch (err) {
+        setGitHubConfigured(false)
+        console.warn("Failed to load GitHub configuration status", err)
       }
     }
 
@@ -381,6 +397,38 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       }
     }
 
+    async function loadGitHubSection(cursor?: NavCursor) {
+      const key = "__github__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent(githubNavQuery(ROOT_NAV_SECTION_LIMIT, cursor))
+        if (!res.data) return
+        const data = res.data
+        if (cursor) {
+          const existing = githubEntries.items
+          const merged = [...existing, ...data.items.filter((entry) => !existing.some((item) => item.id === entry.id))]
+          setGitHubEntries(
+            mergeNavListByID(githubEntries, {
+              items: merged as NavEntry[],
+              nextCursor: data.nextCursor,
+              total: data.total,
+            }),
+          )
+        } else {
+          setGitHubEntries(
+            mergeNavListByID(githubEntries, {
+              items: data.items as NavEntry[],
+              nextCursor: data.nextCursor,
+              total: data.total,
+            }),
+          )
+        }
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
     async function loadGlobalRecent(cursor?: NavCursor) {
       const key = "__recent__"
       if (navPending.has(key)) return
@@ -428,6 +476,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const entry = rootNavStore[category]
       if (entry?.nextCursor) loadRootNavSection(category, entry.nextCursor)
     }
+
+    function loadMoreGitHub() {
+      if (githubEntries.nextCursor) loadGitHubSection(githubEntries.nextCursor)
+    }
     async function refreshGlobalRecent() {
       const key = "__refresh__recent__"
       if (navPending.has(key)) return
@@ -442,6 +494,28 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         setUnreadCompletionCount(data.unreadCompletionCount)
         setRecentEntries(
           mergeNavListByID(recentEntries, {
+            items: data.items as NavEntry[],
+            nextCursor: data.nextCursor,
+            total: data.total,
+          }),
+        )
+      } finally {
+        navPending.delete(key)
+      }
+    }
+
+    async function refreshGitHubSection() {
+      const key = "__refresh__github__"
+      if (navPending.has(key)) return
+      navPending.add(key)
+      try {
+        const res = await globalSdk.client.global.nav.recent(
+          githubNavQuery(Math.max(ROOT_NAV_SECTION_LIMIT, githubEntries.items.length)),
+        )
+        if (!res.data) return
+        const data = res.data
+        setGitHubEntries(
+          mergeNavListByID(githubEntries, {
             items: data.items as NavEntry[],
             nextCursor: data.nextCursor,
             total: data.total,
@@ -516,6 +590,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return rootNavStore[category]?.nextCursor != null
     }
 
+    function githubNavEntries(): NavEntry[] {
+      return orderNavEntries(githubEntries.items)
+    }
+
+    function hasMoreGitHub(): boolean {
+      return githubEntries.nextCursor != null
+    }
+
     // --- Nav event refresh ---
     // On session.updated, refresh nav lists preserving current depth.
     const navRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -575,9 +657,12 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         // doesn't lag the debounced refetch. The refetch below still runs as the
         // authority for ordering, new entries, and project aggregates.
         const navUpdate = navUpdateFromSession(info as Parameters<typeof navUpdateFromSession>[0], properties?.navEntry)
+        const githubResult = applySessionToNavList(githubEntries, navUpdate)
+        const githubAffected = properties?.navEntry?.category === "github" || githubResult.applied
         {
           const recentResult = applySessionToNavList(recentEntries, navUpdate)
           if (recentResult.applied) setRecentEntries(recentResult.list)
+          if (githubResult.applied) setGitHubEntries(githubResult.list)
           const dir = scope.directory
           if (dir && navEntries[dir]) {
             const scopeResult = applySessionToNavList(navEntries[dir], navUpdate)
@@ -599,6 +684,17 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
             refreshGlobalRecent()
           }, NAV_REFRESH_DEBOUNCE_MS),
         )
+        if (githubConfigured() && githubAffected) {
+          const githubPending = navRefreshTimers.get("__github__")
+          if (githubPending) clearTimeout(githubPending)
+          navRefreshTimers.set(
+            "__github__",
+            setTimeout(() => {
+              navRefreshTimers.delete("__github__")
+              refreshGitHubSection()
+            }, NAV_REFRESH_DEBOUNCE_MS),
+          )
+        }
         if (scope.id === "home") {
           for (const category of ROOT_NAV_SECTION_KEYS) {
             if (!rootNavStore[category]) continue
@@ -786,6 +882,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
     }
 
     onMount(() => {
+      void loadGitHubConfiguration()
       loadScopeIndex().then(() => {
         loadGlobalRecent()
         for (const category of ROOT_NAV_SECTION_KEYS) {
@@ -892,32 +989,26 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
 
     const prefetchMessages = (scopeKey: string, sessionID: string, token: number) => {
       const [, setChildStore] = globalSync.ensureScopeState(scopeKey)
+      const request = globalSync.captureResourceRequest(scopeKey, sessionID, "message")
       return retry(() =>
-        globalSdk.client.session.messages({ ...scopeRequest(scopeKey), sessionID, limit: prefetchChunk }),
+        globalSdk.client.session.messagePage({
+          ...scopeRequest(scopeKey),
+          sessionID,
+          limit: prefetchChunk,
+        }),
       )
-        .then((messages) => {
-          if (prefetchToken.value !== token) return
-          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-          const next = items
-            .map((x) => x.info)
-            .filter((m) => !!m?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
-          batch(() => {
-            setChildStore("message", sessionID, reconcile(next, { key: "id" }))
-            for (const message of items) {
-              setChildStore(
-                "part",
-                message.info.id,
-                reconcile(
-                  message.parts
-                    .filter((p) => !!p?.id)
-                    .slice()
-                    .sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
-              )
-            }
+        .then((response) => {
+          if (prefetchToken.value !== token || !response.data) return
+          globalSync.applyResourceResponse(scopeKey, sessionID, "message", request, response.response?.headers, () => {
+            const plan = planMessagePageApply({ page: response.data! })
+            batch(() => {
+              setChildStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+              setChildStore("messageWindow", sessionID, reconcile(plan.metadata))
+              for (const [messageID, parts] of Object.entries(plan.parts)) {
+                setChildStore("part", messageID, reconcile(parts, { key: "id" }))
+              }
+            })
+            globalSync.touchMessageBucket(scopeKey, sessionID)
           })
         })
         .catch(() => undefined)
@@ -977,6 +1068,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         setNavEntries(scopeKey, "items", (items) => items.map(updateEntry) as NavEntry[])
       }
       setRecentEntries("items", (items) => items.map(updateEntry) as NavEntry[])
+      setGitHubEntries("items", (items) => items.map(updateEntry) as NavEntry[])
       for (const category of ROOT_NAV_SECTION_KEYS) {
         setRootNavStore(category, "items", (items) => items.map(updateEntry) as NavEntry[])
       }
@@ -986,6 +1078,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       return (
         navEntries[scopeKey]?.items.find((entry) => entry.id === sessionID) ??
         recentEntries.items.find((entry) => entry.id === sessionID) ??
+        githubEntries.items.find((entry) => entry.id === sessionID) ??
         ROOT_NAV_SECTION_KEYS.flatMap((category) => rootNavStore[category].items).find(
           (entry) => entry.id === sessionID,
         )
@@ -1076,6 +1169,10 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
         recentEntries: recentNavEntries,
         hasMoreRecent,
         loadMoreNav,
+        githubConfigured,
+        githubEntries: githubNavEntries,
+        hasMoreGitHub,
+        loadMoreGitHub,
         childStoreForScope,
         prefetchSession,
         resetPrefetch,

@@ -173,6 +173,7 @@ export namespace LLM {
     tools: Record<string, Tool>
     activeToolIDs?: string[]
     retries?: number
+    maxOutputTokens?: number
   }
 
   export interface PromptLayoutInput {
@@ -367,12 +368,13 @@ export namespace LLM {
     })
     optionsTimer.stop()
 
-    const maxOutputTokens = ProviderTransform.maxOutputTokens(
+    const providerMaxOutputTokens = ProviderTransform.maxOutputTokens(
       input.model.api.npm,
       params.options,
       input.model.limit.output,
       OUTPUT_TOKEN_MAX,
     )
+    const maxOutputTokens = Math.min(providerMaxOutputTokens, input.maxOutputTokens ?? providerMaxOutputTokens)
 
     const tools = input.tools
 
@@ -432,6 +434,9 @@ export namespace LLM {
           lateSystem: input.lateSystem,
           messages: input.messages,
         }),
+        // System messages are embedded in the message array on purpose so the
+        // provider transform can place cache breakpoints across system parts.
+        allowSystemInMessages: true,
         model: wrapLanguageModel({
           model: language,
           middleware: [

@@ -3,10 +3,12 @@ import { Popover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
+import { useLocale } from "@/context/locale"
 import { relativeTime, absoluteDate } from "@/utils/time"
 import type { MemoryInfo, MemorySearchResult } from "@ericsanchezok/synergy-sdk/client"
 import {
@@ -14,11 +16,11 @@ import {
   type MemoryRecallMode,
   type MemorySortKey,
   MEMORY_CATEGORIES,
-  categoryLabels,
   categoryColors,
-  recallModeLabels,
   recallModeColors,
-  memorySortLabels,
+  getCategoryLabel,
+  getRecallModeLabel,
+  getMemorySortLabel,
   libraryActionButtonClass,
   libraryCardBaseClass,
   libraryCardExpandedClass,
@@ -44,6 +46,7 @@ export function MemoryView(props: {
   setSearchError: (v: boolean) => void
   refetchStats: () => void
 }) {
+  const { _ } = useLingui()
   const confirm = useConfirm()
   const [sort, setSort] = createSignal<MemorySortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
@@ -201,9 +204,13 @@ export function MemoryView(props: {
 
   const filterLabel = createMemo(() => {
     const count = categoryFilter().size
-    if (count === 0) return "All categories"
-    if (count === 1) return categoryLabels[[...categoryFilter()][0]]
-    return `${count} categories`
+    if (count === 0) return _({ id: "app.library.memory.allCategories", message: "All categories" })
+    if (count === 1) return getCategoryLabel(_, [...categoryFilter()][0])
+    return _({
+      id: "app.library.memory.categoriesCount",
+      message: "{count} categories",
+      values: { count: String(count) },
+    })
   })
 
   return (
@@ -241,7 +248,7 @@ export function MemoryView(props: {
                       setFilterOpen(false)
                     }}
                   >
-                    <span>All categories</span>
+                    <span>{_({ id: "app.library.memory.allCategories", message: "All categories" })}</span>
                     <span class="library-menu-count">{memories()?.length ?? 0}</span>
                   </button>
                   <For each={MEMORY_CATEGORIES}>
@@ -257,7 +264,7 @@ export function MemoryView(props: {
                             }}
                             onClick={() => toggleCategory(cat)}
                           >
-                            <span>{categoryLabels[cat]}</span>
+                            <span>{getCategoryLabel(_, cat)}</span>
                             <span class="library-menu-count">{count()}</span>
                           </button>
                         </Show>
@@ -267,18 +274,24 @@ export function MemoryView(props: {
                 </Popover.Content>
               </Popover.Portal>
             </Popover>
-            <span class="library-toolbar-summary">{sorted().length} memories</span>
+            <span class="library-toolbar-summary">
+              {_({
+                id: "app.library.memory.count",
+                message: "{count} memories",
+                values: { count: String(sorted().length) },
+              })}
+            </span>
           </div>
           <div class="library-toolbar-right">
             <Show when={sorted().length > 0}>
               <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
                 <Icon name={getSemanticIcon("notes.select")} size="small" class="opacity-70" />
-                <span>Select</span>
+                <span>{_({ id: "app.library.select", message: "Select" })}</span>
               </button>
             </Show>
             <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
               <Popover.Trigger as="button" class={libraryActionButtonClass}>
-                <span>{memorySortLabels[sort()]}</span>
+                <span>{getMemorySortLabel(_, sort())}</span>
                 <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
               </Popover.Trigger>
               <Popover.Portal>
@@ -297,7 +310,7 @@ export function MemoryView(props: {
                           setSortOpen(false)
                         }}
                       >
-                        {memorySortLabels[key]}
+                        {getMemorySortLabel(_, key)}
                       </button>
                     )}
                   </For>
@@ -318,8 +331,16 @@ export function MemoryView(props: {
           fallback={
             <AppPanel.Empty
               icon={getSemanticIcon("memory.main")}
-              title={categoryFilter().size > 0 ? "No memories match the filter" : "No memories yet"}
-              description="Memories are created when sessions compact. They capture knowledge the agent learns over time."
+              title={
+                categoryFilter().size > 0
+                  ? _({ id: "app.library.memory.empty.filter", message: "No memories match the filter" })
+                  : _({ id: "app.library.memory.empty.none", message: "No memories yet" })
+              }
+              description={_({
+                id: "app.library.memory.empty.hint",
+                message:
+                  "Memories are created when sessions compact. They capture knowledge the agent learns over time.",
+              })}
             />
           }
         >
@@ -373,6 +394,8 @@ function MemoryCard(props: {
   onToggle: () => void
   onDelete: (e: MouseEvent) => void
 }) {
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const updated = () => props.item.updatedAt
   const category = () => props.item.category as MemoryCategory | undefined
   const recallMode = () => props.item.recallMode as MemoryRecallMode | undefined
@@ -395,6 +418,7 @@ function MemoryCard(props: {
               <SelectionCheckbox selected={props.selected} />
             </div>
           </Show>
+          {/* item.title is user/agent content — pass through */}
           <span class="text-13-medium text-text-strong flex-1 min-w-0 leading-snug">
             {props.expanded && !props.selecting ? (
               props.item.title
@@ -407,19 +431,23 @@ function MemoryCard(props: {
               <span
                 class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${categoryColors[category()!] ?? "bg-surface-inset-base text-text-weak"}`}
               >
-                {categoryLabels[category()!] ?? category()}
+                {getCategoryLabel(_, category()!) ?? category()}
               </span>
             </Show>
             <Show when={recallMode()}>
               <span
                 class={`rounded-full px-2.5 py-1 text-[10px] font-medium ring-1 ring-inset ring-border-base/10 ${recallModeColors[recallMode()!] ?? "bg-surface-inset-base text-text-weaker"}`}
               >
-                {recallModeLabels[recallMode()!] ?? recallMode()}
+                {getRecallModeLabel(_, recallMode()!) ?? recallMode()}
               </span>
             </Show>
             <Show when={props.searching && props.similarity !== undefined}>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                {Math.round(props.similarity! * 100)}%
+                {_({
+                  id: "app.library.memory.similarityPercent",
+                  message: "{pct}%",
+                  values: { pct: String(Math.round(props.similarity! * 100)) },
+                })}
               </span>
             </Show>
             <Show when={props.expanded && !props.selecting}>
@@ -427,6 +455,7 @@ function MemoryCard(props: {
                 type="button"
                 class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
+                aria-label={_({ id: "app.library.memory.delete", message: "Delete memory" })}
               >
                 <Icon name={getSemanticIcon("action.close")} size="small" />
               </button>
@@ -438,6 +467,7 @@ function MemoryCard(props: {
           <Show
             when={props.expanded}
             fallback={
+              // item.content is user/agent content — pass through
               <div class="text-12-regular leading-relaxed text-text-weak/90 line-clamp-3">{props.item.content}</div>
             }
           >
@@ -456,11 +486,14 @@ function MemoryCard(props: {
             }}
           >
             <span class="text-11-regular text-text-weaker">
-              <Show when={props.expanded} fallback={relativeTime(updated() ?? props.item.createdAt)}>
-                {absoluteDate(props.item.createdAt)}
+              <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
+                {absoluteDate(fmt, props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
-                  {" · updated "}
-                  {absoluteDate(updated()!)}
+                  {_({
+                    id: "app.library.memory.updated",
+                    message: "· updated {date}",
+                    values: { date: absoluteDate(fmt, updated()!) },
+                  })}
                 </Show>
               </Show>
             </span>
@@ -477,7 +510,7 @@ function MemoryCard(props: {
 
         <Show when={props.selecting}>
           <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
-            <span class="text-11-regular text-text-weaker">{relativeTime(updated() ?? props.item.createdAt)}</span>
+            <span class="text-11-regular text-text-weaker">{relativeTime(fmt, updated() ?? props.item.createdAt)}</span>
           </div>
         </Show>
       </div>

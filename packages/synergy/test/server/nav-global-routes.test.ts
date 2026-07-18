@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
-import { SessionNav } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -151,6 +150,39 @@ describe("GET /global/recent", () => {
     })
   })
 
+  test("filters GitHub sessions across scopes and includes child sessions when requested", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const marker = `GitHub Global Route ${crypto.randomUUID()}`
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({ title: `${marker} Parent`, provenance: "github" })
+        const child = await Session.create({
+          title: `${marker} Child`,
+          parentID: parent.id,
+          provenance: "github",
+        })
+        const regular = await Session.create({ title: `${marker} Regular` })
+
+        const app = Server.App()
+        const res = await app.request(
+          `/global/recent?category=github&parentOnly=false&search=${encodeURIComponent(marker)}`,
+        )
+        expect(res.status).toBe(200)
+        const body = await res.json()
+
+        expect(body.total).toBe(2)
+        expect(body.items.map((entry: { id: string }) => entry.id).sort()).toEqual([child.id, parent.id].sort())
+
+        await Session.remove(regular.id)
+        await Session.remove(child.id)
+        await Session.remove(parent.id)
+      },
+    })
+  })
+
   test("returns 400 for invalid limit", async () => {
     await ScopeContext.provide({
       scope: Scope.home(),
@@ -286,7 +318,7 @@ describe("GET /global/pinned", () => {
         expect(item).toBeDefined()
         expect(item.id).toBeTypeOf("string")
         expect(item.title).toBeTypeOf("string")
-        expect(item.category).toBeOneOf(["project", "home", "channel", "background"])
+        expect(item.category).toBeOneOf(["project", "home", "channel", "background", "github"])
         expect(item.scopeID).toBeTypeOf("string")
         expect(item.pinned).toBeGreaterThan(0)
 

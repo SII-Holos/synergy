@@ -1,22 +1,30 @@
+import type { I18n, MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon, type SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
 
 export type SessionTransitionKind = "new-session" | "new-worktree-session" | "enter-worktree" | "leave-worktree"
 
 export type SessionTransitionPhase = "loading" | "success" | "error"
 export type SessionTransitionStepState = "pending" | "active" | "complete"
 
+export type SessionTransitionCopy = string | MessageDescriptor
+export function translateSessionTransitionCopy(copy: SessionTransitionCopy, i18n: Pick<I18n, "_">): string {
+  return typeof copy === "string" ? copy : translateDescriptor(copy, i18n)
+}
+
 export type SessionTransitionStep = {
   id: string
-  label: string
-  detail?: string
+  label: MessageDescriptor
+  detail?: MessageDescriptor
   state: SessionTransitionStepState
 }
 
 export type SessionTransitionProgress = {
   kind: SessionTransitionKind
   phase: SessionTransitionPhase
-  title: string
-  description: string
+  title: SessionTransitionCopy
+  description: SessionTransitionCopy
   steps: SessionTransitionStep[]
 }
 
@@ -28,9 +36,9 @@ export type SessionTransitionActions = {
 export type SessionStartupStage = "workspace" | "message" | "complete"
 
 export type SessionStartupWorkspaceStep = {
-  label: string
-  activeDetail: string
-  completeDetail: string
+  label: MessageDescriptor
+  activeDetail: MessageDescriptor
+  completeDetail: MessageDescriptor
 }
 
 type SessionStartupStepsInput =
@@ -38,11 +46,11 @@ type SessionStartupStepsInput =
   | { stage: "message" | "complete"; workspace?: SessionStartupWorkspaceStep }
 
 const presentationByKind = {
-  "new-session": { icon: "session.new", kicker: "New session" },
-  "new-worktree-session": { icon: "workspace.worktree", kicker: "Worktree session" },
-  "enter-worktree": { icon: "workspace.enterWorktree", kicker: "Session worktree" },
-  "leave-worktree": { icon: "workspace.leaveWorktree", kicker: "Main checkout" },
-} satisfies Record<SessionTransitionKind, { icon: SemanticIconTokenName; kicker: string }>
+  "new-session": { icon: "session.new", kicker: S.scopesNewSession },
+  "new-worktree-session": { icon: "workspace.worktree", kicker: S.worktreeCardWorktreeSession },
+  "enter-worktree": { icon: "workspace.enterWorktree", kicker: S.worktreeCardSessionWorktree },
+  "leave-worktree": { icon: "workspace.leaveWorktree", kicker: S.worktreeCardMainCheckout },
+} satisfies Record<SessionTransitionKind, { icon: SemanticIconTokenName; kicker: MessageDescriptor }>
 
 export function sessionTransitionPresentation(progress: SessionTransitionProgress) {
   const presentation = presentationByKind[progress.kind]
@@ -64,8 +72,8 @@ export function createSessionStartupSteps(input: SessionStartupStepsInput): Sess
   const steps: SessionTransitionStep[] = [
     {
       id: "session",
-      label: "Prepare session",
-      detail: "Conversation state is ready.",
+      label: S.transitionStepPrepareSession,
+      detail: S.worktreeDetailConversationReady,
       state: "complete",
     },
   ]
@@ -82,8 +90,8 @@ export function createSessionStartupSteps(input: SessionStartupStepsInput): Sess
 
   steps.push({
     id: "message",
-    label: "Submit message",
-    detail: messageState === "complete" ? "First message queued." : "Submitting your first message.",
+    label: S.transitionStepSubmitMessage,
+    detail: messageState === "complete" ? S.transitionDetailMessageQueued : S.transitionDescSubmitting,
     state: messageState,
   })
   return steps
@@ -93,8 +101,8 @@ export function createNewSessionTransitionProgress(): SessionTransitionProgress 
   return {
     kind: "new-session",
     phase: "loading",
-    title: "Starting session",
-    description: "Submitting your first message.",
+    title: S.transitionTitleStarting,
+    description: S.transitionDescSubmitting,
     steps: createSessionStartupSteps({ stage: "message" }),
   }
 }
@@ -103,8 +111,8 @@ export function createNewSessionTransitionSuccessProgress(): SessionTransitionPr
   return {
     kind: "new-session",
     phase: "success",
-    title: "Session request accepted",
-    description: "Your first message is queued for processing.",
+    title: S.transitionTitleAccepted,
+    description: S.transitionDescQueued,
     steps: createSessionStartupSteps({ stage: "complete" }),
   }
 }

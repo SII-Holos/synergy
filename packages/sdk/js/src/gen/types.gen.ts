@@ -1142,7 +1142,7 @@ export type SessionNavEntry = {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background"
+  category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
   archived: boolean
@@ -1172,6 +1172,10 @@ export type GlobalRecentResponse = {
 export type PinnedResponse = {
   items: Array<SessionNavEntry>
   total: number
+}
+
+export type GitHubConfiguredResponse = {
+  configured: boolean
 }
 
 export type AgendaWebhookResult = {
@@ -1600,6 +1604,58 @@ export type ServerConfig = {
    * Additional domains to allow for CORS
    */
   cors?: Array<string>
+}
+
+/**
+ * Outbound GitHub App polling and automation configuration
+ */
+export type GitHubIntegrationConfig = {
+  enabled?: boolean
+  watchedRepositories?: Array<string>
+  eventTypes?: Array<string>
+  ciFailureThreshold?: number
+  ciFailureWindowHours?: number
+  modelBudgetNano?: {
+    maxTokens: number
+    maxCost: number
+  }
+  modelBudgetProposal?: {
+    maxTokens: number
+    maxCost: number
+  }
+  classifierEnabled?: boolean
+  proposalEnabled?: boolean
+  polling?: {
+    enabled?: boolean
+    intervalMs?: number
+    overlapWindowMs?: number
+    pageSize?: number
+    maxPages?: number
+  }
+  fixWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    maxRetries?: number
+    timeoutMs?: number
+    locatorAgent?: string
+    agent?: string
+    pushBranchPrefix?: string
+  }
+  reviewWorkflow?: {
+    enabled?: boolean
+    repositoryMapping?: {
+      [key: string]: string
+    }
+    eventTypes?: Array<string>
+    reviewCommands?: Array<string>
+    maxRetries?: number
+    timeoutMs?: number
+    agent?: string
+    publishReviewComment?: boolean
+    publishCheckRun?: boolean
+  }
 }
 
 /**
@@ -2844,6 +2900,10 @@ export type Config = {
    */
   $schema?: string
   /**
+   * UI locale (system = follow OS, default: system)
+   */
+  locale?: "system" | "en" | "zh-CN"
+  /**
    * Theme name to use for the interface
    */
   theme?: string
@@ -2911,6 +2971,7 @@ export type Config = {
      */
     maxConcurrentTasks?: number
   }
+  github?: GitHubIntegrationConfig
   watcher?: {
     ignore?: Array<string>
   }
@@ -3205,6 +3266,7 @@ export type ConfigDomainSummary = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   label: string
   path: string
@@ -3266,6 +3328,7 @@ export type ConfigDomainImportDomainPlan = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   filename: string
   path: string
   mode: "merge" | "replace-domain" | "append"
@@ -3323,6 +3386,7 @@ export type ConfigDomainImportPlanInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -3403,6 +3467,7 @@ export type ConfigImportRevisionConflictError = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
     >
   }
 }
@@ -3431,6 +3496,7 @@ export type ConfigDomainImportApplyInput = {
     | "holos"
     | "email"
     | "runtime"
+    | "github"
   >
   mode?: "merge" | "replace-domain" | "append"
   scope?: ConfigImportScope
@@ -3845,7 +3911,8 @@ export type Session = {
     messageID?: string
     title?: string
   }
-  category?: "project" | "home" | "channel" | "background"
+  category?: "project" | "home" | "channel" | "background" | "github"
+  provenance?: "github"
   endpoint?: SessionEndpoint
   summary?: {
     additions: number
@@ -4628,6 +4695,35 @@ export type Part =
   | RetryPart
   | CompactionPart
   | CompactionRecoveryPart
+
+export type SessionMessagePage = {
+  items: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  referencedRoots: Array<{
+    info: Message
+    parts: Array<Part>
+  }>
+  nextCursor: string | null
+  hasMore: boolean
+  total: number
+}
+
+export type SessionMessagePageCursorInvalidError = {
+  name: "SessionMessagePageCursorInvalidError"
+  data: {
+    message: string
+  }
+}
+
+export type SessionMessagePageCursorStaleError = {
+  name: "SessionMessagePageCursorStaleError"
+  data: {
+    message: string
+    anchorID: string
+  }
+}
 
 export type SessionRollbackEvent = {
   id: string
@@ -5645,6 +5741,15 @@ export type BlueprintLoopInfo = {
   auditAgent: string
   auditSessionID?: string
   auditTaskID?: string
+  stopRequest?: {
+    summary: string
+    completed?: Array<string>
+    evidence?: Array<string>
+    remaining?: Array<string>
+    requestedAt: number
+    requesterSessionID: string
+    requesterMessageID: string
+  }
   scopeID: string
   status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
   runMode?: "current" | "new" | "worktree"
@@ -7098,21 +7203,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventPluginEvent = {
-  type: "plugin.event"
-  properties: {
-    pluginId: string
-    pluginVersion: string
-    generation: string
-    eventId: string
-    scopeId: string
-    sessionId?: string
-    sequence: number
-    timestamp: number
-    payload: unknown
-  }
-}
-
 export type EventCortexTaskCreated = {
   type: "cortex.task.created"
   properties: {
@@ -7131,6 +7221,21 @@ export type EventCortexTasksUpdated = {
   type: "cortex.tasks.updated"
   properties: {
     tasks: Array<CortexTask>
+  }
+}
+
+export type EventPluginEvent = {
+  type: "plugin.event"
+  properties: {
+    pluginId: string
+    pluginVersion: string
+    generation: string
+    eventId: string
+    scopeId: string
+    sessionId?: string
+    sequence: number
+    timestamp: number
+    payload: unknown
   }
 }
 
@@ -7345,10 +7450,10 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventPluginEvent
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
   | EventVcsBranchUpdated
@@ -8264,6 +8369,7 @@ export type GlobalNavRecentData = {
   query?: {
     parentOnly?: boolean
     includeArchived?: boolean
+    category?: "project" | "home" | "channel" | "background" | "github"
     search?: string
     limit?: number
     cursorLastActivityAt?: number
@@ -8298,6 +8404,22 @@ export type GlobalNavPinnedResponses = {
 }
 
 export type GlobalNavPinnedResponse = GlobalNavPinnedResponses[keyof GlobalNavPinnedResponses]
+
+export type GithubConfiguredData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/github/configured"
+}
+
+export type GithubConfiguredResponses = {
+  /**
+   * GitHub App configuration status
+   */
+  200: GitHubConfiguredResponse
+}
+
+export type GithubConfiguredResponse = GithubConfiguredResponses[keyof GithubConfiguredResponses]
 
 export type AgendaWebhookData = {
   body?: never
@@ -8805,6 +8927,7 @@ export type ConfigDomainGetData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8848,6 +8971,7 @@ export type ConfigDomainUpdateData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -8891,6 +9015,7 @@ export type ConfigDomainOpenData = {
       | "holos"
       | "email"
       | "runtime"
+      | "github"
   }
   query?: {
     directory?: string
@@ -9403,7 +9528,7 @@ export type SessionIndexData = {
   query?: {
     directory?: string
     scopeID?: string
-    category?: "project" | "home" | "channel" | "background"
+    category?: "project" | "home" | "channel" | "background" | "github"
     parentOnly?: "true" | "false"
     includeArchived?: "true" | "false"
     limit?: number
@@ -10242,6 +10367,42 @@ export type SessionPromptResponses = {
 }
 
 export type SessionPromptResponse = SessionPromptResponses[keyof SessionPromptResponses]
+
+export type SessionMessagePageData = {
+  body?: never
+  path: {
+    sessionID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    cursor?: string
+    limit?: number
+  }
+  url: "/session/{sessionID}/message/page"
+}
+
+export type SessionMessagePageErrors = {
+  /**
+   * Invalid or stale message cursor
+   */
+  400: BadRequestError | SessionMessagePageCursorInvalidError | SessionMessagePageCursorStaleError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SessionMessagePageError = SessionMessagePageErrors[keyof SessionMessagePageErrors]
+
+export type SessionMessagePageResponses = {
+  /**
+   * Cursor-paged session messages
+   */
+  200: SessionMessagePage
+}
+
+export type SessionMessagePageResponse = SessionMessagePageResponses[keyof SessionMessagePageResponses]
 
 export type SessionDiffData = {
   body?: never

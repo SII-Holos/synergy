@@ -1,4 +1,6 @@
 import type { DagNode } from "@ericsanchezok/synergy-ui/dag-graph"
+import type { I18n } from "@lingui/core"
+import { S } from "./session-i18n"
 
 export interface DagSummary {
   total: number
@@ -219,6 +221,12 @@ export function computeProgressIslandSnapshot(
   return { status: "active", tone: "ready", completed, total, active, pending, blocked, failed, progressRatio }
 }
 
+/**
+ * @deprecated Use formatProgressLabel from session-i18n.ts instead.
+ * This wrapper preserves the original call signature for external callers
+ * that still pass only (snapshot, activeLabel?). Internal session-progress-island.tsx
+ * should migrate to formatProgressLabel() which accepts an i18n instance.
+ */
 export function formatProgressIslandLabel(snapshot: ProgressIslandSnapshot, activeLabel?: string): string {
   if (snapshot.status === "hidden") return ""
   if (snapshot.status === "complete") return `Done · ${pluralize(snapshot.total, "task")}`

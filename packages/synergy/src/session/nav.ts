@@ -5,8 +5,8 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import type { Info as SessionInfo } from "./types"
 
-export type NavCategory = "project" | "home" | "channel" | "background"
-export const NavCategory = z.enum(["project", "home", "channel", "background"])
+export type NavCategory = "project" | "home" | "channel" | "background" | "github"
+export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
 export const SessionNavEntry = z
   .object({
     id: z.string(),
@@ -64,6 +64,7 @@ export const ScopeNavEntry = z
 export interface DeriveCategoryInput {
   scopeType: "home" | "project"
   endpointKind?: "channel"
+  provenance?: "github"
   parentID?: string
   cortex?: {
     parentSessionID: string
@@ -124,6 +125,7 @@ export namespace SessionNav {
 
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
+    if (input.provenance === "github") return "github"
     if (input.parentID || input.cortex || input.agenda) return "background"
     if (input.scopeType === "home") return "home"
     return "project"
@@ -166,6 +168,7 @@ export namespace SessionNav {
         const category = deriveCategory({
           scopeType,
           endpointKind: session.endpoint?.kind,
+          provenance: session.provenance,
           parentID: session.parentID,
           cortex: session.cortex,
           agenda: session.agenda,

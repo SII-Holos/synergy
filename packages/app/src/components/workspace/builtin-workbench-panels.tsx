@@ -1,21 +1,25 @@
-import { onCleanup, onMount, type ParentProps } from "solid-js"
+import { createEffect, onCleanup, type ParentProps } from "solid-js"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { useTerminal } from "@/context/terminal"
 import { useFile } from "@/context/file"
 import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-registry"
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
-
+import { panels as P } from "@/locales/messages"
+import { useLocale } from "@/context/locale"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
   const file = useFile()
+  const { controller, i18n } = useLocale()
   const disposers: VoidFunction[] = []
 
-  onMount(() => {
+  createEffect(() => {
+    controller.activeLocale()
+    const previousDisposers = disposers.splice(0)
     disposers.push(
       registerWorkbenchPanel({
         id: "notes",
-        label: "Notes",
+        label: i18n._(P.notes),
         icon: getSemanticIcon("notes.main"),
         surface: "side",
         cardinality: "singleton",
@@ -25,7 +29,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "session-review",
-        label: "Review",
+        label: i18n._(P.review),
         icon: getSemanticIcon("command.review"),
         surface: "side",
         cardinality: "singleton",
@@ -33,11 +37,11 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         pluginId: "builtin",
         order: 15,
         loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
-        title: () => "Review",
+        title: () => i18n._(P.review),
       }),
       registerWorkbenchPanel({
         id: "file",
-        label: "Files",
+        label: i18n._(P.files),
         icon: getSemanticIcon("workspace.files"),
         surface: "side",
         cardinality: "multi",
@@ -48,10 +52,10 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => ({ default: (await import("@/components/file-workbench/content")).FileWorkbenchContent }),
         createTab() {
           file.explorer.setOpen(true)
-          return { title: "Open file", source: "explorer" }
+          return { title: i18n._(P.openFile), source: "explorer" }
         },
         title(tab, siblings) {
-          if (!tab.resourceId) return tab.title
+          if (!tab.resourceId) return tab.source === "explorer" ? i18n._(P.openFile) : tab.title
           return shortestUniqueFileTitle(
             tab.resourceId,
             siblings
@@ -65,7 +69,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "browser",
-        label: "Browser",
+        label: i18n._(P.browser),
         icon: getSemanticIcon("browser.main"),
         surface: "side",
         cardinality: "singleton",
@@ -76,7 +80,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
       }),
       registerWorkbenchPanel({
         id: "terminal",
-        label: "Terminal",
+        label: i18n._(P.terminal),
         icon: getSemanticIcon("terminal.main"),
         surface: "bottom",
         cardinality: "multi",
@@ -104,6 +108,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         },
       }),
     )
+    for (const dispose of previousDisposers) dispose()
   })
 
   onCleanup(() => {

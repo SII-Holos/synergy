@@ -9,6 +9,9 @@ import { ConfigDomain } from "../../src/config/domain"
 import { GlobalBus } from "../../src/bus/global"
 import { Plugin } from "../../src/plugin"
 import { CortexConcurrency } from "../../src/cortex/concurrency"
+import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
+import { GitHubRuntime } from "../../src/github/runtime"
+import { GitHubStore } from "../../src/github/store"
 
 const originalConfigReload = Config.reload
 const originalNotifyConfigHooks = Plugin.notifyConfigHooks
@@ -178,6 +181,49 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("applies global GitHub config changes and wakes the delivery worker", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const guid = `reload-github-${crypto.randomUUID()}`
+    await GitHubRuntime.reset()
+    await GitHubStore.accept(
+      GitHubDelivery.parse({
+        deliveryGuid: guid,
+        eventType: "pull_request",
+        repositoryFullName: "owner/repo",
+        senderLogin: "alice",
+        receivedAt: Date.now(),
+        rawPayload: {},
+        rawHeaders: {},
+        status: "received",
+      }),
+    )
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          Config.reload = mock(async () => ({
+            config: { github: GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } }) },
+            changedFields: ["github"],
+            oldConfig: {},
+          })) as typeof Config.reload
+
+          const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+          expect(result.liveApplied).toContain("github")
+          let stored = await GitHubStore.get(guid)
+          for (let attempt = 0; attempt < 100 && stored?.status !== "ignored"; attempt++) {
+            await Bun.sleep(10)
+            stored = await GitHubStore.get(guid)
+          }
+          expect(stored?.status).toBe("ignored")
+        },
+      })
+    } finally {
+      await GitHubRuntime.reset()
+      await GitHubStore.remove(guid)
+    }
+  })
   test("all expands into concrete targets", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -354,6 +400,9 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("locale is classified as client-side and not reloaded by the server runtime", async () => {
+    expect(RuntimeReload.CONFIG_CLIENT_SIDE.has("locale")).toBe(true)
+  })
   test("error isolation: reload continues after subsystem failure", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

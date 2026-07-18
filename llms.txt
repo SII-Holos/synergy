@@ -33,6 +33,7 @@
 - [Cortex](docs/architecture/cortex.md): delegated child sessions, task lifecycle, outputs, and parent notification.
 - [Workflow engine](docs/architecture/workflows.md): Plan, BlueprintLoop, Light Loop, Lattice, and SuperPlan storage substrate.
 - [Browser runtime](docs/architecture/browser-runtime.md): one-session/one-page ownership, Electron native mode, WebRTC mode, and input lifecycle.
+- [Frontend localization](docs/architecture/localization.md): locale ownership, catalogs, message IDs, formatting, translation boundaries, and verification.
 
 ## Exact Reference
 

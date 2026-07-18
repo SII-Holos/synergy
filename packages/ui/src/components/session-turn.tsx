@@ -1,3 +1,6 @@
+import { useLingui } from "@lingui/solid"
+import { SESSION_TURN_DESC, MAILBOX_DESC } from "./tool-title-descriptors"
+
 import type {
   AssistantMessage,
   AttachmentPart,
@@ -12,7 +15,6 @@ import type {
 } from "@ericsanchezok/synergy-sdk/client"
 import { useData } from "../context"
 
-import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { createEffect, createMemo, createSignal, For, Match, on, onCleanup, ParentProps, Show, Switch } from "solid-js"
 import { TurnChangeSummaryPanel } from "./turn-change-summary-panel"
 import {
@@ -82,7 +84,6 @@ export type SessionTurnTimelineVisualKind =
   | "tool-attachments"
   | "compaction"
 
-const DEFAULT_PROVIDER_PRELUDE_TEXT = "Awaiting response…"
 export type TurnCompletionStats = {
   duration: string
   segments: string[]
@@ -112,7 +113,7 @@ export function formatTurnTokenCount(value: number): string {
 export function formatTurnCost(value: number): string | undefined {
   if (value <= 0) return undefined
   if (value < 0.01) return `$${value.toFixed(4)}`
-  return new Intl.NumberFormat("en-US", {
+  return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
   }).format(value)
@@ -169,6 +170,12 @@ function visibleAttachmentParts(files: AttachmentPart[] | undefined): Attachment
 
 function isCompactionAssistant(message: AssistantMessage): boolean {
   return message.mode === "compaction" || message.agent === "compaction"
+}
+
+function isRunningCompactionAttempt(message: AssistantMessage): boolean {
+  if (!isCompactionAssistant(message)) return false
+  const attempt = message.metadata?.compactionAttempt as { state?: unknown } | undefined
+  return attempt?.state === "running"
 }
 
 export function isCompactionBoundaryUser(message: Pick<UserMessage, "metadata">): boolean {
@@ -365,14 +372,18 @@ function chipLabelFromOrigin(origin: { type: string; label?: string; detail?: st
   }
 }
 
+function findMessageIndex(messages: readonly MessageType[], messageID: string) {
+  return messages.findIndex((message) => message.id === messageID)
+}
+
 export function collectMessagesForTurnLifecycle(
   messages: MessageType[],
   userMessageID: string,
 ): SessionTurnDisplayMessage[] {
-  const search = Binary.search(messages, userMessageID, (m) => m.id)
-  if (!search.found) return []
+  const userMessageIndex = findMessageIndex(messages, userMessageID)
+  if (userMessageIndex === -1) return []
 
-  const userMessage = messages[search.index]
+  const userMessage = messages[userMessageIndex]
   if (!userMessage || userMessage.role !== "user") return []
 
   const user = userMessage as UserMessage
@@ -386,7 +397,7 @@ export function collectMessagesForTurnLifecycle(
   // task root pre-allocates its message id, so a still-running earlier task can
   // emit assistants whose ids fall after this root but before this task's own
   // replies. Breaking on the first foreign message would drop those replies.
-  for (let i = search.index + 1; i < messages.length; i++) {
+  for (let i = userMessageIndex + 1; i < messages.length; i++) {
     const item = messages[i]
     if (!item || item.rootID !== rootID) continue
 
@@ -398,7 +409,10 @@ export function collectMessagesForTurnLifecycle(
 }
 
 function filterMessagesForTurnDisplay(messages: readonly SessionTurnDisplayMessage[]): SessionTurnDisplayMessage[] {
-  return messages.filter((message) => (message as { visible?: boolean }).visible !== false)
+  return messages.filter((message) => {
+    if ((message as { visible?: boolean }).visible !== false) return true
+    return message.role === "assistant" && isRunningCompactionAttempt(message as AssistantMessage)
+  })
 }
 
 export function collectMessagesForTurnDisplay(
@@ -450,7 +464,7 @@ export function providerPreludeText(status: SessionStatus | undefined): string {
     const description = status.description?.trim()
     if (description) return description
   }
-  return DEFAULT_PROVIDER_PRELUDE_TEXT
+  return "Awaiting response\u2026"
 }
 
 export function shouldShowProviderPrelude(input: {
@@ -543,6 +557,7 @@ function TimelineDisplay(props: {
   rollbackActive: boolean
   onRewind?: () => void
 }) {
+  const { _ } = useLingui()
   if (props.item.kind === "guided-user") {
     // A user's own mid-run message: same right-aligned bubble as a root turn,
     // sharing the reserved rewind gutter so both flush to the same edge. Steer
@@ -567,10 +582,10 @@ function TimelineDisplay(props: {
             e.stopPropagation()
             props.onRewind?.()
           }}
-          title="Rewind to before this message"
+          title={_(SESSION_TURN_DESC.rewindTitle)}
         >
           <Icon name={getSemanticIcon("session.rewind")} size="small" />
-          <span>Rewind</span>
+          <span>{_(SESSION_TURN_DESC.rewind)}</span>
         </button>
       </div>
     )
@@ -620,18 +635,19 @@ function ProviderPrelude(props: {
 }
 
 function MailboxSourceBadge(props: { message: UserMessage }) {
+  const { _ } = useLingui()
   const data = useData()
   const sourceName = createMemo(() => props.message.metadata?.sourceName as string | undefined)
   const sourceID = createMemo(
     () => (props.message.origin?.sessionID ?? props.message.metadata?.sourceSessionID) as string | undefined,
   )
-  const label = createMemo(() => sourceName() ?? sourceID() ?? "another session")
+  const label = createMemo(() => sourceName() ?? sourceID() ?? _(MAILBOX_DESC.anotherSession))
 
   return (
     <div data-slot="session-turn-mailbox-source">
       <Icon name={getSemanticIcon("session.inbox")} size="small" />
       <span>
-        From{" "}
+        {_(MAILBOX_DESC.from)}{" "}
         <Show when={sourceID()} fallback={<span data-slot="mailbox-message-source-text">{label()}</span>}>
           <button data-slot="session-turn-mailbox-link" onClick={() => data.navigateToSession?.(sourceID()!)}>
             {label()}
@@ -659,6 +675,7 @@ export function SessionTurn(
   }>,
 ) {
   const data = useData()
+  const { _ } = useLingui()
 
   const emptyMessages: MessageType[] = []
   const emptyParts: PartType[] = []
@@ -672,13 +689,13 @@ export function SessionTurn(
 
   const messageIndex = createMemo(() => {
     const messages = allMessages()
-    const result = Binary.search(messages, props.messageID, (m) => m.id)
-    if (!result.found) return -1
+    const index = findMessageIndex(messages, props.messageID)
+    if (index === -1) return -1
 
-    const msg = messages[result.index]
+    const msg = messages[index]
     if (msg.role !== "user") return -1
 
-    return result.index
+    return index
   })
 
   const message = createMemo(() => {
@@ -901,9 +918,9 @@ export function SessionTurn(
   })
   const copyController = createCopyController({
     text: markdownText,
-    copyLabel: "Copy Markdown",
-    copiedLabel: "Copied!",
-    failureDescription: "Unable to copy the message.",
+    copyLabel: _(SESSION_TURN_DESC.copyMarkdown),
+    copiedLabel: _(SESSION_TURN_DESC.copied),
+    failureDescription: _(SESSION_TURN_DESC.copyFailure),
   })
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
@@ -1000,10 +1017,10 @@ export function SessionTurn(
                               e.stopPropagation()
                               props.onRewind?.()
                             }}
-                            title="Rewind to before this message"
+                            title={_(SESSION_TURN_DESC.rewindTitle)}
                           >
                             <Icon name={getSemanticIcon("session.rewind")} size="small" />
-                            <span>Rewind</span>
+                            <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
                       </div>
@@ -1066,7 +1083,7 @@ export function SessionTurn(
                           {(stats) => (
                             <div data-slot="session-turn-timeline-item" data-kind="provider-prelude">
                               <ProviderPrelude
-                                text="Completed"
+                                text={_(SESSION_TURN_DESC.completed)}
                                 elapsed={stats().duration}
                                 segments={stats().segments}
                                 variant="completed"

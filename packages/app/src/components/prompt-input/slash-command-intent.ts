@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from "@lingui/core"
+import { PI } from "./prompt-input-i18n"
+
 export type SlashBackendCommand = {
   name: string
   kind?: "prompt" | "action"
@@ -18,8 +21,8 @@ export type SlashCommandIntent =
   | { kind: "ui"; command: string; label: string }
 
 export type PendingLightLoopSlashBlock = {
-  title: string
-  description: string
+  title: MessageDescriptor
+  description: MessageDescriptor
 }
 
 function parseSlashInvocation(text: string): { command: string; arguments: string } | undefined {
@@ -69,14 +72,14 @@ export function resolveSlashCommandIntent(input: {
 export function getPendingLightLoopSlashBlock(intent: SlashCommandIntent): PendingLightLoopSlashBlock | undefined {
   if (intent.kind === "backend-action") {
     return {
-      title: "Use a task message",
-      description: "Light Loop can't start from an action command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask,
+      description: PI.slashNoAction,
     }
   }
   if (intent.kind === "ui") {
     return {
-      title: "Use a task message",
-      description: "Light Loop can't start from a UI command. Send a task or exit Light Loop.",
+      title: PI.slashUseTask,
+      description: PI.slashNoUi,
     }
   }
   return undefined

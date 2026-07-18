@@ -1,6 +1,9 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { ComponentProps, JSXElement, Match, ParentProps, Show, Switch } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Icon } from "./icon"
+
+const dialogCloseDescriptor = { id: "ui.dialog.close", message: "Close dialog" }
 
 export type DialogSize = "compact" | "form" | "list" | "wide" | "command" | "content"
 export type DialogPlacement = "center" | "top"
@@ -18,6 +21,7 @@ export interface DialogProps extends ParentProps {
 }
 
 export function Dialog(props: DialogProps) {
+  const { _ } = useLingui()
   return (
     <div data-component="dialog" data-size={props.size ?? "content"} data-placement={props.placement ?? "center"}>
       <div data-slot="dialog-container">
@@ -55,7 +59,7 @@ export function Dialog(props: DialogProps) {
                 <Match when={props.action}>{props.action}</Match>
                 <Match when={true}>
                   <Kobalte.CloseButton
-                    aria-label="Close dialog"
+                    aria-label={_(dialogCloseDescriptor)}
                     data-slot="dialog-close-button"
                     data-component="icon-button"
                     data-variant="ghost"

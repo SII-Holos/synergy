@@ -8,6 +8,8 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "@/context/global-sdk"
@@ -36,20 +38,21 @@ interface DialogSelectDirectoryProps {
 export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const sync = useGlobalSync()
   const sdk = useGlobalSDK()
-  const dialog = useDialog()
+  const dialogContext = useDialog()
+  const { _ } = useLingui()
 
   const home = createMemo(() => sync.data.paths.home)
   const [state, setState] = createStore(createInitialDirectoryBrowserState(home() ?? "/"))
   const canSubmit = createMemo(() => directoryBrowserCanSubmit(state, home()))
   const stateTitle = createMemo(() => {
-    if (state.status === "loading") return "Searching..."
-    if (state.status === "empty") return "No matching folders"
-    if (state.status === "error") return "Search failed"
-    return "Search to choose a folder"
+    if (state.status === "loading") return _(dialog.searching)
+    if (state.status === "empty") return _(dialog.noMatchingFolders)
+    if (state.status === "error") return _(dialog.searchFailed)
+    return _(dialog.searchToChoose)
   })
   const stateDescription = createMemo(() => {
-    if (state.status === "empty") return "Try a fuller folder path or a different project name."
-    if (state.status === "error") return state.error ?? "Check the path and try again."
+    if (state.status === "empty") return _(dialog.tryFullerPath)
+    if (state.status === "error") return state.error ?? _(dialog.checkPath)
     return undefined
   })
   const stateIcon = createMemo(() => {
@@ -102,7 +105,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     props.onSelect({
       directory: props.multiple ? [abs] : abs,
     })
-    dialog.close()
+    dialogContext.close()
   }
 
   return (
@@ -114,10 +117,10 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
           <span class="project-directory-title-icon" aria-hidden="true">
             <Icon name={getSemanticIcon("settings.configFiles")} size="small" />
           </span>
-          <span>{props.title ?? "Open project"}</span>
+          <span>{props.title ?? _(dialog.openProject)}</span>
         </div>
       }
-      description="Choose a folder to show in the sidebar."
+      description={_(dialog.openProjectDesc)}
     >
       <div class="project-directory-body">
         <form class="project-directory-search-card" onSubmit={submitSearch}>
@@ -127,14 +130,14 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
               autofocus
               variant="ghost"
               type="text"
-              label="Project folder"
+              label={_(dialog.projectFolder)}
               hideLabel
               value={state.draft}
               onChange={(value: string) => setState(directoryBrowserSetDraft({ ...state }, value))}
               onKeyDown={(event: KeyboardEvent) => {
                 if (event.key === "Enter") void submitSearch(event as unknown as SubmitEvent)
               }}
-              placeholder="Search folders or paste a path"
+              placeholder={_(dialog.searchFolders)}
               spellcheck={false}
               autocorrect="off"
               autocomplete="off"
@@ -147,7 +150,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
               type="button"
               icon={getSemanticIcon("action.clear")}
               variant="ghost"
-              aria-label="Clear search"
+              aria-label={_(dialog.clearSearch)}
               onClick={clearDraft}
             />
           </Show>
@@ -159,7 +162,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
             disabled={!canSubmit()}
             class="project-directory-search-button"
           >
-            Search
+            {_(dialog.search)}
           </Button>
         </form>
 
@@ -183,14 +186,14 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                   </Show>
                   <Show when={state.status === "error"}>
                     <Button type="button" variant="secondary" size="small" onClick={retry} disabled={!canSubmit()}>
-                      Retry
+                      {_(dialog.retry)}
                     </Button>
                   </Show>
                 </div>
               </div>
             }
           >
-            <div class="project-directory-result-list" role="listbox" aria-label="Server folders">
+            <div class="project-directory-result-list" role="listbox" aria-label={_(dialog.serverFolders)}>
               <For each={state.results}>
                 {(abs, index) => {
                   const shown = display(abs)
@@ -199,7 +202,7 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
                       type="button"
                       class="project-directory-row"
                       role="option"
-                      aria-label={`Select ${shown}`}
+                      aria-label={_(dialog.selectFolderAria.id, { path: shown })}
                       title={abs}
                       style={{ "--row-index": index() }}
                       onClick={() => resolve(abs)}

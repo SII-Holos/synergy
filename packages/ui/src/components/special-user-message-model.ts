@@ -1,13 +1,15 @@
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import type { MessageDescriptor } from "@lingui/core"
+import { SPECIAL_USER_LABEL_DESC } from "./tool-title-descriptors"
 
 export interface SpecialUserMessageBubbleView {
-  label: string
+  label: MessageDescriptor
   kind: string | undefined
   parts: PartType[]
 }
 
 interface ProjectedBubbleText {
-  label: string
+  label: MessageDescriptor
   kind: string | undefined
   text: string
 }
@@ -47,22 +49,6 @@ function textPart(message: UserMessage, text: string): PartType {
   } as PartType
 }
 
-function workflowLabel(message: UserMessage): string {
-  const mode = message.metadata?.workflow
-  if (mode === "plan") return "Plan"
-  if (mode === "lattice") return "Lattice"
-  if (mode === "lightloop") return "Light Loop"
-  return "Workflow"
-}
-
-function workflowKind(message: UserMessage): string | undefined {
-  const mode = message.metadata?.workflow
-  if (mode === "plan") return "plan-request"
-  if (mode === "lattice") return "lattice-request"
-  if (mode === "lightloop") return "lightloop-request"
-  return undefined
-}
-
 function blueprintRejectionText(message: UserMessage): string {
   const reason = metadataText(message, "reason")
   const instructions = metadataText(message, "instructions")
@@ -82,18 +68,18 @@ function blueprintBubbleView(message: UserMessage): Omit<ProjectedBubbleText, "k
     case "start": {
       const userPrompt = metadataText(message, "userPrompt")
       return {
-        label: "Blueprint",
+        label: SPECIAL_USER_LABEL_DESC.blueprint,
         text: userPrompt ?? (title ? `Start Blueprint: ${title}` : "Start Blueprint"),
       }
     }
     case "continuation":
       return {
-        label: "Blueprint · Continue",
+        label: SPECIAL_USER_LABEL_DESC["blueprint.continue"],
         text: `${title ? `Continue Blueprint: ${title}` : "Continue this Blueprint."}\n\nCheck progress, keep going if work remains, or send it to audit when complete.`,
       }
     case "rejected":
       return {
-        label: "Blueprint · Changes requested",
+        label: SPECIAL_USER_LABEL_DESC["blueprint.changes"],
         text: blueprintRejectionText(message),
       }
     case "completed": {
@@ -102,13 +88,13 @@ function blueprintBubbleView(message: UserMessage): Omit<ProjectedBubbleText, "k
         ? "Blueprint step completed. Returning to Lattice result analysis."
         : "Blueprint completed."
       return {
-        label: "Blueprint · Completed",
+        label: SPECIAL_USER_LABEL_DESC["blueprint.completed"],
         text: summary ? `${base}\n\nSummary: ${summary}` : base,
       }
     }
     default:
       return {
-        label: "Blueprint",
+        label: SPECIAL_USER_LABEL_DESC.blueprint,
         text: title ? `Blueprint event: ${title}` : "Blueprint event delivered.",
       }
   }
@@ -118,7 +104,7 @@ function workflowControlView(message: UserMessage): ProjectedBubbleText {
   const source = metadataText(message, "source")
   if (source === "light_loop_continuation") {
     return {
-      label: "Light Loop · Continue",
+      label: SPECIAL_USER_LABEL_DESC["lightloop.continue"],
       text: "Continue checking this task. If anything remains, keep going; if it is complete and verified, stop the loop.",
       kind: "lightloop-control",
     }
@@ -126,7 +112,7 @@ function workflowControlView(message: UserMessage): ProjectedBubbleText {
   if (source === "lattice_continuation") {
     const phase = metadataText(message, "phase")
     return {
-      label: "Lattice · Continue",
+      label: SPECIAL_USER_LABEL_DESC["lattice.continue"],
       text: phase
         ? `Continue the current Lattice path.\n\nCurrent phase: ${phase}`
         : "Continue the current Lattice path. Check the current phase and move to the next step.",
@@ -136,13 +122,13 @@ function workflowControlView(message: UserMessage): ProjectedBubbleText {
   if (source === "lattice_planning_kick") {
     const goal = metadataText(message, "goal")
     return {
-      label: "Lattice",
+      label: SPECIAL_USER_LABEL_DESC.lattice,
       text: goal ? `Start planning: ${goal}` : "Start planning the Lattice path.",
       kind: "lattice-control",
     }
   }
   return {
-    label: "Workflow",
+    label: SPECIAL_USER_LABEL_DESC.workflow,
     text: "Continue the workflow.",
     kind: "workflow-control",
   }
@@ -174,9 +160,16 @@ export function getSpecialUserMessageBubbleView(
     typeof message.metadata?.workflow === "string" &&
     ["plan", "lattice", "lightloop"].includes(message.metadata.workflow)
   ) {
+    const mode = message.metadata?.workflow as string
+    const label: MessageDescriptor =
+      mode === "plan"
+        ? SPECIAL_USER_LABEL_DESC.plan
+        : mode === "lattice"
+          ? SPECIAL_USER_LABEL_DESC.lattice
+          : SPECIAL_USER_LABEL_DESC.lightloop
     return {
-      label: workflowLabel(message),
-      kind: workflowKind(message),
+      label,
+      kind: mode === "plan" ? "plan-request" : mode === "lattice" ? "lattice-request" : "lightloop-request",
       parts,
     }
   }

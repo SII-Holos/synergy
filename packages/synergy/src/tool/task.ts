@@ -163,7 +163,7 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         parentMessageID: ctx.messageID,
         sessionID,
         model,
-        worktree: params.worktree,
+        worktree: params.worktree ? { ...params.worktree, failOnError: false } : undefined,
         output: params.output,
       })
 
