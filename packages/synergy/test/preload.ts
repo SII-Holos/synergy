@@ -7,6 +7,9 @@ import { afterAll } from "bun:test"
 
 const dir = path.join(os.tmpdir(), "synergy-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
+const fixtureRoot = path.join(dir, "fixtures")
+await fs.mkdir(fixtureRoot, { recursive: true })
+process.env["SYNERGY_TEST_ROOT"] = fixtureRoot
 afterAll(async () => {
   try {
     await fs.rm(dir, {

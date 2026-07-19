@@ -68,7 +68,8 @@ export async function initializeGitFixture(dirpath: string, run: GitFixtureRunne
   )
 }
 export async function tmpdir<T>(options?: TmpDirOptions<T>) {
-  const dirpath = Filesystem.sanitizePath(path.join(os.tmpdir(), "synergy-test-" + Math.random().toString(36).slice(2)))
+  const root = process.env["SYNERGY_TEST_ROOT"] ?? os.tmpdir()
+  const dirpath = Filesystem.sanitizePath(path.join(root, "synergy-test-" + Math.random().toString(36).slice(2)))
   await fs.mkdir(dirpath, { recursive: true })
   if (options?.git) await initializeGitFixture(dirpath)
   if (options?.config) {
@@ -87,12 +88,9 @@ export async function tmpdir<T>(options?: TmpDirOptions<T>) {
   const result = {
     [Symbol.asyncDispose]: async () => {
       await options?.dispose?.(dirpath)
-      // Cleanup is intentionally disabled: tests often create sessions, scopes, and
-      // other persistent state that references the tmpdir path. Deleting the directory
-      // in asyncDispose breaks any remaining test assertions that read from it.
-      // Instead, preload.ts handles global cleanup via afterAll, and os.tmpdir() is
-      // typically purged on reboot. Individual tests manage their own cleanup.
-      // await fs.rm(dirpath, { recursive: true, force: true })
+      // Scope-owned asynchronous work may outlive this lexical fixture. The
+      // process cleanup root created by preload.ts reclaims all fixtures after
+      // those references have settled without deleting paths mid-test.
     },
     path: realpath,
     extra: extra as T,
