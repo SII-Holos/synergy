@@ -158,6 +158,8 @@ type SettlementScenario = {
 async function runSettlementScenario(scenario: SettlementScenario) {
   const originalStream = LLM.stream
   const originalUpdatePart = Session.updatePart
+  const originalUpdatePartDelta = Session.updatePartDelta
+  const originalFlushPartWrites = Session.flushPartWrites
   const originalParts = MessageV2.parts
   const originalUpdateMessage = Session.updateMessage
   const originalUpdateLastExchange = Session.updateLastExchange
@@ -176,6 +178,11 @@ async function runSettlementScenario(scenario: SettlementScenario) {
       parts.set(part.id, part)
       return part
     })
+    ;(Session.updatePartDelta as any) = mock(async (part: MessageV2.TextPart | MessageV2.ReasoningPart) => {
+      parts.set(part.id, part)
+      return part
+    })
+    ;(Session.flushPartWrites as any) = mock(async () => {})
     ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
     ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => {
       scenario.updateMessage?.(message)
@@ -221,6 +228,8 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     TimeoutConfig.invalidate()
     ;(LLM.stream as any) = originalStream
     ;(Session.updatePart as any) = originalUpdatePart
+    ;(Session.updatePartDelta as any) = originalUpdatePartDelta
+    ;(Session.flushPartWrites as any) = originalFlushPartWrites
     ;(MessageV2.parts as any) = originalParts
     ;(Session.updateMessage as any) = originalUpdateMessage
     ;(Session.updateLastExchange as any) = originalUpdateLastExchange
@@ -253,6 +262,34 @@ describe("SessionProcessor stream lifecycle", () => {
       })
 
       expect(cancelCount).toBe(1)
+    })
+  }
+})
+
+describe("SessionProcessor terminal part checkpoints", () => {
+  for (const testCase of ["failure", "signal-abort", "provider-abort"] as const) {
+    test(`publishes the complete active text part after ${testCase}`, async () => {
+      const controller = new AbortController()
+      const checkpoints: string[] = []
+
+      await runSettlementScenario({
+        messageID: `msg_terminal_checkpoint_${testCase}`,
+        abort: controller.signal,
+        async updatePart(input) {
+          const part = "part" in input ? input.part : input
+          if (part.type === "text") checkpoints.push(part.text)
+          return part
+        },
+        async *stream() {
+          yield { type: "text-start", id: "text_1" }
+          yield { type: "text-delta", id: "text_1", text: "partial response" }
+          if (testCase === "failure") throw new Error("stream failed")
+          if (testCase === "signal-abort") controller.abort()
+          yield { type: "abort" }
+        },
+      })
+
+      expect(checkpoints).toEqual(["partial response"])
     })
   }
 })

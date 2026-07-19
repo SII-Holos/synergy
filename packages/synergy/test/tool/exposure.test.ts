@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { Agent } from "../../src/agent/agent"
 import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { createBuiltinLegacySubagents } from "../../src/agent/builtin-legacy-subagents"
 import { BlueprintLoopStore } from "../../src/blueprint"
 import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
@@ -810,16 +811,29 @@ describe("tool exposure", () => {
           draft.blueprint = { loopID: loop.id, loopRole: "execution" }
         })
 
-        let availability = await ToolResolver.availability({
-          agent: allowAllAgent,
-          model,
-          sessionID: execution.id,
-          session: await Session.get(execution.id),
-          includeMCP: false,
-        })
-        expect(availability.visible.some((def) => def.id === "blueprint_loop_stop")).toBe(true)
-        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
-        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
+        const executionAgents = {
+          developer: createBuiltinLegacySubagents(builtinCtx).developer,
+          "implementation-engineer": createBuiltinMaxSubagents(builtinCtx)["implementation-engineer"],
+          "refactoring-engineer": createBuiltinMaxSubagents(builtinCtx)["refactoring-engineer"],
+        }
+        for (const [name, agent] of Object.entries(executionAgents)) {
+          if (!agent) throw new Error(`missing ${name}`)
+          const executionAvailability = await ToolResolver.availability({
+            agent,
+            model,
+            sessionID: execution.id,
+            session: await Session.get(execution.id),
+            includeMCP: false,
+          })
+          expect(
+            executionAvailability.visible.some((def) => def.id === "blueprint_loop_stop"),
+            `${name}:blueprint_loop_stop`,
+          ).toBe(true)
+          expect(executionAvailability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
+          expect(executionAvailability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
+        }
+
+        let availability: Awaited<ReturnType<typeof ToolResolver.availability>>
 
         const reviewer = await Session.create({
           parentID: execution.id,

@@ -808,6 +808,7 @@ export namespace SessionProcessor {
         const shouldBreak = (await Config.current()).experimental?.continue_loop_on_deny !== true
         try {
           while (true) {
+            let streamAborted = false
             try {
               input.abort.throwIfAborted()
               let currentText: MessageV2.TextPart | undefined
@@ -1367,6 +1368,7 @@ export namespace SessionProcessor {
                       break
 
                     case "abort":
+                      streamAborted = true
                       break
 
                     default:
@@ -1492,6 +1494,13 @@ export namespace SessionProcessor {
               sessionID: input.sessionID,
               messageID: input.assistantMessage.id,
             })
+            if (fastAbort || streamAborted || input.assistantMessage.error) {
+              const incompleteStreamingParts = parts.filter(
+                (part): part is MessageV2.TextPart | MessageV2.ReasoningPart =>
+                  (part.type === "text" || part.type === "reasoning") && !!part.text && !part.time?.end,
+              )
+              await Promise.all(incompleteStreamingParts.map((part) => Session.updatePart(part)))
+            }
             if (!fastAbort) {
               await waitForOutcomesAndSettle(parts)
               await waitForTrackedSettlements()
