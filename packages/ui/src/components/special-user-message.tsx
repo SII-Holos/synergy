@@ -1,7 +1,11 @@
 import { type Component, type JSX } from "solid-js"
 import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import type { MessageDescriptor } from "@lingui/core"
+import { useLingui } from "@lingui/solid"
 import h from "solid-js/h"
+import { Icon } from "./icon"
 import { Message } from "./message-part"
+import { getSemanticIcon } from "./semantic-icon"
 import {
   getSpecialUserMessageBubbleView,
   isBlueprintControl,
@@ -42,21 +46,43 @@ export function hasSpecialUserMessageRenderer(message: UserMessage): boolean {
   return getSpecialUserMessageRenderer(message) !== undefined
 }
 
+// Keep the descriptor parameter explicit so localization source checks can classify dynamic view labels.
+function localizeMessageDescriptor(
+  descriptor: MessageDescriptor,
+  _: (descriptor: MessageDescriptor) => string,
+): string {
+  return _(descriptor)
+}
+
 function SpecialUserBubbleMessage(
   props: SpecialUserMessageProps & { view: SpecialUserMessageBubbleView },
 ): JSX.Element {
-  return h(
-    "div",
-    {
-      "data-component": "special-user-message",
-      "data-kind": props.view.kind,
-      "data-layout": "user-bubble",
-    },
-    [
-      h("div", { "data-slot": "special-message-badge" }, props.view.label),
-      h(Message, { message: props.message, parts: props.view.parts, userVariant: "turn-bubble" }),
-    ],
-  ) as unknown as JSX.Element
+  const { _ } = useLingui()
+
+  return (
+    <div data-component="special-user-message" data-kind={props.view.kind} data-layout="user-bubble">
+      <div data-slot="special-message-badges">
+        <span data-slot="special-message-badge" data-kind="source">
+          {localizeMessageDescriptor(props.view.label, _)}
+        </span>
+        {props.view.status ? (
+          <span data-slot="special-message-status" data-tone={props.view.status.tone}>
+            <Icon
+              name={
+                props.view.status.tone === "success"
+                  ? getSemanticIcon("state.success")
+                  : getSemanticIcon("state.warning")
+              }
+              size="small"
+              aria-hidden="true"
+            />
+            <span>{localizeMessageDescriptor(props.view.status.label, _)}</span>
+          </span>
+        ) : null}
+      </div>
+      <Message message={props.message} parts={props.view.parts} userVariant="turn-bubble" />
+    </div>
+  )
 }
 
 function WorkflowUserRequestMessage(props: SpecialUserMessageProps): JSX.Element {

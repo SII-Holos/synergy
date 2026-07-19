@@ -15590,6 +15590,14 @@ msgstr "Plan"
 msgid "special-user.label.workflow"
 msgstr "Workflow"
 
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr "Approved"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr "Changes requested"
+
 #. Question subtitle
 msgid "tool.label.asked-count"
 msgstr "Asked {count, plural, one {# question} other {# questions}}"

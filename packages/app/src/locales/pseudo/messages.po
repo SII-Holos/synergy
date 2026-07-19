@@ -15590,6 +15590,14 @@ msgstr ""
 msgid "special-user.label.workflow"
 msgstr ""
 
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr ""
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr ""
+
 #. Question subtitle
 msgid "tool.label.asked-count"
 msgstr ""
