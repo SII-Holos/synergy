@@ -14,6 +14,11 @@ import PROMPT_SCRIPT from "./prompt/script.txt"
 import PROMPT_SMART_ALLOW from "./prompt/smart-allow.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_GITHUB_CLASSIFIER from "./prompt/github-classifier.txt"
+import PROMPT_GITHUB_PROPOSER from "./prompt/github-proposer.txt"
+import PROMPT_GITHUB_FIX_CODER from "./prompt/github-fix-coder.txt"
+import PROMPT_GITHUB_ISSUE_LOCATOR from "./prompt/github-issue-locator.txt"
+import PROMPT_GITHUB_REVIEW_AGENT from "./prompt/github-review-agent.txt"
 
 export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
   const performanceAnalyst = createPerformanceAnalystAgent(ctx)
@@ -149,6 +154,98 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_AGENT_GENERATE,
       ...resolveAgentModelRole(ctx, "mini"),
+    },
+    "github-shadow-classifier": {
+      name: "github-shadow-classifier",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_CLASSIFIER,
+      ...resolveAgentModelRole(ctx, "nano"),
+    },
+    "github-shadow-proposer": {
+      name: "github-shadow-proposer",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_PROPOSER,
+      ...resolveAgentModelRole(ctx, "mid"),
+    },
+    "github-issue-locator": {
+      name: "github-issue-locator",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_ISSUE_LOCATOR,
+      ...resolveAgentModelRole(ctx, "mini"),
+    },
+    "github-fix-coder": {
+      name: "github-fix-coder",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        edit: "allow",
+        write: "allow",
+        todoread: "allow",
+        todowrite: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_FIX_CODER,
+      ...resolveAgentModelRole(ctx, "mid"),
+    },
+    "github-review-agent": {
+      name: "github-review-agent",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_REVIEW_AGENT,
+      ...resolveAgentModelRole(ctx, "mid"),
     },
     anima: {
       name: "anima",

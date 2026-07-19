@@ -67,6 +67,7 @@ import { RuntimeRoute } from "./runtime-route"
 import { GlobalSessionRoute } from "./global-session"
 import { SessionNavRoute } from "./session-nav"
 import { GlobalNavRoute } from "./global-nav"
+import { GitHubConfiguredRoute } from "./github-configured"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
@@ -786,6 +787,7 @@ export namespace Server {
         )
         .route("/global/session", GlobalSessionRoute)
         .route("/global", GlobalNavRoute)
+        .route("/github", GitHubConfiguredRoute)
         .post(
           "/agenda/webhook/:token",
           describeRoute({

@@ -138,6 +138,14 @@ describe("resolveSessionVisualState", () => {
     )
   })
 
+  test("uses the GitHub icon for idle GitHub sessions", () => {
+    const visual = resolveSessionVisualState(store(), entry({ category: "github" }))
+
+    expect(visual.icon).toBe(getSemanticIcon("github.main"))
+    expect(visual.tone).toBe("muted")
+    expect(msg(visual.label)).toBe("GitHub session")
+  })
+
   test("uses child task activity as running state", () => {
     const visual = resolveSessionVisualState(
       store({ cortex: [{ parentSessionID: "ses_test", status: "running" }] }),

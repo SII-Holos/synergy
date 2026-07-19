@@ -62,6 +62,13 @@ describe("createIntlFormatter", () => {
       const result = fmt.time(d)
       expect(result.length).toBeGreaterThan(0)
     })
+
+    test("accepts granular time fields without conflicting with the default style", () => {
+      const fmt = createIntlFormatter(() => zhCN)
+      const d = new Date(2026, 0, 15, 14, 30, 0)
+
+      expect(() => fmt.time(d, { hour: "2-digit", minute: "2-digit" })).not.toThrow()
+    })
   })
 
   describe("dateTime", () => {
@@ -70,6 +77,13 @@ describe("createIntlFormatter", () => {
       const d = new Date(2026, 0, 15, 14, 30, 0)
       const result = fmt.dateTime(d)
       expect(result).toContain("2026")
+    })
+
+    test("accepts granular date and time fields without conflicting with the default styles", () => {
+      const fmt = createIntlFormatter(() => zhCN)
+      const d = new Date(2026, 0, 15, 14, 30, 0)
+
+      expect(() => fmt.dateTime(d, { year: "numeric", hour: "2-digit" })).not.toThrow()
     })
   })
 

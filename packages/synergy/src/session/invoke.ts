@@ -88,6 +88,7 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
+  const maxOutputTokensByMessage = new Map<string, number>()
 
   async function commandRuntime() {
     return (await import("../command/command")).Command
@@ -124,6 +125,7 @@ export namespace SessionInvoke {
 
   type InternalInvokeInput = InvokeInput & {
     ephemeralTools?: ToolResolver.EphemeralTool[]
+    maxOutputTokens?: number
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
@@ -132,6 +134,7 @@ export namespace SessionInvoke {
       if (input.ephemeralTools?.length) {
         ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
       }
+      if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
       await Session.update(input.sessionID, (draft) => {
         draft.pendingReply = input.noReply !== true || undefined
@@ -139,6 +142,7 @@ export namespace SessionInvoke {
 
       if (input.noReply === true) {
         ephemeralToolsByMessage.delete(message.info.id)
+        maxOutputTokensByMessage.delete(message.info.id)
         return message
       }
 
@@ -151,6 +155,7 @@ export namespace SessionInvoke {
         throw error
       } finally {
         ephemeralToolsByMessage.delete(message.info.id)
+        maxOutputTokensByMessage.delete(message.info.id)
       }
     })
   }
@@ -879,6 +884,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           tools: resolvedTools.tools,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
+          maxOutputTokens: maxOutputTokensByMessage.get(R.id),
         }
         try {
           const currentStreamInput = streamInput
@@ -1797,12 +1803,14 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     },
   )
 
-  export async function resumePending(): Promise<void> {
-    await reconcileInterruptedCortexDelegations()
+  export async function resumePending(input?: { scopeID?: string }): Promise<void> {
+    await reconcileInterruptedCortexDelegations(input?.scopeID)
+    const { SessionRecovery } = await import("./recovery")
+    await SessionRecovery.resumePendingStopRequests(input?.scopeID)
     const { Cortex } = await import("../cortex/manager")
-    await Cortex.reconcileParentNotifications()
+    await Cortex.reconcileParentNotifications(input?.scopeID)
 
-    const sessionIDs = await SessionManager.listPendingReply()
+    const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
       if (!session) continue
@@ -1837,8 +1845,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     }
   }
 
-  async function reconcileInterruptedCortexDelegations(): Promise<void> {
-    const sessionIDs = await SessionManager.listInterruptedCortexDelegations()
+  async function reconcileInterruptedCortexDelegations(scopeID?: string): Promise<void> {
+    const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
       if (!session?.cortex) continue

@@ -32,6 +32,8 @@ Memory pressure produces a recommended global maximum of four under elevated pre
 
 An explicit task model wins. Otherwise Cortex resolves the selected agent's available model, with the parent's model available as the normal fallback path. The resolved model is persisted on the child session.
 
+The launcher can pass `maxOutputTokens` to cap the child session's model output and `maxCost` to discard task output when final measured usage exceeds a cost ceiling. `maxOutputTokens` is passed through to `SessionInvoke.invokeInternal()` for both the initial call and any structured-output repair turns; `maxCost` is checked before Cortex publishes terminal output. The GitHub shadow proposer uses both fields to enforce its proposal budget. When either field is absent, that per-task limit is not applied.
+
 ## Execution Roles and Tool Boundaries
 
 The ordinary role is `delegated_subagent`. It is intentionally narrower than a primary session:

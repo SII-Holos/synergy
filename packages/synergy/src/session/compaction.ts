@@ -35,6 +35,14 @@ export namespace SessionCompaction {
   export const PRUNE_PROTECT = 40_000
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
+  type CompactionAttemptState = "running" | "committed" | "failed" | "empty"
+
+  function setAttemptState(msg: MessageV2.Assistant, state: CompactionAttemptState) {
+    msg.metadata = {
+      ...msg.metadata,
+      compactionAttempt: { state },
+    }
+  }
 
   /** Detect whether a processor error was caused by exceeding the model's context window. */
   export function isContextExceeded(error: unknown): boolean {
@@ -254,6 +262,7 @@ export namespace SessionCompaction {
       mechanical: true,
       validated: false,
     })
+    setAttemptState(msg, "committed")
     msg.error = undefined
     msg.finish = "stop"
     msg.summary = true
@@ -412,6 +421,9 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
+      metadata: {
+        compactionAttempt: { state: "running" },
+      },
       path: {
         cwd: directory,
         root: directory,
@@ -460,27 +472,33 @@ export namespace SessionCompaction {
       ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
       : modelMessages
 
-    await processor.process({
-      user: userMessage,
-      agent,
-      abort: input.abort,
-      sessionID: input.sessionID,
-      tools: {},
-      system: [],
-      messages: [
-        ...safeMessages,
-        {
-          role: "user" as const,
-          content: [
-            {
-              type: "text" as const,
-              text: promptText,
-            },
-          ],
-        },
-      ],
-      model,
-    })
+    try {
+      await processor.process({
+        user: userMessage,
+        agent,
+        abort: input.abort,
+        sessionID: input.sessionID,
+        tools: {},
+        system: [],
+        messages: [
+          ...safeMessages,
+          {
+            role: "user" as const,
+            content: [
+              {
+                type: "text" as const,
+                text: promptText,
+              },
+            ],
+          },
+        ],
+        model,
+      })
+    } catch (error) {
+      setAttemptState(msg, "failed")
+      await Session.updateMessage(msg)
+      throw error
+    }
 
     // If the LLM call failed due to context limits (e.g. bad token estimation
     // or model-reported limits don't match reality), fall back to a
@@ -494,6 +512,8 @@ export namespace SessionCompaction {
         await writeMechanicalSummary(msg, input)
         usedMechanicalFallback = true
       } else {
+        setAttemptState(msg, "failed")
+        await Session.updateMessage(msg)
         return "stop"
       }
     }
@@ -502,7 +522,11 @@ export namespace SessionCompaction {
       const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
       const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
       const allText = textParts.map((p) => p.text).join("\n")
-      if (!allText.trim()) return "stop"
+      if (!allText.trim()) {
+        setAttemptState(msg, "empty")
+        await Session.updateMessage(msg)
+        return "stop"
+      }
 
       await Session.updatePart({
         id: Identifier.ascending("part"),
@@ -515,6 +539,7 @@ export namespace SessionCompaction {
       })
       if (!msg.finish) msg.finish = "stop"
       if (!msg.time.completed) msg.time.completed = Date.now()
+      setAttemptState(msg, "committed")
       msg.summary = true
       msg.visible = true
       msg.includeInContext = true

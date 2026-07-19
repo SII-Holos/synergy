@@ -1,7 +1,9 @@
 import { Hono } from "hono"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
-import { SessionNav, SessionNavResponse, SessionNavEntry } from "../session/nav"
+import { NavCategory, SessionNav, SessionNavResponse, SessionNavEntry } from "../session/nav"
+
+const booleanQuery = z.preprocess((value) => (value === "false" ? false : value), z.coerce.boolean())
 
 const GlobalRecentResponse = SessionNavResponse.extend({
   unreadCompletionCount: z.number().int().nonnegative(),
@@ -35,8 +37,9 @@ export const GlobalNavRoute = new Hono()
     validator(
       "query",
       z.object({
-        parentOnly: z.coerce.boolean().optional().default(true),
-        includeArchived: z.coerce.boolean().optional().default(false),
+        parentOnly: booleanQuery.optional().default(true),
+        includeArchived: booleanQuery.optional().default(false),
+        category: NavCategory.optional(),
         search: z.string().optional(),
         limit: z.coerce.number().int().min(1).max(200).optional().default(20),
         cursorLastActivityAt: z.coerce.number().optional(),
@@ -53,6 +56,7 @@ export const GlobalNavRoute = new Hono()
       const result = await SessionNav.queryGlobal({
         parentOnly: q.parentOnly,
         includeArchived: q.includeArchived,
+        category: q.category,
         search: q.search,
         cursor,
         limit: q.limit,

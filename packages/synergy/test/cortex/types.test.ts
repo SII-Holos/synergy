@@ -176,4 +176,67 @@ describe("CortexTypes", () => {
       ).toThrow()
     })
   })
+
+  describe("LaunchInput worktree extensions", () => {
+    test("accepts baseRevision for exact-SHA checkout", () => {
+      const input = {
+        description: "Review PR at SHA",
+        prompt: "Review the code",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+          name: "review-abc123",
+          baseRevision: "abc123def456",
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.baseRevision).toBe("abc123def456")
+    })
+
+    test("accepts failOnError to propagate worktree creation failures", () => {
+      const input = {
+        description: "Must succeed",
+        prompt: "Test",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+          failOnError: true,
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.failOnError).toBe(true)
+    })
+
+    test("defaults failOnError to false", () => {
+      const input = {
+        description: "Best effort",
+        prompt: "Test",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.failOnError).toBe(false)
+    })
+
+    test("rejects non-string baseRevision", () => {
+      expect(() =>
+        CortexTypes.LaunchInput.parse({
+          description: "Bad revision",
+          prompt: "Test",
+          agent: "developer",
+          parentSessionID: "ses_parent01234567890",
+          parentMessageID: "msg_parent01234567890",
+          worktree: { create: true, baseRevision: 42 },
+        }),
+      ).toThrow()
+    })
+  })
 })

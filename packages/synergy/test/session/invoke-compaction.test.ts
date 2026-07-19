@@ -170,7 +170,11 @@ async function filterNewestFirst(messages: MessageV2.WithParts[]) {
   )
 }
 
-async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["error"]; text?: string }) {
+async function runCompactionProcessCase(input: {
+  error?: MessageV2.Assistant["error"]
+  text?: string
+  thrownError?: Error
+}) {
   await using tmp = await tmpdir({ git: true })
 
   const originalGetModel = Provider.getModel
@@ -178,10 +182,12 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
   const originalGetAvailableModel = Agent.getAvailableModel
   const originalProcessorCreate = SessionProcessor.create
   const originalPluginTrigger = Plugin.trigger
+  const originalUpdateMessage = Session.updateMessage
 
   let initialSummary: boolean | undefined
   let initialIncludeInContext: boolean | undefined
   let initialVisible: boolean | undefined
+  const attemptStates: Array<unknown> = []
 
   try {
     ;(Provider.getModel as any) = mock(async () => testModel())
@@ -191,6 +197,12 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
       modelID: "test-model",
     }))
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
+    ;(Session.updateMessage as any) = mock(async (message: MessageV2.Info) => {
+      if (message.role === "assistant" && message.mode === "compaction") {
+        attemptStates.push(message.metadata?.compactionAttempt)
+      }
+      return await originalUpdateMessage(message)
+    })
     ;(SessionProcessor.create as any) = mock((processorInput: Parameters<typeof SessionProcessor.create>[0]) => {
       initialSummary = processorInput.assistantMessage.summary
       initialIncludeInContext = processorInput.assistantMessage.includeInContext
@@ -200,6 +212,7 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
         partFromToolCall: () => undefined,
         trackExecution: () => {},
         process: mock(async () => {
+          if (input.thrownError) throw input.thrownError
           if (input.text) {
             const now = Date.now()
             await Session.updatePart({
@@ -248,13 +261,19 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
         })
 
         const before = await Session.messages({ sessionID: session.id })
-        const result = await SessionCompaction.process({
-          parentID: user.id,
-          messages: before,
-          sessionID: session.id,
-          abort: new AbortController().signal,
-          auto: false,
-        })
+        let result: Awaited<ReturnType<typeof SessionCompaction.process>> | undefined
+        let thrown: unknown
+        try {
+          result = await SessionCompaction.process({
+            parentID: user.id,
+            messages: before,
+            sessionID: session.id,
+            abort: new AbortController().signal,
+            auto: false,
+          })
+        } catch (error) {
+          thrown = error
+        }
         const after = await Session.messages({ sessionID: session.id })
         const attempt = after.find(
           (message): message is MessageV2.WithParts & { info: MessageV2.Assistant } =>
@@ -264,7 +283,7 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
         const root = after.find((message) => message.info.id === user.id)
         if (!root) throw new Error("compaction root was not persisted")
 
-        return { result, attempt, root, initialSummary, initialIncludeInContext, initialVisible }
+        return { result, thrown, attempt, root, initialSummary, initialIncludeInContext, initialVisible, attemptStates }
       },
     })
   } finally {
@@ -273,6 +292,7 @@ async function runCompactionProcessCase(input: { error?: MessageV2.Assistant["er
     ;(Agent.getAvailableModel as any) = originalGetAvailableModel
     ;(SessionProcessor.create as any) = originalProcessorCreate
     ;(Plugin.trigger as any) = originalPluginTrigger
+    ;(Session.updateMessage as any) = originalUpdateMessage
   }
 }
 
@@ -961,12 +981,27 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(observed.attempt.info.summary).toBeUndefined()
     expect(observed.attempt.info.includeInContext).toBe(false)
     expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+    expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "failed" }])
     expect(observed.attempt.info.error).toEqual(error)
     expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
     expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
       true,
     )
     expect(Turn.collect([observed.root, observed.attempt], { skipSynthetic: true })[0]?.assistants).toHaveLength(0)
+  })
+
+  test("marks unexpected processor exceptions as failed before propagating them", async () => {
+    const error = new Error("processor crashed")
+
+    const observed = await runCompactionProcessCase({ thrownError: error })
+
+    expect(observed.thrown).toBe(error)
+    expect(observed.attempt.info.summary).toBeUndefined()
+    expect(observed.attempt.info.includeInContext).toBe(false)
+    expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "failed" })
+    expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "failed" }])
   })
 
   test("does not commit an empty compaction response", async () => {
@@ -976,6 +1011,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(observed.attempt.info.summary).toBeUndefined()
     expect(observed.attempt.info.includeInContext).toBe(false)
     expect(observed.attempt.info.visible).toBe(false)
+    expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "empty" })
+    expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "empty" }])
     expect(observed.attempt.parts.some((part) => part.type === "compaction_recovery")).toBe(false)
     expect(SessionCompaction.hasPendingCompaction(observed.root.parts, [observed.attempt], observed.root.info.id)).toBe(
       true,
@@ -992,6 +1029,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(observed.attempt.info.finish).toBe("stop")
     expect(observed.attempt.info.visible).toBe(true)
     expect(observed.attempt.info.includeInContext).toBe(true)
+    expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+    expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "committed" }])
     expect(observed.attempt.info.error).toBeUndefined()
     expect(observed.attempt.parts).toEqual(
       expect.arrayContaining([
@@ -1022,6 +1061,8 @@ describe.serial("SessionInvoke preflight compaction", () => {
     expect(observed.attempt.info.finish).toBe("stop")
     expect(observed.attempt.info.visible).toBe(true)
     expect(observed.attempt.info.includeInContext).toBe(true)
+    expect(observed.attempt.info.metadata?.compactionAttempt).toEqual({ state: "committed" })
+    expect(observed.attemptStates).toEqual([{ state: "running" }, { state: "running" }, { state: "committed" }])
     expect(observed.attempt.info.error).toBeUndefined()
     expect(observed.attempt.parts).toEqual(
       expect.arrayContaining([
