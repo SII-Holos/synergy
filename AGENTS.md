@@ -96,7 +96,7 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 - Load `add-tool`, `add-agent`, or `add-cli-command` for their complete implementation and verification workflows.
 - A first-party tool requires backend registration, taxonomy, and all Web presentation/classifier registrations described by `add-tool`.
-- Built-in primary agents are `synergy` and `synergy-max`; visibility masks and delegation groups define each subagent catalog. Hidden BlueprintLoop and Light Loop reviewers remain host-selected.
+- Built-in primary agents are `synergy` and `synergy-max`; visibility masks and delegation groups define each subagent catalog. BlueprintLoop and Light Loop reviewers remain host-selected, while their Cortex tasks are visible in the execution session's Subagent Dock.
 - Plugins use the public definition, generated manifest, capability-gated Host Services, process runtime, operation/event/hook, approval, and trusted UI contracts in [Plugin documentation](docs/plugins/README.md). Do not import private runtime modules into plugins.
 
 ## Testing and Quality
@@ -110,6 +110,7 @@ cd packages/synergy
 bun test test/<domain>/<file>.test.ts
 bun run test:changed
 bun test
+bun run test:ci
 bun run test:coverage
 ```
 

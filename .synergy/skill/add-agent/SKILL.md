@@ -1,6 +1,6 @@
 ---
 name: add-agent
-description: Add or change a built-in Synergy primary agent, subagent, hidden reviewer, prompt, visibility rule, delegation group, model role, or permission profile. Use for requests about built-in agent definitions under packages/synergy/src/agent; do not use for user-configured, plugin, or external agents.
+description: Add or change a built-in Synergy primary agent, subagent, host-selected reviewer, prompt, visibility rule, delegation group, model role, or permission profile. Use for requests about built-in agent definitions under packages/synergy/src/agent; do not use for user-configured, plugin, or external agents.
 ---
 
 # Add a Built-in Agent
@@ -22,7 +22,7 @@ description: Add or change a built-in Synergy primary agent, subagent, hidden re
 2. Add or update the prompt under `agent/prompt/`. Match the nearest flat prompt or `base.txt` plus `builder.ts` pattern. Keep product policy in code/config contracts and keep the prompt focused on the agent's role and completion criteria.
 3. Define the agent with the current `Agent.Info` or `createSubagent(ctx, definition)` contract. Select the narrowest existing `SubagentPermissionProfile`; add a new profile only when no current profile expresses the required capability boundary.
 4. Keep tool exposure separate from authorization. Native task-callable subagents retain the common `search_tools` and `expand_tools` permissions so they can activate deferred tools already allowed by their profile; profile-specific denies must still keep those tools unavailable after expansion.
-5. Set `visibleTo`, `delegationGroups`, and `hidden` deliberately. Primary agents may target only agents exposed through their catalog. Hidden BlueprintLoop and Light Loop reviewers remain host-selected rather than direct primary targets.
+5. Set `visibleTo`, `delegationGroups`, and `hidden` deliberately. Primary agents may target only agents exposed through their catalog. BlueprintLoop and Light Loop reviewers remain host-selected rather than direct primary targets, while their Cortex tasks are visible in the execution session's Subagent Dock.
 6. Register a new max-subagent factory in `FACTORIES`; register other new catalogs through `Agent.create()` only if a genuinely new catalog is required.
 7. Update generated agent-table behavior or tests if the new agent changes routing-visible metadata. Do not maintain a second hand-written agent list in prompts or docs.
 8. Keep agent registration separate from invocation. A hidden model-only agent does not by itself justify a new local `LLM.stream()` wrapper or a manually created child session.

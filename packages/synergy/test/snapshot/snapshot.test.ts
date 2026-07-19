@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, describe, expect, mock, spyOn, test } from "bun:test"
 import { $ } from "bun"
 import fs from "fs/promises"
 import path from "path"
@@ -58,29 +58,26 @@ function isSymlinkPrivilegeError(error: unknown) {
   const code = (error as { code?: unknown })?.code
   return code === "EPERM" || code === "EACCES" || code === "UNKNOWN"
 }
-
 async function withGitCommandLog<T>(fn: (commands: string[]) => Promise<T>) {
   const originalSpawn = Bun.spawn
   const commands: string[] = []
-  Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+  using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
     const command = args[0]
     if (Array.isArray(command) && command[0] === "git") commands.push(command.map(String).join(" "))
     return originalSpawn(...args)
-  }) as typeof Bun.spawn
-  try {
-    return await fn(commands)
-  } finally {
-    Bun.spawn = originalSpawn
-  }
+  }) as typeof Bun.spawn)
+  return await fn(commands)
 }
 
 describe.serial("snapshot", () => {
+  afterEach(() => mock.restore())
+
   test("retries a transient git spawn failure", async () => {
     await using tmp = await bootstrap()
     const scope = await tmp.scope()
     const originalSpawn = Bun.spawn
     let diffFilesAttempts = 0
-    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+    using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
       const command = args[0]
       if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
         diffFilesAttempts++
@@ -89,19 +86,15 @@ describe.serial("snapshot", () => {
         }
       }
       return originalSpawn(...args)
-    }) as typeof Bun.spawn
+    }) as typeof Bun.spawn)
 
-    try {
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
-        },
-      })
-      expect(diffFilesAttempts).toBe(2)
-    } finally {
-      Bun.spawn = originalSpawn
-    }
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        expect(await Snapshot.track(tmp.extra.sessionID)).toBeTruthy()
+      },
+    })
+    expect(diffFilesAttempts).toBe(2)
   })
 
   test("does not retry a permanent git spawn failure", async () => {
@@ -109,26 +102,22 @@ describe.serial("snapshot", () => {
     const scope = await tmp.scope()
     const originalSpawn = Bun.spawn
     let diffFilesAttempts = 0
-    Bun.spawn = ((...args: Parameters<typeof Bun.spawn>) => {
+    using _spawn = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
       const command = args[0]
       if (Array.isArray(command) && command[0] === "git" && command.includes("diff-files")) {
         diffFilesAttempts++
         throw Object.assign(new Error("permission denied"), { code: "EACCES" })
       }
       return originalSpawn(...args)
-    }) as typeof Bun.spawn
+    }) as typeof Bun.spawn)
 
-    try {
-      await ScopeContext.provide({
-        scope,
-        fn: async () => {
-          expect(await Snapshot.track(tmp.extra.sessionID)).toBeUndefined()
-        },
-      })
-      expect(diffFilesAttempts).toBe(1)
-    } finally {
-      Bun.spawn = originalSpawn
-    }
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        expect(await Snapshot.track(tmp.extra.sessionID)).toBeUndefined()
+      },
+    })
+    expect(diffFilesAttempts).toBe(1)
   })
 
   test("tracks deleted files correctly", async () => {

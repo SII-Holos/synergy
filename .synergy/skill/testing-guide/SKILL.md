@@ -27,7 +27,7 @@ For localized UI behavior, use a real Lingui `I18nProvider` with minimal English
 
 ## Use Real Isolation
 
-Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. Restore environment variables and singleton state in cleanup hooks. Honor abort signals and dispose processes, Browser pages, servers, and timers.
+Use `tmpdir()` and `ScopeContext` instead of mocking Storage, Session, or the filesystem. The preload-managed `SYNERGY_TEST_ROOT` contains temporary fixtures for process-level cleanup, so do not move fixtures back to unmanaged operating-system temp paths or delete them while Scope-owned asynchronous work may still reference them. Restore environment variables and singleton state in cleanup hooks. Honor abort signals and dispose processes, Browser pages, servers, and timers.
 
 Provider/model tests use the pinned `test/tool/fixtures/models-api.json` catalog. Update that fixture deliberately; never make deterministic tests depend on the live model catalog or real API keys.
 
@@ -41,6 +41,7 @@ Core runtime commands run from `packages/synergy`:
 bun test test/<domain>/<file>.test.ts
 bun run test:changed
 bun test
+bun run test:ci
 bun run test:coverage
 ```
 
@@ -64,6 +65,8 @@ bun run --cwd packages/app build
 Extraction must leave tracked PO catalogs unchanged, strict compilation must reject missing Simplified Chinese or invalid ICU messages, and the production build must keep non-English catalogs lazy while excluding development-only pseudo-localization. Exercise a Chinese cold start, rapid switching, catalog-load failure, `html.lang`, keyboard labels, and 375 px layout through an isolated Web/Desktop runtime.
 
 Run the narrow failing test during iteration, then the affected package/domain suite, then `quality:quick`. Run the full suite when the change crosses shared abstractions, persistence, generated contracts, package publication, or release boundaries, or when the user requests it.
+
+`bun run test:ci` is the CI-equivalent core suite. It runs four shards sequentially in fresh Bun processes to bound process-global state and fixture accumulation without introducing cross-shard port or environment races. Set `SYNERGY_TEST_JUNIT_DIR` to emit one JUnit report per shard.
 
 Use [Development reference](../../../docs/reference/development.md) and [Open-source quality](../../../docs/operations/open-source-quality.md) for current command ownership. Do not invent a root `bun test`; the root script intentionally rejects that ambiguous command.
 
