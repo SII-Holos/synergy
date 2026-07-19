@@ -321,14 +321,15 @@ export const S = {
   inboxSessionAria: { id: "session.inbox.sessionAria", message: "Session inbox" },
 
   // question-prompt
-  questionNeedsInput: { id: "session.question.needsInput", message: "Needs your input" },
+  questionNeedsInput: { id: "session.question.needsInput", message: "Choose how to proceed" },
   questionOpen: { id: "session.question.open", message: "Open" },
   questionCollapseTitle: { id: "session.question.collapse", message: "Collapse" },
   questionSkip: { id: "session.question.skip", message: "Skip" },
   questionSkipTitle: { id: "session.question.skipTitle", message: "Skip question" },
+  questionMoreActions: { id: "session.question.moreActions", message: "More question actions" },
   questionReview: { id: "session.question.review", message: "Review" },
-  questionOtherAnswer: { id: "session.question.otherAnswer", message: "Other answer" },
-  questionOtherDesc: { id: "session.question.otherDesc", message: "Type a different answer" },
+  questionOtherAnswer: { id: "session.question.otherAnswer", message: "None of these?" },
+  questionOtherDesc: { id: "session.question.otherDesc", message: "Tell Synergy how to proceed" },
   questionReviewTitle: { id: "session.question.reviewTitle", message: "Review your answers" },
   questionNotAnswered: { id: "session.question.notAnswered", message: "Not answered" },
   questionEdit: { id: "session.question.edit", message: "Edit" },
@@ -338,8 +339,12 @@ export const S = {
   questionAdd: { id: "session.question.add", message: "Add" },
   questionStepsAria: { id: "session.question.stepsAria", message: "Question steps" },
   questionAria: { id: "session.question.aria", message: "Question awaiting your input" },
-  questionCustomPlaceholder: { id: "session.question.customPlaceholder", message: "Type your own answer..." },
-  questionMultiHint: { id: "session.question.multiHint", message: " *(select all that apply)*" },
+  questionCustomPlaceholder: {
+    id: "session.question.customPlaceholder",
+    message: "Tell Synergy what to do instead...",
+  },
+  questionSingleHint: { id: "session.question.singleHint", message: "Choose one option to continue" },
+  questionMultiHint: { id: "session.question.multiHint", message: "Choose one or more options to continue" },
   questionStepLabel: { id: "session.question.stepLabel", message: "Question {index}" },
 
   // session-new-view

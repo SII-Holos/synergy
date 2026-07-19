@@ -223,7 +223,7 @@ Provider discovery should use provider profile metadata for explanatory copy and
 
 Online account model discovery accepts future model slugs without a client allowlist. When live discovery cannot be verified because of a transient failure, stable fallback models may remain visible but must be labeled as a fallback catalog; authentication rejection instead makes the provider unavailable and routes to recovery.
 
-Clarifying question prompts are decision surfaces, not tool-output cards. They should use a solid outer shell, filled option rows, quiet step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state.
+Clarifying question prompts are decision surfaces, not tool-output cards. Answer options are the primary visual anchor: use a solid outer shell, generous filled option rows, visible keyboard focus and number shortcuts, quiet question context and step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state. Progress, timeout, and low-frequency actions remain secondary chrome; conversational custom-answer copy should invite the user to tell Synergy how to proceed.
 
 ## Accessibility & Inclusion
 
