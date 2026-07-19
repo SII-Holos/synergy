@@ -42,6 +42,7 @@ The ordinary role is `delegated_subagent`. It is intentionally narrower than a p
 - task delegation and task inspection tools are removed
 - DAG mutation tools are removed
 - configured primary-only tools are removed
+- deferred tool discovery and expansion remain available, but they expose only tools already allowed by the selected agent's permission rules
 
 This keeps a delegated task bounded and prevents accidental recursive orchestration. Hidden internal reviewers can be given an explicit `delegationGroup` so they can call selected specialists while remaining hidden and unavailable as direct user targets.
 
@@ -105,6 +106,7 @@ Visible terminal tasks keep their live task record long enough for clients to ob
 - Delegation creates a child session; it does not splice child messages into the parent history.
 - Parent and child retain an explicit hierarchy through `parentID` and Cortex metadata.
 - An ordinary delegated subagent cannot recursively delegate or ask the user for permission.
+- Tool expansion changes child-session exposure only; it never grants a deferred tool denied by agent or session permissions.
 - Backgrounding changes who waits; it does not change the task's execution or persistence.
 - Output mode is an explicit contract, not a best-effort prompt convention.
 - Cancellation covers descendant tasks and runtime resources without deleting durable history.

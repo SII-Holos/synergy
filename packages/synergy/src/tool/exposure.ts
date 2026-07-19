@@ -223,6 +223,13 @@ export namespace ToolExposure {
     return expanded.has(normalized.group)
   }
 
+  export function userAllows(toolID: string, userTools?: Record<string, boolean>) {
+    if (!userTools) return true
+    if (userTools[toolID] === true) return true
+    if (userTools[toolID] === false) return false
+    return userTools["*"] !== false
+  }
+
   export function groupTable(groups: GroupInfo[] = BUILTIN_GROUPS): string {
     return [
       "| Group | What it does | When to expand |",
