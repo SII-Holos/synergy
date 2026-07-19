@@ -114,6 +114,8 @@ Eligible usage snapshots are assistant messages with `includeInContext !== false
 
 Every no-cursor latest page apply seeds the projection, including normal session loads, navigation prefetch, reconnect/recovery refreshes, return-to-latest, stale-cursor recovery, and compaction reloads. Cursor/history pages never replace it. Latest page loads and background prefetches capture a `message` resource request token before the request. A latest response may replace the visible window only if no newer message event, authoritative part checkpoint/removal, history prepend, or optimistic local message write invalidated that token while it was in flight. Background prefetches additionally run only when no message window exists, so they populate an initially empty bucket rather than displace a loaded conversation.
 
+Latest-page loading treats a freshness rejection as a superseded attempt, not a successful empty apply. The session message loader retries once with new request tokens and reports the bucket ready only after an apply succeeds. Repeated supersession becomes a visible load error while preserving any previously successful snapshot.
+
 Each asynchronous latest-page request also captures a per-session projection revision. A newer latest-page request or a persisted `message.updated`/`message.removed` event advances that revision. After resource freshness accepts a page, the projection revision independently prevents an older response from overwriting newer event-driven Context usage. Complete persisted `message.updated` events reduce the projection inside the accepted event write even while history mode suppresses insertion into `messages`. Removing the projected message invalidates the key without a per-event request; the next authoritative latest page restores it.
 
 ### History mode
@@ -243,9 +245,11 @@ Every snapshot request captures a `SyncResourceRequest` token:
 
 ### Local invalidation
 
-Optimistic message insertion/removal, authoritative part checkpoints/removals, and history prepends call `invalidate()` for the session's `message` resource. Invalidation clears the stored resource version and advances its revision without changing the Scope epoch. Requests captured before that local write are therefore rejected, including versioned responses, because no current resource version remains to prove that they include the local mutation.
+Optimistic message insertion/removal, authoritative part checkpoints/removals for messages present in the loaded window, and history prepends call `invalidate()` for the session's `message` resource. Invalidation clears the stored resource version and advances its revision without changing the Scope epoch. Requests captured before that local write are therefore rejected, including versioned responses, because no current resource version remains to prove that they include the local mutation.
 
-Streaming `message.part.delta` frames do not invalidate freshness. They remain unsequenced, append-only projections whose next full checkpoint converges authoritative part state.
+Streaming `message.part.delta` frames do not invalidate resource freshness. They remain unsequenced, append-only projections whose next full checkpoint converges authoritative part state.
+
+Message-page requests also capture a local per-message part revision map. Applied delta, checkpoint, and removal events advance only the affected message revision. A mutation applied to an existing local bucket makes an otherwise accepted snapshot preserve that live bucket. A checkpoint or removal ignored because its parent message is outside the loaded window marks that message as requiring a newer snapshot; an in-flight page retries only when its returned effective window contains the affected message, so unrelated orphan events do not supersede the whole session page. Scope release and message-bucket eviction retire these local request tokens.
 
 ### Snapshot version guard
 
@@ -277,7 +281,7 @@ Live events (`todo.updated`, `dag.updated`, `session.inbox.updated`, `message.up
 
 ### Resource scope
 
-Per-resource snapshot/event ordering applies to `dag`, `todo`, `inbox`, and `message`. Message replacement snapshots include latest page loads, background prefetches, and post-compaction page loads. Message part checkpoints/removals and local optimistic writes invalidate concurrent message requests without becoming sequenced resource events; streaming deltas remain outside resource freshness. All incoming events still pass through the Scope-level epoch pre-filter.
+Per-resource snapshot/event ordering applies to `dag`, `todo`, `inbox`, and `message`. Message replacement snapshots include latest page loads, background prefetches, and post-compaction page loads. Message part checkpoints/removals for messages present in the loaded window and local optimistic writes invalidate concurrent message requests without becoming sequenced resource events; streaming deltas remain outside resource freshness. Part mutations outside the loaded window use the per-message freshness decision above instead of globally invalidating unrelated pages. All incoming events still pass through the Scope-level epoch pre-filter.
 
 ## Streaming Delta Protocol
 
@@ -313,10 +317,12 @@ Network streaming and disk persistence are separate optimizations.
 - streaming increments defer disk writes;
 - discrete tool/status changes write immediately;
 - terminal writes cancel or supersede buffered values;
+- `messagePage()` flushes pending writes for the requested session before reading its snapshot;
 - loop finalization flushes every pending value;
+- a turn ending in error or abort republishes each non-empty unfinished text/reasoning part as a full checkpoint before completing the message;
 - buffer cancellation is used only when an immediate authoritative write will replace it.
 
-This removes quadratic full-part disk writes without weakening terminal persistence.
+This removes quadratic full-part disk writes while keeping snapshot reads and terminal frontend recovery aligned with the latest streamed content.
 
 ## Compaction Attempt Projection
 
@@ -332,13 +338,12 @@ The compaction event is gated through `acceptEvent()` using both the session's `
 
 The frontend:
 
-1. captures separate Inbox and Message request tokens plus a Context projection revision, then fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
+1. captures separate Inbox and Message request tokens, per-message part revisions, and a Context projection revision, then fetches the post-compaction messages via `session.messagePage()` while keeping the current timeline visible;
+1. accepts the page through the same bounded-retry Message loader used by ordinary latest-page loads and recomputes the apply plan from the current store when an attempt succeeds;
+1. applies one Solid batch that deletes stale parts and diff state, deletes inbox state only if no newer inbox event arrived while the fetch was in flight, and preserves live part buckets changed during the request;
+1. reconciles the retained messages, unchanged authoritative parts, message window metadata, and latest Context projection atomically.
 
-1. accepts the page through the Message freshness gate and computes the messages to retain and the old part buckets to drop using `planMessagePageApply()`;
-1. applies one Solid batch that deletes stale parts and diff state, and deletes inbox state only if no newer inbox event arrived while the fetch was in flight;
-1. reconciles the retained messages, their authoritative parts, message window metadata, and latest Context projection atomically.
-
-Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`, `pendingLatestIds`) is replaced atomically in the same batch, while newer Message state rejects the whole stale swap, newer Inbox state preserves only the inbox bucket, and a newer Context projection revision preserves the newer usage record.
+Fetch-before-swap prevents an empty timeline flash. Part buckets belonging to messages outside the new effective set must be released. The message window metadata (`nextCursor`, `hasMore`, `total`, `mode`, `pendingLatest`, `pendingLatestIds`) is replaced atomically in the same batch. Newer Message state supersedes and retries the whole stale swap, newer Inbox state preserves only the inbox bucket, newer per-message part state preserves that live bucket, and a newer Context projection revision preserves the newer usage record.
 
 ## Message Bucket Eviction
 
@@ -373,12 +378,13 @@ Variant display resolves the explicit or historical session variant first, then 
 - Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery. Live gaps replay from the retained pre-gap watermark and do not apply the triggering event before recovery.
 - Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests; reconnect eagerly refreshes volatile state only for the viewed session.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
-- Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
+- Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations for messages present in the loaded window invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.
-- Streaming deltas converge through full checkpoints.
+- Superseded latest-message snapshots retry before a bucket is marked ready; per-message part decisions apply unchanged buckets, preserve newer live buckets, and retry only pages that contain an ignored out-of-window mutation.
+- Streaming deltas converge through periodic checkpoints and a final full checkpoint on normal completion, error, or abort.
 - Active text rendering processes appended suffixes rather than rescanning accumulated snapshots.
-- Disk write-behind never delays discrete or terminal persistence.
-- Compaction fetches before swapping the visible message set.
+- Session-scoped snapshot reads flush pending part write-behind first, and disk write-behind never delays discrete or terminal persistence.
+- Compaction fetches before swapping the visible message set and uses the same supersession recovery as ordinary latest loads.
 - The active session survives message-bucket eviction.
 - Composer fallback resolution never writes upward into user intent.
 - The frontend message window is a viewport, not the full transcript. `messages()` and `messagePage()` serve different consumers.

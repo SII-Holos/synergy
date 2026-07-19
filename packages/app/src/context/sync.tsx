@@ -103,6 +103,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       response: SessionMessagePageResponse
       request?: SyncResourceRequest
       contextProjectionRevision?: number
+      partSnapshotRequest: ReturnType<typeof globalSync.capturePartSnapshotRequest>
     }
     type MessagePageLoadInput = {
       mode: "latest" | "history"
@@ -115,6 +116,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
         const contextProjectionRevision =
           input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
+        const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
         const response = await retry(() =>
           sdk.client.session.messagePage(
             {
@@ -125,21 +127,27 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             { signal, throwOnError: true },
           ),
         )
-        return { response, request, contextProjectionRevision }
+        return { response, request, contextProjectionRevision, partSnapshotRequest }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
         if (!page) return
+        const currentMetadata = store.messageWindow[sessionID]
+        const current: MessageWindowState<Message> = {
+          messages: store.message[sessionID] ?? [],
+          mode: currentMetadata?.mode ?? "latest",
+          pendingLatest: currentMetadata?.pendingLatest ?? false,
+          pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
+        }
+        const plan = planMessagePageApply({ page, current, mode: input?.mode })
+        const partActions = new Map(
+          Object.keys(plan.parts).map((messageID) => [
+            messageID,
+            globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
+          ]),
+        )
+        if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
         const apply = () => {
-          const currentMetadata = store.messageWindow[sessionID]
-          const current: MessageWindowState<Message> = {
-            messages: store.message[sessionID] ?? [],
-            mode: currentMetadata?.mode ?? "latest",
-            pendingLatest: currentMetadata?.pendingLatest ?? false,
-            pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
-          }
-          const plan = planMessagePageApply({ page, current, mode: input?.mode })
-
           batch(() => {
             setStore(
               produce((draft) => {
@@ -157,6 +165,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
               )
             }
             for (const [messageID, parts] of Object.entries(plan.parts)) {
+              if (partActions.get(messageID) === "preserve") continue
               setStore("part", messageID, reconcile(parts, { key: "id" }))
             }
           })
@@ -165,7 +174,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         }
 
         if (input?.mode === "latest" && result.request) {
-          globalSync.applyResourceResponse(
+          const accepted = globalSync.applyResourceResponse(
             sdk.scopeKey,
             sessionID,
             "message",
@@ -173,12 +182,13 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             result.response.response?.headers,
             apply,
           )
-          return
+          return accepted ? "applied" : "superseded"
         }
         // A history prepend changes the window outside latest-page ordering;
         // invalidate any concurrent latest request before applying it.
         globalSync.invalidateResource(sdk.scopeKey, sessionID, "message")
         apply()
+        return "applied"
       },
       errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
       onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),

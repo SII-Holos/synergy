@@ -691,13 +691,14 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   // remaining text part is the user's own input. Rendering/visibility of the
   // whole message is carried by info.visible/origin, so no metadata.synthetic
   // flag is needed.
+  await Session.updateMessage(info)
+
   for (const part of parts) {
     if (part.type === "text" && !part.origin) {
       ;(part as MessageV2.TextPart).origin = "user"
     }
     await Session.updatePart(part)
   }
-  await Session.updateMessage(info)
 
   return {
     info,

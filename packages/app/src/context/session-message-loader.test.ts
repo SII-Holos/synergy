@@ -23,7 +23,9 @@ describe("session message loader", () => {
         signals.push(signal)
         return requests.shift()!.promise
       },
-      apply: (_sessionID, messages) => applied.push(messages),
+      apply: (_sessionID, messages) => {
+        applied.push(messages)
+      },
       errorMessage: (error) => String(error),
     })
 
@@ -41,6 +43,53 @@ describe("session message loader", () => {
 
     expect(applied).toEqual([["fresh"]])
     expect(loader.state("ses_1")).toMatchObject({ phase: "ready", generation: 2, hasSnapshot: true })
+  })
+
+  test("retries a superseded snapshot before reporting the session ready", async () => {
+    const states: string[] = []
+    let requests = 0
+    let applies = 0
+    const loader = createSessionMessageLoader<string[]>({
+      request: async () => {
+        requests++
+        return [requests === 1 ? "stale" : "fresh"]
+      },
+      apply: () => {
+        applies++
+        return applies === 1 ? "superseded" : "applied"
+      },
+      errorMessage: (error) => String(error),
+      onState: (_sessionID, state) => states.push(state.phase),
+    })
+
+    await loader.load("ses_1")
+
+    expect(requests).toBe(2)
+    expect(applies).toBe(2)
+    expect(states).toEqual(["loading", "ready"])
+    expect(loader.state("ses_1")).toMatchObject({ phase: "ready", generation: 1, hasSnapshot: true })
+  })
+
+  test("fails visibly after repeated snapshot supersession", async () => {
+    let requests = 0
+    const loader = createSessionMessageLoader<string[]>({
+      request: async () => {
+        requests++
+        return []
+      },
+      apply: () => "superseded",
+      errorMessage: () => "Conversation changed while loading",
+    })
+
+    await expect(loader.load("ses_1")).rejects.toThrow("superseded")
+
+    expect(requests).toBe(2)
+    expect(loader.state("ses_1")).toMatchObject({
+      phase: "error",
+      generation: 1,
+      hasSnapshot: false,
+      error: "Conversation changed while loading",
+    })
   })
 
   test("a failed forced refresh preserves the successful snapshot state", async () => {
