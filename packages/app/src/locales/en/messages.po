@@ -3959,6 +3959,18 @@ msgstr "View all {count} notes"
 msgid "app.note.untitled"
 msgstr "Untitled"
 
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.error.fallback"
+msgstr "An error occurred"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.response.ready"
+msgstr "Response ready"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.session.error"
+msgstr "Session error"
+
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "Browser"
@@ -15599,6 +15611,14 @@ msgstr "Plan"
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.workflow"
 msgstr "Workflow"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr "Approved"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr "Changes requested"
 
 #. Question subtitle
 msgid "tool.label.asked-count"

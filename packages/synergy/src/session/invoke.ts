@@ -1028,8 +1028,8 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       if (processedRootID) {
         const messages = await Session.messages({ sessionID })
         const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
-        if (terminalReply && terminalReply.info.id !== previousTerminalReplyID) {
-          await Session.recordCompletionNotice(sessionID)
+        if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
+          await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })
         }
       }
 
@@ -1213,7 +1213,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
-    await Session.recordCompletionNotice(sessionID)
+    await Session.recordCompletionNotice(sessionID, { publishEvent: false })
     Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
     Session.updateLastExchange(sessionID).catch((err) =>
       log.warn("failed to update lastExchange", { sessionID, error: err }),

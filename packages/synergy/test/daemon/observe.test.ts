@@ -7,6 +7,7 @@ import { Daemon } from "../../src/daemon"
 import { DaemonHealth } from "../../src/daemon/health"
 import { DaemonState } from "../../src/daemon/state"
 import { DaemonService } from "../../src/daemon/service"
+import { Installation } from "../../src/global/installation"
 
 function makeSpec(overrides?: Partial<Daemon.Spec>): Daemon.Spec {
   return {
@@ -27,7 +28,7 @@ function makeSpec(overrides?: Partial<Daemon.Spec>): Daemon.Spec {
 
 function makeManifest(overrides?: Partial<DaemonState.Manifest>): DaemonState.Manifest {
   return {
-    version: "0.0.0-test",
+    version: Installation.VERSION,
     label: "dev.synergy.server",
     manager: "launchd",
     hostname: "127.0.0.1",
@@ -204,6 +205,32 @@ describe("computeObservedState", () => {
 
     expect(state.drifted).toBe(false)
     expect(state.specSource).toBe("installed")
+  })
+
+  test("reports an older systemd service template as drifted after upgrade", () => {
+    const state = Daemon.computeObservedState({
+      manager: "systemd-user",
+      desiredSpec: makeSpec(),
+      manifest: makeManifest({ manager: "systemd-user", version: "older-version" }),
+      serviceStatus: makeServiceStatus({ installed: true, running: true }),
+      reachable: true,
+      portListening: true,
+    })
+
+    expect(state.drifted).toBe(true)
+  })
+
+  test("keeps the current systemd service template installed", () => {
+    const state = Daemon.computeObservedState({
+      manager: "systemd-user",
+      desiredSpec: makeSpec(),
+      manifest: makeManifest({ manager: "systemd-user" }),
+      serviceStatus: makeServiceStatus({ installed: true, running: true }),
+      reachable: true,
+      portListening: true,
+    })
+
+    expect(state.drifted).toBe(false)
   })
 })
 

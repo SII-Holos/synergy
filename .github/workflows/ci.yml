@@ -94,10 +94,19 @@ jobs:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
       - name: Run Synergy tests
-        run: bun test --timeout 30000
+        run: bun run test:ci
         working-directory: packages/synergy
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
+          SYNERGY_TEST_JUNIT_DIR: coverage/ci-tests
+
+      - name: Upload Synergy test reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: synergy-test-reports
+          path: packages/synergy/coverage/ci-tests/*.xml
+          if-no-files-found: warn
 
   package-validation:
     name: Package Validation

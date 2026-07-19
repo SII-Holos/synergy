@@ -4,21 +4,21 @@ Synergy runs a multi-layer quality system that covers formatting, linting, type-
 
 ## Quality Layers
 
-| Layer              | Local command                | CI job                | Tool                     | Pre-push |
-| ------------------ | ---------------------------- | --------------------- | ------------------------ | -------- |
-| Bun version check  | (pre-push only)              | —                     | `check-bun-version`      | ✅       |
-| Formatting         | `bun run format:check`       | `quality`             | Prettier                 | ✅       |
-| Lint               | `bun run lint`               | `quality`             | oxlint                   | ✅       |
-| Localization       | `bun run localization:check` | `quality`             | Lingui + source contract | —        |
-| Type checking      | `bun run typecheck`          | `typecheck`           | tsc via turbo            | ✅       |
-| Monorepo deps      | `bun run monorepo:check`     | `quality`             | sherif                   | ✅       |
-| Dead code          | `bun run deadcode`           | `quality`             | knip                     | —        |
-| CI workflow lint   | `bun run workflow:check`     | `workflow-validation` | actionlint + zizmor      | —        |
-| Secret scanning    | `bun run secrets:check`      | `secret-scan`         | gitleaks                 | —        |
-| Package validation | `bun run package:check`      | `package-validation`  | publint + attw           | —        |
-| Tests              | `bun turbo test`             | `test`                | bun test                 | —        |
-| Desktop checks     | `bun run desktop:test`       | `desktop`             | bun test + build         | —        |
-| Smoke test         | —                            | `smoke`               | Synergy health check     | —        |
+| Layer              | Local command                        | CI job                | Tool                          | Pre-push |
+| ------------------ | ------------------------------------ | --------------------- | ----------------------------- | -------- |
+| Bun version check  | (pre-push only)                      | —                     | `check-bun-version`           | ✅       |
+| Formatting         | `bun run format:check`               | `quality`             | Prettier                      | ✅       |
+| Lint               | `bun run lint`                       | `quality`             | oxlint                        | ✅       |
+| Localization       | `bun run localization:check`         | `quality`             | Lingui + source contract      | —        |
+| Type checking      | `bun run typecheck`                  | `typecheck`           | tsc via turbo                 | ✅       |
+| Monorepo deps      | `bun run monorepo:check`             | `quality`             | sherif                        | ✅       |
+| Dead code          | `bun run deadcode`                   | `quality`             | knip                          | —        |
+| CI workflow lint   | `bun run workflow:check`             | `workflow-validation` | actionlint + zizmor           | —        |
+| Secret scanning    | `bun run secrets:check`              | `secret-scan`         | gitleaks                      | —        |
+| Package validation | `bun run package:check`              | `package-validation`  | publint + attw                | —        |
+| Tests              | `bun turbo test` / `bun run test:ci` | `test`                | Turbo + sequential Bun shards | —        |
+| Desktop checks     | `bun run desktop:test`               | `desktop`             | bun test + build              | —        |
+| Smoke test         | —                                    | `smoke`               | Synergy health check          | —        |
 
 ### Pre-push hook (`.husky/pre-push`)
 
@@ -50,20 +50,20 @@ This runs the full suite locally. CI runs the same checks in parallel jobs.
 
 CI runs on push to `dev` / `main` and on pull requests targeting those branches. Jobs run in parallel:
 
-| Job                   | Purpose                                                               |
-| --------------------- | --------------------------------------------------------------------- |
-| `quality`             | Formatting, lint, localization, monorepo deps, dead code              |
-| `typecheck`           | TypeScript type checking                                              |
-| `test`                | Non-Synergy package tests plus one full Synergy test pass             |
-| `package-validation`  | publint + attw for publishable packages                               |
-| `workflow-validation` | actionlint + zizmor for CI workflow files                             |
-| `secret-scan`         | gitleaks for secrets and credentials                                  |
-| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke |
-| `smoke`               | Server health check smoke test                                        |
+| Job                   | Purpose                                                                |
+| --------------------- | ---------------------------------------------------------------------- |
+| `quality`             | Formatting, lint, localization, monorepo deps, dead code               |
+| `typecheck`           | TypeScript type checking                                               |
+| `test`                | Non-Synergy package tests plus sequential fresh-process Synergy shards |
+| `package-validation`  | publint + attw for publishable packages                                |
+| `workflow-validation` | actionlint + zizmor for CI workflow files                              |
+| `secret-scan`         | gitleaks for secrets and credentials                                   |
+| `desktop`             | Desktop typecheck, unit tests, build config validation, runtime smoke  |
+| `smoke`               | Server health check smoke test                                         |
 
 All jobs must pass for a PR to merge. The `package-validation` and `workflow-validation` jobs are not in the pre-push hook — they require network access or special tooling that is available in CI but may not be installed locally.
 
-The test job excludes `synergy` from the Turbo package pass, then runs the complete Synergy suite once from `packages/synergy`. Coverage is not collected in the required CI path.
+The test job excludes `synergy` from the Turbo package pass, then runs the complete Synergy suite as four sequential fresh-process shards from `packages/synergy`. Each attempted shard emits an uploaded JUnit report. Coverage is not collected in the required CI path.
 
 ## Tool Responsibilities
 
@@ -126,18 +126,18 @@ bun run secrets:check
 
 ## Failure Guidance
 
-| Failure        | Likely cause                                                                 | Fix                                                                     |
-| -------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| Formatting     | Unformatted files                                                            | `./script/format.ts` and re-stage                                       |
-| Lint           | Code style violations                                                        | `bun run lint:fix` or fix manually                                      |
-| Localization   | Catalog drift, missing translation, invalid ICU, or unclassified source copy | Re-extract and translate catalogs, or fix/classify the source violation |
-| Typecheck      | Type errors                                                                  | Fix type errors in affected files                                       |
-| Monorepo check | Version mismatch across workspaces                                           | Sync catalog versions in root `package.json`                            |
-| Dead code      | Unused dependencies or exports                                               | Remove or export as needed                                              |
-| Workflow check | actionlint or zizmor violation                                               | Fix workflow file syntax or security issue                              |
-| Secret scan    | Credential leaked in code                                                    | Rotate credential, rewrite history, update allowlist                    |
-| Package check  | publint or attw failure                                                      | Fix package.json exports or module resolution                           |
-| Test failure   | Runtime/behavior regression                                                  | Run `bun test` locally, inspect failing tests                           |
+| Failure        | Likely cause                                                                 | Fix                                                                                                                |
+| -------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| Formatting     | Unformatted files                                                            | `./script/format.ts` and re-stage                                                                                  |
+| Lint           | Code style violations                                                        | `bun run lint:fix` or fix manually                                                                                 |
+| Localization   | Catalog drift, missing translation, invalid ICU, or unclassified source copy | Re-extract and translate catalogs, or fix/classify the source violation                                            |
+| Typecheck      | Type errors                                                                  | Fix type errors in affected files                                                                                  |
+| Monorepo check | Version mismatch across workspaces                                           | Sync catalog versions in root `package.json`                                                                       |
+| Dead code      | Unused dependencies or exports                                               | Remove or export as needed                                                                                         |
+| Workflow check | actionlint or zizmor violation                                               | Fix workflow file syntax or security issue                                                                         |
+| Secret scan    | Credential leaked in code                                                    | Rotate credential, rewrite history, update allowlist                                                               |
+| Package check  | publint or attw failure                                                      | Fix package.json exports or module resolution                                                                      |
+| Test failure   | Runtime regression, leaked process state, or brittle isolation               | Run the focused test, then `bun run test:ci` from `packages/synergy`; inspect the uploaded per-shard JUnit reports |
 
 ## Common Contributor Scenarios
 
@@ -197,6 +197,8 @@ bun test <relevant test files>
 cd ../..
 bun run quality:quick
 ```
+
+For the complete core-runtime CI boundary, run `bun run test:ci` from `packages/synergy`. It executes four shards sequentially in fresh Bun processes; CI uploads one JUnit report per attempted shard.
 
 ### I changed frontend or UI package behavior
 

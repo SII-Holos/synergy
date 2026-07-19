@@ -44,7 +44,7 @@ async function prepareReviewer(input: {
     parentMessageID: input.stopRequest.requesterMessageID,
     reuseInterrupted: true,
     notifyParentOnComplete: false,
-    visibility: "hidden",
+    visibility: "visible",
   })
 }
 

@@ -3959,6 +3959,18 @@ msgstr ""
 msgid "app.note.untitled"
 msgstr ""
 
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.error.fallback"
+msgstr ""
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.response.ready"
+msgstr ""
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.session.error"
+msgstr ""
+
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr ""
@@ -15598,6 +15610,14 @@ msgstr ""
 
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.workflow"
+msgstr ""
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr ""
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
 msgstr ""
 
 #. Question subtitle

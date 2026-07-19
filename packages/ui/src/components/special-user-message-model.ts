@@ -2,8 +2,16 @@ import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/c
 import type { MessageDescriptor } from "@lingui/core"
 import { SPECIAL_USER_LABEL_DESC } from "./tool-title-descriptors"
 
+export type SpecialUserMessageStatusTone = "success" | "warning"
+
+export interface SpecialUserMessageStatus {
+  label: MessageDescriptor
+  tone: SpecialUserMessageStatusTone
+}
+
 export interface SpecialUserMessageBubbleView {
   label: MessageDescriptor
+  status?: SpecialUserMessageStatus
   kind: string | undefined
   parts: PartType[]
 }
@@ -14,7 +22,13 @@ interface ProjectedBubbleText {
   text: string
 }
 
-const WORKFLOW_CONTROL_SOURCES = new Set(["light_loop_continuation", "lattice_continuation", "lattice_planning_kick"])
+const WORKFLOW_CONTROL_SOURCES = new Set([
+  "light_loop_approved",
+  "light_loop_continuation",
+  "light_loop_rejected",
+  "lattice_continuation",
+  "lattice_planning_kick",
+])
 
 function metadataText(message: UserMessage, key: string) {
   const value = message.metadata?.[key]
@@ -47,6 +61,9 @@ function textPart(message: UserMessage, text: string): PartType {
     type: "text",
     text,
   } as PartType
+}
+function reviewDisplayParts(parts: PartType[]): PartType[] {
+  return parts.map((part) => (part.type === "text" ? { ...part, origin: "user" as const } : part))
 }
 
 function blueprintRejectionText(message: UserMessage): string {
@@ -148,6 +165,19 @@ export function getSpecialUserMessageBubbleView(
   }
 
   if (isWorkflowControl(message)) {
+    const source = metadataText(message, "source")
+    if (source === "light_loop_approved" || source === "light_loop_rejected") {
+      return {
+        label: SPECIAL_USER_LABEL_DESC.lightloop,
+        status:
+          source === "light_loop_approved"
+            ? { label: SPECIAL_USER_LABEL_DESC["status.approved"], tone: "success" }
+            : { label: SPECIAL_USER_LABEL_DESC["status.changes"], tone: "warning" },
+        kind: "lightloop-control",
+        parts: reviewDisplayParts(parts),
+      }
+    }
+
     const view = workflowControlView(message)
     return {
       label: view.label,

@@ -26,7 +26,7 @@ Use one visual source of truth for shared document editing.
 Make reciprocal actions visibly reciprocal.
 Reserve emphasis for workflow state and current selection.
 Let blueprints read as plans with status, activity, and next action, not as passive notes.
-When an agent successfully creates or replaces a Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; ordinary note writes should stay in the message flow without opening the side panel.
+When an agent successfully creates a Blueprint through `note_write`, the session should focus the Notes side panel on that Blueprint; replacing an existing Blueprint and ordinary note writes should stay in the message flow without opening the side panel.
 When that Blueprint is created or replaced from an active Plan workflow, wait until the current turn is idle, then show a compact one-time composer control to equip the Blueprint in the current session. The control should not auto-start the BlueprintLoop, and dismissing or muting it must not close Plan by itself.
 Starting a Blueprint run should keep the user on the Blueprint detail surface; the run status owns the feedback there, and session output is opened through an explicit session link.
 Note and Blueprint detail document surfaces should stay stable while the user reads or edits: metadata refreshes, autosave responses, and BlueprintLoop state changes must not reset scroll position, selection, or the editor instance.
