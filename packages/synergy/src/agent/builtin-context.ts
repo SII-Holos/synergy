@@ -118,6 +118,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     note_list: "allow",
     note_read: "allow",
     note_search: "allow",
+    blueprint_loop_stop: "allow",
     blueprint_loop_approve: "allow",
     blueprint_loop_reject: "allow",
     agenda_list: "allow",
