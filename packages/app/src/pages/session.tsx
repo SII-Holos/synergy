@@ -44,7 +44,7 @@ import { AP } from "@/app-i18n"
 import { WorkspaceMobileHeader } from "@/components/workspace/mobile-header"
 import { WorkbenchSurface } from "@/components/workspace/workbench-surface"
 import { SessionTopBar } from "@/components/top-bar/session-top-bar"
-import { blueprintNoteWriteFocusRequest } from "@/context/plan-blueprint-offer"
+import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   createWorkspaceTransitionErrorProgress,
   createWorkspaceTransitionLoadingProgress,
@@ -621,17 +621,17 @@ function SessionPageContent() {
   })
 
   const sessionMeta = useSessionMeta(currentSession, sessionHasMessages)
-  const focusedBlueprintWriteParts = new Set<string>()
-  const unsubBlueprintNoteWrite = sdk.event.on("message.part.updated", (event) => {
+  const focusedBlueprintCreateParts = new Set<string>()
+  const unsubBlueprintNoteCreate = sdk.event.on("message.part.updated", (event) => {
     const sessionID = params.id
     if (!sessionID) return
 
-    const request = blueprintNoteWriteFocusRequest(event.properties.part, sessionID)
+    const request = blueprintNoteCreateFocusRequest(event.properties.part, sessionID)
     if (!request) return
 
     const key = `${event.properties.part.sessionID}:${event.properties.part.id}:${request.noteID}`
-    if (focusedBlueprintWriteParts.has(key)) return
-    focusedBlueprintWriteParts.add(key)
+    if (focusedBlueprintCreateParts.has(key)) return
+    focusedBlueprintCreateParts.add(key)
 
     void workbench.openPanel("notes", {
       reuseExisting: true,
@@ -642,7 +642,7 @@ function SessionPageContent() {
       },
     })
   })
-  onCleanup(unsubBlueprintNoteWrite)
+  onCleanup(unsubBlueprintNoteCreate)
 
   createEffect(() => {
     const session = currentSession()
