@@ -13,9 +13,11 @@ describe("OpenAPI spec generation", () => {
     expect(Object.keys(spec.paths).length).toBeGreaterThan(0)
     const providerResponse = spec.paths["/provider"]?.get as Record<string, any>
     const responseSchema = providerResponse.responses["200"].content["application/json"].schema
+    const providerListSchema = spec.components?.schemas?.ProviderListResponse as Record<string, any>
     const providerSchema = spec.components?.schemas?.Provider
     const modelSchema = spec.components?.schemas?.Model
-    expect(responseSchema.properties.all.items).toEqual({ $ref: "#/components/schemas/Provider" })
+    expect(responseSchema).toEqual({ $ref: "#/components/schemas/ProviderListResponse" })
+    expect(providerListSchema.properties.all.items).toEqual({ $ref: "#/components/schemas/Provider" })
     expect(JSON.stringify(providerSchema)).toContain("#/components/schemas/Model")
     expect(JSON.stringify(modelSchema)).toContain("reasoningEfforts")
     expect(JSON.stringify(modelSchema)).not.toContain("reasoning_options")
