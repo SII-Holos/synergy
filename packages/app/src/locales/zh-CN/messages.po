@@ -15602,6 +15602,14 @@ msgstr "计划"
 msgid "special-user.label.workflow"
 msgstr "工作流"
 
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr "已批准"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr "请求更改"
+
 #. Question subtitle
 msgid "tool.label.asked-count"
 msgstr "已询问 {count} 个问题"

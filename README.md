@@ -125,6 +125,7 @@ Core runtime tests run from `packages/synergy`:
 ```bash
 cd packages/synergy
 bun test
+bun run test:ci # CI-equivalent sequential shards
 ```
 
 Frontend package suites run through their standard scripts and are included in `bun run quality`:

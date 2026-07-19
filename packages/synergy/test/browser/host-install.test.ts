@@ -40,8 +40,9 @@ async function fixture(options: { artifact?: Buffer; signatureValid?: boolean; e
     Buffer.from(options.signatureValid === false ? `${manifest}tampered` : manifest),
     pair.privateKey,
   ).toString("base64")
-  const publicDer = pair.publicKey.export({ format: "der", type: "spki" }) as Buffer
-  const publicKey = publicDer.subarray(publicDer.length - 32).toString("base64")
+  const publicJwk = pair.publicKey.export({ format: "jwk" })
+  if (!publicJwk.x) throw new Error("Ed25519 fixture public key is missing its raw coordinate.")
+  const publicKey = Buffer.from(publicJwk.x, "base64url").toString("base64")
   const responses = new Map<string, BodyInit>([
     [`https://release.test/${manifestName}`, manifest],
     [`https://release.test/${manifestName}.sig`, signature],

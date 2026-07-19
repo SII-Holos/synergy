@@ -9,6 +9,9 @@ bun run quality:quick
 ```
 
 4. Run `bun run quality` when the change crosses shared abstractions, the user requests the full suite, or the work is ready for PR-level verification.
+
+For core-runtime harness changes or CI-equivalent verification, run `bun run test:ci` from `packages/synergy` after focused tests. This uses sequential fresh-process shards and may replace a redundant second single-process full-suite run when the CI boundary is the intended signal.
+
 5. Add specialized checks when relevant:
 
 ```bash

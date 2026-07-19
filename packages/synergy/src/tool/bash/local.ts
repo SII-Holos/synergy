@@ -149,6 +149,12 @@ function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
     "Use the bash tool's background/yieldSeconds flow for tracked processes, or set SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1 only for an operator-managed runtime that intentionally permits detached daemons.",
   ].join("\n")
 }
+const CHILD_OOM_SCORE_ADJ = 1000
+
+export function withLinuxChildOomPreference(command: string, platform = process.platform) {
+  if (platform !== "linux") return command
+  return `{ printf '%s\\n' ${CHILD_OOM_SCORE_ADJ} > /proc/self/oom_score_adj; } 2>/dev/null || :; ${command}`
+}
 
 export const LocalBashBackend = {
   async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
@@ -318,6 +324,7 @@ export const LocalBashBackend = {
       references: virtualFileReferences,
       scopeID: ScopeContext.current.scope.id,
     })
+    const executionCommand = withLinuxChildOomPreference(materialized.command)
     const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
     let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
     let artifactsCleaned = false
@@ -333,7 +340,7 @@ export const LocalBashBackend = {
     try {
       if ((ctx.extra as any)?.shellBypassSandbox !== true) {
         sandboxWrapper = await sandboxPrepare?.({
-          command: materialized.command,
+          command: executionCommand,
           extraReadRoots: materialized.extraReadRoots,
         })
       }
@@ -427,7 +434,7 @@ export const LocalBashBackend = {
             fallback: sandboxFallback,
           })
         }
-        child = spawn(materialized.command, {
+        child = spawn(executionCommand, {
           shell,
           cwd,
           env: sandboxEnv,

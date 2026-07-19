@@ -7,7 +7,7 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
-import { detectDetachedDaemonRisk, LocalBashBackend } from "../../src/tool/bash/local"
+import { detectDetachedDaemonRisk, LocalBashBackend, withLinuxChildOomPreference } from "../../src/tool/bash/local"
 import { Shell } from "../../src/util/shell"
 
 const ctx = {
@@ -85,6 +85,37 @@ describe("tool.bash", () => {
         expect(result.metadata.output).toContain("test")
       },
     })
+  })
+
+  test("leaves local commands unchanged outside Linux", () => {
+    expect(withLinuxChildOomPreference("echo unchanged", "darwin")).toBe("echo unchanged")
+  })
+
+  test("wraps Linux commands with a best-effort OOM preference without breaking output or exit", async () => {
+    const command = withLinuxChildOomPreference("printf original-command", "linux")
+    expect(command).toContain("/proc/self/oom_score_adj")
+    expect(command).toEndWith("printf original-command")
+
+    const proc = Bun.spawn(["/bin/sh", "-c", command], {
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toBe("original-command")
+  })
+  test.skipIf(process.platform !== "linux")("applies the OOM victim preference to the local Bash child", async () => {
+    const command = withLinuxChildOomPreference("cat /proc/self/oom_score_adj")
+    const proc = Bun.spawn(["/bin/sh", "-c", command], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+    expect(exitCode).toBe(0)
+    expect(stdout.trim()).toBe("1000")
   })
 
   test("accepts positive timing controls and rejects invalid timing values", async () => {

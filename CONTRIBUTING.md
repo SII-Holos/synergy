@@ -66,6 +66,8 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run quality
    ```
 
+   Core-runtime CI isolation can be reproduced from `packages/synergy` with `bun run test:ci`, which runs the complete suite as sequential fresh-process shards.
+
    CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
 
    Frontend copy, accessibility text, and locale-sensitive formatting must also keep the localization catalogs and source contract current:
