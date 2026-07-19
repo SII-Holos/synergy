@@ -56,6 +56,19 @@ describe("PartWriteBuffer", () => {
     expect(order).toEqual(["path/p1=final"])
   })
 
+  test("flushWhere only persists matching deferred writes", async () => {
+    const r = recorder()
+    const buf = new PartWriteBuffer<{ sessionID: string; text: string }>(r.write, 10_000)
+    buf.defer("p1", "path/p1", { sessionID: "ses_1", text: "one" })
+    buf.defer("p2", "path/p2", { sessionID: "ses_2", text: "two" })
+
+    await buf.flushWhere((value) => value.sessionID === "ses_1")
+
+    expect(r.writes).toEqual([{ path: "path/p1", value: { sessionID: "ses_1", text: "one" } }])
+    await buf.flushAll()
+    expect(r.writes).toContainEqual({ path: "path/p2", value: { sessionID: "ses_2", text: "two" } })
+  })
+
   test("the timer flushes without an explicit flush call", async () => {
     const r = recorder()
     const buf = new PartWriteBuffer<string>(r.write, 5)

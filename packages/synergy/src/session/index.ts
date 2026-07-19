@@ -696,7 +696,10 @@ export namespace Session {
       cursor: z.string().optional(),
       limit: z.number().int().min(1).max(500).optional(),
     }),
-    async (input) => SessionHistory.messagePage(input),
+    async (input) => {
+      await flushPartWrites(input.sessionID)
+      return SessionHistory.messagePage(input)
+    },
   )
 
   export const rollback = SessionHistory.rollback
@@ -1000,8 +1003,9 @@ export namespace Session {
    * importantly when a turn is interrupted mid-stream and the terminal part
    * write that normally flushes never fired (issue #327).
    */
-  export function flushPartWrites() {
-    return partWriteBuffer.flushAll()
+  export function flushPartWrites(sessionID?: string) {
+    if (!sessionID) return partWriteBuffer.flushAll()
+    return partWriteBuffer.flushWhere((part) => part.sessionID === sessionID)
   }
 
   type UpdatePartInternalInput =

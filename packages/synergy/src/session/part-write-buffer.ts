@@ -45,6 +45,13 @@ export class PartWriteBuffer<T, P = string> {
     await Promise.all([...this.latest.keys()].map((key) => this.flush(key)))
   }
 
+  async flushWhere(predicate: (value: T, path: P) => boolean): Promise<void> {
+    const keys = [...this.latest.entries()]
+      .filter(([, entry]) => predicate(entry.value, entry.path))
+      .map(([key]) => key)
+    await Promise.all(keys.map((key) => this.flush(key)))
+  }
+
   /** Drop any pending deferred write for a key without persisting it. Used when
    *  the caller is about to persist a superseding value itself. */
   cancel(key: string): void {

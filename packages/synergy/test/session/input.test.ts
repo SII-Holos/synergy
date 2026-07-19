@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import { pathToFileURL } from "url"
 import { Asset } from "../../src/asset/asset"
+import { Bus } from "../../src/bus"
 import { FileTime } from "../../src/file/time"
 import { ScopeContext } from "../../src/scope/context"
 import { Identifier } from "../../src/id/id"
@@ -78,6 +79,50 @@ describe("session input identity anchors", () => {
 
         expect(created.info.agent).toBe("synergy")
         expect(created.info.model).toEqual(primaryModel)
+      },
+    })
+  })
+})
+
+describe("session input event ordering", () => {
+  test("publishes a steer message before its parts", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const root = await createUserMessage({
+          sessionID: session.id,
+          model: primaryModel,
+          parts: [{ type: "text", text: "initial request" }],
+        })
+        const messageID = Identifier.ascending("message")
+        const events: string[] = []
+        const unsubMessage = Bus.subscribe(MessageV2.Event.Updated, (event) => {
+          if (event.properties.info.id === messageID) events.push(event.type)
+        })
+        const unsubPart = Bus.subscribe(MessageV2.Event.PartUpdated, (event) => {
+          if (event.properties.part.messageID === messageID) events.push(event.type)
+        })
+
+        try {
+          await createUserMessage(
+            {
+              sessionID: session.id,
+              messageID,
+              model: primaryModel,
+              noReply: true,
+              parts: [{ type: "text", text: "steer this run" }],
+            },
+            root.info.id,
+          )
+
+          expect(events).toEqual(["message.updated", "message.part.updated"])
+        } finally {
+          unsubMessage()
+          unsubPart()
+          await Session.remove(session.id)
+        }
       },
     })
   })
