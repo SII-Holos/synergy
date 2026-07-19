@@ -932,6 +932,7 @@ export namespace ToolResolver {
         extra: {
           model: input.model,
           lookAtAvailable: input.activeToolIDs?.includes("look_at") === true,
+          userTools: input.userTools,
           availableToolIDs: input.activeToolIDs ?? [],
           userMessageID: input.processor.message.parentID,
           toolTiming: {
@@ -1037,14 +1038,6 @@ export namespace ToolResolver {
     return Object.entries(userTools ?? {})
       .filter(([id, enabled]) => id !== "*" && enabled === true)
       .map(([id]) => id)
-  }
-
-  function userToolAllows(toolID: string, userTools?: Record<string, boolean>) {
-    if (!userTools) return true
-    if (userTools[toolID] === true) return true
-    if (userTools[toolID] === false) return false
-    if (userTools["*"] === false) return false
-    return true
   }
 
   async function isRecordedLightLoopReviewSession(input: Omit<Input, "processor">): Promise<boolean> {
@@ -1203,7 +1196,7 @@ export namespace ToolResolver {
         continue
       }
 
-      if (!userToolAllows(def.id, input.userTools)) {
+      if (!ToolExposure.userAllows(def.id, input.userTools)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({

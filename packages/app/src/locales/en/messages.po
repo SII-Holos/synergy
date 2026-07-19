@@ -8271,6 +8271,139 @@ msgstr "Next message starts the loop"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.sessionUnavailable"
+msgstr "Light Loop session is no longer available."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.stopped"
+msgstr "Light Loop stopped"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.stopped.description"
+msgstr "The session and completion review were cancelled."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskControl.aria"
+msgstr "Light Loop task. Click to edit; hold for 2 seconds to stop and exit."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskControl.click"
+msgstr "Click to view or edit the task."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskControl.hold"
+msgstr "Hold for 2 seconds to stop and exit Light Loop."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.cancel"
+msgstr "Cancel"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.close"
+msgstr "Close"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.editable"
+msgstr "Changes apply from the next model step."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.inactive"
+msgstr "Light Loop is no longer active. Close this dialog to continue."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.label"
+msgstr "Task description"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.reviewPending"
+msgstr "Completion review is pending. Stop or finish the review before changing the task."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.save"
+msgstr "Save task"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.saving"
+msgstr "Saving..."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.title"
+msgstr "Light Loop task"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskDialog.working"
+msgstr "The session is running. Stop it or wait until it is idle before changing the task."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskUpdated"
+msgstr "Light Loop task updated"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskUpdated.description"
+msgstr "The next model step will use the revised task."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.lightLoop.taskUpdateFailed"
+msgstr "Failed to update Light Loop"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.lightLoop.toggleFailed"
 msgstr "Failed to toggle Light Loop"
 
