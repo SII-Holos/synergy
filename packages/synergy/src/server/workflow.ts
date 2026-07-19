@@ -28,31 +28,95 @@ const WorkflowSetInput = z
   ])
   .meta({ ref: "WorkflowSetInput" })
 
-export const WorkflowRoute = new Hono().put(
-  "/session/:id",
-  describeRoute({
-    summary: "Set session workflow",
-    description: "Enable or clear the mutually exclusive session workflow.",
-    operationId: "workflow.session.set",
-    responses: {
-      200: {
-        description: "Updated session",
-        content: { "application/json": { schema: resolver(Session.Info) } },
+const LightloopUpdateInput = z
+  .object({
+    taskDescription: z.string().meta({ description: "Updated task description for the active Light Loop" }),
+  })
+  .meta({ ref: "LightloopUpdateInput" })
+
+export const WorkflowRoute = new Hono()
+  .put(
+    "/session/:id",
+    describeRoute({
+      summary: "Set session workflow",
+      description: "Enable or clear the mutually exclusive session workflow.",
+      operationId: "workflow.session.set",
+      responses: {
+        200: {
+          description: "Updated session",
+          content: { "application/json": { schema: resolver(Session.Info) } },
+        },
+        ...errors(400, 404),
       },
-      ...errors(400, 404),
-    },
-  }),
-  validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
-  validator("json", WorkflowSetInput),
-  async (c) => {
-    try {
-      const session = await SessionWorkflowService.set(c.req.valid("param").id, c.req.valid("json"))
-      return c.json(session)
-    } catch (err: any) {
-      if (err instanceof Storage.NotFoundError) {
-        return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
+    validator("json", WorkflowSetInput),
+    async (c) => {
+      try {
+        const session = await SessionWorkflowService.set(c.req.valid("param").id, c.req.valid("json"))
+        return c.json(session)
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError) {
+          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+        }
+        return c.json({ message: err?.message ?? String(err) }, 400)
       }
-      return c.json({ message: err?.message ?? String(err) }, 400)
-    }
-  },
-)
+    },
+  )
+  .patch(
+    "/session/:id/lightloop",
+    describeRoute({
+      summary: "Update Light Loop task",
+      description: "Update the task description for an active Light Loop. The next model step uses the new task.",
+      operationId: "workflow.session.updateLightloop",
+      responses: {
+        200: {
+          description: "Updated session",
+          content: { "application/json": { schema: resolver(Session.Info) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
+    validator("json", LightloopUpdateInput),
+    async (c) => {
+      try {
+        const session = await SessionWorkflowService.updateLightloopTaskDescription(
+          c.req.valid("param").id,
+          c.req.valid("json").taskDescription,
+        )
+        return c.json(session)
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError) {
+          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+        }
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )
+  .post(
+    "/session/:id/lightloop/cancel",
+    describeRoute({
+      summary: "Cancel Light Loop",
+      description: "Stop active session work and completion review, then clear the Light Loop workflow.",
+      operationId: "workflow.session.cancelLightloop",
+      responses: {
+        200: {
+          description: "Updated session",
+          content: { "application/json": { schema: resolver(Session.Info) } },
+        },
+        ...errors(400, 404),
+      },
+    }),
+    validator("param", z.object({ id: z.string().meta({ description: "Session ID" }) })),
+    async (c) => {
+      try {
+        return c.json(await SessionWorkflowService.cancelLightloop(c.req.valid("param").id))
+      } catch (err: any) {
+        if (err instanceof Storage.NotFoundError) {
+          return c.json({ message: `Session not found: ${c.req.valid("param").id}` }, 404)
+        }
+        return c.json({ message: err?.message ?? String(err) }, 400)
+      }
+    },
+  )

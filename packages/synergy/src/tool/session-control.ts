@@ -3,7 +3,7 @@ import { Tool } from "./tool"
 import { PermissionNext } from "../permission/next"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
-import { SessionInvoke } from "../session/invoke"
+import { SessionAbort } from "../session/abort"
 import { Identifier } from "../id/id"
 import { Agent } from "../agent/agent"
 import { MessageV2 } from "../session/message-v2"
@@ -434,9 +434,7 @@ async function handleCompact(sessionID: string) {
 }
 
 async function handleAbort(sessionID: string) {
-  SessionInvoke.cancel(sessionID)
-  const { Cortex } = await import("../cortex")
-  await Cortex.cancelAll(sessionID)
+  await SessionAbort.abort(sessionID)
   return {
     title: `Aborted ${sessionID}`,
     output: `Session ${sessionID} has been aborted.`,

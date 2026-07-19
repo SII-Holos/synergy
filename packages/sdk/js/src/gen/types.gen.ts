@@ -5958,6 +5958,13 @@ export type WorkflowSetInput =
       action?: "continue" | "restart"
     }
 
+export type LightloopUpdateInput = {
+  /**
+   * Updated task description for the active Light Loop
+   */
+  taskDescription: string
+}
+
 export type AssetInfo = {
   id: string
   url: string
@@ -13948,6 +13955,84 @@ export type WorkflowSessionSetResponses = {
 }
 
 export type WorkflowSessionSetResponse = WorkflowSessionSetResponses[keyof WorkflowSessionSetResponses]
+
+export type WorkflowSessionUpdateLightloopData = {
+  body?: LightloopUpdateInput
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop"
+}
+
+export type WorkflowSessionUpdateLightloopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowSessionUpdateLightloopError =
+  WorkflowSessionUpdateLightloopErrors[keyof WorkflowSessionUpdateLightloopErrors]
+
+export type WorkflowSessionUpdateLightloopResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type WorkflowSessionUpdateLightloopResponse =
+  WorkflowSessionUpdateLightloopResponses[keyof WorkflowSessionUpdateLightloopResponses]
+
+export type WorkflowSessionCancelLightloopData = {
+  body?: never
+  path: {
+    /**
+     * Session ID
+     */
+    id: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/workflow/session/{id}/lightloop/cancel"
+}
+
+export type WorkflowSessionCancelLightloopErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type WorkflowSessionCancelLightloopError =
+  WorkflowSessionCancelLightloopErrors[keyof WorkflowSessionCancelLightloopErrors]
+
+export type WorkflowSessionCancelLightloopResponses = {
+  /**
+   * Updated session
+   */
+  200: Session
+}
+
+export type WorkflowSessionCancelLightloopResponse =
+  WorkflowSessionCancelLightloopResponses[keyof WorkflowSessionCancelLightloopResponses]
 
 export type AssetUploadData = {
   body?: {
