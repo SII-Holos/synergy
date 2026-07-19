@@ -37,6 +37,8 @@ import {
 } from "./sync-resource-freshness"
 import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
+import { createSessionMessageLoader } from "./session-message-loader"
+import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
   applyLatestPage,
   reconcileMessage,
@@ -266,6 +268,7 @@ function createGlobalSync() {
   // replay after a restart — refetch their state (issue #331).
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const resourceFreshness = new SyncResourceFreshness()
+  const partSnapshotFreshness = new SessionPartSnapshotFreshness()
   const replayPending = new Set<string>()
 
   async function runInstanceRequests<T>(
@@ -342,6 +345,19 @@ function createGlobalSync() {
     request: SyncResourceRequest,
   ) {
     return resourceFreshness.unchanged({ scopeKey, sessionID, resource }, request)
+  }
+
+  function capturePartSnapshotRequest(scopeKey: string, sessionID: string) {
+    return partSnapshotFreshness.capture(scopeKey, sessionID)
+  }
+
+  function partSnapshotAction(
+    scopeKey: string,
+    sessionID: string,
+    messageID: string,
+    request: SessionPartSnapshotRequest,
+  ) {
+    return partSnapshotFreshness.action(scopeKey, sessionID, messageID, request)
   }
 
   function scheduleBootstrap(scopeKey: string) {
@@ -453,6 +469,7 @@ function createGlobalSync() {
     for (const sessionID of sessionIDs) contextProjectionRevision.release(scopeKey, sessionID)
     delete children[scopeKey]
     resourceFreshness.releaseScope(scopeKey)
+    partSnapshotFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
   }
 
@@ -943,6 +960,7 @@ function createGlobalSync() {
       const sep = key.indexOf("\n")
       const scopeKey = key.slice(0, sep)
       const sessionID = key.slice(sep + 1)
+      partSnapshotFreshness.releaseSession(scopeKey, sessionID)
       const state = children[scopeKey]
       if (!state) continue
       const [store, setStore] = state
@@ -973,6 +991,93 @@ function createGlobalSync() {
     activeBucketKey = sessionID ? bucketKey(scopeKey, sessionID) : undefined
     if (scopeKey && sessionID) touchMessageBucket(scopeKey, sessionID)
   }
+
+  type ScopedClient = ReturnType<typeof createScopedClient>
+  type CompactionMessageLoadInput = {
+    scopeKey: string
+    sessionID: string
+    inboxRequest: SyncResourceRequest
+  }
+  type CompactionMessageLoadResult = {
+    response: Awaited<ReturnType<ScopedClient["session"]["messagePage"]>>
+    messageRequest: SyncResourceRequest
+    partSnapshotRequest: SessionPartSnapshotRequest
+    contextProjectionRevision: number
+  }
+  const compactionMessageLoader = createSessionMessageLoader<CompactionMessageLoadResult, CompactionMessageLoadInput>({
+    request: async (_key, signal, input) => {
+      if (!input) throw new Error("Missing compaction message load input")
+      const sdk = createScopedClient(input.scopeKey)
+      const messageRequest = captureResourceRequest(input.scopeKey, input.sessionID, "message")
+      const partSnapshotRequest = capturePartSnapshotRequest(input.scopeKey, input.sessionID)
+      const projectionRevision = contextProjectionRevision.begin(input.scopeKey, input.sessionID)
+      const response = await retry(() =>
+        sdk.session.messagePage({ sessionID: input.sessionID, limit: 200 }, { signal, throwOnError: true }),
+      )
+      return { response, messageRequest, partSnapshotRequest, contextProjectionRevision: projectionRevision }
+    },
+    apply: (_key, result, input) => {
+      if (!input) return "applied"
+      const state = children[input.scopeKey]
+      if (!state || !result.response.data) return "applied"
+      const [store, setStore] = state
+      const currentMessages = store.message[input.sessionID]
+      if (!currentMessages) return "applied"
+      const metadata = store.messageWindow[input.sessionID]
+      const plan = planMessagePageApply({
+        page: result.response.data,
+        current: {
+          messages: currentMessages,
+          mode: metadata?.mode ?? "latest",
+          pendingLatest: metadata?.pendingLatest ?? false,
+          pendingLatestIds: metadata?.pendingLatestIds ?? [],
+        },
+      })
+      const partActions = new Map(
+        Object.keys(plan.parts).map((messageID) => [
+          messageID,
+          partSnapshotAction(input.scopeKey, input.sessionID, messageID, result.partSnapshotRequest),
+        ]),
+      )
+      if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
+      const accepted = applyResourceResponse(
+        input.scopeKey,
+        input.sessionID,
+        "message",
+        result.messageRequest,
+        result.response.response?.headers,
+        () => {
+          batch(() => {
+            setStore(
+              produce((draft) => {
+                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+                delete draft.session_diff[input.sessionID]
+                if (isResourceRequestCurrent(input.scopeKey, input.sessionID, "inbox", input.inboxRequest)) {
+                  delete draft.inbox[input.sessionID]
+                }
+              }),
+            )
+            setStore("message", input.sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setStore("messageWindow", input.sessionID, reconcile(plan.metadata))
+            setLatestContextMessage(
+              input.scopeKey,
+              input.sessionID,
+              plan.latestContextMessage,
+              result.contextProjectionRevision,
+            )
+            for (const [messageID, parts] of Object.entries(plan.parts)) {
+              if (partActions.get(messageID) === "preserve") continue
+              setStore("part", messageID, reconcile(parts, { key: "id" }))
+            }
+          })
+          touchMessageBucket(input.scopeKey, input.sessionID)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, input.sessionID)
+        },
+      )
+      return accepted ? "applied" : "superseded"
+    },
+    errorMessage: () => "Couldn’t refresh compacted conversation",
+  })
 
   function applyEvent(scopeKey: string, event: any) {
     if (event?.type === "global.disposed") {
@@ -1267,7 +1372,8 @@ function createGlobalSync() {
         // (frame arrived before the first checkpoint), ignore it — a full
         // `message.part.updated` checkpoint follows within EventWire.CHECKPOINT_MS
         // and reconciles authoritative state.
-        const { messageID, partID, delta } = event.properties as {
+        const { sessionID, messageID, partID, delta } = event.properties as {
+          sessionID: string
           messageID: string
           partID: string
           delta: string
@@ -1276,6 +1382,7 @@ function createGlobalSync() {
         if (!parts) break
         const result = Binary.search(parts, partID, (p) => p.id)
         if (!result.found) break
+        partSnapshotFreshness.touch(scopeKey, sessionID, messageID)
         // Fine-grained: produce mutates only the .text leaf of this one part, so
         // a streaming reply re-renders the changed text node rather than the
         // whole part on every delta.
@@ -1297,8 +1404,10 @@ function createGlobalSync() {
       }
       case "message.part.updated": {
         const part = event.properties.part
+        const messageLoaded = store.message[part.sessionID]?.some((message) => message.id === part.messageID) ?? false
+        partSnapshotFreshness.touch(scopeKey, part.sessionID, part.messageID, { requiresSnapshot: !messageLoaded })
+        if (!messageLoaded) break
         invalidateResource(scopeKey, part.sessionID, "message")
-        if (!store.message[part.sessionID]?.some((message) => message.id === part.messageID)) break
         const parts = store.part[part.messageID]
         if (!parts) {
           if (part.type === "tool") {
@@ -1367,14 +1476,18 @@ function createGlobalSync() {
         break
       }
       case "message.part.removed": {
-        invalidateResource(scopeKey, event.properties.sessionID, "message")
-        const parts = store.part[event.properties.messageID]
+        const { sessionID, messageID, partID } = event.properties
+        const messageLoaded = store.message[sessionID]?.some((message) => message.id === messageID) ?? false
+        partSnapshotFreshness.touch(scopeKey, sessionID, messageID, { requiresSnapshot: !messageLoaded })
+        if (!messageLoaded) break
+        invalidateResource(scopeKey, sessionID, "message")
+        const parts = store.part[messageID]
         if (!parts) break
-        const result = Binary.search(parts, event.properties.partID, (p) => p.id)
+        const result = Binary.search(parts, partID, (p) => p.id)
         if (result.found) {
           setStore(
             "part",
-            event.properties.messageID,
+            messageID,
             produce((draft) => {
               draft.splice(result.index, 1)
             }),
@@ -1527,48 +1640,17 @@ function createGlobalSync() {
       }
       case "session.compacted": {
         const sessionID = event.properties.sessionID as string
-        const currentMessages = store.message[sessionID]
-        if (!currentMessages) break
+        if (!store.message[sessionID]) break
         const version = parseSyncVersion(event)
         const acceptedInbox = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
         const acceptedMessages = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "message" }, version)
         if (!acceptedInbox || !acceptedMessages) break
-        const revision = contextProjectionRevision.begin(scopeKey, sessionID)
         const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-        const messageRequest = captureResourceRequest(scopeKey, sessionID, "message")
-        const sdk = createScopedClient(scopeKey)
-        retry(() => sdk.session.messagePage({ sessionID, limit: 200 }))
-          .then((result) => {
-            if (!result.data) return
-            applyResourceResponse(scopeKey, sessionID, "message", messageRequest, result.response?.headers, () => {
-              const metadata = store.messageWindow[sessionID]
-              const plan = planMessagePageApply({
-                page: result.data!,
-                current: {
-                  messages: currentMessages,
-                  mode: metadata?.mode ?? "latest",
-                  pendingLatest: metadata?.pendingLatest ?? false,
-                  pendingLatestIds: metadata?.pendingLatestIds ?? [],
-                },
-              })
-              batch(() => {
-                setStore(
-                  produce((draft) => {
-                    for (const messageID of plan.droppedIds) delete draft.part[messageID]
-                    delete draft.session_diff[sessionID]
-                    if (isResourceRequestCurrent(scopeKey, sessionID, "inbox", inboxRequest)) {
-                      delete draft.inbox[sessionID]
-                    }
-                  }),
-                )
-                setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
-                setStore("messageWindow", sessionID, reconcile(plan.metadata))
-                setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
-                for (const [messageID, parts] of Object.entries(plan.parts)) {
-                  setStore("part", messageID, reconcile(parts, { key: "id" }))
-                }
-              })
-            })
+        void compactionMessageLoader
+          .load(bucketKey(scopeKey, sessionID), {
+            force: true,
+            hasSnapshot: true,
+            input: { scopeKey, sessionID, inboxRequest },
           })
           .catch(() => {})
         break
@@ -1601,6 +1683,7 @@ function createGlobalSync() {
     for (const timer of cortexRefreshTimers.values()) clearTimeout(timer)
     inboxRefreshTimers.clear()
     cortexRefreshTimers.clear()
+    compactionMessageLoader.dispose()
   })
 
   // Reconnect recovery: try to replay only the events missed since our
@@ -1750,6 +1833,8 @@ function createGlobalSync() {
     captureResourceRequest,
     applyResourceResponse,
     invalidateResource,
+    capturePartSnapshotRequest,
+    partSnapshotAction,
     get agenda() {
       return globalStore.agenda
     },

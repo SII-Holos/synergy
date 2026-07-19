@@ -7,6 +7,8 @@ export type SessionMessageLoadState = {
   error?: string
 }
 
+export type SessionMessageApplyResult = "applied" | "superseded"
+
 type LoadOptions<TInput> = {
   force?: boolean
   hasSnapshot?: boolean
@@ -15,7 +17,7 @@ type LoadOptions<TInput> = {
 
 type LoaderOptions<TResult, TInput> = {
   request: (sessionID: string, signal: AbortSignal, input: TInput | undefined) => Promise<TResult>
-  apply: (sessionID: string, result: TResult, input: TInput | undefined) => void
+  apply: (sessionID: string, result: TResult, input: TInput | undefined) => SessionMessageApplyResult | void
   errorMessage: (error: unknown) => string
   onState?: (sessionID: string, state: SessionMessageLoadState) => void
 }
@@ -27,6 +29,14 @@ type ActiveRequest = {
 }
 
 const idleState = (): SessionMessageLoadState => ({ phase: "idle", generation: 0, hasSnapshot: false })
+
+const MAX_SUPERSEDED_ATTEMPTS = 2
+
+class SessionMessageSnapshotSupersededError extends Error {
+  constructor() {
+    super("Message snapshot was superseded while loading")
+  }
+}
 
 export function createSessionMessageLoader<TResult, TInput = void>(options: LoaderOptions<TResult, TInput>) {
   const states = new Map<string, SessionMessageLoadState>()
@@ -56,10 +66,18 @@ export function createSessionMessageLoader<TResult, TInput = void>(options: Load
 
     const promise = (async () => {
       try {
-        const result = await options.request(sessionID, controller.signal, loadOptions?.input)
-        if (active.get(sessionID)?.generation !== generation) return
-        options.apply(sessionID, result, loadOptions?.input)
-        publish(sessionID, { phase: "ready", generation, hasSnapshot: true })
+        let attempt = 0
+        while (attempt < MAX_SUPERSEDED_ATTEMPTS) {
+          attempt++
+          const result = await options.request(sessionID, controller.signal, loadOptions?.input)
+          if (active.get(sessionID)?.generation !== generation) return
+          const applied = options.apply(sessionID, result, loadOptions?.input)
+          if (applied !== "superseded") {
+            publish(sessionID, { phase: "ready", generation, hasSnapshot: true })
+            return
+          }
+        }
+        throw new SessionMessageSnapshotSupersededError()
       } catch (error) {
         if (active.get(sessionID)?.generation !== generation) return
         publish(sessionID, {
