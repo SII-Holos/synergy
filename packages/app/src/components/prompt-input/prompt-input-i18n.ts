@@ -76,6 +76,58 @@ export const PI = {
     id: "prompt.lightLoop.waitStop",
     message: "Wait for Light Loop to stop before equipping a Blueprint.",
   },
+  lightLoopStopped: { id: "prompt.lightLoop.stopped", message: "Light Loop stopped" },
+  lightLoopStoppedDesc: {
+    id: "prompt.lightLoop.stopped.description",
+    message: "The session and completion review were cancelled.",
+  },
+  lightLoopSessionUnavailable: {
+    id: "prompt.lightLoop.sessionUnavailable",
+    message: "Light Loop session is no longer available.",
+  },
+  lightLoopTaskUpdated: { id: "prompt.lightLoop.taskUpdated", message: "Light Loop task updated" },
+  lightLoopTaskUpdatedDesc: {
+    id: "prompt.lightLoop.taskUpdated.description",
+    message: "The next model step will use the revised task.",
+  },
+  lightLoopTaskUpdateFailed: {
+    id: "prompt.lightLoop.taskUpdateFailed",
+    message: "Failed to update Light Loop",
+  },
+  lightLoopTaskDialogTitle: { id: "prompt.lightLoop.taskDialog.title", message: "Light Loop task" },
+  lightLoopTaskLabel: { id: "prompt.lightLoop.taskDialog.label", message: "Task description" },
+  lightLoopTaskEditable: {
+    id: "prompt.lightLoop.taskDialog.editable",
+    message: "Changes apply from the next model step.",
+  },
+  lightLoopTaskWorking: {
+    id: "prompt.lightLoop.taskDialog.working",
+    message: "The session is running. Stop it or wait until it is idle before changing the task.",
+  },
+  lightLoopTaskReviewPending: {
+    id: "prompt.lightLoop.taskDialog.reviewPending",
+    message: "Completion review is pending. Stop or finish the review before changing the task.",
+  },
+  lightLoopTaskInactive: {
+    id: "prompt.lightLoop.taskDialog.inactive",
+    message: "Light Loop is no longer active. Close this dialog to continue.",
+  },
+  lightLoopTaskCancel: { id: "prompt.lightLoop.taskDialog.cancel", message: "Cancel" },
+  lightLoopTaskClose: { id: "prompt.lightLoop.taskDialog.close", message: "Close" },
+  lightLoopTaskSaving: { id: "prompt.lightLoop.taskDialog.saving", message: "Saving..." },
+  lightLoopTaskSave: { id: "prompt.lightLoop.taskDialog.save", message: "Save task" },
+  lightLoopTaskClick: {
+    id: "prompt.lightLoop.taskControl.click",
+    message: "Click to view or edit the task.",
+  },
+  lightLoopTaskHold: {
+    id: "prompt.lightLoop.taskControl.hold",
+    message: "Hold for 2 seconds to stop and exit Light Loop.",
+  },
+  lightLoopTaskAria: {
+    id: "prompt.lightLoop.taskControl.aria",
+    message: "Light Loop task. Click to edit; hold for 2 seconds to stop and exit.",
+  },
   planWaitFinish: { id: "prompt.plan.waitFinish", message: "Wait for Plan to finish before equipping a Blueprint." },
   sessionWaitFinish: {
     id: "prompt.session.waitFinish",

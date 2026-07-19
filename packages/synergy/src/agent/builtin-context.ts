@@ -92,7 +92,8 @@ function anchoredWriteTools(): PermissionNext.Ruleset {
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
   const common = PermissionNext.fromConfig({
     "*": "deny",
-    "mcp__*": "allow",
+    expand_tools: "allow",
+    search_tools: "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",
@@ -114,19 +115,11 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     list: "allow",
     arxiv_search: "allow",
     arxiv_download: "ask",
-    memory_search: "allow",
-    memory_get: "allow",
     note_list: "allow",
     note_read: "allow",
     note_search: "allow",
-    note_write: "allow",
-    note_edit: "allow",
     blueprint_loop_approve: "allow",
     blueprint_loop_reject: "allow",
-    session_list: "allow",
-    scope_list: "allow",
-    session_read: "allow",
-    session_search: "allow",
     agenda_list: "allow",
     agenda_logs: "allow",
     external_directory: {
@@ -195,6 +188,16 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     )
   }
 
+  if (profile === "externalResearch" || profile === "research") {
+    return PermissionNext.merge(
+      common,
+      classicReadTools(),
+      PermissionNext.fromConfig({
+        "mcp__*": "allow",
+      }),
+    )
+  }
+
   if (profile === "supervisor") {
     return PermissionNext.merge(
       common,
@@ -207,6 +210,10 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         task_list: "allow",
         task_output: "allow",
         task_cancel: "allow",
+        session_list: "allow",
+        scope_list: "allow",
+        session_read: "allow",
+        session_search: "allow",
         session_send: "deny",
         session_control: "deny",
         note_list: "allow",
@@ -230,6 +237,10 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         task_list: "allow",
         task_output: "allow",
         task_cancel: "allow",
+        session_list: "allow",
+        scope_list: "allow",
+        session_read: "allow",
+        session_search: "allow",
         session_send: "deny",
         session_control: "deny",
         note_list: "allow",

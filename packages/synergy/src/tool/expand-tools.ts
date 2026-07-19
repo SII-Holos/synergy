@@ -60,8 +60,10 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       providerID: ToolDiscovery.providerIDFromModel(ctx.extra?.model),
       agent,
       session,
+      userTools: ctx.extra?.userTools,
     })
-    const groupByID = new Map(catalog.groups.map((group) => [group.id, group]))
+    const availableGroups = ToolDiscovery.availableGroups(catalog)
+    const groupByID = new Map(availableGroups.map((group) => [group.id, group]))
     const toolByID = new Map(catalog.tools.map((tool) => [tool.id, tool]))
     const current = ToolExposure.state(session.toolState)
 
@@ -162,7 +164,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       unknownTools,
       groupToolInputs,
       permissionHidden,
-      availableGroups: catalog.groups.map((group) => group.id),
+      availableGroups: availableGroups.map((group) => group.id),
     })
     const result = {
       changed,
@@ -185,7 +187,7 @@ export const ExpandToolsTool = Tool.define("expand_tools", async (initCtx) => ({
       reason: params.reason,
       availableRequestedTools,
       issues,
-      availableGroups: catalog.groups.map((group) => group.id),
+      availableGroups: availableGroups.map((group) => group.id),
     })
 
     return {

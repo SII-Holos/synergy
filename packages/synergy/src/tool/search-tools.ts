@@ -38,7 +38,9 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
       providerID: ToolDiscovery.providerIDFromModel(ctx.extra?.model),
       agent,
       session,
+      userTools: ctx.extra?.userTools,
     })
+    const availableGroups = ToolDiscovery.availableGroups(catalog)
 
     const matches = ToolDiscovery.nonResidentEntries(catalog)
       .map((entry) => ({ ...entry, score: ToolExposure.score(entry, params.query) }))
@@ -57,7 +59,7 @@ export const SearchToolsTool = Tool.define("search_tools", async (initCtx) => ({
           query: params.query,
           changed: false,
           results: [],
-          groups: catalog.groups.map((group) => group.id),
+          groups: availableGroups.map((group) => group.id),
           guidance: "Search again with a broader query, or expand a known group directly.",
         } as Record<string, any>,
       }

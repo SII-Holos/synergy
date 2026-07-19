@@ -259,6 +259,7 @@ import type {
   LibrarySearchResponses,
   LibraryStatsErrors,
   LibraryStatsResponses,
+  LightloopUpdateInput,
   LspStatusResponses,
   McpAddErrors,
   McpAddResponses,
@@ -493,8 +494,12 @@ import type {
   ToolListErrors,
   ToolListResponses,
   VcsGetResponses,
+  WorkflowSessionCancelLightloopErrors,
+  WorkflowSessionCancelLightloopResponses,
   WorkflowSessionSetErrors,
   WorkflowSessionSetResponses,
+  WorkflowSessionUpdateLightloopErrors,
+  WorkflowSessionUpdateLightloopResponses,
   WorkflowSetInput,
   WorkspaceFilesChildrenErrors,
   WorkspaceFilesChildrenResponses,
@@ -2847,6 +2852,85 @@ export class Session extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Update Light Loop task
+   *
+   * Update the task description for an active Light Loop. The next model step uses the new task.
+   */
+  public updateLightloop<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+      lightloopUpdateInput?: LightloopUpdateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "lightloopUpdateInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      WorkflowSessionUpdateLightloopResponses,
+      WorkflowSessionUpdateLightloopErrors,
+      ThrowOnError
+    >({
+      url: "/workflow/session/{id}/lightloop",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Cancel Light Loop
+   *
+   * Stop active session work and completion review, then clear the Light Loop workflow.
+   */
+  public cancelLightloop<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      WorkflowSessionCancelLightloopResponses,
+      WorkflowSessionCancelLightloopErrors,
+      ThrowOnError
+    >({
+      url: "/workflow/session/{id}/lightloop/cancel",
+      ...options,
+      ...params,
     })
   }
 

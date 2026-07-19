@@ -3,6 +3,7 @@ import { ScopeContext } from "../scope/context"
 import { LatticeRunService } from "../lattice/run-service"
 import { Session } from "./index"
 import { SessionManager } from "./manager"
+import { SessionAbort } from "./abort"
 
 type BlueprintLoopSource = "user" | "lattice"
 
@@ -124,6 +125,34 @@ export namespace SessionWorkflowService {
     await assertNoActiveBlueprintLoop(session, "Light Loop")
     return Session.update(sessionID, (draft) => {
       draft.workflow = { kind: "lightloop", taskDescription: trimmed }
+    })
+  }
+
+  export async function updateLightloopTaskDescription(
+    sessionID: string,
+    taskDescription: string,
+  ): Promise<Session.Info> {
+    const trimmed = taskDescription.trim()
+    if (!trimmed) throw new Error("taskDescription is required when updating Light Loop.")
+
+    return Session.update(sessionID, (draft) => {
+      if (draft.workflow?.kind !== "lightloop") {
+        throw new Error("Session does not have an active Light Loop workflow.")
+      }
+      if (draft.workflow.stopRequest) {
+        throw new Error("Cannot update the Light Loop task while completion review is pending.")
+      }
+      draft.workflow.taskDescription = trimmed
+    })
+  }
+
+  export async function cancelLightloop(sessionID: string): Promise<Session.Info> {
+    const session = await Session.get(sessionID)
+    if (session.workflow?.kind !== "lightloop") return session
+
+    await SessionAbort.abort(sessionID)
+    return Session.update(sessionID, (draft) => {
+      if (draft.workflow?.kind === "lightloop") draft.workflow = undefined
     })
   }
 
