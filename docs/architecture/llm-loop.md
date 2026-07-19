@@ -192,6 +192,14 @@ The usable input budget accounts for context and reserved model output. Automati
 
 After the first provider call, Synergy calibrates estimates using provider-reported input and output tokens plus the smaller newly accumulated delta. This avoids repeatedly estimating the entire prompt with a tokenizer that may not match the provider.
 
+## Context Usage Snapshots
+
+Before streaming a normal assistant step, `MessageV2.projectModelMessages()` derives history provenance in the same pass that emits provider messages, after effective-history filtering and workflow wrapping. After `PromptBudgeter.buildPlan()` applies the budget-phase provider and plugin transforms, `SessionInvoke` remaps those category hints over the plan's final messages, discarding removed content and classifying transformed or inserted content from its final provider role. It then adds only tool definitions that survive final availability resolution. `LLM.stream()` adds the final assembled system and late-system prompt and measures all categories with the selected model tokenizer.
+
+When the provider reports input usage for the completed step, `SessionProcessor` reconciles the draft into `AssistantMessage.contextUsage`. `totalInput` is the provider-exact input total used by the latest call; category totals remain estimates attributed from the model-tokenizer draft. If estimates exceed the exact total, category attribution is scaled down with largest-remainder rounding. Otherwise the unassigned difference is recorded as overhead. The snapshot also records provider/model identity, context and usable-input limits when known, estimator metadata, reconciliation mode and factor, and capture time.
+
+Historical assistant messages that predate `contextUsage` remain valid. Their token totals are still available through the existing `tokens` field, but they do not receive a backfilled category breakdown. The feature adds only an optional assistant-message field and uses existing message update events; it does not require a route, event, config, storage migration, or historical backfill.
+
 ## Compaction
 
 Compaction establishes a new model-context boundary while preserving durable history.

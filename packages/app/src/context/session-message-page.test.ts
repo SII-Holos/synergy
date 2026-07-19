@@ -2,11 +2,25 @@ import { describe, expect, test } from "bun:test"
 import { planMessagePageApply } from "./session-message-page"
 import type { MessageWindowState } from "./session-message-window"
 
-type TestMessage = { id: string; time: { created: number }; label?: string }
+type TestMessage = {
+  id: string
+  time: { created: number; completed?: number }
+  role: "user" | "assistant"
+  includeInContext?: boolean
+  contextUsage?: unknown
+  mode?: string
+  tokens?: { input: number; output: number; reasoning: number }
+  label?: string
+}
 type TestPart = { id: string }
 
-const message = (id: string, created: number, parts: string[] = []) => ({
-  info: { id, time: { created }, label: id },
+const message = (id: string, created: number, parts: string[] = []): { info: TestMessage; parts: TestPart[] } => ({
+  info: {
+    id,
+    time: { created },
+    role: "user",
+    label: id,
+  },
   parts: parts.map((partID) => ({ id: partID })),
 })
 
@@ -61,8 +75,8 @@ describe("planMessagePageApply", () => {
   test("prepends older history and evicts newest messages when capped", () => {
     const current = window(
       [
-        { id: "new-1", time: { created: 3 } },
-        { id: "new-2", time: { created: 4 } },
+        { id: "new-1", time: { created: 3 }, role: "user" },
+        { id: "new-2", time: { created: 4 }, role: "user" },
       ],
       "history",
     )
@@ -86,7 +100,7 @@ describe("planMessagePageApply", () => {
 
   test("keeps unseen pending messages out of the history-window total", () => {
     const current: MessageWindowState<TestMessage> = {
-      messages: [{ id: "visible", time: { created: 3 } }],
+      messages: [{ id: "visible", time: { created: 3 }, role: "user" }],
       mode: "history",
       pendingLatest: true,
       pendingLatestIds: ["pending"],
@@ -104,7 +118,7 @@ describe("planMessagePageApply", () => {
 
   test("does not subtract a pending ID after the loaded page makes it visible", () => {
     const current: MessageWindowState<TestMessage> = {
-      messages: [{ id: "visible", time: { created: 3 } }],
+      messages: [{ id: "visible", time: { created: 3 }, role: "user" }],
       mode: "history",
       pendingLatest: true,
       pendingLatestIds: ["older"],
@@ -121,7 +135,7 @@ describe("planMessagePageApply", () => {
   })
 
   test("prepends referenced roots from an older history page", () => {
-    const current = window([{ id: "new", time: { created: 4 } }], "history")
+    const current = window([{ id: "new", time: { created: 4 }, role: "user" }], "history")
     const plan = planMessagePageApply<TestMessage, TestPart>({
       page: page({
         items: [message("child", 2, ["child-part"])],
@@ -137,10 +151,62 @@ describe("planMessagePageApply", () => {
     expect(plan.parts.child.map((part) => part.id)).toEqual(["child-part"])
   })
 
+  test("projects the latest eligible assistant only from an authoritative latest page", () => {
+    const older = message("older", 2)
+    older.info = {
+      ...older.info,
+      role: "assistant",
+      contextUsage: { total: 10 },
+    }
+    const newer = message("newer", 3)
+    newer.info = {
+      ...newer.info,
+      role: "assistant",
+      tokens: { input: 8, output: 0, reasoning: 0 },
+    }
+    const ineligible = message("ineligible", 4)
+    ineligible.info = { ...ineligible.info, role: "assistant", tokens: { input: 0, output: 0, reasoning: 0 } }
+
+    const latest = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [older, ineligible, newer] }),
+    })
+    const history = planMessagePageApply<TestMessage, TestPart>({
+      page: page({ items: [older] }),
+      current: latest.window,
+      mode: "history",
+    })
+
+    expect(latest.latestContextMessage?.id).toBe("newer")
+    expect(history.latestContextMessage).toBeUndefined()
+  })
+
+  test("projects a completed compaction message as an ordered invalidation barrier", () => {
+    const usage = message("usage", 2)
+    usage.info = { ...usage.info, role: "assistant", contextUsage: { total: 10 } }
+    const barrier = message("barrier", 3)
+    barrier.info = {
+      ...barrier.info,
+      role: "assistant",
+      mode: "compaction",
+      time: { created: 3, completed: 4 },
+      tokens: { input: 0, output: 0, reasoning: 0 },
+    }
+
+    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [usage, barrier] }) })
+
+    expect(plan.latestContextMessage?.id).toBe("barrier")
+  })
+
+  test("projects null when an authoritative latest page has no eligible assistant", () => {
+    const plan = planMessagePageApply<TestMessage, TestPart>({ page: page({ items: [message("user", 1)] }) })
+
+    expect(plan.latestContextMessage).toBeNull()
+  })
+
   test("drops every previous message and part bucket on an empty latest page", () => {
     const current = window([
-      { id: "old-1", time: { created: 1 } },
-      { id: "old-2", time: { created: 2 } },
+      { id: "old-1", time: { created: 1 }, role: "user" },
+      { id: "old-2", time: { created: 2 }, role: "user" },
     ])
     const plan = planMessagePageApply<TestMessage, TestPart>({ page: page(), current })
 

@@ -130,4 +130,97 @@ describe("clipboard", () => {
 
     restore()
   })
+
+  test("copy controller resets feedback when its payload identity changes", async () => {
+    const restore = configureClipboard({ writer: () => true })
+
+    await new Promise<void>((resolve, reject) => {
+      createRoot((dispose) => {
+        queueMicrotask(async () => {
+          try {
+            const copy = createCopyController({ text: "first payload" })
+
+            await copy.copy()
+            expect(copy.state()).toBe("copied")
+            copy.reset()
+            expect(copy.state()).toBe("idle")
+            resolve()
+          } catch (error) {
+            reject(error)
+          } finally {
+            dispose()
+          }
+        })
+      })
+    })
+
+    restore()
+  })
+
+  test("copy controller ignores an in-flight result after reset", async () => {
+    let release!: () => void
+    const pending = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const restore = configureClipboard({ writer: () => pending })
+
+    await new Promise<void>((resolve, reject) => {
+      createRoot((dispose) => {
+        queueMicrotask(async () => {
+          try {
+            const copy = createCopyController({ text: "first payload" })
+            const operation = copy.copy()
+            copy.reset()
+            release()
+            await operation
+
+            expect(copy.state()).toBe("idle")
+            resolve()
+          } catch (error) {
+            reject(error)
+          } finally {
+            dispose()
+          }
+        })
+      })
+    })
+
+    restore()
+  })
+
+  test("copy controller lets the latest overlapping copy own feedback", async () => {
+    const releases: Array<() => void> = []
+    const restore = configureClipboard({
+      writer: () =>
+        new Promise<void>((resolve) => {
+          releases.push(resolve)
+        }),
+    })
+
+    await new Promise<void>((resolve, reject) => {
+      createRoot((dispose) => {
+        queueMicrotask(async () => {
+          try {
+            const copy = createCopyController({ text: "payload", resetDelayMs: 10_000 })
+            const first = copy.copy()
+            const second = copy.copy()
+            releases[1]()
+            await second
+            expect(copy.state()).toBe("copied")
+
+            releases[0]()
+            await first
+            expect(copy.state()).toBe("copied")
+            resolve()
+          } catch (error) {
+            reject(error)
+          } finally {
+            dispose()
+          }
+        })
+      })
+    })
+
+    restore()
+  })
 })

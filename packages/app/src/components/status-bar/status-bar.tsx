@@ -8,7 +8,7 @@ import { useGlobalSync } from "@/context/global-sync"
 import { useSync } from "@/context/sync"
 import { useSDK } from "@/context/sdk"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
-import { ContextBar } from "./context-bar"
+import { ContextStatusButton } from "./context-status-button"
 import { SessionLspIndicator, SessionMcpIndicator, SessionCortexIndicator } from "@/components/session"
 import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon, type IconName } from "@ericsanchezok/synergy-ui/icon"
@@ -710,7 +710,7 @@ export function StatusBar() {
               statusFor={childSessionStatus}
               onSelect={(child) => navigateToSession(child.id)}
             />
-            <ContextBar />
+            <ContextStatusButton />
           </Show>
 
           <div class="w-px h-4 bg-border-weak-base" />

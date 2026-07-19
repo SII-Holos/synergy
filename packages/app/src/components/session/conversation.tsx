@@ -29,7 +29,6 @@ export function SessionConversation(props: {
   visibleUserMessages: Accessor<UserMessage[]>
   lastUserMessage: Accessor<UserMessage | undefined>
   activeMessage: Accessor<UserMessage | undefined>
-  showTabs: Accessor<boolean>
   workspaceOpen?: Accessor<boolean>
   isWorking: Accessor<boolean>
   turnStart: number
@@ -86,8 +85,7 @@ export function SessionConversation(props: {
       contentClass="mx-auto flex w-full min-w-0 flex-col items-start justify-start gap-5 px-4 text-sm md:text-base transition-[margin] md:px-5"
       contentClassList={{
         "max-w-full": true,
-        "md:max-w-[60rem]": !props.showTabs(),
-        "mt-0": props.showTabs(),
+        "md:max-w-[60rem]": true,
         "pb-4 md:pb-[calc(var(--prompt-height,10rem)+96px)]": true,
       }}
     >
@@ -138,14 +136,12 @@ export function SessionConversation(props: {
           })
 
           const isLast = () => index() === (props.timeline()?.length ?? 0) - 1
-          const hasTabs = props.showTabs() && (props.visibleUserMessages()?.length ?? 0) > 1
 
           if (msg.role === "assistant") {
             const assistantMsg = msg as AssistantMessage
             const source = assistantMsg.metadata?.source as string | undefined
             const isCommand = source === "command"
             const Component = isCommand ? CommandResultOutput : MailboxMessage
-            const tabClass = hasTabs ? (workspaceOpen() ? "md:pr-3 md:pl-10" : "md:pr-6 md:pl-18") : ""
 
             return (
               <div
@@ -158,7 +154,7 @@ export function SessionConversation(props: {
                   message={assistantMsg}
                   classes={{
                     root: "min-w-0 w-full relative",
-                    container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " + tabClass,
+                    container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1",
                   }}
                 />
               </div>
@@ -182,15 +178,7 @@ export function SessionConversation(props: {
                 classes={{
                   root: "min-w-0 w-full relative",
                   content: "flex flex-col justify-between !overflow-visible",
-                  container:
-                    "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 " +
-                    (!props.showTabs()
-                      ? "md:max-w-[60rem] md:mx-auto"
-                      : hasTabs
-                        ? workspaceOpen()
-                          ? "md:pr-3 md:pl-10"
-                          : "md:pr-6 md:pl-18"
-                        : ""),
+                  container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1 md:max-w-[60rem] md:mx-auto",
                 }}
               />
             </div>

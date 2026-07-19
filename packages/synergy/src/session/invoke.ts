@@ -39,6 +39,7 @@ import { SessionHistory } from "./history"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
+import { ContextUsage } from "./context-usage"
 import { PermissionNext } from "@/permission/next"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
@@ -728,8 +729,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           session,
           agent,
         })
+        const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
+          maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+        })
         let preparedMessages = [
-          ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
+          ...modelProjection.messages,
           ...(isLastStep
             ? [
                 {
@@ -815,6 +819,20 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         toolResolveTimer.stop()
         if (!resolvedTools) break
 
+        const plannedHistoryProvenance = ContextUsage.remapProvenance(
+          promptPlan.messages,
+          ContextUsage.buildProvenance({
+            history: modelProjection.provenance,
+            toolDefinitions: [],
+            instructions: isLastStep ? [MAX_STEPS] : [],
+          }),
+        )
+        const activeToolIDs = new Set(resolvedTools.activeToolIDs)
+        const contextUsageProvenance = ContextUsage.buildProvenance({
+          history: plannedHistoryProvenance,
+          toolDefinitions: promptPlan.toolDefinitions.filter((definition) => activeToolIDs.has(definition.id)),
+        })
+
         let streamInput: LLM.StreamInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
           toolDefinitions = []
@@ -884,6 +902,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           tools: resolvedTools.tools,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
+          contextUsageProvenance,
           maxOutputTokens: maxOutputTokensByMessage.get(R.id),
         }
         try {

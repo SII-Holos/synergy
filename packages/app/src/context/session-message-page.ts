@@ -6,6 +6,7 @@ import {
   type MessageWindowResult,
   type MessageWindowState,
 } from "./session-message-window"
+import { findLatestSessionContextUsageMessage, type SessionContextUsageMessage } from "./session-context-usage"
 
 type PartRef = { id: string }
 type MessagePageItem<M extends MessageRef, P extends PartRef> = { info: M; parts: P[] }
@@ -21,9 +22,10 @@ type MessagePage<M extends MessageRef, P extends PartRef> = {
 export type MessagePageApplyPlan<M extends MessageRef, P extends PartRef> = MessageWindowResult<M> & {
   metadata: MessageWindowMetadata
   parts: Record<string, P[]>
+  latestContextMessage: M | null | undefined
 }
 
-export function planMessagePageApply<M extends MessageRef, P extends PartRef>(input: {
+export function planMessagePageApply<M extends MessageRef & SessionContextUsageMessage, P extends PartRef>(input: {
   page: MessagePage<M, P>
   current?: MessageWindowState<M>
   mode?: "latest" | "history"
@@ -74,5 +76,7 @@ export function planMessagePageApply<M extends MessageRef, P extends PartRef>(in
       pendingLatestIds: result.window.pendingLatestIds,
     },
     parts,
+    latestContextMessage:
+      input.mode === "history" ? undefined : findLatestSessionContextUsageMessage(items.map((item) => item.info)),
   }
 }

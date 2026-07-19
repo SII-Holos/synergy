@@ -31,6 +31,7 @@ const builtinIconNames = [
   "building-2",
   "cable",
   "calendar-clock",
+  "chart-pie",
   "calendar-days",
   "check",
   "chevron-down",

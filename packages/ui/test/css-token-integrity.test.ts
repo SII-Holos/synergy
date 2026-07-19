@@ -24,7 +24,6 @@ const APP_FILES = [
   "../app/src/components/prompt-input/quick-actions.css",
   "../app/src/components/session/question-prompt.css",
   "../app/src/components/header-bar.css",
-  "../app/src/components/context-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
   "../app/src/components/dialog/dialog-settings.tsx",
 ]
@@ -352,7 +351,6 @@ describe("CSS Token Integrity", () => {
   test("no formerly broken P2 token references remain in app-side files", async () => {
     const p2Files = [
       "../app/src/components/header-bar.css",
-      "../app/src/components/context-bar.css",
       "../app/src/components/dialog/dialog-settings.css",
       "../app/src/components/dialog/dialog-settings.tsx",
     ]

@@ -27,6 +27,8 @@ import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionBounds } from "./bounds"
+import { ContextUsage } from "./context-usage"
+import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
 export namespace SessionProcessor {
   const DOOM_LOOP_THRESHOLD = 3
@@ -1255,6 +1257,12 @@ export namespace SessionProcessor {
                       input.assistantMessage.finish = value.finishReason
                       input.assistantMessage.cost += usage.cost
                       input.assistantMessage.tokens = usage.tokens
+                      if (hasProviderInputUsage(value.usage) && stream.contextUsageDraft) {
+                        input.assistantMessage.contextUsage = ContextUsage.reconcile(
+                          stream.contextUsageDraft,
+                          ModelLimit.actualInput(usage.tokens),
+                        )
+                      }
                       await Session.updatePart({
                         id: Identifier.ascending("part"),
                         reason: value.finishReason,
@@ -1542,5 +1550,10 @@ export namespace SessionProcessor {
       },
     }
     return result
+  }
+  function hasProviderInputUsage(usage: unknown): boolean {
+    if (!usage || typeof usage !== "object") return false
+    const inputTokens = (usage as { inputTokens?: unknown }).inputTokens
+    return typeof inputTokens === "number" && Number.isFinite(inputTokens)
   }
 }

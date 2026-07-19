@@ -102,6 +102,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     type SessionMessagePageLoadResult = {
       response: SessionMessagePageResponse
       request?: SyncResourceRequest
+      contextProjectionRevision?: number
     }
     type MessagePageLoadInput = {
       mode: "latest" | "history"
@@ -112,6 +113,8 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       request: async (sessionID, signal, input) => {
         const request =
           input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
+        const contextProjectionRevision =
+          input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
         const response = await retry(() =>
           sdk.client.session.messagePage(
             {
@@ -122,7 +125,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             { signal, throwOnError: true },
           ),
         )
-        return { response, request }
+        return { response, request, contextProjectionRevision }
       },
       apply: (sessionID, result, input) => {
         const page = result.response.data
@@ -145,6 +148,14 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             )
             setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
             setStore("messageWindow", sessionID, reconcile(plan.metadata))
+            if (plan.latestContextMessage !== undefined) {
+              globalSync.setLatestContextMessage(
+                sdk.scopeKey,
+                sessionID,
+                plan.latestContextMessage,
+                result.contextProjectionRevision,
+              )
+            }
             for (const [messageID, parts] of Object.entries(plan.parts)) {
               setStore("part", messageID, reconcile(parts, { key: "id" }))
             }
@@ -301,6 +312,9 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
       },
       session: {
         get: getSession,
+        latestContextMessage(sessionID: string) {
+          return store.latestContextMessage[sessionID]
+        },
         loadState(sessionID: string): SessionMessageLoadState {
           const current = meta.messageLoad[sessionID]
           if (current) return current

@@ -17,7 +17,9 @@ import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { ResizeHandle } from "@ericsanchezok/synergy-ui/resize-handle"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { Popover } from "@ericsanchezok/synergy-ui/popover"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useWorkbenchPanels } from "@/context/workbench"
+import { resolveWorkbenchEscapeAction } from "@/context/workbench/panel-model"
 import { computeMaxWorkspaceWidth, WORKSPACE_MIN_WIDTH, WORKSPACE_SESSION_MIN_WIDTH } from "@/context/layout/workspace"
 import type {
   WorkbenchPanelContentProps,
@@ -219,8 +221,9 @@ function Launcher(props: {
   )
 }
 
-export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reservedWidth?: number }) {
+export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface }) {
   const lingui = useLingui()
+  const dialog = useDialog()
   const workbench = useWorkbenchPanels()
   const state = createMemo(() => workbench.surface(props.surface))
   const panels = createMemo(() => workbench.panels(props.surface))
@@ -264,11 +267,16 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
 
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return
-      if (!state().opened()) return
-      if (local.addOpen) {
-        event.preventDefault()
-        event.stopPropagation()
+      const action = resolveWorkbenchEscapeAction({
+        key: event.key,
+        opened: state().opened(),
+        addOpen: local.addOpen,
+        dialogActive: Boolean(dialog.active),
+      })
+      if (action === "none") return
+      event.preventDefault()
+      event.stopPropagation()
+      if (action === "close-add-menu") {
         setLocal("addOpen", false)
         return
       }
@@ -283,8 +291,7 @@ export function WorkbenchSurface(props: { surface: WorkbenchPanelSurface; reserv
   const maxSideWidth = () =>
     Math.max(
       WORKSPACE_MIN_WIDTH,
-      computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH }) -
-        (props.reservedWidth ?? 0),
+      computeMaxWorkspaceWidth(window.innerWidth, { sessionMinWidth: WORKSPACE_SESSION_MIN_WIDTH }),
     )
   const maxBottomHeight = () => window.innerHeight * 0.6
 

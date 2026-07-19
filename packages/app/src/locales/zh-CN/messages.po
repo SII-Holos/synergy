@@ -1149,6 +1149,270 @@ msgstr "取消"
 msgid "app.common.confirm"
 msgstr "确认"
 
+#. js-lingui-explicit-id
+msgid "app.context.action.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "app.context.action.copy"
+msgstr "复制"
+
+#. js-lingui-explicit-id
+msgid "app.context.action.copyFailed"
+msgstr "复制失败"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.estimatedTokens"
+msgstr "预计 {tokens}"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.estimateNote"
+msgstr "类别值为模型分词器估算值，并已根据提供商的精确输入总量进行校准。"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.exactInputShare"
+msgstr "占精确输入的 {percent}"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.itemCount"
+msgstr "{count, plural, one {# 项} other {# 项}}"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.title"
+msgstr "哪些内容占用空间"
+
+#. js-lingui-explicit-id
+msgid "app.context.breakdown.unavailable"
+msgstr "下一次响应后可查看明细"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.conversation"
+msgstr "对话"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.conversation.description"
+msgstr "用户和助手文本，包括推理内容"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.filesReferences"
+msgstr "文件与引用"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.filesReferences.description"
+msgstr "附件、文件摘要和提供商文件引用"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.instructions"
+msgstr "指令"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.instructions.description"
+msgstr "智能体、项目、工作流、记忆和运行时指引"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.overhead"
+msgstr "额外开销"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.overhead.description"
+msgstr "提供商格式、不可见的文件用量和估算偏差"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.toolActivity"
+msgstr "工具活动"
+
+#. js-lingui-explicit-id
+msgid "app.context.category.toolActivity.description"
+msgstr "工具定义、调用、结果和错误"
+
+#. js-lingui-explicit-id
+msgid "app.context.compact.action"
+msgstr "压缩对话"
+
+#. js-lingui-explicit-id
+msgid "app.context.compact.hint"
+msgstr "压缩对话以释放上下文空间。"
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.description"
+msgstr "检查规范化后的持久化消息和生效指令。"
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.rawMessages"
+msgstr "原始消息"
+
+#. js-lingui-explicit-id
+msgid "app.context.dataAccess.title"
+msgstr "数据访问"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.cacheReadWrite"
+msgstr "缓存读取 / 写入"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.contextUsage"
+msgstr "上下文用量"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.contextWindow"
+msgstr "上下文窗口"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestCallCost"
+msgstr "最近一次调用费用"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestCallTotal"
+msgstr "最近一次调用总量"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.latestOutputReasoning"
+msgstr "最近输出 / 推理"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.loadedMessagesCost"
+msgstr "已加载消息费用"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.model"
+msgstr "模型"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.provider"
+msgstr "提供商"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.remainingInput"
+msgstr "剩余输入"
+
+#. js-lingui-explicit-id
+msgid "app.context.details.usage"
+msgstr "用量详情"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.assistantMessages"
+msgstr "助手消息"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.attributedTotal"
+msgstr "归因总量"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatedAttributed"
+msgstr "{category} 估算值 / 归因值"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatorEncoding"
+msgstr "估算器编码"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.estimatorKind"
+msgstr "估算器类型"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.lastActivity"
+msgstr "最近活动"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.messages"
+msgstr "消息"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.rawEstimatedTotal"
+msgstr "原始估算总量"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.reconciliationFactor"
+msgstr "校准系数"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.reconciliationMode"
+msgstr "校准模式"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionCreated"
+msgstr "会话创建时间"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionID"
+msgstr "会话 ID"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.sessionTitle"
+msgstr "会话标题"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.title"
+msgstr "开发者详情"
+
+#. js-lingui-explicit-id
+msgid "app.context.developer.userMessages"
+msgstr "用户消息"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.copy"
+msgstr "复制系统指令"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.copyFailed"
+msgstr "无法复制系统指令。"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.empty"
+msgstr "没有可用的系统指令。"
+
+#. js-lingui-explicit-id
+msgid "app.context.instructions.latestUserOverride"
+msgstr "最新用户系统指令覆盖"
+
+#. js-lingui-explicit-id
+msgid "app.context.model.label"
+msgstr "模型 {model}"
+
+#. js-lingui-explicit-id
+msgid "app.context.session.untitled"
+msgstr "未命名会话"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacted"
+msgstr "对话已压缩；下次回复后可查看用量"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.compacting"
+msgstr "正在压缩对话…"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.critical"
+msgstr "上下文空间即将用尽"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.partiallyKnown"
+msgstr "仅能确定部分上下文大小"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.ready"
+msgstr "有足够空间继续"
+
+#. js-lingui-explicit-id
+msgid "app.context.status.warning"
+msgstr "此上下文即将占满"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.limitUnknown"
+msgstr "上下文上限未知"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.percentUsed"
+msgstr "已用 {percent}"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.tokensRemaining"
+msgstr "剩余 {tokens}"
+
+#. js-lingui-explicit-id
+msgid "app.context.usage.usedInput"
+msgstr "已用输入"
+
 #. Confirm
 msgid "app.dialog.confirm.actionFailed"
 msgstr "操作失败"
@@ -3700,6 +3964,10 @@ msgid "app.panel.browser"
 msgstr "浏览器"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.context"
+msgstr "上下文"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files"
 msgstr "文件"
 
@@ -5015,6 +5283,114 @@ msgstr "{provider} 模型现已可用。"
 msgid "app.provider.toast.reconnected"
 msgstr "已重新连接"
 
+#. js-lingui-explicit-id
+msgid "app.rawMessages.back"
+msgstr "消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.copied"
+msgstr "已复制"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.current"
+msgstr "复制当前消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.currentFailed"
+msgstr "无法复制当前原始会话消息。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.failed"
+msgstr "复制失败"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selected"
+msgstr "复制所选原始消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selectedCount"
+msgstr "复制 {count, plural, one {# 条所选消息} other {# 条所选消息}}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.copy.selectedFailed"
+msgstr "无法复制所选原始会话消息。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.count"
+msgstr "{count, plural, one {# 条消息} other {# 条消息}}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.empty"
+msgstr "没有消息。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.error.load"
+msgstr "无法加载消息。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.flag.excluded"
+msgstr "已排除"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.flag.hidden"
+msgstr "已隐藏"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.list.label"
+msgstr "原始会话消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.loadEarlier"
+msgstr "加载更早的消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.loading"
+msgstr "正在加载…"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.notice.sensitive"
+msgstr "包含敏感数据，请谨慎复制。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.preview.empty"
+msgstr "选择一条消息进行检查。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.refresh"
+msgstr "刷新原始消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.refresh.short"
+msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.role.assistant"
+msgstr "助手"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.role.user"
+msgstr "用户"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.clear"
+msgstr "清除选择"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.message"
+msgstr "选择 {role} 消息 {id}"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.selection.selectAll"
+msgstr "选择所有已加载的消息"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.title"
+msgstr "原始消息"
+
 #. ── components/scopes/active-zone.tsx ────────────────────────────────
 msgid "app.scopes.activeZone.active"
 msgstr "活跃"
@@ -6265,8 +6641,32 @@ msgid "app.statusBar.connections.server.unknown"
 msgstr "未知"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.clickHint"
+msgstr "单击打开“上下文”"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.inputTokens"
+msgstr "输入 token"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.limitUnknown"
+msgstr "上限未知"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.openAria"
+msgstr "打开“上下文”，{tokens} 个输入 token，{usage}"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.context.usage"
 msgstr "{tokens} {count, plural, one {token} other {tokens}} · 已用 {percentage}"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.usageKnown"
+msgstr "已用 {percent}"
+
+#. ── Status Bar ───────────────────────────────────────────────────────────────
+msgid "app.statusBar.context.usageUnavailable"
+msgstr "用量不可用"
 
 #. ── Status Bar ───────────────────────────────────────────────────────────────
 msgid "app.statusBar.details"
@@ -9653,6 +10053,41 @@ msgstr "周"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.agent"
+msgstr "智能体"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.file"
+msgstr "文件"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.mcp"
+msgstr "MCP"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.model"
+msgstr "模型"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.session"
+msgstr "会话"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.terminal"
+msgstr "终端"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.category.view"
+msgstr "视图"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.chooseModel"
 msgstr "选择模型"
 
@@ -9720,6 +10155,11 @@ msgstr "切换思考强度"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.cycleEffortDesc"
 msgstr "切换到下一个强度级别"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.effort.default"
+msgstr "默认"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -9820,6 +10260,16 @@ msgstr "回退到这里"
 msgid "session.cmd.rewindToHereDesc"
 msgstr "将会话回退到当前消息"
 
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.toast.compactFailed"
+msgstr "压缩失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.cmd.toast.compactFailedDesc"
+msgstr "无法压缩此会话。"
+
 #. commands.tsx — toasts
 msgid "session.cmd.toast.effortChanged"
 msgstr "思考强度已更改"
@@ -9888,158 +10338,6 @@ msgstr "撤销"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.cmd.undoDesc"
 msgstr "撤销上一个消息回合"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.clickToView"
-msgstr "点击查看上下文"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.closeAriaLabel"
-msgstr "关闭上下文"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.cost"
-msgstr "费用"
-
-#. session-context-panel
-msgid "session.context.panelTitle"
-msgstr "上下文"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.assistant"
-msgstr "助手"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.assistantMessages"
-msgstr "助手消息"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.breakdown"
-msgstr "上下文分布"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.breakdown.hint"
-msgstr "输入 Token 的近似分布。“其他”包括工具定义和额外开销。"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.cacheTokens"
-msgstr "缓存 Token（读/写）"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.contextLimit"
-msgstr "上下文上限"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.inputTokens"
-msgstr "输入 Token"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.lastActivity"
-msgstr "最近活动"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.messages"
-msgstr "消息"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.model"
-msgstr "模型"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.other"
-msgstr "其他"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.outputTokens"
-msgstr "输出 Token"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.provider"
-msgstr "提供商"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.rawMessages"
-msgstr "原始消息"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.reasoningTokens"
-msgstr "推理 Token"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.session"
-msgstr "会话"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.sessionCreated"
-msgstr "会话创建时间"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.sysPrompt"
-msgstr "系统提示词"
-
-#. session-context-tab
-msgid "session.context.tab.system"
-msgstr "系统"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.toolCalls"
-msgstr "工具调用"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.totalCost"
-msgstr "总费用"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.totalTokens"
-msgstr "Token 总数"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.usage"
-msgstr "用量"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.user"
-msgstr "用户"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.tab.userMessages"
-msgstr "用户消息"
-
-#. session-context-usage
-msgid "session.context.tokens"
-msgstr "Token"
-
-#. Runtime Lingui descriptors for session component strings.
- *  Translate at use time via `useLocale().i18n._(descriptor)`.
-msgid "session.context.usage"
-msgstr "用量"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

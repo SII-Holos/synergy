@@ -29565,6 +29565,180 @@
             },
             "required": ["input", "output", "reasoning", "cache"]
           },
+          "contextUsage": {
+            "type": "object",
+            "properties": {
+              "version": {
+                "type": "number",
+                "const": 1
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              },
+              "totalInput": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "contextLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "usableInputLimit": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "categories": {
+                "type": "object",
+                "properties": {
+                  "conversation": {
+                    "type": "object",
+                    "properties": {
+                      "estimatedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["estimatedTokens", "attributedTokens"]
+                  },
+                  "toolActivity": {
+                    "type": "object",
+                    "properties": {
+                      "estimatedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["estimatedTokens", "attributedTokens"]
+                  },
+                  "filesReferences": {
+                    "type": "object",
+                    "properties": {
+                      "estimatedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["estimatedTokens", "attributedTokens"]
+                  },
+                  "instructions": {
+                    "type": "object",
+                    "properties": {
+                      "estimatedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "attributedTokens": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "items": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "required": ["estimatedTokens", "attributedTokens"]
+                  }
+                },
+                "required": ["conversation", "toolActivity", "filesReferences", "instructions"]
+              },
+              "overhead": {
+                "type": "object",
+                "properties": {
+                  "attributedTokens": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["attributedTokens"]
+              },
+              "estimator": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "model-tokenizer"
+                  },
+                  "encoding": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"]
+              },
+              "reconciliation": {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "enum": ["residual", "scaled-down"]
+                  },
+                  "factor": {
+                    "type": "number",
+                    "minimum": 0
+                  }
+                },
+                "required": ["mode", "factor"]
+              },
+              "capturedAt": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "version",
+              "modelID",
+              "providerID",
+              "totalInput",
+              "categories",
+              "overhead",
+              "estimator",
+              "reconciliation",
+              "capturedAt"
+            ]
+          },
           "finish": {
             "type": "string"
           },

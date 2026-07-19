@@ -53,6 +53,11 @@ import {
   type PlanBlueprintOfferEvent,
   type PlanBlueprintOfferState,
 } from "./plan-blueprint-offer"
+import {
+  createSessionContextProjectionRevision,
+  invalidateLatestSessionContextUsageMessage,
+  reduceLatestSessionContextUsageMessage,
+} from "./session-context-usage"
 import { createStore, produce, reconcile, type SetStoreFunction } from "solid-js/store"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
@@ -142,6 +147,7 @@ type State = {
   messageWindow: {
     [sessionID: string]: MessageWindowMetadata
   }
+  latestContextMessage: Partial<Record<string, Message | null>>
   part: {
     [messageID: string]: Part[]
   }
@@ -218,6 +224,7 @@ export function refreshPlanBlueprintOfferFromLoadedParts(
 }
 
 function createGlobalSync() {
+  const contextProjectionRevision = createSessionContextProjectionRevision()
   const globalSDK = useGlobalSDK()
   const [globalStore, setGlobalStore] = createStore<{
     ready: boolean
@@ -399,14 +406,48 @@ function createGlobalSync() {
         sessionTotal: 0,
         message: {},
         messageWindow: {},
+        latestContextMessage: {},
         part: {},
       })
       scheduleBootstrap(scopeKey)
     }
     return children[scopeKey]
   }
+  function setLatestContextMessage(
+    scopeKey: string,
+    sessionID: string,
+    message: Message | null | undefined,
+    revision?: number,
+  ) {
+    if (revision !== undefined && !contextProjectionRevision.isCurrent(scopeKey, sessionID, revision)) return
+    const state = children[scopeKey]
+    if (!state) return
+    const [store, setStore] = state
+    if (store.latestContextMessage[sessionID] === message) return
+    if (message === undefined) {
+      setStore(
+        "latestContextMessage",
+        produce((draft) => {
+          delete draft[sessionID]
+        }),
+      )
+      return
+    }
+    if (message === null) {
+      setStore("latestContextMessage", sessionID, null)
+      return
+    }
+    setStore("latestContextMessage", sessionID, reconcile(message))
+  }
 
   function releaseScopeState(scopeKey: string) {
+    const store = children[scopeKey]?.[0]
+    const sessionIDs = new Set([
+      ...Object.keys(store?.message ?? {}),
+      ...Object.keys(store?.messageWindow ?? {}),
+      ...Object.keys(store?.latestContextMessage ?? {}),
+    ])
+    for (const sessionID of sessionIDs) contextProjectionRevision.release(scopeKey, sessionID)
     delete children[scopeKey]
     resourceFreshness.releaseScope(scopeKey)
     bootstrapQueued.delete(scopeKey)
@@ -892,6 +933,7 @@ function createGlobalSync() {
           if (msgs) for (const m of msgs) delete draft.part[m.id]
           delete draft.message[sessionID]
           delete draft.messageWindow[sessionID]
+          delete draft.latestContextMessage[sessionID]
         }),
       )
     }
@@ -1107,6 +1149,11 @@ function createGlobalSync() {
         const sessionID = info.sessionID
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
           touchMessageBucket(scopeKey, sessionID)
+          contextProjectionRevision.invalidate(scopeKey, sessionID)
+          const latestContextMessage = reduceLatestSessionContextUsageMessage(
+            store.latestContextMessage[sessionID],
+            info,
+          )
           const messages = store.message[sessionID] ?? []
           const metadata = store.messageWindow[sessionID]
           const existing = messages.some((message) => message.id === info.id)
@@ -1119,6 +1166,7 @@ function createGlobalSync() {
           const result = reconcileMessage(current, info)
 
           batch(() => {
+            setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
             setStore(
               produce((draft) => {
                 for (const messageID of result.droppedIds) delete draft.part[messageID]
@@ -1150,19 +1198,25 @@ function createGlobalSync() {
         const sessionID = event.properties.sessionID as string
         const messageID = event.properties.messageID as string
         applyResourceEvent(scopeKey, sessionID, "message", event, () => {
+          contextProjectionRevision.invalidate(scopeKey, sessionID)
+          const latestContextMessage = invalidateLatestSessionContextUsageMessage(
+            store.latestContextMessage[sessionID],
+            messageID,
+          )
           const messages = store.message[sessionID]
-          if (!messages) return
+          if (!messages && latestContextMessage === store.latestContextMessage[sessionID]) return
           const metadata = store.messageWindow[sessionID]
           const current: MessageWindowState<Message> = {
-            messages,
+            messages: messages ?? [],
             mode: metadata?.mode ?? "latest",
             pendingLatest: metadata?.pendingLatest ?? false,
             pendingLatestIds: metadata?.pendingLatestIds ?? [],
           }
           const pending = current.pendingLatestIds.includes(messageID)
           const result = removeMessageFromWindow(current, messageID)
-          const removedVisible = result.messages.length !== messages.length
+          const removedVisible = result.messages.length !== (messages?.length ?? 0)
           batch(() => {
+            setLatestContextMessage(scopeKey, sessionID, latestContextMessage)
             if (removedVisible) {
               setStore(
                 produce((draft) => {
@@ -1460,6 +1514,7 @@ function createGlobalSync() {
         const acceptedInbox = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "inbox" }, version)
         const acceptedMessages = resourceFreshness.acceptEvent({ scopeKey, sessionID, resource: "message" }, version)
         if (!acceptedInbox || !acceptedMessages) break
+        const revision = contextProjectionRevision.begin(scopeKey, sessionID)
         const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
         const messageRequest = captureResourceRequest(scopeKey, sessionID, "message")
         const sdk = createScopedClient(scopeKey)
@@ -1489,6 +1544,7 @@ function createGlobalSync() {
                 )
                 setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
                 setStore("messageWindow", sessionID, reconcile(plan.metadata))
+                setLatestContextMessage(scopeKey, sessionID, plan.latestContextMessage, revision)
                 for (const [messageID, parts] of Object.entries(plan.parts)) {
                   setStore("part", messageID, reconcile(parts, { key: "id" }))
                 }
@@ -1657,6 +1713,8 @@ function createGlobalSync() {
     releaseScopeState,
     markActiveSession,
     touchMessageBucket,
+    beginContextProjection: contextProjectionRevision.begin,
+    setLatestContextMessage,
     bootstrap,
     reconnectVersion,
     captureResourceRequest,

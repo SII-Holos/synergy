@@ -57,10 +57,15 @@ function basename(value: string) {
   return value.split("/").at(-1) ?? value
 }
 
+const currentLayoutKeys = ["sidebar", "review", "mobileSidebar", "rightSidebar", "sessionView"] as const
+
 export function migrateWorkbenchLayout(value: unknown): unknown {
   if (!isRecord(value)) return value
 
-  const next: Record<string, unknown> = { ...value }
+  const next: Record<string, unknown> = {}
+  for (const key of currentLayoutKeys) {
+    if (key in value) next[key] = value[key]
+  }
   const oldTerminal = isRecord(value.terminal) ? value.terminal : undefined
   const oldWorkspaceSessions = isRecord(value.workspaceSessions) ? value.workspaceSessions : undefined
   const existingSurfaces = isRecord(value.workbenchSurfaces) ? { ...value.workbenchSurfaces } : {}
@@ -98,7 +103,7 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
     }
   }
 
-  const sessionTabs = isRecord(value.sessionTabs) ? { ...value.sessionTabs } : {}
+  const sessionTabs = isRecord(value.sessionTabs) ? value.sessionTabs : {}
   for (const [sessionKey, raw] of Object.entries(sessionTabs)) {
     if (!isRecord(raw)) continue
     const all = Array.isArray(raw.all) ? raw.all.filter((tab): tab is string => typeof tab === "string") : []
@@ -132,17 +137,9 @@ export function migrateWorkbenchLayout(value: unknown): unknown {
         active: activeFileTab?.id ?? currentSide.active,
       },
     }
-
-    const contextOpen = all.includes("context")
-    sessionTabs[sessionKey] = {
-      ...raw,
-      all: contextOpen ? ["context"] : [],
-      active: raw.active === "context" || (activeFileTab && contextOpen) ? "context" : undefined,
-    }
   }
 
   next.workbenchSurfaces = normalizeWorkbenchSurfaces(existingSurfaces)
-  next.sessionTabs = sessionTabs
   delete next.terminal
   delete next.workspaceSessions
   return next

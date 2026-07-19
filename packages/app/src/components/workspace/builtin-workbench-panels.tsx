@@ -7,6 +7,7 @@ import { registerWorkbenchPanel } from "@/plugin/registries/workbench-panel-regi
 import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 import { panels as P } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
+import { createContextWorkbenchPanel } from "./context-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
   const file = useFile()
@@ -27,6 +28,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         order: 10,
         loader: async () => ({ default: (await import("./tool-notes")).NotesWorkbenchContent }),
       }),
+      registerWorkbenchPanel(createContextWorkbenchPanel(i18n._(P.context))),
       registerWorkbenchPanel({
         id: "session-review",
         label: i18n._(P.review),

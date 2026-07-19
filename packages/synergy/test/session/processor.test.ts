@@ -7,6 +7,8 @@ import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
+import { ContextUsage } from "../../src/session/context-usage"
+import { Snapshot } from "../../src/session/snapshot"
 import { SessionBounds } from "../../src/session/bounds"
 import { Bus } from "../../src/bus"
 import { ObservabilityStore } from "../../src/observability/store"
@@ -149,6 +151,8 @@ type SettlementScenario = {
   updatePart?: (input: MessageV2.Part | { part: MessageV2.Part; delta?: string }) => Promise<MessageV2.Part>
   abort?: AbortSignal
   residualStream?: { cancel(reason?: unknown): Promise<void> }
+  contextUsageDraft?: ContextUsage.Draft
+  updateMessage?: (message: MessageV2.Assistant) => void
 }
 
 async function runSettlementScenario(scenario: SettlementScenario) {
@@ -157,6 +161,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
   const originalParts = MessageV2.parts
   const originalUpdateMessage = Session.updateMessage
   const originalUpdateLastExchange = Session.updateLastExchange
+  const originalSnapshotTrack = Snapshot.track
   const originalConfigCurrent = Config.current
   const originalPluginTrigger = Plugin.trigger
   const originalExperienceComplete = ExperienceEncoder.onComplete
@@ -172,7 +177,10 @@ async function runSettlementScenario(scenario: SettlementScenario) {
       return part
     })
     ;(MessageV2.parts as any) = mock(async () => [...parts.values()])
-    ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => message)
+    ;(Session.updateMessage as any) = mock(async (message: MessageV2.Assistant) => {
+      scenario.updateMessage?.(message)
+      return message
+    })
     ;(Session.updateLastExchange as any) = mock(async () => {})
     ;(Config.current as any) = mock(
       async () => scenario.config ?? { experimental: {}, timeout: { tool: { default_sec: 60 } } },
@@ -180,9 +188,11 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
     ;(Bus.publish as any) = mock(async () => {})
+    ;(Snapshot.track as any) = mock(async () => "snapshot_test")
     ;(LLM.stream as any) = mock(async () => ({
       fullStream: scenario.stream(processor),
       baseStream: scenario.residualStream,
+      contextUsageDraft: scenario.contextUsageDraft,
     }))
 
     processor = SessionProcessor.create({
@@ -214,6 +224,7 @@ async function runSettlementScenario(scenario: SettlementScenario) {
     ;(MessageV2.parts as any) = originalParts
     ;(Session.updateMessage as any) = originalUpdateMessage
     ;(Session.updateLastExchange as any) = originalUpdateLastExchange
+    ;(Snapshot.track as any) = originalSnapshotTrack
     ;(Config.current as any) = originalConfigCurrent
     ;(Plugin.trigger as any) = originalPluginTrigger
     ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
@@ -246,6 +257,84 @@ describe("SessionProcessor stream lifecycle", () => {
   }
 })
 
+describe("SessionProcessor context usage persistence", () => {
+  const contextUsageDraft: ContextUsage.Draft = {
+    modelID: "test-model",
+    providerID: "test-provider",
+    contextLimit: 100,
+    usableInputLimit: 90,
+    categories: {
+      conversation: { estimatedTokens: 4, items: 1 },
+      toolActivity: { estimatedTokens: 3, items: 1 },
+      filesReferences: { estimatedTokens: 2, items: 1 },
+      instructions: { estimatedTokens: 1, items: 1 },
+    },
+    estimator: { kind: "model-tokenizer", encoding: "o200k_base" },
+  }
+
+  test("persists a provider-exact reconciled snapshot with normalized usage", async () => {
+    let persisted: MessageV2.Assistant | undefined
+    await runSettlementScenario({
+      messageID: "msg_context_usage",
+      contextUsageDraft,
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield {
+          type: "finish-step",
+          finishReason: "stop",
+          usage: { inputTokens: 12, cachedInputTokens: 3, outputTokens: 2, reasoningTokens: 1 },
+        }
+      },
+    })
+
+    expect(persisted?.tokens).toEqual({ input: 9, output: 2, reasoning: 1, cache: { read: 3, write: 0 } })
+    expect(persisted?.contextUsage?.totalInput).toBe(12)
+    expect(persisted?.contextUsage && ContextUsage.attributedTotal(persisted.contextUsage)).toBe(12)
+    expect(JSON.stringify(persisted?.contextUsage)).not.toContain("prompt")
+  })
+
+  test("does not persist a snapshot when provider input usage is unavailable", async () => {
+    let persisted: MessageV2.Assistant | undefined
+    await runSettlementScenario({
+      messageID: "msg_context_usage_missing",
+      contextUsageDraft,
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield {
+          type: "finish-step",
+          finishReason: "stop",
+          usage: { outputTokens: 2, reasoningTokens: 1 },
+        }
+      },
+    })
+
+    expect(persisted?.contextUsage).toBeUndefined()
+  })
+  test("does not treat cache-only metadata as an exact provider input total", async () => {
+    let persisted: MessageV2.Assistant | undefined
+    await runSettlementScenario({
+      messageID: "msg_context_usage_cache_only",
+      contextUsageDraft,
+      updateMessage(message) {
+        persisted = structuredClone(message)
+      },
+      async *stream() {
+        yield {
+          type: "finish-step",
+          finishReason: "stop",
+          usage: { outputTokens: 2 },
+          providerMetadata: { anthropic: { cacheCreationInputTokens: 8 } },
+        }
+      },
+    })
+
+    expect(persisted?.contextUsage).toBeUndefined()
+  })
+})
 describe("SessionProcessor tool input bounds", () => {
   test("terminates a tool part when streamed input exceeds the byte limit", async () => {
     const parts = await runSettlementScenario({
