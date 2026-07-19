@@ -152,6 +152,8 @@ describe("BlueprintContinuation", () => {
           expect(input.agent).toBe("supervisor")
           expect(input.parentSessionID).toBe(session.id)
           expect(input.parentMessageID).toBe("msg_stop")
+          expect(input.visibility).toBe("visible")
+          expect(input.notifyParentOnComplete).toBe(false)
           expect(input.prompt).toContain("Focused tests pass")
           const reviewSession = await Session.create({ parentID: session.id })
           reviewSessionID = reviewSession.id
