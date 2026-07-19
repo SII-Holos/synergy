@@ -110,4 +110,28 @@ describe("special user messages", () => {
       expect(projectedText(view)).not.toContain("Raw workflow control prompt")
     }
   })
+  test("renders Light Loop review verdicts as badged user bubbles without losing feedback", () => {
+    const cases = [
+      [
+        "light_loop_approved",
+        "special-user.label.lightloop-approved",
+        "Light Loop review approved.\n\nAll requested work is complete and verified.",
+      ],
+      [
+        "light_loop_rejected",
+        "special-user.label.lightloop-changes",
+        "Light Loop review requested changes.\n\n**Reason:** Tests failed\n\n**Remaining:**\nBLOCKING: Fix the regression\n\n**Instructions:**\nRun the suite again",
+      ],
+    ] as const
+
+    for (const [source, label, feedback] of cases) {
+      const originalParts = [textPart(feedback)]
+      const view = getSpecialUserMessageBubbleView(userMessage({ source }), originalParts)
+
+      expect(view?.label.id).toBe(label)
+      expect(view?.kind).toBe("lightloop-control")
+      expect(view?.parts).toBe(originalParts)
+      expect(projectedText(view)).toBe(feedback)
+    }
+  })
 })

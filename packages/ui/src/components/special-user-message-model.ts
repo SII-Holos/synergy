@@ -14,7 +14,13 @@ interface ProjectedBubbleText {
   text: string
 }
 
-const WORKFLOW_CONTROL_SOURCES = new Set(["light_loop_continuation", "lattice_continuation", "lattice_planning_kick"])
+const WORKFLOW_CONTROL_SOURCES = new Set([
+  "light_loop_approved",
+  "light_loop_continuation",
+  "light_loop_rejected",
+  "lattice_continuation",
+  "lattice_planning_kick",
+])
 
 function metadataText(message: UserMessage, key: string) {
   const value = message.metadata?.[key]
@@ -148,6 +154,18 @@ export function getSpecialUserMessageBubbleView(
   }
 
   if (isWorkflowControl(message)) {
+    const source = metadataText(message, "source")
+    if (source === "light_loop_approved" || source === "light_loop_rejected") {
+      return {
+        label:
+          source === "light_loop_approved"
+            ? SPECIAL_USER_LABEL_DESC["lightloop.approved"]
+            : SPECIAL_USER_LABEL_DESC["lightloop.changes"],
+        kind: "lightloop-control",
+        parts,
+      }
+    }
+
     const view = workflowControlView(message)
     return {
       label: view.label,

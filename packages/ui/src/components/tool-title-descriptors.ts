@@ -280,6 +280,8 @@ export const SPECIAL_USER_LABEL_DESC: Record<string, MessageDescriptor> = {
   lightloop: d("special-user.label.light-loop", "Light Loop"),
   workflow: d("special-user.label.workflow", "Workflow"),
   "lightloop.continue": d("special-user.label.lightloop-continue", "Light Loop · Continue"),
+  "lightloop.approved": d("special-user.label.lightloop-approved", "Light Loop · Approved"),
+  "lightloop.changes": d("special-user.label.lightloop-changes", "Light Loop · Changes requested"),
   "lattice.continue": d("special-user.label.lattice-continue", "Lattice · Continue"),
 }
 
