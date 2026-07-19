@@ -8,8 +8,10 @@
 export type Watermark = { epoch: string; seq: number }
 
 export type WatermarkObservation = {
-  /** The watermark to store (unchanged for stale/streaming events). */
+  /** The watermark to store (unchanged while recovery is required). */
   next: Watermark | undefined
+  /** The watermark recovery must replay from before applying the incoming event. */
+  replayFrom: Watermark | undefined
   /** A seq gap was detected — the caller should replay to fill it. */
   gap: boolean
   /** The server epoch changed (runtime restarted) — the caller should resync. */
@@ -22,19 +24,29 @@ export function observeWatermark(
 ): WatermarkObservation {
   // Streaming / non-state events (no seq) don't move the watermark.
   if (!incoming || incoming.seq === undefined || incoming.epoch === undefined) {
-    return { next: current, gap: false, epochChanged: false }
+    return { next: current, replayFrom: undefined, gap: false, epochChanged: false }
   }
   if (!current) {
-    return { next: { epoch: incoming.epoch, seq: incoming.seq }, gap: false, epochChanged: false }
+    return {
+      next: { epoch: incoming.epoch, seq: incoming.seq },
+      replayFrom: undefined,
+      gap: false,
+      epochChanged: false,
+    }
   }
   if (incoming.epoch !== current.epoch) {
-    // Runtime restarted; adopt the new epoch/seq and signal a resync.
-    return { next: { epoch: incoming.epoch, seq: incoming.seq }, gap: false, epochChanged: true }
+    return { next: current, replayFrom: current, gap: false, epochChanged: true }
   }
   if (incoming.seq <= current.seq) {
     // Duplicate or already-applied event; keep the watermark, drop nothing else.
-    return { next: current, gap: false, epochChanged: false }
+    return { next: current, replayFrom: undefined, gap: false, epochChanged: false }
   }
   const gap = incoming.seq > current.seq + 1
-  return { next: { epoch: incoming.epoch, seq: incoming.seq }, gap, epochChanged: false }
+  if (gap) return { next: current, replayFrom: current, gap: true, epochChanged: false }
+  return {
+    next: { epoch: incoming.epoch, seq: incoming.seq },
+    replayFrom: undefined,
+    gap: false,
+    epochChanged: false,
+  }
 }

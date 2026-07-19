@@ -19,6 +19,7 @@ import {
   type CortexTask,
   type AgendaItem,
   type SessionInboxItem,
+  type ScopeBootstrapResponse,
   createSynergyClient,
 } from "@ericsanchezok/synergy-sdk/client"
 import { resolveWorkspaceTransition } from "./workspace-transition"
@@ -26,6 +27,7 @@ import { planMessagePageApply } from "./session-message-page"
 import { shouldRefreshGlobalConfig, type ConfigUpdatedProperties } from "./global-config-sync"
 import { LocaleConfigReconciler } from "./locale-config-reconciler"
 import { observeWatermark, type Watermark } from "./sync-watermark"
+import { planSessionVolatileResync } from "./session-volatile-resync"
 import {
   parseSyncVersion,
   readSyncVersion,
@@ -264,6 +266,7 @@ function createGlobalSync() {
   // replay after a restart — refetch their state (issue #331).
   const [reconnectVersion, setReconnectVersion] = createSignal(0)
   const resourceFreshness = new SyncResourceFreshness()
+  const replayPending = new Set<string>()
 
   async function runInstanceRequests<T>(
     items: T[],
@@ -766,138 +769,154 @@ function createGlobalSync() {
     )
   }
 
-  async function refreshRetainedVolatileState(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
-    const sessionIDs = Array.from(
-      new Set([...Object.keys(store.inbox), ...Object.keys(store.todo), ...Object.keys(store.dag)]),
-    )
-    const sdk = createScopedClient(scopeKey)
-    await runInstanceRequests(sessionIDs, async (sessionID) => {
-      const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
-      const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
-      const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
-      await Promise.all([
-        sdk.session
-          .inbox({ sessionID })
-          .then((result) => {
-            applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, result.response?.headers, () => {
-              setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
-            })
-          })
-          .catch(() => {}),
-        sdk.session
-          .todo({ sessionID })
-          .then((result) => {
-            applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () => {
-              setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" }))
-            })
-          })
-          .catch(() => {}),
-        sdk.session
-          .dag({ sessionID, ...scopeRequest(scopeKey) })
-          .then((result) => {
-            applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () => {
-              setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" }))
-            })
-          })
-          .catch(() => {}),
-      ])
+  function applyScopeBootstrapSnapshot(
+    scopeKey: string,
+    store: State,
+    setStore: SetStoreFunction<State>,
+    data: ScopeBootstrapResponse,
+    headers: Pick<Headers, "get"> | undefined,
+  ) {
+    const sessions = data.sessions?.data.filter((session) => !!session?.id && !session.time?.archived)
+    batch(() => {
+      setStore("scopeID", data.scopeID)
+      setStore("provider", {
+        ...data.provider,
+        all: data.provider.all.map((provider) => ({
+          ...provider,
+          models: Object.fromEntries(
+            Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
+          ),
+        })),
+      })
+      setStore("agent", reconcile(data.agent, { key: "name" }))
+      setStore("config", reconcile(data.config))
+      if (data.path) setStore("path", reconcile(data.path))
+      if (data.command) setStore("command", reconcile(data.command, { key: "name" }))
+      if (data.sessionStatus) setStore("session_status", reconcile(data.sessionStatus))
+      if (sessions) {
+        setStore("session", reconcile(sessions, { key: "id" }))
+        setStore("sessionTotal", data.sessions!.total)
+      }
+      if (data.mcp) setStore("mcp", reconcile(data.mcp))
+      if (data.cortex) setStore("cortex", reconcile(data.cortex, { key: "id" }))
+      if (data.agenda) {
+        setStore(
+          "agenda",
+          reconcile(
+            data.agenda.slice().sort((a, b) => a.id.localeCompare(b.id)),
+            { key: "id" },
+          ),
+        )
+      }
+      if (data.lsp) setStore("lsp", reconcile(data.lsp, { key: "id" }))
+      if (data.vcs) setStore("vcs", reconcile(data.vcs))
     })
+
+    const version = readSyncVersion(headers)
+    if (!version) return
+    const current = watermarks.get(scopeKey)
+    if (!current || current.epoch !== version.epoch || version.seq > current.seq) {
+      watermarks.set(scopeKey, version)
+    }
+  }
+
+  async function refreshVolatileAfterResync(scopeKey: string, store: State, setStore: SetStoreFunction<State>) {
+    const plan = planSessionVolatileResync({
+      scopeKey,
+      activeBucketKey,
+      inboxSessionIDs: Object.keys(store.inbox),
+      todoSessionIDs: Object.keys(store.todo),
+      dagSessionIDs: Object.keys(store.dag),
+    })
+    for (const sessionID of plan.retainedSessionIDs) {
+      invalidateResource(scopeKey, sessionID, "inbox")
+      invalidateResource(scopeKey, sessionID, "todo")
+      invalidateResource(scopeKey, sessionID, "dag")
+    }
+    setStore(
+      produce((draft) => {
+        for (const sessionID of plan.retainedSessionIDs) {
+          if (sessionID === plan.activeSessionID) continue
+          delete draft.inbox[sessionID]
+          delete draft.todo[sessionID]
+          delete draft.dag[sessionID]
+        }
+      }),
+    )
+    if (!plan.activeSessionID) return
+
+    const sessionID = plan.activeSessionID
+    const inboxRequest = captureResourceRequest(scopeKey, sessionID, "inbox")
+    const todoRequest = captureResourceRequest(scopeKey, sessionID, "todo")
+    const dagRequest = captureResourceRequest(scopeKey, sessionID, "dag")
+    const sdk = createScopedClient(scopeKey)
+    await sdk.session
+      .volatileBatch({
+        ...scopeRequest(scopeKey),
+        sessionVolatileBatchInput: { sessionIDs: [sessionID] },
+      })
+      .then((result) => {
+        const state = result.data?.sessions[sessionID]
+        if (!state) return
+        applyResourceResponse(scopeKey, sessionID, "inbox", inboxRequest, result.response?.headers, () => {
+          setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" }))
+        })
+        applyResourceResponse(scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () => {
+          setStore("todo", sessionID, reconcile(state.todo, { key: "id" }))
+        })
+        applyResourceResponse(scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () => {
+          setStore("dag", sessionID, reconcile(state.dag, { key: "id" }))
+        })
+      })
+      .catch(() => {})
   }
 
   async function resyncInstance(scopeKey: string) {
     if (!scopeKey || !children[scopeKey]) return
     const [store, setStore] = children[scopeKey]
     if (store.status === "loading") return
-    const isHome = isHomeScope(scopeKey)
     const sdk = createScopedClient(scopeKey)
 
     await Promise.all([
-      loadSessions(scopeKey, sdk),
-      sdk.session.status().then((x) => setStore("session_status", x.data!)),
-      sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
-      sdk.agenda.list().then((x) =>
-        setStore(
-          "agenda",
-          reconcile(
-            (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
-            { key: "id" },
-          ),
-        ),
-      ),
+      sdk.scope.bootstrap(scopeRequest(scopeKey)).then((result) => {
+        if (!result.data) return
+        applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
+      }),
       sdk.permission
         .list()
-        .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
-      sdk.question.list().then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
-      refreshRetainedVolatileState(scopeKey, store, setStore),
-      ...(!isHome
-        ? [
-            sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
-            sdk.lsp.status().then((x) => setStore("lsp", x.data!)),
-          ]
-        : []),
+        .then((result) => syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])),
+      sdk.question
+        .list()
+        .then((result) => syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])),
+      refreshVolatileAfterResync(scopeKey, store, setStore),
     ])
   }
 
   async function bootstrapInstance(scopeKey: string) {
     if (!scopeKey) return
-    const isHome = isHomeScope(scopeKey)
     const [store, setStore] = ensureScopeState(scopeKey)
     const sdk = createScopedClient(scopeKey)
+    const snapshotRequest = retry(() => sdk.scope.bootstrap(scopeRequest(scopeKey))).then((result) => {
+      if (!result.data) throw new Error("Scope bootstrap returned no data")
+      applyScopeBootstrapSnapshot(scopeKey, store, setStore, result.data, result.response?.headers)
+    })
+    const remainingRequests = [
+      sdk.permission
+        .list()
+        .then((result) => syncBySession(setStore, "permission", Object.keys(store.permission), result.data ?? [])),
+      sdk.question
+        .list()
+        .then((result) => syncBySession(setStore, "question", Object.keys(store.question), result.data ?? [])),
+    ]
 
-    const blockingRequests: Record<string, () => Promise<void>> = {
-      provider: () =>
-        sdk.provider.list().then((x) => {
-          const data = x.data!
-          setStore("provider", {
-            ...data,
-            all: data.all.map((provider) => ({
-              ...provider,
-              models: Object.fromEntries(
-                Object.entries(provider.models).filter(([, info]) => info.status !== "deprecated"),
-              ),
-            })),
-          })
-        }),
-      agent: () => sdk.app.agents().then((x) => setStore("agent", x.data ?? [])),
-      config: () => sdk.config.get().then((x) => setStore("config", x.data!)),
+    try {
+      await snapshotRequest
+      if (store.status !== "complete") setStore("status", "partial")
+      await Promise.all(remainingRequests)
+      setStore("status", "complete")
+    } catch (error) {
+      setGlobalStore("error", error as Error)
     }
-    blockingRequests.scopeID = isHome
-      ? () => Promise.resolve(setStore("scopeID", HOME_SCOPE_KEY))
-      : () => sdk.scope.current().then((x) => setStore("scopeID", x.data!.id))
-    await Promise.all(Object.values(blockingRequests).map((p) => retry(p).catch((e) => setGlobalStore("error", e))))
-      .then(async () => {
-        if (store.status !== "complete") setStore("status", "partial")
-        const requests: Promise<unknown>[] = [
-          sdk.path.get(scopeRequest(scopeKey)).then((x) => setStore("path", x.data!)),
-          sdk.command.list().then((x) => setStore("command", x.data ?? [])),
-          sdk.session.status().then((x) => setStore("session_status", x.data!)),
-          loadSessions(scopeKey, sdk),
-          sdk.mcp.status().then((x) => setStore("mcp", x.data!)),
-          sdk.cortex.list({}).then((x) => setStore("cortex", x.data ?? [])),
-          sdk.agenda.list().then((x) =>
-            setStore(
-              "agenda",
-              reconcile(
-                (x.data ?? []).slice().sort((a, b) => a.id.localeCompare(b.id)),
-                { key: "id" },
-              ),
-            ),
-          ),
-          sdk.permission
-            .list()
-            .then((x) => syncBySession(setStore, "permission", Object.keys(store.permission), x.data ?? [])),
-          sdk.question
-            .list()
-            .then((x) => syncBySession(setStore, "question", Object.keys(store.question), x.data ?? [])),
-        ]
-        if (!isHome) {
-          requests.push(sdk.lsp.status().then((x) => setStore("lsp", x.data!)))
-          requests.push(sdk.vcs.get().then((x) => setStore("vcs", x.data)))
-        }
-        await Promise.all(requests)
-        setStore("status", "complete")
-      })
-      .catch((e) => setGlobalStore("error", e))
   }
 
   // Per-scope event watermark (highest applied state-event seq + epoch), used
@@ -1570,7 +1589,10 @@ function createGlobalSync() {
     if (!resourceFreshness.acceptScopeEvent(e.name, version)) return
     const observed = observeWatermark(watermarks.get(e.name), sequencedDetails as { epoch?: string; seq?: number })
     if (observed.next) watermarks.set(e.name, observed.next)
-    if (observed.epochChanged || observed.gap) void replayOrResync(e.name)
+    if (observed.epochChanged || observed.gap) {
+      void replayOrResync(e.name, observed.replayFrom)
+      return
+    }
     applyEvent(e.name, e.details)
   })
   onCleanup(() => {
@@ -1585,10 +1607,13 @@ function createGlobalSync() {
   // watermark instead of refetching everything. Falls back to a full resync on
   // reset (stale epoch / pruned journal) or any error — so it can never lose
   // updates, only do more work.
-  async function replayOrResync(scopeKey: string) {
+  async function replayOrResync(scopeKey: string, replayFrom?: Watermark) {
     if (scopeKey === "global" || !children[scopeKey]) return
-    if (replayInFlight.has(scopeKey)) return
-    const wm = watermarks.get(scopeKey)
+    if (replayInFlight.has(scopeKey)) {
+      replayPending.add(scopeKey)
+      return
+    }
+    const wm = replayFrom ?? watermarks.get(scopeKey)
     if (!wm) {
       await resyncInstance(scopeKey).catch(() => undefined)
       return
@@ -1613,6 +1638,7 @@ function createGlobalSync() {
       await resyncInstance(scopeKey).catch(() => undefined)
     } finally {
       replayInFlight.delete(scopeKey)
+      if (replayPending.delete(scopeKey)) void replayOrResync(scopeKey)
     }
   }
 
@@ -1639,39 +1665,31 @@ function createGlobalSync() {
   })
 
   async function bootstrap() {
-    const health = await globalSDK.client.global
+    const healthRequest = globalSDK.client.global
       .health()
-      .then((x) => x.data)
+      .then((result) => result.data)
       .catch(() => undefined)
-    if (!health?.healthy) {
-      setGlobalStore(
-        "error",
-        new Error(`Could not connect to server. Is there a server running at \`${globalSDK.url}\`?`),
-      )
-      return
-    }
-
-    return Promise.all([
+    const configRequest = Promise.all([
       retry(loadGlobalConfig),
       retry(() =>
-        globalSDK.client.global.paths.get().then((x) => {
-          setGlobalStore("paths", x.data!)
+        globalSDK.client.global.paths.get().then((result) => {
+          setGlobalStore("paths", result.data!)
         }),
       ),
       retry(() =>
-        globalSDK.client.scope.list().then(async (x) => {
-          const scopes = (x.data ?? [])
-            .filter((p) => !!p?.id)
-            .filter((p) => !!p.worktree && !p.worktree.includes("synergy-test"))
-            .filter((p) => !p.time?.archived)
+        globalSDK.client.scope.list().then(async (result) => {
+          const scopes = (result.data ?? [])
+            .filter((scope) => !!scope?.id)
+            .filter((scope) => !!scope.worktree && !scope.worktree.includes("synergy-test"))
+            .filter((scope) => !scope.time?.archived)
             .slice()
             .sort((a, b) => a.id.localeCompare(b.id))
           setGlobalStore("scope", scopes)
         }),
       ),
       retry(() =>
-        globalSDK.client.provider.list().then((x) => {
-          const data = x.data!
+        globalSDK.client.provider.list().then((result) => {
+          const data = result.data!
           setGlobalStore("provider", {
             ...data,
             all: data.all.map((provider) => ({
@@ -1684,16 +1702,28 @@ function createGlobalSync() {
         }),
       ),
       retry(() =>
-        globalSDK.client.provider.auth().then((x) => {
-          setGlobalStore("provider_auth", x.data ?? {})
+        globalSDK.client.provider.auth().then((result) => {
+          setGlobalStore("provider_auth", result.data ?? {})
         }),
       ),
-    ])
-      .then(() => {
-        setGlobalStore("ready", true)
-        loadGlobalAgenda()
-      })
-      .catch((e) => setGlobalStore("error", e))
+    ]).then(
+      () => ({ ok: true as const }),
+      (error: unknown) => ({ ok: false as const, error }),
+    )
+    const [health, configResult] = await Promise.all([healthRequest, configRequest])
+    if (!health?.healthy) {
+      setGlobalStore(
+        "error",
+        new Error(`Could not connect to server. Is there a server running at \`${globalSDK.url}\`?`),
+      )
+      return
+    }
+    if (!configResult.ok) {
+      setGlobalStore("error", configResult.error as Error)
+      return
+    }
+    setGlobalStore("ready", true)
+    loadGlobalAgenda()
   }
 
   onMount(() => {

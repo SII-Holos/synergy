@@ -53,7 +53,7 @@ The sync layer has:
 - **Turn-level diffs** are stored in `message[n].summary.diffs` on the user message and reach the frontend through the existing `message.updated` state event. No new event, store bucket, or route was needed — the normal message reconcile path carries them.
 - **Session-level diffs** live in the `session_diff` bucket and aggregate all turn diffs for the Review workbench panel. They are loaded on demand through `sync.session.diff()` and never fetched implicitly.
 
-Scope bootstrap limits concurrent instance requests to two. It first loads blocking provider, agent, config, and Scope identity state, marks the store `partial`, then loads remaining operational collections before marking it `complete`.
+Global bootstrap starts the health check and the global config/path/Scope/provider/auth requests concurrently. Scope bootstrap limits concurrent instance requests to two. Each instance uses the generated `scope.bootstrap()` snapshot to load required provider, agent, config, and Scope identity plus optional path, command, session status/list, MCP, Cortex, Agenda, and project LSP/VCS state. The snapshot is reconciled in one Solid batch before the store becomes `partial`; permissions and questions keep their independent owner routes, and the store becomes `complete` after those requests settle.
 
 ## Reconcile, Do Not Replace
 
@@ -139,14 +139,16 @@ Successful prepend in history mode captures the DOM offset of the first visible 
 
 The generated SDK owns internal HTTP calls. Scope-specific clients carry home `scopeID` or project directory context.
 
+Scope initialization uses `GET /scope/bootstrap` (`scope.bootstrap()`). The server reads the aggregated fields concurrently. Provider, agent, and config are required; failure in any of them fails the request. Optional field failures keep the response usable and are reported by field in `_errors`. Home snapshots omit project-only LSP and VCS fields.
+
 Session detail loading is split by concern:
 
 - session metadata loads independently;
 - messages load through `session.messagePage()` in page size 200, stored in a bounded window capped at 500;
 - parts are sorted and reconciled under their owning message;
-- inbox, todo, DAG, diff, permissions, and questions have separate refresh paths.
+- inbox, todo, and DAG refresh together through `session.volatileBatch()`, while diff, permissions, and questions retain separate refresh paths.
 
-Volatile state can be force-refetched after a reconnect or when an idle event indicates that a cached collection may have changed.
+`POST /session/batch/volatile` accepts at most 50 deduplicated session IDs and returns an in-band state or error for each requested session. Missing, archived, and cross-Scope sessions do not expose state. After reconnect resync, the client invalidates volatile freshness for every retained session, clears inactive cached inbox/todo/DAG buckets, and batch-refreshes only the actively viewed session. An inactive session reloads through its normal detail path when viewed instead of being eagerly fetched during reconnect.
 
 Frontend code should not introduce raw `fetch()` for ordinary Synergy routes. Add route OpenAPI metadata, regenerate the SDK, and use the generated client. Streams, browser-native file/blob flows, and external URLs remain valid raw transport cases.
 
@@ -197,7 +199,7 @@ or:
 - the client is ahead of the current sequence;
 - the required journal prefix has expired or been pruned.
 
-For `ok`, the frontend applies replayed events through the same event reducer and advances the Scope watermark. For `reset` or request failure, it refetches Scope snapshots: sessions, status, Cortex, Agenda, permissions, questions, retained inbox/todo/DAG buckets, and project MCP/LSP state.
+For `ok`, the frontend applies replayed events through the same event reducer and advances the Scope watermark. For `reset` or request failure, it refetches the aggregated Scope bootstrap snapshot and the independent permission/question collections. Volatile freshness is invalidated for all retained sessions, inactive volatile buckets are cleared, and only the actively viewed session's inbox/todo/DAG state is batch-refetched.
 
 When replay returns `reset`, the frontend also calls `resourceFreshness.resetScope()` before refetching. This advances the Scope generation, invalidates in-flight resource requests, and clears stale per-resource versions so the resync snapshots can establish fresh baselines.
 
@@ -205,11 +207,7 @@ Resources outside the normalized store, including BlueprintLoop feature state, o
 
 Active session message/part snapshots also observe reconnect recovery. Because tool-part updates are published as unsequenced streaming events, reconnect replay alone cannot restore a missed tool card. After a reconnect, `sync.session.sync()` force-reloads the viewed session's durable message/part snapshot in addition to volatile collections.
 
-### Current recovery limitation
-
-Reconnect replay starts from the watermark retained before the disconnect and is the reliable missed-event recovery path for sequenced state events.
-
-The live gap detector currently adopts the newly received sequence before it starts `replayOrResync()`. A replay triggered only by that gap therefore starts at the new watermark rather than the pre-gap value. Maintainers must not describe live gap detection as proven backfill until the reducer retains the prior watermark for that request.
+Reconnect replay starts from the watermark retained before the disconnect. Live gap recovery likewise retains the pre-gap watermark as `replayFrom`; it neither advances the Scope watermark nor applies the triggering event until replay or full resync completes. An epoch change also holds the prior watermark and requires authoritative full resync. Duplicate recovery requests for the same Scope are coalesced while replay is pending.
 
 ## Resource-Level Snapshot Freshness
 
@@ -217,12 +215,12 @@ The sync layer applies a freshness gate to DAG, Todo, Inbox, and Message snapsho
 
 ### Response headers
 
-Scoped GET responses for these resources, including `session.messagePage()`, expose:
+Scoped snapshot responses expose:
 
 - `x-synergy-seq`
 - `x-synergy-epoch`
 
-The server captures the epoch and sequence number before reading the snapshot, so the value is a conservative lower bound for that response. The Web client reads both headers via `readSyncVersion()` and uses them in the freshness checks below.
+This includes ordinary scoped GET snapshots and the POST volatile batch response. The server captures the epoch and sequence number before reading the snapshot, so the value is a conservative lower bound for that response. The Web client reads both headers via `readSyncVersion()` and uses them in the freshness checks below.
 
 A response is unversioned when either header is absent or the epoch/sequence values are invalid.
 
@@ -372,7 +370,8 @@ Variant display resolves the explicit or historical session variant first, then 
 
 - One global event WebSocket multiplexes events by owning Scope directory.
 - State events are sequenced per Scope epoch; streaming events are unsequenced.
-- Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery.
+- Replay returns `ok` or `reset` JSON and full resync is the fail-open recovery. Live gaps replay from the retained pre-gap watermark and do not apply the triggering event before recovery.
+- Scope bootstrap is one aggregated generated-SDK snapshot plus independent permission/question requests; reconnect eagerly refreshes volatile state only for the viewed session.
 - Bounded domain event queues use explicit recovery signals rather than silent loss. For File workspace watcher overflow, `file.watcher.updated` carries `resync: true`, and the File context reloads its root, expanded directories, and active document.
 - Every event passes the Scope epoch pre-filter; DAG, Todo, Inbox, and Message additionally use resource-level snapshot/event freshness (generation + revision tokens and version comparison). Optimistic message writes and authoritative part mutations invalidate concurrent Message requests; streaming deltas do not. Unversioned snapshots are accepted only when no intervening same-resource write occurred.
 - Store updates reconcile existing leaves and identities.

@@ -407,6 +407,8 @@ import type {
   RuntimeReloadTarget,
   SandboxReadinessResponses,
   SandboxStatusResponses,
+  ScopeBootstrapErrors,
+  ScopeBootstrapResponses,
   ScopeCurrentResponses,
   ScopeIndexResponses,
   ScopeListResponses,
@@ -479,6 +481,9 @@ import type {
   SessionUnrollbackResponses,
   SessionUpdateErrors,
   SessionUpdateResponses,
+  SessionVolatileBatchErrors,
+  SessionVolatileBatchInput,
+  SessionVolatileBatchResponses,
   SessionWorkspaceSelection,
   SkillImportErrors,
   SkillImportResponses,
@@ -2743,6 +2748,47 @@ export class Session extends HeyApiClient {
   }
 
   /**
+   * Batch session volatile state
+   *
+   * Retrieve inbox, todo, and DAG state for multiple sessions in the current scope.
+   */
+  public volatileBatch<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      sessionVolatileBatchInput?: SessionVolatileBatchInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { key: "sessionVolatileBatchInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      SessionVolatileBatchResponses,
+      SessionVolatileBatchErrors,
+      ThrowOnError
+    >({
+      url: "/session/batch/volatile",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
    * Import session data
    *
    * Import a Synergy session export JSON or gzipped JSON file into the current scope.
@@ -4771,6 +4817,36 @@ export class Scope extends HeyApiClient {
         ...options?.headers,
         ...params.headers,
       },
+    })
+  }
+
+  /**
+   * Get scope bootstrap snapshot
+   *
+   * Retrieve the initial state needed to render a scope in one request.
+   */
+  public bootstrap<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<ScopeBootstrapResponses, ScopeBootstrapErrors, ThrowOnError>({
+      url: "/scope/bootstrap",
+      ...options,
+      ...params,
     })
   }
 

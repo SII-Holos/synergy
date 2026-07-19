@@ -2345,6 +2345,67 @@
         ]
       }
     },
+    "/scope/bootstrap": {
+      "get": {
+        "operationId": "scope.bootstrap",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Get scope bootstrap snapshot",
+        "description": "Retrieve the initial state needed to render a scope in one request.",
+        "responses": {
+          "200": {
+            "description": "Scope bootstrap snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeBootstrapResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.scope.bootstrap({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/pty": {
       "get": {
         "operationId": "pty.list",
@@ -7409,6 +7470,66 @@
         ]
       }
     },
+    "/session/batch/volatile": {
+      "post": {
+        "operationId": "session.volatileBatch",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "summary": "Batch session volatile state",
+        "description": "Retrieve inbox, todo, and DAG state for multiple sessions in the current scope.",
+        "responses": {
+          "200": {
+            "description": "Session volatile state by session ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionVolatileBatchResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SessionVolatileBatchInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.session.volatileBatch({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/session/{sessionID}/permissions/{permissionID}": {
       "post": {
         "operationId": "permission.respond",
@@ -8477,79 +8598,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "all": {
-                      "type": "array",
-                      "items": {
-                        "$ref": "#/components/schemas/Provider"
-                      }
-                    },
-                    "default": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "type": "string"
-                      }
-                    },
-                    "connected": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "configProviders": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "catalogProviders": {
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "profiles": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "$ref": "#/components/schemas/ProviderProfileMetadata"
-                      }
-                    },
-                    "authHealth": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "$ref": "#/components/schemas/ProviderAuthHealth"
-                      }
-                    },
-                    "runtimeAvailability": {
-                      "type": "object",
-                      "propertyNames": {
-                        "type": "string"
-                      },
-                      "additionalProperties": {
-                        "$ref": "#/components/schemas/ProviderRuntimeAvailability"
-                      }
-                    }
-                  },
-                  "required": [
-                    "all",
-                    "default",
-                    "connected",
-                    "configProviders",
-                    "catalogProviders",
-                    "profiles",
-                    "authHealth",
-                    "runtimeAvailability"
-                  ]
+                  "$ref": "#/components/schemas/ProviderListResponse"
                 }
               }
             }
@@ -22740,37 +22789,641 @@
         },
         "required": ["name", "data"]
       },
-      "Pty": {
+      "Model": {
         "type": "object",
         "properties": {
           "id": {
+            "type": "string"
+          },
+          "providerID": {
+            "type": "string"
+          },
+          "api": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              },
+              "npm": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "url", "npm"]
+          },
+          "name": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "temperature": {
+                "type": "boolean"
+              },
+              "reasoning": {
+                "type": "boolean"
+              },
+              "reasoningEfforts": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "attachment": {
+                "type": "boolean"
+              },
+              "toolcall": {
+                "type": "boolean"
+              },
+              "input": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "boolean"
+                  },
+                  "audio": {
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "type": "boolean"
+                  },
+                  "video": {
+                    "type": "boolean"
+                  },
+                  "pdf": {
+                    "type": "boolean"
+                  },
+                  "supportedImageMediaTypes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "required": ["text", "audio", "image", "video", "pdf"]
+              },
+              "output": {
+                "type": "object",
+                "properties": {
+                  "text": {
+                    "type": "boolean"
+                  },
+                  "audio": {
+                    "type": "boolean"
+                  },
+                  "image": {
+                    "type": "boolean"
+                  },
+                  "video": {
+                    "type": "boolean"
+                  },
+                  "pdf": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["text", "audio", "image", "video", "pdf"]
+              },
+              "interleaved": {
+                "anyOf": [
+                  {
+                    "type": "boolean"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "field": {
+                        "type": "string",
+                        "enum": ["reasoning_content", "reasoning_details"]
+                      }
+                    },
+                    "required": ["field"]
+                  }
+                ]
+              }
+            },
+            "required": ["temperature", "reasoning", "attachment", "toolcall", "input", "output", "interleaved"]
+          },
+          "cost": {
+            "type": "object",
+            "properties": {
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              },
+              "cache": {
+                "type": "object",
+                "properties": {
+                  "read": {
+                    "type": "number"
+                  },
+                  "write": {
+                    "type": "number"
+                  }
+                },
+                "required": ["read", "write"]
+              },
+              "experimentalOver200K": {
+                "type": "object",
+                "properties": {
+                  "input": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  },
+                  "cache": {
+                    "type": "object",
+                    "properties": {
+                      "read": {
+                        "type": "number"
+                      },
+                      "write": {
+                        "type": "number"
+                      }
+                    },
+                    "required": ["read", "write"]
+                  }
+                },
+                "required": ["input", "output", "cache"]
+              }
+            },
+            "required": ["input", "output", "cache"]
+          },
+          "limit": {
+            "type": "object",
+            "properties": {
+              "context": {
+                "type": "number"
+              },
+              "input": {
+                "type": "number"
+              },
+              "output": {
+                "type": "number"
+              }
+            },
+            "required": ["context", "output"]
+          },
+          "status": {
             "type": "string",
-            "pattern": "^pty.*"
+            "enum": ["alpha", "beta", "deprecated", "active"]
           },
-          "title": {
+          "options": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "headers": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "release_date": {
             "type": "string"
           },
-          "command": {
+          "variants": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          }
+        },
+        "required": [
+          "id",
+          "providerID",
+          "api",
+          "name",
+          "capabilities",
+          "cost",
+          "limit",
+          "status",
+          "options",
+          "headers",
+          "release_date"
+        ]
+      },
+      "Provider": {
+        "type": "object",
+        "properties": {
+          "id": {
             "type": "string"
           },
-          "args": {
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["env", "config", "custom", "api"]
+          },
+          "env": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "cwd": {
+          "key": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "models": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/Model"
+            }
+          }
+        },
+        "required": ["id", "name", "source", "env", "options", "models"]
+      },
+      "ProviderRecommendation": {
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": ["featured", "recommended", "standard"]
+          },
+          "rank": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "headline": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "cta": {
+            "type": "object",
+            "properties": {
+              "kind": {
+                "type": "string",
+                "const": "external"
+              },
+              "label": {
+                "type": "string"
+              },
+              "url": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "label", "url"],
+            "additionalProperties": false
+          },
+          "defaultModel": {
+            "type": "string"
+          }
+        },
+        "required": ["level"],
+        "additionalProperties": false
+      },
+      "ProviderProfileMetadata": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "displayName": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "authKind": {
+            "type": "string"
+          },
+          "environment": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "recommendation": {
+            "$ref": "#/components/schemas/ProviderRecommendation"
+          }
+        },
+        "required": ["id", "name"],
+        "additionalProperties": false
+      },
+      "ProviderAuthHealth": {
+        "type": "object",
+        "properties": {
+          "providerID": {
             "type": "string"
           },
           "status": {
             "type": "string",
-            "enum": ["running", "exited"]
+            "enum": ["connected", "not_configured", "exhausted", "action_required"]
           },
-          "pid": {
+          "recovery": {
+            "type": "string",
+            "enum": ["reconnect", "update_environment"]
+          },
+          "authKind": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "cooldownUntil": {
+            "type": "number"
+          },
+          "resetAt": {
+            "type": "number"
+          },
+          "failureCode": {
+            "type": "string"
+          }
+        },
+        "required": ["providerID", "status"]
+      },
+      "ProviderRuntimeAvailability": {
+        "type": "object",
+        "properties": {
+          "providerID": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "connected",
+              "not_connected",
+              "disabled",
+              "no_models",
+              "authentication_required",
+              "exhausted",
+              "fallback_unverified"
+            ]
+          },
+          "healthCheck": {
+            "type": "string",
+            "enum": ["models", "none"]
+          },
+          "modelCount": {
             "type": "number"
           }
         },
-        "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+        "required": ["providerID", "available", "modelCount"]
+      },
+      "ProviderListResponse": {
+        "type": "object",
+        "properties": {
+          "all": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Provider"
+            }
+          },
+          "default": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "connected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "configProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "catalogProviders": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "profiles": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderProfileMetadata"
+            }
+          },
+          "authHealth": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderAuthHealth"
+            }
+          },
+          "runtimeAvailability": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderRuntimeAvailability"
+            }
+          }
+        },
+        "required": [
+          "all",
+          "default",
+          "connected",
+          "configProviders",
+          "catalogProviders",
+          "profiles",
+          "authHealth",
+          "runtimeAvailability"
+        ]
+      },
+      "PermissionAction": {
+        "type": "string",
+        "enum": ["allow", "deny", "ask"]
+      },
+      "PermissionRule": {
+        "type": "object",
+        "properties": {
+          "permission": {
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "action": {
+            "$ref": "#/components/schemas/PermissionAction"
+          }
+        },
+        "required": ["permission", "pattern", "action"]
+      },
+      "PermissionRuleset": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/PermissionRule"
+        }
+      },
+      "ModelRole": {
+        "type": "string",
+        "enum": ["vision", "nano", "mini", "mid", "thinking", "long", "creative"]
+      },
+      "ExternalAgentInfo": {
+        "type": "object",
+        "properties": {
+          "adapter": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          }
+        },
+        "required": ["adapter"]
+      },
+      "Agent": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["subagent", "primary", "all"]
+          },
+          "native": {
+            "type": "boolean"
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "visibleTo": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "delegationGroups": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "topP": {
+            "type": "number"
+          },
+          "temperature": {
+            "type": "number"
+          },
+          "color": {
+            "type": "string"
+          },
+          "permission": {
+            "$ref": "#/components/schemas/PermissionRuleset"
+          },
+          "controlProfile": {
+            "type": "string",
+            "enum": ["guarded", "autonomous", "full_access"]
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "modelID": {
+                "type": "string"
+              },
+              "providerID": {
+                "type": "string"
+              }
+            },
+            "required": ["modelID", "providerID"]
+          },
+          "modelRole": {
+            "$ref": "#/components/schemas/ModelRole"
+          },
+          "modelSource": {
+            "type": "string",
+            "enum": ["role", "explicit"]
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "config", "plugin", "external"]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "options": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {}
+          },
+          "steps": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "external": {
+            "$ref": "#/components/schemas/ExternalAgentInfo"
+          },
+          "defaultVariant": {
+            "type": "string"
+          }
+        },
+        "required": ["name", "mode", "permission", "options"]
       },
       "KeybindsConfig": {
         "description": "Custom keybind configurations",
@@ -23703,10 +24356,6 @@
           }
         },
         "additionalProperties": false
-      },
-      "ModelRole": {
-        "type": "string",
-        "enum": ["vision", "nano", "mini", "mid", "thinking", "long", "creative"]
       },
       "PermissionActionConfig": {
         "type": "string",
@@ -26104,1116 +26753,7 @@
         },
         "additionalProperties": false
       },
-      "ConfigInstructionsInfo": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["override", "primary", "empty"]
-          },
-          "sourceFilename": {
-            "anyOf": [
-              {
-                "type": "string",
-                "enum": ["AGENTS.override.md", "AGENTS.md"]
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "editableFilename": {
-            "type": "string",
-            "const": "AGENTS.override.md"
-          },
-          "hasOverride": {
-            "type": "boolean"
-          },
-          "maxBytes": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          }
-        },
-        "required": ["content", "source", "sourceFilename", "editableFilename", "hasOverride", "maxBytes"]
-      },
-      "ConfigInstructionsUpdateInput": {
-        "type": "object",
-        "properties": {
-          "content": {
-            "type": "string"
-          }
-        },
-        "required": ["content"]
-      },
-      "ConfigDomainSummary": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": [
-              "general",
-              "models",
-              "providers",
-              "library",
-              "mcp",
-              "plugins",
-              "agents",
-              "commands",
-              "permissions",
-              "channels",
-              "holos",
-              "email",
-              "runtime",
-              "github"
-            ]
-          },
-          "filename": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "ownedKeys": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "mergePolicy": {
-            "type": "string",
-            "enum": ["merge", "replace-domain", "append"]
-          },
-          "reloadTargets": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "uiSection": {
-            "type": "string"
-          },
-          "importable": {
-            "type": "boolean"
-          },
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          }
-        },
-        "required": [
-          "id",
-          "filename",
-          "label",
-          "path",
-          "ownedKeys",
-          "mergePolicy",
-          "reloadTargets",
-          "uiSection",
-          "importable"
-        ]
-      },
-      "ConfigDomainUpdateInput": {
-        "type": "object",
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["merge", "replace-domain", "append"]
-          }
-        },
-        "required": ["config"]
-      },
-      "ConfigDomainOpenResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "const": true
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["success", "path"]
-      },
-      "ConfigDomainOpenError": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean",
-            "const": false
-          },
-          "error": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["success", "error", "message"]
-      },
-      "ConfigImportScope": {
-        "type": "string",
-        "enum": ["global", "project"]
-      },
-      "ConfigImportDiagnostic": {
-        "type": "object",
-        "properties": {
-          "severity": {
-            "type": "string",
-            "enum": ["warning", "info"]
-          },
-          "code": {
-            "type": "string"
-          },
-          "message": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          }
-        },
-        "required": ["severity", "code", "message"]
-      },
-      "ConfigDomainImportChange": {
-        "type": "object",
-        "properties": {
-          "key": {
-            "type": "string"
-          },
-          "type": {
-            "type": "string",
-            "enum": ["add", "modify", "remove"]
-          },
-          "before": {},
-          "after": {},
-          "conflict": {
-            "type": "boolean"
-          },
-          "diagnostics": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ConfigImportDiagnostic"
-            }
-          }
-        },
-        "required": ["key", "type", "conflict", "diagnostics"]
-      },
-      "ConfigDomainImportDomainPlan": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": [
-              "general",
-              "models",
-              "providers",
-              "library",
-              "mcp",
-              "plugins",
-              "agents",
-              "commands",
-              "permissions",
-              "channels",
-              "holos",
-              "email",
-              "runtime",
-              "github"
-            ]
-          },
-          "filename": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["merge", "replace-domain", "append"]
-          },
-          "revision": {
-            "type": "string"
-          },
-          "changes": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ConfigDomainImportChange"
-            }
-          }
-        },
-        "required": ["id", "filename", "path", "mode", "revision", "changes"]
-      },
-      "ConfigDomainImportPlan": {
-        "type": "object",
-        "properties": {
-          "scope": {
-            "$ref": "#/components/schemas/ConfigImportScope"
-          },
-          "scopeID": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "string"
-          },
-          "domains": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ConfigDomainImportDomainPlan"
-            }
-          },
-          "conflicts": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ConfigDomainImportChange"
-            }
-          }
-        },
-        "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
-      },
-      "ConfigImportProjectScopeRequiredError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportProjectScopeRequiredError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ConfigImportInvalidConfigError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigInvalidError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "path": {
-                "type": "string"
-              },
-              "issues": {
-                "type": "array",
-                "items": {}
-              },
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["path"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ConfigImportSourceTooLargeError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportSourceTooLargeError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "source": {
-                "type": "string"
-              },
-              "maxBytes": {
-                "type": "number"
-              }
-            },
-            "required": ["message", "source", "maxBytes"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ConfigDomainImportPlanInput": {
-        "type": "object",
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          },
-          "only": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "general",
-                "models",
-                "providers",
-                "library",
-                "mcp",
-                "plugins",
-                "agents",
-                "commands",
-                "permissions",
-                "channels",
-                "holos",
-                "email",
-                "runtime",
-                "github"
-              ]
-            }
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["merge", "replace-domain", "append"]
-          },
-          "scope": {
-            "$ref": "#/components/schemas/ConfigImportScope"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": ["config"]
-      },
-      "RuntimeReloadTarget": {
-        "type": "string",
-        "enum": [
-          "config",
-          "skill",
-          "provider",
-          "agent",
-          "plugin",
-          "mcp",
-          "lsp",
-          "formatter",
-          "watcher",
-          "channel",
-          "holos",
-          "command",
-          "tool_registry",
-          "all"
-        ]
-      },
-      "RuntimeReloadFailure": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "recoverable": {
-            "type": "boolean"
-          }
-        },
-        "required": ["target", "message"]
-      },
-      "RuntimeReloadDiagnostic": {
-        "type": "object",
-        "properties": {
-          "target": {
-            "$ref": "#/components/schemas/RuntimeReloadTarget"
-          },
-          "severity": {
-            "type": "string",
-            "enum": ["error", "warning", "info"]
-          },
-          "message": {
-            "type": "string"
-          },
-          "code": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "phase": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          }
-        },
-        "required": ["target", "severity", "message"]
-      },
-      "RuntimeReloadResult": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
-          },
-          "requested": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "executed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "cascaded": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "changedFields": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "restartRequired": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "liveApplied": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "warnings": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "failed": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadTarget"
-            }
-          },
-          "failures": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadFailure"
-            }
-          },
-          "diagnostics": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
-            }
-          }
-        },
-        "required": [
-          "success",
-          "requested",
-          "executed",
-          "cascaded",
-          "changedFields",
-          "restartRequired",
-          "liveApplied",
-          "warnings",
-          "failed",
-          "failures",
-          "diagnostics"
-        ]
-      },
-      "ConfigDomainImportApplyResult": {
-        "type": "object",
-        "properties": {
-          "plan": {
-            "$ref": "#/components/schemas/ConfigDomainImportPlan"
-          },
-          "reload": {
-            "$ref": "#/components/schemas/RuntimeReloadResult"
-          }
-        },
-        "required": ["plan", "reload"]
-      },
-      "ConfigImportRevisionConflictError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportRevisionConflictError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "domains": {
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "enum": [
-                    "general",
-                    "models",
-                    "providers",
-                    "library",
-                    "mcp",
-                    "plugins",
-                    "agents",
-                    "commands",
-                    "permissions",
-                    "channels",
-                    "holos",
-                    "email",
-                    "runtime",
-                    "github"
-                  ]
-                }
-              }
-            },
-            "required": ["message", "domains"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ConfigImportLockedError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "ConfigImportLockedError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              },
-              "scope": {
-                "$ref": "#/components/schemas/ConfigImportScope"
-              }
-            },
-            "required": ["message", "scope"]
-          }
-        },
-        "required": ["name", "data"]
-      },
-      "ConfigDomainImportApplyInput": {
-        "type": "object",
-        "properties": {
-          "config": {
-            "$ref": "#/components/schemas/Config"
-          },
-          "only": {
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": [
-                "general",
-                "models",
-                "providers",
-                "library",
-                "mcp",
-                "plugins",
-                "agents",
-                "commands",
-                "permissions",
-                "channels",
-                "holos",
-                "email",
-                "runtime",
-                "github"
-              ]
-            }
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["merge", "replace-domain", "append"]
-          },
-          "scope": {
-            "$ref": "#/components/schemas/ConfigImportScope"
-          },
-          "source": {
-            "type": "string"
-          },
-          "revision": {
-            "type": "string"
-          },
-          "yes": {
-            "type": "boolean"
-          },
-          "force": {
-            "type": "boolean"
-          }
-        },
-        "required": ["config"]
-      },
-      "Model": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "providerID": {
-            "type": "string"
-          },
-          "api": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              },
-              "npm": {
-                "type": "string"
-              }
-            },
-            "required": ["id", "url", "npm"]
-          },
-          "name": {
-            "type": "string"
-          },
-          "family": {
-            "type": "string"
-          },
-          "capabilities": {
-            "type": "object",
-            "properties": {
-              "temperature": {
-                "type": "boolean"
-              },
-              "reasoning": {
-                "type": "boolean"
-              },
-              "reasoningEfforts": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
-              },
-              "attachment": {
-                "type": "boolean"
-              },
-              "toolcall": {
-                "type": "boolean"
-              },
-              "input": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "boolean"
-                  },
-                  "audio": {
-                    "type": "boolean"
-                  },
-                  "image": {
-                    "type": "boolean"
-                  },
-                  "video": {
-                    "type": "boolean"
-                  },
-                  "pdf": {
-                    "type": "boolean"
-                  },
-                  "supportedImageMediaTypes": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  }
-                },
-                "required": ["text", "audio", "image", "video", "pdf"]
-              },
-              "output": {
-                "type": "object",
-                "properties": {
-                  "text": {
-                    "type": "boolean"
-                  },
-                  "audio": {
-                    "type": "boolean"
-                  },
-                  "image": {
-                    "type": "boolean"
-                  },
-                  "video": {
-                    "type": "boolean"
-                  },
-                  "pdf": {
-                    "type": "boolean"
-                  }
-                },
-                "required": ["text", "audio", "image", "video", "pdf"]
-              },
-              "interleaved": {
-                "anyOf": [
-                  {
-                    "type": "boolean"
-                  },
-                  {
-                    "type": "object",
-                    "properties": {
-                      "field": {
-                        "type": "string",
-                        "enum": ["reasoning_content", "reasoning_details"]
-                      }
-                    },
-                    "required": ["field"]
-                  }
-                ]
-              }
-            },
-            "required": ["temperature", "reasoning", "attachment", "toolcall", "input", "output", "interleaved"]
-          },
-          "cost": {
-            "type": "object",
-            "properties": {
-              "input": {
-                "type": "number"
-              },
-              "output": {
-                "type": "number"
-              },
-              "cache": {
-                "type": "object",
-                "properties": {
-                  "read": {
-                    "type": "number"
-                  },
-                  "write": {
-                    "type": "number"
-                  }
-                },
-                "required": ["read", "write"]
-              },
-              "experimentalOver200K": {
-                "type": "object",
-                "properties": {
-                  "input": {
-                    "type": "number"
-                  },
-                  "output": {
-                    "type": "number"
-                  },
-                  "cache": {
-                    "type": "object",
-                    "properties": {
-                      "read": {
-                        "type": "number"
-                      },
-                      "write": {
-                        "type": "number"
-                      }
-                    },
-                    "required": ["read", "write"]
-                  }
-                },
-                "required": ["input", "output", "cache"]
-              }
-            },
-            "required": ["input", "output", "cache"]
-          },
-          "limit": {
-            "type": "object",
-            "properties": {
-              "context": {
-                "type": "number"
-              },
-              "input": {
-                "type": "number"
-              },
-              "output": {
-                "type": "number"
-              }
-            },
-            "required": ["context", "output"]
-          },
-          "status": {
-            "type": "string",
-            "enum": ["alpha", "beta", "deprecated", "active"]
-          },
-          "options": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "headers": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "string"
-            }
-          },
-          "release_date": {
-            "type": "string"
-          },
-          "variants": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "object",
-              "propertyNames": {
-                "type": "string"
-              },
-              "additionalProperties": {}
-            }
-          }
-        },
-        "required": [
-          "id",
-          "providerID",
-          "api",
-          "name",
-          "capabilities",
-          "cost",
-          "limit",
-          "status",
-          "options",
-          "headers",
-          "release_date"
-        ]
-      },
-      "Provider": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["env", "config", "custom", "api"]
-          },
-          "env": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "key": {
-            "type": "string"
-          },
-          "options": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "models": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "$ref": "#/components/schemas/Model"
-            }
-          }
-        },
-        "required": ["id", "name", "source", "env", "options", "models"]
-      },
-      "RuntimeReloadScope": {
-        "type": "string",
-        "enum": ["auto", "global", "project"]
-      },
-      "ControlProfileSummary": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "enum": ["guarded", "autonomous", "full_access"]
-          },
-          "label": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          }
-        },
-        "required": ["id", "label", "description"]
-      },
-      "EffectiveProfileResult": {
-        "type": "object",
-        "properties": {
-          "profileId": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["agent", "config", "default"]
-          },
-          "configProfile": {
-            "type": "string"
-          },
-          "agentProfile": {
-            "type": "string"
-          },
-          "agentName": {
-            "type": "string"
-          }
-        },
-        "required": ["profileId", "label", "source"]
-      },
-      "SandboxStatus": {
-        "type": "object",
-        "properties": {
-          "platform": {
-            "type": "string"
-          },
-          "available": {
-            "type": "boolean"
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "supported": {
-            "type": "boolean"
-          }
-        },
-        "required": ["platform", "available", "backend", "supported"]
-      },
-      "SandboxReadinessCheck": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "label": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["pass", "warn", "fail"]
-          },
-          "detail": {
-            "type": "string"
-          },
-          "recovery": {
-            "type": "object",
-            "properties": {
-              "action": {
-                "type": "string"
-              },
-              "label": {
-                "type": "string"
-              },
-              "command": {
-                "type": "string"
-              }
-            },
-            "required": ["action", "label", "command"]
-          }
-        },
-        "required": ["id", "label", "status", "detail"]
-      },
-      "SandboxReadiness": {
-        "type": "object",
-        "properties": {
-          "platform": {
-            "type": "string",
-            "enum": ["macos", "linux", "windows", "unsupported"]
-          },
-          "backend": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "ready": {
-            "type": "boolean"
-          },
-          "checks": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/SandboxReadinessCheck"
-            }
-          },
-          "summary": {
-            "type": "string"
-          }
-        },
-        "required": ["platform", "backend", "ready", "checks", "summary"]
-      },
-      "ToolIDs": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "ToolListItem": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "parameters": {}
-        },
-        "required": ["id", "description", "parameters"]
-      },
-      "ToolList": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/ToolListItem"
-        }
-      },
-      "Path": {
+      "ScopeBootstrapPath": {
         "type": "object",
         "properties": {
           "home": {
@@ -27234,167 +26774,125 @@
         },
         "required": ["home", "state", "config", "worktree", "directory"]
       },
-      "Worktree": {
+      "Command": {
         "type": "object",
         "properties": {
-          "id": {
-            "type": "string"
-          },
           "name": {
             "type": "string"
           },
-          "branch": {
+          "description": {
             "type": "string"
           },
-          "path": {
-            "type": "string"
+          "kind": {
+            "default": "prompt",
+            "type": "string",
+            "enum": ["prompt", "action"]
           },
-          "scopeID": {
-            "type": "string"
+          "surfaces": {
+            "default": ["web", "cli"],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["web", "cli", "channel"]
+            }
           },
-          "head": {
-            "type": "string"
-          },
-          "baseRef": {
-            "type": "string"
-          },
-          "baseRevision": {
-            "type": "string"
-          },
-          "resolvedBaseCommit": {
-            "type": "string"
-          },
-          "detached": {
+          "promptVisible": {
+            "default": true,
             "type": "boolean"
           },
-          "bare": {
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "mcp": {
             "type": "boolean"
           },
-          "isMain": {
-            "type": "boolean"
+          "source": {
+            "type": "string",
+            "enum": ["command", "mcp", "skill"]
           },
-          "managed": {
-            "type": "boolean"
+          "action": {
+            "type": "string"
           },
-          "stale": {
-            "type": "boolean"
-          },
-          "dirty": {
-            "type": "boolean"
-          },
-          "diskBytes": {
-            "type": "number"
-          },
-          "owner": {
+          "template": {
             "anyOf": [
               {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "session"
-                  },
-                  "sessionID": {
-                    "type": "string"
-                  }
-                },
-                "required": ["type", "sessionID"]
+                "type": "string"
               },
               {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "superplan"
-                  },
-                  "runID": {
-                    "type": "string",
-                    "pattern": "^spr.*"
-                  },
-                  "nodeID": {
-                    "type": "string",
-                    "pattern": "^spn.*"
-                  },
-                  "mergeID": {
-                    "type": "string",
-                    "pattern": "^spm.*"
-                  }
-                },
-                "required": ["type", "runID"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "user"
-                  }
-                },
-                "required": ["type"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "type": {
-                    "type": "string",
-                    "const": "external"
-                  }
-                },
-                "required": ["type"]
+                "type": "string"
               }
             ]
           },
-          "bindings": {
+          "hints": {
             "type": "array",
             "items": {
               "type": "string"
             }
-          },
-          "lifecycle": {
-            "type": "string",
-            "enum": ["active", "detached", "gc_candidate", "deleted"]
-          },
-          "createdAt": {
-            "type": "number"
-          },
-          "updatedAt": {
-            "type": "number"
-          },
-          "lastUsedAt": {
-            "type": "number"
-          },
-          "setupFailed": {
-            "type": "boolean"
-          },
-          "setupError": {
-            "type": "string"
           }
         },
-        "required": ["id", "name", "path", "scopeID"]
+        "required": ["name", "hints"]
       },
-      "WorktreeCreateInput": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
+      "SessionStatus": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "idle"
+              }
+            },
+            "required": ["type"]
           },
-          "sessionID": {
-            "type": "string"
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "retry"
+              },
+              "attempt": {
+                "type": "number"
+              },
+              "message": {
+                "type": "string"
+              },
+              "next": {
+                "type": "number"
+              }
+            },
+            "required": ["type", "attempt", "message", "next"]
           },
-          "baseRef": {
-            "default": "current",
-            "type": "string",
-            "enum": ["current", "fresh"]
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "busy"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": ["type"]
           },
-          "baseRevision": {
-            "type": "string",
-            "minLength": 1
-          },
-          "bind": {
-            "default": true,
-            "type": "boolean"
+          {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "const": "recovering"
+              },
+              "description": {
+                "type": "string"
+              }
+            },
+            "required": ["type"]
           }
-        }
+        ]
       },
       "SessionScope": {
         "type": "object",
@@ -27487,31 +26985,6 @@
         },
         "required": ["file", "additions", "deletions"],
         "additionalProperties": false
-      },
-      "PermissionAction": {
-        "type": "string",
-        "enum": ["allow", "deny", "ask"]
-      },
-      "PermissionRule": {
-        "type": "object",
-        "properties": {
-          "permission": {
-            "type": "string"
-          },
-          "pattern": {
-            "type": "string"
-          },
-          "action": {
-            "$ref": "#/components/schemas/PermissionAction"
-          }
-        },
-        "required": ["permission", "pattern", "action"]
-      },
-      "PermissionRuleset": {
-        "type": "array",
-        "items": {
-          "$ref": "#/components/schemas/PermissionRule"
-        }
       },
       "SessionCompletionNotice": {
         "default": {
@@ -28232,6 +27705,1663 @@
         },
         "required": ["id", "scope", "title", "version", "time"]
       },
+      "ScopeBootstrapSessions": {
+        "type": "object",
+        "properties": {
+          "data": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Session"
+            }
+          },
+          "total": {
+            "type": "number"
+          },
+          "offset": {
+            "type": "number"
+          },
+          "limit": {
+            "type": "number"
+          }
+        },
+        "required": ["data", "total", "offset", "limit"]
+      },
+      "MCPStatusUninitialized": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "uninitialized"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusStarting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "starting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusConnecting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "connecting"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusListingTools": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "listing_tools"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusConnected": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "connected"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusReconnecting": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "reconnecting"
+          },
+          "attempt": {
+            "type": "number"
+          },
+          "maxAttempts": {
+            "type": "number"
+          }
+        },
+        "required": ["status", "attempt", "maxAttempts"]
+      },
+      "MCPStatusFailed": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "failed"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "error"]
+      },
+      "MCPStatusDisabled": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "disabled"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusNeedsAuth": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "needs_auth"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatusNeedsClientRegistration": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "needs_client_registration"
+          },
+          "error": {
+            "type": "string"
+          }
+        },
+        "required": ["status", "error"]
+      },
+      "MCPStatusStopping": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "stopping"
+          }
+        },
+        "required": ["status"]
+      },
+      "MCPStatus": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/MCPStatusUninitialized"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStarting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusConnecting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusListingTools"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusConnected"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusReconnecting"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusFailed"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusDisabled"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusNeedsAuth"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusNeedsClientRegistration"
+          },
+          {
+            "$ref": "#/components/schemas/MCPStatusStopping"
+          }
+        ]
+      },
+      "CortexTask": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^ctx.*"
+          },
+          "sessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "parentSessionID": {
+            "type": "string",
+            "pattern": "^ses.*"
+          },
+          "parentMessageID": {
+            "type": "string",
+            "pattern": "^msg.*"
+          },
+          "description": {
+            "type": "string"
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "agent": {
+            "type": "string"
+          },
+          "model": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              }
+            },
+            "required": ["providerID", "modelID"]
+          },
+          "executionRole": {
+            "type": "string",
+            "enum": ["primary", "delegated_subagent"]
+          },
+          "category": {
+            "type": "string"
+          },
+          "dagNodeId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
+          },
+          "startedAt": {
+            "type": "number"
+          },
+          "completedAt": {
+            "type": "number"
+          },
+          "error": {
+            "type": "string"
+          },
+          "progress": {
+            "type": "object",
+            "properties": {
+              "toolCalls": {
+                "type": "number"
+              },
+              "lastTool": {
+                "type": "string"
+              },
+              "lastToolStatus": {
+                "type": "string"
+              },
+              "lastTitle": {
+                "type": "string"
+              },
+              "lastPartId": {
+                "type": "string"
+              },
+              "lastUpdate": {
+                "type": "number"
+              },
+              "lastMessage": {
+                "type": "string"
+              },
+              "recentTools": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "tool": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "number"
+                    }
+                  },
+                  "required": ["id", "tool", "status", "updatedAt"]
+                }
+              }
+            },
+            "required": ["toolCalls", "lastUpdate"]
+          },
+          "notifyParentOnComplete": {
+            "type": "boolean"
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["visible", "hidden"]
+          },
+          "tools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "outputConfig": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  }
+                }
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  }
+                },
+                "required": ["mode"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "schema": {
+                    "type": "object",
+                    "propertyNames": {
+                      "type": "string"
+                    },
+                    "additionalProperties": {}
+                  },
+                  "maxRepairTurns": {
+                    "anyOf": [
+                      {
+                        "type": "number",
+                        "const": 0
+                      },
+                      {
+                        "type": "number",
+                        "const": 1
+                      },
+                      {
+                        "type": "number",
+                        "const": 2
+                      },
+                      {
+                        "type": "number",
+                        "const": 3
+                      }
+                    ]
+                  }
+                },
+                "required": ["mode", "schema"]
+              }
+            ]
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "summary"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "final_response"
+                  },
+                  "value": {
+                    "type": "string"
+                  }
+                },
+                "required": ["mode", "value"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "mode": {
+                    "type": "string",
+                    "const": "structured"
+                  },
+                  "value": {}
+                },
+                "required": ["mode", "value"]
+              }
+            ]
+          },
+          "owner": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginGeneration": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "pluginGeneration", "scopeId", "correlationId"]
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "inputTokens": {
+                "type": "number"
+              },
+              "outputTokens": {
+                "type": "number"
+              },
+              "reasoningTokens": {
+                "type": "number"
+              },
+              "cacheReadTokens": {
+                "type": "number"
+              },
+              "cacheWriteTokens": {
+                "type": "number"
+              },
+              "cost": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "inputTokens",
+              "outputTokens",
+              "reasoningTokens",
+              "cacheReadTokens",
+              "cacheWriteTokens",
+              "cost"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "sessionID",
+          "parentSessionID",
+          "parentMessageID",
+          "description",
+          "prompt",
+          "agent",
+          "status",
+          "startedAt"
+        ]
+      },
+      "LSPStatus": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "root": {
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "connected"
+              },
+              {
+                "type": "string",
+                "const": "error"
+              }
+            ]
+          }
+        },
+        "required": ["id", "name", "root", "status"]
+      },
+      "VcsInfo": {
+        "type": "object",
+        "properties": {
+          "branch": {
+            "type": "string"
+          }
+        },
+        "required": ["branch"]
+      },
+      "ScopeBootstrapFieldError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "ScopeBootstrapResponse": {
+        "type": "object",
+        "properties": {
+          "scopeID": {
+            "type": "string"
+          },
+          "provider": {
+            "$ref": "#/components/schemas/ProviderListResponse"
+          },
+          "agent": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Agent"
+            }
+          },
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "path": {
+            "$ref": "#/components/schemas/ScopeBootstrapPath"
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Command"
+            }
+          },
+          "sessionStatus": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SessionStatus"
+            }
+          },
+          "sessions": {
+            "$ref": "#/components/schemas/ScopeBootstrapSessions"
+          },
+          "mcp": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MCPStatus"
+            }
+          },
+          "cortex": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CortexTask"
+            }
+          },
+          "agenda": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgendaItem"
+            }
+          },
+          "lsp": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LSPStatus"
+            }
+          },
+          "vcs": {
+            "$ref": "#/components/schemas/VcsInfo"
+          },
+          "_errors": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ScopeBootstrapFieldError"
+            }
+          }
+        },
+        "required": ["scopeID", "provider", "agent", "config"]
+      },
+      "Pty": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^pty.*"
+          },
+          "title": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "cwd": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["running", "exited"]
+          },
+          "pid": {
+            "type": "number"
+          }
+        },
+        "required": ["id", "title", "command", "args", "cwd", "status", "pid"]
+      },
+      "ConfigInstructionsInfo": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["override", "primary", "empty"]
+          },
+          "sourceFilename": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": ["AGENTS.override.md", "AGENTS.md"]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "editableFilename": {
+            "type": "string",
+            "const": "AGENTS.override.md"
+          },
+          "hasOverride": {
+            "type": "boolean"
+          },
+          "maxBytes": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["content", "source", "sourceFilename", "editableFilename", "hasOverride", "maxBytes"]
+      },
+      "ConfigInstructionsUpdateInput": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string"
+          }
+        },
+        "required": ["content"]
+      },
+      "ConfigDomainSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "library",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime",
+              "github"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "ownedKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "mergePolicy": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "reloadTargets": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "uiSection": {
+            "type": "string"
+          },
+          "importable": {
+            "type": "boolean"
+          },
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "label",
+          "path",
+          "ownedKeys",
+          "mergePolicy",
+          "reloadTargets",
+          "uiSection",
+          "importable"
+        ]
+      },
+      "ConfigDomainUpdateInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          }
+        },
+        "required": ["config"]
+      },
+      "ConfigDomainOpenResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "path"]
+      },
+      "ConfigDomainOpenError": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": false
+          },
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["success", "error", "message"]
+      },
+      "ConfigImportScope": {
+        "type": "string",
+        "enum": ["global", "project"]
+      },
+      "ConfigImportDiagnostic": {
+        "type": "object",
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["warning", "info"]
+          },
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": ["severity", "code", "message"]
+      },
+      "ConfigDomainImportChange": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["add", "modify", "remove"]
+          },
+          "before": {},
+          "after": {},
+          "conflict": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigImportDiagnostic"
+            }
+          }
+        },
+        "required": ["key", "type", "conflict", "diagnostics"]
+      },
+      "ConfigDomainImportDomainPlan": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": [
+              "general",
+              "models",
+              "providers",
+              "library",
+              "mcp",
+              "plugins",
+              "agents",
+              "commands",
+              "permissions",
+              "channels",
+              "holos",
+              "email",
+              "runtime",
+              "github"
+            ]
+          },
+          "filename": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "revision": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
+          }
+        },
+        "required": ["id", "filename", "path", "mode", "revision", "changes"]
+      },
+      "ConfigDomainImportPlan": {
+        "type": "object",
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "domains": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportDomainPlan"
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConfigDomainImportChange"
+            }
+          }
+        },
+        "required": ["scope", "scopeID", "source", "revision", "domains", "conflicts"]
+      },
+      "ConfigImportProjectScopeRequiredError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportProjectScopeRequiredError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportInvalidConfigError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "issues": {
+                "type": "array",
+                "items": {}
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportSourceTooLargeError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportSourceTooLargeError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "source": {
+                "type": "string"
+              },
+              "maxBytes": {
+                "type": "number"
+              }
+            },
+            "required": ["message", "source", "maxBytes"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigDomainImportPlanInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime",
+                "github"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["config"]
+      },
+      "RuntimeReloadTarget": {
+        "type": "string",
+        "enum": [
+          "config",
+          "skill",
+          "provider",
+          "agent",
+          "plugin",
+          "mcp",
+          "lsp",
+          "formatter",
+          "watcher",
+          "channel",
+          "holos",
+          "command",
+          "tool_registry",
+          "all"
+        ]
+      },
+      "RuntimeReloadFailure": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "recoverable": {
+            "type": "boolean"
+          }
+        },
+        "required": ["target", "message"]
+      },
+      "RuntimeReloadDiagnostic": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/RuntimeReloadTarget"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["error", "warning", "info"]
+          },
+          "message": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          }
+        },
+        "required": ["target", "severity", "message"]
+      },
+      "RuntimeReloadResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "requested": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "executed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "cascaded": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "changedFields": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "restartRequired": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "liveApplied": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadTarget"
+            }
+          },
+          "failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadFailure"
+            }
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuntimeReloadDiagnostic"
+            }
+          }
+        },
+        "required": [
+          "success",
+          "requested",
+          "executed",
+          "cascaded",
+          "changedFields",
+          "restartRequired",
+          "liveApplied",
+          "warnings",
+          "failed",
+          "failures",
+          "diagnostics"
+        ]
+      },
+      "ConfigDomainImportApplyResult": {
+        "type": "object",
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/ConfigDomainImportPlan"
+          },
+          "reload": {
+            "$ref": "#/components/schemas/RuntimeReloadResult"
+          }
+        },
+        "required": ["plan", "reload"]
+      },
+      "ConfigImportRevisionConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportRevisionConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "domains": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "general",
+                    "models",
+                    "providers",
+                    "library",
+                    "mcp",
+                    "plugins",
+                    "agents",
+                    "commands",
+                    "permissions",
+                    "channels",
+                    "holos",
+                    "email",
+                    "runtime",
+                    "github"
+                  ]
+                }
+              }
+            },
+            "required": ["message", "domains"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigImportLockedError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ConfigImportLockedError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "scope": {
+                "$ref": "#/components/schemas/ConfigImportScope"
+              }
+            },
+            "required": ["message", "scope"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "ConfigDomainImportApplyInput": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "only": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "general",
+                "models",
+                "providers",
+                "library",
+                "mcp",
+                "plugins",
+                "agents",
+                "commands",
+                "permissions",
+                "channels",
+                "holos",
+                "email",
+                "runtime",
+                "github"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": ["merge", "replace-domain", "append"]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ConfigImportScope"
+          },
+          "source": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "yes": {
+            "type": "boolean"
+          },
+          "force": {
+            "type": "boolean"
+          }
+        },
+        "required": ["config"]
+      },
+      "RuntimeReloadScope": {
+        "type": "string",
+        "enum": ["auto", "global", "project"]
+      },
+      "ControlProfileSummary": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "enum": ["guarded", "autonomous", "full_access"]
+          },
+          "label": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "label", "description"]
+      },
+      "EffectiveProfileResult": {
+        "type": "object",
+        "properties": {
+          "profileId": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["agent", "config", "default"]
+          },
+          "configProfile": {
+            "type": "string"
+          },
+          "agentProfile": {
+            "type": "string"
+          },
+          "agentName": {
+            "type": "string"
+          }
+        },
+        "required": ["profileId", "label", "source"]
+      },
+      "SandboxStatus": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "available": {
+            "type": "boolean"
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "supported": {
+            "type": "boolean"
+          }
+        },
+        "required": ["platform", "available", "backend", "supported"]
+      },
+      "SandboxReadinessCheck": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pass", "warn", "fail"]
+          },
+          "detail": {
+            "type": "string"
+          },
+          "recovery": {
+            "type": "object",
+            "properties": {
+              "action": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "command": {
+                "type": "string"
+              }
+            },
+            "required": ["action", "label", "command"]
+          }
+        },
+        "required": ["id", "label", "status", "detail"]
+      },
+      "SandboxReadiness": {
+        "type": "object",
+        "properties": {
+          "platform": {
+            "type": "string",
+            "enum": ["macos", "linux", "windows", "unsupported"]
+          },
+          "backend": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ready": {
+            "type": "boolean"
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SandboxReadinessCheck"
+            }
+          },
+          "summary": {
+            "type": "string"
+          }
+        },
+        "required": ["platform", "backend", "ready", "checks", "summary"]
+      },
+      "ToolIDs": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "ToolListItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "parameters": {}
+        },
+        "required": ["id", "description", "parameters"]
+      },
+      "ToolList": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ToolListItem"
+        }
+      },
+      "Path": {
+        "type": "object",
+        "properties": {
+          "home": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          },
+          "config": {
+            "type": "string"
+          },
+          "worktree": {
+            "type": "string"
+          },
+          "directory": {
+            "type": "string"
+          }
+        },
+        "required": ["home", "state", "config", "worktree", "directory"]
+      },
+      "Worktree": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "scopeID": {
+            "type": "string"
+          },
+          "head": {
+            "type": "string"
+          },
+          "baseRef": {
+            "type": "string"
+          },
+          "baseRevision": {
+            "type": "string"
+          },
+          "resolvedBaseCommit": {
+            "type": "string"
+          },
+          "detached": {
+            "type": "boolean"
+          },
+          "bare": {
+            "type": "boolean"
+          },
+          "isMain": {
+            "type": "boolean"
+          },
+          "managed": {
+            "type": "boolean"
+          },
+          "stale": {
+            "type": "boolean"
+          },
+          "dirty": {
+            "type": "boolean"
+          },
+          "diskBytes": {
+            "type": "number"
+          },
+          "owner": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "session"
+                  },
+                  "sessionID": {
+                    "type": "string"
+                  }
+                },
+                "required": ["type", "sessionID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "superplan"
+                  },
+                  "runID": {
+                    "type": "string",
+                    "pattern": "^spr.*"
+                  },
+                  "nodeID": {
+                    "type": "string",
+                    "pattern": "^spn.*"
+                  },
+                  "mergeID": {
+                    "type": "string",
+                    "pattern": "^spm.*"
+                  }
+                },
+                "required": ["type", "runID"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "user"
+                  }
+                },
+                "required": ["type"]
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "type": {
+                    "type": "string",
+                    "const": "external"
+                  }
+                },
+                "required": ["type"]
+              }
+            ]
+          },
+          "bindings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["active", "detached", "gc_candidate", "deleted"]
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "lastUsedAt": {
+            "type": "number"
+          },
+          "setupFailed": {
+            "type": "boolean"
+          },
+          "setupError": {
+            "type": "string"
+          }
+        },
+        "required": ["id", "name", "path", "scopeID"]
+      },
+      "WorktreeCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "sessionID": {
+            "type": "string"
+          },
+          "baseRef": {
+            "default": "current",
+            "type": "string",
+            "enum": ["current", "fresh"]
+          },
+          "baseRevision": {
+            "type": "string",
+            "minLength": 1
+          },
+          "bind": {
+            "default": true,
+            "type": "boolean"
+          }
+        }
+      },
       "WorktreeEnterInput": {
         "type": "object",
         "properties": {
@@ -28260,15 +29390,6 @@
         },
         "required": ["target"]
       },
-      "VcsInfo": {
-        "type": "object",
-        "properties": {
-          "branch": {
-            "type": "string"
-          }
-        },
-        "required": ["branch"]
-      },
       "SessionNavResponse": {
         "type": "object",
         "properties": {
@@ -28293,65 +29414,6 @@
           }
         },
         "required": ["items", "nextCursor", "total"]
-      },
-      "SessionStatus": {
-        "anyOf": [
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "idle"
-              }
-            },
-            "required": ["type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "retry"
-              },
-              "attempt": {
-                "type": "number"
-              },
-              "message": {
-                "type": "string"
-              },
-              "next": {
-                "type": "number"
-              }
-            },
-            "required": ["type", "attempt", "message", "next"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "busy"
-              },
-              "description": {
-                "type": "string"
-              }
-            },
-            "required": ["type"]
-          },
-          {
-            "type": "object",
-            "properties": {
-              "type": {
-                "type": "string",
-                "const": "recovering"
-              },
-              "description": {
-                "type": "string"
-              }
-            },
-            "required": ["type"]
-          }
-        ]
       },
       "SessionChildCursor": {
         "type": "object",
@@ -30803,6 +31865,80 @@
         },
         "required": ["restoredFiles", "patchPartIDs"]
       },
+      "SessionVolatileState": {
+        "type": "object",
+        "properties": {
+          "inbox": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SessionInboxItem"
+            }
+          },
+          "todo": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Todo"
+            }
+          },
+          "dag": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DagNode"
+            }
+          }
+        },
+        "required": ["inbox", "todo", "dag"]
+      },
+      "SessionVolatileError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": ["SESSION_NOT_FOUND", "SESSION_ARCHIVED", "RESOURCE_FAILED"]
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"]
+      },
+      "SessionVolatileBatchResponse": {
+        "type": "object",
+        "properties": {
+          "sessions": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SessionVolatileState"
+            }
+          },
+          "errors": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SessionVolatileError"
+            }
+          }
+        },
+        "required": ["sessions"]
+      },
+      "SessionVolatileBatchInput": {
+        "type": "object",
+        "properties": {
+          "sessionIDs": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": ["sessionIDs"]
+      },
       "PermissionRequest": {
         "type": "object",
         "properties": {
@@ -30992,304 +32128,6 @@
         },
         "required": ["rootSessionID", "sessions", "sessionCount", "messageCount", "warnings"]
       },
-      "CortexTask": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "pattern": "^ctx.*"
-          },
-          "sessionID": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "parentSessionID": {
-            "type": "string",
-            "pattern": "^ses.*"
-          },
-          "parentMessageID": {
-            "type": "string",
-            "pattern": "^msg.*"
-          },
-          "description": {
-            "type": "string"
-          },
-          "prompt": {
-            "type": "string"
-          },
-          "agent": {
-            "type": "string"
-          },
-          "model": {
-            "type": "object",
-            "properties": {
-              "providerID": {
-                "type": "string"
-              },
-              "modelID": {
-                "type": "string"
-              }
-            },
-            "required": ["providerID", "modelID"]
-          },
-          "executionRole": {
-            "type": "string",
-            "enum": ["primary", "delegated_subagent"]
-          },
-          "category": {
-            "type": "string"
-          },
-          "dagNodeId": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["queued", "running", "completed", "error", "cancelled", "interrupted"]
-          },
-          "startedAt": {
-            "type": "number"
-          },
-          "completedAt": {
-            "type": "number"
-          },
-          "error": {
-            "type": "string"
-          },
-          "progress": {
-            "type": "object",
-            "properties": {
-              "toolCalls": {
-                "type": "number"
-              },
-              "lastTool": {
-                "type": "string"
-              },
-              "lastToolStatus": {
-                "type": "string"
-              },
-              "lastTitle": {
-                "type": "string"
-              },
-              "lastPartId": {
-                "type": "string"
-              },
-              "lastUpdate": {
-                "type": "number"
-              },
-              "lastMessage": {
-                "type": "string"
-              },
-              "recentTools": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "properties": {
-                    "id": {
-                      "type": "string"
-                    },
-                    "tool": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    },
-                    "title": {
-                      "type": "string"
-                    },
-                    "updatedAt": {
-                      "type": "number"
-                    }
-                  },
-                  "required": ["id", "tool", "status", "updatedAt"]
-                }
-              }
-            },
-            "required": ["toolCalls", "lastUpdate"]
-          },
-          "notifyParentOnComplete": {
-            "type": "boolean"
-          },
-          "visibility": {
-            "type": "string",
-            "enum": ["visible", "hidden"]
-          },
-          "tools": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {
-              "type": "boolean"
-            }
-          },
-          "outputConfig": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "summary"
-                  }
-                }
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "final_response"
-                  }
-                },
-                "required": ["mode"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "structured"
-                  },
-                  "schema": {
-                    "type": "object",
-                    "propertyNames": {
-                      "type": "string"
-                    },
-                    "additionalProperties": {}
-                  },
-                  "maxRepairTurns": {
-                    "anyOf": [
-                      {
-                        "type": "number",
-                        "const": 0
-                      },
-                      {
-                        "type": "number",
-                        "const": 1
-                      },
-                      {
-                        "type": "number",
-                        "const": 2
-                      },
-                      {
-                        "type": "number",
-                        "const": 3
-                      }
-                    ]
-                  }
-                },
-                "required": ["mode", "schema"]
-              }
-            ]
-          },
-          "output": {
-            "anyOf": [
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "summary"
-                  },
-                  "value": {
-                    "type": "string"
-                  }
-                },
-                "required": ["mode", "value"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "final_response"
-                  },
-                  "value": {
-                    "type": "string"
-                  }
-                },
-                "required": ["mode", "value"]
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "mode": {
-                    "type": "string",
-                    "const": "structured"
-                  },
-                  "value": {}
-                },
-                "required": ["mode", "value"]
-              }
-            ]
-          },
-          "owner": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "pluginGeneration": {
-                "type": "string"
-              },
-              "scopeId": {
-                "type": "string"
-              },
-              "correlationId": {
-                "type": "string"
-              }
-            },
-            "required": ["pluginId", "pluginGeneration", "scopeId", "correlationId"]
-          },
-          "timeoutMs": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "usage": {
-            "type": "object",
-            "properties": {
-              "inputTokens": {
-                "type": "number"
-              },
-              "outputTokens": {
-                "type": "number"
-              },
-              "reasoningTokens": {
-                "type": "number"
-              },
-              "cacheReadTokens": {
-                "type": "number"
-              },
-              "cacheWriteTokens": {
-                "type": "number"
-              },
-              "cost": {
-                "type": "number"
-              }
-            },
-            "required": [
-              "inputTokens",
-              "outputTokens",
-              "reasoningTokens",
-              "cacheReadTokens",
-              "cacheWriteTokens",
-              "cost"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "sessionID",
-          "parentSessionID",
-          "parentMessageID",
-          "description",
-          "prompt",
-          "agent",
-          "status",
-          "startedAt"
-        ]
-      },
       "CortexConcurrencyStatus": {
         "type": "object",
         "properties": {
@@ -31362,209 +32200,6 @@
           "running",
           "queued"
         ]
-      },
-      "Command": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "kind": {
-            "default": "prompt",
-            "type": "string",
-            "enum": ["prompt", "action"]
-          },
-          "surfaces": {
-            "default": ["web", "cli"],
-            "type": "array",
-            "items": {
-              "type": "string",
-              "enum": ["web", "cli", "channel"]
-            }
-          },
-          "promptVisible": {
-            "default": true,
-            "type": "boolean"
-          },
-          "agent": {
-            "type": "string"
-          },
-          "model": {
-            "type": "string"
-          },
-          "mcp": {
-            "type": "boolean"
-          },
-          "source": {
-            "type": "string",
-            "enum": ["command", "mcp", "skill"]
-          },
-          "action": {
-            "type": "string"
-          },
-          "template": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "string"
-              }
-            ]
-          },
-          "hints": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          }
-        },
-        "required": ["name", "hints"]
-      },
-      "ProviderRecommendation": {
-        "type": "object",
-        "properties": {
-          "level": {
-            "type": "string",
-            "enum": ["featured", "recommended", "standard"]
-          },
-          "rank": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
-          },
-          "headline": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "cta": {
-            "type": "object",
-            "properties": {
-              "kind": {
-                "type": "string",
-                "const": "external"
-              },
-              "label": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              }
-            },
-            "required": ["kind", "label", "url"],
-            "additionalProperties": false
-          },
-          "defaultModel": {
-            "type": "string"
-          }
-        },
-        "required": ["level"],
-        "additionalProperties": false
-      },
-      "ProviderProfileMetadata": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "displayName": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "signupUrl": {
-            "type": "string"
-          },
-          "authKind": {
-            "type": "string"
-          },
-          "environment": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "recommendation": {
-            "$ref": "#/components/schemas/ProviderRecommendation"
-          }
-        },
-        "required": ["id", "name"],
-        "additionalProperties": false
-      },
-      "ProviderAuthHealth": {
-        "type": "object",
-        "properties": {
-          "providerID": {
-            "type": "string"
-          },
-          "status": {
-            "type": "string",
-            "enum": ["connected", "not_configured", "exhausted", "action_required"]
-          },
-          "recovery": {
-            "type": "string",
-            "enum": ["reconnect", "update_environment"]
-          },
-          "authKind": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "number"
-          },
-          "cooldownUntil": {
-            "type": "number"
-          },
-          "resetAt": {
-            "type": "number"
-          },
-          "failureCode": {
-            "type": "string"
-          }
-        },
-        "required": ["providerID", "status"]
-      },
-      "ProviderRuntimeAvailability": {
-        "type": "object",
-        "properties": {
-          "providerID": {
-            "type": "string"
-          },
-          "available": {
-            "type": "boolean"
-          },
-          "reason": {
-            "type": "string",
-            "enum": [
-              "connected",
-              "not_connected",
-              "disabled",
-              "no_models",
-              "authentication_required",
-              "exhausted",
-              "fallback_unverified"
-            ]
-          },
-          "healthCheck": {
-            "type": "string",
-            "enum": ["models", "none"]
-          },
-          "modelCount": {
-            "type": "number"
-          }
-        },
-        "required": ["providerID", "available", "modelCount"]
       },
       "AccountUsageWindow": {
         "type": "object",
@@ -33728,6 +34363,42 @@
           },
           "auditTaskID": {
             "type": "string"
+          },
+          "stopRequest": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "completed": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "remaining": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "requestedAt": {
+                "type": "number"
+              },
+              "requesterSessionID": {
+                "type": "string"
+              },
+              "requesterMessageID": {
+                "type": "string"
+              }
+            },
+            "required": ["summary", "requestedAt", "requesterSessionID", "requesterMessageID"]
           },
           "scopeID": {
             "type": "string"
@@ -36387,122 +37058,6 @@
         ],
         "additionalProperties": false
       },
-      "ExternalAgentInfo": {
-        "type": "object",
-        "properties": {
-          "adapter": {
-            "type": "string"
-          },
-          "path": {
-            "type": "string"
-          },
-          "version": {
-            "type": "string"
-          },
-          "config": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          }
-        },
-        "required": ["adapter"]
-      },
-      "Agent": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "mode": {
-            "type": "string",
-            "enum": ["subagent", "primary", "all"]
-          },
-          "native": {
-            "type": "boolean"
-          },
-          "hidden": {
-            "type": "boolean"
-          },
-          "visibleTo": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "delegationGroups": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "topP": {
-            "type": "number"
-          },
-          "temperature": {
-            "type": "number"
-          },
-          "color": {
-            "type": "string"
-          },
-          "permission": {
-            "$ref": "#/components/schemas/PermissionRuleset"
-          },
-          "controlProfile": {
-            "type": "string",
-            "enum": ["guarded", "autonomous", "full_access"]
-          },
-          "model": {
-            "type": "object",
-            "properties": {
-              "modelID": {
-                "type": "string"
-              },
-              "providerID": {
-                "type": "string"
-              }
-            },
-            "required": ["modelID", "providerID"]
-          },
-          "modelRole": {
-            "$ref": "#/components/schemas/ModelRole"
-          },
-          "modelSource": {
-            "type": "string",
-            "enum": ["role", "explicit"]
-          },
-          "source": {
-            "type": "string",
-            "enum": ["builtin", "config", "plugin", "external"]
-          },
-          "prompt": {
-            "type": "string"
-          },
-          "options": {
-            "type": "object",
-            "propertyNames": {
-              "type": "string"
-            },
-            "additionalProperties": {}
-          },
-          "steps": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
-          },
-          "external": {
-            "$ref": "#/components/schemas/ExternalAgentInfo"
-          },
-          "defaultVariant": {
-            "type": "string"
-          }
-        },
-        "required": ["name", "mode", "permission", "options"]
-      },
       "ModelRoleUsage": {
         "type": "object",
         "properties": {
@@ -36657,165 +37212,6 @@
         },
         "required": ["id", "field", "label", "summary", "fallbackChain", "usedBy"]
       },
-      "MCPStatusUninitialized": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "uninitialized"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusStarting": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "starting"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusConnecting": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "connecting"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusListingTools": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "listing_tools"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusConnected": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "connected"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusReconnecting": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "reconnecting"
-          },
-          "attempt": {
-            "type": "number"
-          },
-          "maxAttempts": {
-            "type": "number"
-          }
-        },
-        "required": ["status", "attempt", "maxAttempts"]
-      },
-      "MCPStatusFailed": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "failed"
-          },
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": ["status", "error"]
-      },
-      "MCPStatusDisabled": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "disabled"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusNeedsAuth": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "needs_auth"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatusNeedsClientRegistration": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "needs_client_registration"
-          },
-          "error": {
-            "type": "string"
-          }
-        },
-        "required": ["status", "error"]
-      },
-      "MCPStatusStopping": {
-        "type": "object",
-        "properties": {
-          "status": {
-            "type": "string",
-            "const": "stopping"
-          }
-        },
-        "required": ["status"]
-      },
-      "MCPStatus": {
-        "anyOf": [
-          {
-            "$ref": "#/components/schemas/MCPStatusUninitialized"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusStarting"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusConnecting"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusListingTools"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusConnected"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusReconnecting"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusFailed"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusDisabled"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusNeedsAuth"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusNeedsClientRegistration"
-          },
-          {
-            "$ref": "#/components/schemas/MCPStatusStopping"
-          }
-        ]
-      },
       "ChannelStatus": {
         "anyOf": [
           {
@@ -36893,33 +37289,6 @@
           }
         },
         "required": ["name", "uri", "client"]
-      },
-      "LSPStatus": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "root": {
-            "type": "string"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "type": "string",
-                "const": "connected"
-              },
-              {
-                "type": "string",
-                "const": "error"
-              }
-            ]
-          }
-        },
-        "required": ["id", "name", "root", "status"]
       },
       "FormatterStatus": {
         "type": "object",
@@ -38232,60 +38601,6 @@
         },
         "required": ["type", "properties"]
       },
-      "Event.plugin.event": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "plugin.event"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "pluginId": {
-                "type": "string"
-              },
-              "pluginVersion": {
-                "type": "string"
-              },
-              "generation": {
-                "type": "string"
-              },
-              "eventId": {
-                "type": "string"
-              },
-              "scopeId": {
-                "type": "string"
-              },
-              "sessionId": {
-                "type": "string"
-              },
-              "sequence": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "timestamp": {
-                "type": "integer",
-                "exclusiveMinimum": 0,
-                "maximum": 9007199254740991
-              },
-              "payload": {}
-            },
-            "required": [
-              "pluginId",
-              "pluginVersion",
-              "generation",
-              "eventId",
-              "scopeId",
-              "sequence",
-              "timestamp",
-              "payload"
-            ]
-          }
-        },
-        "required": ["type", "properties"]
-      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -38342,6 +38657,60 @@
               }
             },
             "required": ["tasks"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.plugin.event": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "plugin.event"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginVersion": {
+                "type": "string"
+              },
+              "generation": {
+                "type": "string"
+              },
+              "eventId": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              },
+              "sequence": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "timestamp": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "payload": {}
+            },
+            "required": [
+              "pluginId",
+              "pluginVersion",
+              "generation",
+              "eventId",
+              "scopeId",
+              "sequence",
+              "timestamp",
+              "payload"
+            ]
           }
         },
         "required": ["type", "properties"]
@@ -38937,9 +39306,6 @@
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.plugin.event"
-          },
-          {
             "$ref": "#/components/schemas/Event.cortex.task.created"
           },
           {
@@ -38947,6 +39313,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.plugin.event"
           },
           {
             "$ref": "#/components/schemas/Event.command.executed"
