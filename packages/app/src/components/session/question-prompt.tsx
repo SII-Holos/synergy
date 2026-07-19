@@ -24,6 +24,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [collapsed, setCollapsed] = createSignal(false)
   const [menuOpen, setMenuOpen] = createSignal(false)
+  let root: HTMLElement | undefined
 
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
@@ -119,10 +120,18 @@ export function QuestionPrompt(props: QuestionPromptProps) {
     const handleShortcut = (event: KeyboardEvent) => {
       const target = event.target
       const editable =
-        target instanceof Element && Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+        target instanceof Element &&
+        Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
+      const activeElement = document.activeElement
+      const scopeActive =
+        activeElement == null ||
+        activeElement === document.body ||
+        activeElement === document.documentElement ||
+        Boolean(root?.contains(activeElement))
       const index = questionOptionShortcutIndex({
         key: event.key,
         optionCount: options().length,
+        scopeActive,
         modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
         editable,
       })
@@ -138,7 +147,7 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   })
 
   return (
-    <section class="question-prompt-shell" aria-label={_(S.questionAria)}>
+    <section ref={root} class="question-prompt-shell" aria-label={_(S.questionAria)}>
       <Show when={collapsed()}>
         <button
           type="button"

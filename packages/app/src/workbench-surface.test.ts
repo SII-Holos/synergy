@@ -211,7 +211,7 @@ describe("workbench surface polarity", () => {
   })
 
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {
-    expect(questionPrompt).toContain('<section class="question-prompt-shell"')
+    expect(questionPrompt).toContain('class="question-prompt-shell"')
     expect(questionPrompt).toContain("question-prompt-option")
     expect(questionPrompt).toContain('class="question-prompt-option question-prompt-other-trigger"')
     expect(questionPrompt).toContain("question-prompt-skip")
@@ -233,6 +233,8 @@ describe("workbench surface polarity", () => {
     expect(questionPrompt).toContain("question-prompt-option-shortcut")
     expect(questionPrompt).toContain("question-prompt-meta")
     expect(questionPrompt).toContain('getSemanticIcon("action.more")')
+    expect(questionPrompt).toContain("scopeActive")
+    expect(questionPrompt).toContain("Boolean(root?.contains(activeElement))")
     expect(questionPrompt).not.toContain("question-prompt-header-actions")
     expect(questionPromptCss).toContain(".question-prompt-choice-hint")
     expect(questionPromptCss).toContain(".question-prompt-option-shortcut")
