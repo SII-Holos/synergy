@@ -11,7 +11,7 @@ export const SystemdUserService: DaemonService.Service = {
     await assertSystemdUserAvailable()
     await fs.mkdir(DaemonPaths.logs(), { recursive: true })
     await fs.mkdir(DaemonPaths.systemdUserDir(), { recursive: true })
-    await Bun.write(DaemonPaths.systemdUnit(spec.label), renderUnit(spec))
+    await Bun.write(DaemonPaths.systemdUnit(spec.label), renderSystemdUnit(spec))
     await systemctlUser(["daemon-reload"])
     await systemctlUser(["enable", "--now", spec.label + ".service"])
   },
@@ -73,7 +73,7 @@ export const SystemdUserService: DaemonService.Service = {
   },
 }
 
-function renderUnit(spec: DaemonService.InstallSpec) {
+export function renderSystemdUnit(spec: DaemonService.InstallSpec) {
   const execStart = renderExecStart(spec.command)
   const environment = Object.entries(spec.env)
     .filter((entry) => entry[1] !== undefined)
@@ -91,6 +91,7 @@ ExecStart=${execStart}
 Restart=on-failure
 RestartSec=2
 KillMode=control-group
+OOMPolicy=continue
 TimeoutStartSec=30
 TimeoutStopSec=30
 SuccessExitStatus=0 143
