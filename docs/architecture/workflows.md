@@ -46,9 +46,9 @@ armed → running → auditing → completed
 armed/running/waiting/auditing → failed | cancelled
 ```
 
-The execution session is marked with `loopRole: "execution"`; the hidden review child is marked with `loopRole: "audit"`. Only the execution session can call `blueprint_loop_stop`, and only the recorded audit session can approve or reject.
+The execution session is marked with `loopRole: "execution"`; the visible Cortex review child is marked with `loopRole: "audit"`. Only the execution session can call `blueprint_loop_stop`, and only the recorded audit session can approve or reject.
 
-`blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the hidden Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. Rejection increments the audit attempt record, clears the accepted stop intent, returns the loop to `running`, and delivers instructions. Approval marks it `completed` and emits a terminal loop event.
+`blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the visible Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Rejection increments the audit attempt record, clears the accepted stop intent, returns the loop to `running`, and delivers instructions. Approval marks it `completed` and emits a terminal loop event.
 
 For user-owned loops, approval returns a completion notice to the execution session. For Lattice-owned loops, approval tells the session to analyze and record the step result instead of stopping at a user-facing summary.
 
@@ -56,7 +56,7 @@ For user-owned loops, approval returns a completion notice to the execution sess
 
 Light Loop stores its task description directly on the session workflow. A stop request first records the executor's summary, claimed completed work, evidence, limitations, and request identity without reviewer IDs.
 
-After the execution-session lease is released, the Light Loop continuation prepares a hidden reviewer, durably binds its task and session IDs to the stop request, then starts it. Repeated `loop_stop` calls are idempotent while either the unbound stop intent or bound review is pending.
+After the execution-session lease is released, the Light Loop continuation prepares a visible Cortex reviewer, durably binds its task and session IDs to the stop request, then starts it. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Repeated `loop_stop` calls are idempotent while either the unbound stop intent or bound review is pending.
 
 The `lightloop-reviewer` has exclusive access to `light_loop_approve` and `light_loop_reject` for its parent stop request. Approval clears the workflow even though the review child is running. Rejection clears `stopRequest`, records attempt metadata, and delivers the reason, remaining items, and concrete instructions to the execution session.
 The active task description may be updated without restarting the workflow; the next model step re-reads the session and uses the revised task. The product surface permits editing only while the session is idle, and the service rejects updates while a stop request is under review. Light Loop cancellation is idempotent and uses the shared session-abort path to stop the active turn and descendant Cortex review tasks before conditionally clearing the workflow.

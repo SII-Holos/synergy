@@ -49,7 +49,7 @@ Use `Cortex.launch()` for new child-agent work. Cortex owns:
 
 Do not manually combine `Session.create()` and `SessionInvoke.invoke()` for ordinary delegation. Existing specialized flows such as `look_at` and Chronicler predate or bypass parts of the Cortex contract; treat them as cases to justify or converge when touched, not templates for new child work.
 
-Use a hidden reviewer through Cortex for decisions that must be independently auditable. Do not replace a reviewer task with a sessionless classifier merely because both call a model.
+Use Cortex for decisions that must be independently auditable. Choose task visibility from the product contract: make reviewers visible when users should inspect their progress through ordinary task surfaces, and use hidden visibility only when the review is strictly internal implementation work. Do not replace a reviewer task with a sessionless classifier merely because both call a model.
 
 ## Direct AI SDK Calls
 
