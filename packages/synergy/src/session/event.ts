@@ -39,6 +39,13 @@ export const SessionEvent = {
       status: StatusInfo,
     }),
   ),
+  Completion: BusEvent.define(
+    "session.completion",
+    z.object({
+      sessionID: z.string(),
+      unreadCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    }),
+  ),
   Idle: BusEvent.define(
     "session.idle",
     z.object({

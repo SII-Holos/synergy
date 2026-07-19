@@ -3959,6 +3959,18 @@ msgstr "查看全部 {count} 条笔记"
 msgid "app.note.untitled"
 msgstr "未命名"
 
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.error.fallback"
+msgstr "发生错误"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.response.ready"
+msgstr "响应已就绪"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.session.error"
+msgstr "会话错误"
+
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "浏览器"

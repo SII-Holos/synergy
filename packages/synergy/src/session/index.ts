@@ -610,13 +610,20 @@ export namespace Session {
     await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
   }
-  export async function recordCompletionNotice(id: string) {
-    return update(id, (draft) => {
+  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+    let unreadCount: number | undefined
+    const result = await update(id, (draft) => {
       if (draft.time.archived || draft.completionNotice.silent) return
-      const unreadCount = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+      const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+      const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
       draft.completionNotice.unread = true
-      draft.completionNotice.unreadCount = Math.min(Number.MAX_SAFE_INTEGER, unreadCount + 1)
+      draft.completionNotice.unreadCount = next
+      if (next !== current) unreadCount = next
     })
+    if (unreadCount !== undefined && options?.publishEvent !== false) {
+      await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+    }
+    return result
   }
 
   export async function update(id: string, editor: (session: Info) => void) {

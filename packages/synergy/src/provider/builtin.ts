@@ -73,6 +73,12 @@ export function registerBuiltinProviderProfiles() {
     fallbackModels: [...CodexProvider.DEFAULT_MODEL_IDS],
     liveModelDiscovery: "codex",
     usageKind: "codex",
+    modelCatalogIdentity: ({ auth }) => {
+      if (auth?.type !== "oauth") return undefined
+      const accountID = CodexProvider.chatGPTAccountID(auth.access)
+      if (!accountID) return undefined
+      return `${CodexProvider.runtimeBaseURL()}:${accountID}`
+    },
     runtimeOptions: async () => {
       const access = await CodexProvider.resolveToken({ allowMissing: true }).catch(() => undefined)
       if (!access) return {}

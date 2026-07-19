@@ -136,6 +136,11 @@ export namespace ProviderProfile {
     getModel?(input: ModelFactoryInput): Promise<any>
     fetchModelCatalog?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<ModelCatalogEntry[]>
     fetchModels?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<string[]>
+    modelCatalogIdentity?(input: {
+      auth?: Auth.Info
+      credentialID?: string
+      authUpdatedAt?: number
+    }): Promise<string | undefined> | string | undefined
     fetchUsage?(input?: { fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
   }
 

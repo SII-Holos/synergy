@@ -42,6 +42,66 @@ describe("session lifecycle events", () => {
     })
   })
 
+  test("emits session.completion after durable notice increments", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const events: Array<{ sessionID: string; unreadCount: number }> = []
+        const unsub = Bus.subscribe(SessionEvent.Completion, (event) => {
+          events.push(event.properties)
+        })
+        const session = await Session.create({})
+
+        try {
+          await Session.recordCompletionNotice(session.id)
+          await Session.recordCompletionNotice(session.id)
+
+          expect(events).toEqual([
+            { sessionID: session.id, unreadCount: 1 },
+            { sessionID: session.id, unreadCount: 2 },
+          ])
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: true,
+            unreadCount: 2,
+            silent: false,
+          })
+        } finally {
+          unsub()
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+
+  test("does not emit session.completion for silent sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const events: Array<{ sessionID: string; unreadCount: number }> = []
+        const unsub = Bus.subscribe(SessionEvent.Completion, (event) => {
+          events.push(event.properties)
+        })
+        const session = await Session.create({ completionNotice: { silent: true } })
+
+        try {
+          await Session.recordCompletionNotice(session.id)
+
+          expect(events).toEqual([])
+          expect((await Session.get(session.id)).completionNotice).toEqual({
+            unread: false,
+            unreadCount: 0,
+            silent: true,
+          })
+        } finally {
+          unsub()
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+
   test("app channel sessions stay interactive", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

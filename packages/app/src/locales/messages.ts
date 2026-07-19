@@ -593,6 +593,14 @@ export const appShell = {
   browser: { id: "app.shell.mobile.tool.browser", message: "Browser" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
+// ── Notifications ────────────────────────────────────────────────────────────
+
+export const notification = {
+  responseReady: { id: "app.notification.response.ready", message: "Response ready" },
+  sessionError: { id: "app.notification.session.error", message: "Session error" },
+  errorFallback: { id: "app.notification.error.fallback", message: "An error occurred" },
+} as const satisfies Record<string, AppMessageDescriptor>
+
 // ── Sidebar ──────────────────────────────────────────────────────────────────
 
 export const sidebar = {
@@ -1307,6 +1315,7 @@ export const messages = {
   docEditor,
   library,
   appShell,
+  notification,
   sidebar,
   statusBar,
   topBar,
