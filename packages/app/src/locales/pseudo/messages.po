@@ -15579,14 +15579,6 @@ msgid "special-user.label.light-loop"
 msgstr ""
 
 #. ── Special user message labels ─────────────────────────────────────
-msgid "special-user.label.lightloop-approved"
-msgstr ""
-
-#. ── Special user message labels ─────────────────────────────────────
-msgid "special-user.label.lightloop-changes"
-msgstr ""
-
-#. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.lightloop-continue"
 msgstr ""
 
@@ -15596,6 +15588,14 @@ msgstr ""
 
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.workflow"
+msgstr ""
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr ""
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
 msgstr ""
 
 #. Question subtitle

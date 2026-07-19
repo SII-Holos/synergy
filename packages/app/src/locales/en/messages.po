@@ -15579,14 +15579,6 @@ msgid "special-user.label.light-loop"
 msgstr "Light Loop"
 
 #. ── Special user message labels ─────────────────────────────────────
-msgid "special-user.label.lightloop-approved"
-msgstr "Light Loop · Approved"
-
-#. ── Special user message labels ─────────────────────────────────────
-msgid "special-user.label.lightloop-changes"
-msgstr "Light Loop · Changes requested"
-
-#. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.lightloop-continue"
 msgstr "Light Loop · Continue"
 
@@ -15597,6 +15589,14 @@ msgstr "Plan"
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.workflow"
 msgstr "Workflow"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr "Approved"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr "Changes requested"
 
 #. Question subtitle
 msgid "tool.label.asked-count"

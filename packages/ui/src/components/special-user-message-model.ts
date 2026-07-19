@@ -2,8 +2,16 @@ import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/c
 import type { MessageDescriptor } from "@lingui/core"
 import { SPECIAL_USER_LABEL_DESC } from "./tool-title-descriptors"
 
+export type SpecialUserMessageStatusTone = "success" | "warning"
+
+export interface SpecialUserMessageStatus {
+  label: MessageDescriptor
+  tone: SpecialUserMessageStatusTone
+}
+
 export interface SpecialUserMessageBubbleView {
   label: MessageDescriptor
+  status?: SpecialUserMessageStatus
   kind: string | undefined
   parts: PartType[]
 }
@@ -160,10 +168,11 @@ export function getSpecialUserMessageBubbleView(
     const source = metadataText(message, "source")
     if (source === "light_loop_approved" || source === "light_loop_rejected") {
       return {
-        label:
+        label: SPECIAL_USER_LABEL_DESC.lightloop,
+        status:
           source === "light_loop_approved"
-            ? SPECIAL_USER_LABEL_DESC["lightloop.approved"]
-            : SPECIAL_USER_LABEL_DESC["lightloop.changes"],
+            ? { label: SPECIAL_USER_LABEL_DESC["status.approved"], tone: "success" }
+            : { label: SPECIAL_USER_LABEL_DESC["status.changes"], tone: "warning" },
         kind: "lightloop-control",
         parts: reviewDisplayParts(parts),
       }

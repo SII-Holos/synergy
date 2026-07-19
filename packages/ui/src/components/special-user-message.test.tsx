@@ -122,21 +122,27 @@ describe("special user messages", () => {
     const cases = [
       [
         "light_loop_approved",
-        "special-user.label.lightloop-approved",
+        "special-user.label.light-loop",
+        "special-user.status.approved",
+        "success",
         "Light Loop review approved.\n\nAll requested work is complete and verified.",
       ],
       [
         "light_loop_rejected",
-        "special-user.label.lightloop-changes",
+        "special-user.label.light-loop",
+        "special-user.status.changes-requested",
+        "warning",
         "Light Loop review requested changes.\n\n**Reason:** Tests failed\n\n**Remaining:**\nBLOCKING: Fix the regression\n\n**Instructions:**\nRun the suite again",
       ],
     ] as const
 
-    for (const [source, label, feedback] of cases) {
+    for (const [source, sourceLabel, statusLabel, tone, feedback] of cases) {
       const originalParts = [systemTextPart(feedback)]
       const view = getSpecialUserMessageBubbleView(userMessage({ source }), originalParts)
 
-      expect(view?.label.id).toBe(label)
+      expect(view?.label.id).toBe(sourceLabel)
+      expect(view?.status?.label.id).toBe(statusLabel)
+      expect(view?.status?.tone).toBe(tone)
       expect(view?.kind).toBe("lightloop-control")
       expect(originalParts[0]?.origin).toBe("system")
       expect(view?.parts.find((part) => part.type === "text")?.origin).toBe("user")
