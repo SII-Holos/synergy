@@ -89,6 +89,8 @@ import { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, DEFAULT_SERVER_URL } from "./
 import { ObservabilityStore } from "@/observability/store"
 import { ObservabilityContext } from "@/observability/context"
 import { UpdateRoute } from "./update-route"
+import { ScopeBootstrapRoute } from "./scope-bootstrap-route"
+import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -523,6 +525,7 @@ export namespace Server {
             // Expose the snapshot sync watermark so the client apply-gate can
             // read it cross-origin (frontend sync redesign).
             exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
+            maxAge: 600,
           }),
         )
         .use(provideRequestScope)
@@ -840,6 +843,7 @@ export namespace Server {
         .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
+        .route("/scope", ScopeBootstrapRoute)
         .route("/pty", PtyRoute)
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
@@ -1160,6 +1164,7 @@ export namespace Server {
 
         .route("/session", SessionNavRoute)
         .route("/session", SessionRoute)
+        .route("/session", SessionVolatileBatchRoute)
         .route("", PermissionRoute)
         .route("/question", QuestionRoute)
         .route("/session", SessionExportRoute)

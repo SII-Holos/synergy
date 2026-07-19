@@ -270,11 +270,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     const refreshVolatile = async (sessionID: string) => {
-      await Promise.all([
-        loadInbox(sessionID, { force: true }),
-        loadTodo(sessionID, { force: true }),
-        loadDag(sessionID, { force: true }),
-      ])
+      const inboxRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "inbox")
+      const todoRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "todo")
+      const dagRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
+      await retry(() =>
+        sdk.client.session.volatileBatch({
+          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+          sessionVolatileBatchInput: { sessionIDs: [sessionID] },
+        }),
+      )
+        .then((result) => {
+          const state = result.data?.sessions[sessionID]
+          if (!state) return
+          globalSync.applyResourceResponse(
+            sdk.scopeKey,
+            sessionID,
+            "inbox",
+            inboxRequest,
+            result.response?.headers,
+            () => setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" })),
+          )
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () =>
+            setStore("todo", sessionID, reconcile(state.todo, { key: "id" })),
+          )
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () =>
+            setStore("dag", sessionID, reconcile(state.dag, { key: "id" })),
+          )
+        })
+        .catch(() => {})
     }
 
     return {

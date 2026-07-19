@@ -22,9 +22,11 @@ describe("observeWatermark", () => {
     expect(r.gap).toBe(false)
   })
 
-  test("flags a gap when a seq is skipped", () => {
-    const r = observeWatermark({ epoch: "e1", seq: 5 }, { epoch: "e1", seq: 8 })
-    expect(r.next).toEqual({ epoch: "e1", seq: 8 })
+  test("keeps the pre-gap watermark as the replay starting point", () => {
+    const current = { epoch: "e1", seq: 5 }
+    const r = observeWatermark(current, { epoch: "e1", seq: 8 })
+    expect(r.next).toBe(current)
+    expect(r.replayFrom).toBe(current)
     expect(r.gap).toBe(true)
   })
 
@@ -35,9 +37,11 @@ describe("observeWatermark", () => {
     expect(observeWatermark(current, { epoch: "e1", seq: 3 }).gap).toBe(false)
   })
 
-  test("flags an epoch change and adopts the new epoch/seq", () => {
-    const r = observeWatermark({ epoch: "e1", seq: 100 }, { epoch: "e2", seq: 1 })
+  test("keeps the previous epoch until authoritative resync", () => {
+    const current = { epoch: "e1", seq: 100 }
+    const r = observeWatermark(current, { epoch: "e2", seq: 1 })
     expect(r.epochChanged).toBe(true)
-    expect(r.next).toEqual({ epoch: "e2", seq: 1 })
+    expect(r.next).toBe(current)
+    expect(r.replayFrom).toBe(current)
   })
 })

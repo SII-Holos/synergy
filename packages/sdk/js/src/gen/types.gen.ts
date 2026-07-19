@@ -1223,14 +1223,211 @@ export type NotFoundError = {
   }
 }
 
-export type Pty = {
+export type Model = {
   id: string
-  title: string
-  command: string
-  args: Array<string>
-  cwd: string
-  status: "running" | "exited"
-  pid: number
+  providerID: string
+  api: {
+    id: string
+    url: string
+    npm: string
+  }
+  name: string
+  family?: string
+  capabilities: {
+    temperature: boolean
+    reasoning: boolean
+    reasoningEfforts?: Array<string>
+    attachment: boolean
+    toolcall: boolean
+    input: {
+      text: boolean
+      audio: boolean
+      image: boolean
+      video: boolean
+      pdf: boolean
+      supportedImageMediaTypes?: Array<string>
+    }
+    output: {
+      text: boolean
+      audio: boolean
+      image: boolean
+      video: boolean
+      pdf: boolean
+    }
+    interleaved:
+      | boolean
+      | {
+          field: "reasoning_content" | "reasoning_details"
+        }
+  }
+  cost: {
+    input: number
+    output: number
+    cache: {
+      read: number
+      write: number
+    }
+    experimentalOver200K?: {
+      input: number
+      output: number
+      cache: {
+        read: number
+        write: number
+      }
+    }
+  }
+  limit: {
+    context: number
+    input?: number
+    output: number
+  }
+  status: "alpha" | "beta" | "deprecated" | "active"
+  options: {
+    [key: string]: unknown
+  }
+  headers: {
+    [key: string]: string
+  }
+  release_date: string
+  variants?: {
+    [key: string]: {
+      [key: string]: unknown
+    }
+  }
+}
+
+export type Provider = {
+  id: string
+  name: string
+  source: "env" | "config" | "custom" | "api"
+  env: Array<string>
+  key?: string
+  options: {
+    [key: string]: unknown
+  }
+  models: {
+    [key: string]: Model
+  }
+}
+
+export type ProviderRecommendation = {
+  level: "featured" | "recommended" | "standard"
+  rank?: number
+  headline?: string
+  reason?: string
+  cta?: {
+    kind: "external"
+    label: string
+    url: string
+  }
+  defaultModel?: string
+}
+
+export type ProviderProfileMetadata = {
+  id: string
+  name: string
+  displayName?: string
+  description?: string
+  signupUrl?: string
+  authKind?: string
+  environment?: Array<string>
+  recommendation?: ProviderRecommendation
+}
+
+export type ProviderAuthHealth = {
+  providerID: string
+  status: "connected" | "not_configured" | "exhausted" | "action_required"
+  recovery?: "reconnect" | "update_environment"
+  authKind?: string
+  source?: string
+  updatedAt?: number
+  cooldownUntil?: number
+  resetAt?: number
+  failureCode?: string
+}
+
+export type ProviderRuntimeAvailability = {
+  providerID: string
+  available: boolean
+  reason?:
+    | "connected"
+    | "not_connected"
+    | "disabled"
+    | "no_models"
+    | "authentication_required"
+    | "exhausted"
+    | "fallback_unverified"
+  healthCheck?: "models" | "none"
+  modelCount: number
+}
+
+export type ProviderListResponse = {
+  all: Array<Provider>
+  default: {
+    [key: string]: string
+  }
+  connected: Array<string>
+  configProviders: Array<string>
+  catalogProviders: Array<string>
+  profiles: {
+    [key: string]: ProviderProfileMetadata
+  }
+  authHealth: {
+    [key: string]: ProviderAuthHealth
+  }
+  runtimeAvailability: {
+    [key: string]: ProviderRuntimeAvailability
+  }
+}
+
+export type PermissionAction = "allow" | "deny" | "ask"
+
+export type PermissionRule = {
+  permission: string
+  pattern: string
+  action: PermissionAction
+}
+
+export type PermissionRuleset = Array<PermissionRule>
+
+export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
+
+export type ExternalAgentInfo = {
+  adapter: string
+  path?: string
+  version?: string
+  config?: {
+    [key: string]: unknown
+  }
+}
+
+export type Agent = {
+  name: string
+  description?: string
+  mode: "subagent" | "primary" | "all"
+  native?: boolean
+  hidden?: boolean
+  visibleTo?: Array<string>
+  delegationGroups?: Array<string>
+  topP?: number
+  temperature?: number
+  color?: string
+  permission: PermissionRuleset
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  model?: {
+    modelID: string
+    providerID: string
+  }
+  modelRole?: ModelRole
+  modelSource?: "role" | "explicit"
+  source?: "builtin" | "config" | "plugin" | "external"
+  prompt?: string
+  options: {
+    [key: string]: unknown
+  }
+  steps?: number
+  external?: ExternalAgentInfo
+  defaultVariant?: string
 }
 
 /**
@@ -1805,8 +2002,6 @@ export type QuickSwitcherConfig = {
    */
   models?: Array<QuickSwitcherModelConfig>
 }
-
-export type ModelRole = "vision" | "nano" | "mini" | "mid" | "thinking" | "long" | "creative"
 
 export type PermissionActionConfig = "ask" | "allow" | "deny"
 
@@ -3238,6 +3433,505 @@ export type Config = {
   }
 }
 
+export type ScopeBootstrapPath = {
+  home: string
+  state: string
+  config: string
+  worktree: string
+  directory: string
+}
+
+export type Command = {
+  name: string
+  description?: string
+  kind?: "prompt" | "action"
+  surfaces?: Array<"web" | "cli" | "channel">
+  promptVisible?: boolean
+  agent?: string
+  model?: string
+  mcp?: boolean
+  source?: "command" | "mcp" | "skill"
+  action?: string
+  template?: string
+  hints: Array<string>
+}
+
+export type SessionStatus =
+  | {
+      type: "idle"
+    }
+  | {
+      type: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      type: "busy"
+      description?: string
+    }
+  | {
+      type: "recovering"
+      description?: string
+    }
+
+export type SessionScope = {
+  id: string
+  type?: string
+  directory?: string
+  worktree?: string
+  vcs?: "git"
+  name?: string
+  icon?: {
+    url?: string
+    color?: string
+  }
+  time?: {
+    created: number
+    updated: number
+    initialized?: number
+  }
+  sandboxes?: Array<string>
+}
+
+export type FileDiff = {
+  file: string
+  additions: number
+  deletions: number
+  binary?: boolean
+  preview?: string
+  beforeBytes?: number
+  afterBytes?: number
+  truncated?: boolean
+}
+
+export type SessionCompletionNotice = {
+  unread: boolean
+  unreadCount: number
+  silent: boolean
+}
+
+export type SessionInteractionMode = "interactive" | "unattended"
+
+export type SessionInteraction = {
+  mode: SessionInteractionMode
+  /**
+   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
+   */
+  source?: string
+}
+
+export type SessionHistoryInfo = {
+  rollback?: {
+    id: string
+    numTurns: number
+    created: number
+    messageID?: string
+    droppedMessageIDs: Array<string>
+    droppedUserMessageIDs: Array<string>
+    cutMessageID?: string
+    files: Array<string>
+    patchPartIDs: Array<string>
+    canUnrollback: boolean
+  }
+}
+
+export type SessionCortexDelegation = {
+  taskID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  agent: string
+  executionRole?: "primary" | "delegated_subagent"
+  startedAt: number
+  completedAt?: number
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  error?: string
+  notifyParentOnComplete?: boolean
+  deliveryNotifiedAt?: number
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
+}
+
+export type SessionSuperPlanInfo = {
+  runID: string
+  role: "planner" | "node" | "merge" | "audit"
+  nodeID?: string
+  mergeID?: string
+}
+
+export type SessionWorkingInfo =
+  | {
+      status: "busy"
+      description?: string
+    }
+  | {
+      status: "retry"
+      attempt: number
+      message: string
+      next: number
+    }
+  | {
+      status: "recovering"
+    }
+
+export type SessionWorkspace = {
+  type: string
+  path: string
+  scopeID: string
+  [key: string]: unknown | string
+}
+
+export type SessionWorkflowInfo =
+  | {
+      kind: "plan"
+    }
+  | {
+      kind: "lightloop"
+      taskDescription: string
+      stopRequest?: {
+        summary: string
+        completed?: Array<string>
+        evidence?: Array<string>
+        remaining?: Array<string>
+        requestedAt: number
+        requesterSessionID: string
+        requesterMessageID: string
+        reviewTaskID?: string
+        reviewSessionID?: string
+      }
+      review?: {
+        attempts: number
+        lastReason?: string
+        lastReviewedAt?: number
+      }
+    }
+  | {
+      kind: "lattice"
+      runID: string
+      mode: "auto" | "collaborative"
+      firstBlueprintStarted?: boolean
+    }
+
+export type Session = {
+  id: string
+  scope: SessionScope
+  parentID?: string
+  forkedFrom?: {
+    sessionID: string
+    messageID?: string
+    title?: string
+  }
+  category?: "project" | "home" | "channel" | "background" | "github"
+  provenance?: "github"
+  endpoint?: SessionEndpoint
+  summary?: {
+    additions: number
+    deletions: number
+    files: number
+    diffs?: Array<FileDiff>
+  }
+  title: string
+  version: string
+  time: {
+    created: number
+    updated: number
+    compacting?: number
+    archived?: number
+  }
+  pinned?: number
+  permission?: PermissionRuleset
+  controlProfile?: "guarded" | "autonomous" | "full_access"
+  /**
+   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
+   */
+  preAuthorizedActions?: Array<string>
+  toolState?: {
+    expandedGroups?: Array<string>
+    activatedTools?: Array<string>
+  }
+  completionNotice?: SessionCompletionNotice
+  /**
+   * Per-session model override set by /model command
+   */
+  modelOverride?: {
+    providerID: string
+    modelID: string
+  }
+  /**
+   * Per-session agent override set by session control
+   */
+  agentOverride?: string
+  pendingReply?: boolean
+  interaction?: SessionInteraction
+  agenda?: {
+    itemID: string
+  }
+  lastExchange?: {
+    user?: string
+    assistant?: string
+  }
+  history?: SessionHistoryInfo
+  cortex?: SessionCortexDelegation
+  superplan?: SessionSuperPlanInfo
+  working?: SessionWorkingInfo
+  workspace?: SessionWorkspace
+  blueprint?: {
+    loopID?: string
+    loopRole?: "execution" | "audit"
+  }
+  workflow?: SessionWorkflowInfo
+}
+
+export type ScopeBootstrapSessions = {
+  data: Array<Session>
+  total: number
+  offset: number
+  limit: number
+}
+
+export type McpStatusUninitialized = {
+  status: "uninitialized"
+}
+
+export type McpStatusStarting = {
+  status: "starting"
+}
+
+export type McpStatusConnecting = {
+  status: "connecting"
+}
+
+export type McpStatusListingTools = {
+  status: "listing_tools"
+}
+
+export type McpStatusConnected = {
+  status: "connected"
+}
+
+export type McpStatusReconnecting = {
+  status: "reconnecting"
+  attempt: number
+  maxAttempts: number
+}
+
+export type McpStatusFailed = {
+  status: "failed"
+  error: string
+}
+
+export type McpStatusDisabled = {
+  status: "disabled"
+}
+
+export type McpStatusNeedsAuth = {
+  status: "needs_auth"
+}
+
+export type McpStatusNeedsClientRegistration = {
+  status: "needs_client_registration"
+  error: string
+}
+
+export type McpStatusStopping = {
+  status: "stopping"
+}
+
+export type McpStatus =
+  | McpStatusUninitialized
+  | McpStatusStarting
+  | McpStatusConnecting
+  | McpStatusListingTools
+  | McpStatusConnected
+  | McpStatusReconnecting
+  | McpStatusFailed
+  | McpStatusDisabled
+  | McpStatusNeedsAuth
+  | McpStatusNeedsClientRegistration
+  | McpStatusStopping
+
+export type CortexTask = {
+  id: string
+  sessionID: string
+  parentSessionID: string
+  parentMessageID: string
+  description: string
+  prompt: string
+  agent: string
+  model?: {
+    providerID: string
+    modelID: string
+  }
+  executionRole?: "primary" | "delegated_subagent"
+  category?: string
+  dagNodeId?: string
+  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
+  startedAt: number
+  completedAt?: number
+  error?: string
+  progress?: {
+    toolCalls: number
+    lastTool?: string
+    lastToolStatus?: string
+    lastTitle?: string
+    lastPartId?: string
+    lastUpdate: number
+    lastMessage?: string
+    recentTools?: Array<{
+      id: string
+      tool: string
+      status: string
+      title?: string
+      updatedAt: number
+    }>
+  }
+  notifyParentOnComplete?: boolean
+  visibility?: "visible" | "hidden"
+  tools?: {
+    [key: string]: boolean
+  }
+  outputConfig?:
+    | {
+        mode?: "summary"
+      }
+    | {
+        mode: "final_response"
+      }
+    | {
+        mode: "structured"
+        schema: {
+          [key: string]: unknown
+        }
+        maxRepairTurns?: 0 | 1 | 2 | 3
+      }
+  output?:
+    | {
+        mode: "summary"
+        value: string
+      }
+    | {
+        mode: "final_response"
+        value: string
+      }
+    | {
+        mode: "structured"
+        value: unknown
+      }
+  owner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId: string
+  }
+  timeoutMs?: number
+  usage?: {
+    inputTokens: number
+    outputTokens: number
+    reasoningTokens: number
+    cacheReadTokens: number
+    cacheWriteTokens: number
+    cost: number
+  }
+}
+
+export type LspStatus = {
+  id: string
+  name: string
+  root: string
+  status: "connected" | "error"
+}
+
+export type VcsInfo = {
+  branch: string
+}
+
+export type ScopeBootstrapFieldError = {
+  code: string
+  message: string
+}
+
+export type ScopeBootstrapResponse = {
+  scopeID: string
+  provider: ProviderListResponse
+  agent: Array<Agent>
+  config: Config
+  path?: ScopeBootstrapPath
+  command?: Array<Command>
+  sessionStatus?: {
+    [key: string]: SessionStatus
+  }
+  sessions?: ScopeBootstrapSessions
+  mcp?: {
+    [key: string]: McpStatus
+  }
+  cortex?: Array<CortexTask>
+  agenda?: Array<AgendaItem>
+  lsp?: Array<LspStatus>
+  vcs?: VcsInfo
+  _errors?: {
+    [key: string]: ScopeBootstrapFieldError
+  }
+}
+
+export type Pty = {
+  id: string
+  title: string
+  command: string
+  args: Array<string>
+  cwd: string
+  status: "running" | "exited"
+  pid: number
+}
+
 export type ConfigInstructionsInfo = {
   content: string
   source: "override" | "primary" | "empty"
@@ -3506,93 +4200,6 @@ export type ConfigDomainImportApplyInput = {
   force?: boolean
 }
 
-export type Model = {
-  id: string
-  providerID: string
-  api: {
-    id: string
-    url: string
-    npm: string
-  }
-  name: string
-  family?: string
-  capabilities: {
-    temperature: boolean
-    reasoning: boolean
-    reasoningEfforts?: Array<string>
-    attachment: boolean
-    toolcall: boolean
-    input: {
-      text: boolean
-      audio: boolean
-      image: boolean
-      video: boolean
-      pdf: boolean
-      supportedImageMediaTypes?: Array<string>
-    }
-    output: {
-      text: boolean
-      audio: boolean
-      image: boolean
-      video: boolean
-      pdf: boolean
-    }
-    interleaved:
-      | boolean
-      | {
-          field: "reasoning_content" | "reasoning_details"
-        }
-  }
-  cost: {
-    input: number
-    output: number
-    cache: {
-      read: number
-      write: number
-    }
-    experimentalOver200K?: {
-      input: number
-      output: number
-      cache: {
-        read: number
-        write: number
-      }
-    }
-  }
-  limit: {
-    context: number
-    input?: number
-    output: number
-  }
-  status: "alpha" | "beta" | "deprecated" | "active"
-  options: {
-    [key: string]: unknown
-  }
-  headers: {
-    [key: string]: string
-  }
-  release_date: string
-  variants?: {
-    [key: string]: {
-      [key: string]: unknown
-    }
-  }
-}
-
-export type Provider = {
-  id: string
-  name: string
-  source: "env" | "config" | "custom" | "api"
-  env: Array<string>
-  key?: string
-  options: {
-    [key: string]: unknown
-  }
-  models: {
-    [key: string]: Model
-  }
-}
-
 export type RuntimeReloadScope = "auto" | "global" | "project"
 
 export type ControlProfileSummary = {
@@ -3706,272 +4313,6 @@ export type WorktreeCreateInput = {
   bind?: boolean
 }
 
-export type SessionScope = {
-  id: string
-  type?: string
-  directory?: string
-  worktree?: string
-  vcs?: "git"
-  name?: string
-  icon?: {
-    url?: string
-    color?: string
-  }
-  time?: {
-    created: number
-    updated: number
-    initialized?: number
-  }
-  sandboxes?: Array<string>
-}
-
-export type FileDiff = {
-  file: string
-  additions: number
-  deletions: number
-  binary?: boolean
-  preview?: string
-  beforeBytes?: number
-  afterBytes?: number
-  truncated?: boolean
-}
-
-export type PermissionAction = "allow" | "deny" | "ask"
-
-export type PermissionRule = {
-  permission: string
-  pattern: string
-  action: PermissionAction
-}
-
-export type PermissionRuleset = Array<PermissionRule>
-
-export type SessionCompletionNotice = {
-  unread: boolean
-  unreadCount: number
-  silent: boolean
-}
-
-export type SessionInteractionMode = "interactive" | "unattended"
-
-export type SessionInteraction = {
-  mode: SessionInteractionMode
-  /**
-   * Why this interaction mode applies, e.g. 'agenda' or 'channel:feishu'
-   */
-  source?: string
-}
-
-export type SessionHistoryInfo = {
-  rollback?: {
-    id: string
-    numTurns: number
-    created: number
-    messageID?: string
-    droppedMessageIDs: Array<string>
-    droppedUserMessageIDs: Array<string>
-    cutMessageID?: string
-    files: Array<string>
-    patchPartIDs: Array<string>
-    canUnrollback: boolean
-  }
-}
-
-export type SessionCortexDelegation = {
-  taskID: string
-  parentSessionID: string
-  parentMessageID: string
-  description: string
-  agent: string
-  executionRole?: "primary" | "delegated_subagent"
-  startedAt: number
-  completedAt?: number
-  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  error?: string
-  notifyParentOnComplete?: boolean
-  deliveryNotifiedAt?: number
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    reasoningTokens: number
-    cacheReadTokens: number
-    cacheWriteTokens: number
-    cost: number
-  }
-}
-
-export type SessionSuperPlanInfo = {
-  runID: string
-  role: "planner" | "node" | "merge" | "audit"
-  nodeID?: string
-  mergeID?: string
-}
-
-export type SessionWorkingInfo =
-  | {
-      status: "busy"
-      description?: string
-    }
-  | {
-      status: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      status: "recovering"
-    }
-
-export type SessionWorkspace = {
-  type: string
-  path: string
-  scopeID: string
-  [key: string]: unknown | string
-}
-
-export type SessionWorkflowInfo =
-  | {
-      kind: "plan"
-    }
-  | {
-      kind: "lightloop"
-      taskDescription: string
-      stopRequest?: {
-        summary: string
-        completed?: Array<string>
-        evidence?: Array<string>
-        remaining?: Array<string>
-        requestedAt: number
-        requesterSessionID: string
-        requesterMessageID: string
-        reviewTaskID?: string
-        reviewSessionID?: string
-      }
-      review?: {
-        attempts: number
-        lastReason?: string
-        lastReviewedAt?: number
-      }
-    }
-  | {
-      kind: "lattice"
-      runID: string
-      mode: "auto" | "collaborative"
-      firstBlueprintStarted?: boolean
-    }
-
-export type Session = {
-  id: string
-  scope: SessionScope
-  parentID?: string
-  forkedFrom?: {
-    sessionID: string
-    messageID?: string
-    title?: string
-  }
-  category?: "project" | "home" | "channel" | "background" | "github"
-  provenance?: "github"
-  endpoint?: SessionEndpoint
-  summary?: {
-    additions: number
-    deletions: number
-    files: number
-    diffs?: Array<FileDiff>
-  }
-  title: string
-  version: string
-  time: {
-    created: number
-    updated: number
-    compacting?: number
-    archived?: number
-  }
-  pinned?: number
-  permission?: PermissionRuleset
-  controlProfile?: "guarded" | "autonomous" | "full_access"
-  /**
-   * Tool names pre-authorized by the user via system scheduling (e.g. agenda wake). Bypasses the ask gate for these tools within this session only.
-   */
-  preAuthorizedActions?: Array<string>
-  toolState?: {
-    expandedGroups?: Array<string>
-    activatedTools?: Array<string>
-  }
-  completionNotice?: SessionCompletionNotice
-  /**
-   * Per-session model override set by /model command
-   */
-  modelOverride?: {
-    providerID: string
-    modelID: string
-  }
-  /**
-   * Per-session agent override set by session control
-   */
-  agentOverride?: string
-  pendingReply?: boolean
-  interaction?: SessionInteraction
-  agenda?: {
-    itemID: string
-  }
-  lastExchange?: {
-    user?: string
-    assistant?: string
-  }
-  history?: SessionHistoryInfo
-  cortex?: SessionCortexDelegation
-  superplan?: SessionSuperPlanInfo
-  working?: SessionWorkingInfo
-  workspace?: SessionWorkspace
-  blueprint?: {
-    loopID?: string
-    loopRole?: "execution" | "audit"
-  }
-  workflow?: SessionWorkflowInfo
-}
-
 export type WorktreeEnterInput = {
   target: string
   force?: boolean
@@ -3982,34 +4323,11 @@ export type WorktreeRemoveInput = {
   force?: boolean
 }
 
-export type VcsInfo = {
-  branch: string
-}
-
 export type SessionNavResponse = {
   items: Array<SessionNavEntry>
   nextCursor: NavCursor | null
   total: number
 }
-
-export type SessionStatus =
-  | {
-      type: "idle"
-    }
-  | {
-      type: "retry"
-      attempt: number
-      message: string
-      next: number
-    }
-  | {
-      type: "busy"
-      description?: string
-    }
-  | {
-      type: "recovering"
-      description?: string
-    }
 
 export type SessionChildCursor = {
   lastActivityAt: number
@@ -4847,6 +5165,30 @@ export type SessionFileRestoreResult = {
   partID?: string
 }
 
+export type SessionVolatileState = {
+  inbox: Array<SessionInboxItem>
+  todo: Array<Todo>
+  dag: Array<DagNode>
+}
+
+export type SessionVolatileError = {
+  code: "SESSION_NOT_FOUND" | "SESSION_ARCHIVED" | "RESOURCE_FAILED"
+  message: string
+}
+
+export type SessionVolatileBatchResponse = {
+  sessions: {
+    [key: string]: SessionVolatileState
+  }
+  errors?: {
+    [key: string]: SessionVolatileError
+  }
+}
+
+export type SessionVolatileBatchInput = {
+  sessionIDs: Array<string>
+}
+
 export type PermissionRequest = {
   id: string
   sessionID: string
@@ -4938,90 +5280,6 @@ export type SessionImportResult = {
   warnings: Array<string>
 }
 
-export type CortexTask = {
-  id: string
-  sessionID: string
-  parentSessionID: string
-  parentMessageID: string
-  description: string
-  prompt: string
-  agent: string
-  model?: {
-    providerID: string
-    modelID: string
-  }
-  executionRole?: "primary" | "delegated_subagent"
-  category?: string
-  dagNodeId?: string
-  status: "queued" | "running" | "completed" | "error" | "cancelled" | "interrupted"
-  startedAt: number
-  completedAt?: number
-  error?: string
-  progress?: {
-    toolCalls: number
-    lastTool?: string
-    lastToolStatus?: string
-    lastTitle?: string
-    lastPartId?: string
-    lastUpdate: number
-    lastMessage?: string
-    recentTools?: Array<{
-      id: string
-      tool: string
-      status: string
-      title?: string
-      updatedAt: number
-    }>
-  }
-  notifyParentOnComplete?: boolean
-  visibility?: "visible" | "hidden"
-  tools?: {
-    [key: string]: boolean
-  }
-  outputConfig?:
-    | {
-        mode?: "summary"
-      }
-    | {
-        mode: "final_response"
-      }
-    | {
-        mode: "structured"
-        schema: {
-          [key: string]: unknown
-        }
-        maxRepairTurns?: 0 | 1 | 2 | 3
-      }
-  output?:
-    | {
-        mode: "summary"
-        value: string
-      }
-    | {
-        mode: "final_response"
-        value: string
-      }
-    | {
-        mode: "structured"
-        value: unknown
-      }
-  owner?: {
-    pluginId: string
-    pluginGeneration: string
-    scopeId: string
-    correlationId: string
-  }
-  timeoutMs?: number
-  usage?: {
-    inputTokens: number
-    outputTokens: number
-    reasoningTokens: number
-    cacheReadTokens: number
-    cacheWriteTokens: number
-    cost: number
-  }
-}
-
 export type CortexConcurrencyStatus = {
   configured: number | null
   environment: number | null
@@ -5032,72 +5290,6 @@ export type CortexConcurrencyStatus = {
   perAgentLimit: number
   running: number
   queued: number
-}
-
-export type Command = {
-  name: string
-  description?: string
-  kind?: "prompt" | "action"
-  surfaces?: Array<"web" | "cli" | "channel">
-  promptVisible?: boolean
-  agent?: string
-  model?: string
-  mcp?: boolean
-  source?: "command" | "mcp" | "skill"
-  action?: string
-  template?: string
-  hints: Array<string>
-}
-
-export type ProviderRecommendation = {
-  level: "featured" | "recommended" | "standard"
-  rank?: number
-  headline?: string
-  reason?: string
-  cta?: {
-    kind: "external"
-    label: string
-    url: string
-  }
-  defaultModel?: string
-}
-
-export type ProviderProfileMetadata = {
-  id: string
-  name: string
-  displayName?: string
-  description?: string
-  signupUrl?: string
-  authKind?: string
-  environment?: Array<string>
-  recommendation?: ProviderRecommendation
-}
-
-export type ProviderAuthHealth = {
-  providerID: string
-  status: "connected" | "not_configured" | "exhausted" | "action_required"
-  recovery?: "reconnect" | "update_environment"
-  authKind?: string
-  source?: string
-  updatedAt?: number
-  cooldownUntil?: number
-  resetAt?: number
-  failureCode?: string
-}
-
-export type ProviderRuntimeAvailability = {
-  providerID: string
-  available: boolean
-  reason?:
-    | "connected"
-    | "not_connected"
-    | "disabled"
-    | "no_models"
-    | "authentication_required"
-    | "exhausted"
-    | "fallback_unverified"
-  healthCheck?: "models" | "none"
-  modelCount: number
 }
 
 export type AccountUsageWindow = {
@@ -6602,44 +6794,6 @@ export type RegistryPublishInput = {
   yankedVersions?: Array<string>
 }
 
-export type ExternalAgentInfo = {
-  adapter: string
-  path?: string
-  version?: string
-  config?: {
-    [key: string]: unknown
-  }
-}
-
-export type Agent = {
-  name: string
-  description?: string
-  mode: "subagent" | "primary" | "all"
-  native?: boolean
-  hidden?: boolean
-  visibleTo?: Array<string>
-  delegationGroups?: Array<string>
-  topP?: number
-  temperature?: number
-  color?: string
-  permission: PermissionRuleset
-  controlProfile?: "guarded" | "autonomous" | "full_access"
-  model?: {
-    modelID: string
-    providerID: string
-  }
-  modelRole?: ModelRole
-  modelSource?: "role" | "explicit"
-  source?: "builtin" | "config" | "plugin" | "external"
-  prompt?: string
-  options: {
-    [key: string]: unknown
-  }
-  steps?: number
-  external?: ExternalAgentInfo
-  defaultVariant?: string
-}
-
 export type ModelRoleUsage = {
   name: string
   description?: string
@@ -6703,67 +6857,6 @@ export type ModelRoleSummary = {
   disabledReason?: string
 }
 
-export type McpStatusUninitialized = {
-  status: "uninitialized"
-}
-
-export type McpStatusStarting = {
-  status: "starting"
-}
-
-export type McpStatusConnecting = {
-  status: "connecting"
-}
-
-export type McpStatusListingTools = {
-  status: "listing_tools"
-}
-
-export type McpStatusConnected = {
-  status: "connected"
-}
-
-export type McpStatusReconnecting = {
-  status: "reconnecting"
-  attempt: number
-  maxAttempts: number
-}
-
-export type McpStatusFailed = {
-  status: "failed"
-  error: string
-}
-
-export type McpStatusDisabled = {
-  status: "disabled"
-}
-
-export type McpStatusNeedsAuth = {
-  status: "needs_auth"
-}
-
-export type McpStatusNeedsClientRegistration = {
-  status: "needs_client_registration"
-  error: string
-}
-
-export type McpStatusStopping = {
-  status: "stopping"
-}
-
-export type McpStatus =
-  | McpStatusUninitialized
-  | McpStatusStarting
-  | McpStatusConnecting
-  | McpStatusListingTools
-  | McpStatusConnected
-  | McpStatusReconnecting
-  | McpStatusFailed
-  | McpStatusDisabled
-  | McpStatusNeedsAuth
-  | McpStatusNeedsClientRegistration
-  | McpStatusStopping
-
 export type ChannelStatus =
   | {
       status: "connected"
@@ -6788,13 +6881,6 @@ export type McpResource = {
   description?: string
   mimeType?: string
   client: string
-}
-
-export type LspStatus = {
-  id: string
-  name: string
-  root: string
-  status: "connected" | "error"
 }
 
 export type FormatterStatus = {
@@ -8623,6 +8709,38 @@ export type ScopeUpdateResponses = {
 }
 
 export type ScopeUpdateResponse = ScopeUpdateResponses[keyof ScopeUpdateResponses]
+
+export type ScopeBootstrapData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/scope/bootstrap"
+}
+
+export type ScopeBootstrapErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type ScopeBootstrapError = ScopeBootstrapErrors[keyof ScopeBootstrapErrors]
+
+export type ScopeBootstrapResponses = {
+  /**
+   * Scope bootstrap snapshot
+   */
+  200: ScopeBootstrapResponse
+}
+
+export type ScopeBootstrapResponse2 = ScopeBootstrapResponses[keyof ScopeBootstrapResponses]
 
 export type PtyListData = {
   body?: never
@@ -10904,6 +11022,34 @@ export type SessionFilesRestoreResponses = {
 
 export type SessionFilesRestoreResponse = SessionFilesRestoreResponses[keyof SessionFilesRestoreResponses]
 
+export type SessionVolatileBatchData = {
+  body?: SessionVolatileBatchInput
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/session/batch/volatile"
+}
+
+export type SessionVolatileBatchErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SessionVolatileBatchError = SessionVolatileBatchErrors[keyof SessionVolatileBatchErrors]
+
+export type SessionVolatileBatchResponses = {
+  /**
+   * Session volatile state by session ID
+   */
+  200: SessionVolatileBatchResponse
+}
+
+export type SessionVolatileBatchResponse2 = SessionVolatileBatchResponses[keyof SessionVolatileBatchResponses]
+
 export type PermissionRespondData = {
   body?: {
     response: "once" | "session" | "always" | "reject"
@@ -11393,27 +11539,10 @@ export type ProviderListResponses = {
   /**
    * List of providers
    */
-  200: {
-    all: Array<Provider>
-    default: {
-      [key: string]: string
-    }
-    connected: Array<string>
-    configProviders: Array<string>
-    catalogProviders: Array<string>
-    profiles: {
-      [key: string]: ProviderProfileMetadata
-    }
-    authHealth: {
-      [key: string]: ProviderAuthHealth
-    }
-    runtimeAvailability: {
-      [key: string]: ProviderRuntimeAvailability
-    }
-  }
+  200: ProviderListResponse
 }
 
-export type ProviderListResponse = ProviderListResponses[keyof ProviderListResponses]
+export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
 
 export type ProviderUsageListData = {
   body?: never
