@@ -14,6 +14,26 @@ Session state includes, when applicable:
 - Agenda, Cortex, BlueprintLoop, SuperPlan, or workflow metadata
 - inbox, todo, DAG, history, completion, and recovery state
 
+## Completion Notice and the `session.completion` Event
+
+Each session stores a durable `completionNotice` with three fields:
+
+| Field         | Type      | Meaning                                                                          |
+| ------------- | --------- | -------------------------------------------------------------------------------- |
+| `unread`      | `boolean` | Whether any unacknowledged assistant reply exists.                               |
+| `unreadCount` | `number`  | Monotonic counter of assistant terminal replies since last clear.                |
+| `silent`      | `boolean` | Suppresses notification counting; set explicitly or inherited by child sessions. |
+
+`silent` can be set when a session is created and otherwise inherits from its parent. Internal background sessions use the explicit flag when their completion should not count as user-visible unread work.
+
+When a root task reaches a normal terminal assistant reply, `Session.recordCompletionNotice()` increments `unreadCount` and sets `unread` to `true`. Successful replies then publish `SessionEvent.Completion` with `{ sessionID, unreadCount }`; error replies retain the durable unread state but publish only `SessionEvent.Error`, preventing duplicate success and error notifications. Archived and silent sessions skip both the increment and completion event. If an aborted run ends before producing any assistant message, its synthetic aborted assistant does not record a completion notice or publish either notification event. `SessionEvent.Error` may also omit `sessionID` for a global invocation failure that was not bound to a session.
+
+The frontend clears the notice through `Session.clearCompletionNotice()`, which resets `unread` to `false` and `unreadCount` to `0`. Clearing does not emit `SessionEvent.Completion`.
+
+The `session.completion` event is the durable success-notification signal. It is emitted once per successfully completed root task, independently of the lifecycle `session.idle` event. A session that completes a task, remains busy for additional work, and then finally idles will fire `session.completion` for each successful root task and `session.idle` once when the loop releases ownership.
+
+Legacy persisted records that have `unread === true` and `silent !== true` but lack `unreadCount` are normalized to `unreadCount = 1` at the read boundary and by the persisted `SessionMigration.migrateSessionCompletionNotice` upgrade. Fresh sessions start with `unreadCount = 0`.
+
 Session metadata is not the message transcript. Each has its own storage and events.
 
 ## Session Lineage
@@ -335,7 +355,7 @@ When a running session is aborted, `signalAbort()` signals the owning controller
 
 `repairAfterAbort()` reads `SessionWorking.resolve()` (the same canonical check used at startup) to decide whether the repaired session is truly idle or still has active work (workflows, BlueprintLoops, incomplete assistants, or pending reply). It then publishes a status-only idle event through `SessionManager.publishStatusOnly()`, which emits `SessionEvent.Status` with `{ type: "idle" }` but never publishes `SessionEvent.Idle`.
 
-This separation exists because `SessionEvent.Idle` has side-effect consumers — `ContinuationKernel` for automatic loop wakeups and session completion notifications — that must not fire for repair-only status corrections. Lifecycle idle (`SessionEvent.Idle`) remains owned exclusively by `SessionManager.release()`, which publishes both `SessionEvent.Status` and `SessionEvent.Idle` when the runtime loop voluntarily yields ownership.
+This separation exists because `SessionEvent.Idle` has side-effect consumers — `ContinuationKernel` for automatic loop wakeups — that must not fire for repair-only status corrections. Lifecycle idle (`SessionEvent.Idle`) remains owned exclusively by `SessionManager.release()`, which publishes both `SessionEvent.Status` and `SessionEvent.Idle` when the runtime loop voluntarily yields ownership. Completion notifications are driven by the independent `SessionEvent.Completion` event emitted after each root task produces a terminal reply; they do not depend on `SessionEvent.Idle`.
 
 ## Invariants
 

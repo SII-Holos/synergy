@@ -5,12 +5,14 @@ import { useGlobalSDK } from "./global-sdk"
 import { useGlobalSync } from "./global-sync"
 import { usePlatform } from "@/context/platform"
 import { Binary } from "@ericsanchezok/synergy-util/binary"
-import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { EventSessionError } from "@ericsanchezok/synergy-sdk"
 import { makeAudioPlayer } from "@solid-primitives/audio"
-import idleSound from "@ericsanchezok/synergy-ui/audio/staplebops-01.aac"
+import completionSound from "@ericsanchezok/synergy-ui/audio/staplebops-01.aac"
 import errorSound from "@ericsanchezok/synergy-ui/audio/nope-03.aac"
 import { Persist, persisted } from "@/utils/persist"
+import { resolveNotificationEvent } from "./notification-event"
+import { useLingui } from "@lingui/solid"
+import { messages as AP } from "@/locales/messages"
 
 type NotificationBase = {
   directory?: string
@@ -44,11 +46,11 @@ function pruneNotifications(list: Notification[]) {
 export const { use: useNotification, provider: NotificationProvider } = createSimpleContext({
   name: "Notification",
   init: () => {
-    let idlePlayer: ReturnType<typeof makeAudioPlayer> | undefined
+    let completionPlayer: ReturnType<typeof makeAudioPlayer> | undefined
     let errorPlayer: ReturnType<typeof makeAudioPlayer> | undefined
 
     try {
-      idlePlayer = makeAudioPlayer(idleSound)
+      completionPlayer = makeAudioPlayer(completionSound)
       errorPlayer = makeAudioPlayer(errorSound)
     } catch (err) {
       console.log("Failed to load audio", err)
@@ -57,6 +59,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
     const globalSDK = useGlobalSDK()
     const globalSync = useGlobalSync()
     const platform = usePlatform()
+    const { _: translate } = useLingui()
 
     const [store, setStore, _, ready] = persisted(
       Persist.global("notification", ["notification.v1"]),
@@ -87,22 +90,31 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         viewed: false,
       }
       switch (event.type) {
-        case "session.idle": {
+        case "session.completion": {
           const sessionID = event.properties.sessionID
           const [syncStore] = globalSync.ensureScopeState(directory)
           const match = Binary.search(syncStore.session, sessionID, (s) => s.id)
           const session = match.found ? syncStore.session[match.index] : undefined
-          if (session?.parentID) break
+          const notification = resolveNotificationEvent({
+            directory,
+            event,
+            session,
+            copy: {
+              responseReady: translate(AP.notification.responseReady),
+              sessionError: translate(AP.notification.sessionError),
+              errorFallback: translate(AP.notification.errorFallback),
+            },
+          })
+          if (!notification || notification.type !== "turn-complete") break
           try {
-            idlePlayer?.play()
+            completionPlayer?.play()
           } catch {}
           append({
             ...base,
             type: "turn-complete",
-            session: sessionID,
+            session: notification.sessionID,
           })
-          const href = `/${base64Encode(directory)}/session/${sessionID}`
-          void platform.notify("Response ready", session?.title ?? sessionID, href)
+          void platform.notify(notification.title, notification.description, notification.href)
           break
         }
         case "session.error": {
@@ -110,20 +122,27 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
           const [syncStore] = globalSync.ensureScopeState(directory)
           const match = sessionID ? Binary.search(syncStore.session, sessionID, (s) => s.id) : undefined
           const session = sessionID && match?.found ? syncStore.session[match.index] : undefined
-          if (session?.parentID) break
+          const notification = resolveNotificationEvent({
+            directory,
+            event,
+            session,
+            copy: {
+              responseReady: translate(AP.notification.responseReady),
+              sessionError: translate(AP.notification.sessionError),
+              errorFallback: translate(AP.notification.errorFallback),
+            },
+          })
+          if (!notification || notification.type !== "error") break
           try {
             errorPlayer?.play()
           } catch {}
-          const error = "error" in event.properties ? event.properties.error : undefined
           append({
             ...base,
             type: "error",
-            session: sessionID ?? "global",
-            error,
+            session: notification.sessionID,
+            error: notification.error,
           })
-          const description = session?.title ?? (typeof error === "string" ? error : "An error occurred")
-          const href = sessionID ? `/${base64Encode(directory)}/session/${sessionID}` : `/${base64Encode(directory)}`
-          void platform.notify("Session error", description, href)
+          void platform.notify(notification.title, notification.description, notification.href)
           break
         }
       }
