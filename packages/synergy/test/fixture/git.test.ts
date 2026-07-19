@@ -1,9 +1,29 @@
 import { describe, expect, test } from "bun:test"
 import fs from "fs/promises"
+import os from "os"
 import path from "path"
 import { initializeGitFixture, tmpdir } from "./fixture"
 
 describe.serial("git fixture", () => {
+  test("creates fixtures inside the process cleanup root", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-fixture-root-"))
+    const previous = process.env["SYNERGY_TEST_ROOT"]
+    process.env["SYNERGY_TEST_ROOT"] = root
+    let fixturePath: string | undefined
+
+    try {
+      const tmp = await tmpdir()
+      fixturePath = tmp.path
+      const realRoot = await fs.realpath(root)
+      expect(path.relative(realRoot, tmp.path).startsWith("..")).toBe(false)
+    } finally {
+      if (previous === undefined) delete process.env["SYNERGY_TEST_ROOT"]
+      else process.env["SYNERGY_TEST_ROOT"] = previous
+      if (fixturePath) await fs.rm(fixturePath, { recursive: true, force: true })
+      await fs.rm(root, { recursive: true, force: true })
+    }
+  })
+
   test("uses one init and one commit command", async () => {
     await using tmp = await tmpdir()
     const calls: string[][] = []

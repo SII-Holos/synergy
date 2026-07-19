@@ -110,6 +110,7 @@ cd packages/synergy
 bun test test/<domain>/<file>.test.ts
 bun run test:changed
 bun test
+bun run test:ci
 bun run test:coverage
 ```
 
