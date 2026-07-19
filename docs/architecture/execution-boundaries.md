@@ -21,6 +21,8 @@ For each model turn, the session tool resolver collects ephemeral tools, built-i
 
 The enforcement gate owns the security decision. A tool implementation can still reject malformed input or fail for ordinary runtime reasons after authorization.
 
+Tool exposure is a context-budget decision, not an authorization decision. `search_tools` and `expand_tools` let an eligible agent discover or activate deferred tools, but the resolver still removes every tool denied by agent, session, user-tool, or workflow policy.
+
 ## Capability Model
 
 Classification describes what an operation can do, independently of which tool requested it. Capabilities cover file access, shell behavior, network access, browser control, session state, secrets, identity and messaging actions, plugin/platform operations, and other protected boundaries.
@@ -103,6 +105,7 @@ These restrictions are evaluated before the tool implementation. A permissive co
 
 - Every executable tool path passes through the centralized enforcement gate.
 - Availability, authorization, and sandboxing remain separate decisions.
+- Expanding a deferred group never grants a tool whose effective permission is denied.
 - `autonomous` never prompts the user.
 - `full_access` authorizes capabilities but cannot turn runtime failure into success.
 - Sensitive values are never sent raw to SmartAllow.

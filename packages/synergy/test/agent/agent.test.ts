@@ -45,7 +45,7 @@ test("developer agent has correct default properties", async () => {
       expect(developer?.native).toBe(true)
       expect(evalPerm(developer, "edit")).toBe("ask")
       expect(evalPerm(developer, "bash")).toBe("allow")
-      expect(evalPerm(developer, "mcp__any_server__any_tool")).toBe("allow")
+      expect(evalPerm(developer, "mcp__any_server__any_tool")).toBe("deny")
     },
   })
 })
@@ -142,7 +142,7 @@ test("scholar agent has correct permissions", async () => {
   })
 })
 
-test("compaction agent denies all permissions", async () => {
+test("compaction built-in permission layer denies all tools", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -153,6 +153,23 @@ test("compaction agent denies all permissions", async () => {
       expect(evalPerm(compaction, "bash")).toBe("deny")
       expect(evalPerm(compaction, "edit")).toBe("deny")
       expect(evalPerm(compaction, "read")).toBe("deny")
+      expect(evalPerm(compaction, "session_list")).toBe("deny")
+      expect(evalPerm(compaction, "session_read")).toBe("deny")
+      expect(evalPerm(compaction, "session_send")).toBe("deny")
+    },
+  })
+})
+
+test("model-only internal agents do not inherit subagent discovery tools", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      for (const name of ["compaction", "title", "summary", "intent", "script", "reward"]) {
+        const agent = await Agent.get(name)
+        expect(evalPerm(agent, "search_tools"), `${name}:search_tools`).toBe("deny")
+        expect(evalPerm(agent, "expand_tools"), `${name}:expand_tools`).toBe("deny")
+      }
     },
   })
 })
