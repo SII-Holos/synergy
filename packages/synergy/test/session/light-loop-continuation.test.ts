@@ -99,6 +99,8 @@ describe("LightLoopContinuationPolicy", () => {
       expect(input.parentSessionID).toBe(session.id)
       expect(input.parentMessageID).toBe("msg_123")
       expect(input.agent).toBe("lightloop-reviewer")
+      expect(input.visibility).toBe("visible")
+      expect(input.notifyParentOnComplete).toBe(false)
       expect(input.prompt).toContain("Focused tests pass")
       return { id: "ctx_review", sessionID: "ses_reviewer", status: "queued" }
     })

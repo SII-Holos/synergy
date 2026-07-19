@@ -59,11 +59,14 @@ Core runtime tests run from `packages/synergy`:
 ```bash
 cd packages/synergy
 bun test
+bun run test:ci
 bun test test/tool/read.test.ts
 bun run test:changed
 bun run test:coverage
 bun test --watch
 ```
+
+`bun run test:ci` matches the CI core-suite boundary: four sequential shards run in separate Bun processes, limiting process-global state and temporary fixture accumulation while avoiding concurrent port and environment collisions. Set `SYNERGY_TEST_JUNIT_DIR` to a package-relative directory when per-shard JUnit reports are needed.
 
 Provider/model tests use the pinned `test/tool/fixtures/models-api.json` catalog loaded by `test/preload.ts`. Update the fixture deliberately when a test requires a new model; do not reintroduce live model-catalog fetching into deterministic tests.
 
