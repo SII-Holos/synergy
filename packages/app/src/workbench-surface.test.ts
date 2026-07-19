@@ -228,6 +228,14 @@ describe("workbench surface polarity", () => {
     expect(questionPromptCss).toContain(".question-prompt-option.is-picked")
     expect(questionPromptCss).toContain(".question-prompt-option-copy")
     expect(questionPromptCss).toContain(".question-prompt-footer")
+    expect(questionPrompt).toContain('role={multi() ? "checkbox" : "radio"}')
+    expect(questionPrompt).toContain("aria-checked={picked()}")
+    expect(questionPrompt).toContain("question-prompt-option-shortcut")
+    expect(questionPrompt).toContain("question-prompt-meta")
+    expect(questionPrompt).toContain('getSemanticIcon("action.more")')
+    expect(questionPrompt).not.toContain("question-prompt-header-actions")
+    expect(questionPromptCss).toContain(".question-prompt-choice-hint")
+    expect(questionPromptCss).toContain(".question-prompt-option-shortcut")
   })
 
   test("generic surface utilities used by the frontend are covered by workbench mappings", () => {

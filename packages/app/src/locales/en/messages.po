@@ -10968,7 +10968,7 @@ msgstr "Collapse"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.customPlaceholder"
-msgstr "Type your own answer..."
+msgstr "Tell Synergy what to do instead..."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -10977,12 +10977,17 @@ msgstr "Edit"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.moreActions"
+msgstr "More question actions"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.multiHint"
-msgstr " *(select all that apply)*"
+msgstr "Choose one or more options to continue"
 
 #. question-prompt
 msgid "session.question.needsInput"
-msgstr "Needs your input"
+msgstr "Choose how to proceed"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11002,12 +11007,12 @@ msgstr "Open"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherAnswer"
-msgstr "Other answer"
+msgstr "None of these?"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherDesc"
-msgstr "Type a different answer"
+msgstr "Tell Synergy how to proceed"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11023,6 +11028,11 @@ msgstr "Review"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.reviewTitle"
 msgstr "Review your answers"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.singleHint"
+msgstr "Choose one option to continue"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

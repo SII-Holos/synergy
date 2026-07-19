@@ -10968,7 +10968,7 @@ msgstr "折叠"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.customPlaceholder"
-msgstr "输入你自己的答案..."
+msgstr "告诉 Synergy 应该怎么做..."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -10977,12 +10977,17 @@ msgstr "编辑"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.moreActions"
+msgstr "更多问题操作"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.multiHint"
-msgstr " *（可多选）*"
+msgstr "选择一个或多个选项以继续"
 
 #. question-prompt
 msgid "session.question.needsInput"
-msgstr "需要你输入"
+msgstr "选择接下来的处理方式"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11002,12 +11007,12 @@ msgstr "打开"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherAnswer"
-msgstr "其他答案"
+msgstr "这些都不合适？"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherDesc"
-msgstr "输入其他答案"
+msgstr "告诉 Synergy 应该如何继续"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11023,6 +11028,11 @@ msgstr "检查"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.reviewTitle"
 msgstr "检查你的答案"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.singleHint"
+msgstr "选择一个选项以继续"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
