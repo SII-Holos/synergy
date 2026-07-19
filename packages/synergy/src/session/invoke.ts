@@ -1846,18 +1846,12 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
       if (!pendingReply) continue
 
-      // Auto-repair: if a session has pendingReply but the latest assistant
-      // message is incomplete (time.completed == null) and no runtime is
-      // active, repair it so working.ts stops reporting "recovering".
-      const latestAssistant = messages.find((m) => m.info.role === "assistant")?.info as MessageV2.Assistant | undefined
-      if (latestAssistant && latestAssistant.time.completed == null && !SessionManager.isRunning(sessionID)) {
-        log.info("pending reply found with incomplete assistant; auto-repairing", { sessionID })
-        // Startup reconciliation persists state only; connected clients recover
-        // from the subsequent status snapshot rather than a lifecycle event.
-        await repairIncompleteAssistant(sessionID).catch((err) => {
-          log.error("auto-repair failed", { sessionID, error: err })
-        })
-        continue
+      if (!SessionManager.isRunning(sessionID)) {
+        const repaired = await repairAfterAbort(sessionID)
+        if (repaired) {
+          log.info("repaired incomplete assistant during startup recovery", { sessionID })
+          continue
+        }
       }
 
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })

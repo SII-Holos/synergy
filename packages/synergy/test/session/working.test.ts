@@ -415,6 +415,109 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("resumePending repairs the latest interrupted turn and publishes idle status", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const completedUserID = Identifier.ascending("message")
+          const completedUser = await Session.updateMessage({
+            id: completedUserID,
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID: completedUserID,
+          })
+          const completedAssistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: completedAssistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: completedUser.id,
+            time: { created: Date.now(), completed: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+            finish: "stop",
+          })
+          const interruptedUserID = Identifier.ascending("message")
+          const interruptedUser = await Session.updateMessage({
+            id: interruptedUserID,
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+            isRoot: true,
+            rootID: interruptedUserID,
+          })
+          const interruptedAssistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: interruptedAssistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: interruptedUser.id,
+            time: { created: Date.now() },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+          await Session.update(session.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          const statuses: Array<{ type: string }> = []
+          let idleEvents = 0
+          const unsubscribeStatus = Bus.subscribe(SessionEvent.Status, (event) => {
+            if (event.properties.sessionID === session.id) statuses.push(event.properties.status)
+          })
+          const unsubscribeIdle = Bus.subscribe(SessionEvent.Idle, (event) => {
+            if (event.properties.sessionID === session.id) idleEvents++
+          })
+
+          try {
+            await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+          } finally {
+            unsubscribeStatus()
+            unsubscribeIdle()
+          }
+
+          expect(statuses).toEqual([{ type: "idle" }])
+          expect(idleEvents).toBe(0)
+          expect((await Session.get(session.id)).pendingReply).toBeUndefined()
+          expect(await SessionWorking.resolve(session.id)).toBeUndefined()
+
+          const messages = await Session.messages({ sessionID: session.id })
+          const completedAssistant = messages.find((message) => message.info.id === completedAssistantID)?.info as
+            | import("../../src/session/message-v2").MessageV2.Assistant
+            | undefined
+          const interruptedAssistant = messages.find((message) => message.info.id === interruptedAssistantID)?.info as
+            | import("../../src/session/message-v2").MessageV2.Assistant
+            | undefined
+          assertExists(completedAssistant)
+          assertExists(interruptedAssistant)
+          expect(completedAssistant.time.completed).toBeNumber()
+          expect(completedAssistant.finish).toBe("stop")
+          expect(completedAssistant.error).toBeUndefined()
+          expect(interruptedAssistant.time.completed).toBeNumber()
+          expect(interruptedAssistant.finish).toBe("error")
+          expect(interruptedAssistant.error?.name).toBe("MessageAbortedError")
+        },
+      })
+    })
+
     test("resumePending reconciles interrupted Cortex delegation state after restart", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
