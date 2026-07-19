@@ -132,7 +132,15 @@ Model names use `provider/model`. Provider definitions and model defaults live i
 
 Do not copy credentials or billing assumptions between them. Use `synergy auth` or the Settings UI to manage auth.
 
-Static provider catalogs and live account-backed model discovery use separate cache entries. Live discovery can expose account-visible model slugs that are not present in a static catalog. Authentication health is driven by real provider requests rather than startup or periodic probes.
+### Live provider model discovery
+
+Providers that support live model catalog discovery (e.g. `openai-codex`, `github-copilot`) fetch account-visible model slugs at resolution time. Each provider profile may supply a `modelCatalogIdentity()` function that derives a non-secret account identity — for Codex, the runtime base URL plus the ChatGPT account ID — from the authenticated credential. This identity, rather than the raw credential, is used as the cache key for live results.
+
+The bounded in-memory `lastKnownGood` map stores the most recent successful live entry set per `(providerID, identity)` key, retaining at most 100 account/provider entries and evicting the least recently written entry when full. On a successful live fetch the result is stored as the new LKG and the provider is marked `verified`. If a live fetch fails, the provider is marked `fallback` and the previous LKG entries are used if available. The overall resolution cache uses a normal 1-hour TTL when all live fetches succeed and a short 60-second retry TTL when any provider degraded.
+
+LKG is purely in-memory: restart or `ProviderCatalog.reset()` discards all entries. Degraded results automatically retry on the next resolution cycle. The `liveDiscoveryStatus(providerID)` function exposes the current `"verified"` or `"fallback"` state per provider.
+
+Static provider catalogs and live account-backed model discovery use separate cache entries. Authentication health is driven by real provider requests rather than startup or periodic probes.
 
 ### Model variants and role variants
 
