@@ -2,6 +2,7 @@ import { DaemonHealth } from "./health"
 import { DaemonState } from "./state"
 import { DaemonService } from "./service"
 import { DaemonSpec } from "./spec"
+import { Installation } from "../global/installation"
 
 export namespace Daemon {
   interface DetailInput {
@@ -236,6 +237,7 @@ export namespace Daemon {
 
   export function manifestNeedsRefresh(manifest: DaemonState.Manifest, manager: DaemonService.Manager, spec: Spec) {
     if (manifest.manager !== manager) return true
+    if (manager === "systemd-user" && manifest.version !== Installation.VERSION) return true
     if (manifest.label !== spec.label) return true
     if (manifest.hostname !== spec.hostname) return true
     if (manifest.port !== spec.port) return true
