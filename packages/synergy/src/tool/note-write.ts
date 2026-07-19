@@ -143,7 +143,7 @@ async function updateExisting(input: {
       action: input.action,
       title: nextTitle,
       kind,
-      ...(nextKind === "blueprint" ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 } : undefined),
+      ...(kind === "blueprint" ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 } : undefined),
     } as Record<string, any>,
   }
 }

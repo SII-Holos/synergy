@@ -37886,6 +37886,30 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.session.completion": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "session.completion"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "unreadCount": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["sessionID", "unreadCount"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.session.idle": {
         "type": "object",
         "properties": {
@@ -39184,6 +39208,9 @@
           },
           {
             "$ref": "#/components/schemas/Event.session.status"
+          },
+          {
+            "$ref": "#/components/schemas/Event.session.completion"
           },
           {
             "$ref": "#/components/schemas/Event.session.idle"

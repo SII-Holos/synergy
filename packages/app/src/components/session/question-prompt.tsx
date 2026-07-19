@@ -1,4 +1,4 @@
-import { createMemo, createSignal, For, Show } from "solid-js"
+import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js"
 import { createStore } from "solid-js/store"
 import type { QuestionRequest, QuestionAnswer } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
@@ -6,10 +6,12 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Countdown } from "@ericsanchezok/synergy-ui/countdown"
+import { Popover } from "@ericsanchezok/synergy-ui/popover"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useSDK } from "@/context/sdk"
 import { useLocale } from "@/context/locale"
 import { S } from "./session-i18n"
+import { questionOptionShortcutIndex } from "./question-prompt-model"
 import "./question-prompt.css"
 
 export interface QuestionPromptProps {
@@ -21,17 +23,17 @@ export function QuestionPrompt(props: QuestionPromptProps) {
   const { i18n } = useLocale()
   const _ = (d: { id: string; message: string }) => i18n._(d)
   const [collapsed, setCollapsed] = createSignal(false)
+  const [menuOpen, setMenuOpen] = createSignal(false)
+  let root: HTMLElement | undefined
 
   const questions = createMemo(() => props.request.questions)
   const single = createMemo(() => questions().length === 1 && questions()[0]?.multiple !== true)
-  const tabs = createMemo(() => (single() ? 1 : questions().length + 1))
   const countdownSeconds = () => props.request.timeout as number | undefined
 
   const [store, setStore] = createStore({
     tab: 0,
     answers: [] as QuestionAnswer[],
     custom: [] as string[],
-    selected: -1,
     otherOpen: false,
   })
 
@@ -47,6 +49,8 @@ export function QuestionPrompt(props: QuestionPromptProps) {
     const v = input()
     return v ? (store.answers[store.tab]?.includes(v) ?? false) : false
   })
+  const questionID = createMemo(() => `${props.request.id}-question-${store.tab}`)
+  const choiceHintID = createMemo(() => `${props.request.id}-choice-hint-${store.tab}`)
   const currentStepLabel = createMemo(() => {
     if (confirm()) return _(S.questionReview)
     return question()?.header || i18n._({ ...S.questionStepLabel, values: { index: store.tab + 1 } })
@@ -75,7 +79,6 @@ export function QuestionPrompt(props: QuestionPromptProps) {
       return
     }
     setStore("tab", store.tab + 1)
-    setStore("selected", -1)
     setStore("otherOpen", false)
   }
 
@@ -110,14 +113,48 @@ export function QuestionPrompt(props: QuestionPromptProps) {
 
   function goToTab(index: number) {
     setStore("tab", index)
-    setStore("selected", -1)
     setStore("otherOpen", false)
   }
 
+  onMount(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target
+      const editable =
+        target instanceof Element &&
+        Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"])'))
+      const activeElement = document.activeElement
+      const scopeActive =
+        activeElement == null ||
+        activeElement === document.body ||
+        activeElement === document.documentElement ||
+        Boolean(root?.contains(activeElement))
+      const index = questionOptionShortcutIndex({
+        key: event.key,
+        optionCount: options().length,
+        scopeActive,
+        modified: event.altKey || event.ctrlKey || event.metaKey || event.shiftKey,
+        editable,
+      })
+      if (index == null || collapsed() || confirm() || store.otherOpen || menuOpen()) return
+      const option = options()[index]
+      if (!option) return
+      event.preventDefault()
+      if (multi()) toggle(option.label)
+      else pick(option.label)
+    }
+    document.addEventListener("keydown", handleShortcut)
+    onCleanup(() => document.removeEventListener("keydown", handleShortcut))
+  })
+
   return (
-    <section class="question-prompt-shell" aria-label={_(S.questionAria)}>
+    <section ref={root} class="question-prompt-shell" aria-label={_(S.questionAria)}>
       <Show when={collapsed()}>
-        <button type="button" class="question-prompt-collapsed" onClick={() => setCollapsed(false)}>
+        <button
+          type="button"
+          class="question-prompt-collapsed"
+          aria-expanded="false"
+          onClick={() => setCollapsed(false)}
+        >
           <span class="question-prompt-collapsed-main">
             <Icon name={getSemanticIcon("navigation.expand")} size="small" class="question-prompt-muted-icon" />
             <span class="question-prompt-collapsed-title">{currentStepLabel()}</span>
@@ -132,32 +169,65 @@ export function QuestionPrompt(props: QuestionPromptProps) {
       </Show>
       <Show when={!collapsed()}>
         <div class="question-prompt-expanded">
-          <header class="question-prompt-header">
-            <div class="question-prompt-heading">
-              <div class="question-prompt-kicker">{_(S.questionNeedsInput)}</div>
-              <div class="question-prompt-title">{currentStepLabel()}</div>
-            </div>
-            <div class="question-prompt-header-actions">
+          <header class="question-prompt-meta">
+            <div class="question-prompt-meta-summary">
+              <span class="question-prompt-kicker">{_(S.questionNeedsInput)}</span>
+              <span class="question-prompt-meta-separator" aria-hidden="true">
+                ·
+              </span>
+              <span class="question-prompt-current-step">{currentStepLabel()}</span>
               <Show when={!single()}>
+                <span class="question-prompt-meta-separator" aria-hidden="true">
+                  ·
+                </span>
                 <span class="question-prompt-step-count">
                   {Math.min(store.tab + 1, questions().length)} / {questions().length}
                 </span>
               </Show>
               <Show when={countdownSeconds() != null}>
+                <span class="question-prompt-meta-separator" aria-hidden="true">
+                  ·
+                </span>
                 <Countdown seconds={countdownSeconds()!} active={true} />
               </Show>
-              <Button
-                variant="ghost"
-                size="small"
-                onClick={reject}
-                class="question-prompt-skip"
-                title={_(S.questionSkipTitle)}
+            </div>
+            <div class="question-prompt-meta-actions">
+              <Popover
+                open={menuOpen()}
+                onOpenChange={setMenuOpen}
+                placement="bottom-end"
+                class="question-prompt-menu-popover"
+                trigger={
+                  <button
+                    type="button"
+                    class="question-prompt-more-button"
+                    aria-label={_(S.questionMoreActions)}
+                    aria-expanded={menuOpen()}
+                    aria-haspopup="menu"
+                  >
+                    <Icon name={getSemanticIcon("action.more")} size="small" />
+                  </button>
+                }
               >
-                {_(S.questionSkip)}
-              </Button>
+                <div class="question-prompt-menu-list" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="question-prompt-menu-item question-prompt-skip"
+                    title={_(S.questionSkipTitle)}
+                    onClick={() => {
+                      setMenuOpen(false)
+                      reject()
+                    }}
+                  >
+                    {_(S.questionSkip)}
+                  </button>
+                </div>
+              </Popover>
               <button
                 type="button"
                 class="question-prompt-collapse-button"
+                aria-expanded="true"
                 onClick={() => setCollapsed(true)}
                 title={_(S.questionCollapseTitle)}
               >
@@ -198,22 +268,33 @@ export function QuestionPrompt(props: QuestionPromptProps) {
           </Show>
           <div class="question-prompt-content">
             <Show when={!confirm()}>
-              <div class="question-prompt-question">
-                <Markdown text={question()?.question + (multi() ? _(S.questionMultiHint) : "")} />
+              <div class="question-prompt-question" id={questionID()}>
+                <Markdown text={question()?.question ?? ""} />
               </div>
-              <div class="question-prompt-options">
+              <div class="question-prompt-choice-hint" id={choiceHintID()}>
+                {multi() ? _(S.questionMultiHint) : _(S.questionSingleHint)}
+              </div>
+              <div
+                class="question-prompt-options"
+                role={multi() ? "group" : "radiogroup"}
+                aria-labelledby={questionID()}
+                aria-describedby={choiceHintID()}
+              >
                 <For each={options()}>
-                  {(opt) => {
+                  {(opt, idx) => {
                     const picked = () => store.answers[store.tab]?.includes(opt.label) ?? false
                     return (
                       <button
                         type="button"
+                        role={multi() ? "checkbox" : "radio"}
+                        aria-checked={picked()}
+                        aria-keyshortcuts={idx() < 9 ? String(idx() + 1) : undefined}
                         class="question-prompt-option"
                         classList={{ "is-picked": picked() }}
                         onClick={() => (multi() ? toggle(opt.label) : pick(opt.label))}
                       >
-                        <span class="question-prompt-option-mark">
-                          <Show when={picked()}>
+                        <span class="question-prompt-option-mark question-prompt-option-shortcut" aria-hidden="true">
+                          <Show when={picked()} fallback={<Show when={idx() < 9}>{idx() + 1}</Show>}>
                             <Icon name={getSemanticIcon("state.success")} size="small" />
                           </Show>
                         </span>

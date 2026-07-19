@@ -20,6 +20,8 @@ import { Cortex } from "../../src/cortex/manager"
 import { Embedding } from "../../src/vector/embedding"
 import { Worktree } from "../../src/project/worktree"
 import { SessionMessageCache } from "../../src/session/message-cache"
+import { Bus } from "../../src/bus"
+import { SessionEvent } from "../../src/session/event"
 
 const sessionID = "ses_test"
 
@@ -1359,12 +1361,17 @@ describe("SessionInvoke completion notices", () => {
       },
     })
 
+    const completions: Array<{ sessionID: string; unreadCount: number }> = []
+    let unsubscribe = () => {}
     try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           const { session } = await createSessionWithUser()
           activeSessionID = session.id
+          unsubscribe = Bus.subscribe(SessionEvent.Completion, (event) => {
+            completions.push(event.properties)
+          })
 
           await expect(SessionInvoke.loop.force(session.id)).rejects.toThrow()
 
@@ -1373,9 +1380,11 @@ describe("SessionInvoke completion notices", () => {
             unreadCount: 1,
             silent: false,
           })
+          expect(completions).toEqual([])
         },
       })
     } finally {
+      unsubscribe()
       restore()
       if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
     }

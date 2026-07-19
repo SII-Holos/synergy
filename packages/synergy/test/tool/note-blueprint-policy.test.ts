@@ -233,6 +233,9 @@ describe("note Blueprint write policy", () => {
         expect(created.metadata.kind).toBe("blueprint")
 
         const id = created.metadata.id as string
+        await NoteStore.update(ScopeContext.current.scope.id, id, {
+          blueprint: { runCount: 2 },
+        })
         const replaced = await write.execute(
           {
             mode: "replace",
@@ -243,6 +246,8 @@ describe("note Blueprint write policy", () => {
           ctx(session.id),
         )
         expect(replaced.output).toContain("Blueprint updated successfully")
+        expect(replaced.metadata.kind).toBe("blueprint")
+        expect(replaced.metadata.runCount).toBe(2)
 
         const edited = await edit.execute(
           anchoredReplace(await NoteStore.get(ScopeContext.current.scope.id, id), "Edited"),
@@ -253,6 +258,18 @@ describe("note Blueprint write policy", () => {
         const stored = await NoteStore.get(ScopeContext.current.scope.id, id)
         expect(stored.kind).toBe("blueprint")
         expect(NoteMarkdown.toMarkdown(stored.content).trim()).toBe("Edited")
+
+        const appended = await write.execute(
+          {
+            mode: "append",
+            id,
+            content: "Appended",
+            scope: "current",
+          },
+          ctx(session.id),
+        )
+        expect(appended.metadata.kind).toBe("blueprint")
+        expect(appended.metadata.runCount).toBe(2)
       },
     })
   })

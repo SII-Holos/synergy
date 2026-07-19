@@ -7099,6 +7099,14 @@ export type EventSessionStatus = {
   }
 }
 
+export type EventSessionCompletion = {
+  type: "session.completion"
+  properties: {
+    sessionID: string
+    unreadCount: number
+  }
+}
+
 export type EventSessionIdle = {
   type: "session.idle"
   properties: {
@@ -7554,6 +7562,7 @@ export type Event =
   | EventSessionDiff
   | EventSessionError
   | EventSessionStatus
+  | EventSessionCompletion
   | EventSessionIdle
   | EventRuntimeReloaded
   | EventSessionInboxUpdated

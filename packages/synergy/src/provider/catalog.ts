@@ -17,6 +17,8 @@ export namespace ProviderCatalog {
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
   export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
+  export const FALLBACK_CACHE_TTL_MS = 60 * 1000
+  export const MAX_LAST_KNOWN_GOOD_ENTRIES = 100
 
   export const Config = z
     .object({
@@ -54,9 +56,34 @@ export namespace ProviderCatalog {
     .strict()
   type RemoteCatalog = z.infer<typeof RemoteCatalog>
 
+  type LiveDiscoveryContext = {
+    auth?: Auth.Info
+    identity: string
+  }
+
+  type CacheEntry = {
+    value: Record<string, ModelsDev.Provider>
+    createdAt: number
+    ttlMs: number
+  }
+
   const inFlight = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
-  const memoryCache = new Map<string, { value: Record<string, ModelsDev.Provider>; createdAt: number }>()
+  const memoryCache = new Map<string, CacheEntry>()
   const liveDiscovery = new Map<string, "verified" | "fallback">()
+  const lastKnownGood = new Map<string, ProviderProfile.ModelCatalogEntry[]>()
+
+  function rememberLastKnownGood(key: string, entries: ProviderProfile.ModelCatalogEntry[]) {
+    lastKnownGood.delete(key)
+    lastKnownGood.set(
+      key,
+      entries.map((entry) => ({ ...entry })),
+    )
+    while (lastKnownGood.size > MAX_LAST_KNOWN_GOOD_ENTRIES) {
+      const oldest = lastKnownGood.keys().next().value
+      if (!oldest) break
+      lastKnownGood.delete(oldest)
+    }
+  }
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
     return {
@@ -277,28 +304,12 @@ export namespace ProviderCatalog {
     return parsed.data
   }
 
-  async function applyLiveDiscovery(
+  function applyLiveEntries(
     provider: ModelsDev.Provider,
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
-  ): Promise<ModelsDev.Provider> {
-    if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
-    const auth = await Auth.get(profile.id)
-    if (!auth && profile.authKind !== "none") return provider
-    let live: ProviderProfile.ModelCatalogEntry[]
-    try {
-      live = profile.fetchModelCatalog
-        ? await profile.fetchModelCatalog({ auth, fetch, baseURL: profile.baseURL })
-        : (await profile.fetchModels!({ auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
-    } catch (error) {
-      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
-      live = []
-    }
-    if (!live.length) {
-      liveDiscovery.set(profile.id, "fallback")
-      return provider
-    }
-    liveDiscovery.set(profile.id, "verified")
+    live: ProviderProfile.ModelCatalogEntry[],
+  ): ModelsDev.Provider {
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
     const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
@@ -320,35 +331,109 @@ export namespace ProviderCatalog {
     return next
   }
 
+  function liveDiscoveryKey(providerID: string, identity: string) {
+    return JSON.stringify({ providerID, identity })
+  }
+
+  async function resolveLiveDiscoveryContexts(includeLive: boolean | undefined) {
+    const contexts = new Map<string, LiveDiscoveryContext>()
+    if (!includeLive) return contexts
+
+    registerBuiltinProviderProfiles()
+    for (const profile of ProviderProfile.all()) {
+      if (!profile.fetchModelCatalog && !profile.fetchModels) continue
+      const selected = await Auth.select(profile.id)
+      const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
+      const identity = await profile.modelCatalogIdentity?.({
+        auth: selected?.auth,
+        credentialID: selected?.credentialID,
+        authUpdatedAt,
+      })
+      contexts.set(profile.id, {
+        auth: selected?.auth,
+        identity:
+          identity ??
+          (selected
+            ? JSON.stringify({ credentialID: selected.credentialID, authUpdatedAt })
+            : profile.authKind === "none"
+              ? "anonymous"
+              : "unauthenticated"),
+      })
+    }
+    return contexts
+  }
+
+  async function applyLiveDiscovery(
+    provider: ModelsDev.Provider,
+    profile: ProviderProfile.Profile,
+    modelsDev: Record<string, ModelsDev.Provider>,
+    context: LiveDiscoveryContext | undefined,
+  ): Promise<{ provider: ModelsDev.Provider; degraded: boolean }> {
+    if (!profile.fetchModelCatalog && !profile.fetchModels) return { provider, degraded: false }
+    const auth = context?.auth
+    if (!auth && profile.authKind !== "none") {
+      liveDiscovery.delete(profile.id)
+      return { provider, degraded: false }
+    }
+    let live: ProviderProfile.ModelCatalogEntry[] = []
+    try {
+      live = profile.fetchModelCatalog
+        ? await profile.fetchModelCatalog({ auth, fetch, baseURL: profile.baseURL })
+        : (await profile.fetchModels!({ auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
+    } catch (error) {
+      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
+    }
+    const lkgKey = context ? liveDiscoveryKey(profile.id, context.identity) : undefined
+    if (!live.length) {
+      liveDiscovery.set(profile.id, "fallback")
+      const previous = lkgKey ? lastKnownGood.get(lkgKey) : undefined
+      return {
+        provider: previous ? applyLiveEntries(provider, profile, modelsDev, previous) : provider,
+        degraded: true,
+      }
+    }
+    liveDiscovery.set(profile.id, "verified")
+    if (lkgKey) rememberLastKnownGood(lkgKey, live)
+    return { provider: applyLiveEntries(provider, profile, modelsDev, live), degraded: false }
+  }
+
   export async function resolve(input?: {
     config?: unknown
     includeLive?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
-    const key = cacheKey(input)
+    const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive)
+    const key = cacheKey(input, liveContexts)
     const cached = memoryCache.get(key)
-    if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < DEFAULT_CACHE_TTL_MS) {
+    if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < cached.ttlMs) {
       return cached.value
     }
     const pending = inFlight.get(key)
     if (!input?.forceRefresh && pending) return pending
     let request: Promise<Record<string, ModelsDev.Provider>>
-    request = doResolve(input).finally(() => {
+    request = doResolve(input, liveContexts, key).finally(() => {
       if (inFlight.get(key) === request) inFlight.delete(key)
     })
     inFlight.set(key, request)
     return request
   }
 
-  function cacheKey(input?: { config?: unknown; includeLive?: boolean }) {
+  function cacheKey(
+    input: { config?: unknown; includeLive?: boolean } | undefined,
+    liveContexts: Map<string, LiveDiscoveryContext>,
+  ) {
     const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
-    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog })
+    const liveIdentities = Object.fromEntries(
+      [...liveContexts.entries()].map(([providerID, context]) => [providerID, context.identity]),
+    )
+    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog, liveIdentities })
   }
 
-  async function doResolve(input?: {
-    config?: unknown
-    includeLive?: boolean
-  }): Promise<Record<string, ModelsDev.Provider>> {
+  async function doResolve(
+    input: { config?: unknown; includeLive?: boolean } | undefined,
+    liveContexts: Map<string, LiveDiscoveryContext>,
+    key: string,
+  ): Promise<Record<string, ModelsDev.Provider>> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
@@ -397,15 +482,22 @@ export namespace ProviderCatalog {
       }
     }
 
+    let degraded = false
     if (input?.includeLive) {
       for (const profile of ProviderProfile.all()) {
         const provider = result[profile.id]
         if (!provider) continue
-        result[profile.id] = await applyLiveDiscovery(provider, profile, modelsDev)
+        const discovery = await applyLiveDiscovery(provider, profile, modelsDev, liveContexts.get(profile.id))
+        result[profile.id] = discovery.provider
+        degraded ||= discovery.degraded
       }
     }
 
-    memoryCache.set(cacheKey(input), { value: result, createdAt: Date.now() })
+    memoryCache.set(key, {
+      value: result,
+      createdAt: Date.now(),
+      ttlMs: degraded ? FALLBACK_CACHE_TTL_MS : DEFAULT_CACHE_TTL_MS,
+    })
     return result
   }
 
@@ -446,6 +538,7 @@ export namespace ProviderCatalog {
     memoryCache.clear()
     inFlight.clear()
     liveDiscovery.clear()
+    lastKnownGood.clear()
   }
 
   export function liveDiscoveryStatus(providerID: string) {

@@ -3959,6 +3959,18 @@ msgstr "View all {count} notes"
 msgid "app.note.untitled"
 msgstr "Untitled"
 
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.error.fallback"
+msgstr "An error occurred"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.response.ready"
+msgstr "Response ready"
+
+#. ── Notifications ────────────────────────────────────────────────────────────
+msgid "app.notification.session.error"
+msgstr "Session error"
+
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "Browser"
@@ -10968,7 +10980,7 @@ msgstr "Collapse"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.customPlaceholder"
-msgstr "Type your own answer..."
+msgstr "Tell Synergy what to do instead..."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -10977,12 +10989,17 @@ msgstr "Edit"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.moreActions"
+msgstr "More question actions"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.multiHint"
-msgstr " *(select all that apply)*"
+msgstr "Choose one or more options to continue"
 
 #. question-prompt
 msgid "session.question.needsInput"
-msgstr "Needs your input"
+msgstr "Choose how to proceed"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11002,12 +11019,12 @@ msgstr "Open"
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherAnswer"
-msgstr "Other answer"
+msgstr "None of these?"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.otherDesc"
-msgstr "Type a different answer"
+msgstr "Tell Synergy how to proceed"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11023,6 +11040,11 @@ msgstr "Review"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.question.reviewTitle"
 msgstr "Review your answers"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.question.singleHint"
+msgstr "Choose one option to continue"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15589,6 +15611,14 @@ msgstr "Plan"
 #. ── Special user message labels ─────────────────────────────────────
 msgid "special-user.label.workflow"
 msgstr "Workflow"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.approved"
+msgstr "Approved"
+
+#. ── Special user message labels ─────────────────────────────────────
+msgid "special-user.status.changes-requested"
+msgstr "Changes requested"
 
 #. Question subtitle
 msgid "tool.label.asked-count"
