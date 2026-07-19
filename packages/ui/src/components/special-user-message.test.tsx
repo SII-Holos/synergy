@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test"
-import type { Part as PartType, UserMessage } from "@ericsanchezok/synergy-sdk/client"
+import type { Part as PartType, TextPart, UserMessage } from "@ericsanchezok/synergy-sdk/client"
 
 import { getSpecialUserMessageBubbleView } from "./special-user-message-model"
+import { visibleUserMessageText } from "./user-message-utils"
 
 function userMessage(metadata: Record<string, unknown>): UserMessage {
   return {
@@ -13,14 +14,21 @@ function userMessage(metadata: Record<string, unknown>): UserMessage {
   } as UserMessage
 }
 
-function textPart(text: string): PartType {
+function textPart(text: string): TextPart {
   return {
     id: "part_text",
     sessionID: "session",
     messageID: "message_user",
     type: "text",
     text,
-  } as PartType
+  }
+}
+
+function systemTextPart(text: string): TextPart {
+  return {
+    ...textPart(text),
+    origin: "system",
+  }
 }
 
 function projectedText(view: { parts: PartType[] } | undefined) {
@@ -125,13 +133,15 @@ describe("special user messages", () => {
     ] as const
 
     for (const [source, label, feedback] of cases) {
-      const originalParts = [textPart(feedback)]
+      const originalParts = [systemTextPart(feedback)]
       const view = getSpecialUserMessageBubbleView(userMessage({ source }), originalParts)
 
       expect(view?.label.id).toBe(label)
       expect(view?.kind).toBe("lightloop-control")
-      expect(view?.parts).toBe(originalParts)
+      expect(originalParts[0]?.origin).toBe("system")
+      expect(view?.parts.find((part) => part.type === "text")?.origin).toBe("user")
       expect(projectedText(view)).toBe(feedback)
+      expect(visibleUserMessageText(view?.parts)).toBe(feedback)
     }
   })
 })

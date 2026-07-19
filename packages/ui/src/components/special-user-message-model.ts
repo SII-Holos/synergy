@@ -54,6 +54,9 @@ function textPart(message: UserMessage, text: string): PartType {
     text,
   } as PartType
 }
+function reviewDisplayParts(parts: PartType[]): PartType[] {
+  return parts.map((part) => (part.type === "text" ? { ...part, origin: "user" as const } : part))
+}
 
 function blueprintRejectionText(message: UserMessage): string {
   const reason = metadataText(message, "reason")
@@ -162,7 +165,7 @@ export function getSpecialUserMessageBubbleView(
             ? SPECIAL_USER_LABEL_DESC["lightloop.approved"]
             : SPECIAL_USER_LABEL_DESC["lightloop.changes"],
         kind: "lightloop-control",
-        parts,
+        parts: reviewDisplayParts(parts),
       }
     }
 
