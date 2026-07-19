@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import type { Message, Part, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import {
-  blueprintNoteWriteFocusRequest,
+  blueprintNoteCreateFocusRequest,
   createPlanBlueprintOfferFromPart,
   emptyPlanBlueprintOfferState,
   findLatestPlanBlueprintOfferFromParts,
@@ -57,47 +57,47 @@ function message(id: string): Pick<Message, "id"> {
 const idle: SessionStatus = { type: "idle" }
 const busy: SessionStatus = { type: "busy", description: "working" }
 
-describe("blueprintNoteWriteFocusRequest", () => {
-  test("returns a focus request for completed Blueprint creates and replacements in the target session", () => {
+describe("blueprintNoteCreateFocusRequest", () => {
+  test("returns a focus request only for completed Blueprint creates in the target session", () => {
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ action: "create", kind: "blueprint", noteID: "note_123", title: "Plan" }),
         "ses_current",
       ),
     ).toEqual({ noteID: "note_123", title: "Plan" })
 
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ action: "replace", kind: "blueprint", noteID: "note_123", title: "Plan v2" }),
         "ses_current",
       ),
-    ).toEqual({ noteID: "note_123", title: "Plan v2" })
+    ).toBeUndefined()
   })
 
   test("ignores ordinary notes, non-deliverable edits, and other sessions", () => {
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ action: "create", kind: "note", noteID: "note_plain", title: "Plain note" }),
         "ses_current",
       ),
     ).toBeUndefined()
 
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ action: "append", kind: "blueprint", noteID: "note_123", title: "Plan" }),
         "ses_current",
       ),
     ).toBeUndefined()
 
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ tool: "note_edit", action: "edit", kind: "blueprint", noteID: "note_123", title: "Plan" }),
         "ses_current",
       ),
     ).toBeUndefined()
 
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ sessionID: "ses_other", action: "create", kind: "blueprint", noteID: "note_123" }),
         "ses_current",
       ),
@@ -106,7 +106,7 @@ describe("blueprintNoteWriteFocusRequest", () => {
 
   test("extracts optional scopeID from metadata", () => {
     expect(
-      blueprintNoteWriteFocusRequest(
+      blueprintNoteCreateFocusRequest(
         toolPart({ action: "create", kind: "blueprint", noteID: "note_123", title: "Plan", scopeID: "scope_abc" }),
         "ses_current",
       ),
