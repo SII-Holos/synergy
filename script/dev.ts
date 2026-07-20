@@ -8,7 +8,6 @@ import { randomBytes } from "node:crypto"
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
 const DEFAULT_HOSTNAME = "127.0.0.1"
-const DEFAULT_APP_HOST = "127.0.0.1"
 
 export interface DevProcessSpec {
   label:
@@ -71,8 +70,8 @@ function serverUrl(hostname: string, port: number) {
   return `http://${displayHost(hostname)}:${port}`
 }
 
-function appUrl(port: number) {
-  return `http://${DEFAULT_APP_HOST}:${port}`
+function appUrl(hostname: string, port: number) {
+  return `http://${displayHost(hostname)}:${port}`
 }
 
 function directories(repoRoot: string) {
@@ -160,7 +159,7 @@ Options:
   --port <port>           Port for bun dev server/app
   --server-port <port>    Server port for web/desktop (default: 4096)
   --app-port <port>       Vite app port for web/desktop (default: 3000)
-  --hostname <host>       Server bind hostname (default: 127.0.0.1)
+  --hostname <host>       Server and Vite bind hostname (default: 127.0.0.1)
   --attach <url>          Reuse an existing server instead of starting one
   --open                  Open the browser for bun dev app
   --no-open               Do not open the browser for bun dev web
@@ -205,18 +204,24 @@ function serverProcess(input: {
   }
 }
 
-function appProcess(input: { repoRoot: string; bunPath: string; appPort: number; attachUrl: string }): DevProcessSpec {
+function appProcess(input: {
+  repoRoot: string
+  bunPath: string
+  appPort: number
+  attachUrl: string
+  hostname: string
+}): DevProcessSpec {
   const dirs = directories(input.repoRoot)
   const server = normalizeUrl(input.attachUrl)
   return {
     label: "app",
-    command: [input.bunPath, "run", "dev", "--host", DEFAULT_APP_HOST, "--port", String(input.appPort), "--strictPort"],
+    command: [input.bunPath, "run", "dev", "--host", input.hostname, "--port", String(input.appPort), "--strictPort"],
     cwd: dirs.app,
     env: {
       VITE_SYNERGY_SERVER_URL: server,
       VITE_SYNERGY_CALLBACK_URL: `${server}/holos/callback`,
     },
-    waitUrl: appUrl(input.appPort),
+    waitUrl: appUrl(input.hostname, input.appPort),
   }
 }
 
@@ -225,6 +230,7 @@ function desktopProcess(input: {
   bunPath: string
   mode: "external" | "managed"
   appPort?: number
+  appHostname?: string
   browserServerUrl?: string
   browserHostSecret?: string
 }): DevProcessSpec {
@@ -236,7 +242,8 @@ function desktopProcess(input: {
     SYNERGY_BROWSER_HOST_REGISTRATION_SECRET: input.browserHostSecret,
     SYNERGY_BROWSER_BROKER_SERVER_URL: input.browserServerUrl,
   }
-  if (input.mode === "external") env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appPort ?? DEFAULT_APP_PORT)
+  if (input.mode === "external")
+    env.SYNERGY_DESKTOP_APP_URL = appUrl(input.appHostname ?? DEFAULT_HOSTNAME, input.appPort ?? DEFAULT_APP_PORT)
   return {
     label: "desktop",
     command: [input.bunPath, "run", "dev"],
@@ -323,6 +330,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
 
   if (command === "app") {
     const appPort = numberFlag(parsed.flags, "port", DEFAULT_APP_PORT)
+    const hostname = stringFlag(parsed.flags, "hostname", DEFAULT_HOSTNAME)
     const attachUrl = normalizeUrl(stringFlag(parsed.flags, "attach", serverUrl(DEFAULT_HOSTNAME, DEFAULT_SERVER_PORT)))
     return {
       kind: "run",
@@ -330,9 +338,9 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       command,
       help,
       exitCode: 0,
-      processes: [appProcess({ repoRoot, bunPath, appPort, attachUrl })],
-      openUrl: boolFlag(parsed.flags, "open") ? appUrl(appPort) : undefined,
-      requiredPorts: [{ label: "app", port: appPort, host: DEFAULT_APP_HOST }],
+      processes: [appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname })],
+      openUrl: boolFlag(parsed.flags, "open") ? appUrl(hostname, appPort) : undefined,
+      requiredPorts: [{ label: "app", port: appPort, host: displayHost(hostname) }],
       requiredServers: [attachUrl],
     }
   }
@@ -357,7 +365,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               browserHostSecret,
             }),
           ]),
-      appProcess({ repoRoot, bunPath, appPort, attachUrl }),
+      appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
       ...(attach ? [] : [browserHostProcess({ repoRoot, bunPath, serverUrl: attachUrl, secret: browserHostSecret })]),
     ]
     return {
@@ -367,10 +375,10 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       help,
       exitCode: 0,
       processes,
-      openUrl: boolFlag(parsed.flags, "open", true) ? appUrl(appPort) : undefined,
+      openUrl: boolFlag(parsed.flags, "open", true) ? appUrl(hostname, appPort) : undefined,
       requiredPorts: [
         ...(attach ? [] : [{ label: "server", port: serverPort, host: displayHost(hostname) }]),
-        { label: "app", port: appPort, host: DEFAULT_APP_HOST },
+        { label: "app", port: appPort, host: displayHost(hostname) },
       ],
       requiredServers: attach ? [attachUrl] : [],
     }
@@ -417,12 +425,13 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
               browserHostSecret,
             }),
           ]),
-      appProcess({ repoRoot, bunPath, appPort, attachUrl }),
+      appProcess({ repoRoot, bunPath, appPort, attachUrl, hostname }),
       desktopProcess({
         repoRoot,
         bunPath,
         mode: "external",
         appPort,
+        appHostname: hostname,
         browserServerUrl: attach ? undefined : attachUrl,
         browserHostSecret: attach ? undefined : browserHostSecret,
       }),
@@ -436,7 +445,7 @@ export function createDevPlan(args: string[], options: PlanOptions = {}): DevPla
       processes,
       requiredPorts: [
         ...(attach ? [] : [{ label: "server", port: serverPort, host: displayHost(hostname) }]),
-        { label: "app", port: appPort, host: DEFAULT_APP_HOST },
+        { label: "app", port: appPort, host: displayHost(hostname) },
       ],
       requiredServers: attach ? [attachUrl] : [],
     }

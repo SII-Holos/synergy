@@ -36,6 +36,12 @@ SYNERGY_HOME="$DEV_HOME" bun dev desktop --managed --server-port 4097 --app-port
 SYNERGY_HOME="$DEV_HOME" bun dev send "test request"
 ```
 
+Development modes bind to loopback by default. To expose an isolated Web stack deliberately, bind both the source server and Vite app with the shared hostname flag:
+
+```bash
+SYNERGY_HOME="$DEV_HOME" bun dev web --hostname 0.0.0.0 --server-port 4097 --app-port 3001
+```
+
 Use `server` for backend/CLI work, `web` for normal full-stack work, `desktop` for Electron-native behavior, and `desktop --managed` for the production-style managed-server path. Managed mode rebuilds the Web distribution before launch.
 
 ## Preserve Desktop Renderer Lifecycle
