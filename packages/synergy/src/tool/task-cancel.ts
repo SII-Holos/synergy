@@ -15,7 +15,7 @@ interface TaskCancelMetadata {
 export const TaskCancelTool = Tool.define<typeof parameters, TaskCancelMetadata>("task_cancel", {
   description: `Cancel visible background tasks.
 
-Subagents commonly run 5–30 minutes. Check task status first with \`task_output\` before cancelling — a running subagent is usually working, not stuck.
+Subagents commonly run 5–30 minutes. Before cancelling, use a one-shot status check with \`task_output(task_id="...", mode="summary")\` to confirm the task is truly stuck, not just running. Do not poll — one check before the cancel decision is sufficient.
 
 ## Parameters
 - **task_id** (optional): Specific task ID visible from this session

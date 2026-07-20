@@ -19,7 +19,7 @@ Do NOT use this when:
 ## Blocking vs Background
 
 ### `background: true` (non-blocking, recommended)
-Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. The system will notify you when it completes.
+Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. When the task completes, the system will send a lightweight notification that wakes you.
 
 ### `background: false` / omitted (blocking, default)
 Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
@@ -28,15 +28,23 @@ Launches the task and **waits up to 300 seconds** for it to complete. If the sub
 
 ## Checking on background tasks
 
-The system delivers the result and wakes you automatically when a background task completes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification.
+When a background task completes, the system sends a **lightweight notification** that wakes you — it tells you which task finished and instructs you to retrieve the result. The notification does NOT contain the final result.
 
-Use **`task_output`** only for a one-shot diagnostic check before completion:
+**To retrieve the final result**, call `task_output` with `mode="full"` once:
+- `task_output(task_id="...", mode="full")` — returns the complete result, progress summary, and structured output as rendered JSON
+- `task_output(task_id="...", mode="full", block: true)` — wait once (up to 300s) for completion, then return the full result
+
+Reading the full result with `mode="full"` (or default mode) **acknowledges the completion** — the notification is cleared and will not reappear. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until you retrieve the full result.
+
+**Diagnostic modes** are one-shot checks for live status — do not use them as a polling loop:
 
 - `mode="summary"` — Compact one-liner: status, health, elapsed time
 - `mode="progress"` — Detailed progress: tool call list, health, duration
 - `mode="tail"` — Recent session activity from the subagent's conversation
-- `mode="full"` (default) — Full result with progress summary; structured output is rendered as JSON
-- `block: true` — Wait once (up to 300s) when the next action truly depends on the result
+
+**`block=true` is only valid with `mode="full"` or the default mode.** Diagnostic modes + `block=true` are rejected.
+
+> **Do not poll.** Continue independent work while tasks run. Use diagnostic modes only as a one-shot check when you need specific status information. A later diagnostic is still allowed when new evidence, a stale health signal, or a cancellation decision warrants it — but do not loop. The system wakes you automatically when a task completes.
 
 Use **`task_list()`** once when you need an overview of all visible background tasks.
 

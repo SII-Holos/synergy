@@ -52,9 +52,9 @@ The child still uses the normal session loop, control-profile resolution, capabi
 
 A background task returns its identity immediately and continues independently. A foreground task waits for the child result for up to 300 seconds. If the wait expires, the task keeps running in the background rather than being cancelled.
 
-Completion is event-driven. The parent does not need to poll `task_output` in a loop. When a synchronous waiter exists, Cortex resolves that waiter directly and durably suppresses the parent notification. Otherwise, an eligible visible task writes one `steer` item to the parent's persistent Inbox with a stable task-derived delivery key, then requests `SessionDrive` to process it. Hidden reviewer tasks normally suppress parent-facing task events and notifications.
+Completion uses a two-phase protocol (see "Two-Phase Completion Protocol" below). When a synchronous waiter exists, Cortex resolves that waiter directly and durably suppresses the parent notification. Otherwise, an eligible visible task writes one lightweight `steer` item to the parent's persistent Inbox with a stable task-derived delivery key, then requests `SessionDrive` to process it. The notification does NOT contain the final result — it tells the parent to retrieve it once with `task_output(mode="full")`. Hidden reviewer tasks normally suppress parent-facing task events and notifications.
 
-When the parent explicitly reads a terminal task through `task_output`, the persisted tool result acknowledges that task's completion under the same task-level notification lock: Cortex disables future notification recovery and removes the still-pending Inbox item. Reading live progress does not consume the future terminal notification.
+When the parent explicitly reads a terminal task through `task_output(mode="full")` (or the default mode), `afterPersist` calls `acknowledgeParentCompletion()`, which disables future notification recovery and removes the still-pending Inbox item. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until the parent retrieves the full result.
 
 ## Progress
 
@@ -77,6 +77,22 @@ The launcher selects one of three output modes:
 Structured output is implemented through an ephemeral result tool and JSON Schema validation. The caller can permit zero to three repair turns when a result does not validate. External agents do not support structured Cortex output.
 
 Large external-agent outputs are bounded while preserving useful head and tail content. Output normalization is part of task completion and is stored with the child session.
+
+## Two-Phase Completion Protocol
+
+Automatic completion is a two-phase protocol: **notification** and **result retrieval**.
+
+**Phase 1 — Notification**: When a background task reaches a terminal state and no synchronous waiter exists, Cortex writes one lightweight `steer` Inbox item to the parent session. The notification identifies the task and its outcome but does **not** contain the final result. The message instructs the parent to retrieve the result once with `task_output(task_id="...", mode="full")`. The notification is persisted idempotently with a stable task-derived delivery key, so a crash or restart before the parent reads it causes the notification to be re-requested rather than lost.
+
+**Phase 2 — Result retrieval and acknowledgement**: The parent reads the final result with `task_output(mode="full")` (or the default mode). This persisted read acknowledges the task completion: Cortex calls `acknowledgeParentCompletion()`, which sets `notifyParentOnComplete` to `false` on both the in-memory task entry and the durable child session, and removes the pending Inbox item. Future notification recovery is disabled for this task.
+
+**Diagnostic reads preserve notification**: Modes `progress`, `tail`, and `summary` are one-shot snapshots for live status inspection. They do **not** call `acknowledgeParentCompletion()`, do not clear the Inbox item, and do not suppress future notifications. The notification persists until the parent explicitly retrieves the full result. This prevents a diagnostic poll from silently consuming the wake-up.
+
+**block=true is full-only**: The `block` parameter is valid only with `mode="full"` or the default mode. Diagnostic modes with `block=true` are rejected at the Zod schema level.
+
+**Foreground path**: A synchronous waiter (foreground `task()` or `task_output` with `block=true`) receives the result directly through `Cortex.waitFor()`. When a synchronous waiter exists, parent notification is durably suppressed (`notifyParentOnComplete = false`), making delivery and acknowledgement mutually exclusive per task.
+
+**Durable output after eviction**: The in-memory task entry is eventually compacted and evicted, but the child session remains the durable record. After eviction, `task_output(mode="full")` can still retrieve terminal output from the child session's persisted Cortex metadata, including its `output` field and terminal `status`. This means the parent can retrieve a task's result even after the live task handle has been removed.
 
 ## Delivery to the Parent
 

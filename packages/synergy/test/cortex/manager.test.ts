@@ -1262,6 +1262,11 @@ describe.serial("Cortex", () => {
             expect(notification?.mode).toBe("steer")
             expect(notification?.source.type).toBe("cortex")
             expect(notification?.message?.metadata?.source).toBe("cortex")
+            const notificationText = notification?.message?.parts.find((part) => part.type === "text")?.text ?? ""
+            expect(notificationText).toContain(`task_output(task_id="${task.id}", mode="full")`)
+            expect(notificationText).not.toContain(`mode="progress"`)
+            expect(notificationText).not.toContain(`mode="tail"`)
+            expect(notificationText).not.toContain("completed")
             expect((await Session.get(task.sessionID)).cortex?.deliveryNotifiedAt).toBeNumber()
 
             await Cortex.reconcileParentNotifications()
@@ -1483,7 +1488,48 @@ describe.serial("Cortex", () => {
       })
     })
 
-    test("removes a terminal notification after task output is persisted", async () => {
+    test("keeps a terminal notification after diagnostic task output is persisted", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, "completed")
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            const task = await Cortex.launch({
+              description: "Inspect terminal task diagnostics",
+              prompt: "Do something",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: "msg_test01234567890abc",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              output: { mode: "final_response" },
+            })
+            expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
+            expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
+
+            const taskOutput = await TaskOutputTool.init()
+            const ctx = taskOutputContext(parentSession.id)
+            for (const mode of ["summary", "progress", "tail"] as const) {
+              const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
+
+              expect(result.metadata.status).toBe("completed")
+              expect(await SessionInbox.list(parentSession.id)).toHaveLength(1)
+              expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(true)
+            }
+          } finally {
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+          }
+        },
+      })
+    })
+
+    test("removes a terminal notification after full task output is persisted", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -1498,9 +1544,9 @@ describe.serial("Cortex", () => {
             const parentSession = await Session.create({})
             const taskOutput = await TaskOutputTool.init()
             const ctx = taskOutputContext(parentSession.id)
-            for (const mode of ["summary", "progress", "tail", "full"] as const) {
+            for (const mode of [undefined, "full"] as const) {
               const task = await Cortex.launch({
-                description: `Consume ${mode} task result`,
+                description: `Consume ${mode ?? "default"} task result`,
                 prompt: "Do something",
                 agent: "developer",
                 parentSessionID: parentSession.id,
@@ -1515,6 +1561,8 @@ describe.serial("Cortex", () => {
               const result = await persistTaskOutput(taskOutput, { task_id: task.id, mode }, ctx)
 
               expect(result.metadata.status).toBe("completed")
+              expect(result.output).toContain("--- Result ---")
+              expect(result.output).toContain("completed")
               expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
               expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
             }
@@ -1525,7 +1573,7 @@ describe.serial("Cortex", () => {
       })
     })
 
-    test("acknowledges a persisted result after in-memory task eviction", async () => {
+    test("retrieves and acknowledges a persisted result after in-memory task eviction", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
         scope: await tmp.scope(),
@@ -1533,7 +1581,7 @@ describe.serial("Cortex", () => {
           const originalInvokeInternal = SessionInvoke.invokeInternal
           ;(SessionInvoke.invokeInternal as any) = mock(
             async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
-              return writeAssistantText(input.sessionID, "completed")
+              return writeAssistantText(input.sessionID, "durable result")
             },
           )
           try {
@@ -1550,16 +1598,19 @@ describe.serial("Cortex", () => {
             expect((await waitUntilCompleted(task.id))?.status).toBe("completed")
             expect(await waitForNotification(parentSession.id, task.id)).toBeDefined()
 
-            const taskOutput = await TaskOutputTool.init()
-            const params: TaskOutputParams = { task_id: task.id, mode: "full" }
-            const ctx = taskOutputContext(parentSession.id)
-            const result = await taskOutput.execute(params, ctx)
-            expect(result.metadata.status).toBe("completed")
-
             Cortex.reset()
             expect(Cortex.get(task.id)).toBeUndefined()
-            await taskOutput.afterPersist?.(params, ctx, result)
 
+            const taskOutput = await TaskOutputTool.init()
+            const result = await persistTaskOutput(
+              taskOutput,
+              { task_id: task.id, mode: "full" },
+              taskOutputContext(parentSession.id),
+            )
+
+            expect(result.metadata.status).toBe("completed")
+            expect(result.output).toContain("--- Result ---")
+            expect(result.output).toContain("durable result")
             expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
             expect((await Session.get(task.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
           } finally {
