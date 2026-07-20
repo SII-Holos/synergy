@@ -110,6 +110,38 @@ const rootRuleContracts: CssRuleContract[] = [
   },
 ]
 
+const fileWorkbenchRuleContracts: CssRuleContract[] = [
+  {
+    selector: ".file-workbench",
+    declarations: ["display:flex", "height:100%", "min-width:0", "flex-direction:column", "overflow:hidden"],
+  },
+  {
+    selector: ".file-workbench-main",
+    declarations: [
+      "position:relative",
+      "display:flex",
+      "min-height:0",
+      "min-width:0",
+      "flex:1",
+      "overflow:hidden",
+      "container-type:inline-size",
+    ],
+  },
+  {
+    selector: ".file-explorer",
+    declarations: ["position:relative", "display:flex", "min-width:220px", "flex-shrink:0", "flex-direction:column"],
+  },
+]
+
+type ViteManifestChunk = {
+  src?: string
+  file: string
+  css?: string[]
+  imports?: string[]
+  isEntry?: boolean
+  isDynamicEntry?: boolean
+}
+
 type CssRuleMatch = {
   body: string
   ancestors: string[]
@@ -246,6 +278,31 @@ async function readBuiltCss(outDir: string) {
 
   const chunks = await Promise.all(cssFiles.map((file) => readFile(path.join(assetsDir, file), "utf8")))
   return chunks.join("\n")
+}
+
+async function readBuiltManifest(outDir: string): Promise<Record<string, ViteManifestChunk>> {
+  return JSON.parse(await readFile(path.join(outDir, ".vite", "manifest.json"), "utf8"))
+}
+
+function collectManifestCss(manifest: Record<string, ViteManifestChunk>, roots: string[]) {
+  const visited = new Set<string>()
+  const css = new Set<string>()
+
+  const visit = (key: string) => {
+    if (visited.has(key)) return
+    visited.add(key)
+    const chunk = manifest[key]
+    if (!chunk) return
+    for (const file of chunk.css ?? []) css.add(file)
+    for (const imported of chunk.imports ?? []) visit(imported)
+  }
+
+  for (const root of roots) visit(root)
+  return [...css]
+}
+
+async function readCssAssets(outDir: string, files: string[]) {
+  return (await Promise.all(files.map((file) => readFile(path.join(outDir, file), "utf8")))).join("\n")
 }
 
 async function readBuiltIndex(outDir: string) {
@@ -462,9 +519,48 @@ async function expectStatusbarSubsessionContentFillsBody(css: string) {
   }
 }
 
+async function expectFileWorkbenchExplorerResizeMatchesMode(css: string) {
+  const browserType = process.env.SYNERGY_APP_LAYOUT_BROWSER === "webkit" ? webkit : chromium
+  const browser = await browserType.launch({ headless: true })
+  try {
+    const page = await browser.newPage({ viewport: { width: 1000, height: 600 } })
+    await page.setContent(`
+      <style>*, ::before, ::after { box-sizing: border-box; } ${css}</style>
+      <div class="file-workbench" style="height: 480px;">
+        <div class="file-workbench-main">
+          <main class="file-viewer"></main>
+          <aside class="file-explorer" style="width: 296px;">
+            <div data-component="resize-handle" data-direction="horizontal" data-edge="start"></div>
+          </aside>
+        </div>
+      </div>
+    `)
+
+    const measure = async (width: number) => {
+      await page.locator(".file-workbench").evaluate((element, value) => {
+        ;(element as HTMLElement).style.width = `${value}px`
+      }, width)
+      return page.evaluate(() => {
+        const explorer = document.querySelector<HTMLElement>(".file-explorer")
+        const handle = explorer?.querySelector<HTMLElement>('[data-component="resize-handle"]')
+        if (!explorer || !handle) throw new Error("Missing file explorer layout fixture")
+        return {
+          explorerPosition: getComputedStyle(explorer).position,
+          handleDisplay: getComputedStyle(handle).display,
+        }
+      })
+    }
+
+    expect(await measure(640)).toEqual({ explorerPosition: "absolute", handleDisplay: "none" })
+    expect(await measure(800)).toEqual({ explorerPosition: "relative", handleDisplay: "block" })
+  } finally {
+    await browser.close()
+  }
+}
+
 async function runAppBuild(outDir: string) {
   const proc = Bun.spawn({
-    cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir"],
+    cmd: [process.execPath, "run", "build", "--outDir", outDir, "--emptyOutDir", "--manifest"],
     cwd: appDir,
     stdout: "pipe",
     stderr: "pipe",
@@ -485,15 +581,36 @@ describe("app production build contract", () => {
     const outDir = await mkdtemp(path.join(os.tmpdir(), "synergy-app-dist-"))
     try {
       await runAppBuild(outDir)
-      const [css, index, assets, javascript] = await Promise.all([
+      const [css, index, assets, javascript, manifest] = await Promise.all([
         readBuiltCss(outDir),
         readBuiltIndex(outDir),
         readBuiltAssets(outDir),
         readBuiltJavaScript(outDir),
+        readBuiltManifest(outDir),
       ])
 
       for (const contract of rootRuleContracts) {
         expectRootRule(css, contract)
+      }
+
+      const initialManifestEntries = Object.entries(manifest)
+        .filter(([, chunk]) => chunk.isEntry)
+        .map(([key]) => key)
+      const fileWorkbenchManifestEntry = Object.entries(manifest).find(
+        ([, chunk]) => chunk.src === "src/components/file-workbench/content.tsx",
+      )
+      expect(initialManifestEntries.length, "Production manifest must include an initial entry").toBeGreaterThan(0)
+      expect(fileWorkbenchManifestEntry, "Production manifest must include the lazy File workbench entry").toBeDefined()
+      expect(fileWorkbenchManifestEntry![1].isDynamicEntry).toBe(true)
+
+      const initialCss = await readCssAssets(outDir, collectManifestCss(manifest, initialManifestEntries))
+      const fileWorkbenchCss = await readCssAssets(
+        outDir,
+        collectManifestCss(manifest, [fileWorkbenchManifestEntry![0]]),
+      )
+      for (const contract of fileWorkbenchRuleContracts) {
+        expect(collectRootRuleBodies(initialCss, contract.selector)).toHaveLength(0)
+        expectRootRule(fileWorkbenchCss, contract)
       }
 
       const expandedCompactionBodies = collectRootRuleBodies(
@@ -554,6 +671,7 @@ describe("app production build contract", () => {
       await expectSessionInboxBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)
       await expectStatusbarSubsessionContentFillsBody(css)
+      await expectFileWorkbenchExplorerResizeMatchesMode(css)
       expect((await stat(path.join(outDir, "assets", markdownChunk!))).size).toBeLessThan(200_000)
     } finally {
       await rm(outDir, { recursive: true, force: true })
