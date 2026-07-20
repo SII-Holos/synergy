@@ -28,16 +28,17 @@ export interface LatticeConfigSDK {
 
 const RESUMABLE = new Set(["paused"])
 
-function progressLabel(run: LatticeRun): string {
+function progressCounts(run: LatticeRun): { done: number; total: number } {
   const pathway = run.pathway ?? []
-  const total = pathway.length
-  const done = pathway.filter((s) => s.status === "completed").length
-  return `${done}/${total} steps`
+  return {
+    done: pathway.filter((step) => step.status === "completed").length,
+    total: pathway.length,
+  }
 }
 
-function statusLine(run: LatticeRun): string {
+function statusLine(run: LatticeRun, modeLabel: string): string {
   const reason = run.statusReason ? ` (${run.statusReason})` : ""
-  return `${run.status}${reason} · ${run.phase} · ${run.mode}`
+  return `${run.status}${reason} · ${run.phase} · ${modeLabel}`
 }
 
 export function LatticeConfigDialog(props: {
@@ -53,6 +54,11 @@ export function LatticeConfigDialog(props: {
   const [budget, setBudget] = createSignal("0")
   const [goal, setGoal] = createSignal("")
   const [saving, setSaving] = createSignal(false)
+
+  const modeLabel = (value: LatticeMode) =>
+    value === "auto"
+      ? _({ id: "app.lattice.config.mode.auto", message: "Advance autonomously" })
+      : _({ id: "app.lattice.config.mode.collaborative", message: "Work with you" })
 
   onMount(async () => {
     if (!props.sessionID) return
@@ -100,13 +106,13 @@ export function LatticeConfigDialog(props: {
   }
 
   return (
-    <Dialog title={_({ id: "app.lattice.config.title", message: "Lattice mode" })} size="form">
+    <Dialog title={_({ id: "app.lattice.config.title", message: "Configure Lattice" })} size="form">
       <div data-slot="dialog-form" class="flex flex-col gap-4">
         <p class="text-12-regular text-text-weak">
           {_({
             id: "app.lattice.config.description",
             message:
-              "Lattice runs your goal as a recursive Blueprint: it plans an ordered Pathway and executes each step as a BlueprintLoop. Auto keeps advancing on its own; Collaborative pauses after each Blueprint for your review.",
+              "Lattice turns your goal into an ordered Pathway and executes each step through a BlueprintLoop. Advance autonomously keeps planning and executing without waiting for review. Work with you pauses before each Blueprint executes so you can review it or add instructions.",
           })}
         </p>
 
@@ -125,9 +131,13 @@ export function LatticeConfigDialog(props: {
               <div class="text-11-medium text-text-weak uppercase tracking-wide">
                 {_({ id: "app.lattice.config.previousRun", message: "Previous run" })}
               </div>
-              <div class="mt-1 text-12-medium text-text-strong">{statusLine(run())}</div>
+              <div class="mt-1 text-12-medium text-text-strong">{statusLine(run(), modeLabel(run().mode))}</div>
               <div class="mt-1 text-11-regular text-text-weak">
-                {progressLabel(run())}
+                {_({
+                  id: "app.lattice.config.stepsCompleted",
+                  message: "{done}/{total} steps completed",
+                  values: progressCounts(run()),
+                })}
                 <Show when={run().currentStepID}>
                   {" · "}
                   {_({ id: "app.lattice.config.current", message: "current" })}:{" "}
@@ -135,35 +145,42 @@ export function LatticeConfigDialog(props: {
                 </Show>
               </div>
               <div class="mt-1 text-11-regular text-text-weak">
-                {_({ id: "app.lattice.config.modelCalls", message: "model calls" })}: {run().modelCallCount}/
-                {run().maxModelCalls || "unlimited"}
+                {_({ id: "app.lattice.config.modelCalls", message: "Model calls" })}: {run().modelCallCount}/
+                {run().maxModelCalls || _({ id: "app.lattice.config.unlimited", message: "Unlimited" })}
               </div>
             </div>
           )}
         </Show>
 
         <div class="flex flex-col gap-1.5">
-          <span class="text-12-medium text-text-base">{_({ id: "app.lattice.config.mode", message: "Mode" })}</span>
+          <span class="text-12-medium text-text-base">
+            {_({ id: "app.lattice.config.mode", message: "How Lattice runs" })}
+          </span>
           <div class="flex gap-2">
             <Button
               variant={mode() === "auto" ? "primary" : "secondary"}
               onClick={() => setMode("auto")}
               disabled={saving()}
             >
-              {_({ id: "app.lattice.config.mode.auto", message: "Auto" })}
+              {modeLabel("auto")}
             </Button>
             <Button
               variant={mode() === "collaborative" ? "primary" : "secondary"}
               onClick={() => setMode("collaborative")}
               disabled={saving()}
             >
-              {_({ id: "app.lattice.config.mode.collaborative", message: "Collaborative" })}
+              {modeLabel("collaborative")}
             </Button>
           </div>
         </div>
 
         <TextField
-          label={_({ id: "app.lattice.config.budget", message: "Model-call budget (0 = unlimited)" })}
+          label={_({ id: "app.lattice.config.budget", message: "Model-call budget" })}
+          description={_({
+            id: "app.lattice.config.budgetDescription",
+            message:
+              "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget.",
+          })}
           type="number"
           value={budget()}
           onChange={setBudget}

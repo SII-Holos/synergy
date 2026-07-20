@@ -60,6 +60,11 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
   const [reviewPrompt, setReviewPrompt] = createSignal("")
   const [busy, setBusy] = createSignal(false)
 
+  const modeLabel = (mode: LatticeRun["mode"]) =>
+    mode === "auto"
+      ? _({ id: "app.lattice.config.mode.auto", message: "Advance autonomously" })
+      : _({ id: "app.lattice.config.mode.collaborative", message: "Work with you" })
+
   createEffect(() => {
     const sessionID = props.sessionID
     if (!sessionID) return
@@ -140,7 +145,11 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
         <div class="flex flex-col gap-2 rounded-lg border border-border-base/60 bg-surface-weak/40 px-3 py-2">
           <div class="flex items-center gap-2 text-11-medium">
             <span class="rounded bg-surface-interactive-selected-weak/70 px-1.5 py-0.5 text-text-interactive-base">
-              {_({ id: "app.lattice.panel.mode", message: "Lattice · {mode}", values: { mode: r().mode } })}
+              {_({
+                id: "app.lattice.panel.mode",
+                message: "Lattice · {mode}",
+                values: { mode: modeLabel(r().mode) },
+              })}
             </span>
             <span class="text-text-weak">{r().phase}</span>
             <Show when={r().status === "paused"}>
@@ -151,7 +160,8 @@ export function LatticePanel(props: { sdk: LatticePanelSDK; sessionID: string })
             </Show>
             <span class="ml-auto text-text-weak">
               {steps(r()).filter((s) => s.status === "completed").length}/{steps(r()).length} ·{" "}
-              {_({ id: "app.lattice.panel.calls", message: "calls" })} {r().modelCallCount}/{r().maxModelCalls || "∞"}
+              {_({ id: "app.lattice.panel.calls", message: "Model calls" })} {r().modelCallCount}/
+              {r().maxModelCalls || "∞"}
             </span>
           </div>
 

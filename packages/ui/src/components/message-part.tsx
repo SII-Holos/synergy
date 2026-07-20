@@ -53,6 +53,7 @@ import { isToolCardHidden } from "./tool-result-presentation"
 import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
 import { CompactionCard } from "./compaction-card"
 import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
+import { getTaskToolInfo } from "./tool/task-info"
 import type { MessageDescriptor } from "@lingui/core"
 import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
@@ -561,11 +562,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         subtitle: input.url,
       }
     case "task":
-      return {
-        icon: "list-todo",
-        title: `${input.subagent_type || "task"} Agent`,
-        subtitle: input.description,
-      }
+      return getTaskToolInfo(input)
     case "bash":
       return {
         icon: "terminal",
