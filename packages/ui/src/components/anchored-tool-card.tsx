@@ -37,7 +37,7 @@ const createNewFileDescriptor = { id: "ui.anchoredTool.createNewFile", message: 
 const conflictMarkersDescriptor = { id: "ui.anchoredTool.conflictMarkers", message: "Conflict markers detected" }
 const conflictResolutionHintDescriptor = {
   id: "ui.anchoredTool.conflictResolutionHint",
-  message: "{count} file or region{pluralSuffix} may need resolution before anchored edits.",
+  message: "{count} file or region{pluralSuffix} may need resolution before precise edits.",
 }
 
 const summaryLabelFileDescriptor = { id: "ui.anchoredTool.summary.file", message: "File" }

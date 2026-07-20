@@ -2,7 +2,7 @@
 
 {{task_list}}
 
-These subagents are already executing the delegated work. They **WILL complete and report back automatically**.
+These subagents are already executing the delegated work. When they complete, the system will send a lightweight notification that wakes you — it tells you which task finished, but it does NOT contain the final result.
 
 ### What you MUST NOT do (wastes tokens — subagents are already doing this):
 - Do NOT produce final answers, conclusions, recommendations, or the delegated work yourself
@@ -10,8 +10,13 @@ These subagents are already executing the delegated work. They **WILL complete a
 - Do NOT set up `agenda_watch` or manual polling — the system handles wake-up
 
 ### What you SHOULD do:
-- Use `task_list()` to inspect all running tasks with full details (status, agent, elapsed, health, tool calls, last tool used)
-- Use `task_output(task_id="...", mode="progress")` for live status of a specific task
-- Use `task_output(task_id="...", mode="tail")` for recent session activity
 - Continue with other productive work that does NOT depend on these subagent results
-- Wait to be notified — the system WILL wake you when tasks complete
+- If no independent work remains, end the current turn and wait for the automatic completion notification
+- When you receive the notification, retrieve the final result once with `task_output(task_id="...", mode="full")`
+- Do not repeatedly call `task_output` while a task is running.
+
+### Optional one-shot diagnostics:
+- Use `task_list()` once to inspect all running tasks when you need an overview
+- Use `task_output(task_id="...", mode="progress")` or `mode="tail"` once only when you need specific diagnostic information — these are one-shot snapshots, not polling tools
+- If the task is still running after that check, continue independent work or wait for the automatic completion notification
+- A later diagnostic is allowed when new evidence, a stale health signal, or a cancellation decision warrants it — but do not loop

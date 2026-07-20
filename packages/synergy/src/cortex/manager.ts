@@ -897,9 +897,7 @@ export namespace Cortex {
       `**Description:** ${task.description}`,
       `**Duration:** ${formatDuration(task)}`,
       task.status === "error" && task.error ? `**Error:** ${task.error}` : "",
-      "Use `task_list()` to inspect visible background tasks.",
-      `Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.`,
-      `Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
+      `Retrieve the final result once with \`task_output(task_id="${task.id}", mode="full")\`.`,
     ]
       .filter(Boolean)
       .join("\n")
@@ -1012,6 +1010,52 @@ export namespace Cortex {
     return getVisibleTasks(sessionID).find((task) => task.id === taskID)
   }
 
+  function taskFromDurableSession(session: import("../session/types").Info): CortexTypes.Task | undefined {
+    const delegation = session.cortex
+    if (!delegation) return undefined
+    return {
+      id: delegation.taskID,
+      sessionID: session.id,
+      parentSessionID: delegation.parentSessionID,
+      parentMessageID: delegation.parentMessageID,
+      description: delegation.description,
+      prompt: "",
+      agent: delegation.agent,
+      model: delegation.model,
+      executionRole: delegation.executionRole,
+      status: delegation.status,
+      startedAt: delegation.startedAt,
+      completedAt: delegation.completedAt,
+      error: delegation.error,
+      notifyParentOnComplete: delegation.notifyParentOnComplete,
+      visibility: delegation.visibility,
+      tools: delegation.tools,
+      outputConfig: delegation.outputConfig,
+      output: delegation.output,
+      owner: delegation.owner,
+      timeoutMs: delegation.timeoutMs,
+      usage: delegation.usage,
+    }
+  }
+
+  export async function getVisibleTaskForOutput(
+    parentSessionID: string,
+    taskID: string,
+  ): Promise<CortexTypes.Task | undefined> {
+    const live = getVisibleTask(parentSessionID, taskID)
+    if (live) return live
+
+    const children = await Session.children(parentSessionID).catch(() => [])
+    const child = children.find(
+      (session) =>
+        session.cortex?.taskID === taskID &&
+        session.cortex.parentSessionID === parentSessionID &&
+        session.cortex.visibility !== "hidden" &&
+        isTerminal(session.cortex.status),
+    )
+    return child ? taskFromDurableSession(child) : undefined
+  }
+
   function getDescendantTasks(parentSessionID: string): CortexTypes.Task[] {
     const pending = [parentSessionID]
     const seen = new Set<string>()
@@ -1062,8 +1106,10 @@ export namespace Cortex {
   export async function output(
     taskID: string,
     mode: "summary" | "progress" | "tail" | "full" = "full",
+    parentSessionID?: string,
   ): Promise<string> {
-    const task = tasks.get(taskID)
+    const task =
+      tasks.get(taskID) ?? (parentSessionID ? await getVisibleTaskForOutput(parentSessionID, taskID) : undefined)
     if (!task) {
       return `Task ${taskID} not found. It may have expired or been cancelled.`
     }

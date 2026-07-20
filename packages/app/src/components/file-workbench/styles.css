@@ -526,6 +526,10 @@
     max-width: 86%;
     box-shadow: -12px 0 24px color-mix(in srgb, var(--background-stronger) 32%, transparent);
   }
+
+  .file-explorer [data-component="resize-handle"] {
+    display: none;
+  }
 }
 
 @media (pointer: coarse) {

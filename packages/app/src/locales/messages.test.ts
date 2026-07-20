@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test"
 import { setupI18n } from "@lingui/core"
-import { messages, workspace, panels, browser, fileWorkbench, fileExplorer, terminal, sessionReview } from "./messages"
+import {
+  messages,
+  workspace,
+  panels,
+  browser,
+  fileWorkbench,
+  fileExplorer,
+  terminal,
+  sessionReview,
+  agentVisual,
+} from "./messages"
 
 describe("i18n message descriptors", () => {
   test("all descriptors are defined with id and message", () => {
@@ -37,6 +47,19 @@ describe("i18n message descriptors", () => {
       }
     }
     expect(ids.size).toBeGreaterThan(0)
+  })
+
+  test("presents specialized agents as roles rather than task outputs", () => {
+    expect(agentVisual.roleExplore.message).toBe("Explorer")
+    expect(agentVisual.roleRequirements.message).toBe("Requirements Engineer")
+    expect(agentVisual.roleCodeMap.message).toBe("Code Cartographer")
+    expect(agentVisual.roleDependencyTrace.message).toBe("Dependency Tracer")
+    expect(agentVisual.roleApiContract.message).toBe("API Contract Designer")
+    expect(agentVisual.roleTestStrategy.message).toBe("Test Strategist")
+    expect(agentVisual.roleImplementation.message).toBe("Implementation Engineer")
+    expect(agentVisual.roleQualityGate.message).toBe("Quality Gatekeeper")
+    expect(agentVisual.roleMemory.message).toBe("Memory Curator")
+    expect(agentVisual.roleSessionHistory.message).toBe("Session Historian")
   })
 
   test("ids resolve against an i18n instance", () => {
