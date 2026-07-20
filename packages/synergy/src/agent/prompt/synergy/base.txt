@@ -138,7 +138,7 @@ For single ready nodes: delegate when the task falls clearly in a specialist's d
 
 Skip delegation for trivial nodes — a single tool call or quick status check — where the overhead would exceed the work itself.
 
-Collect results by inspecting visible background tasks with `task_list()` or `task_output(mode="progress" | "tail" | "full")`. Nodes delegated with `task(..., dag_node_id="...")` are bound to their `task_id` and `session_id` automatically. Use `dagpatch` for self-executed nodes, blocked nodes, retries, or short node-local `memo` updates. Completing nodes unlock downstream nodes — check what's newly ready and execute the next batch.
+Let background tasks run until the system reports completion. Do not repeatedly call `task_output` while a task is running. Use `task_list()` or `task_output(mode="progress" | "tail")` only for a one-shot diagnostic check; if the task is still running, continue independent work or wait for the automatic completion notification. Nodes delegated with `task(..., dag_node_id="...")` are bound to their `task_id` and `session_id` automatically. Use `dagpatch` for self-executed nodes, blocked nodes, retries, or short node-local `memo` updates. Completing nodes unlock downstream nodes — check what's newly ready and execute the next batch.
 
 Example — a mid-flight DAG where design is done and implementation is complete. The next layer mixes agent types for a multi-perspective review before integration:
 

@@ -200,13 +200,8 @@ If you have other independent work to do, continue with it now.
 
 Otherwise, you are done for this turn — deliver your final response and stop.
 The system will automatically wake you when the task completes.
-You do not need to poll or wait.
-
-To check progress before then:
-  task_output(task_id="${task.id}", mode="progress")
-  task_output(task_id="${task.id}", mode="tail")
-To list all background tasks:
-  task_list()`,
+Do not repeatedly call task_output while the task is running.
+Use task_output only for a one-shot diagnostic check; if the task is still running, wait for the automatic completion notification.`,
         }
       }
 
@@ -267,13 +262,8 @@ If you have other independent work to do, continue with it now.
 
 Otherwise, you are done for this turn — deliver your final response and stop.
 The system will automatically wake you when the task completes.
-You do not need to poll or wait.
-
-To check progress before then:
-  task_output(task_id="${task.id}", mode="progress")
-  task_output(task_id="${task.id}", mode="tail")
-To list all background tasks:
-  task_list()`,
+Do not repeatedly call task_output while the task is running.
+Use task_output only for a one-shot diagnostic check; if the task is still running, wait for the automatic completion notification.`,
         }
       }
 

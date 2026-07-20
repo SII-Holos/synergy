@@ -50,7 +50,7 @@ export const TaskOutputTool = Tool.define<typeof parameters, TaskOutputMetadata>
 - **block** (optional): Wait for completion if still running
 - **timeout** (optional): Maximum seconds to wait (default: 300)
 
-Subagents commonly run 5–30 minutes. Still running is not a problem — check mode="progress" to see what it's doing, or just wait for the automatic completion notification.
+Subagents commonly run 5–30 minutes. Do not repeatedly call \`task_output\` while a task is running. Continue independent work, or wait for the automatic completion notification. Use progress or tail only for a one-shot diagnostic check.
 
 ## Usage
 List visible tasks first:
@@ -73,10 +73,11 @@ Compact status check:
 task_output(task_id: "ctx_abc123", mode: "summary")
 \`\`\`
 
-Wait for completion (up to 300s):
+Wait once when the next action depends on completion (up to 300s):
 \`\`\`
 task_output(task_id: "ctx_abc123", block: true)
-\`\`\``,
+\`\`\`
+If the task is still running after this wait, do not call again; wait for the automatic completion notification.`,
   parameters,
   async execute(params: z.infer<typeof parameters>, ctx) {
     const { Cortex } = await import("../cortex")
@@ -110,8 +111,8 @@ task_output(task_id: "ctx_abc123", block: true)
           "Visible background tasks for this session:",
           ...lines,
           "",
-          'Use `task_output(task_id="...", mode="progress")` for live status.',
-          'Use `task_output(task_id="...", mode="tail")` for recent activity.',
+          "Use task_output only for a one-shot diagnostic check.",
+          "If a task is still running, wait for the automatic completion notification.",
         ].join("\n"),
       }
     }

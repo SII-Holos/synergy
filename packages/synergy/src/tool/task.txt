@@ -28,17 +28,19 @@ Launches the task and **waits up to 300 seconds** for it to complete. If the sub
 
 ## Checking on background tasks
 
-Use the **`task_output`** tool to check on running background tasks:
+The system delivers the result and wakes you automatically when a background task completes. Do not repeatedly call `task_output` while a task is running. Continue independent work, or wait for the automatic completion notification.
+
+Use **`task_output`** only for a one-shot diagnostic check before completion:
 
 - `mode="summary"` — Compact one-liner: status, health, elapsed time
 - `mode="progress"` — Detailed progress: tool call list, health, duration
 - `mode="tail"` — Recent session activity from the subagent's conversation
 - `mode="full"` (default) — Full result with progress summary; structured output is rendered as JSON
-- `block: true` — Wait (up to 300s) for the task to finish, then return full result
+- `block: true` — Wait once (up to 300s) when the next action truly depends on the result
 
-Use **`task_list()`** to list all visible background tasks at once.
+Use **`task_list()`** once when you need an overview of all visible background tasks.
 
-**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** When a background task finishes, the system delivers its result and wakes you automatically — no watch, schedule, or manual polling is needed. Setting one would be redundant.
+**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** No watch, schedule, or manual polling is needed.
 
 ## Usage notes
 

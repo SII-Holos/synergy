@@ -335,7 +335,7 @@ When using `bash`:
 - `dagread`: inspect current DAG state.
 - `task(background: true)`: start independent specialist work that can progress while you continue another useful branch.
 - `task(background: false)`: use a specialist synchronously when the next local action depends on that result.
-- `task_output(mode="progress")`: check long-running specialists.
+- `task_output(mode="progress" | "tail")`: use only for a one-shot diagnostic check. Do not repeatedly call `task_output` while a task is running. If it is still running, continue independent work or wait for the automatic completion notification.
 
 ## Visual Artifacts and Files
 
