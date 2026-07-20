@@ -1717,6 +1717,97 @@ describe.serial("Cortex", () => {
       })
     })
 
+    test("drains multiple completion notifications into one parent turn and acknowledges every full result", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const originalInvokeInternal = SessionInvoke.invokeInternal
+          let parentLease: SessionManager.LoopLease | undefined
+          let parentSessionID = ""
+          ;(SessionInvoke.invokeInternal as any) = mock(
+            async (input: Parameters<typeof SessionInvoke.invokeInternal>[0]) => {
+              return writeAssistantText(input.sessionID, `batch result ${input.sessionID}`)
+            },
+          )
+          try {
+            const parentSession = await Session.create({})
+            parentSessionID = parentSession.id
+            const rootID = Identifier.ascending("message")
+            await Session.updateMessage({
+              id: rootID,
+              role: "user",
+              sessionID: parentSession.id,
+              time: { created: Date.now() },
+              agent: "synergy",
+              model: { providerID: "test-provider", modelID: "test-model" },
+              isRoot: true,
+              rootID,
+            } as any)
+            await Session.updatePart({
+              id: Identifier.ascending("part"),
+              messageID: rootID,
+              sessionID: parentSession.id,
+              type: "text",
+              text: "parent root",
+            })
+            parentLease = SessionManager.acquire(parentSession.id)
+            expect(parentLease).toBeDefined()
+
+            const first = await Cortex.launch({
+              description: "First batched task",
+              prompt: "Do the first thing",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: rootID,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              output: { mode: "final_response" },
+            })
+            const second = await Cortex.launch({
+              description: "Second batched task",
+              prompt: "Do the second thing",
+              agent: "developer",
+              parentSessionID: parentSession.id,
+              parentMessageID: rootID,
+              model: { providerID: "test-provider", modelID: "test-model" },
+              output: { mode: "final_response" },
+            })
+            expect((await waitUntilCompleted(first.id))?.status).toBe("completed")
+            expect((await waitUntilCompleted(second.id))?.status).toBe("completed")
+            expect(await waitForNotification(parentSession.id, first.id)).toBeDefined()
+            expect(await waitForNotification(parentSession.id, second.id)).toBeDefined()
+
+            const drained = await SessionInbox.drainSteer(parentSession.id)
+            expect(drained).toHaveLength(2)
+            expect(new Set(drained.map((item) => item.deliveryKey))).toEqual(
+              new Set([`cortex:taskNotification:${first.id}`, `cortex:taskNotification:${second.id}`]),
+            )
+            const materialized = await Promise.all(
+              drained.map((item) => SessionInbox.materializeItem(item, rootID, { guiding: true })),
+            )
+            expect(materialized.every((message) => message?.info.rootID === rootID)).toBe(true)
+
+            const taskOutput = await TaskOutputTool.init()
+            const ctx = taskOutputContext(parentSession.id)
+            const results = await Promise.all([
+              persistTaskOutput(taskOutput, { task_id: first.id, mode: "full" }, ctx),
+              persistTaskOutput(taskOutput, { task_id: second.id, mode: "full" }, ctx),
+            ])
+            const combinedOutput = results.map((result) => result.output).join("\n")
+            expect(combinedOutput).toContain(`batch result ${first.sessionID}`)
+            expect(combinedOutput).toContain(`batch result ${second.sessionID}`)
+            expect(await SessionInbox.list(parentSession.id)).toHaveLength(0)
+            expect((await Session.get(first.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
+            expect((await Session.get(second.sessionID)).cortex?.notifyParentOnComplete).toBe(false)
+          } finally {
+            if (parentLease) await SessionManager.release(parentLease)
+            ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
+            if (parentSessionID) SessionManager.unregisterRuntime(parentSessionID)
+          }
+        },
+      })
+    })
+
     test("suppresses parent notification when notifyParentOnComplete is false", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
