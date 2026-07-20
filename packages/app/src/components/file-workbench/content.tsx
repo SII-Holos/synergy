@@ -12,6 +12,7 @@ import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-p
 import { FileExplorer } from "./explorer"
 import { classifyFilePreview, resolveWorkspaceRelativePath } from "./model"
 import { FileSourceView } from "./source-view"
+import "./styles.css"
 import { fileWorkbench as F } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
 
