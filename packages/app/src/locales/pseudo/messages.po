@@ -2404,6 +2404,10 @@ msgid "app.lattice.config.budget"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.budgetDescription"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.continueExisting"
 msgstr ""
 
@@ -2460,11 +2464,19 @@ msgid "app.lattice.config.restart"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.stepsCompleted"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.title"
 msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.unknownError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.unlimited"
 msgstr ""
 
 #. js-lingui-explicit-id
