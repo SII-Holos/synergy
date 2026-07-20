@@ -235,13 +235,7 @@ export function ContextWorkbenchContent(_props: WorkbenchPanelContentProps) {
               <h3 class="text-13-medium text-text-strong">{i18n._(C.dataAccess)}</h3>
               <p class="mt-1 text-12-regular text-text-weak">{i18n._(C.dataAccessDescription)}</p>
             </div>
-            <Button
-              type="button"
-              variant="secondary"
-              class="min-h-11"
-              icon={getSemanticIcon("action.view")}
-              onClick={openRawMessages}
-            >
+            <Button type="button" variant="ghost" class="min-h-11" onClick={openRawMessages}>
               {i18n._(C.rawMessages)}
             </Button>
           </div>
