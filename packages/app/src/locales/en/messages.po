@@ -1239,7 +1239,7 @@ msgstr "Inspect normalized persisted messages and the latest user system overrid
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.rawMessages"
-msgstr "Raw Messages"
+msgstr "View raw messages"
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.title"
@@ -5361,11 +5361,15 @@ msgstr "Loading…"
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.notice.sensitive"
-msgstr "Sensitive data — copy carefully."
+msgstr "May include prompts, tool inputs, file contents, and model output. Copy carefully."
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.preview.empty"
 msgstr "Choose a message to inspect."
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.preview.wrap"
+msgstr "Wrap lines"
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.refresh"

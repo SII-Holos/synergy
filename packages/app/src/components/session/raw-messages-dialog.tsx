@@ -22,9 +22,9 @@ import {
   nextRawMessagesLimit,
   rawMessageCreatedAt,
   rawMessageFlags,
+  rawMessageIDSegments,
   rawMessageJson,
   rawMessagePreview,
-  rawMessageShortID,
   reconcileRawMessageState,
   selectAllRawMessages,
   summarizeRawMessageSelection,
@@ -35,6 +35,20 @@ import "./raw-messages-dialog.css"
 
 const INITIAL_RAW_LIMIT = 100
 
+function RawMessageID(props: { message: RawMessagePresentationMessage }) {
+  const segments = createMemo(() => rawMessageIDSegments(props.message))
+  return (
+    <span class="raw-message-id" title={props.message.info.id}>
+      <span class="raw-message-id-leading">{segments().leading}</span>
+      <Show when={segments().trailing}>
+        <span class="raw-message-id-trailing">{segments().trailing}</span>
+      </Show>
+    </span>
+  )
+}
+
+type RawMessagePresentationMessage = Parameters<typeof rawMessageIDSegments>[0]
+
 export function RawMessagesDialog(props: { sessionID: string }) {
   const sdk = useSDK()
   const { i18n, fmt } = useLocale()
@@ -42,6 +56,7 @@ export function RawMessagesDialog(props: { sessionID: string }) {
   const [historyComplete, setHistoryComplete] = createSignal(false)
   const [selectedIds, setSelectedIds] = createSignal(new Set<string>())
   const [previewId, setPreviewId] = createSignal<string | undefined>()
+  const [wrapCode, setWrapCode] = createSignal(false)
   let inspectorRoot: HTMLDivElement | undefined
   let previewBackButton: HTMLButtonElement | undefined
   let selectAllInput: HTMLInputElement | undefined
@@ -258,19 +273,26 @@ export function RawMessagesDialog(props: { sessionID: string }) {
                           <button
                             type="button"
                             class="raw-message-row-main"
+                            classList={{ "has-flags": flags().length > 0 }}
                             data-raw-message-id={message.info.id}
                             onClick={() => openPreview(message.info.id)}
                           >
-                            <span class="raw-message-row-primary">
-                              <strong>{role()}</strong>
-                              <time>{fmt.time(rawMessageCreatedAt(message))}</time>
+                            <strong class="raw-message-row-role">{role()}</strong>
+                            <span class="raw-message-row-metadata">
+                              <RawMessageID message={message} />
                             </span>
-                            <span class="raw-message-row-secondary">
-                              <span title={message.info.id}>{rawMessageShortID(message)}</span>
-                              <Show when={flags().length > 0}>
-                                <span class="raw-message-flags">{flags().join(" · ")}</span>
-                              </Show>
-                            </span>
+                            <time>
+                              {fmt.time(rawMessageCreatedAt(message), {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                                second: "2-digit",
+                              })}
+                            </time>
+                            <Show when={flags().length > 0}>
+                              <span class="raw-message-flags" title={flags().join(" · ")}>
+                                {flags().join(" · ")}
+                              </span>
+                            </Show>
                           </button>
                         </div>
                       )
@@ -309,11 +331,22 @@ export function RawMessagesDialog(props: { sessionID: string }) {
                 {(message) => (
                   <div class="raw-messages-preview-title">
                     <strong>{rawMessagePreview(message(), presentation())}</strong>
-                    <span title={message().info.id}>{rawMessageShortID(message())}</span>
+                    <RawMessageID message={message()} />
                   </div>
                 )}
               </Show>
               <div class="raw-messages-preview-actions">
+                <Button
+                  type="button"
+                  size="small"
+                  variant="ghost"
+                  class="raw-messages-wrap-toggle"
+                  aria-pressed={wrapCode()}
+                  data-selected={wrapCode()}
+                  onClick={() => setWrapCode((current) => !current)}
+                >
+                  {i18n._(R.wrapLines)}
+                </Button>
                 <span class="raw-messages-copy-state" role="status" aria-live="polite" aria-atomic="true">
                   {copyStateLabel(currentCopy.state())}
                 </span>
@@ -331,7 +364,7 @@ export function RawMessagesDialog(props: { sessionID: string }) {
             </div>
             <div class="raw-messages-code-scroll">
               <Show when={previewText()} fallback={<div class="raw-messages-state">{i18n._(R.chooseMessage)}</div>}>
-                <RawMessageCodePreview file={previewFile()} />
+                <RawMessageCodePreview file={previewFile()} wrap={wrapCode()} />
               </Show>
             </div>
           </section>

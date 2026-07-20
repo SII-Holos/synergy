@@ -5,4 +5,10 @@ describe("RawMessageCodePreview loading boundary", () => {
     const module = await import("./raw-message-code-preview")
     expect(typeof module.RawMessageCodePreview).toBe("function")
   })
+
+  test("switches the shared renderer between horizontal scrolling and soft wrapping", async () => {
+    const { rawMessageCodeOverflow } = await import("./raw-message-code-preview")
+    expect(rawMessageCodeOverflow(false)).toBe("scroll")
+    expect(rawMessageCodeOverflow(true)).toBe("wrap")
+  })
 })

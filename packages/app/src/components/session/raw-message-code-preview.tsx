@@ -7,7 +7,20 @@ export interface RawMessageCodePreviewFile {
   cacheKey?: string
 }
 
-export function RawMessageCodePreview(props: { file: RawMessageCodePreviewFile }) {
+export function rawMessageCodeOverflow(wrap: boolean): "scroll" | "wrap" {
+  return wrap ? "wrap" : "scroll"
+}
+
+export function RawMessageCodePreview(props: { file: RawMessageCodePreviewFile; wrap: boolean }) {
   const codeComponent = useCodeComponent()
-  return <Dynamic component={codeComponent} file={props.file} overflow="scroll" class="raw-messages-code select-text" />
+  return (
+    <div class="raw-message-code-content">
+      <Dynamic
+        component={codeComponent}
+        file={props.file}
+        overflow={rawMessageCodeOverflow(props.wrap)}
+        class="raw-messages-code select-text"
+      />
+    </div>
+  )
 }
