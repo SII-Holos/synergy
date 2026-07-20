@@ -188,7 +188,7 @@ export default definePlugin({
 })
 ```
 
-The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin that started the LightLoop.
+The typed payload is `{ loop: LightLoopInfo }`. Synergy invokes this hook only for the plugin generation that started the LightLoop. Terminal delivery is acknowledged only after at least one matching `lightloop.after` handler completes successfully and no matching handler fails. A generation mismatch, missing handler, or handler failure leaves the terminal delivery pending with a durable error; terminal reconciliation retries it, while an acknowledged delivery is not invoked again. Handlers must therefore be idempotent across retries that follow an interrupted or failed attempt.
 
 ## Session Control
 

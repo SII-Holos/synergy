@@ -1,11 +1,28 @@
 import { Session } from "."
 import { Plugin } from "../plugin"
+import { Lock } from "../util/lock"
 
 const activeTimers = new Map<string, Timer>()
 
 function timerKey(executionSessionID: string): string {
   return `lightloop_deadline:${executionSessionID}`
 }
+
+function terminalHookLock(executionSessionID: string): string {
+  return `lightloop_terminal_hook:${executionSessionID}`
+}
+
+function isTerminalStatus(status: string | undefined): status is TerminalStatus {
+  return (
+    status === "completed" ||
+    status === "failed" ||
+    status === "cancelled" ||
+    status === "timed_out" ||
+    status === "iteration_exhausted"
+  )
+}
+
+type TerminalStatus = "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
 
 function setDeadlineTimer(executionSessionID: string, deadlineAt: number, onExpire: () => void) {
   clearDeadlineTimer(executionSessionID)
@@ -29,27 +46,22 @@ function clearDeadlineTimer(executionSessionID: string) {
 
 export namespace LightLoopRuntime {
   /**
-   * Reattach deadline timers for all active plugin-owned LightLoops.
-   * Called during runtime init/reload — sessions may have been loaded
-   * from storage with deadlineAt set but no live timer.
+   * Reattach active deadlines and retry unacknowledged terminal hooks.
+   * Called during runtime init/reload after sessions are loaded from storage.
    */
   export async function reattachPluginTimers(): Promise<void> {
     for await (const session of Session.listAll()) {
-      const wf = session.workflow
-      if (wf?.kind !== "lightloop") continue
-      if (!wf.pluginOwner) continue
-      if (!wf.deadlineAt) continue
-      if (
-        wf.status === "completed" ||
-        wf.status === "failed" ||
-        wf.status === "cancelled" ||
-        wf.status === "timed_out" ||
-        wf.status === "iteration_exhausted"
-      )
+      const workflow = session.workflow
+      if (workflow?.kind !== "lightloop" || !workflow.pluginOwner) continue
+      if (isTerminalStatus(workflow.status)) {
+        if (workflow.terminalHookDeliveredAt === undefined) {
+          await setTerminalStatus(session.id, workflow.status, workflow.terminalError).catch(() => undefined)
+        }
         continue
-      // Only reattach if there isn't already an active timer for this session
+      }
+      if (!workflow.deadlineAt) continue
       if (activeTimers.has(timerKey(session.id))) continue
-      scheduleDeadline(session.id, wf.deadlineAt)
+      scheduleDeadline(session.id, workflow.deadlineAt)
     }
   }
 
@@ -63,24 +75,12 @@ export namespace LightLoopRuntime {
    * This is the SINGLE terminal path — approve, cancel, deadline timeout,
    * max-iteration exhaustion, and failure all use this method.
    */
-  export async function setTerminalStatus(
-    sessionID: string,
-    status: "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted",
-    error?: string,
-  ): Promise<void> {
+  export async function setTerminalStatus(sessionID: string, status: TerminalStatus, error?: string): Promise<void> {
+    using _ = await Lock.write(terminalHookLock(sessionID))
     const session = await Session.get(sessionID)
     if (session.workflow?.kind !== "lightloop") return
 
-    const workflow = session.workflow
-    const alreadyTerminal =
-      workflow.status === "completed" ||
-      workflow.status === "failed" ||
-      workflow.status === "cancelled" ||
-      workflow.status === "timed_out" ||
-      workflow.status === "iteration_exhausted"
-
-    if (!alreadyTerminal) {
-      // Persist terminal status
+    if (!isTerminalStatus(session.workflow.status)) {
       await Session.update(sessionID, (draft) => {
         if (draft.workflow?.kind !== "lightloop") return
         draft.workflow = {
@@ -93,55 +93,43 @@ export namespace LightLoopRuntime {
 
     clearDeadlineTimer(sessionID)
 
-    // Refresh session after potential update
-    const updated = alreadyTerminal ? workflow : (await Session.get(sessionID)).workflow
-    if (!updated || updated.kind !== "lightloop" || !updated.pluginOwner) return
+    const updated = (await Session.get(sessionID)).workflow
+    if (updated?.kind !== "lightloop" || !updated.pluginOwner || updated.terminalHookDeliveredAt !== undefined) return
 
-    // Fire lightloop.after observer for plugin-owned loops only.
-    // Idempotent guard: terminalHookDeliveredAt prevents duplicate delivery.
-    // If the hook was never delivered (terminalHookDeliveredAt is undefined),
-    // retry even when already terminal.
-    if (updated.terminalHookDeliveredAt === undefined) {
-      const hookStatus =
-        updated.status === "completed" ||
-        updated.status === "cancelled" ||
-        updated.status === "timed_out" ||
-        updated.status === "iteration_exhausted" ||
-        updated.status === "failed"
-          ? updated.status
-          : status
+    const hookStatus = isTerminalStatus(updated.status) ? updated.status : status
+    const hookPayload = {
+      loop: {
+        sessionID,
+        status: hookStatus,
+        instructions: updated.instructions,
+        ...(updated.terminalError ? { error: updated.terminalError } : {}),
+      },
+    }
+    const delivery = await Plugin.deliverHookForPlugin(
+      updated.pluginOwner.pluginId,
+      updated.pluginOwner.pluginGeneration,
+      "lightloop.after",
+      hookPayload,
+    ).catch((hookError) => ({
+      status: "failed" as const,
+      handlerCount: 0,
+      succeededHandlerCount: 0,
+      error: `Hook lightloop.after delivery failed: ${hookError instanceof Error ? hookError.message : String(hookError)}`,
+    }))
 
-      const hookPayload = {
-        loop: {
-          sessionID,
-          status: hookStatus,
-          instructions: updated.instructions,
-          ...(updated.terminalError ? { error: updated.terminalError } : {}),
-        },
-      }
-      // Hook failure does NOT rollback terminal state
-      const delivered = await Plugin.triggerForPlugin(
-        updated.pluginOwner.pluginId,
-        updated.pluginOwner.pluginGeneration,
-        "lightloop.after",
-        hookPayload,
-        {},
-      ).catch(() => undefined)
-
-      if (delivered) {
-        await Session.update(sessionID, (draft) => {
-          if (draft.workflow?.kind !== "lightloop") return
+    await Session.update(sessionID, (draft) => {
+      if (draft.workflow?.kind !== "lightloop" || draft.workflow.terminalHookDeliveredAt !== undefined) return
+      if (delivery.status === "delivered") {
+        if (delivery.handlerCount > 0) {
           draft.workflow.terminalHookDeliveredAt = Date.now()
           draft.workflow.terminalHookError = undefined
-        }).catch(() => {})
-      } else {
-        // Mark hook failure so the next retry can distinguish stale state
-        await Session.update(sessionID, (draft) => {
-          if (draft.workflow?.kind !== "lightloop") return
-          draft.workflow.terminalHookError = "delivery_failed"
-        }).catch(() => {})
+          return
+        }
+        draft.workflow.terminalHookError = "Hook lightloop.after reported delivery without a handler"
+        return
       }
-    }
+      draft.workflow.terminalHookError = delivery.error
+    })
   }
 
   export function scheduleDeadline(sessionID: string, deadlineAt: number) {
