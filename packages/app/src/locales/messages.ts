@@ -112,7 +112,7 @@ export const contextWorkspace = {
     id: "app.context.dataAccess.description",
     message: "Inspect normalized persisted messages and the latest user system override.",
   },
-  rawMessages: { id: "app.context.dataAccess.rawMessages", message: "Raw Messages" },
+  rawMessages: { id: "app.context.dataAccess.rawMessages", message: "View raw messages" },
   latestUserSystemOverride: {
     id: "app.context.instructions.latestUserOverride",
     message: "Latest user system override",
@@ -148,7 +148,10 @@ export const contextWorkspace = {
 
 export const rawMessages = {
   title: { id: "app.rawMessages.title", message: "Raw messages" },
-  sensitiveNotice: { id: "app.rawMessages.notice.sensitive", message: "Sensitive data — copy carefully." },
+  sensitiveNotice: {
+    id: "app.rawMessages.notice.sensitive",
+    message: "May include prompts, tool inputs, file contents, and model output. Copy carefully.",
+  },
   selectAll: { id: "app.rawMessages.selection.selectAll", message: "Select all loaded messages" },
   messageCount: { id: "app.rawMessages.count", message: "{count, plural, one {# message} other {# messages}}" },
   copySelected: { id: "app.rawMessages.copy.selected", message: "Copy selected raw messages" },
@@ -183,6 +186,7 @@ export const rawMessages = {
   loadEarlier: { id: "app.rawMessages.loadEarlier", message: "Load earlier" },
   backToMessages: { id: "app.rawMessages.back", message: "Messages" },
   chooseMessage: { id: "app.rawMessages.preview.empty", message: "Choose a message to inspect." },
+  wrapLines: { id: "app.rawMessages.preview.wrap", message: "Wrap lines" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Browser ──────────────────────────────────────────────────────────────────

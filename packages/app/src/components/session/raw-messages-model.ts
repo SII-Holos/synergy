@@ -28,10 +28,10 @@ export function rawMessagePreview(message: RawSessionMessage, presentation: RawM
   return presentation.roles[message.info.role]
 }
 
-export function rawMessageShortID(message: RawSessionMessage): string {
+export function rawMessageIDSegments(message: RawSessionMessage): { leading: string; trailing: string } {
   const id = message.info.id
-  if (id.length <= 16) return id
-  return `…${id.slice(-8)}`
+  if (id.length <= 16) return { leading: id, trailing: "" }
+  return { leading: id.slice(0, -8), trailing: id.slice(-8) }
 }
 
 export function rawMessageFlags(message: RawSessionMessage, presentation: RawMessagePresentation): string[] {
