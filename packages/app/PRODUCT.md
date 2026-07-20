@@ -114,6 +114,8 @@ Automatic context compaction should enter the persisted turn timeline as one run
 
 Tool audit icons are a quiet exception rail, not a status badge on every tool card. Show them for pending user approval, user decisions, denials, sandbox blocks, and notable autonomous or smart auto-approvals. Hide ordinary low-risk and Guarded baseline auto-approvals so read/search/tool plumbing does not compete with the work itself. The server approval metadata is the source of truth for audit visibility; the UI should not infer visibility from risk or mode.
 
+First-party tool-card titles should lead with a concise action phrase that tells the user what Synergy is doing, such as Read file, Search web, or Execute command. Use state phrases only for actual results or lifecycle states; do not expose a bare medium or object category such as Web, Shell, Session, or Blueprint as an action title. Preserve canonical product and technical names inside the action phrase.
+
 Message-flow errors should remain compact by default: show a single-line error preview in a neutral workbench row with a restrained critical marker, and place the complete error text, tool input, and copy action in the shared grounded details dialog. Raw diagnostics should not expand inline and dominate the surrounding session work.
 
 User prompts inside a turn may render as a compact right-aligned bubble with matching prompt attachments, but the turn header, tool/result timeline, media results, and diffs must keep their workbench-width timeline structure and original part order.

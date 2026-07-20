@@ -31,19 +31,19 @@ msgstr "{count} more lines"
 
 #. js-lingui-explicit-id
 msgid "anysearch.title.batch-search"
-msgstr "Anysearch Batch"
+msgstr "Batch search with Anysearch"
 
 #. js-lingui-explicit-id
 msgid "anysearch.title.domains"
-msgstr "Search Domains"
+msgstr "View search domains"
 
 #. js-lingui-explicit-id
 msgid "anysearch.title.extract"
-msgstr "Anysearch Extract"
+msgstr "Extract content with Anysearch"
 
 #. js-lingui-explicit-id
 msgid "anysearch.title.search"
-msgstr "Anysearch"
+msgstr "Search with Anysearch"
 
 #. Runtime Lingui descriptors for agenda host labels and wrappers.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -556,11 +556,11 @@ msgstr "Advisor"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.apiCompatibilityReviewer"
-msgstr "API Compatibility"
+msgstr "API Compatibility Reviewer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.apiContractDesigner"
-msgstr "API Contract"
+msgstr "API Contract Designer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.claudeCode"
@@ -568,7 +568,7 @@ msgstr "Claude Code"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.codeCartographer"
-msgstr "Code Map"
+msgstr "Code Cartographer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.codex"
@@ -576,7 +576,7 @@ msgstr "Codex"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.dependencyTracer"
-msgstr "Dependency Trace"
+msgstr "Dependency Tracer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.developer"
@@ -584,27 +584,27 @@ msgstr "Developer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.docsResearcher"
-msgstr "Docs Research"
+msgstr "Docs Researcher"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.documentationEngineer"
-msgstr "Docs"
+msgstr "Documentation Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.documentationReviewer"
-msgstr "Doc Review"
+msgstr "Documentation Reviewer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.explore"
-msgstr "Explore"
+msgstr "Explorer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.fixtureBuilder"
-msgstr "Fixtures"
+msgstr "Fixture Builder"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.implementationEngineer"
-msgstr "Implementation"
+msgstr "Implementation Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.inspector"
@@ -612,7 +612,7 @@ msgstr "Inspector"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.integrationEngineer"
-msgstr "Integration"
+msgstr "Integration Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.literatureAnalyst"
@@ -620,23 +620,23 @@ msgstr "Literature Analyst"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.literatureSearcher"
-msgstr "Literature Search"
+msgstr "Literature Searcher"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.maintainabilityReviewer"
-msgstr "Maintainability"
+msgstr "Maintainability Reviewer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.memoryCurator"
-msgstr "Memory"
+msgstr "Memory Curator"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.migrationArchitect"
-msgstr "Migration"
+msgstr "Migration Architect"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.noteLibrarian"
-msgstr "Notes"
+msgstr "Note Librarian"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.openClaw"
@@ -644,31 +644,31 @@ msgstr "OpenClaw"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.performanceReviewer"
-msgstr "Performance"
+msgstr "Performance Reviewer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.propertyTestEngineer"
-msgstr "Property Tests"
+msgstr "Property Test Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.pythonQualityEngineer"
-msgstr "Python Quality"
+msgstr "Python Quality Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.qualityGatekeeper"
-msgstr "Quality Gate"
+msgstr "Quality Gatekeeper"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.refactoringEngineer"
-msgstr "Refactor"
+msgstr "Refactoring Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.requirementsEngineer"
-msgstr "Requirements"
+msgstr "Requirements Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.researchMethodologist"
-msgstr "Research Method"
+msgstr "Research Methodologist"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.researchScout"
@@ -676,7 +676,7 @@ msgstr "Research Scout"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.rustQualityEngineer"
-msgstr "Rust Quality"
+msgstr "Rust Quality Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.scholar"
@@ -692,11 +692,11 @@ msgstr "Scribe"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.securityReviewer"
-msgstr "Security"
+msgstr "Security Reviewer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.sessionHistorian"
-msgstr "Session History"
+msgstr "Session Historian"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.solutionArchitect"
@@ -716,15 +716,15 @@ msgstr "Synergy Max"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.testStrategist"
-msgstr "Test Strategy"
+msgstr "Test Strategist"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.typescriptQualityEngineer"
-msgstr "TS Quality"
+msgstr "TypeScript Quality Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.role.typeTestEngineer"
-msgstr "Type Tests"
+msgstr "Type Test Engineer"
 
 #. ── Agent Visual ─────────────────────────────────────────────────────────────
 msgid "app.agent.visual.defaultLabel"
@@ -2401,7 +2401,11 @@ msgstr "Arm Lattice for this message"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.budget"
-msgstr "Model-call budget (0 = unlimited)"
+msgstr "Model-call limit"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.budgetDescription"
+msgstr "Each request to a model counts as one call; this is not the number of Pathway steps. Enter 0 for no limit."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.continueExisting"
@@ -2413,7 +2417,7 @@ msgstr "current"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.description"
-msgstr "Lattice runs your goal as a recursive Blueprint: it plans an ordered Pathway and executes each step as a BlueprintLoop. Auto keeps advancing on its own; Collaborative pauses after each Blueprint for your review."
+msgstr "Lattice turns your goal into an ordered Pathway and executes each step through a BlueprintLoop. Advance autonomously keeps planning and executing without waiting for review. Work with you pauses before each Blueprint executes so you can review it or add instructions."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.enable"
@@ -2433,19 +2437,19 @@ msgstr "What should this Lattice run accomplish?"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
-msgstr "Mode"
+msgstr "How Lattice runs"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode.auto"
-msgstr "Auto"
+msgstr "Advance autonomously"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode.collaborative"
-msgstr "Collaborative"
+msgstr "Work with you"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.modelCalls"
-msgstr "model calls"
+msgstr "Model calls"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.nextMessageGoal"
@@ -2460,12 +2464,20 @@ msgid "app.lattice.config.restart"
 msgstr "Restart"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.stepsCompleted"
+msgstr "{done}/{total} steps completed"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.title"
-msgstr "Lattice mode"
+msgstr "Configure Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.unknownError"
 msgstr "Unknown error"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.unlimited"
+msgstr "Unlimited"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.blueprintReview"
@@ -2477,7 +2489,7 @@ msgstr "Discuss or edit the Blueprint in chat. Messages are treated as discussio
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.calls"
-msgstr "calls"
+msgstr "Model calls"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.continue"
@@ -7162,7 +7174,7 @@ msgstr "{providerName} needs sign-in"
 
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.conflict-detail"
-msgstr "{count} file or region{count, plural, one {} other {s}} may need resolution before anchored edits."
+msgstr "{count} file or region{count, plural, one {} other {s}} may need resolution before precise edits."
 
 #. ── Body primitives ─────────────────────────────────────────────────
 msgid "body-primitives.conflict-title"
@@ -7178,143 +7190,143 @@ msgstr "Holos"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.action"
-msgstr "Action"
+msgstr "Operate page"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.annotate"
-msgstr "Annotate"
+msgstr "Annotate page"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.assets"
-msgstr "Assets"
+msgstr "Inspect page assets"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.audit"
-msgstr "Audit"
+msgstr "Audit page"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.browser-view"
-msgstr "Browser View"
+msgstr "View browser"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.clipboard"
-msgstr "Clipboard"
+msgstr "Read or write clipboard"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.console"
-msgstr "Console"
+msgstr "Inspect console"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.dialog"
-msgstr "Dialog"
+msgstr "Handle page dialog"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.downloads"
-msgstr "Downloads"
+msgstr "Inspect downloads"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.emulate"
-msgstr "Emulate"
+msgstr "Emulate device"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.evaluate"
-msgstr "Evaluate"
+msgstr "Evaluate page script"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.inspect"
-msgstr "Inspect"
+msgstr "Inspect page"
 
 #. Browser
 msgid "browser.title.navigation"
-msgstr "Navigation"
+msgstr "Navigate web"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.network"
-msgstr "Network"
+msgstr "Inspect network requests"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.performance"
-msgstr "Performance"
+msgstr "Analyze page performance"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.read"
-msgstr "Read"
+msgstr "Read page"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.screenshot"
-msgstr "Screenshot"
+msgstr "Capture screenshot"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.snapshot"
-msgstr "Snapshot"
+msgstr "Capture page snapshot"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.upload"
-msgstr "Upload"
+msgstr "Upload file"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "browser.title.wait"
-msgstr "Wait"
+msgstr "Wait for page"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.analyze"
-msgstr "Analyze"
+msgstr "Analyze content"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.blueprint"
-msgstr "Blueprint"
+msgstr "Manage Blueprints"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.browser"
-msgstr "Browser"
+msgstr "Control browser"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.communication"
-msgstr "Send"
+msgstr "Send content"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.community"
-msgstr "Agora"
+msgstr "Access Agora"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.config"
-msgstr "Config"
+msgstr "Change settings"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.dag"
-msgstr "DAG"
+msgstr "Manage DAG"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.file-read"
-msgstr "Read"
+msgstr "Read file"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.file-write"
-msgstr "Write"
+msgstr "Write file"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.generic"
-msgstr "Tool"
+msgstr "Call tool"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.memory"
-msgstr "Memory"
+msgstr "Manage memories"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.network"
-msgstr "Connect"
+msgstr "Manage connection"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.note"
-msgstr "Note"
+msgstr "Manage notes"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.research"
-msgstr "Research"
+msgstr "Conduct research"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.schedule"
-msgstr "Schedule"
+msgstr "Manage schedule"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.search"
@@ -7322,27 +7334,27 @@ msgstr "Search"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.session"
-msgstr "Session"
+msgstr "Manage sessions"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.session-control"
-msgstr "Control"
+msgstr "Manage session"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.shell"
-msgstr "Shell"
+msgstr "Execute command"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.skill"
-msgstr "Skill"
+msgstr "Use skill"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.task"
-msgstr "Task"
+msgstr "Execute task"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.web"
-msgstr "Web"
+msgstr "Access web"
 
 #. js-lingui-explicit-id
 msgid "confirm.agendaAction.cancel.confirm"
@@ -7850,15 +7862,15 @@ msgstr "Note"
 
 #. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.part-render-error"
-msgstr "Part Render Error: {partType}"
+msgstr "Couldn’t display this content:"
 
 #. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-early-stop"
-msgstr "Search early stop"
+msgstr "Search ended early"
 
 #. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.search-reflection"
-msgstr "Search reflection"
+msgstr "Search process"
 
 #. ── Message-part chrome ────────────────────────────────────────────
 msgid "message-part.session-label"
@@ -15754,11 +15766,11 @@ msgstr "Abort Session"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.agenda"
-msgstr "Agenda"
+msgstr "View schedule"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.agenda-logs"
-msgstr "Agenda Logs"
+msgstr "View schedule history"
 
 #. Dynamic tool-state labels used by standard.tsx renders
 msgid "tool.title.analysis-timed-out"
@@ -15778,7 +15790,7 @@ msgstr "Approve Light Loop"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.approve-permission"
-msgstr "Approve Permission"
+msgstr "Allow operation"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.archive-note"
@@ -15786,27 +15798,27 @@ msgstr "Archive Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.arxiv-download"
-msgstr "arXiv Download"
+msgstr "Download arXiv paper"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.arxiv-search"
-msgstr "arXiv Search"
+msgstr "Search arXiv"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.ast-search"
-msgstr "AST Search"
+msgstr "Search AST"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.attach"
-msgstr "Attach"
+msgstr "Add attachment"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.availability"
-msgstr "Availability"
+msgstr "Check availability"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch"
-msgstr "Batch"
+msgstr "Run batch"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.batch-stop"
@@ -15814,11 +15826,11 @@ msgstr "Batch Stop"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.blueprint-search"
-msgstr "Blueprint Search"
+msgstr "Search Blueprints"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.blueprints"
-msgstr "Blueprints"
+msgstr "View Blueprints"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.cancel-agenda"
@@ -15826,7 +15838,7 @@ msgstr "Cancel Agenda"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
-msgstr "Claim"
+msgstr "Manage research claims"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.compact-session"
@@ -15842,7 +15854,7 @@ msgstr "Closing"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-list"
-msgstr "List"
+msgstr "View connections"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-opening"
@@ -15850,7 +15862,7 @@ msgstr "Opening"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-status"
-msgstr "Status"
+msgstr "View connection status"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connected"
@@ -15858,7 +15870,7 @@ msgstr "Connected"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.control-session"
-msgstr "Control Session"
+msgstr "Manage session"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.create-file"
@@ -15870,11 +15882,11 @@ msgstr "Create Notebook"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.dag"
-msgstr "DAG"
+msgstr "Update DAG"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.dag-patch"
-msgstr "DAG"
+msgstr "Update DAG"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.delete-model"
@@ -15886,15 +15898,15 @@ msgstr "Delete Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.deny-permission"
-msgstr "Deny Permission"
+msgstr "Deny operation"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.deploy-inference"
-msgstr "Deploy Inference"
+msgstr "Deploy inference service"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.diagram"
-msgstr "Diagram"
+msgstr "Generate diagram"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.disconnected"
@@ -15910,7 +15922,7 @@ msgstr "Download Logs"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.edit"
-msgstr "Edit"
+msgstr "Edit file"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.edit-blueprint"
@@ -15926,27 +15938,27 @@ msgstr "Edit Note"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.email-inbox"
-msgstr "Email Inbox"
+msgstr "View inbox"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.enter-worktree"
-msgstr "Enter Worktree"
+msgstr "Enter isolated workspace"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.exhibit"
-msgstr "Exhibit"
+msgstr "Manage research exhibits"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.expand-tools"
-msgstr "Expand Tools"
+msgstr "Load tools"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.experiment"
-msgstr "Experiment"
+msgstr "Manage experiments"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.file-search"
-msgstr "File Search"
+msgstr "Search files"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.generate-image"
@@ -15954,67 +15966,67 @@ msgstr "Generate Image"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.glob"
-msgstr "Glob"
+msgstr "Match files with Glob"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.gpu-usage"
-msgstr "GPU Usage"
+msgstr "View GPU usage"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.grep"
-msgstr "Grep"
+msgstr "Search with Grep"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.harbor-login"
-msgstr "Harbor Login"
+msgstr "Log in to Harbor"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.hpc-usage"
-msgstr "HPC Usage"
+msgstr "View HPC usage"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.idea"
-msgstr "Idea"
+msgstr "Manage research ideas"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.image-detail"
-msgstr "Image Detail"
+msgstr "View image details"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.inference-detail"
-msgstr "Inference Detail"
+msgstr "View inference service"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.job-detail"
-msgstr "Job Detail"
+msgstr "View job details"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.job-logs"
-msgstr "Job Logs"
+msgstr "View job logs"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.job-metrics"
-msgstr "Job Metrics"
+msgstr "View job metrics"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.jobs"
-msgstr "Jobs"
+msgstr "View jobs"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
-msgstr "Leave Worktree"
+msgstr "Leave isolated workspace"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.list"
-msgstr "List"
+msgstr "List directory"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.look-at"
-msgstr "Look at"
+msgstr "Analyze file"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.lsp"
-msgstr "LSP"
+msgstr "Query code intelligence"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.mark-read"
@@ -16022,15 +16034,15 @@ msgstr "Mark Read"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-edit"
-msgstr "Memory Edit"
+msgstr "Edit memory"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-get"
-msgstr "Memory Get"
+msgstr "Read memory"
 
 #. Knowledge / memory / notes
 msgid "tool.title.memory-search"
-msgstr "Memory Search"
+msgstr "Search memories"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-similar-found"
@@ -16042,19 +16054,19 @@ msgstr "Stored"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.memory-write"
-msgstr "Memory Write"
+msgstr "Write memory"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.model-detail"
-msgstr "Model Detail"
+msgstr "View model details"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.models"
-msgstr "Models"
+msgstr "View models"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.multi-edit"
-msgstr "Multi Edit"
+msgstr "Edit file in multiple places"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.note-appended"
@@ -16070,23 +16082,23 @@ msgstr "Replaced"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.note-search"
-msgstr "Note Search"
+msgstr "Search notes"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notebook-detail"
-msgstr "Notebook Detail"
+msgstr "View notebook details"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notebooks"
-msgstr "Notebooks"
+msgstr "View notebooks"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.notes"
-msgstr "Notes"
+msgstr "View notes"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.paper"
-msgstr "Paper"
+msgstr "Manage research paper"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.parse-code"
@@ -16094,7 +16106,7 @@ msgstr "Parse Code"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch"
-msgstr "Patch"
+msgstr "Apply patch"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-applied"
@@ -16106,19 +16118,19 @@ msgstr "Generating patch…"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"
-msgstr "Plan"
+msgstr "Manage research plan"
 
 #. Inspire — base keys use the most common variant; getToolInfo selects its own
 msgid "tool.title.platform-status"
-msgstr "Platform Status"
+msgstr "View platform status"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.process"
-msgstr "Process"
+msgstr "Manage process"
 
 #. Profile
 msgid "tool.title.profile"
-msgstr "Profile"
+msgstr "View profile"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.push-image"
@@ -16138,15 +16150,15 @@ msgstr "Question Timed Out"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.questions"
-msgstr "Questions"
+msgstr "Ask questions"
 
 #. Legacy qzcli — TODO remove
 msgid "tool.title.qz-login"
-msgstr "QZ Login"
+msgstr "Log in to QZ"
 
 #. File ops
 msgid "tool.title.read"
-msgstr "Read"
+msgstr "Read file"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.read-blueprint"
@@ -16194,7 +16206,7 @@ msgstr "Reject Light Loop"
 
 #. Render / diagram
 msgid "tool.title.render"
-msgstr "Render"
+msgstr "Render content"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.request-blueprint-review"
@@ -16206,11 +16218,11 @@ msgstr "Request Review"
 
 #. Research
 msgid "tool.title.research-init"
-msgstr "Research Init"
+msgstr "Start research"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.research-state"
-msgstr "Research State"
+msgstr "Manage research state"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.resolve-library"
@@ -16222,7 +16234,7 @@ msgstr "Revise File"
 
 #. Platform
 msgid "tool.title.runtime-reload"
-msgstr "Runtime Reload"
+msgstr "Reload runtime"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.save-file"
@@ -16238,7 +16250,7 @@ msgstr "Schedule Agenda"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.scopes"
-msgstr "Scopes"
+msgstr "View Scopes"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.search-email"
@@ -16266,11 +16278,11 @@ msgstr "Send Message"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.session-status"
-msgstr "Session Status"
+msgstr "View session status"
 
 #. Sessions
 msgid "tool.title.sessions"
-msgstr "Sessions"
+msgstr "View sessions"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.set-cookie"
@@ -16282,19 +16294,19 @@ msgstr "Set Default"
 
 #. Shell
 msgid "tool.title.shell"
-msgstr "Shell"
+msgstr "Execute command"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.sii-defaults"
-msgstr "SII Defaults"
+msgstr "View SII defaults"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.sii-login"
-msgstr "SII Login"
+msgstr "Log in to SII"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.skill"
-msgstr "Skill"
+msgstr "Use skill"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.start-notebook"
@@ -16302,11 +16314,11 @@ msgstr "Start Notebook"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.status-catalog"
-msgstr "Status Catalog"
+msgstr "View status catalog"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.stop-inference"
-msgstr "Stop Inference"
+msgstr "Stop inference service"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.stop-job"
@@ -16318,7 +16330,7 @@ msgstr "Stop Notebook"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.submission"
-msgstr "Submission"
+msgstr "Manage research submission"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.submit-gpu-job"
@@ -16334,7 +16346,7 @@ msgstr "Submit Job"
 
 #. DAG / task orchestration
 msgid "tool.title.task"
-msgstr "Task"
+msgstr "Call subagent"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.task-cancel"
@@ -16342,19 +16354,19 @@ msgstr "Task Cancel"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.task-list"
-msgstr "Task List"
+msgstr "View tasks"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.task-output"
-msgstr "Task Output"
+msgstr "View task result"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.timeline"
-msgstr "Timeline"
+msgstr "Manage research timeline"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.to-dos"
-msgstr "To-dos"
+msgstr "Update to-dos"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.track-job"
@@ -16362,11 +16374,11 @@ msgstr "Track Job"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.tracked-jobs"
-msgstr "Tracked Jobs"
+msgstr "View tracked jobs"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.trigger-agenda"
-msgstr "Trigger Agenda"
+msgstr "Run schedule now"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.unarchive-note"
@@ -16390,27 +16402,27 @@ msgstr "View Image"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.watch"
-msgstr "Watch"
+msgstr "Monitor schedule"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.web-search"
-msgstr "Web Search"
+msgstr "Search web"
 
 #. Search / web
 msgid "tool.title.webfetch"
-msgstr "Webfetch"
+msgstr "Read web page"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.wiki"
-msgstr "Wiki"
+msgstr "Manage research knowledge"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.workspaces"
-msgstr "Workspaces"
+msgstr "View workspaces"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.worktrees"
-msgstr "Worktrees"
+msgstr "View isolated workspaces"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.write"
@@ -16446,7 +16458,7 @@ msgstr "Conflict markers detected"
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.conflictResolutionHint"
-msgstr "{count} file or region{pluralSuffix} may need resolution before anchored edits."
+msgstr "{count} file or region{pluralSuffix} may need resolution before precise edits."
 
 #. js-lingui-explicit-id
 msgid "ui.anchoredTool.createFile"
