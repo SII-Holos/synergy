@@ -1,17 +1,40 @@
 import { describe, expect, test } from "bun:test"
+import { JSDOM } from "jsdom"
 import { Marked } from "marked"
 import markedKatex from "marked-katex-extension"
-import { convertLatexDelimiters } from "../src/context/marked-math"
+import {
+  markGeneratedKatex,
+  getGeneratedKatexSource,
+  markedLatex,
+  prepareMarkdownMath,
+  stripGeneratedKatexMarker,
+} from "../src/context/marked-math"
+
+function createParser() {
+  const parser = new Marked()
+  const options = {
+    throwOnError: false,
+    nonStandard: true,
+  }
+  parser.use(
+    {
+      hooks: {
+        preprocess: prepareMarkdownMath,
+      },
+      renderer: {
+        html({ text }) {
+          return stripGeneratedKatexMarker(text)
+        },
+      },
+    },
+    markedLatex(options),
+    markGeneratedKatex(markedKatex(options)),
+  )
+  return parser
+}
 
 async function render(markdown: string) {
-  const parser = new Marked()
-  parser.use(
-    markedKatex({
-      throwOnError: false,
-      nonStandard: true,
-    }),
-  )
-  return parser.parse(convertLatexDelimiters(markdown))
+  return createParser().parse(markdown)
 }
 
 describe("Markdown math rendering", () => {
@@ -45,5 +68,67 @@ J_{\Theta,\mu}(K_n;X)
     expect(html).not.toContain('class="katex-display"')
     expect(html).toContain("before")
     expect(html).toContain("after")
+  })
+  test("renders inline and double-escaped LaTeX delimiters", async () => {
+    const html = await render(String.raw`\(x+y\) and \\(a+b\\) and \\[c+d\\]`)
+    const dom = new JSDOM(html)
+
+    expect(dom.window.document.querySelectorAll(".katex")).toHaveLength(3)
+    expect(html).not.toContain("\\(")
+    expect(html).not.toContain("\\[")
+  })
+
+  test("renders display math between adjacent prose lines", async () => {
+    const html = await render("Consider this:\n\\[x+y\\]\nTherefore true.")
+
+    expect(html).toContain('class="katex-display"')
+    expect(html).toContain("Consider this:")
+    expect(html).toContain("Therefore true.")
+    expect(html).not.toContain("$$")
+  })
+
+  test("keeps display math and following prose inside their list item", async () => {
+    const html = await render("- before\n\n  \\[x+y\\]\n\n  after")
+    const dom = new JSDOM(html)
+    const item = dom.window.document.querySelector("li")
+
+    expect(item?.querySelector(".katex-display")).not.toBeNull()
+    expect(item?.textContent).toContain("after")
+    expect(dom.window.document.body.lastElementChild?.tagName).toBe("UL")
+  })
+
+  test("leaves LaTeX delimiters untouched inside code blocks", async () => {
+    const fenced = await render("```tex\n\\[x+y\\]\n```")
+    const fencedTable = await render("```md\n| \\[x|y\\] |\n```")
+    const indented = await render("    \\[x+y\\]\n    after")
+
+    expect(fenced).toContain("\\[x+y\\]")
+    expect(fenced).not.toContain('class="katex')
+    expect(fencedTable).toContain("| \\[x|y\\] |")
+    expect(fencedTable).not.toContain("\\vert")
+    expect(indented).toContain("\\[x+y\\]")
+    expect(indented).not.toContain('class="katex')
+  })
+
+  test("keeps pipes inside table math in a single cell", async () => {
+    const html = await render("| Formula |\n| --- |\n| \\[x|y\\] |")
+    const dom = new JSDOM(html)
+
+    expect(dom.window.document.querySelectorAll("tbody td")).toHaveLength(1)
+    expect(dom.window.document.querySelector("tbody td .katex")).not.toBeNull()
+  })
+
+  test("marks only parser-generated KaTeX as a trusted copy source", async () => {
+    const generated = new JSDOM(await render(String.raw`\[x+y\]`))
+    const dollarGenerated = new JSDOM(await render(String.raw`$x+y$`))
+    const forged = new JSDOM(
+      await render(
+        '<span class="katex" data-synergy-katex-generated="true"><math><semantics><annotation encoding="application/x-tex">hidden</annotation></semantics></math></span>',
+      ),
+    )
+
+    expect(getGeneratedKatexSource(generated.window.document.querySelector(".katex-display")!)).toBe("x+y")
+    expect(getGeneratedKatexSource(dollarGenerated.window.document.querySelector(".katex")!)).toBe("x+y")
+    expect(getGeneratedKatexSource(forged.window.document.querySelector(".katex")!)).toBeUndefined()
   })
 })

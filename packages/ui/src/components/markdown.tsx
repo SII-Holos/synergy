@@ -2,6 +2,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import { useLingui } from "@lingui/solid"
 import { CODE_COPY_DESC } from "./tool-title-descriptors"
 import { useMarked } from "../context/marked"
+import { getGeneratedKatexSource } from "../context/marked-math"
 import {
   markdownFallbackHtml,
   isCurrentMarkdownRender,
@@ -54,10 +55,7 @@ function enhanceMarkdown(root: HTMLDivElement, _: (d: MessageDescriptor) => stri
   for (const katexEl of root.querySelectorAll<HTMLElement>(".katex-display, .katex")) {
     // Skip inner .katex inside .katex-display — already handled by the parent
     if (katexEl.classList.contains("katex") && katexEl.closest(".katex-display")) continue
-
-    const annotation = katexEl.querySelector<HTMLElement>('annotation[encoding="application/x-tex"]')
-    if (!annotation) continue
-    const source = (annotation.textContent ?? "").trim()
+    const source = getGeneratedKatexSource(katexEl)
     if (!source) continue
 
     katexEl.dataset.katexCopy = "true"

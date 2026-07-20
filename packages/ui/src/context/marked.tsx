@@ -3,7 +3,7 @@ import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import type { BundledLanguage } from "shiki"
 import { createSimpleContext } from "./helper"
-import { convertLatexDelimiters } from "./marked-math"
+import { markGeneratedKatex, markedLatex, prepareMarkdownMath, stripGeneratedKatexMarker } from "./marked-math"
 import type { ThemeRegistrationResolved } from "@pierre/diffs"
 
 const synergyHighlightTheme = {
@@ -397,27 +397,31 @@ function escapeHtmlAttribute(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
 }
 
+const mathOptions = {
+  throwOnError: false,
+  nonStandard: true,
+}
+
 export const { use: useMarked, provider: MarkedProvider } = createSimpleContext({
   name: "Marked",
   init: () => {
     return marked.use(
       {
         hooks: {
-          preprocess(markdown) {
-            return convertLatexDelimiters(markdown)
-          },
+          preprocess: prepareMarkdownMath,
         },
         renderer: {
+          html({ text }) {
+            return stripGeneratedKatexMarker(text)
+          },
           link({ href, title, text }) {
             const titleAttr = title ? ` title="${title}"` : ""
             return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
           },
         },
       },
-      markedKatex({
-        throwOnError: false,
-        nonStandard: true,
-      }),
+      markedLatex(mathOptions),
+      markGeneratedKatex(markedKatex(mathOptions)),
       markedShiki({
         container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
         async highlight(code, lang) {
