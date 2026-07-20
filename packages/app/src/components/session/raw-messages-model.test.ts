@@ -7,9 +7,9 @@ import {
   nextRawMessagesLimit,
   rawMessageCreatedAt,
   rawMessageFlags,
+  rawMessageIDSegments,
   rawMessageJson,
   rawMessagePreview,
-  rawMessageShortID,
   reconcileRawMessageState,
   selectAllRawMessages,
   sortRawSessionMessages,
@@ -81,11 +81,14 @@ describe("raw message presentation", () => {
     }
 
     expect(rawMessagePreview(raw, presentation)).toBe("Localized user")
-    expect(rawMessageShortID(raw)).toBe("msg_001")
+    expect(rawMessageIDSegments(raw)).toEqual({ leading: "msg_001", trailing: "" })
     expect(rawMessageFlags(raw, presentation)).toEqual(["Localized hidden", "Localized excluded"])
     expect(rawMessageCreatedAt(raw)).toBe(10)
     expect(rawMessageFlags({ info: user("msg_visible", 11), parts: [] }, presentation)).toEqual([])
-    expect(rawMessageShortID({ info: user("msg_00000000000000000000000001", 12), parts: [] })).toBe("…00000001")
+    expect(rawMessageIDSegments({ info: user("msg_00000000000000000000000001", 12), parts: [] })).toEqual({
+      leading: "msg_000000000000000000",
+      trailing: "00000001",
+    })
     expect(Object.keys(JSON.parse(rawMessageJson(raw)))).toEqual(["message", "parts"])
   })
 
