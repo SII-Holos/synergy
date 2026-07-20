@@ -3,6 +3,7 @@ import markedKatex from "marked-katex-extension"
 import markedShiki from "marked-shiki"
 import type { BundledLanguage } from "shiki"
 import { createSimpleContext } from "./helper"
+import { markGeneratedKatex, markedLatex, prepareMarkdownMath, stripGeneratedKatexMarker } from "./marked-math"
 import type { ThemeRegistrationResolved } from "@pierre/diffs"
 
 const synergyHighlightTheme = {
@@ -392,72 +393,13 @@ function loadHighlightRuntime() {
   return highlightRuntimePromise
 }
 
-// Convert LaTeX-style delimiters to Markdown-style for KaTeX compatibility.
-// Display math \[...\]: block ($$...$$) when standalone on a line, inline ($...$) when embedded.
-// Inline math \(...\): always $...$
-// Handles both single-escaped (\[, \() and double-escaped (\\[, \\() forms.
-function convertLatexDelimiters(text: string): string {
-  // Display math — context-aware: standalone on line → block, embedded in text → inline
-  text = text.replace(/\\\\\[([\s\S]*?)\\\\\]/g, displayMathReplacer)
-  text = text.replace(/\\\[([\s\S]*?)\\\]/g, displayMathReplacer)
-
-  // Inline math — always inline
-  text = text.replace(/\\\\\(([\s\S]*?)\\\\\)/g, (_, c) => `$${c}$`)
-  text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_, c) => `$${c}$`)
-
-  // Escape | inside math within table rows so the table parser doesn't split formulas
-  text = escapeTableMathPipes(text)
-  return text
-}
-
-// In markdown tables, | inside $...$ or $$...$$ is misinterpreted as a cell separator.
-// Replace it with \vert which renders identically in KaTeX.
-function escapeTableMathPipes(text: string): string {
-  const lines = text.split("\n")
-  let inTable = false
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i]
-    const trimmed = line.trim()
-
-    // Detect table context: row starts and ends with | or is a separator row (|---|)
-    if (trimmed.startsWith("|") && trimmed.endsWith("|")) {
-      inTable = true
-    } else if (inTable && !trimmed.startsWith("|")) {
-      inTable = false
-    }
-
-    if (!inTable || !line.includes("$")) continue
-
-    // Replace | with \vert inside math spans on this line
-    lines[i] = line.replace(/\$\$([^$]*)\$\$|\$([^$]*)\$/g, (match, block, inline) => {
-      const content = block ?? inline
-      if (!content.includes("|")) return match
-      const escaped = content.replaceAll("|", "\\vert ")
-      return block !== undefined ? `$$${escaped}$$` : `$${escaped}$`
-    })
-  }
-
-  return lines.join("\n")
-}
-
-function displayMathReplacer(match: string, content: string, offset: number, source: string): string {
-  if (content.includes("\n") || isOnOwnLine(source, offset, match.length)) {
-    return `$$${content.trim()}$$`
-  }
-  return `$${content}$`
-}
-
-function isOnOwnLine(text: string, offset: number, length: number): boolean {
-  const lineStart = text.lastIndexOf("\n", offset - 1) + 1
-  const lineEnd = text.indexOf("\n", offset + length)
-  const prefix = text.slice(lineStart, offset)
-  const suffix = text.slice(offset + length, lineEnd === -1 ? text.length : lineEnd)
-  return prefix.trim() === "" && suffix.trim() === ""
-}
-
 function escapeHtmlAttribute(value: string) {
   return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;")
+}
+
+const mathOptions = {
+  throwOnError: false,
+  nonStandard: true,
 }
 
 export const { use: useMarked, provider: MarkedProvider } = createSimpleContext({
@@ -466,21 +408,20 @@ export const { use: useMarked, provider: MarkedProvider } = createSimpleContext(
     return marked.use(
       {
         hooks: {
-          preprocess(markdown) {
-            return convertLatexDelimiters(markdown)
-          },
+          preprocess: prepareMarkdownMath,
         },
         renderer: {
+          html({ text }) {
+            return stripGeneratedKatexMarker(text)
+          },
           link({ href, title, text }) {
             const titleAttr = title ? ` title="${title}"` : ""
             return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${text}</a>`
           },
         },
       },
-      markedKatex({
-        throwOnError: false,
-        nonStandard: true,
-      }),
+      markedLatex(mathOptions),
+      markGeneratedKatex(markedKatex(mathOptions)),
       markedShiki({
         container: '<div data-slot="markdown-code-block" data-language="%l">%s</div>',
         async highlight(code, lang) {

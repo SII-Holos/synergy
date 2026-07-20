@@ -10,7 +10,7 @@ let sanitizeHtml: (html: string) => string
 
 beforeAll(async () => {
   const { JSDOM } = await import("jsdom")
-  const dom = new JSDOM("")
+  const dom = new JSDOM("<!doctype html>")
   ;(globalThis as any).window = dom.window
   ;(globalThis as any).document = dom.window.document
   ;({ sanitizeHtml } = await import("../src/components/markdown-sanitize"))
@@ -49,5 +49,27 @@ describe("Markdown sanitizeHtml (#350 D5)", () => {
     expect(out).toContain('class="katex"')
     expect(out).toContain("<math")
     expect(out).toContain("<mi>x</mi>")
+  })
+
+  test("preserves the KaTeX source annotation used by click-to-copy", async () => {
+    const katex = (await import("katex")).default
+    const source = String.raw`G_{\mathrm{int}}`
+    const out = sanitizeHtml(katex.renderToString(source, { throwOnError: false }))
+    const root = document.createElement("div")
+    root.innerHTML = out
+
+    expect(root.querySelector(".katex")).not.toBeNull()
+    expect(root.querySelector('annotation[encoding="application/x-tex"]')?.textContent).toBe(source)
+  })
+
+  test("keeps allowed KaTeX annotations inert", () => {
+    const out = sanitizeHtml(
+      '<math><semantics><annotation encoding="application/x-tex" onclick="alert(1)">x<script>alert(2)</script></annotation></semantics></math>',
+    )
+
+    expect(out).toContain('<annotation encoding="application/x-tex">x</annotation>')
+    expect(out).not.toContain("onclick")
+    expect(out).not.toContain("<script")
+    expect(out).not.toContain("alert")
   })
 })
