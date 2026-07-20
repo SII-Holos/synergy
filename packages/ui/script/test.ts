@@ -33,4 +33,4 @@ async function run(files: string[]) {
 
 const files = [...(await collectTests("test")), ...(await collectTests("src"))].toSorted()
 await run(files.filter((file) => !isolated.has(file)))
-await run(files.filter((file) => isolated.has(file)))
+for (const file of files.filter((file) => isolated.has(file))) await run([file])
