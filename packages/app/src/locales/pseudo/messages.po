@@ -5368,6 +5368,10 @@ msgid "app.rawMessages.preview.empty"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.rawMessages.preview.wrap"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.rawMessages.refresh"
 msgstr ""
 

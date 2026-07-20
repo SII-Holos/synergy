@@ -1239,7 +1239,7 @@ msgstr "检查规范化后的持久化消息和生效指令。"
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.rawMessages"
-msgstr "原始消息"
+msgstr "查看原始消息"
 
 #. js-lingui-explicit-id
 msgid "app.context.dataAccess.title"
@@ -5361,11 +5361,15 @@ msgstr "正在加载…"
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.notice.sensitive"
-msgstr "包含敏感数据，请谨慎复制。"
+msgstr "可能包含提示词、工具参数、文件内容和模型输出，请谨慎复制。"
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.preview.empty"
 msgstr "选择一条消息进行检查。"
+
+#. js-lingui-explicit-id
+msgid "app.rawMessages.preview.wrap"
+msgstr "自动换行"
 
 #. js-lingui-explicit-id
 msgid "app.rawMessages.refresh"
