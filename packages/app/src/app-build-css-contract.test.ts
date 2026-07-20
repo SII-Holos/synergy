@@ -67,6 +67,18 @@ const rootRuleContracts: CssRuleContract[] = [
     declarations: ["flex-shrink:0", "width:16px", "height:16px"],
   },
   {
+    selector: ".file-workbench",
+    declarations: ["display:flex", "height:100%", "min-width:0", "flex-direction:column", "overflow:hidden"],
+  },
+  {
+    selector: ".file-workbench-main",
+    declarations: ["position:relative", "display:flex", "min-height:0", "min-width:0", "flex:1", "overflow:hidden"],
+  },
+  {
+    selector: ".file-explorer",
+    declarations: ["position:relative", "display:flex", "min-width:220px", "flex-shrink:0", "flex-direction:column"],
+  },
+  {
     selector: "[data-component=popover-content]",
     declarations: [
       "z-index:50",
