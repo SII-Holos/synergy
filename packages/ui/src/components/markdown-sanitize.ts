@@ -9,5 +9,8 @@ import DOMPurify from "dompurify"
 // without a window) pass the HTML through unchanged.
 export function sanitizeHtml(html: string): string {
   if (typeof window === "undefined") return html
-  return DOMPurify.sanitize(html, { ADD_ATTR: ["target"] })
+  return DOMPurify.sanitize(html, {
+    ADD_TAGS: ["semantics", "annotation"],
+    ADD_ATTR: ["target", "encoding"],
+  })
 }
