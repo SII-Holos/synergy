@@ -4,7 +4,7 @@ import { readdir } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
-const isolated = new Set(["src/components/session-turn-timeline.test.ts"])
+const isolated = new Set(["src/components/session-turn-timeline.test.ts", "src/components/tool/renders/task.test.tsx"])
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })

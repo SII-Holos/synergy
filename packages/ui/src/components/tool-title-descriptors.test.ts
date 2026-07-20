@@ -16,6 +16,8 @@ describe("first-party tool title copy", () => {
       [TOOL_TITLE_DESC.scope_list, "View Scopes"],
       [TOOL_TITLE_DESC.blueprints, "View Blueprints"],
       [TOOL_TITLE_DESC.task, "Call subagent"],
+      [TOOL_TITLE_DESC.task_cancel, "Cancel task"],
+      [TOOL_TITLE_DESC.write, "Write file"],
     ])
 
     for (const [descriptor, message] of expected) expect(descriptor.message).toBe(message)

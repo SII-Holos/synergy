@@ -107,9 +107,9 @@ msgstr ""
     expect(translations.get("app.lattice.config.mode")).toBe("运行方式")
     expect(translations.get("app.lattice.config.mode.auto")).toBe("自主推进")
     expect(translations.get("app.lattice.config.mode.collaborative")).toBe("与你协作")
-    expect(translations.get("app.lattice.config.budget")).toBe("模型调用次数上限")
+    expect(translations.get("app.lattice.config.budget")).toBe("模型调用预算")
     expect(translations.get("app.lattice.config.budgetDescription")).toBe(
-      "每向模型发起一次请求计 1 次；这不是 Pathway 的步骤数。0 表示不限制。",
+      "Lattice 在继续推进前检查预算；计入当前 Lattice 会话的模型调用，而不是 Pathway 步骤。0 表示不设置预算。",
     )
     expect(translations.get("app.lattice.config.stepsCompleted")).toBe("已完成 {done}/{total} 个步骤")
     expect(translations.get("app.lattice.config.modelCalls")).toBe("模型调用次数")
@@ -126,7 +126,7 @@ msgstr ""
       ["classifier.label.dag", "管理 DAG"],
       ["classifier.label.schedule", "管理日程"],
       ["classifier.label.session", "管理会话"],
-      ["classifier.label.session-control", "管理会话"],
+      ["classifier.label.session-control", "控制会话"],
       ["classifier.label.community", "访问 Agora"],
       ["classifier.label.network", "管理连接"],
       ["classifier.label.communication", "发送内容"],
@@ -222,6 +222,7 @@ msgstr ""
       ["tool.title.status-catalog", "查看状态列表"],
       ["tool.title.submission", "管理研究投稿"],
       ["tool.title.task", "调用子智能体"],
+      ["tool.title.task-cancel", "取消任务"],
       ["tool.title.task-list", "查看任务"],
       ["tool.title.task-output", "查看任务结果"],
       ["tool.title.timeline", "管理研究进展"],

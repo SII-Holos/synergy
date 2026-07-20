@@ -175,11 +175,11 @@ export function LatticeConfigDialog(props: {
         </div>
 
         <TextField
-          label={_({ id: "app.lattice.config.budget", message: "Model-call limit" })}
+          label={_({ id: "app.lattice.config.budget", message: "Model-call budget" })}
           description={_({
             id: "app.lattice.config.budgetDescription",
             message:
-              "Each request to a model counts as one call; this is not the number of Pathway steps. Enter 0 for no limit.",
+              "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget.",
           })}
           type="number"
           value={budget()}

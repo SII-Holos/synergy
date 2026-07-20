@@ -1,4 +1,5 @@
 import { TOOL_MISC_DESC } from "../../tool-title-descriptors"
+import { getTaskToolTrigger } from "../task-info"
 import { createMemo, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
 import { useData } from "../../../context"
@@ -21,6 +22,11 @@ ToolRegistry.register({
     const summary = () =>
       (props.metadata.summary ?? []) as { id: string; tool: string; state: { status: string; title?: string } }[]
     const isBackground = () => props.metadata.background === true
+    const trigger = createMemo(() =>
+      getTaskToolTrigger(props.input, {
+        backgroundLabel: isBackground() ? _(TOOL_MISC_DESC.backgroundTask) : undefined,
+      }),
+    )
 
     const autoScroll = createAutoScroll({
       working: () => true,
@@ -50,12 +56,7 @@ ToolRegistry.register({
           time={props.time}
           defaultOpen={true}
           hideDetails={summary().length === 0}
-          trigger={{
-            icon: "list-todo",
-            title: `${props.input.subagent_type || props.tool} Agent`,
-            subtitle: props.input.description,
-            tags: isBackground() ? [{ label: _(TOOL_MISC_DESC.backgroundTask) }] : undefined,
-          }}
+          trigger={trigger()}
           onSubtitleClick={handleSubtitleClick}
         >
           <div

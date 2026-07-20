@@ -2401,11 +2401,11 @@ msgstr "在本条消息中启用 Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.budget"
-msgstr "模型调用次数上限"
+msgstr "模型调用预算"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.budgetDescription"
-msgstr "每向模型发起一次请求计 1 次；这不是 Pathway 的步骤数。0 表示不限制。"
+msgstr "Lattice 在继续推进前检查预算；计入当前 Lattice 会话的模型调用，而不是 Pathway 步骤。0 表示不设置预算。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.continueExisting"
@@ -7338,7 +7338,7 @@ msgstr "管理会话"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.session-control"
-msgstr "管理会话"
+msgstr "控制会话"
 
 #. ── Classifier category labels ──────────────────────────────────────
 msgid "classifier.label.shell"

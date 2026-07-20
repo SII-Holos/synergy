@@ -2401,11 +2401,11 @@ msgstr "Arm Lattice for this message"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.budget"
-msgstr "Model-call limit"
+msgstr "Model-call budget"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.budgetDescription"
-msgstr "Each request to a model counts as one call; this is not the number of Pathway steps. Enter 0 for no limit."
+msgstr "The budget is checked before Lattice continues; it counts model calls in this Lattice session, not Pathway steps. Enter 0 for no budget."
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.continueExisting"
@@ -16350,7 +16350,7 @@ msgstr "Call subagent"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.task-cancel"
-msgstr "Task Cancel"
+msgstr "Cancel task"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.task-list"
@@ -16426,7 +16426,7 @@ msgstr "View isolated workspaces"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.write"
-msgstr "Write"
+msgstr "Write file"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.write-blueprint"
