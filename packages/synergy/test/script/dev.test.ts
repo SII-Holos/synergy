@@ -40,6 +40,17 @@ describe("dev orchestrator planner", () => {
     )
   })
 
+  test("binds both the server and app to the requested web hostname", () => {
+    const plan = createDevPlan(["web", "--hostname", "0.0.0.0"], options)
+
+    expect(plan.processes[0]?.command).toContain("0.0.0.0")
+    expect(plan.processes[1]?.command).toContain("0.0.0.0")
+    expect(plan.requiredPorts).toEqual([
+      { label: "server", port: 4096, host: "127.0.0.1" },
+      { label: "app", port: 3000, host: "127.0.0.1" },
+    ])
+  })
+
   test("plans desktop development in external mode by default", () => {
     const plan = createDevPlan(["desktop"], options)
 
