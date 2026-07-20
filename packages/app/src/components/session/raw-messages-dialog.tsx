@@ -273,15 +273,13 @@ export function RawMessagesDialog(props: { sessionID: string }) {
                           <button
                             type="button"
                             class="raw-message-row-main"
+                            classList={{ "has-flags": flags().length > 0 }}
                             data-raw-message-id={message.info.id}
                             onClick={() => openPreview(message.info.id)}
                           >
                             <strong class="raw-message-row-role">{role()}</strong>
                             <span class="raw-message-row-metadata">
                               <RawMessageID message={message} />
-                              <Show when={flags().length > 0}>
-                                <span class="raw-message-flags">{flags().join(" · ")}</span>
-                              </Show>
                             </span>
                             <time>
                               {fmt.time(rawMessageCreatedAt(message), {
@@ -290,6 +288,11 @@ export function RawMessagesDialog(props: { sessionID: string }) {
                                 second: "2-digit",
                               })}
                             </time>
+                            <Show when={flags().length > 0}>
+                              <span class="raw-message-flags" title={flags().join(" · ")}>
+                                {flags().join(" · ")}
+                              </span>
+                            </Show>
                           </button>
                         </div>
                       )
@@ -359,7 +362,7 @@ export function RawMessagesDialog(props: { sessionID: string }) {
                 />
               </div>
             </div>
-            <div class="raw-messages-code-scroll" classList={{ "is-wrapped": wrapCode() }}>
+            <div class="raw-messages-code-scroll">
               <Show when={previewText()} fallback={<div class="raw-messages-state">{i18n._(R.chooseMessage)}</div>}>
                 <RawMessageCodePreview file={previewFile()} wrap={wrapCode()} />
               </Show>
