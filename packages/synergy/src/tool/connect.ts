@@ -5,9 +5,8 @@ import { SynergyLinkExecution } from "./synergy-link-execution"
 import { SynergyLinkTargetRuntime } from "@/synergy-link/target-runtime"
 import { SynergyLinkTargetService } from "@/synergy-link/target-service"
 import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
+import { withTimeout } from "@/util/timeout"
 import { ToolTimeout } from "./timeout"
-
-const CONNECT_TIMEOUT_MS = ToolTimeout.DEFAULTS.connectMs
 
 const parameters = z.object({
   action: z.enum(["open", "close", "status", "list", "list_targets"]).describe("Synergy Link action to perform"),
@@ -85,7 +84,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         await Promise.all(
           SynergyLinkExecution.allSessions().map(async (session) => {
             const target = await SynergyLinkTargetStore.findByLocator(session.linkID, session.targetAgentID)
-            return !target || SynergyLinkTargetStore.canAgentAccess(target, ctx.agent) ? session : undefined
+            return target && SynergyLinkTargetStore.canAgentAccess(target, ctx.agent) ? session : undefined
           }),
         )
       ).flatMap((session) => (session ? [session] : []))
@@ -109,22 +108,28 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
 
     if (params.targetID && params.linkID) throw new Error("Specify targetID or linkID, not both.")
     const target = params.targetID ? await SynergyLinkTargetStore.require(params.targetID) : undefined
-    if (target && !target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
     if (target) SynergyLinkTargetStore.assertAgentAccess(target, ctx.agent)
     const linkID = target?.linkID ?? SynergyLinkIdentity.requireLinkID(params.linkID)
-    const activeSession = SynergyLinkExecution.getSession(linkID)
+    const requestedSelector = target
+      ? { targetID: target.id, targetAgentID: target.targetAgentID }
+      : params.targetAgentID
+        ? { targetAgentID: params.targetAgentID }
+        : undefined
+    const activeSession = SynergyLinkExecution.getSession(linkID, requestedSelector)
     const targetAgentID =
       target?.targetAgentID ??
       params.targetAgentID ??
       (params.action === "open" ? undefined : activeSession?.targetAgentID)
     const registeredTarget = target ?? (await SynergyLinkTargetStore.findByLocator(linkID, targetAgentID))
-    if (registeredTarget) {
-      if (!registeredTarget.enabled) throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
-      SynergyLinkTargetStore.assertAgentAccess(registeredTarget, ctx.agent)
-    }
+    if (registeredTarget) SynergyLinkTargetStore.assertAgentAccess(registeredTarget, ctx.agent)
+    const sessionSelector = registeredTarget
+      ? { targetID: registeredTarget.id, targetAgentID: registeredTarget.targetAgentID }
+      : targetAgentID
+        ? { targetAgentID }
+        : undefined
 
     if (params.action === "status") {
-      const session = SynergyLinkExecution.getSession(linkID)
+      const session = SynergyLinkExecution.getSession(linkID, sessionSelector)
       return {
         title: session ? "Connection status" : "Connection not found",
         metadata: {
@@ -140,6 +145,9 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
     }
 
     if (params.action === "open") {
+      if (registeredTarget && !registeredTarget.enabled) {
+        throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
+      }
       if (!targetAgentID) {
         throw new Error(
           `connect open requires targetAgentID. Provide it together with a Synergy Link ID such as "link_...".`,
@@ -149,20 +157,13 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
 
       let opened
       try {
-        opened = await Promise.race([
+        opened = await withTimeout(
           client.executeSession(linkID, { action: "open", label: params.label }, { targetAgentID }),
-          new Promise<never>((_, reject) =>
-            setTimeout(
-              () =>
-                reject(
-                  new Error(
-                    `Connection to link "${linkID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s. The Synergy Link host may be unreachable or slow to respond.`,
-                  ),
-                ),
-              CONNECT_TIMEOUT_MS,
-            ),
-          ),
-        ])
+          ToolTimeout.DEFAULTS.connectMs,
+          {
+            message: `Connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s. The Synergy Link host may be unreachable or slow to respond.`,
+          },
+        )
       } catch (error) {
         throw new Error(
           `Failed to open connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
@@ -170,7 +171,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       }
 
       if (opened.metadata.status !== "opened") {
-        SynergyLinkExecution.clearSession(linkID)
+        if (sessionSelector) SynergyLinkExecution.clearSession(linkID, sessionSelector)
         if (registeredTarget) {
           await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
             status: opened.metadata.status === "busy" ? "busy" : "refused",
@@ -229,34 +230,29 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
     }
 
     const client = SynergyLinkExecution.requireClient(linkID, "connect")
-    const session = SynergyLinkExecution.requireSession(linkID)
+    const session = SynergyLinkExecution.requireSession(linkID, sessionSelector)
 
     let closed
     try {
-      closed = await Promise.race([
+      closed = await withTimeout(
         client.executeSession(
           linkID,
           { action: "close", sessionID: session.sessionID },
           { targetAgentID: session.targetAgentID },
         ),
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () =>
-              reject(
-                new Error(`Closing connection to link "${linkID}" timed out after ${CONNECT_TIMEOUT_MS / 1000}s.`),
-              ),
-            CONNECT_TIMEOUT_MS,
-          ),
-        ),
-      ])
+        ToolTimeout.DEFAULTS.connectMs,
+        {
+          message: `Closing connection to link "${linkID}" timed out after ${ToolTimeout.DEFAULTS.connectMs / 1000}s.`,
+        },
+      )
     } catch (error) {
-      SynergyLinkExecution.clearSession(linkID)
+      SynergyLinkExecution.clearSession(linkID, sessionSelector)
       throw new Error(
         `Failed to close connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
       )
     }
 
-    SynergyLinkExecution.clearSession(linkID)
+    SynergyLinkExecution.clearSession(linkID, sessionSelector)
 
     return {
       title: "Disconnected",

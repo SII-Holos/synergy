@@ -44,8 +44,9 @@ export namespace SynergyLinkExecution {
     return client
   }
 
-  export function getSession(linkID: SynergyLinkIdentity.LinkID) {
-    return sessions.get(linkID)
+  export function getSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = sessions.get(linkID)
+    return session && matchesSession(session, selector) ? session : undefined
   }
 
   export function allSessions() {
@@ -62,14 +63,14 @@ export namespace SynergyLinkExecution {
     return session
   }
 
-  export function clearSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
-    sessions.delete(linkID)
+  export function clearSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = getSession(linkID, selector)
+    if (session) sessions.delete(linkID)
     return session
   }
 
-  export function requireSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
+  export function requireSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = getSession(linkID, selector)
     if (!session || session.status !== "opened") {
       throw new NoSessionError(linkID)
     }
@@ -132,7 +133,7 @@ export namespace SynergyLinkExecution {
     if (!session || session.status !== "opened") {
       throw new NoSessionError(input.linkID)
     }
-    if (input.targetID && session.targetID && session.targetID !== input.targetID) {
+    if (input.targetID && session.targetID !== input.targetID) {
       throw new NoSessionError(input.linkID)
     }
     if (input.targetAgentID && session.targetAgentID !== input.targetAgentID) {
@@ -141,6 +142,18 @@ export namespace SynergyLinkExecution {
 
     session.lastUsedAt = Date.now()
     return { kind: "remote", linkID: input.linkID, session, client: activeClient }
+  }
+
+  interface SessionSelector {
+    targetID?: string
+    targetAgentID?: string
+  }
+
+  function matchesSession(session: SessionRecord, selector?: SessionSelector) {
+    if (!selector) return true
+    if (selector.targetID && session.targetID !== selector.targetID) return false
+    if (selector.targetAgentID && session.targetAgentID !== selector.targetAgentID) return false
+    return true
   }
 
   export class NotConnectedError extends Error {

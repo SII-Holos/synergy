@@ -72,4 +72,57 @@ describe("Synergy Link target runtime", () => {
     expect(observed.lastProbe?.status).toBe("reachable")
     expect(observed.host?.capabilities).toEqual(expect.objectContaining({ platform: "linux", arch: "x64" }))
   })
+  test("closes a temporary session when recording the host observation fails", async () => {
+    const actions: SynergyLinkSession.Action[] = []
+    SynergyLinkExecution.setClient({
+      executeBash: async (): Promise<SynergyLinkBash.Result> => {
+        throw new Error("unexpected bash execution")
+      },
+      executeProcess: async (): Promise<SynergyLinkProcess.Result> => {
+        throw new Error("unexpected process execution")
+      },
+      executeSession: async (_linkID, payload): Promise<SynergyLinkSession.Result> => {
+        actions.push(payload.action)
+        return {
+          title: payload.action === "open" ? "Opened" : "Closed",
+          metadata: {
+            action: payload.action,
+            status: payload.action === "open" ? "opened" : "closed",
+            sessionID: "session_mismatch",
+            backend: "remote",
+            host:
+              payload.action === "open"
+                ? {
+                    type: "synergy_link.host.hello",
+                    linkID: "link_other",
+                    hostSessionID: "host_other",
+                    capabilities: {
+                      platform: "linux",
+                      arch: "x64",
+                      runtime: "bun",
+                      defaultShell: "sh",
+                      supportedShells: ["sh"],
+                      supportsPty: false,
+                      supportsSendKeys: true,
+                      supportsSoftKill: true,
+                      supportsProcessGroups: true,
+                      envCaseInsensitive: false,
+                      lineEndings: "lf",
+                    },
+                  }
+                : undefined,
+          },
+          output: "ok",
+        }
+      },
+    })
+    const target = await SynergyLinkTargetStore.create({
+      name: "Mismatched host",
+      targetAgentID: "agent_mismatch",
+      linkID: "link_expected",
+    })
+
+    await expect(SynergyLinkTargetRuntime.probe(target.id)).rejects.toThrow("host identity mismatch")
+    expect(actions).toEqual(["open", "close"])
+  })
 })

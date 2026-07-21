@@ -91,6 +91,40 @@ describe("tool.connect", () => {
     }
   })
 
+  test("does not clear another agent session when open returns busy", async () => {
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_test",
+      targetAgentID: "agent_other",
+      sessionID: "session_other",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    SynergyLinkExecution.setClient(
+      fakeClient({
+        title: "Session busy",
+        metadata: {
+          action: "open",
+          status: "busy",
+          sessionID: "session_other",
+          backend: "remote",
+        },
+        output: "Host is busy with session session_other.",
+      }),
+    )
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute({ action: "open", linkID: "link_test", targetAgentID: "agent_test" }, ctx)
+
+      expect(result.metadata.status).toBe("busy")
+      expect(SynergyLinkExecution.getSession("link_test", { targetAgentID: "agent_other" })?.sessionID).toBe(
+        "session_other",
+      )
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
   test("opens a persisted target by stable targetID and records the observed host", async () => {
     const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
     const target = await SynergyLinkTargetStore.create({
@@ -210,37 +244,117 @@ describe("tool.connect", () => {
     }
   })
 
-  test("does not bypass an active target allowlist when status uses a raw link locator", async () => {
-    const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
-    const publicTarget = await SynergyLinkTargetStore.create({
-      name: "A public target",
-      targetAgentID: "agent_public_on_shared_link",
-      linkID: "link_shared_status",
-    })
-    const privateTarget = await SynergyLinkTargetStore.create({
-      name: "Z private target",
-      targetAgentID: "agent_private_on_shared_link",
-      linkID: "link_shared_status",
-      allowedAgents: ["review"],
-    })
+  test("does not list unregistered sessions to other agents", async () => {
     SynergyLinkExecution.upsertSession({
-      linkID: privateTarget.linkID,
-      targetID: privateTarget.id,
-      targetAgentID: privateTarget.targetAgentID,
-      sessionID: "session_private_on_shared_link",
+      linkID: "link_unregistered",
+      targetAgentID: "agent_unregistered",
+      sessionID: "session_unregistered",
       status: "opened",
       openedAt: Date.now(),
       lastUsedAt: Date.now(),
     })
     try {
       const tool = await ConnectTool.init()
-      await expect(tool.execute({ action: "status", linkID: privateTarget.linkID }, ctx)).rejects.toThrow(
-        "is not available to agent build",
-      )
+      const result = await tool.execute({ action: "list" }, ctx)
+
+      expect(result.metadata.sessions).toEqual([])
+      expect(result.output).toBe("No active Synergy Link sessions.")
     } finally {
-      SynergyLinkExecution.clearSession(privateTarget.linkID)
-      await SynergyLinkTargetStore.remove(publicTarget.id)
-      await SynergyLinkTargetStore.remove(privateTarget.id)
+      SynergyLinkExecution.clearSession("link_unregistered")
     }
+  })
+
+  test("does not expose a different target session through targetID status", async () => {
+    const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
+    const target = await SynergyLinkTargetStore.create({
+      name: "Requested target",
+      targetAgentID: "agent_requested",
+      linkID: "link_shared_status",
+      allowedAgents: ["build"],
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: target.linkID,
+      targetID: "target_other",
+      targetAgentID: "agent_other",
+      sessionID: "session_other",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute({ action: "status", targetID: target.id }, ctx)
+
+      expect(result.metadata).toEqual(
+        expect.objectContaining({ targetID: target.id, status: "missing", sessionID: undefined }),
+      )
+      expect(result.output).toContain("No active connection")
+    } finally {
+      SynergyLinkExecution.clearSession(target.linkID)
+      await SynergyLinkTargetStore.remove(target.id)
+    }
+  })
+
+  test("closes an active session after its target is disabled", async () => {
+    const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
+    const target = await SynergyLinkTargetStore.create({
+      name: "Disabled target",
+      targetAgentID: "agent_disabled",
+      linkID: "link_disabled",
+      allowedAgents: ["build"],
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: target.linkID,
+      targetID: target.id,
+      targetAgentID: target.targetAgentID,
+      sessionID: "session_disabled",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    await SynergyLinkTargetStore.update(target.id, { enabled: false })
+    SynergyLinkExecution.setClient(
+      fakeClient({
+        title: "Session closed",
+        metadata: { action: "close", status: "closed", sessionID: "session_disabled", backend: "remote" },
+        output: "Closed.",
+      }),
+    )
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute({ action: "close", targetID: target.id }, ctx)
+
+      expect(result.metadata.status).toBe("closed")
+      expect(SynergyLinkExecution.getSession(target.linkID)).toBeUndefined()
+    } finally {
+      SynergyLinkExecution.setClient(null)
+      await SynergyLinkTargetStore.remove(target.id)
+    }
+  })
+  test("invalidates an active session when its persisted target is removed", async () => {
+    const { SynergyLinkTargetService } = await import("../../src/synergy-link/target-service")
+    const { SynergyLinkTargetStore } = await import("../../src/synergy-link/target-store")
+    const target = await SynergyLinkTargetStore.create({
+      name: "Removed private target",
+      targetAgentID: "agent_removed_private",
+      linkID: "link_removed_private",
+      allowedAgents: ["review"],
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: target.linkID,
+      targetID: target.id,
+      targetAgentID: target.targetAgentID,
+      sessionID: "session_removed_private",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+
+    await SynergyLinkTargetService.remove(target.id)
+
+    expect(SynergyLinkExecution.getSession(target.linkID)).toBeUndefined()
+    const tool = await ConnectTool.init()
+    const listed = await tool.execute({ action: "list" }, ctx)
+    expect(listed.metadata.sessions).toEqual([])
   })
 })

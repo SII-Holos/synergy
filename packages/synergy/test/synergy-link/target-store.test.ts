@@ -51,4 +51,34 @@ describe("Synergy Link target store", () => {
     expect(await SynergyLinkTargetStore.get(first.id)).toBeUndefined()
     expect(await SynergyLinkTargetStore.list()).toEqual([second])
   })
+
+  test("rejects targets that reuse an existing linkID", async () => {
+    await SynergyLinkTargetStore.create({
+      name: "First host",
+      targetAgentID: "agent_first",
+      linkID: "link_shared",
+    })
+
+    await expect(
+      SynergyLinkTargetStore.create({
+        name: "Second host",
+        targetAgentID: "agent_second",
+        linkID: "link_shared",
+      }),
+    ).rejects.toThrow("already exists")
+  })
+
+  test("records an explicit refusal after approval as revoked", async () => {
+    const target = await SynergyLinkTargetStore.create({
+      name: "Revoked host",
+      targetAgentID: "agent_revoked",
+      linkID: "link_revoked",
+    })
+
+    const approved = await SynergyLinkTargetStore.recordProbe(target.id, { status: "reachable" })
+    expect(approved.authorization).toBe("approved")
+
+    const revoked = await SynergyLinkTargetStore.recordProbe(target.id, { status: "refused" })
+    expect(revoked.authorization).toBe("revoked")
+  })
 })

@@ -51,16 +51,14 @@ export namespace SynergyLinkTargetStore {
 
   export async function require(id: string): Promise<SynergyLinkTarget.Info> {
     const target = await get(id)
-    if (!target) throw new Error(`Synergy Link target not found: ${id}`)
+    if (!target) throw new Storage.NotFoundError({ message: `Synergy Link target not found: ${id}` })
     return target
   }
 
   export async function create(input: SynergyLinkTarget.CreateInput): Promise<SynergyLinkTarget.Info> {
     const parsed = SynergyLinkTarget.CreateInput.parse(input)
     using _ = await Lock.write(collectionLock)
-    const duplicate = (await list()).find(
-      (target) => target.targetAgentID === parsed.targetAgentID && target.linkID === parsed.linkID,
-    )
+    const duplicate = (await list()).find((target) => target.linkID === parsed.linkID)
     if (duplicate) throw new Error(`Synergy Link target already exists: ${duplicate.id}`)
 
     const now = Date.now()
@@ -99,7 +97,8 @@ export namespace SynergyLinkTargetStore {
     const now = Date.now()
     const target = SynergyLinkTarget.Info.parse({
       ...current,
-      authorization: input.status === "reachable" ? "approved" : current.authorization,
+      authorization:
+        input.status === "reachable" ? "approved" : input.status === "refused" ? "revoked" : current.authorization,
       host: input.host ?? current.host,
       lastProbe: { status: input.status, checkedAt: now },
       updatedAt: now,

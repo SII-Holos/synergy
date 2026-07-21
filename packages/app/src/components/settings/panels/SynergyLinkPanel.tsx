@@ -11,7 +11,7 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { normalizeAllowedAgents, targetFormReady } from "./synergy-link-panel-model"
+import { normalizeAllowedAgents, reconcileTargetDraft, targetFormReady } from "./synergy-link-panel-model"
 
 const copy = {
   title: { id: "settings.synergyLink.page.title", message: "Synergy Link" },
@@ -204,9 +204,17 @@ export function SynergyLinkPanel() {
             emptyDescription={_(copy.emptyDescription)}
           >
             <div class="settings-link-list">
-              <For each={targets()}>
-                {(target) => (
-                  <SynergyLinkTargetCard target={target} onRefresh={refetch} onRemove={() => confirmRemove(target)} />
+              <For each={targets()?.map((target) => target.id)}>
+                {(targetID) => (
+                  <Show when={targets()?.find((target) => target.id === targetID)}>
+                    {(target) => (
+                      <SynergyLinkTargetCard
+                        target={target()}
+                        onRefresh={refetch}
+                        onRemove={() => confirmRemove(target())}
+                      />
+                    )}
+                  </Show>
                 )}
               </For>
             </div>
@@ -227,9 +235,23 @@ function SynergyLinkTargetCard(props: {
   const [name, setName] = createSignal(props.target.name)
   const [agents, setAgents] = createSignal(props.target.allowedAgents.join(", "))
   const [busy, setBusy] = createSignal(false)
+  let previousTargetID = props.target.id
+  let previousName = props.target.name
+  let previousAgents = props.target.allowedAgents.join(", ")
   createEffect(() => {
-    setName(props.target.name)
-    setAgents(props.target.allowedAgents.join(", "))
+    const nextTargetID = props.target.id
+    const nextName = props.target.name
+    const nextAgents = props.target.allowedAgents.join(", ")
+    const targetChanged = previousTargetID !== nextTargetID
+    setName((current) =>
+      reconcileTargetDraft({ current, previousServer: previousName, nextServer: nextName, targetChanged }),
+    )
+    setAgents((current) =>
+      reconcileTargetDraft({ current, previousServer: previousAgents, nextServer: nextAgents, targetChanged }),
+    )
+    previousTargetID = nextTargetID
+    previousName = nextName
+    previousAgents = nextAgents
   })
 
   async function update(patch: { name?: string; enabled?: boolean; allowedAgents?: string[] }) {

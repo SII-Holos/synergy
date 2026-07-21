@@ -48,4 +48,36 @@ describe("Synergy Link target routes", () => {
     })
     expect(response.status).toBe(400)
   })
+  test("returns error bodies that match the generated API schemas", async () => {
+    const createdResponse = await Server.App().request("/synergy-link/targets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "First", targetAgentID: "agent_first", linkID: "link_duplicate" }),
+    })
+    expect(createdResponse.status).toBe(200)
+
+    const duplicateResponse = await Server.App().request("/synergy-link/targets", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: "Second", targetAgentID: "agent_second", linkID: "link_duplicate" }),
+    })
+    expect(duplicateResponse.status).toBe(400)
+    expect(await duplicateResponse.json()).toEqual({
+      data: { message: expect.stringContaining("already exists") },
+      errors: [],
+      success: false,
+    })
+
+    const missingResponse = await Server.App().request(
+      "/synergy-link/targets/target_00000000-0000-0000-0000-000000000000",
+      {
+        method: "DELETE",
+      },
+    )
+    expect(missingResponse.status).toBe(404)
+    expect(await missingResponse.json()).toEqual({
+      name: "NotFoundError",
+      data: { message: expect.stringContaining("not found") },
+    })
+  })
 })

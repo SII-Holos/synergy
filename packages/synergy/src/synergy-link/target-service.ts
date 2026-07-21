@@ -2,6 +2,7 @@ import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
+import { SynergyLinkExecution } from "@/tool/synergy-link-execution"
 import z from "zod"
 import { SynergyLinkTargetStore } from "./target-store"
 import { SynergyLinkTarget } from "./types"
@@ -52,6 +53,10 @@ export namespace SynergyLinkTargetService {
       fn: async () => {
         const target = await SynergyLinkTargetStore.require(id)
         await SynergyLinkTargetStore.remove(target.id)
+        SynergyLinkExecution.clearSession(target.linkID, {
+          targetID: target.id,
+          targetAgentID: target.targetAgentID,
+        })
         await Bus.publish(Event.Removed, { id: target.id })
       },
     })

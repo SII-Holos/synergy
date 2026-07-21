@@ -1,6 +1,7 @@
 import { SynergyLinkTargetRuntime } from "@/synergy-link/target-runtime"
 import { SynergyLinkTargetService } from "@/synergy-link/target-service"
 import { SynergyLinkTarget } from "@/synergy-link/types"
+import { Storage } from "@/storage/storage"
 import { Hono, type Context } from "hono"
 import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
@@ -43,7 +44,7 @@ export const SynergyLinkRoute = new Hono()
       try {
         return c.json(await SynergyLinkTargetService.create(c.req.valid("json")))
       } catch (error) {
-        return c.json({ message: error instanceof Error ? error.message : String(error) }, 400)
+        return badRequest(c, error)
       }
     },
   )
@@ -118,6 +119,11 @@ export const SynergyLinkRoute = new Hono()
   )
 
 function targetError(c: Context, error: unknown) {
+  if (error instanceof Storage.NotFoundError) return c.json(error.toObject(), 404)
+  return badRequest(c, error)
+}
+
+function badRequest(c: Context, error: unknown) {
   const message = error instanceof Error ? error.message : String(error)
-  return c.json({ message }, message.includes("not found") ? 404 : 400)
+  return c.json({ data: { message }, errors: [], success: false as const }, 400)
 }
