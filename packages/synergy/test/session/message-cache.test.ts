@@ -70,7 +70,7 @@ describe("SessionMessageCache", () => {
     SessionMessageCache.enable(SID)
     SessionMessageCache.set(SID, [userMsg("msg_1")])
     SessionMessageCache.resetStatsForTest()
-    SessionMessageCache.upsertMessage(SID, { id: "msg_2", sessionID: SID, role: "user" } as any)
+    SessionMessageCache.upsertMessage(SID, userMsg("msg_2", 2).info)
     SessionMessageCache.upsertPart(SID, part("prt_1", "msg_1", "a"))
     expect(SessionMessageCache.stats()).toMatchObject({ hits: 0, misses: 0 })
     expect(SessionMessageCache.get(SID)).toBeDefined()
@@ -90,14 +90,16 @@ describe("SessionMessageCache", () => {
     expect(SessionMessageCache.get(SID)).toBeUndefined()
   })
 
-  test("upsertMessage appends in id order and replaces by id", () => {
+  test("upsertMessage inserts by creation time and replaces by id", () => {
     SessionMessageCache.enable(SID)
-    SessionMessageCache.set(SID, [userMsg("msg_2")])
-    SessionMessageCache.upsertMessage(SID, { id: "msg_1", sessionID: SID, role: "user" } as any)
-    SessionMessageCache.upsertMessage(SID, { id: "msg_3", sessionID: SID, role: "assistant" } as any)
-    expect(SessionMessageCache.get(SID)!.map((m) => m.info.id)).toEqual(["msg_1", "msg_2", "msg_3"])
-    // replace existing
-    SessionMessageCache.upsertMessage(SID, { id: "msg_2", sessionID: SID, role: "assistant" } as any)
+    SessionMessageCache.set(SID, [userMsg("msg_2", 2)])
+    SessionMessageCache.upsertMessage(SID, userMsg("msg_1", 3).info)
+    SessionMessageCache.upsertMessage(SID, {
+      ...userMsg("msg_3", 1).info,
+      role: "assistant",
+    } as MessageV2.Assistant)
+    expect(SessionMessageCache.get(SID)!.map((m) => m.info.id)).toEqual(["msg_3", "msg_2", "msg_1"])
+    SessionMessageCache.upsertMessage(SID, { ...userMsg("msg_2", 2).info, role: "assistant" } as MessageV2.Assistant)
     expect(SessionMessageCache.get(SID)!.find((m) => m.info.id === "msg_2")!.info.role).toBe("assistant")
   })
 

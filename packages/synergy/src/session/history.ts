@@ -20,7 +20,7 @@ const log = Log.create({ service: "session.history" })
 const PAGE_HYDRATION_CONCURRENCY = 16
 
 export namespace SessionHistory {
-  const { asScopeID, asSessionID, asHistoryID, asMessageID } = Identifier
+  const { asScopeID, asSessionID, asHistoryID } = Identifier
 
   export const RollbackEvent = z
     .object({
@@ -662,15 +662,10 @@ export namespace SessionHistory {
 
   async function readMessageInfo(sessionID: string) {
     const session = await SessionManager.requireSession(sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
-    const ids = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, asSessionID(sessionID)))
-    const messages = await Storage.readMany<MessageV2.Info>(
-      ids.map((id) => StoragePath.messageInfo(scopeID, asSessionID(sessionID), asMessageID(id))),
-    )
-    return messages
-      .filter((msg): msg is MessageV2.Info => !!msg)
-      .map(MessageV2.canonicalMessage)
-      .sort(MessageV2.compareStorageOrder)
+    return MessageV2.readInfoList({
+      scopeID: asScopeID((session.scope as Scope).id),
+      sessionID: asSessionID(sessionID),
+    })
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {

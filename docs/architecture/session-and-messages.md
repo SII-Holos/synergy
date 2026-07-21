@@ -140,7 +140,7 @@ Downstream loop, compaction, history, and frontend code read canonical fields. T
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
-Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. Both full and model-working-set read boundaries restore those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+Transcript consumers use the ordered message array as the chronology. `time.created` records when a message enters the transcript; message IDs provide stable identity and only break ties between messages with the same creation time. Inbox delivery may pre-allocate a message ID before materialization, so loop, rollback, fork, compaction, pagination, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
 
 ## Message Page API
 
@@ -289,7 +289,7 @@ Every item has one scheduling axis:
 | `steer`   | Existing root | Materialized before the next `needsModelCall` decision. | Wakes the latest root if one exists.          |
 | `context` | Existing root | Piggybacks only after a model call is already required. | Remains stored and does not wake the session. |
 
-Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID, and task, steer, and context order remains stable through `orderKey`; legacy hash-based transcript IDs are supported only at the read boundary.
+Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID for idempotency, but the ID allocation time does not define transcript chronology. Task, steer, and context order remains stable through `orderKey`; message reads order materialized records by `time.created` with the message ID as a deterministic tie-break.
 
 Typical mappings:
 
@@ -303,6 +303,14 @@ Promoting a queued user task to guide/steer changes the inbox mode instead of wr
 On abort, steer and context items are discarded while queued task items remain for explicit later execution.
 
 If a loop run fails while runnable inbox work remains, release still yields ownership but does not immediately request another drive cycle. The durable inbox item remains available for an explicit retry or a later delivery-triggered wake instead of entering a tight self-wake loop.
+
+## Message Chronology Index
+
+Message info records remain the canonical transcript and `time.created`, followed by message ID, remains the canonical chronology. `MessageV2.readInfoList()` reconstructs that complete order directly from message info for full-history consumers.
+
+Newest-first bounded readers use the derived `session_message_order_v1` index instead of eagerly parsing every message info. The index stores one sortable marker per message plus a ready/count state record. Message creation, chronology changes, removal, and permanent session deletion maintain it under a per-session write lock. Ordinary streaming updates whose `time.created` value is unchanged do not rewrite marker state.
+
+The index is not part of session export or canonical recovery state. Missing, incomplete, or internally inconsistent index state is rebuilt from canonical message infos before use; a non-ready state left by interruption also forces a rebuild. Consumers must not derive transcript semantics from marker filenames or treat the index as an independent message source.
 
 ## Model Context Projection
 
