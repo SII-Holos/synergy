@@ -34,12 +34,17 @@ export namespace ProcessOutput {
     options.signal?.addEventListener("abort", onAbort, { once: true })
     if (options.signal?.aborted) onAbort()
 
+    const throwIfAborted = () => {
+      if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("Aborted", "AbortError")
+    }
+
     try {
       while (true) {
-        if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("Aborted", "AbortError")
+        throwIfAborted()
         const { done, value } = await reader.read()
+        throwIfAborted()
         if (done) {
-          if (options.signal?.aborted) throw options.signal.reason ?? new DOMException("Aborted", "AbortError")
+          throwIfAborted()
           reachedEnd = true
           break
         }
@@ -51,6 +56,7 @@ export namespace ProcessOutput {
 
         let offset = 0
         while (offset < accepted.length) {
+          throwIfAborted()
           const newline = accepted.indexOf(0x0a, offset)
           const end = newline === -1 ? accepted.length : newline + 1
           const segment = accepted.subarray(offset, end)
@@ -62,6 +68,7 @@ export namespace ProcessOutput {
           pending += decoder.decode(segment, { stream: true })
           if (newline !== -1) {
             const raw = pending.slice(0, -1)
+            throwIfAborted()
             yield raw.endsWith("\r") ? raw.slice(0, -1) : raw
             pending = ""
             pendingBytes = 0
@@ -69,12 +76,11 @@ export namespace ProcessOutput {
           offset = end
         }
 
-        if (outputLimited || totalBytes >= maxOutputBytes) {
-          throw new LimitError("max_output_bytes", maxOutputBytes)
-        }
+        if (outputLimited) throw new LimitError("max_output_bytes", maxOutputBytes)
       }
 
       pending += decoder.decode()
+      throwIfAborted()
       if (pending) yield pending.endsWith("\r") ? pending.slice(0, -1) : pending
     } finally {
       options.signal?.removeEventListener("abort", onAbort)

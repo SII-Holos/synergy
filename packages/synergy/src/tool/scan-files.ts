@@ -189,7 +189,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
 
     const selectedEntries = [...byFile.entries()]
     const limitReached = hasNextFile || truncatedReason !== undefined
-    const nextSkipFiles = limitReached && selectedEntries.length ? skipFiles + selectedEntries.length : undefined
+    const nextSkipFiles = hasNextFile && selectedEntries.length ? skipFiles + selectedEntries.length : undefined
 
     const blocks: string[] = []
     const files: string[] = []
@@ -229,9 +229,11 @@ export const ScanFilesTool = Tool.define("scan_files", {
       if (conflict.hasConflicts) conflicts[pathLabel] = conflict.conflicts
     }
 
-    const footer = limitReached
+    const footer = hasNextFile
       ? `\n\n[Result limit reached. Use skipFiles=${nextSkipFiles ?? skipFiles + limitFiles} to continue, or narrow path/include/globs/pattern.]`
-      : ""
+      : truncatedReason
+        ? "\n\n[Output safety limit reached. Narrow path/include/globs/pattern; skipFiles cannot continue past this subprocess limit.]"
+        : ""
     const oversized = oversizedFiles.length
       ? `\n\n[${oversizedFiles.length} matched file(s) were too large for anchored tags: ${oversizedFiles.join(", ")}. Use narrower searches or inspect smaller ranges.]`
       : ""

@@ -56,6 +56,30 @@ describe("ProcessOutput.lines", () => {
     expect(observed).toEqual(["one", "two"])
     expect(failure).toMatchObject({ reason: "max_output_bytes" })
   })
+
+  test("accepts output that ends exactly at the cumulative byte limit", async () => {
+    const lines = await Array.fromAsync(ProcessOutput.lines(chunks("one\ntwo\n"), { maxOutputBytes: 8 }))
+    expect(lines).toEqual(["one", "two"])
+  })
+
+  test("does not yield complete records after abort is observed", async () => {
+    const controller = new AbortController()
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream<Uint8Array>({
+      pull(streamController) {
+        streamController.enqueue(encoder.encode("late\n"))
+        controller.abort(new DOMException("Aborted", "AbortError"))
+        streamController.close()
+      },
+    })
+    const observed: string[] = []
+    await expect(
+      (async () => {
+        for await (const line of ProcessOutput.lines(stream, { signal: controller.signal })) observed.push(line)
+      })(),
+    ).rejects.toMatchObject({ name: "AbortError" })
+    expect(observed).toEqual([])
+  })
 })
 
 describe("ProcessOutput.drainText", () => {

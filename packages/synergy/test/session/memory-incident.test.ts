@@ -74,4 +74,26 @@ describe("SessionMemoryIncident", () => {
       ObservabilityStore.queryIssues({ status: "open" }).filter((issue) => issue.code === "PERF_PROCESS_OUT_OF_MEMORY"),
     ).toHaveLength(1)
   })
+
+  test("allows a later capture when an earlier attempt fails", async () => {
+    const { ObservabilityEvents } = await import("../../src/observability/events")
+    const originalEmit = ObservabilityEvents.emit
+    let attempts = 0
+    ObservabilityEvents.emit = (async (...args: Parameters<typeof originalEmit>) => {
+      attempts++
+      if (attempts === 1) throw new Error("storage unavailable")
+      return originalEmit(...args)
+    }) as typeof originalEmit
+
+    try {
+      await expect(SessionMemoryIncident.capture({ error: new RangeError("Out of memory"), now: 100 })).rejects.toThrow(
+        "storage unavailable",
+      )
+      const incident = await SessionMemoryIncident.capture({ error: new RangeError("Out of memory"), now: 101 })
+      expect(incident).toBeDefined()
+      expect(attempts).toBe(2)
+    } finally {
+      ObservabilityEvents.emit = originalEmit
+    }
+  })
 })

@@ -121,6 +121,7 @@ async function searchContent(input: {
   const items: WorkspaceFile.ContentSearchItem[] = []
   let seen = 0
   let truncated = false
+  let pageLimited = false
   try {
     for await (const data of Ripgrep.matches({
       cwd: ScopeContext.current.directory,
@@ -150,6 +151,7 @@ async function searchContent(input: {
       })
       if (items.length > input.limit) {
         truncated = true
+        pageLimited = true
         break
       }
     }
@@ -165,14 +167,11 @@ async function searchContent(input: {
   }
 
   const page = items.slice(0, input.limit)
-  // Keep pagination available after early stop so clients can resume from the
-  // last complete item instead of losing the remainder of a bounded scan.
-  const hasNextPage = items.length > input.limit || (truncated && page.length > 0)
   return {
     kind: "content",
     query: input.query,
     items: page,
-    nextCursor: hasNextPage ? String(offset + page.length) : undefined,
+    nextCursor: pageLimited ? String(offset + page.length) : undefined,
     truncated,
   }
 }

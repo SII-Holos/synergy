@@ -9,6 +9,7 @@ export namespace SessionMemoryIncident {
   const DEDUPE_MS = 5_000
   const SPAN_WINDOW_MS = 5 * 60_000
   let lastCapturedAt = 0
+  let capturePending: Promise<ReturnType<typeof build>> | undefined
 
   interface ResourceView {
     time: number
@@ -108,8 +109,23 @@ export namespace SessionMemoryIncident {
     if (!isOutOfMemory(input.error)) return undefined
     const now = input.now ?? Date.now()
     if (lastCapturedAt > 0 && now - lastCapturedAt < DEDUPE_MS) return undefined
-    lastCapturedAt = now
+    if (capturePending) return capturePending
 
+    const pending = captureOnce(input, now)
+    capturePending = pending
+    try {
+      const incident = await pending
+      lastCapturedAt = now
+      return incident
+    } finally {
+      if (capturePending === pending) capturePending = undefined
+    }
+  }
+
+  async function captureOnce(
+    input: { error: unknown; sessionID?: string; messageID?: string },
+    now: number,
+  ): Promise<ReturnType<typeof build>> {
     // Avoid maybeCollect/GC here: allocation failure is the worst time to allocate more.
     const current = SessionMemoryPressure.currentSnapshot()
     const thresholds = SessionMemoryPressure.resolveThresholds(process.env, current)
@@ -150,7 +166,7 @@ export namespace SessionMemoryIncident {
       stalled: Boolean(row.stalled),
       tool: row.tool ?? undefined,
     }))
-    const cacheStats = SessionMessageCache.stats()
+    const cacheStats = SessionMessageCache.stats({ entryLimit: 20 })
     const incident = build({
       occurredAt: now,
       current,
@@ -212,5 +228,6 @@ export namespace SessionMemoryIncident {
 
   export function resetForTest() {
     lastCapturedAt = 0
+    capturePending = undefined
   }
 }

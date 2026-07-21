@@ -401,6 +401,21 @@ describe("WorkspaceFileSearch", () => {
     )
   })
 
+  test("does not offer a cursor when the subprocess output safety limit stops content search", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "a.txt"), "needle small\n")
+        await Bun.write(path.join(dir, "z.txt"), `needle ${"x".repeat(300_000)}\n`)
+      },
+      async () => {
+        const result = await WorkspaceFileSearch.search({ kind: "content", query: "needle", limit: 10 })
+        expect(result.items).toHaveLength(1)
+        expect(result.truncated).toBe(true)
+        expect(result.nextCursor).toBeUndefined()
+      },
+    )
+  })
+
   test.skipIf(process.platform === "win32")(
     "content search aborts and returns when the search process ignores SIGTERM",
     async () => {

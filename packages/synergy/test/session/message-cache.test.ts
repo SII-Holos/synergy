@@ -36,6 +36,36 @@ describe("SessionMessageCache", () => {
     expect(SessionMessageCache.stats().totalBytes).toBe(entry!.estimatedBytes)
   })
 
+  test("keeps the reported largest-entry list bounded", () => {
+    const sessionIDs = Array.from({ length: 140 }, (_, index) => `ses_cache_stats_${index}`)
+    try {
+      for (const [index, sessionID] of sessionIDs.entries()) {
+        SessionMessageCache.enable(sessionID)
+        SessionMessageCache.set(sessionID, [
+          {
+            info: { id: `msg_${index}`, sessionID, role: "user", time: { created: index } } as any,
+            parts: [
+              {
+                id: `prt_${index}`,
+                sessionID,
+                messageID: `msg_${index}`,
+                type: "text",
+                text: "x".repeat(index),
+              } as any,
+            ],
+          },
+        ])
+      }
+
+      const stats = SessionMessageCache.stats({ entryLimit: 20 })
+      expect(stats.entries).toHaveLength(20)
+      expect(stats.truncatedEntryCount).toBe(120)
+      expect(stats.entries[0].estimatedBytes).toBeGreaterThanOrEqual(stats.entries.at(-1)!.estimatedBytes)
+    } finally {
+      for (const sessionID of sessionIDs) SessionMessageCache.disable(sessionID)
+    }
+  })
+
   test("upsert paths do not inflate hit/miss counters", () => {
     SessionMessageCache.enable(SID)
     SessionMessageCache.set(SID, [userMsg("msg_1")])

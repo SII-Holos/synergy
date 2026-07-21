@@ -262,6 +262,28 @@ describe("tool.scan_files", () => {
       })
     })
 
+    test("does not offer skip pagination after an output safety limit", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "a.txt"), "needle small\n")
+          await Bun.write(path.join(dir, "z.txt"), `needle ${"x".repeat(300_000)}\n`)
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const result = await tool.execute({ pattern: "needle", path: tmp.path }, ctx)
+
+          expect(result.metadata.limitReached).toBe(true)
+          expect(result.metadata.truncatedReason).toBe("max_record_bytes")
+          expect(result.metadata.nextSkipFiles).toBeUndefined()
+          expect(result.output).not.toContain("Use skipFiles=")
+        },
+      })
+    })
+
     test("continues file pagination without retaining earlier page contents", async () => {
       await using tmp = await tmpdir({
         git: true,

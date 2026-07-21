@@ -72,10 +72,26 @@ export namespace SessionMessageCache {
     return hit
   }
 
-  export function stats() {
-    const entries = [...sizes]
-      .map(([sessionID, estimatedBytes]) => ({ sessionID, estimatedBytes }))
-      .sort((a, b) => b.estimatedBytes - a.estimatedBytes || a.sessionID.localeCompare(b.sessionID))
+  export function stats(input: { entryLimit?: number } = {}) {
+    const entryLimit = Math.max(0, Math.floor(input.entryLimit ?? 100))
+    const entries: Array<{ sessionID: string; estimatedBytes: number }> = []
+    for (const [sessionID, estimatedBytes] of sizes) {
+      let lo = 0
+      let hi = entries.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        const current = entries[mid]
+        if (
+          current.estimatedBytes > estimatedBytes ||
+          (current.estimatedBytes === estimatedBytes && current.sessionID < sessionID)
+        )
+          lo = mid + 1
+        else hi = mid
+      }
+      if (lo >= entryLimit) continue
+      entries.splice(lo, 0, { sessionID, estimatedBytes })
+      if (entries.length > entryLimit) entries.pop()
+    }
     return {
       totalBytes,
       activeCount: active.size,
@@ -84,8 +100,8 @@ export namespace SessionMessageCache {
       misses,
       evictions,
       protectedOverbudget,
-      entries: entries.slice(0, 100),
-      truncatedEntryCount: Math.max(0, entries.length - 100),
+      entries,
+      truncatedEntryCount: Math.max(0, sizes.size - entries.length),
     }
   }
 
