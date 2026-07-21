@@ -67,17 +67,40 @@ async function findChromiumInDir(dir: string): Promise<string | null> {
   return null
 }
 
-async function findPlaywrightChromium(cacheDir: string, platform: string): Promise<string | null> {
+async function findPlaywrightChromium(
+  cacheDir: string,
+  platform: NodeJS.Platform,
+  arch: string,
+): Promise<string | null> {
   try {
     const entries = await fs.readdir(cacheDir, { withFileTypes: true })
     for (const entry of entries) {
       if (!entry.isDirectory() || !entry.name.startsWith("chromium-")) continue
 
-      if (platform === "darwin") {
-        const candidate = path.join(cacheDir, entry.name, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium")
-        if (await fileExists(candidate)) return candidate
-      } else {
-        const candidate = path.join(cacheDir, entry.name, "chrome-linux", "chrome")
+      const candidates =
+        platform === "darwin"
+          ? [
+              path.join(
+                cacheDir,
+                entry.name,
+                arch === "arm64" ? "chrome-mac-arm64" : "chrome-mac-x64",
+                "Google Chrome for Testing.app",
+                "Contents",
+                "MacOS",
+                "Google Chrome for Testing",
+              ),
+              path.join(cacheDir, entry.name, "chrome-mac", "Chromium.app", "Contents", "MacOS", "Chromium"),
+            ]
+          : platform === "win32"
+            ? [
+                path.join(cacheDir, entry.name, "chrome-win64", "chrome.exe"),
+                path.join(cacheDir, entry.name, "chrome-win", "chrome.exe"),
+              ]
+            : [
+                path.join(cacheDir, entry.name, arch === "arm64" ? "chrome-linux" : "chrome-linux64", "chrome"),
+                path.join(cacheDir, entry.name, "chrome-linux", "chrome"),
+              ]
+      for (const candidate of candidates) {
         if (await fileExists(candidate)) return candidate
       }
     }
@@ -226,14 +249,23 @@ export namespace BrowserInstall {
   }
 
   /** Discover Chromium in priority order. Returns null if not found. */
-  export async function discoverChromium(): Promise<string | null> {
-    const platform = os.platform()
-    const home = os.homedir()
+  export async function discoverChromium(
+    options: {
+      platform?: NodeJS.Platform
+      arch?: string
+      home?: string
+      env?: Record<string, string | undefined>
+    } = {},
+  ): Promise<string | null> {
+    const platform = options.platform ?? os.platform()
+    const arch = options.arch ?? os.arch()
+    const home = options.home ?? os.homedir()
+    const env = options.env ?? Bun.env
 
     // 1. $CHROMIUM_PATH env
-    if (Bun.env.CHROMIUM_PATH) {
-      if (await fileExists(Bun.env.CHROMIUM_PATH)) {
-        return Bun.env.CHROMIUM_PATH
+    if (env.CHROMIUM_PATH) {
+      if (await fileExists(env.CHROMIUM_PATH)) {
+        return env.CHROMIUM_PATH
       }
     }
 
@@ -245,9 +277,11 @@ export namespace BrowserInstall {
     const playwrightDir =
       platform === "darwin"
         ? path.join(home, "Library", "Caches", "ms-playwright")
-        : path.join(home, ".cache", "ms-playwright")
+        : platform === "win32"
+          ? path.join(env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"), "ms-playwright")
+          : path.join(home, ".cache", "ms-playwright")
 
-    const playwrightResult = await findPlaywrightChromium(playwrightDir, platform)
+    const playwrightResult = await findPlaywrightChromium(playwrightDir, platform, arch)
     if (playwrightResult) return playwrightResult
 
     try {
@@ -265,7 +299,26 @@ export namespace BrowserInstall {
             "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
             "/Applications/Chromium.app/Contents/MacOS/Chromium",
           ]
-        : ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]
+        : platform === "win32"
+          ? [
+              path.join(env.PROGRAMFILES ?? "C:\\Program Files", "Google", "Chrome", "Application", "chrome.exe"),
+              path.join(
+                env["PROGRAMFILES(X86)"] ?? "C:\\Program Files (x86)",
+                "Google",
+                "Chrome",
+                "Application",
+                "chrome.exe",
+              ),
+              path.join(
+                env.LOCALAPPDATA ?? path.join(home, "AppData", "Local"),
+                "Google",
+                "Chrome",
+                "Application",
+                "chrome.exe",
+              ),
+              path.join(env.PROGRAMFILES ?? "C:\\Program Files", "Microsoft", "Edge", "Application", "msedge.exe"),
+            ]
+          : ["/usr/bin/chromium", "/usr/bin/chromium-browser", "/usr/bin/google-chrome"]
     for (const sysPath of systemPaths) {
       if (await fileExists(sysPath)) return sysPath
     }

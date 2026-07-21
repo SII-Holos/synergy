@@ -36,16 +36,19 @@ Recommended Desktop installer artifacts:
 - `Synergy-darwin-x64-${version}.pkg`
 - `Synergy-darwin-arm64-${version}.pkg`
 - `Synergy-win32-x64-${version}.exe`
-- `Synergy-win32-arm64-${version}.exe`
 - `Synergy-linux-x86_64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
+
+Windows ARM64 Browser Host artifacts remain published, but the full Windows ARM64 Desktop/runtime is not a Stable target until all native runtime dependencies are available for that architecture.
 
 Portable and updater artifacts are still published but are not the full Desktop + CLI install entry:
 
 - macOS `.zip` is required by updater metadata.
 - macOS `.dmg` is an app-bundle artifact and does not install the CLI link.
 - Linux `.AppImage` and `.tar.gz` are portable/debug artifacts and do not install global commands.
+
+The Linux `.deb` depends on the system `bubblewrap` package. Linux portable artifacts require users to install Bubblewrap separately.
 
 The product release also publishes the minimal remote Browser Host for every supported OS/architecture:
 
@@ -95,17 +98,18 @@ Browser Host artifact trust:
 - `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix
 - `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key embedded in product runtime binaries
 
-PR/package validation must work without signing secrets. Release workflows sign and notarize only when the relevant secrets are present.
+PR/package validation works without signing secrets. A product Release validates every required signing secret before publishing a candidate and verifies that the Browser Host private/public key pair matches.
 
 ## GitHub Actions Flow
 
 Product release keeps the existing candidate/finalize model:
 
-1. `stable_candidate` runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state.
-2. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. Each platform job builds both `x64` and `arm64` Desktop artifacts and minimal Browser Host zip artifacts.
-3. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key embedded, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
-4. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
-5. `stable_finalize` verifies npm candidates, runtime assets, recommended Desktop installer artifacts, portable artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
+1. `stable_sandbox_assets` builds Linux x64/arm64 helpers for glibc and musl plus the Windows x64 helper, then uploads target-keyed assets. It never commits generated hashes.
+2. `stable_candidate` validates signing material, downloads the helper assets, runs `script/release/stable-start.ts`, publishes npm candidates, builds core runtime assets, creates the draft GitHub Release, and uploads release state. Missing helpers or Browser Host trust material fail before publication.
+3. `stable_desktop_package` runs a three-way desktop matrix for macOS, Windows, and Linux. macOS and Linux build x64/arm64 Desktop artifacts; Windows builds x64 Desktop artifacts. Every platform still builds x64/arm64 minimal Browser Host zips.
+4. Each desktop matrix job rewrites package versions to the candidate version, builds matching Synergy runtimes with the Browser Host public key and helper hash embedded, packages Desktop, signs each Browser Host manifest with the independent Ed25519 signing key, and uploads the full platform bundle.
+5. `stable_desktop_publish` downloads all desktop artifacts, generates `Synergy-${version}-checksums.txt`, and uploads the desktop assets to the draft GitHub Release.
+6. `stable_finalize` verifies npm candidates, runtime assets, recommended Desktop installer artifacts, portable artifacts, checksum, and updater metadata by reading the draft GitHub Release assets, then promotes npm tags and publishes the GitHub Release.
 
 ## Failure Recovery
 
@@ -124,6 +128,8 @@ Product release keeps the existing candidate/finalize model:
 - `bun run --cwd packages/desktop browser-host:dist`
 - `cd packages/desktop && SYNERGY_DESKTOP_ALLOW_MISSING_RUNTIME=1 bunx electron-builder --dir --publish=never --config electron-builder.json` for config-only CI validation
 - Install `.pkg`, `.exe`, and `.deb` in platform runners or VMs and check `synergy --version` plus `synergy doctor`
+- Confirm every Linux/Windows runtime archive contains `sandbox/synergy-sandbox-*` and `synergy doctor` reports a verified helper
+- Confirm Linux `.deb` installs Bubblewrap and portable Linux checks report a clear prerequisite when it is absent
 - Confirm the packaged macOS Dock badge, Windows taskbar overlay, and Linux launcher/tray indicators appear for unread completion notices and clear after acknowledgement
 - Confirm Windows does not expose internal runtime helper binaries through PATH
 - Confirm Linux provides both `/usr/bin/synergy-desktop` for the desktop shell and `/usr/bin/synergy` for the runtime CLI

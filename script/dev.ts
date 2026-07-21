@@ -727,7 +727,6 @@ async function runPrepare(repoRoot: string, bunPath: string): Promise<number> {
   }
   const target = platform === "linux" ? "linux" : "windows"
   const sandbox = await runSerial([
-    { label: "sandbox", command: ["cargo", "build", "--release"], cwd: helperDir },
     {
       label: "sandbox",
       command: [bunPath, "run", "packages/synergy/scripts/build-helper.ts", target, "--local"],

@@ -17,6 +17,8 @@ The server derives the canonical owner key and includes it in every session-stat
 
 Chromium and Playwright start lazily when Browser is first used. The process-wide runtime holds one `BrowserSession` per owner. Each Browser session holds zero or one page plus annotations and observers.
 
+Desktop-native and downloaded remote Browser Hosts run on Electron's packaged Chromium. Direct headless Browser tools in the standalone runtime discover Chrome or Chromium from `CHROMIUM_PATH`, Synergy and Playwright caches, or standard system installation paths. They return an installation hint instead of silently downloading an unverified browser when no executable is available.
+
 Creating or retrieving a Browser session does not create its page. `navigate` is the only ordinary control command that resolves or creates a missing page; commands such as click, read, resize, history, or evaluation require the page to exist.
 
 An active tool-created headless page migrates to the selected Host presentation when the Browser workspace opens. The client issues one `resume` after its passive session read; empty and suspended sessions remain passive. Host readiness is calculated for the current owner and page rather than inferred from global broker availability.

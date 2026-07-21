@@ -28,6 +28,7 @@ description: Add, modify, or review Synergy capability classification, control p
 3. Test both positive and adversarial forms, including argument aliases, shell wrappers, external/protected paths, main checkout versus worktree, saved deny precedence, autonomous ask-to-deny behavior, and sandbox-unavailable fallback.
 4. Run focused suites under `test/control-profile`, `test/enforcement`, `test/permission`, `test/sandbox`, and `test/workspace` as applicable, then typecheck and `bun run quality:quick`.
 5. Use `develop-synergy` for platform or end-to-end shell verification. Never experiment against the runtime carrying the current task.
+6. For packaged Linux or Windows sandboxes, build helpers per supported OS, architecture, and ABI before compiling the runtime. Embed the matching helper digest, fail a Stable build when an asset is missing, preserve the helper through every installer/package layout, and validate the installed artifact rather than only the source build.
 
 Update the architecture document when the pipeline, profile semantics, capability contract, workspace boundary, or sandbox guarantee changes. Update `git-guide`, `add-tool`, or `change-plugin-runtime` when their executable workflow depends on the new classification.
 
