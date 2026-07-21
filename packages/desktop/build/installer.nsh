@@ -2,7 +2,7 @@
   CreateDirectory "$INSTDIR\bin"
   FileOpen $0 "$INSTDIR\bin\synergy.cmd" w
   FileWrite $0 "@echo off$\r$\n"
-  FileWrite $0 "\"$INSTDIR\resources\synergy\bin\synergy.exe\" %*$\r$\n"
+  FileWrite $0 "$\"$INSTDIR\resources\synergy\bin\synergy.exe$\" %*$\r$\n"
   FileClose $0
 
   ReadRegStr $0 HKCU "Environment" "Path"
@@ -74,6 +74,7 @@ Function PathHasEntry
 FunctionEnd
 !endif
 
+!ifdef BUILD_UNINSTALLER
 Function un.RemovePathEntry
   Exch $R1
   Exch
@@ -116,3 +117,4 @@ Function un.RemovePathEntry
     Pop $R1
     Pop $R3
 FunctionEnd
+!endif
