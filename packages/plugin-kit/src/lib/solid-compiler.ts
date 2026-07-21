@@ -1,8 +1,6 @@
 import { transformAsync, type PluginItem } from "@babel/core"
-import { createRequire } from "node:module"
 import type { BunPlugin, Loader } from "bun"
 
-const require = createRequire(import.meta.url)
 const solidPreset = require("babel-preset-solid") as PluginItem
 
 export function solidCompilerPlugin(): BunPlugin {
