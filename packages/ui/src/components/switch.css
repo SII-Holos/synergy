@@ -89,8 +89,8 @@
     background-color: var(--text-on-interactive-base);
   }
   &[data-checked]:hover:not([data-disabled], [data-readonly]) [data-slot="switch-control"] {
-    border-color: color-mix(in oklch, var(--text-interactive-base) 85%, #000);
-    background-color: color-mix(in oklch, var(--text-interactive-base) 85%, #000);
+    border-color: var(--border-interactive-selected);
+    background-color: var(--surface-interactive-selected);
   }
 
   &[data-disabled] {

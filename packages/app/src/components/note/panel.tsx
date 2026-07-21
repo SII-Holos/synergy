@@ -173,7 +173,7 @@ function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
 
   const dragImage = document.createElement("div")
   dragImage.className =
-    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
+    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-lg"
   dragImage.style.position = "absolute"
   dragImage.style.top = "-1000px"
   dragImage.textContent = title
@@ -1310,8 +1310,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       type="button"
                       classList={{
                         "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-11-medium transition-colors": true,
-                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-[0_1px_0_rgba(255,255,255,0.04)]":
-                          kindFilter() === option.value,
+                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-xs": kindFilter() === option.value,
                         "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                           kindFilter() !== option.value,
                       }}

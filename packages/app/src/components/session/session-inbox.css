@@ -56,7 +56,7 @@
   padding: 0 0.25rem;
   border-radius: var(--radius-full);
   background: var(--surface-critical-strong);
-  color: var(--white);
+  color: var(--text-on-critical-strong);
   border: 1px solid var(--surface-raised-base);
   font-family: var(--font-family-sans);
   font-size: 10px;

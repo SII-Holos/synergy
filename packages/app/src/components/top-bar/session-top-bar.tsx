@@ -24,7 +24,7 @@ import {
   isSessionRunningForWorkspaceChange,
   type SessionWorkspaceTransitionRequest,
 } from "@/components/session/worktree-session"
-import { sessionActionVisibility } from "@/components/session/session-actions"
+import { sessionActionVisibility, sessionModelControlVisibility } from "@/components/session/session-actions"
 import "./session-top-bar.css"
 
 function SessionActionMenu(props: {
@@ -150,6 +150,12 @@ export function SessionTopBar(props: {
   })
 
   const sessionMeta = useSessionMeta(sessionInfo, sessionHasMessages)
+  const modelControlVisibility = createMemo(() =>
+    sessionModelControlVisibility({
+      canSelectModel: sessionMeta().canSelectModel,
+      variantCount: local.model.variant.list().length,
+    }),
+  )
 
   const isCurrentAgentExternal = createMemo(() => !!local.agent.current()?.external)
   const isCurrentExternalModelLocked = createMemo(() => {
@@ -209,7 +215,7 @@ export function SessionTopBar(props: {
   }
 
   const ModelSelectorButton = () => (
-    <Show when={sessionMeta().canSelectModel}>
+    <Show when={modelControlVisibility().model}>
       <Show
         when={!isCurrentExternalModelLocked()}
         fallback={
@@ -233,7 +239,7 @@ export function SessionTopBar(props: {
   )
 
   const VariantSelectorButton = () => (
-    <Show when={local.model.variant.list().length > 0}>
+    <Show when={modelControlVisibility().variant}>
       <TooltipKeybind
         placement="bottom"
         title={_(topBar.thinkingEffort)}

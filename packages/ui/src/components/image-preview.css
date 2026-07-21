@@ -26,9 +26,9 @@
       border-radius: var(--radius-lg);
       background: var(--surface-raised-stronger-non-alpha);
       box-shadow:
-        0 15px 45px 0 rgba(19, 16, 16, 0.35),
-        0 3.35px 10.051px 0 rgba(19, 16, 16, 0.25),
-        0 0.998px 2.993px 0 rgba(19, 16, 16, 0.2);
+        0 15px 45px 0 var(--surface-overlay),
+        0 3.35px 10.051px 0 var(--surface-overlay),
+        0 0.998px 2.993px 0 var(--surface-overlay);
       overflow: hidden;
 
       &:focus-visible {
@@ -99,7 +99,7 @@
         border: 1px solid var(--border-weak-base);
         border-radius: 999px;
         background: var(--surface-raised-stronger-non-alpha);
-        box-shadow: 0 2px 8px rgba(19, 16, 16, 0.1);
+        box-shadow: 0 2px 8px var(--surface-overlay);
         transform: translateX(-50%);
 
         [data-component="icon-button"] {
@@ -242,7 +242,7 @@
         border-radius: 999px;
         background: var(--surface-raised-stronger-non-alpha);
         color: var(--text-secondary);
-        box-shadow: 0 2px 8px rgba(19, 16, 16, 0.1);
+        box-shadow: 0 2px 8px var(--surface-overlay);
         transform: translateY(-50%);
 
         &:hover:not(:disabled) {

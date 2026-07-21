@@ -8,6 +8,13 @@ export function sessionActionVisibility(input: { sessionID?: string; scopeKey: s
   }
 }
 
+export function sessionModelControlVisibility(input: { canSelectModel: boolean; variantCount: number }) {
+  return {
+    model: input.canSelectModel,
+    variant: input.canSelectModel && input.variantCount > 0,
+  }
+}
+
 export function sessionScopeRequest(scopeKey: string): { scopeID: string } | { directory: string } {
   if (isHomeScope(scopeKey)) return { scopeID: HOME_SCOPE_KEY }
   return { directory: scopeKey }

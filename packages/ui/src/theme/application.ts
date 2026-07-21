@@ -1,4 +1,4 @@
-import { themeToCss } from "./resolve"
+import { resolveThemeColor, themeToCss } from "./resolve"
 import type { ResolvedTheme } from "./types"
 
 export const THEME_CHANGE_EVENT = "synergy:theme-change"
@@ -6,9 +6,15 @@ export const THEME_CHANGE_EVENT = "synergy:theme-change"
 export interface ThemeChangeDetail {
   mode: "light" | "dark"
   themeId: string
+  tokens: ResolvedTheme
 }
 
 const THEME_STYLE_ID = "synergy-theme"
+const appliedThemes = new WeakMap<Document, ThemeChangeDetail>()
+
+export function getAppliedTheme(targetDocument: Document): ThemeChangeDetail | undefined {
+  return appliedThemes.get(targetDocument)
+}
 
 function ensureThemeStyleElement(targetDocument: Document): HTMLStyleElement {
   const existing = targetDocument.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null
@@ -33,7 +39,10 @@ export function applyThemeToDocument(
   targetDocument.documentElement.dataset.colorScheme = mode
   targetDocument.documentElement.dataset.synergyColorScheme = mode
   targetDocument.documentElement.dataset.theme = themeId
+  const themeColor = targetDocument.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+  themeColor?.setAttribute("content", resolveThemeColor(tokens, "background-stronger"))
   const CustomEventConstructor = targetDocument.defaultView?.CustomEvent ?? CustomEvent
-  const detail: ThemeChangeDetail = { mode, themeId }
+  const detail: ThemeChangeDetail = { mode, themeId, tokens }
+  appliedThemes.set(targetDocument, detail)
   targetDocument.dispatchEvent(new CustomEventConstructor(THEME_CHANGE_EVENT, { detail }))
 }
