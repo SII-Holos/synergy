@@ -1,5 +1,6 @@
 import { MessageV2 } from "./message-v2"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
+import { LLMTurnMemory } from "./llm-memory"
 
 // Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
@@ -22,6 +23,10 @@ export namespace SessionMessageCache {
   const sizes = new Map<string, number>()
   const lru: string[] = []
   let totalBytes = 0
+  let hits = 0
+  let misses = 0
+  let evictions = 0
+  let protectedOverbudget = 0
   const DEFAULT_BYTE_BUDGET = 256 * 1024 * 1024
   // Read on each eviction so SYNERGY_SESSION_CACHE_MAX_BYTES can be tuned (and
   // set by tests) without a restart; the cost is a trivial env parse on writes.
@@ -54,8 +59,37 @@ export namespace SessionMessageCache {
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
     if (!active.has(sessionID)) return undefined
     const hit = cache.get(sessionID)
-    if (hit) touch(sessionID)
+    if (hit) {
+      hits++
+      touch(sessionID)
+    } else {
+      misses++
+    }
     return hit
+  }
+
+  export function stats() {
+    const entries = [...sizes]
+      .map(([sessionID, estimatedBytes]) => ({ sessionID, estimatedBytes }))
+      .sort((a, b) => b.estimatedBytes - a.estimatedBytes || a.sessionID.localeCompare(b.sessionID))
+    return {
+      totalBytes,
+      activeCount: active.size,
+      entryCount: cache.size,
+      hits,
+      misses,
+      evictions,
+      protectedOverbudget,
+      entries: entries.slice(0, 100),
+      truncatedEntryCount: Math.max(0, entries.length - 100),
+    }
+  }
+
+  export function resetStatsForTest() {
+    hits = 0
+    misses = 0
+    evictions = 0
+    protectedOverbudget = 0
   }
 
   /** Seed from a fresh compaction-aware disk read (no-op outside the window). */
@@ -190,23 +224,17 @@ export namespace SessionMessageCache {
         continue
       }
       drop(victim)
+      evictions++
     }
+    if (totalBytes > budget) protectedOverbudget++
   }
 
   function estimatePart(part: MessageV2.Part): number {
-    try {
-      return JSON.stringify(part).length
-    } catch {
-      return 0
-    }
+    return LLMTurnMemory.estimateBytes(part)
   }
 
   function estimateInfo(info: MessageV2.Info): number {
-    try {
-      return JSON.stringify(info).length
-    } catch {
-      return 0
-    }
+    return LLMTurnMemory.estimateBytes(info)
   }
 
   function estimateList(list: MessageV2.WithParts[]): number {

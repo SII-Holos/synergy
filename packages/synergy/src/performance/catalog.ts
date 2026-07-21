@@ -192,6 +192,8 @@ export namespace PerformanceCatalog {
     metric("process.memory.heap_total", "Heap total", "bytes", "gauge", "latest", "process", "process", [], {
       status: "derived",
     }),
+    metric("process.memory.external", "External memory", "bytes", "gauge", "latest", "process", "process", []),
+    metric("process.memory.array_buffers", "ArrayBuffer memory", "bytes", "gauge", "latest", "process", "process", []),
     metric("process.cpu.utilization", "CPU utilization", "ratio", "ratio", "avg", "process", "process", []),
     metric("process.event_loop.lag", "Event-loop lag", "ms", "duration", "p95", "process", "process", []),
     metric("process.active.count", "Active processes", "count", "gauge", "latest", "process", "process", [], {
@@ -255,6 +257,74 @@ export namespace PerformanceCatalog {
       "backend",
       [],
     ),
+    metric("process.memory.heap_profile.bytes", "Heap profile size", "bytes", "size", "latest", "process", "process", [
+      "reason",
+    ]),
+    metric(
+      "llm.turn.history.before_bytes",
+      "LLM history before projection",
+      "bytes",
+      "size",
+      "latest",
+      "llm",
+      "backend",
+      ["phase", "providerID", "modelID"],
+    ),
+    metric(
+      "llm.turn.history.after_bytes",
+      "LLM history after projection",
+      "bytes",
+      "size",
+      "latest",
+      "llm",
+      "backend",
+      ["phase", "providerID", "modelID"],
+    ),
+    metric("llm.turn.request.bytes", "LLM request size", "bytes", "size", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.tool_schema.bytes", "LLM tool schema size", "bytes", "size", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.output_chars", "LLM turn output characters", "count", "gauge", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.tool_raw_chars", "LLM tool input characters", "count", "gauge", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.active_streams", "Active LLM streams", "count", "gauge", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.memory.heap_used_delta", "LLM turn heap delta", "bytes", "gauge", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric("llm.turn.memory.external_delta", "LLM turn external delta", "bytes", "gauge", "latest", "llm", "backend", [
+      "phase",
+      "providerID",
+      "modelID",
+    ]),
+    metric(
+      "llm.turn.memory.array_buffers_delta",
+      "LLM turn ArrayBuffer delta",
+      "bytes",
+      "gauge",
+      "latest",
+      "llm",
+      "backend",
+      ["phase", "providerID", "modelID"],
+    ),
   ] satisfies MetricInfo[]
 
   export const metrics = metricList
@@ -264,6 +334,8 @@ export namespace PerformanceCatalog {
     "process.memory.rss",
     "process.memory.heap_used",
     "process.memory.heap_total",
+    "process.memory.external",
+    "process.memory.array_buffers",
     "http.request.duration",
     "session.turn.duration",
     "session.turn.active",

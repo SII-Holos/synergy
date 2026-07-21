@@ -12,7 +12,29 @@ function part(id: string, messageID: string, text = ""): MessageV2.Part {
 }
 
 describe("SessionMessageCache", () => {
-  beforeEach(() => SessionMessageCache.disable(SID))
+  beforeEach(() => {
+    SessionMessageCache.disable(SID)
+    SessionMessageCache.resetStatsForTest()
+  })
+
+  test("reports bounded footprint and hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    expect(SessionMessageCache.get(SID)).toBeUndefined()
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+
+    const entry = SessionMessageCache.stats().entries.find((item) => item.sessionID === SID)
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats()).toMatchObject({
+      activeCount: 1,
+      entryCount: 1,
+      hits: 1,
+      misses: 1,
+      evictions: 0,
+      protectedOverbudget: 0,
+    })
+    expect(entry?.estimatedBytes).toBeGreaterThan(0)
+    expect(SessionMessageCache.stats().totalBytes).toBe(entry!.estimatedBytes)
+  })
 
   test("get returns undefined outside the active window", () => {
     SessionMessageCache.set(SID, [userMsg("msg_1")])
@@ -184,6 +206,8 @@ describe("SessionMessageCache", () => {
       SessionMessageCache.set(B, [big(B)])
       expect(SessionMessageCache.get(B)).toBeDefined()
       expect(SessionMessageCache.get(A)).toBeUndefined()
+      expect(SessionMessageCache.stats().evictions).toBe(1)
+      expect(SessionMessageCache.stats().protectedOverbudget).toBeGreaterThanOrEqual(1)
       // A is still active, so a fresh read repopulates it transparently.
       SessionMessageCache.set(A, [big(A)])
       expect(SessionMessageCache.get(A)).toBeDefined()

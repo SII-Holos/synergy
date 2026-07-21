@@ -24,13 +24,16 @@ export namespace PerformanceAnalysis {
   const PROMPT_STRING_LIMITS = [512, 256, 128, 64, 32] as const
   const PROMPT_ARRAY_LIMITS = [20, 10, 5, 3, 1] as const
 
-  const ANALYSIS_METRICS = [
+  export const analysisMetricNames = [
     "http.request.duration",
     "session.turn.duration",
     "llm.request.duration",
     "tool.execution.duration",
     "storage.operation.duration",
     "process.memory.rss",
+    "process.memory.heap_used",
+    "process.memory.external",
+    "process.memory.array_buffers",
     "process.cpu.utilization",
     "process.event_loop.lag",
     "frontend.long_task.duration",
@@ -76,7 +79,9 @@ export namespace PerformanceAnalysis {
     }
   }
 
-  function runtime(summary: PerformanceSchema.DashboardSummary["runtime"]) {
+  function runtime(
+    summary: PerformanceSchema.DashboardSummary["runtime"],
+  ): Omit<PerformanceSchema.DashboardSummary["runtime"], "pid"> {
     return {
       alive: summary.alive,
       healthy: summary.healthy,
@@ -86,6 +91,8 @@ export namespace PerformanceAnalysis {
       recentErrors: summary.recentErrors,
       pendingSessions: summary.pendingSessions,
       sessionRuntimes: summary.sessionRuntimes,
+      messageCache: summary.messageCache,
+      llmTurns: summary.llmTurns,
       cortexTasks: summary.cortexTasks,
     }
   }
@@ -191,7 +198,7 @@ export namespace PerformanceAnalysis {
     }
 
     const summaryPromise = PerformanceDashboard.summary({ windowMs: input.windowMs })
-    const timeline = PerformanceTimeline.get({ windowMs: input.windowMs, metric: ANALYSIS_METRICS })
+    const timeline = PerformanceTimeline.get({ windowMs: input.windowMs, metric: analysisMetricNames })
     const inflight = PerformanceInflight.get({ limit: 20 })
     const data = snapshot({ summary: await summaryPromise, timeline, inflight })
     const session = await Session.create({

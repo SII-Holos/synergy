@@ -4136,7 +4136,7 @@ msgstr "CPU 与事件循环"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.desc"
-msgstr "以 MB 为单位显示 RSS、已用堆和总堆内存指标"
+msgstr "以 MB 为单位显示 RSS、堆、外部内存和 ArrayBuffer 内存指标"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4187,6 +4187,31 @@ msgstr "此范围内没有可用的存储指标"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.storage.title"
 msgstr "存储 I/O"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.arrayBuffers"
+msgstr "ArrayBuffer"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.external"
+msgstr "外部内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapTotal"
+msgstr "总堆"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapUsed"
+msgstr "已用堆"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.rss"
+msgstr "RSS"
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -4344,6 +4369,16 @@ msgstr "健康"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreams"
+msgstr "LLM 流"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreamsValue"
+msgstr "{streams} 个流 · {turns} 个 turn"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.runtime.lock"
 msgstr "运行时锁"
 
@@ -4360,6 +4395,16 @@ msgstr "未运行"
 #. runtime support values
 msgid "app.performance.runtime.lockStateUnknown"
 msgstr "未知"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCache"
+msgstr "消息缓存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCacheValue"
+msgstr "{bytes} · {entries} 个条目（{active} 个活跃）· 命中/未命中 {hits}/{misses} · 淘汰 {evictions} 次 · 受保护超预算 {protected} 次 · 最大 {largest}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4422,6 +4467,11 @@ msgstr "性能快照"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.arrayBuffers"
+msgstr "ArrayBuffer"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.cpu"
 msgstr "CPU"
 
@@ -4450,9 +4500,19 @@ msgstr "读取 {read} · 写入 {write}"
 msgid "app.performance.summary.eventLoop"
 msgstr "事件循环 p95"
 
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.external"
+msgstr "外部内存"
+
 #. summary cards
 msgid "app.performance.summary.health"
 msgstr "健康"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.heapUsed"
+msgstr "已用堆"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.

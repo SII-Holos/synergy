@@ -48,6 +48,9 @@ export const P = {
   summaryIssues: { id: "app.performance.summary.issues", message: "Issues" },
   summaryCpu: { id: "app.performance.summary.cpu", message: "CPU" },
   summaryMemory: { id: "app.performance.summary.memory", message: "Memory" },
+  summaryHeapUsed: { id: "app.performance.summary.heapUsed", message: "Heap used" },
+  summaryExternal: { id: "app.performance.summary.external", message: "External" },
+  summaryArrayBuffers: { id: "app.performance.summary.arrayBuffers", message: "ArrayBuffers" },
   summaryToolChildRss: { id: "app.performance.summary.toolChildRss", message: "Tool child RSS" },
   summaryToolChildRssValue: { id: "app.performance.summary.toolChildRssValue", message: "{rss} · {count} active" },
   summaryEventLoop: { id: "app.performance.summary.eventLoop", message: "Event loop p95" },
@@ -72,6 +75,8 @@ export const P = {
   runtimePendingSessions: { id: "app.performance.runtime.pendingSessions", message: "Pending sessions" },
   runtimeSessionRuntimes: { id: "app.performance.runtime.sessionRuntimes", message: "Session runtimes" },
   runtimeCortexTasks: { id: "app.performance.runtime.cortexTasks", message: "Cortex tasks" },
+  runtimeMessageCache: { id: "app.performance.runtime.messageCache", message: "Message cache" },
+  runtimeLlmStreams: { id: "app.performance.runtime.llmStreams", message: "LLM streams" },
   runtimeUnknown: { id: "app.performance.runtime.unknown", message: "Unknown" },
   runtimeAlive: { id: "app.performance.runtime.alive", message: "Alive" },
   runtimeNotRunning: { id: "app.performance.runtime.notRunning", message: "Not running" },
@@ -92,6 +97,15 @@ export const P = {
     id: "app.performance.runtime.cortexTasksValue",
     message: "{total} retained · {running} running",
   },
+  runtimeMessageCacheValue: {
+    id: "app.performance.runtime.messageCacheValue",
+    message:
+      "{bytes} · {entries} entries ({active} active) · {hits}/{misses} hit/miss · {evictions} evictions · {protected} protected over budget · largest {largest}",
+  },
+  runtimeLlmStreamsValue: {
+    id: "app.performance.runtime.llmStreamsValue",
+    message: "{streams} streams · {turns} turns",
+  },
 
   // chart descriptions
   chartCpu: { id: "app.performance.chart.cpu.title", message: "CPU and event loop" },
@@ -102,8 +116,13 @@ export const P = {
   chartMemory: { id: "app.performance.chart.memory.title", message: "Memory" },
   chartMemoryDesc: {
     id: "app.performance.chart.memory.desc",
-    message: "RSS, heap used, and heap total as memory gauges in MB",
+    message: "RSS, heap, external, and ArrayBuffer memory gauges in MB",
   },
+  datasetRss: { id: "app.performance.dataset.rss", message: "RSS" },
+  datasetHeapUsed: { id: "app.performance.dataset.heapUsed", message: "Heap used" },
+  datasetHeapTotal: { id: "app.performance.dataset.heapTotal", message: "Heap total" },
+  datasetExternal: { id: "app.performance.dataset.external", message: "External" },
+  datasetArrayBuffers: { id: "app.performance.dataset.arrayBuffers", message: "ArrayBuffers" },
   chartRequests: { id: "app.performance.chart.requests.title", message: "Requests" },
   chartRequestsDesc: {
     id: "app.performance.chart.requests.desc",

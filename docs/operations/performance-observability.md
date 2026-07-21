@@ -9,9 +9,9 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 - health status, health score, and open performance issues;
 - HTTP request count, error rate, and p50/p95/p99 latency;
 - session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
-- CPU, memory, event-loop lag, and app-owned disk IO;
+- CPU, RSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
 - registered tool child process count, RSS total, and top child process memory contributors;
-- session runtime counts and retained Cortex task counts, including retained prompt/output/error character totals;
+- session runtime counts, MessageCache footprint and eviction counters, active LLM turn/stream counts, and retained Cortex task counts, including retained prompt/output/error character totals;
 - frontend session-switch timing, token receive/apply/paint timing, browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
 - slow routes, sessions, tools, providers, storage operations, child processes, and trace drill-downs.
 
@@ -43,7 +43,7 @@ Startup migrations import the previous indexed performance store when it exists.
 
 The configured SQLite limit applies to the combined database, WAL, and shared-memory footprint. Maintenance checkpoints WAL, incrementally reclaims free pages, and removes the globally oldest eligible historical rows in bounded batches. Running spans and open issues are protected from size eviction. If protected state or the minimum schema footprint prevents the configured limit from being reached, diagnostics expose the remaining excess instead of silently deleting live operational state. Full `VACUUM` is reserved for the one-time migration that enables incremental auto-vacuum on an existing database.
 
-High-frequency count signals such as LLM stream output, child-process output, and storage-operation counts are aggregated by attribution key before SQLite flush. Stream chunk-gap and throughput signals are summarized once per stream and output kind rather than written for every chunk. This keeps writer queue depth bounded without removing trace, Scope, session, message, provider, tool, or process attribution.
+High-frequency count signals such as LLM stream output, child-process output, and storage-operation counts are aggregated by attribution key before SQLite flush. Stream chunk-gap and throughput signals are summarized once per stream and output kind rather than written for every chunk. LLM memory checkpoints run at lifecycle boundaries and at a five-second periodic interval rather than for every provider chunk. This keeps writer queue depth bounded without removing trace, Scope, session, message, provider, tool, or process attribution.
 
 ## Runtime config
 
@@ -76,11 +76,23 @@ Session turns establish the root observability context. LLM and concurrent tool 
 
 ## Session memory pressure
 
-After each model/tool turn, the session runtime samples process memory and may run Bun GC before the loop starts another turn. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Critical pressure bypasses that interval when RSS, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
+After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may run Bun GC. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Soft pressure is tracked separately from critical pressure so a local development runtime can capture evidence while allocation headroom remains:
+
+- `SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES` (default `1.25 GiB`)
+- `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
+- `SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES` (default `1 GiB`)
+
+Critical pressure bypasses the GC interval when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
 
 - `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
+- `SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES` (default `1.75 GiB`)
+- `SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES` (default `1.5 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES` (default `8 GiB`)
 - `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default cgroup `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
+
+Source and local development installations capture a Chrome-compatible `.heapsnapshot` at the first soft-pressure checkpoint, before critical pressure or an allocation failure. Captures use Bun's ArrayBuffer snapshot form to avoid an additional large JSON string, retain three files under the isolated runtime's observability state by default, and have a 15-minute cooldown. `SYNERGY_MEMORY_PROFILE_ENABLED=1` opts a non-local runtime into capture; `SYNERGY_MEMORY_PROFILE_COOLDOWN_MS` and `SYNERGY_MEMORY_PROFILE_RETAIN` adjust cooldown and retention. Snapshot paths never enter public telemetry.
+
+When Bun reports an out-of-memory allocation error, the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. The incident contains recent server resource samples, active span summaries, MessageCache counters and entry sizes, active and most-recent turn-size summaries, the GC decision, and memory deltas already attributed to those turns. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY` for the Performance issue list. Snapshot capture is intentionally not attempted at the OOM boundary because generating one also requires allocation headroom.
 
 Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
 
@@ -104,7 +116,7 @@ The server exposes local-first endpoints under `/global/performance`:
 
 The support diagnostics summary is `GET /global/diagnostics` and returns the typed `DiagnosticsSummary` schema. `synergy diagnostics` creates a tar.gz package containing `summary.json`, indexed `events.jsonl`, `issues.json`, `inflight.json`, `resources.json`, redacted logs, process registry state, server lock information, pending-session metadata, and plugin runtime state when available.
 
-Stable error codes use the `PERF_*` prefix. `GET /global/performance/summary` includes current runtime retention counters under `runtime.sessionRuntimes` and `runtime.cortexTasks`. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.config.get()` and `client.performance.config.update()` for that endpoint.
+Stable error codes use the `PERF_*` prefix. `GET /global/performance/summary` includes current runtime retention counters under `runtime.sessionRuntimes` and `runtime.cortexTasks`, aggregate MessageCache counters under `runtime.messageCache`, active turn/stream counts under `runtime.llmTurns`, and current `heapUsed`, `external`, and `arrayBuffers` resource gauges. Performance Analyze receives those same bounded runtime aggregates and memory categories. `GET /global/performance/config` returns `{ config, defaults, sources }`; generated SDK callers use `client.performance.config.get()` and `client.performance.config.update()` for that endpoint.
 
 ## External OSS tooling
 

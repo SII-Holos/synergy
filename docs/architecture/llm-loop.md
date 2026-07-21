@@ -22,6 +22,8 @@ During ownership:
 
 The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed.
 
+The cache maintains bounded operational accounting for its estimated retained bytes, active and total entries, largest entries, hits, misses, evictions, and occasions where active protected entries keep it over budget. Entry estimates walk the cached immutable message graph without first materializing a second serialized transcript. Public Performance read models omit Session IDs and expose only aggregate counts and entry sizes.
+
 ## Root Selection
 
 Each outer iteration loads effective, canonicalized session history and finds the latest root user message `R`.
@@ -260,6 +262,8 @@ It operates on the loop's existing immutable working-set snapshot, and its `Sess
 Text, reasoning, and tool parts are persisted throughout the step. Streaming text/reasoning writes are coalesced at a short write-behind interval; terminal and discrete updates flush immediately. Before a turn finalizes, pending writes are flushed so a missing terminal callback cannot silently lose accumulated text.
 
 Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
+
+Normal session turns also carry one bounded memory-attribution handle from history projection through stream disposal. It records estimated history bytes before and after projection, the prepared request and tool-schema bytes, streamed output and raw tool-input characters, active turn and stream counts, and process-memory deltas relative to turn start. Memory checkpoints run before and after projection, after stream startup, periodically while a stream remains active, at bounded tool-input intervals, and after stream disposal. Checkpoints publish sizes and deltas only; prompt text, tool input, and response content never enter observability.
 
 Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
 

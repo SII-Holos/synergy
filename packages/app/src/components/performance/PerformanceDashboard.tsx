@@ -184,14 +184,38 @@ export function PerformanceDashboard() {
           description={P.chartMemoryDesc}
           points={memoryPoints(perf.timeline(), summary())}
           datasets={[
-            megabytesDataset("RSS", "memory", chartColors().memory, "Timeline process.memory.rss"),
-            megabytesDataset("Heap used", "heapUsed", chartColors().browser, "Timeline process.memory.heap_used"),
-            megabytesDataset("Heap total", "heapTotal", chartColors().disk, "Timeline process.memory.heap_total"),
+            megabytesDataset(_(P.datasetRss), "memory", chartColors().memory, "Timeline process.memory.rss"),
+            megabytesDataset(
+              _(P.datasetHeapUsed),
+              "heapUsed",
+              chartColors().browser,
+              "Timeline process.memory.heap_used",
+            ),
+            megabytesDataset(
+              _(P.datasetHeapTotal),
+              "heapTotal",
+              chartColors().disk,
+              "Timeline process.memory.heap_total",
+            ),
+            megabytesDataset(
+              _(P.datasetExternal),
+              "external",
+              chartColors().request,
+              "Timeline process.memory.external",
+            ),
+            megabytesDataset(
+              _(P.datasetArrayBuffers),
+              "arrayBuffers",
+              chartColors().cpu,
+              "Timeline process.memory.array_buffers",
+            ),
           ]}
           quality={timelineQuality(perf.timeline(), [
             "process.memory.rss",
             "process.memory.heap_used",
             "process.memory.heap_total",
+            "process.memory.external",
+            "process.memory.array_buffers",
           ])}
         />
         <PerformanceLineChart
@@ -476,6 +500,24 @@ function SummaryCards(props: {
         _={_}
         label={P.summaryMemory}
         value={formatChartBytes(resources()?.rssBytes)}
+        icon="performance.memory"
+      />
+      <MetricCard
+        _={_}
+        label={P.summaryHeapUsed}
+        value={formatChartBytes(resources()?.heapUsedBytes)}
+        icon="performance.memory"
+      />
+      <MetricCard
+        _={_}
+        label={P.summaryExternal}
+        value={formatChartBytes(resources()?.externalBytes)}
+        icon="performance.memory"
+      />
+      <MetricCard
+        _={_}
+        label={P.summaryArrayBuffers}
+        value={formatChartBytes(resources()?.arrayBuffersBytes)}
         icon="performance.memory"
       />
       <MetricCard
