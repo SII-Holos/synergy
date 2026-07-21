@@ -11,7 +11,12 @@ import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
-import { normalizeAllowedAgents, reconcileTargetDraft, targetFormReady } from "./synergy-link-panel-model"
+import {
+  normalizeAllowedAgents,
+  reconcileTargetDraft,
+  targetFormReady,
+  targetListState,
+} from "./synergy-link-panel-model"
 
 const copy = {
   title: { id: "settings.synergyLink.page.title", message: "Synergy Link" },
@@ -52,6 +57,8 @@ const copy = {
     id: "settings.synergyLink.empty.description",
     message: "Add a target so agents can discover and connect to it by a stable target ID.",
   },
+  loadError: { id: "settings.synergyLink.load.error", message: "Link targets could not be loaded." },
+  retry: { id: "settings.synergyLink.load.retry", message: "Retry" },
   enabled: { id: "settings.synergyLink.enabled", message: "Enabled" },
   test: { id: "settings.synergyLink.test", message: "Test connection" },
   save: { id: "settings.synergyLink.save", message: "Save" },
@@ -86,9 +93,11 @@ export function SynergyLinkPanel() {
   const [allowedAgents, setAllowedAgents] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const [targets, { refetch }] = createResource(async () => {
-    const response = await globalSDK.client.synergyLink.targets()
+    const response = await globalSDK.client.synergyLink.targets({ throwOnError: true })
     return (response.data ?? []) as SynergyLinkTargetView[]
   })
+  const listState = () =>
+    targetListState({ loading: targets.loading, error: targets.error, count: targets()?.length ?? 0 })
   const unsubscribe = globalSDK.event.listen((event) => {
     if (!event.details?.type.startsWith("synergy_link.target.")) return
     void refetch()
@@ -197,28 +206,39 @@ export function SynergyLinkPanel() {
         </SettingsSection>
 
         <SettingsSection title={_(copy.targetsTitle)} description={_(copy.targetsDescription)}>
-          <SettingsEntityList
-            isEmpty={!targets.loading && (targets()?.length ?? 0) === 0}
-            emptyIcon={getSemanticIcon("synergyLink.main")}
-            emptyTitle={_(copy.emptyTitle)}
-            emptyDescription={_(copy.emptyDescription)}
-          >
-            <div class="settings-link-list">
-              <For each={targets()?.map((target) => target.id)}>
-                {(targetID) => (
-                  <Show when={targets()?.find((target) => target.id === targetID)}>
-                    {(target) => (
-                      <SynergyLinkTargetCard
-                        target={target()}
-                        onRefresh={refetch}
-                        onRemove={() => confirmRemove(target())}
-                      />
-                    )}
-                  </Show>
-                )}
-              </For>
+          <Show when={listState() === "error"}>
+            <div class="settings-request-error" role="alert">
+              <Icon name={getSemanticIcon("state.error")} size="small" />
+              <span>{_(copy.loadError)}</span>
+              <Button type="button" variant="secondary" size="small" onClick={() => void refetch()}>
+                {_(copy.retry)}
+              </Button>
             </div>
-          </SettingsEntityList>
+          </Show>
+          <Show when={listState() !== "error"}>
+            <SettingsEntityList
+              isEmpty={listState() === "empty"}
+              emptyIcon={getSemanticIcon("synergyLink.main")}
+              emptyTitle={_(copy.emptyTitle)}
+              emptyDescription={_(copy.emptyDescription)}
+            >
+              <div class="settings-link-list">
+                <For each={targets()?.map((target) => target.id)}>
+                  {(targetID) => (
+                    <Show when={targets()?.find((target) => target.id === targetID)}>
+                      {(target) => (
+                        <SynergyLinkTargetCard
+                          target={target()}
+                          onRefresh={refetch}
+                          onRemove={() => confirmRemove(target())}
+                        />
+                      )}
+                    </Show>
+                  )}
+                </For>
+              </div>
+            </SettingsEntityList>
+          </Show>
         </SettingsSection>
       </div>
     </SettingsPage>

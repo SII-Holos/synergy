@@ -61,7 +61,11 @@ export namespace SynergyLinkTargetRuntime {
         temporarySessionID = result.metadata.sessionID
       }
       const probeStatus =
-        result.metadata.status === "busy" ? "busy" : result.metadata.status === "refused" ? "refused" : "reachable"
+        result.metadata.status === "alive" || result.metadata.status === "opened"
+          ? "reachable"
+          : result.metadata.status === "busy" || result.metadata.status === "refused"
+            ? result.metadata.status
+            : "failed"
       const updated = await SynergyLinkTargetService.recordProbe(target.id, {
         status: probeStatus,
         host: result.metadata.host ? { ...result.metadata.host, observedAt: Date.now() } : undefined,

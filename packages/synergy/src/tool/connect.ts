@@ -115,18 +115,20 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       : params.targetAgentID
         ? { targetAgentID: params.targetAgentID }
         : undefined
-    const activeSession = SynergyLinkExecution.getSession(linkID, requestedSelector)
+    const candidateSession = SynergyLinkExecution.getSession(linkID, requestedSelector)
     const targetAgentID =
       target?.targetAgentID ??
       params.targetAgentID ??
-      (params.action === "open" ? undefined : activeSession?.targetAgentID)
+      (params.action === "open" ? undefined : candidateSession?.targetAgentID)
     const registeredTarget = target ?? (await SynergyLinkTargetStore.findByLocator(linkID, targetAgentID))
     if (registeredTarget) SynergyLinkTargetStore.assertAgentAccess(registeredTarget, ctx.agent)
-    const sessionSelector = registeredTarget
+    const sessionSelector: SynergyLinkExecution.SessionSelector = registeredTarget
       ? { targetID: registeredTarget.id, targetAgentID: registeredTarget.targetAgentID }
-      : targetAgentID
-        ? { targetAgentID }
-        : undefined
+      : {
+          ...(targetAgentID ? { targetAgentID } : {}),
+          sourceAgent: ctx.agent,
+        }
+    const activeSession = SynergyLinkExecution.getSession(linkID, sessionSelector)
 
     if (params.action === "status") {
       const session = SynergyLinkExecution.getSession(linkID, sessionSelector)
@@ -153,6 +155,24 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
           `connect open requires targetAgentID. Provide it together with a Synergy Link ID such as "link_...".`,
         )
       }
+      if (!registeredTarget && candidateSession && candidateSession.sourceAgent !== ctx.agent) {
+        throw new Error(`The active Synergy Link session for link "${linkID}" belongs to another local agent.`)
+      }
+      if (activeSession?.status === "opened") {
+        SynergyLinkExecution.touchSession(linkID, sessionSelector)
+        return {
+          title: "Connected",
+          metadata: {
+            action: "open",
+            targetID: registeredTarget?.id,
+            linkID,
+            targetAgentID: activeSession.targetAgentID,
+            sessionID: activeSession.sessionID,
+            status: activeSession.status,
+          },
+          output: `Connection to link "${linkID}" is already open.`,
+        }
+      }
       const client = SynergyLinkExecution.requireClient(linkID, "connect")
 
       let opened
@@ -171,7 +191,6 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
       }
 
       if (opened.metadata.status !== "opened") {
-        if (sessionSelector) SynergyLinkExecution.clearSession(linkID, sessionSelector)
         if (registeredTarget) {
           await SynergyLinkTargetService.recordProbe(registeredTarget.id, {
             status: opened.metadata.status === "busy" ? "busy" : "refused",
@@ -201,6 +220,7 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         linkID,
         targetID: registeredTarget?.id,
         targetAgentID,
+        sourceAgent: ctx.agent,
         sessionID,
         status: "opened",
         label: params.label,
@@ -246,7 +266,6 @@ export const ConnectTool = Tool.define<typeof parameters, ConnectMetadata>("conn
         },
       )
     } catch (error) {
-      SynergyLinkExecution.clearSession(linkID, sessionSelector)
       throw new Error(
         `Failed to close connection to link "${linkID}": ${error instanceof Error ? error.message : String(error)}`,
       )

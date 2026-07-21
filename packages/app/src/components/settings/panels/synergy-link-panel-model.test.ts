@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { normalizeAllowedAgents, reconcileTargetDraft, targetFormReady } from "./synergy-link-panel-model"
+import {
+  normalizeAllowedAgents,
+  reconcileTargetDraft,
+  targetFormReady,
+  targetListState,
+} from "./synergy-link-panel-model"
 
 describe("Synergy Link settings form", () => {
   test("normalizes a comma-separated agent allowlist", () => {
@@ -36,5 +41,11 @@ describe("Synergy Link settings form", () => {
         targetChanged: true,
       }),
     ).toBe("Different target")
+  })
+
+  test("keeps target fetch errors distinct from an empty successful result", () => {
+    expect(targetListState({ loading: false, error: new Error("offline"), count: 0 })).toBe("error")
+    expect(targetListState({ loading: false, error: undefined, count: 0 })).toBe("empty")
+    expect(targetListState({ loading: false, error: undefined, count: 2 })).toBe("ready")
   })
 })

@@ -15469,6 +15469,14 @@ msgid "settings.synergyLink.host.title"
 msgstr "Observed host"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr "Link targets could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.page.description"
 msgstr "Persist the Synergy hosts this installation can control and inspect their last observed identity."
 

@@ -9,6 +9,25 @@ describe("synergy-link session manager", () => {
     expect(result.metadata.sessionID).toBeTruthy()
   })
 
+  test("reuses the active session when the same Holos caller reconnects", async () => {
+    const manager = new SessionManager()
+    const caller = { type: "agent" as const, agentID: "agent_a", ownerUserID: 1 }
+    const opened = await manager.open(caller, "build")
+    const reopened = await manager.open(caller, "build again")
+
+    expect(reopened.metadata.status).toBe("opened")
+    expect(reopened.metadata.sessionID).toBe(opened.metadata.sessionID)
+    expect(manager.current()?.label).toBe("build")
+  })
+
+  test("keeps the host busy when the agent matches but the owner differs", async () => {
+    const manager = new SessionManager()
+    await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })
+    const result = await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 2 })
+
+    expect(result.metadata.status).toBe("busy")
+  })
+
   test("rejects a different caller while busy", async () => {
     const manager = new SessionManager()
     await manager.open({ type: "agent", agentID: "agent_a", ownerUserID: 1 })

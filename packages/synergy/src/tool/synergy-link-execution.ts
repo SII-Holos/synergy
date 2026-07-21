@@ -7,6 +7,7 @@ export namespace SynergyLinkExecution {
     linkID: SynergyLinkIdentity.LinkID
     targetID?: string
     targetAgentID: string
+    sourceAgent: string
     sessionID: SynergyLinkIdentity.SessionID
     status: "opened" | "closed"
     label?: string
@@ -23,14 +24,16 @@ export namespace SynergyLinkExecution {
         client: SynergyLinkClient.ExecutionClient
       }
 
-  let client: SynergyLinkClient.ExecutionClient | null = null
-  const sessions = new Map<SynergyLinkIdentity.LinkID, SessionRecord>()
+  type DisposableExecutionClient = SynergyLinkClient.ExecutionClient & { dispose?: () => void }
 
-  export function setClient(next: SynergyLinkClient.ExecutionClient | null) {
+  let client: DisposableExecutionClient | null = null
+  const sessions = new Map<SynergyLinkIdentity.LinkID, Map<string, SessionRecord>>()
+
+  export function setClient(next: DisposableExecutionClient | null) {
+    if (client === next) return
+    client?.dispose?.()
     client = next
-    if (!next) {
-      sessions.clear()
-    }
+    sessions.clear()
   }
 
   export function getClient() {
@@ -45,27 +48,40 @@ export namespace SynergyLinkExecution {
   }
 
   export function getSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
-    const session = sessions.get(linkID)
-    return session && matchesSession(session, selector) ? session : undefined
+    const bucket = sessions.get(linkID)
+    if (!bucket) return undefined
+    if (selector?.targetAgentID) {
+      const session = bucket.get(selector.targetAgentID)
+      return session && matchesSession(session, selector) ? session : undefined
+    }
+    const matches = [...bucket.values()].filter((session) => matchesSession(session, selector))
+    return matches.length === 1 ? matches[0] : undefined
   }
 
   export function allSessions() {
-    return [...sessions.values()].sort((left, right) => right.lastUsedAt - left.lastUsedAt)
+    return [...sessions.values()]
+      .flatMap((bucket) => [...bucket.values()])
+      .sort((left, right) => right.lastUsedAt - left.lastUsedAt)
   }
 
   export function upsertSession(session: SessionRecord) {
-    sessions.set(session.linkID, session)
+    const bucket = sessions.get(session.linkID) ?? new Map<string, SessionRecord>()
+    bucket.set(session.targetAgentID, session)
+    sessions.set(session.linkID, bucket)
   }
 
-  export function touchSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
+  export function touchSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = getSession(linkID, selector)
     if (session) session.lastUsedAt = Date.now()
     return session
   }
 
   export function clearSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const bucket = sessions.get(linkID)
     const session = getSession(linkID, selector)
-    if (session) sessions.delete(linkID)
+    if (!bucket || !session) return undefined
+    bucket.delete(session.targetAgentID)
+    if (bucket.size === 0) sessions.delete(linkID)
     return session
   }
 
@@ -113,30 +129,37 @@ export namespace SynergyLinkExecution {
     if (resolution.kind === "local") {
       throw new SynergyLinkIdentity.InvalidLinkIDError(input.linkID, "missing")
     }
-    const remote = resolveRemoteTarget({ linkID: resolution.linkID, tool: input.tool })
-    const registeredTarget = await SynergyLinkTargetStore.findByLocator(resolution.linkID, remote.session.targetAgentID)
+    requireClient(resolution.linkID, input.tool)
+    const session = getSession(resolution.linkID)
+    if (!session || session.status !== "opened") throw new NoSessionError(resolution.linkID)
+    const registeredTarget = await SynergyLinkTargetStore.findByLocator(resolution.linkID, session.targetAgentID)
     if (registeredTarget) {
       if (!registeredTarget.enabled) throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
       SynergyLinkTargetStore.assertAgentAccess(registeredTarget, input.agent)
     }
-    return remote
+    return resolveRemoteTarget({
+      linkID: resolution.linkID,
+      targetID: registeredTarget?.id,
+      targetAgentID: session.targetAgentID,
+      sourceAgent: registeredTarget ? undefined : input.agent,
+      tool: input.tool,
+    })
   }
 
   function resolveRemoteTarget(input: {
     linkID: SynergyLinkIdentity.LinkID
     targetID?: string
     targetAgentID?: string
+    sourceAgent?: string
     tool: "bash" | "process"
   }): Extract<ExecutionTarget, { kind: "remote" }> {
     const activeClient = requireClient(input.linkID, input.tool)
-    const session = sessions.get(input.linkID)
+    const session = getSession(input.linkID, {
+      targetID: input.targetID,
+      targetAgentID: input.targetAgentID,
+      sourceAgent: input.sourceAgent,
+    })
     if (!session || session.status !== "opened") {
-      throw new NoSessionError(input.linkID)
-    }
-    if (input.targetID && session.targetID !== input.targetID) {
-      throw new NoSessionError(input.linkID)
-    }
-    if (input.targetAgentID && session.targetAgentID !== input.targetAgentID) {
       throw new NoSessionError(input.linkID)
     }
 
@@ -144,15 +167,17 @@ export namespace SynergyLinkExecution {
     return { kind: "remote", linkID: input.linkID, session, client: activeClient }
   }
 
-  interface SessionSelector {
+  export interface SessionSelector {
     targetID?: string
     targetAgentID?: string
+    sourceAgent?: string
   }
 
   function matchesSession(session: SessionRecord, selector?: SessionSelector) {
     if (!selector) return true
     if (selector.targetID && session.targetID !== selector.targetID) return false
     if (selector.targetAgentID && session.targetAgentID !== selector.targetAgentID) return false
+    if (selector.sourceAgent && session.sourceAgent !== selector.sourceAgent) return false
     return true
   }
 

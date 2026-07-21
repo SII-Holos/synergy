@@ -104,4 +104,20 @@ describe("Synergy Link remote client", () => {
     expect(result.metadata.status).toBe("opened")
     expect(result.metadata.sessionID).toBe("session_remote")
   })
+
+  test("disposes the underlying transport", () => {
+    let disposed = 0
+    const client = new HolosSynergyLinkClient({
+      async request() {
+        throw new Error("unexpected request")
+      },
+      dispose() {
+        disposed++
+      },
+    })
+
+    client.dispose()
+
+    expect(disposed).toBe(1)
+  })
 })

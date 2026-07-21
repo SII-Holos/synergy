@@ -22,3 +22,9 @@ export function reconcileTargetDraft(input: {
   if (input.targetChanged || input.current === input.previousServer) return input.nextServer
   return input.current
 }
+
+export function targetListState(input: { loading: boolean; error: unknown; count: number }) {
+  if (input.error) return "error" as const
+  if (!input.loading && input.count === 0) return "empty" as const
+  return "ready" as const
+}

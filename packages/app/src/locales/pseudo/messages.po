@@ -15469,6 +15469,14 @@ msgid "settings.synergyLink.host.title"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.page.description"
 msgstr ""
 

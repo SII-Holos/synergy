@@ -3,9 +3,14 @@ import { BusEvent } from "@/bus/bus-event"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { SynergyLinkExecution } from "@/tool/synergy-link-execution"
+import { ToolTimeout } from "@/tool/timeout"
+import { Log } from "@/util/log"
+import { withTimeout } from "@/util/timeout"
 import z from "zod"
 import { SynergyLinkTargetStore } from "./target-store"
 import { SynergyLinkTarget } from "./types"
+
+const log = Log.create({ service: "synergy-link.target-service" })
 
 export namespace SynergyLinkTargetService {
   export const Event = {
@@ -52,6 +57,24 @@ export namespace SynergyLinkTargetService {
       scope: Scope.home(),
       fn: async () => {
         const target = await SynergyLinkTargetStore.require(id)
+        const session = SynergyLinkExecution.getSession(target.linkID, {
+          targetID: target.id,
+          targetAgentID: target.targetAgentID,
+        })
+        const client = SynergyLinkExecution.getClient()
+        if (session?.status === "opened" && client) {
+          await withTimeout(
+            client.executeSession(
+              target.linkID,
+              { action: "close", sessionID: session.sessionID },
+              { targetAgentID: target.targetAgentID },
+            ),
+            Math.min(ToolTimeout.DEFAULTS.connectMs, 5_000),
+            { message: `Closing the active session for target "${target.id}" timed out.` },
+          ).catch((error) => {
+            log.warn("failed to close remote session before target removal", { targetID: target.id, error })
+          })
+        }
         await SynergyLinkTargetStore.remove(target.id)
         SynergyLinkExecution.clearSession(target.linkID, {
           targetID: target.id,

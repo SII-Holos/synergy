@@ -92,14 +92,6 @@ describe("tool.connect", () => {
   })
 
   test("does not clear another agent session when open returns busy", async () => {
-    SynergyLinkExecution.upsertSession({
-      linkID: "link_test",
-      targetAgentID: "agent_other",
-      sessionID: "session_other",
-      status: "opened",
-      openedAt: Date.now(),
-      lastUsedAt: Date.now(),
-    })
     SynergyLinkExecution.setClient(
       fakeClient({
         title: "Session busy",
@@ -112,6 +104,15 @@ describe("tool.connect", () => {
         output: "Host is busy with session session_other.",
       }),
     )
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_test",
+      targetAgentID: "agent_other",
+      sourceAgent: "review",
+      sessionID: "session_other",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
     try {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "open", linkID: "link_test", targetAgentID: "agent_test" }, ctx)
@@ -227,6 +228,7 @@ describe("tool.connect", () => {
       linkID: target.linkID,
       targetID: target.id,
       targetAgentID: target.targetAgentID,
+      sourceAgent: "review",
       sessionID: "session_private_session_host",
       status: "opened",
       openedAt: Date.now(),
@@ -248,6 +250,7 @@ describe("tool.connect", () => {
     SynergyLinkExecution.upsertSession({
       linkID: "link_unregistered",
       targetAgentID: "agent_unregistered",
+      sourceAgent: "build",
       sessionID: "session_unregistered",
       status: "opened",
       openedAt: Date.now(),
@@ -276,6 +279,7 @@ describe("tool.connect", () => {
       linkID: target.linkID,
       targetID: "target_other",
       targetAgentID: "agent_other",
+      sourceAgent: "review",
       sessionID: "session_other",
       status: "opened",
       openedAt: Date.now(),
@@ -303,16 +307,6 @@ describe("tool.connect", () => {
       linkID: "link_disabled",
       allowedAgents: ["build"],
     })
-    SynergyLinkExecution.upsertSession({
-      linkID: target.linkID,
-      targetID: target.id,
-      targetAgentID: target.targetAgentID,
-      sessionID: "session_disabled",
-      status: "opened",
-      openedAt: Date.now(),
-      lastUsedAt: Date.now(),
-    })
-    await SynergyLinkTargetStore.update(target.id, { enabled: false })
     SynergyLinkExecution.setClient(
       fakeClient({
         title: "Session closed",
@@ -320,6 +314,17 @@ describe("tool.connect", () => {
         output: "Closed.",
       }),
     )
+    SynergyLinkExecution.upsertSession({
+      linkID: target.linkID,
+      targetID: target.id,
+      targetAgentID: target.targetAgentID,
+      sourceAgent: "build",
+      sessionID: "session_disabled",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    await SynergyLinkTargetStore.update(target.id, { enabled: false })
     try {
       const tool = await ConnectTool.init()
       const result = await tool.execute({ action: "close", targetID: target.id }, ctx)
@@ -344,6 +349,7 @@ describe("tool.connect", () => {
       linkID: target.linkID,
       targetID: target.id,
       targetAgentID: target.targetAgentID,
+      sourceAgent: "review",
       sessionID: "session_removed_private",
       status: "opened",
       openedAt: Date.now(),
@@ -356,5 +362,113 @@ describe("tool.connect", () => {
     const tool = await ConnectTool.init()
     const listed = await tool.execute({ action: "list" }, ctx)
     expect(listed.metadata.sessions).toEqual([])
+  })
+
+  test("reuses an active session for the same local agent without reopening remotely", async () => {
+    let sessionCalls = 0
+    const openedAt = Date.now() - 1_000
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "Session busy",
+        metadata: { action: "open", status: "busy", backend: "remote" },
+        output: "busy",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        throw new Error("unexpected session execution")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_reused",
+      targetAgentID: "agent_reused",
+      sourceAgent: "build",
+      sessionID: "session_reused",
+      status: "opened",
+      openedAt,
+      lastUsedAt: openedAt,
+    })
+    try {
+      const tool = await ConnectTool.init()
+      const result = await tool.execute({ action: "open", linkID: "link_reused", targetAgentID: "agent_reused" }, ctx)
+
+      expect(sessionCalls).toBe(0)
+      expect(result.metadata).toEqual(expect.objectContaining({ status: "opened", sessionID: "session_reused" }))
+      expect(SynergyLinkExecution.getSession("link_reused")?.openedAt).toBe(openedAt)
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("preserves an active session when remote close fails", async () => {
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "close", status: "closed", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        throw new Error("transport offline")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_close_retry",
+      targetAgentID: "agent_close_retry",
+      sourceAgent: "build",
+      sessionID: "session_close_retry",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      await expect(
+        tool.execute({ action: "close", linkID: "link_close_retry", targetAgentID: "agent_close_retry" }, ctx),
+      ).rejects.toThrow("transport offline")
+      expect(
+        SynergyLinkExecution.getSession("link_close_retry", {
+          targetAgentID: "agent_close_retry",
+          sourceAgent: "build",
+        })?.sessionID,
+      ).toBe("session_close_retry")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
+  })
+
+  test("does not let another local agent close a raw session", async () => {
+    let sessionCalls = 0
+    SynergyLinkExecution.setClient({
+      ...fakeClient({
+        title: "unused",
+        metadata: { action: "close", status: "closed", backend: "remote" },
+        output: "unused",
+      }),
+      executeSession: async (): Promise<SynergyLinkSession.Result> => {
+        sessionCalls++
+        throw new Error("unexpected session execution")
+      },
+    })
+    SynergyLinkExecution.upsertSession({
+      linkID: "link_owned",
+      targetAgentID: "agent_owned",
+      sourceAgent: "build",
+      sessionID: "session_owned",
+      status: "opened",
+      openedAt: Date.now(),
+      lastUsedAt: Date.now(),
+    })
+    try {
+      const tool = await ConnectTool.init()
+      await expect(
+        tool.execute(
+          { action: "close", linkID: "link_owned", targetAgentID: "agent_owned" },
+          { ...ctx, agent: "review" },
+        ),
+      ).rejects.toThrow("No active Synergy Link session")
+      expect(sessionCalls).toBe(0)
+      expect(SynergyLinkExecution.getSession("link_owned")?.sessionID).toBe("session_owned")
+    } finally {
+      SynergyLinkExecution.setClient(null)
+    }
   })
 })

@@ -2529,7 +2529,7 @@
 }
 
 .providers-auth-warning,
-.usage-request-error {
+.settings-request-error {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -2542,13 +2542,13 @@
 }
 
 .providers-auth-warning > span,
-.usage-request-error > span,
+.settings-request-error > span,
 .usage-warning-row > span {
   min-width: 0;
   flex: 1;
 }
 
-.usage-request-error {
+.settings-request-error {
   background: color-mix(in oklch, var(--icon-critical-base) 10%, var(--settings-panel-bg));
 }
 

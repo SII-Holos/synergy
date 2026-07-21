@@ -15469,6 +15469,14 @@ msgid "settings.synergyLink.host.title"
 msgstr "已观测主机"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr "无法加载 Link 目标。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.page.description"
 msgstr "持久化本实例可控制的 Synergy 主机，并查看最近观测到的主机身份。"
 
