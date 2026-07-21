@@ -34,7 +34,24 @@ export const Info = z
     userPrompt: z.string().optional(),
     error: z.string().optional(),
     loopIndex: z.number().optional(),
-    source: z.enum(["user", "lattice"]).meta({ description: "Owner that created and drives this loop lifecycle" }),
+    source: z
+      .enum(["user", "lattice", "plugin"])
+      .meta({ description: "Owner that created and drives this loop lifecycle" }),
+    sourceDigest: z.string().optional(),
+    budget: z
+      .object({
+        maxRuntimeMs: z.number(),
+        maxIterations: z.number(),
+      })
+      .optional(),
+    pluginOwner: z
+      .object({
+        pluginId: z.string(),
+        pluginGeneration: z.string(),
+        scopeId: z.string(),
+        correlationId: z.string().optional(),
+      })
+      .optional(),
     audit: z
       .object({
         lastReason: z.string().optional(),
@@ -42,6 +59,8 @@ export const Info = z
         attempts: z.number(),
       })
       .optional(),
+    executionTools: z.record(z.string(), z.boolean()).optional(),
+    auditTools: z.record(z.string(), z.boolean()).optional(),
     time: z.object({
       created: z.number(),
       started: z.number().optional(),
@@ -49,6 +68,8 @@ export const Info = z
       completed: z.number().optional(),
     }),
     model: z.object({ providerID: z.string(), modelID: z.string() }).optional(),
+    terminalHookDeliveredAt: z.number().optional(),
+    terminalHookError: z.string().optional(),
   })
   .meta({ ref: "BlueprintLoopInfo" })
 

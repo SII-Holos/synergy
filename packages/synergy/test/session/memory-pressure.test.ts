@@ -3,7 +3,12 @@ import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 
 const env = {
   SYNERGY_SESSION_GC_MIN_INTERVAL_MS: "10000",
+  SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES: "500",
+  SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES: "500",
+  SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES: "500",
   SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES: "1000",
+  SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES: "1000",
+  SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES: "1000",
   SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES: "1000",
 }
@@ -117,6 +122,35 @@ describe("SessionMemoryPressure", () => {
 
     expect(result.decision.action).toBe("critical_forced")
     expect(calls).toEqual([true])
+  })
+
+  test("treats JavaScript heap and external allocations as critical pressure", () => {
+    const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
+
+    expect(
+      SessionMemoryPressure.decide({
+        snapshot: { ...healthySnapshot, heapUsedBytes: 2_000 },
+        thresholds,
+        now: 1_500,
+        lastGCAt: 1_000,
+        gcAvailable: true,
+      }).action,
+    ).toBe("critical_forced")
+    expect(
+      SessionMemoryPressure.decide({
+        snapshot: { ...healthySnapshot, externalBytes: 2_000 },
+        thresholds,
+        now: 1_500,
+        lastGCAt: 1_000,
+        gcAvailable: true,
+      }).action,
+    ).toBe("critical_forced")
+  })
+
+  test("classifies soft pressure before the critical boundary", () => {
+    const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
+    expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, heapUsedBytes: 700 }, thresholds)).toBe("soft")
+    expect(SessionMemoryPressure.pressureLevel(healthySnapshot, thresholds)).toBe("normal")
   })
 
   test("uses cgroup high memory as the default cgroup critical threshold", () => {

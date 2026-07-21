@@ -226,6 +226,8 @@ export namespace PerformanceSchema {
         rssBytes: z.number().optional(),
         heapUsedBytes: z.number().optional(),
         heapTotalBytes: z.number().optional(),
+        externalBytes: z.number().optional(),
+        arrayBuffersBytes: z.number().optional(),
         cpuUtilizationRatio: z.number().optional(),
         eventLoopLagP95Ms: z.number().optional(),
         appReadBytes: z.number().optional(),
@@ -267,6 +269,39 @@ export namespace PerformanceSchema {
           userCount: z.number().int(),
           waiterCount: z.number().int(),
         }),
+        messageCache: z
+          .object({
+            totalBytes: z.number().int().nonnegative(),
+            activeCount: z.number().int().nonnegative(),
+            entryCount: z.number().int().nonnegative(),
+            hits: z.number().int().nonnegative(),
+            misses: z.number().int().nonnegative(),
+            evictions: z.number().int().nonnegative(),
+            protectedOverbudget: z.number().int().nonnegative(),
+            entries: z.array(z.object({ estimatedBytes: z.number().int().nonnegative() })),
+            truncatedEntryCount: z.number().int().nonnegative(),
+          })
+          .optional(),
+        llmTurns: z
+          .object({
+            activeTurnCount: z.number().int().nonnegative(),
+            activeStreamCount: z.number().int().nonnegative(),
+            turns: z.array(
+              z.object({
+                ageMs: z.number().nonnegative(),
+                streamActive: z.boolean(),
+                providerID: z.string(),
+                modelID: z.string(),
+                historyBeforeBytes: z.number().int().nonnegative(),
+                historyAfterBytes: z.number().int().nonnegative(),
+                requestBytes: z.number().int().nonnegative(),
+                toolSchemaBytes: z.number().int().nonnegative(),
+                outputChars: z.number().int().nonnegative(),
+                toolRawChars: z.number().int().nonnegative(),
+              }),
+            ),
+          })
+          .optional(),
         cortexTasks: z.object({
           totalCount: z.number().int(),
           queuedCount: z.number().int(),

@@ -16,7 +16,7 @@ afterEach(() => {
 })
 
 describe("Cortex routes", () => {
-  test("returns configured, effective, and recommended concurrency status", async () => {
+  test("returns configured, effective, and memory-pressure concurrency status", async () => {
     const response = await Server.App().request("/cortex/tasks/concurrency")
 
     expect(response.status).toBe(200)
@@ -24,8 +24,8 @@ describe("Cortex routes", () => {
       configured: null,
       environment: null,
       effective: 8,
-      recommended: 8,
-      recommendationReason: "normal",
+      memoryPressureLimit: null,
+      memoryPressureReason: "normal",
       source: "default",
       perAgentLimit: 8,
       running: 0,

@@ -15,21 +15,30 @@ const DESKTOP_RELEASE_TARGETS: ReadonlyArray<{
   { platform: "linux", arch: "arm64" },
 ]
 
+function desktopArtifactArch(platform: DesktopReleasePlatform, arch: DesktopReleaseArch, extension: string): string {
+  if (platform !== "linux" || arch !== "x64") return arch
+  if (extension === "deb") return "amd64"
+  if (extension === "AppImage") return "x86_64"
+  return arch
+}
+
 export function desktopPrimaryArtifactName(
   version: string,
   platform: DesktopReleasePlatform,
   arch: DesktopReleaseArch,
 ): string {
   const extension = platform === "darwin" ? "pkg" : platform === "win32" ? "exe" : "deb"
-  const artifactArch = platform === "linux" && arch === "x64" ? "x86_64" : arch
+  const artifactArch = desktopArtifactArch(platform, arch, extension)
   return `Synergy-${platform}-${artifactArch}-${version}.${extension}`
 }
 
 export function desktopPortableArtifactNames(version: string): string[] {
   return DESKTOP_RELEASE_TARGETS.flatMap(({ platform, arch }) => {
-    const artifactArch = platform === "linux" && arch === "x64" ? "x86_64" : arch
     const extensions = platform === "darwin" ? ["dmg", "zip"] : platform === "win32" ? ["zip"] : ["AppImage", "tar.gz"]
-    return extensions.map((extension) => `Synergy-${platform}-${artifactArch}-${version}.${extension}`)
+    return extensions.map((extension) => {
+      const artifactArch = desktopArtifactArch(platform, arch, extension)
+      return `Synergy-${platform}-${artifactArch}-${version}.${extension}`
+    })
   })
 }
 

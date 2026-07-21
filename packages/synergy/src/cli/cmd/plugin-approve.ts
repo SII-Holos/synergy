@@ -1,15 +1,16 @@
-import { cmd } from "./cmd"
-import { UI } from "../ui"
+import * as prompts from "@clack/prompts"
 import type { Argv } from "yargs"
-import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
-
-// ---------------------------------------------------------------------------
-// approve <plugin>
-// ---------------------------------------------------------------------------
+import type { ApprovalReview } from "../../plugin/consent/approval-service"
+import { ApprovalReviewSchema } from "../../plugin/consent/approval-service"
+import type { PluginStatus } from "../../plugin/status"
+import { UI } from "../ui"
+import { cmd } from "./cmd"
+import { approvalSubmitBody, printApprovalReview } from "./plugin-consent"
+import { attachOption, ensureServer, fetchPluginApi, PluginApiError } from "./plugin-server"
 
 export const PluginApproveCommand = cmd({
   command: "approve <plugin>",
-  describe: "approve the latest pending consent request for a plugin",
+  describe: "review and approve the current plugin artifact",
   builder: (yargs: Argv) =>
     yargs
       .positional("plugin", {
@@ -23,48 +24,54 @@ export const PluginApproveCommand = cmd({
     if (!(await ensureServer(serverUrl))) process.exit(1)
 
     const pluginId = args.plugin as string
-
-    // Get plugin info to discover manifest data and capabilities
-    const info = await fetchPluginApi<any>(serverUrl, `/${pluginId}/status`)
-
-    // Check current approval state
-    let hasApproval = false
-    try {
-      const approval = await fetchPluginApi<any>(serverUrl, `/${pluginId}/approval`)
-      hasApproval = true
-    } catch {
-      // No existing approval — new install
+    if (!process.stdin.isTTY || !process.stdout.isTTY) {
+      UI.error("Plugin approval requires an interactive terminal. Use the Web plugin details instead.")
+      process.exitCode = 1
+      return
     }
 
-    const manifest = { name: info.name ?? pluginId, version: info.version ?? "0.0.0" }
-    const capabilities = info.permissions?.base ?? []
-
-    UI.println(`${UI.Style.TEXT_DIM}Approving ${pluginId}...${UI.Style.TEXT_NORMAL}`)
-
     try {
-      if (hasApproval) {
-        const result = await fetchPluginApi<any>(serverUrl, `/${pluginId}/approve-update`, "POST", {
-          manifest,
-          capabilities,
+      let review = await fetchPluginApi<ApprovalReview>(serverUrl, `/${pluginId}/approval-review`)
+      while (true) {
+        printApprovalReview(review)
+        const confirmed = await prompts.confirm({
+          message: `Approve ${review.name}@${review.version} and reload the plugin?`,
         })
-        UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Update approved for ${pluginId}`)
-        UI.println(
-          `  ${UI.Style.TEXT_DIM}Trust Tier:${UI.Style.TEXT_NORMAL} ${result.trustTier}  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${result.risk}`,
-        )
-      } else {
-        const result = await fetchPluginApi<any>(serverUrl, `/${pluginId}/approve-install`, "POST", {
-          manifest,
-          capabilities,
-        })
-        UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Install approved for ${pluginId}`)
-        UI.println(
-          `  ${UI.Style.TEXT_DIM}Trust Tier:${UI.Style.TEXT_NORMAL} ${result.trustTier}  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${result.risk}`,
-        )
+        if (confirmed !== true || prompts.isCancel(confirmed)) {
+          UI.println(`${UI.Style.TEXT_DIM}Not approved. The plugin remains disabled.${UI.Style.TEXT_NORMAL}`)
+          return
+        }
+
+        try {
+          const status = await fetchPluginApi<PluginStatus>(serverUrl, "/approve", "POST", approvalSubmitBody(review))
+          UI.println(
+            `${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${status.name}@${status.version ?? "?"} is loaded`,
+          )
+          return
+        } catch (error) {
+          const staleReview = staleApprovalReview(error)
+          if (!staleReview) throw error
+          UI.println(
+            `${UI.Style.TEXT_WARNING}Plugin changed while you were reviewing it. Review the latest artifact before approving.${UI.Style.TEXT_NORMAL}`,
+          )
+          review = staleReview
+        }
       }
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e)
-      UI.error(`Approval failed: ${msg}`)
+    } catch (error) {
+      const message =
+        error instanceof PluginApiError ? formatApiError(error) : error instanceof Error ? error.message : String(error)
+      UI.error(`Approval failed: ${message}`)
       process.exitCode = 1
     }
   },
 })
+
+function staleApprovalReview(error: unknown): ApprovalReview | undefined {
+  if (!(error instanceof PluginApiError) || error.status !== 409 || error.body.code !== "stale_review") return
+  const parsed = ApprovalReviewSchema.safeParse(error.body.review)
+  return parsed.success ? parsed.data : undefined
+}
+
+function formatApiError(error: PluginApiError): string {
+  return error.body.code ? `${error.body.code}: ${error.message}` : error.message
+}

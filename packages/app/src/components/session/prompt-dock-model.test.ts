@@ -3,7 +3,7 @@ import type { SessionMeta } from "@/composables/use-session-meta"
 import type { SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { promptDockBackPath, promptDockBackToParentID, promptDockForkSourceID } from "./prompt-dock-model"
 import { selectPromptDockControl } from "./prompt-dock-control-model"
-import { subagentFooterSessionStatus } from "./subagent-session-footer-model"
+import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS, subagentFooterSessionStatus } from "./subagent-session-footer-model"
 
 const baseMeta: SessionMeta = {
   source: "web",
@@ -55,6 +55,15 @@ describe("subagent footer session ownership", () => {
         "ses_subagent",
       ),
     ).toBe(subagentStatus)
+  })
+
+  test("lets the model label use the remaining metadata width without a fixed narrow cap", () => {
+    const classes = SUBAGENT_FOOTER_MODEL_LABEL_CLASS.split(" ")
+
+    expect(classes).toContain("min-w-0")
+    expect(classes).toContain("flex-1")
+    expect(classes).toContain("truncate")
+    expect(classes).not.toContain("max-w-32")
   })
 })
 

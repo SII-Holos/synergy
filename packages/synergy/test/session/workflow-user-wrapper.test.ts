@@ -7,7 +7,7 @@ const planSession = { workflow: { kind: "plan" as const } }
 const latticeSession = {
   workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const, firstBlueprintStarted: false },
 }
-const lightloopSession = { workflow: { kind: "lightloop" as const, taskDescription: "test" } }
+const lightloopSession = { workflow: { kind: "lightloop" as const, instructions: "test" } }
 const normalSession = {}
 
 function userMessage(id: string, text: string, metadata?: Record<string, any>): MessageV2.WithParts {

@@ -223,7 +223,9 @@ export function registryEntry(input: {
 
   const capabilities = manifest.capabilities.map((item) => item.id)
   const tools = manifest.contributions.filter((item) => item.kind === "tool").map((item) => item.id)
-  const risk = capabilities.some((item) => item === "workspace.write" || item === "secrets" || item === "task.delegate")
+  const risk = capabilities.some((item) =>
+    ["workspace.write", "secrets", "task.delegate", "blueprint.delegate", "lightloop.delegate"].includes(item),
+  )
     ? ("high" as const)
     : capabilities.length
       ? ("medium" as const)

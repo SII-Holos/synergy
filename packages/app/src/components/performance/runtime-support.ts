@@ -2,6 +2,7 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { I18n } from "@lingui/core"
 import type { PerformanceSummary } from "./types"
 import { P } from "./performance-i18n"
+import { formatBytes } from "./chart-model"
 
 export type RuntimeSupportItem = {
   label: MessageDescriptor
@@ -27,6 +28,8 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
         value: i18n._(P.runtimeCortexTasksValue.id, { total: "0", running: "0" }),
         tone: "default",
       },
+      { label: P.runtimeMessageCache, value: i18n._(P.runtimeUnknown.id), tone: "default" },
+      { label: P.runtimeLlmStreams, value: i18n._(P.runtimeUnknown.id), tone: "default" },
     ]
   }
   const lockState =
@@ -79,6 +82,32 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
         total: String(runtime.cortexTasks.totalCount),
         running: String(runtime.cortexTasks.runningCount),
       }),
+      tone: "default",
+    },
+    {
+      label: P.runtimeMessageCache,
+      value: runtime.messageCache
+        ? i18n._(P.runtimeMessageCacheValue.id, {
+            bytes: formatBytes(runtime.messageCache.totalBytes),
+            entries: String(runtime.messageCache.entryCount),
+            active: String(runtime.messageCache.activeCount),
+            hits: String(runtime.messageCache.hits),
+            misses: String(runtime.messageCache.misses),
+            evictions: String(runtime.messageCache.evictions),
+            protected: String(runtime.messageCache.protectedOverbudget),
+            largest: formatBytes(runtime.messageCache.entries[0]?.estimatedBytes ?? 0),
+          })
+        : i18n._(P.runtimeUnknown.id),
+      tone: (runtime.messageCache?.protectedOverbudget ?? 0) > 0 ? "warning" : "default",
+    },
+    {
+      label: P.runtimeLlmStreams,
+      value: runtime.llmTurns
+        ? i18n._(P.runtimeLlmStreamsValue.id, {
+            streams: String(runtime.llmTurns.activeStreamCount),
+            turns: String(runtime.llmTurns.activeTurnCount),
+          })
+        : i18n._(P.runtimeUnknown.id),
       tone: "default",
     },
   ]

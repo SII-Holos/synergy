@@ -3,6 +3,7 @@ import { Identifier } from "../../src/id/id"
 import { Session } from "../../src/session"
 import { ScopeContext } from "../../src/scope/context"
 import { SessionManager } from "../../src/session/manager"
+import { Plugin } from "../../src/plugin"
 import { LightLoopApproveTool } from "../../src/tool/light-loop-approve"
 import { LightLoopRejectTool } from "../../src/tool/light-loop-reject"
 import type { Tool } from "../../src/tool/tool"
@@ -11,17 +12,20 @@ import { tmpdir } from "../fixture/fixture"
 let originalGet: typeof Session.get
 let originalUpdate: typeof Session.update
 let originalDeliver: typeof SessionManager.deliver
+let originalDeliverHookForPlugin: typeof Plugin.deliverHookForPlugin
 
 beforeEach(() => {
   originalGet = Session.get
   originalUpdate = Session.update
   originalDeliver = SessionManager.deliver
+  originalDeliverHookForPlugin = Plugin.deliverHookForPlugin
 })
 
 afterEach(() => {
   ;(Session.get as any) = originalGet
   ;(Session.update as any) = originalUpdate
   ;(SessionManager.deliver as any) = originalDeliver
+  ;(Plugin as any).deliverHookForPlugin = originalDeliverHookForPlugin
 })
 
 function ctx(sessionID: string): Tool.Context {
@@ -37,18 +41,26 @@ function ctx(sessionID: string): Tool.Context {
 
 function lightLoopSession(
   opts: {
-    taskDescription?: string
+    instructions?: string
     stopRequest?: any
     review?: any
+    pluginOwner?: any
+    executionAgent?: string
+    reviewAgent?: string
+    budget?: { maxRuntimeMs: number; maxIterations: number }
   } = {},
 ): Session.Info {
   return {
     id: "ses_exec",
     workflow: {
       kind: "lightloop" as const,
-      taskDescription: opts.taskDescription ?? "Build the thing",
+      instructions: opts.instructions ?? "Build the thing",
       ...(opts.stopRequest ? { stopRequest: opts.stopRequest } : {}),
       ...(opts.review ? { review: opts.review } : {}),
+      ...(opts.pluginOwner ? { pluginOwner: opts.pluginOwner } : {}),
+      ...(opts.executionAgent ? { executionAgent: opts.executionAgent } : {}),
+      ...(opts.reviewAgent ? { reviewAgent: opts.reviewAgent } : {}),
+      ...(opts.budget ? { budget: opts.budget } : {}),
     },
   } as unknown as Session.Info
 }
@@ -89,13 +101,26 @@ describe("light_loop_approve", () => {
             reviewSessionID: "ses_reviewer",
             reviewTaskID: "ctx_1",
           },
+          pluginOwner: {
+            pluginId: "review-plugin",
+            pluginGeneration: "review-generation",
+            scopeId: ScopeContext.current.scope.id,
+          },
+          executionAgent: "review-plugin.executor",
+          reviewAgent: "lightloop-reviewer",
         })
 
-        let workflowCleared = false
+        let terminalStatusSet = false
         mockSessions(session)
         ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
           fn(session)
-          if (session.workflow === undefined) workflowCleared = true
+          if (session.workflow?.kind === "lightloop" && (session.workflow as any).status === "completed")
+            terminalStatusSet = true
+        })
+        const hookDeliveries: unknown[][] = []
+        ;(Plugin as any).deliverHookForPlugin = mock(async (...args: unknown[]) => {
+          hookDeliveries.push(args)
+          return { status: "delivered", handlerCount: 1 }
         })
         const deliveries: any[] = []
         ;(SessionManager.deliver as any) = mock(async (input: any) => {
@@ -109,7 +134,22 @@ describe("light_loop_approve", () => {
         )
 
         expect(result.metadata.loopApproved).toBe(true)
-        expect(workflowCleared).toBe(true)
+        expect(terminalStatusSet).toBe(true)
+        expect((session.workflow as any).terminalHookDeliveredAt).toBeNumber()
+        expect(hookDeliveries).toEqual([
+          [
+            "review-plugin",
+            "review-generation",
+            "lightloop.after",
+            {
+              loop: {
+                sessionID: "ses_exec",
+                status: "completed",
+                instructions: "Build the thing",
+              },
+            },
+          ],
+        ])
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata).toMatchObject({
           source: "light_loop_approved",
@@ -192,7 +232,7 @@ describe("light_loop_approve", () => {
 })
 
 describe("light_loop_reject", () => {
-  test("clears stopRequest, increments attempts, preserves taskDescription, and delivers control message", async () => {
+  test("clears stopRequest, increments attempts, preserves instructions, and delivers control message", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -234,13 +274,59 @@ describe("light_loop_reject", () => {
         expect((session.workflow as any)?.stopRequest).toBeUndefined()
         expect((session.workflow as any)?.review?.attempts).toBe(3)
         expect((session.workflow as any)?.review?.lastReason).toBe("tests missing")
-        expect((session.workflow as any)?.taskDescription).toBe("Build the thing")
+        expect((session.workflow as any)?.instructions).toBe("Build the thing")
         expect(deliveries).toHaveLength(1)
         expect(deliveries[0].mail.metadata.source).toBe("light_loop_rejected")
         expect(deliveries[0].mail.metadata.sourceSessionID).toBe("ses_reviewer")
         const part = deliveries[0].mail.parts[0]
         expect(part.origin).toBe("system")
         expect("synthetic" in part).toBe(false)
+      },
+    })
+  })
+
+  test("exhausts the configured iteration budget when the rejection reaches the limit", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = lightLoopSession({
+          stopRequest: {
+            summary: "all done",
+            requestedAt: Date.now(),
+            requesterSessionID: "ses_exec",
+            requesterMessageID: "msg_1",
+            reviewSessionID: "ses_reviewer",
+            reviewTaskID: "ctx_1",
+          },
+          budget: { maxRuntimeMs: 60_000, maxIterations: 1 },
+        })
+        const deliveries: any[] = []
+        mockSessions(session)
+        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
+          fn(session)
+        })
+        ;(SessionManager.deliver as any) = mock(async (input: any) => {
+          deliveries.push(input)
+        })
+
+        const tool = await LightLoopRejectTool.init()
+        const result = await tool.execute(
+          {
+            sessionID: "ses_exec",
+            reason: "tests missing",
+            remaining: "- Add tests (BLOCKING)",
+            instructions: "Write unit tests for the new module",
+          },
+          ctx("ses_reviewer"),
+        )
+
+        expect(result.metadata.loopExhausted).toBe(true)
+        expect(result.metadata.attempts).toBe(1)
+        expect((session.workflow as any)?.status).toBe("iteration_exhausted")
+        expect((session.workflow as any)?.review?.attempts).toBe(1)
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0].mail.metadata.source).toBe("light_loop_exhausted")
       },
     })
   })

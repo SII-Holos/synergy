@@ -19,6 +19,7 @@ description: Add or modify a first-party Synergy tool, its Zod parameters, execu
 4. Register the tool in `tool/registry.ts` using the local ordering and conditional-exposure pattern.
 5. Add an exact `tool/taxonomy.ts` entry with the correct domain kind and `stateful` / `externalIO` traits. Verify enforcement classification when arguments change the operation, such as local versus remote execution.
 6. Add persisted-state migrations in the owning domain when the tool changes stored data shape.
+7. Bound subprocess output while reading it: stream records, cap individual records and retained bytes, drain stderr concurrently, honor cancellation, and terminate the child when the consumer has enough results. Never call `text()` on potentially unbounded output and truncate only afterward.
 
 ## Register the Web Presentation
 

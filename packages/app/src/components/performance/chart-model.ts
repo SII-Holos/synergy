@@ -11,6 +11,8 @@ export const CHART_METRICS = [
   "process.memory.rss",
   "process.memory.heap_used",
   "process.memory.heap_total",
+  "process.memory.external",
+  "process.memory.array_buffers",
   "http.request.duration",
   "session.turn.duration",
   "session.turn.active",
@@ -133,6 +135,8 @@ export function memoryPoints(
     "process.memory.rss": (value, point) => ({ ...point, memory: value / 1024 / 1024 }),
     "process.memory.heap_used": (value, point) => ({ ...point, heapUsed: value / 1024 / 1024 }),
     "process.memory.heap_total": (value, point) => ({ ...point, heapTotal: value / 1024 / 1024 }),
+    "process.memory.external": (value, point) => ({ ...point, external: value / 1024 / 1024 }),
+    "process.memory.array_buffers": (value, point) => ({ ...point, arrayBuffers: value / 1024 / 1024 }),
   })
   if (points.length > 0) return points
   if (!summary?.resources) return []
@@ -142,6 +146,8 @@ export function memoryPoints(
       memory: bytesToMegabytes(summary.resources.rssBytes),
       heapUsed: bytesToMegabytes(summary.resources.heapUsedBytes),
       heapTotal: bytesToMegabytes(summary.resources.heapTotalBytes),
+      external: bytesToMegabytes(summary.resources.externalBytes),
+      arrayBuffers: bytesToMegabytes(summary.resources.arrayBuffersBytes),
     },
   ]
 }

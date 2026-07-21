@@ -463,7 +463,7 @@ export namespace ObservabilityStore {
     return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
   }
 
-  export function resourceSince(since: number, opts: { scopeID?: string; limit?: number } = {}) {
+  export function resourceSince(since: number, opts: { scopeID?: string; limit?: number; newestFirst?: boolean } = {}) {
     flush()
     const limit = opts.limit ?? 10_000
     const conn = open()
@@ -471,7 +471,7 @@ export namespace ObservabilityStore {
     if (opts.scopeID) {
       return allRows<StoredResource>(
         conn,
-        "SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ASC LIMIT ?",
+        `SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
         since,
         opts.scopeID,
         limit,
@@ -479,7 +479,7 @@ export namespace ObservabilityStore {
     }
     return allRows<StoredResource>(
       conn,
-      "SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ASC LIMIT ?",
+      `SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
       since,
       limit,
     )

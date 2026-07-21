@@ -18,7 +18,12 @@ export namespace SessionMemoryPressure {
 
   export type Thresholds = {
     minIntervalMs: number
+    heapUsedSoftBytes: number
+    externalSoftBytes: number
+    arrayBuffersSoftBytes: number
     rssCriticalBytes: number
+    heapUsedCriticalBytes: number
+    externalCriticalBytes: number
     arrayBuffersCriticalBytes: number
     cgroupCriticalBytes: number
   }
@@ -28,6 +33,8 @@ export namespace SessionMemoryPressure {
     | { action: "skip"; reason: "interval"; critical: false; nextEligibleAt: number }
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
     | { action: "critical_forced"; reason: "critical_pressure"; critical: true }
+
+  type PressureLevel = "normal" | "soft" | "critical"
 
   type CollectionInput = {
     sessionID?: string
@@ -43,6 +50,8 @@ export namespace SessionMemoryPressure {
     decision: Decision
     before: Snapshot
     after?: Snapshot
+    thresholds: Thresholds
+    pressure: PressureLevel
   }
 
   type ReleaseResult = CollectionResult & { releaseCount: number }
@@ -79,7 +88,12 @@ export namespace SessionMemoryPressure {
 
     return {
       minIntervalMs: envNumber(env.SYNERGY_SESSION_GC_MIN_INTERVAL_MS) ?? 10_000,
+      heapUsedSoftBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES) ?? Math.floor(1.25 * GIB),
+      externalSoftBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES) ?? Math.floor(1 * GIB),
+      arrayBuffersSoftBytes: envNumber(env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES) ?? Math.floor(1 * GIB),
       rssCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES) ?? Math.floor(9.5 * GIB),
+      heapUsedCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES) ?? Math.floor(1.75 * GIB),
+      externalCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES) ?? Math.floor(1.5 * GIB),
       arrayBuffersCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES) ?? Math.floor(8 * GIB),
       cgroupCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES) ?? cgroupCriticalDefault,
     }
@@ -92,10 +106,7 @@ export namespace SessionMemoryPressure {
     lastGCAt: number
     gcAvailable: boolean
   }): Decision {
-    const critical =
-      input.snapshot.rssBytes >= input.thresholds.rssCriticalBytes ||
-      input.snapshot.arrayBuffersBytes >= input.thresholds.arrayBuffersCriticalBytes ||
-      (input.snapshot.cgroupCurrentBytes ?? 0) >= input.thresholds.cgroupCriticalBytes
+    const critical = pressureLevel(input.snapshot, input.thresholds) === "critical"
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
     if (critical) return { action: "critical_forced", reason: "critical_pressure", critical: true }
@@ -108,10 +119,29 @@ export namespace SessionMemoryPressure {
     return { action: "normal", reason: "interval_elapsed", critical: false }
   }
 
+  export function pressureLevel(snapshot: Snapshot, thresholds: Thresholds): PressureLevel {
+    if (
+      snapshot.rssBytes >= thresholds.rssCriticalBytes ||
+      snapshot.heapUsedBytes >= thresholds.heapUsedCriticalBytes ||
+      snapshot.externalBytes >= thresholds.externalCriticalBytes ||
+      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
+      (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
+    )
+      return "critical"
+    if (
+      snapshot.heapUsedBytes >= thresholds.heapUsedSoftBytes ||
+      snapshot.externalBytes >= thresholds.externalSoftBytes ||
+      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersSoftBytes
+    )
+      return "soft"
+    return "normal"
+  }
+
   export async function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
     const now = input.now?.() ?? Date.now()
     const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
+    const pressure = pressureLevel(before, thresholds)
     const collect = input.collect ?? defaultCollect
     const decision = decide({
       snapshot: before,
@@ -130,7 +160,7 @@ export namespace SessionMemoryPressure {
         memory: before,
         thresholds,
       })
-      return { decision, before }
+      return { decision, before, thresholds, pressure }
     }
 
     await collect(decision.action === "critical_forced")
@@ -145,8 +175,9 @@ export namespace SessionMemoryPressure {
       after,
       thresholds,
     })
-    return { decision, before, after }
+    return { decision, before, after, thresholds, pressure }
   }
+
   export function signalRelease(input: CollectionInput) {
     if (pendingRelease) {
       pendingRelease.count++

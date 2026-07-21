@@ -13,6 +13,7 @@ import { PluginSignCommand } from "./plugin-sign"
 import { PluginDevCommand } from "./plugin-dev"
 import { PluginCreateCommand } from "./plugin-create"
 import { pluginCliRequestTimeoutMs } from "./plugin-server"
+import { pluginStatusText, printPluginPermissionDiff } from "./plugin-consent"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { Plugin } from "@/plugin"
@@ -26,18 +27,12 @@ import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
-import { readPluginManifest } from "../../plugin/spec-resolver"
 import { diffPermissions } from "../../plugin/consent/diff"
 import { baseCapabilities } from "../../plugin/capability"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
 import { resolvePluginSpec } from "../../plugin/spec-resolver"
 import { doctor as runPluginDoctor } from "../../plugin/doctor"
-import type { PluginPermissionDiff } from "../../plugin/consent/schema"
-
-async function readManifest(pluginDir: string): Promise<PluginManifest> {
-  return readPluginManifest(pluginDir)
-}
 
 function readPkgVersion(pluginDir: string): string | undefined {
   try {
@@ -256,14 +251,19 @@ export const PluginUpdateCommand = cmd({
           // Compute permission diff
           const oldCaps = oldManifest ? baseCapabilities(oldManifest) : []
           const newCaps = baseCapabilities(newManifest)
-          const diff = diffPermissions(id, oldManifest, newManifest, oldCaps, newCaps)
+          const diff = diffPermissions(id, {
+            oldVersion: oldManifest?.version,
+            newVersion: newManifest.version,
+            oldCapabilities: oldCaps,
+            newCapabilities: newCaps,
+          })
 
           if (!diff.requiresApproval) {
             consented.push({ current, resolved })
             continue
           }
 
-          printDiff(diff)
+          printPluginPermissionDiff(diff)
 
           if (autoApprove) {
             consented.push({ current, resolved })
@@ -299,7 +299,7 @@ export const PluginUpdateCommand = cmd({
         let failed = 0
 
         for (const { current, resolved } of consented) {
-          const { spec, id } = current
+          const { spec } = current
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
 
@@ -361,65 +361,37 @@ export const PluginListCommand = cmd({
     await ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
-        const config = await Config.current()
-        const configSpecs = config.plugin ?? []
-        const loaded = await Plugin.getLoaded()
+        const statuses = await Plugin.getAllStatus()
         if (args.json) {
-          const result = []
-          for (const p of loaded) {
-            const m = await readManifest(p.pluginDir)
-            const version = readPkgVersion(p.pluginDir)
-            result.push({
-              id: p.id,
-              name: p.name,
-              version: version ?? null,
-              pluginDir: p.pluginDir,
-              contributed: getContributed(m),
-              manifest: m
-                ? {
-                    name: m.name,
-                    version: m.version,
-                    description: m.description,
-                    author: m.author,
-                    homepage: m.homepage,
-                  }
-                : null,
-            })
-          }
-          process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+          process.stdout.write(JSON.stringify(statuses, null, 2) + EOL)
           return
         }
 
-        if (configSpecs.length === 0) {
+        if (statuses.length === 0) {
           UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
           return
         }
 
-        for (const spec of configSpecs) {
-          const plugin = await Plugin.lookupSpec(spec)
-          const displayName = plugin?.name ?? plugin?.id ?? PluginSpec.displayName(spec)
-          const installed = plugin != null
-          const status = installed
-            ? `${UI.Style.TEXT_SUCCESS}✔ loaded${UI.Style.TEXT_NORMAL}`
-            : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
+        for (const status of statuses) {
+          const state = pluginStatusText(status)
+          const styledState = status.loaded
+            ? `${UI.Style.TEXT_SUCCESS}✔ ${state}${UI.Style.TEXT_NORMAL}`
+            : status.disabledPhase === "approval"
+              ? `${UI.Style.TEXT_WARNING}⚠ ${state}${UI.Style.TEXT_NORMAL}`
+              : `${UI.Style.TEXT_DANGER}✘ ${state}${UI.Style.TEXT_NORMAL}`
 
-          UI.println(`${displayName.padEnd(36)} ${status}`)
+          UI.println(`${status.name.padEnd(36)} ${styledState}`)
+          if (status.disabledReason) UI.println(`  ${UI.Style.TEXT_DIM}${status.disabledReason}${UI.Style.TEXT_NORMAL}`)
 
-          if (args.verbose && installed && plugin) {
-            const version = readPkgVersion(plugin.pluginDir)
-            if (version) {
-              UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
-            }
-            UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
-
-            const manifest = await readManifest(plugin.pluginDir)
-            if (manifest) {
-              UI.println(`  ${UI.Style.TEXT_DIM}Manifest:${UI.Style.TEXT_NORMAL} ${manifest.name} v${manifest.version}`)
-              if (manifest.description) {
-                UI.println(`    ${manifest.description}`)
-              }
-            }
-            printContributed(manifest)
+          if (args.verbose) {
+            if (status.version) UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${status.version}`)
+            UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${status.id}`)
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${status.risk}  ${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.join(", ") || "none"}`,
+            )
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Contributions:${UI.Style.TEXT_NORMAL} ${status.tools.length} tools, ${status.operations.length} operations, ${status.uiContributions} UI surfaces`,
+            )
           }
         }
       },
@@ -567,68 +539,6 @@ export const PluginDoctorCommand = cmd({
 // ---------------------------------------------------------------------------
 // Consent gate helpers
 // ---------------------------------------------------------------------------
-
-function severityColor(severity: string): string {
-  switch (severity) {
-    case "high":
-      return UI.Style.TEXT_DANGER
-    case "medium":
-      return UI.Style.TEXT_WARNING
-    default:
-      return UI.Style.TEXT_DIM
-  }
-}
-
-function severityLabel(severity: string): string {
-  return `${severityColor(severity)}${severity}${UI.Style.TEXT_NORMAL}`
-}
-
-function printDiff(diff: PluginPermissionDiff) {
-  UI.println()
-  UI.println(
-    `${UI.Style.TEXT_NORMAL_BOLD}Permission changes:${UI.Style.TEXT_NORMAL} ${diff.fromVersion ?? "none"} → ${diff.toVersion}`,
-  )
-
-  if (diff.riskBefore || diff.riskAfter) {
-    const before = diff.riskBefore ? severityLabel(diff.riskBefore) : "—"
-    const after = diff.riskAfter ? severityLabel(diff.riskAfter) : "—"
-    UI.println(`  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${before} → ${after}`)
-  }
-
-  if (diff.added.length > 0) {
-    UI.println(`  ${severityColor("high")}Added:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.added) {
-      UI.println(
-        `    ${severityLabel(item.severity)} ${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`,
-      )
-    }
-  }
-
-  if (diff.removed.length > 0) {
-    UI.println(`  ${severityColor("low")}Removed:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.removed) {
-      UI.println(`    ${item.title}`)
-    }
-  }
-
-  if (diff.unchanged.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_SUCCESS}Unchanged:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.unchanged) {
-      UI.println(`    ${severityLabel(item.severity)} ${item.title}`)
-    }
-  }
-
-  if (diff.changed.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_INFO}Changed severity:${UI.Style.TEXT_NORMAL}`)
-    for (const c of diff.changed) {
-      const before = severityLabel(c.before ?? "none")
-      const after = severityLabel(c.after ?? "none")
-      UI.println(`    ${c.key}: ${before} → ${after}`)
-    }
-  }
-
-  UI.println()
-}
 
 /**
  * Resolve a new plugin manifest from a spec string by installing it to the
