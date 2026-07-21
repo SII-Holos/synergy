@@ -58,17 +58,17 @@ export const categoryLabels: Record<MemoryCategory, string> = {
 }
 
 export const categoryColors: Record<MemoryCategory, string> = {
-  user: "bg-[oklch(0.93_0.03_250)] text-[oklch(0.55_0.08_250)]",
-  self: "bg-[oklch(0.93_0.03_290)] text-[oklch(0.55_0.08_290)]",
-  relationship: "bg-[oklch(0.93_0.03_350)] text-[oklch(0.55_0.08_350)]",
-  interaction: "bg-[oklch(0.93_0.03_40)] text-[oklch(0.55_0.08_40)]",
-  workflow: "bg-[oklch(0.93_0.03_110)] text-[oklch(0.55_0.08_110)]",
-  coding: "bg-[oklch(0.93_0.03_210)] text-[oklch(0.55_0.08_210)]",
-  writing: "bg-[oklch(0.93_0.03_20)] text-[oklch(0.55_0.08_20)]",
-  asset: "bg-[oklch(0.93_0.03_160)] text-[oklch(0.55_0.08_160)]",
-  insight: "bg-[oklch(0.93_0.03_270)] text-[oklch(0.55_0.08_270)]",
-  knowledge: "bg-[oklch(0.93_0.03_180)] text-[oklch(0.55_0.08_180)]",
-  personal: "bg-[oklch(0.93_0.03_80)] text-[oklch(0.55_0.08_80)]",
+  user: "bg-avatar-background-cyan text-avatar-text-cyan",
+  self: "bg-avatar-background-purple text-avatar-text-purple",
+  relationship: "bg-avatar-background-pink text-avatar-text-pink",
+  interaction: "bg-avatar-background-orange text-avatar-text-orange",
+  workflow: "bg-avatar-background-lime text-avatar-text-lime",
+  coding: "bg-avatar-background-mint text-avatar-text-mint",
+  writing: "bg-avatar-background-orange text-avatar-text-orange",
+  asset: "bg-avatar-background-mint text-avatar-text-mint",
+  insight: "bg-avatar-background-purple text-avatar-text-purple",
+  knowledge: "bg-avatar-background-cyan text-avatar-text-cyan",
+  personal: "bg-avatar-background-lime text-avatar-text-lime",
   general: "bg-surface-inset-base text-text-weak",
 }
 
@@ -80,7 +80,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
   always: "workbench-selected-surface text-text-strong ring-border-base/20",
-  contextual: "bg-surface-success-base/20 text-on-success-base",
+  contextual: "bg-surface-success-base/20 text-text-on-success-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
 

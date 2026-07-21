@@ -325,6 +325,7 @@ function updateDesktopThemeSnapshot(
   nativeTheme.themeSource = snapshot.source
   if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
   startupOverlay?.setTheme(snapshot)
+  browserBroker?.setTheme(snapshot)
   if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
   return snapshot
 }
@@ -410,7 +411,12 @@ function startLocalBrowserBroker(): void {
   const token = process.env.SYNERGY_BROWSER_HOST_REGISTRATION_SECRET
   if (!serverUrl || !token) return
   browserBrokerOrigin = new URL(serverUrl).origin
-  browserBroker = new BrowserHostBrokerClient({ serverUrl, token, nativePool: nativePagePool })
+  browserBroker = new BrowserHostBrokerClient({
+    serverUrl,
+    token,
+    nativePool: nativePagePool,
+    theme: getDesktopThemeSnapshot(),
+  })
   browserBroker.connect()
 }
 

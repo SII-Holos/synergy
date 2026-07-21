@@ -118,7 +118,7 @@ export const TIPTAP_STYLES = `
     padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.875rem;
-    color: color-mix(in srgb, var(--text-strong) 82%, white 18%);
+    color: var(--text-strong);
   }
   .tiptap code {
     background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);

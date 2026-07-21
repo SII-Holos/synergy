@@ -93,7 +93,16 @@ export class BrowserWebRTCHost {
 
   setTheme(theme: DesktopThemeSnapshot): void {
     this.options = { ...this.options, theme }
-    if (this.browserWindow) this.browserWindow.setBackgroundColor(desktopThemeBackground(theme))
+    const background = desktopThemeBackground(theme)
+    if (this.browserWindow) this.browserWindow.setBackgroundColor(background)
+    if (this.rtcWindow) this.rtcWindow.setBackgroundColor(background)
+    if (this.rtcWindow && !this.rtcWindow.webContents.isDestroyed()) {
+      void this.rtcWindow.webContents
+        .executeJavaScript(
+          `document.documentElement.style.setProperty('--browser-host-bg', ${JSON.stringify(background)}); document.body.style.background=${JSON.stringify(background)}`,
+        )
+        .catch(() => {})
+    }
   }
 
   async start(): Promise<void> {
@@ -152,6 +161,7 @@ export class BrowserWebRTCHost {
       show: false,
       width,
       height,
+      backgroundColor: desktopThemeBackground(this.options.theme),
       webPreferences: {
         partition: `browser-rtc-${browserHostPageHash(this.options.ownerKey, this.options.pageId)}`,
         backgroundThrottling: false,
@@ -320,9 +330,10 @@ export class BrowserWebRTCHost {
   }
 
   private controllerHtml(signalingUrl: string): string {
+    const background = desktopThemeBackground(this.options.theme)
     return `<!doctype html>
 <html>
-<body style="margin:0;overflow:hidden;background:#111">
+<body style="margin:0;overflow:hidden;background:var(--browser-host-bg, ${background})">
 <video id="preview" autoplay muted playsinline style="width:1px;height:1px;opacity:0;position:fixed;left:-10px;top:-10px"></video>
 <script>
 const { ipcRenderer } = require("electron")

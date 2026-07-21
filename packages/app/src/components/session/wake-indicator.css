@@ -1,5 +1,5 @@
 .session-agenda-wake-trigger {
-  --wake-accent: oklch(0.7 0.13 65);
+  --wake-accent: var(--text-interactive-base);
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -122,11 +122,11 @@
   height: 0.42rem;
   margin-top: 0.4rem;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--text-weak) 78%, var(--wake-accent, oklch(0.7 0.13 65)) 22%);
+  background: color-mix(in oklch, var(--text-weak) 78%, var(--wake-accent) 22%);
 }
 
 .session-agenda-wake-row:first-child .session-agenda-wake-dot {
-  background: var(--wake-accent, oklch(0.7 0.13 65));
+  background: var(--wake-accent);
 }
 
 .session-agenda-wake-row-main {
@@ -134,7 +134,7 @@
 }
 
 .session-agenda-wake-time {
-  color: color-mix(in oklch, var(--text-base) 78%, oklch(0.7 0.13 65) 22%);
+  color: color-mix(in oklch, var(--text-base) 78%, var(--wake-accent) 22%);
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.3;

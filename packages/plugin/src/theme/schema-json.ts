@@ -1,10 +1,4 @@
-import {
-  CSS_VAR_REF_PATTERN,
-  HEX_COLOR_PATTERN,
-  OPAQUE_HEX_COLOR_PATTERN,
-  THEME_ID_PATTERN,
-  THEME_SEED_NAMES,
-} from "./schema-contract.js"
+import { HEX_COLOR_PATTERN, OPAQUE_HEX_COLOR_PATTERN, THEME_ID_PATTERN, THEME_SEED_NAMES } from "./schema-contract.js"
 import { THEME_TOKEN_NAMES } from "./tokens.js"
 
 export function renderThemeSchemaJson(): string {
@@ -29,7 +23,7 @@ export function renderThemeSchemaJson(): string {
     definitions: {
       HexColor: { type: "string", pattern: HEX_COLOR_PATTERN },
       OpaqueHexColor: { type: "string", pattern: OPAQUE_HEX_COLOR_PATTERN },
-      CssVarRef: { type: "string", pattern: CSS_VAR_REF_PATTERN },
+      CssVarRef: { type: "string", enum: THEME_TOKEN_NAMES.map((name) => `var(--${name})`) },
       ColorValue: {
         oneOf: [{ $ref: "#/definitions/HexColor" }, { enum: THEME_TOKEN_NAMES.map((name) => `var(--${name})`) }],
       },

@@ -397,7 +397,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
   onCleanup(() => {
     reloadController?.abort()
     dispose()
-    replacePluginThemes([])
+    replacePluginThemes([], { ready: false })
   })
   return (
     <PluginHostContext.Provider

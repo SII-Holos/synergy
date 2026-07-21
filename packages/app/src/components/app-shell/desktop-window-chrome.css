@@ -79,7 +79,7 @@
 .desktop-window-chrome__control--close:hover,
 .desktop-window-chrome__control--close:focus-visible {
   color: var(--text-on-critical-strong);
-  background: oklch(0.58 0.22 28);
+  background: var(--surface-critical-base);
 }
 
 @media (max-width: 720px) {

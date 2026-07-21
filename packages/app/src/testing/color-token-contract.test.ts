@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { THEME_TOKEN_SET } from "@ericsanchezok/synergy-ui/theme"
+import { THEME_TOKEN_SET, deriveShellSkin, synergyTheme } from "@ericsanchezok/synergy-ui/theme"
 
 const SOURCE_ROOTS = ["src", "../ui/src", "../desktop/src"]
 const GENERATED_FILES = new Set([
@@ -11,10 +11,12 @@ const COLOR_BOUNDARY_FILES = new Set([
   "../ui/src/theme/color.ts",
   "../ui/src/theme/resolve.ts",
   "../ui/src/theme/schema-contract.ts",
+  "../plugin/src/theme/color.ts",
+  "../plugin/src/theme/resolve.ts",
+  "../plugin/src/theme/schema-contract.ts",
 ])
 const PRECISE_EXCEPTIONS: Record<string, RegExp[]> = {
   "src/components/workspace/browser/annotation-input.tsx": [/placeholder="#3b82f6"/g],
-  "../desktop/src/browser-webrtc-host.ts": [/background:#111/g],
   "../ui/src/components/list.css": [/#(?:ffff|0000)\b/g],
   "../ui/src/components/dag-graph.css": [/#000(?=\s+52%)/g],
 }
@@ -22,12 +24,13 @@ const COLOR_CLASS =
   /\b(?:bg|text|border|ring|fill|stroke)-((?:background|surface|text|border|icon|button|input|syntax|markdown|avatar|chart)(?:-[a-z0-9-]+)?)(?:\/[0-9.]+)?\b/g
 const LEGACY_PALETTE_CLASS =
   /(?<![a-z0-9-])(?:bg|text|border|ring|fill|stroke)-(?:black|white|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)(?:-[0-9]+)?(?:\/[0-9.]+)?\b/g
-const ARBITRARY_COLOR_CLASS = /(?<![a-z0-9-])(?:bg|text|border|ring|fill|stroke)-\[(?:#|rgba?\(|hsla?\()/g
-const PRODUCT_COLOR = /#[0-9a-fA-F]{3,8}\b|(?:rgb|rgba|hsl|hsla)\(\s*(?:\d|#)/g
+const ARBITRARY_COLOR_CLASS = /(?<![a-z0-9-])(?:bg|text|border|ring|fill|stroke)-\[(?:#|rgba?\(|hsla?\(|oklch\()/g
+const PRODUCT_COLOR = /#[0-9a-fA-F]{3,8}\b|(?:rgb|rgba|hsl|hsla|oklch)\(\s*(?:\d|#|[0-9.])/g
 const BLACK_WHITE_MIX = /color-mix\([^)]*\b(?:black|white)\b[^)]*\)/g
 const NAMED_PRODUCT_COLOR =
   /(?:^|[;{]\s*)(?:color|background(?:-color)?|border-color|fill|stroke)\s*:\s*(?:black|white)\b/gm
 const FIXED_THIRD_PARTY_THEME = /["'](?:github-light|github-dark)["']|theme\s*:\s*["']neutral["']/g
+const INVALID_STATUS_TEXT_CLASS = /(?<![-\w.])text-on-(?:success|warning|critical|info|interactive)(?:-[a-z0-9-]+)?\b/g
 
 function withoutComments(source: string) {
   return source
@@ -69,6 +72,13 @@ describe("frontend color token contract", () => {
         const token = match[1]
         if (!THEME_TOKEN_SET.has(token)) invalid.add(`${path}: ${match[0]}`)
       }
+      // Token names in color()/alpha()/var(--...) are valid; bare class utilities are not.
+      const classSource = source
+        .replace(/\b(?:color|alpha|resolveThemeColor)\(\s*["']text-on-[^"']+["']/g, "")
+        .replace(/var\(--text-on-[a-z0-9-]+\)/g, "")
+      for (const match of classSource.matchAll(INVALID_STATUS_TEXT_CLASS)) {
+        invalid.add(`${path}: ${match[0]} (missing text- prefix)`)
+      }
     }
     expect([...invalid].sort()).toEqual([])
   })
@@ -91,6 +101,25 @@ describe("frontend color token contract", () => {
       }
     }
     expect(invalid.sort()).toEqual([])
+  })
+
+  test("generated web boot fallback matches the derived shell skin", async () => {
+    const html = await Bun.file("index.html").text()
+    const block = html.match(
+      /\/\* BEGIN GENERATED SKIN FALLBACK \*\/([\s\S]*?)\/\* END GENERATED SKIN FALLBACK \*\//,
+    )?.[1]
+    expect(block).toBeTruthy()
+    const shell = deriveShellSkin(synergyTheme)
+    for (const [mode, colors] of [
+      ["light", shell.light],
+      ["dark", shell.dark],
+    ] as const) {
+      expect(block).toContain(`html[data-synergy-color-scheme="${mode}"]`)
+      expect(block).toContain(`--synergy-boot-bg: ${colors.background.toLowerCase()}`)
+      expect(block).toContain(`--synergy-boot-text: ${colors.text.toLowerCase()}`)
+      expect(block).toContain(`--synergy-boot-critical-bg: ${colors.criticalBackground.toLowerCase()}`)
+      expect(block).toContain(`--synergy-boot-critical-text: ${colors.criticalText.toLowerCase()}`)
+    }
   })
 
   test("the retired palette cannot be reintroduced", async () => {

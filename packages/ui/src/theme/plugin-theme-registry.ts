@@ -26,10 +26,10 @@ export function registerPluginTheme(theme: PluginThemeDefinition): () => void {
   }
 }
 
-export function replacePluginThemes(themes: Iterable<PluginThemeDefinition>): void {
+export function replacePluginThemes(themes: Iterable<PluginThemeDefinition>, options: { ready?: boolean } = {}): void {
   pluginThemes.clear()
   for (const theme of themes) pluginThemes.set(theme.id, theme)
-  registryReady = true
+  registryReady = options.ready ?? true
   notify()
 }
 
