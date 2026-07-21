@@ -195,7 +195,7 @@ export namespace SessionNav {
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           parentID: session.parentID,
-          endpointKind: endpointIsChannel ? "channel" : endpointIsClarus ? "clarus" : undefined,
+          endpointKind: session.endpoint?.kind,
           chatId: channelEndpoint?.chatId,
           chatName: channelEndpoint?.chatName,
           chatType: channelEndpoint?.chatType,
