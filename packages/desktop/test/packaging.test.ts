@@ -88,6 +88,7 @@ describe("desktop packaging", () => {
 
     expect(nsisScript).toContain("$INSTDIR\\bin\\synergy.cmd")
     expect(nsisScript).toContain("$INSTDIR\\resources\\synergy\\bin\\synergy.exe")
+    expect(nsisScript).toContain(String.raw`FileWrite $0 "$\"$INSTDIR\resources\synergy\bin\synergy.exe$\" %*$\r$\n"`)
     expect(nsisScript).toContain("WriteRegExpandStr HKCU")
     expect(nsisScript).toContain("$INSTDIR\\bin")
     expect(nsisScript).not.toContain("WriteRegExpandStr HKLM")
@@ -100,6 +101,7 @@ describe("desktop packaging", () => {
     expect(nsisScript).toContain("Call PathHasEntry")
     expect(nsisScript).toContain("StrCmp $R6 $R1 found")
     expect(nsisScript).toContain("!ifndef BUILD_UNINSTALLER\nFunction PathHasEntry")
+    expect(nsisScript).toContain("!ifdef BUILD_UNINSTALLER\nFunction un.RemovePathEntry")
     expect(nsisScript).not.toContain("Call StrStr")
   })
 
