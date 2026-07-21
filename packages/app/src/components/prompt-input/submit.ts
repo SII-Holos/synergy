@@ -60,6 +60,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
+import { promptSubmitFailure } from "./submit-failure"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -93,6 +94,7 @@ type PromptSubmitInput = {
   abort: () => void
   editor: () => HTMLDivElement
   queueScroll: () => void
+  onWorktreeUnavailable: () => void
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
@@ -557,10 +559,10 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       input.setLocalArmedLoop(null)
     }
 
-    const failActiveSessionSubmit = (title: string, message: string) => {
+    const failActiveSessionSubmit = (title: string, message: string, options?: { focus?: boolean }) => {
       const persisted = persistCreatedSessionFailure(activeSession.id, title, message)
       releaseNewSessionSubmit()
-      if (!persisted) restoreInput()
+      if (!persisted) restoreInput(options)
     }
 
     const rollbackLightLoopForSubmit = async () => {
@@ -973,15 +975,22 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         }
       })
       .catch(async (err) => {
-        const message = errorMessage(err)
+        const failure = promptSubmitFailure(err)
         await rollbackLightLoopForSubmit()
+        if (optimisticAdded) removeOptimisticMessage()
+        const worktreeUnavailable = failure.kind === "worktree-unavailable"
+        failActiveSessionSubmit(i18n._(PI.submitFailedSend), failure.message, {
+          focus: !worktreeUnavailable,
+        })
+        if (worktreeUnavailable) {
+          input.onWorktreeUnavailable()
+          return
+        }
         showToast({
           type: "error",
           title: i18n._(PI.submitFailedSend),
-          description: sessionStartFailureMessage(message),
+          description: sessionStartFailureMessage(failure.message),
         })
-        if (optimisticAdded) removeOptimisticMessage()
-        failActiveSessionSubmit(i18n._(PI.submitFailedSend), message)
       })
   }
 }

@@ -95,6 +95,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LightLoopSubmitControl } from "./light-loop-submit-control"
+import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -1540,6 +1541,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     abort,
     editor: () => editorRef,
     queueScroll,
+    onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
   })
 
   createEffect(() => {
