@@ -1237,18 +1237,28 @@ export namespace MessageV2 {
         return
       }
 
-      const messages = await Promise.all(
-        messageIDs.map((messageID) =>
-          readMessage(messageID).catch((error) => {
-            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
-            return undefined
-          }),
-        ),
+      const infos = await Storage.readMany<MessageV2.Info>(
+        messageIDs.map((messageID) => StoragePath.messageInfo(scopeID, sessionID, messageID as Identifier.MessageID)),
       )
-      const ordered = messages
-        .filter((message): message is MessageV2.WithParts => message !== undefined)
-        .sort((a, b) => compareStorageOrder(b.info, a.info))
-      yield* ordered
+      const ordered = infos
+        .filter((info): info is MessageV2.Info => info !== undefined)
+        .map(canonicalMessage)
+        .sort((a, b) => compareStorageOrder(b, a))
+
+      for (const info of ordered) {
+        try {
+          yield {
+            info,
+            parts: await parts({ scopeID, sessionID: input.sessionID, messageID: info.id }),
+          }
+        } catch (error) {
+          log.warn("skipping unreadable message", {
+            sessionID: input.sessionID,
+            messageID: info.id,
+            error: String(error),
+          })
+        }
+      }
     },
   )
 

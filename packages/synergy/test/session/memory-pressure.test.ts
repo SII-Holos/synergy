@@ -44,7 +44,7 @@ describe("SessionMemoryPressure", () => {
     expect(collected).toBe(false)
   })
 
-  test("runs normal GC when the minimum interval has elapsed", async () => {
+  test("runs asynchronous GC when the minimum interval has elapsed", async () => {
     SessionMemoryPressure.resetForTest(1_000)
     const calls: boolean[] = []
 
@@ -52,8 +52,8 @@ describe("SessionMemoryPressure", () => {
       phase: "test",
       now: () => 12_000,
       snapshot: () => healthySnapshot,
-      collect: (critical) => {
-        calls.push(critical)
+      collect: (synchronous) => {
+        calls.push(synchronous)
       },
       env,
     })
@@ -62,7 +62,48 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([false])
   })
 
-  test("forces critical GC even when the normal interval has not elapsed", async () => {
+  test("coalesces released-history signals into one asynchronous collection", async () => {
+    const calls: boolean[] = []
+    const signal = {
+      phase: "test.history.complete",
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: (synchronous: boolean) => {
+        calls.push(synchronous)
+      },
+      env,
+    }
+
+    SessionMemoryPressure.signalRelease(signal)
+    SessionMemoryPressure.signalRelease(signal)
+
+    expect(calls).toEqual([])
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.releaseCount).toBe(2)
+    expect(result?.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("keeps released-history collection behind the minimum interval", async () => {
+    SessionMemoryPressure.resetForTest(1_000)
+    const calls: boolean[] = []
+
+    SessionMemoryPressure.signalRelease({
+      phase: "test.history.complete",
+      now: () => 1_500,
+      snapshot: () => healthySnapshot,
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    const result = await SessionMemoryPressure.flushReleaseSignalsForTest()
+    expect(result?.decision.action).toBe("skip")
+    expect(calls).toEqual([])
+  })
+
+  test("forces synchronous GC only for critical pressure", async () => {
     SessionMemoryPressure.resetForTest(1_000)
     const calls: boolean[] = []
 
@@ -73,8 +114,8 @@ describe("SessionMemoryPressure", () => {
         ...healthySnapshot,
         rssBytes: 2_000,
       }),
-      collect: (critical) => {
-        calls.push(critical)
+      collect: (synchronous) => {
+        calls.push(synchronous)
       },
       env,
     })
