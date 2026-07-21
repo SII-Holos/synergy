@@ -20,7 +20,7 @@ During ownership:
 - all loop writes update that cache and durable storage;
 - cache and recall state are released when the loop exits.
 
-The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed.
+The message cache is valid because the active loop is the sole session writer. On a cold read, history loading scans ordered message info, applies rollback events, finds the latest committed compaction boundary, and loads parts only for the boundary root, retained summaries, and active suffix. Completed compaction reprojects the cache immediately so pre-boundary parts are released. Structural changes that incremental maintenance cannot model invalidate the cache and force an authoritative working-set reread; full transcript paths remain disk-backed. The process-wide cache byte budget is also a hard ceiling for each session entry: an oversized working set remains disk-backed instead of defeating aggregate eviction.
 
 ## Root Selection
 
@@ -260,6 +260,8 @@ It operates on the loop's existing immutable working-set snapshot, and its `Sess
 Text, reasoning, and tool parts are persisted throughout the step. Streaming text/reasoning writes are coalesced at a short write-behind interval; terminal and discrete updates flush immediately. Before a turn finalizes, pending writes are flushed so a missing terminal callback cannot silently lose accumulated text.
 
 Every `LLM.stream()` consumer takes one owned full stream, text stream, or text promise through the shared `LLM` ownership helpers. Those helpers immediately cancel the residual branch retained by the AI SDK's internal stream tee and settle that cancellation after the consumed branch finishes. Normal turn completion also removes the session-abort listener and closes the per-turn combined signal; settled streams cannot remain anchored until the whole session exits.
+
+After a normally settled model turn, the loop clears large prompt, tool, projection, and provenance containers in place before dropping its local references. In-place clearing is required because the JavaScript runtime may keep values captured across an `await` reachable through the async frame even after local reassignment. A timed-out processor may still be consuming its input, so that abandoned path drops loop references without mutating the shared containers.
 
 Provider SSE input passes through a 16 MiB per-event **SSE event parser bound** before it enters the AI SDK parser. The bound terminates an event whose encoded bytes exceed that threshold, preventing unbounded parser state for one unterminated event; it is not a limit on the total response, transport chunk size, or process memory. Streamed tool-call input is bounded independently at 1 MiB for both incremental deltas and final-only provider calls, and an oversized call is rejected before tool execution with terminal tool and assistant errors.
 
