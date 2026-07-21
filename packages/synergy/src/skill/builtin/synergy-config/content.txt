@@ -14,7 +14,7 @@ When you need detailed schema, fields, or examples for a specific config area, l
 | "create agent", "custom agent", "add a code reviewer", "default agent", "override agent", "disable agent" | `references/agents.txt` |
 | "create skill", "add command", "plugin", "new tool", "custom tool" | `references/skills-commands-plugins.txt` |
 | "embeddings", "reranker", "memory config", "permissions", "allow/deny", "read-only agent", "restrict access" | `references/library-permissions.txt` |
-| "add Feishu/Lark channel", "飞书", "channel config" | `references/channels.txt` |
+| "add Feishu/Lark channel", "飞书", "configure Clarus", "channel config" | `references/channels.txt` |
 | "reload config", "hot reload", "restart needed?", "changes not applying" | `references/reload.txt` |
 
 ## File Locations
@@ -44,7 +44,6 @@ Web Settings shows each canonical domain path with a Copy Path action. Managed-l
 | `70-commands.jsonc` | `command` |
 | `80-permissions.jsonc` | `permission`, `tools`, `controlProfile`, `sandbox`, `smartAllow` |
 | `90-channels.jsonc` | `channel` |
-| `105-clarus.jsonc` | `clarus` |
 | `110-email.jsonc` | `email` |
 
 ### Key data paths
@@ -110,8 +109,8 @@ Load `references/skills-commands-plugins.txt` for format details, choosing betwe
 ### Configure permissions or library
 Load `references/library-permissions.txt` for permission schema, common patterns, embedding/rerank config, and troubleshooting.
 
-### Add Feishu/Lark channel
-Load `references/channels.txt` for Feishu setup flow, channel config, and troubleshooting.
+### Configure a Channel
+Load `references/channels.txt` for Feishu setup, Clarus account behavior, Channel config, and troubleshooting.
 
 ### Reload or troubleshoot config changes
 Load `references/reload.txt` for reload targets, auto-cascade rules, and restart-required fields.

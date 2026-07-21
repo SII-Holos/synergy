@@ -637,12 +637,6 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "message-circle",
         title: TOOL_TITLE_DESC["question"],
       }
-    case "clarus_submit_task_result":
-      return {
-        icon: "send",
-        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
-        subtitle: input.success === false ? TOOL_MISC_DESC.failed : TOOL_MISC_DESC.completed,
-      }
     case "websearch":
       return {
         icon: "globe",
@@ -1233,6 +1227,11 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "mail",
         title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
+      }
+    case "clarus_submit_task_result":
+      return {
+        icon: "send",
+        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
       }
     case "email_read": {
       const args: string[] = []

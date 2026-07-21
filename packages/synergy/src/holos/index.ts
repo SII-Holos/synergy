@@ -1,6 +1,5 @@
 export { HolosAccounts } from "./accounts"
 export { HolosAuth } from "./auth"
-export { ClarusPayload, createClarusAgentTunnelAdapter } from "./clarus"
 export { HOLOS_PORTAL_URL, HOLOS_URL, HOLOS_WS_URL } from "./constants"
 export { Contact } from "./contact"
 export { Envelope } from "./envelope"

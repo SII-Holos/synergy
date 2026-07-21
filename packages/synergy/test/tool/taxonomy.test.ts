@@ -15,4 +15,11 @@ describe("tool taxonomy", () => {
     expect(entry.kind).toBe("communication.visual")
     expect(entry.domain).toBe("communication")
   })
+
+  test("classifies Clarus result submission as stateful external collaboration", () => {
+    const entry = ToolTaxonomy.classify("clarus_submit_task_result")
+
+    expect(entry.kind).toBe("platform.collaboration")
+    expect(entry.traits).toEqual({ stateful: true, externalIO: true })
+  })
 })

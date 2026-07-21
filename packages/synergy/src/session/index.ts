@@ -4,6 +4,7 @@ import { type LanguageModelUsage, type ProviderMetadata } from "ai"
 import { Identifier } from "../id/id"
 import { Installation } from "../global/installation"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import { NamedError } from "@ericsanchezok/synergy-util/error"
 
 import { Bus } from "../bus"
 import { Storage } from "../storage/storage"
@@ -40,12 +41,22 @@ import { SessionNav, type SessionNavEntry } from "./nav"
 import { SessionEndpoint } from "./endpoint"
 import { createDefaultTitle } from "./title"
 import * as SessionWorking from "./working"
+import { Lock } from "@/util/lock"
 
 export namespace Session {
   export const Info = InfoSchema
   export const StatusInfo = StatusInfoSchema
   export type Info = InfoType
   export type StatusInfo = StatusInfoType
+
+  export const EndpointScopeMismatchError = NamedError.create(
+    "SessionEndpointScopeMismatchError",
+    z.object({
+      sessionID: z.string(),
+      existingScopeID: z.string(),
+      requestedScopeID: z.string(),
+    }),
+  )
 
   const log = Log.create({ service: "session" })
   const { asScopeID, asSessionID, asMessageID, asPartID } = Identifier
@@ -224,19 +235,16 @@ export namespace Session {
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
-    const endpointKind = session.endpoint?.kind
     const category =
-      endpointKind === "clarus"
-        ? SessionNav.deriveCategory({ scopeType, endpointKind })
-        : (session.category ??
-          SessionNav.deriveCategory({
-            scopeType,
-            endpointKind,
-            provenance: session.provenance,
-            parentID: session.parentID,
-            cortex: session.cortex,
-            agenda: session.agenda,
-          }))
+      session.category ??
+      SessionNav.deriveCategory({
+        scopeType,
+        endpointKind: session.endpoint?.kind,
+        provenance: session.provenance,
+        parentID: session.parentID,
+        cortex: session.cortex,
+        agenda: session.agenda,
+      })
     return {
       id: session.id,
       scopeID: scope.id,
@@ -247,12 +255,10 @@ export namespace Session {
       pinned: session.pinned ?? 0,
       archived: !!session.time.archived,
       parentID: session.parentID,
-      endpointKind,
+      endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
       chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
       chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
       chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
-      clarusProjectId: session.endpoint?.kind === "clarus" ? session.endpoint.projectId : undefined,
-      clarusTaskId: session.endpoint?.kind === "clarus" ? session.endpoint.taskId : undefined,
       completionNotice: {
         unread: session.completionNotice.unread,
         unreadCount: session.completionNotice.unreadCount,
@@ -1166,48 +1172,92 @@ export namespace Session {
     return undefined
   }
 
-  export async function findForEndpoint(endpoint: SessionEndpoint.Info) {
-    return SessionManager.getSession(endpoint)
+  function endpointLockKey(endpoint: SessionEndpoint.Info): string {
+    const hash = new Bun.CryptoHasher("sha256").update(SessionEndpoint.toKey(endpoint)).digest("hex")
+    return `session:endpoint:${hash}`
+  }
+
+  function assertEndpointScope(session: Info, scope: Scope): void {
+    if (session.scope.id === scope.id) return
+    throw new EndpointScopeMismatchError({
+      sessionID: session.id,
+      existingScopeID: session.scope.id,
+      requestedScopeID: scope.id,
+    })
+  }
+
+  export async function findForEndpoint(endpoint: SessionEndpoint.Info, options: { scope: Scope }) {
+    const existing = await SessionManager.getSession(endpoint)
+    if (existing) assertEndpointScope(existing, options.scope)
+    return existing
   }
 
   export async function getOrCreateForEndpoint(
     endpoint: SessionEndpoint.Info,
-    scope?: Scope,
-    interaction?: SessionInteraction.Info,
+    options: {
+      scope: Scope
+      interaction?: SessionInteraction.Info
+      title?: string
+      agentOverride?: Info["agentOverride"]
+      controlProfile?: Info["controlProfile"]
+    },
   ) {
-    const existing = await SessionManager.getSession(endpoint)
-    if (existing) {
-      const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
-      const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
-      const isPlatformID = (name: string | undefined): boolean => !!name && /^(ou_|on_|oc_|user_)/.test(name)
-      const chatNameChanged =
-        (newChatName != null && existingChatName !== newChatName) ||
-        (isPlatformID(existingChatName) && newChatName == null)
-      if (chatNameChanged) {
-        return update(existing.id, (draft) => {
-          if (draft.endpoint?.kind === "channel") {
-            draft.endpoint.channel.chatName = newChatName
-          }
-          if (interaction && draft.interaction?.mode !== interaction.mode) {
-            draft.interaction = interaction
-          }
-        })
+    const lock = await Lock.write(endpointLockKey(endpoint))
+    try {
+      const existing = await SessionManager.getSession(endpoint)
+      if (existing) {
+        assertEndpointScope(existing, options.scope)
+        const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
+        const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
+        const isPlatformID = (name: string | undefined): boolean => !!name && /^(ou_|on_|oc_|user_)/.test(name)
+        const chatNameChanged =
+          (newChatName != null && existingChatName !== newChatName) ||
+          (isPlatformID(existingChatName) && newChatName == null)
+        const interactionChanged =
+          options.interaction !== undefined &&
+          JSON.stringify(existing.interaction) !== JSON.stringify(options.interaction)
+        if (chatNameChanged || interactionChanged) {
+          return await ScopeContext.provide({
+            scope: options.scope,
+            fn: () =>
+              update(existing.id, (draft) => {
+                if (draft.endpoint?.kind === "channel") {
+                  draft.endpoint.channel.chatName = newChatName
+                }
+                if (interactionChanged) draft.interaction = options.interaction
+              }),
+          })
+        }
+        return existing
       }
-      if (interaction && existing.interaction?.mode !== interaction.mode) {
-        return update(existing.id, (draft) => {
-          draft.interaction = interaction
-        })
-      }
-      return existing
+      return await ScopeContext.provide({
+        scope: options.scope,
+        fn: () =>
+          create({
+            scope: options.scope,
+            endpoint,
+            interaction: options.interaction,
+            title: options.title,
+            agentOverride: options.agentOverride,
+            controlProfile: options.controlProfile,
+          }),
+      })
+    } finally {
+      lock[Symbol.dispose]()
     }
-    return create({ scope, endpoint, interaction })
   }
 
-  export async function archiveEndpointSession(endpoint: SessionEndpoint.Info) {
+  export async function archiveForEndpoint(endpoint: SessionEndpoint.Info, options: { scope: Scope }) {
+    using _ = await Lock.write(endpointLockKey(endpoint))
     const session = await SessionManager.getSession(endpoint)
     if (!session) return
-    await update(session.id, (draft) => {
-      draft.time.archived = Date.now()
+    assertEndpointScope(session, options.scope)
+    await ScopeContext.provide({
+      scope: options.scope,
+      fn: () =>
+        update(session.id, (draft) => {
+          draft.time.archived = Date.now()
+        }),
     })
     SessionManager.unregisterRuntime(session.id)
   }

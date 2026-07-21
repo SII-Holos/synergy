@@ -59,7 +59,6 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   blueprint_loop_approve: d("tool.title.approve-blueprint-loop", "Approve BlueprintLoop"),
   blueprint_loop_reject: d("tool.title.reject-blueprint-loop", "Reject BlueprintLoop"),
   batch: d("tool.title.batch", "Run batch"),
-  clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
 
   // Sessions
   session_list: d("tool.title.sessions", "View sessions"),
@@ -111,6 +110,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   // Communication
   email_send: d("tool.title.send-email", "Send Email"),
   email_read: d("tool.title.read-email", "Read Email"),
+  clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
   email_search: d("tool.title.search-email", "Search Email"),
   email_mark_read: d("tool.title.mark-read", "Mark Read"),
   email_inbox: d("tool.title.email-inbox", "View inbox"),

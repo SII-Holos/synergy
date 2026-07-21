@@ -98,6 +98,7 @@ describe("Envelope frame size guard", () => {
     const result = Envelope.parse(
       JSON.stringify({ type: "clarus.x", request_id: "r", meta: { v: "1" }, payload: { a: 1 }, caller: null }),
     )
+
     expect(result).not.toBeNull()
     expect(result!.kind).toBe("native")
   })
@@ -116,7 +117,7 @@ describe("Envelope frame size guard", () => {
 
 describe("Clarus semantic provenance", () => {
   test("toSemanticEvent preserves epoch/generation on known events", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; epoch?: number; generation?: number }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -150,7 +151,7 @@ describe("Clarus semantic provenance", () => {
   })
 
   test("toSemanticEvent preserves epoch/generation on unknown clarus events", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; epoch?: number; generation?: number }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -184,7 +185,7 @@ describe("Clarus semantic provenance", () => {
   })
 
   test("toSemanticEvent preserves epoch/generation on invalid clarus events", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; epoch?: number; generation?: number }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -198,6 +199,7 @@ describe("Clarus semantic provenance", () => {
       sendNativeRequest: () => ({ requestID: "x", response: new Promise(() => {}) }),
     }
     const port = createClarusAgentTunnelAdapter(tunnel)
+
     port.registerEventHandler((e) => {
       events.push(e)
     })
@@ -226,7 +228,7 @@ describe("Clarus semantic provenance", () => {
   })
 
   test("non-clarus events are filtered at the adapter boundary", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; epoch?: number; generation?: number }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -259,7 +261,7 @@ describe("Clarus semantic provenance", () => {
 
 describe("Semantic field bounding", () => {
   test("truncates oversized instructions field in runtimeTaskAssigned", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; instructions?: string | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -298,12 +300,13 @@ describe("Semantic field bounding", () => {
     if (events[0].kind === "known") {
       const e = events[0] as { instructions?: string | null }
       expect(e.instructions).toBeDefined()
+
       expect(e.instructions!.length).toBeLessThanOrEqual(NATIVE_MAX_STRING_LENGTH)
     }
   })
 
   test("truncates oversized goal field in runtimeTaskAssigned", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; goal?: string | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -347,7 +350,7 @@ describe("Semantic field bounding", () => {
   })
 
   test("truncates oversized task_id in runtimeTaskAssigned", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; taskID?: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -390,7 +393,7 @@ describe("Semantic field bounding", () => {
   })
 
   test("deeply nested input object is redacted in runtimeTaskAssigned", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; input?: Record<string, unknown> | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -439,7 +442,7 @@ describe("Semantic field bounding", () => {
   })
 
   test("content field in projectMessageCreated is bounded", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -487,7 +490,7 @@ describe("Semantic field bounding", () => {
   })
 
   test("excessive file_refs are capped in projectMessageCreated", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -498,6 +501,7 @@ describe("Semantic field bounding", () => {
         }
       },
       registerConnectionObserver: () => () => {},
+
       sendNativeRequest: () => ({ requestID: "x", response: new Promise(() => {}) }),
     }
     const port = createClarusAgentTunnelAdapter(tunnel)
@@ -540,7 +544,7 @@ describe("Semantic field bounding", () => {
 
 describe("Request adapter redaction", () => {
   test("response payload parse error redacts original error details", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel = makeTunnel([
       {
         type: "clarus.project.subscribed",
@@ -568,7 +572,7 @@ describe("Request adapter redaction", () => {
   })
 
   test("non-Zod error in safeMap is redacted", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
       registerConnectionObserver: () => () => {},
@@ -678,7 +682,7 @@ describe("UTF-8 multibyte frame limit", () => {
 
 describe("Bounds.object cycle protection", () => {
   test("self-referencing object does not cause infinite recursion", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; input?: Record<string, unknown> | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -698,6 +702,7 @@ describe("Bounds.object cycle protection", () => {
 
     const cyclic: Record<string, unknown> = { name: "self-reference" }
     cyclic.self = cyclic
+
     captureObserver!(
       validNativeMessage({
         type: "clarus.runtime.task.assigned",
@@ -719,7 +724,7 @@ describe("Bounds.object cycle protection", () => {
   })
 
   test("cross-referencing objects are handled safely", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; input?: Record<string, unknown> | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -762,7 +767,7 @@ describe("Bounds.object cycle protection", () => {
 
 describe("Bounds.object nested arrays", () => {
   test("nested arrays with deep objects are bounded recursively", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; input?: Record<string, unknown> | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -798,6 +803,7 @@ describe("Bounds.object nested arrays", () => {
           subtask_id: "sub-1",
           attempt: 1,
           deadline_at: null,
+
           input: nestedArrays,
         },
       }),
@@ -814,7 +820,7 @@ describe("Bounds.object nested arrays", () => {
   })
 
   test("excessive object keys are capped at NATIVE_MAX_OBJECT_KEYS", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; input?: Record<string, unknown> | null }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -864,7 +870,7 @@ describe("Bounds.object nested arrays", () => {
 
 describe("Aggregate payload byte budget", () => {
   test("DTO exceeding NATIVE_MAX_PAYLOAD_BYTES is rejected", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -898,6 +904,7 @@ describe("Aggregate payload byte budget", () => {
           deadline_at: null,
           goal: hugeGoal,
           instructions: hugeInstructions,
+
           context: hugeContext,
           task_input: hugeTaskInput,
         },
@@ -909,7 +916,7 @@ describe("Aggregate payload byte budget", () => {
   })
 
   test("multibyte DTO below code-unit threshold but above UTF-8 byte threshold is rejected", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -952,7 +959,7 @@ describe("Aggregate payload byte budget", () => {
   })
 
   test("ASCII DTO below byte threshold is accepted", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -991,7 +998,7 @@ describe("Aggregate payload byte budget", () => {
 
 describe("Non-assignment event bounds", () => {
   test("projectSystemEvent bounds eventType as an ID", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; eventType?: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -1029,7 +1036,7 @@ describe("Non-assignment event bounds", () => {
   })
 
   test("projectFileUploaded bounds projectID as an ID", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; projectID?: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -1064,7 +1071,7 @@ describe("Non-assignment event bounds", () => {
   })
 
   test("runtimeTaskExtended bounds taskID and status", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -1098,6 +1105,7 @@ describe("Non-assignment event bounds", () => {
             status: "s".repeat(NATIVE_MAX_STRING_LENGTH + 500),
             deadline_at: null,
             dispatched_at: null,
+
             completed_at: null,
             created_at: null,
             updated_at: null,
@@ -1111,7 +1119,7 @@ describe("Non-assignment event bounds", () => {
   })
 
   test("notaryRecordCreated bounds projectID", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string; projectID?: string }> = []
     let captureObserver: ((msg: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -1148,7 +1156,7 @@ describe("Non-assignment event bounds", () => {
 
 describe("Diagnostic redaction", () => {
   test("safeMap ZodError messages redact raw Zod issue values", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
       registerConnectionObserver: () => () => {},

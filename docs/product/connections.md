@@ -4,7 +4,7 @@ Synergy can connect to model and tool services through providers and MCP, messag
 
 ## Channels
 
-Channels adapt an external messaging account into persistent Synergy sessions. A provider connects one or more configured accounts and normalizes each incoming message into a common context containing account, chat, sender, thread, mention, quote, attachment, and Scope information.
+Channels adapt an external messaging account into persistent Synergy sessions. A provider connects one or more configured accounts and normalizes each incoming message into a common context containing account, chat, sender, thread, mention, quote, and attachment information. It resolves the Synergy Scope separately and passes it explicitly to the Channel handler.
 
 Synergy derives a stable endpoint key from the provider, account, chat, and optional Scope key. Messages for that endpoint reuse its unattended session instead of creating an unrelated conversation for every inbound message. Incoming commands are handled before ordinary agent invocation.
 
@@ -17,7 +17,7 @@ The provider contract supports:
 - streaming text and tool progress
 - reconnect and account status
 
-Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
+Feishu/Lark and Clarus are built-in providers. Feishu explicitly routes its current conversations to Home Scope. Clarus maps each remote project to a Project Scope through the common Channel project-scope API. Provider-specific wire formats, deduplication, and delivery stay behind the provider boundary while Channel owns Scope mapping, endpoint/session routing, and outbound delivery.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
 
@@ -73,60 +73,11 @@ Synergy Link does not make the remote filesystem part of the local Scope. It is 
 
 ## Clarus
 
-Clarus is a native Holos Agent Tunnel capability for managing projects, task assignments, and project activity. It uses the same authenticated Holos WebSocket connection as identity, messaging, and Synergy Link — there is no standalone Clarus daemon or separate transport.
+Clarus uses the authenticated Holos Agent Tunnel through the Channel provider lifecycle. The provider discovers active projects, subscribes to project events, and maps each project to a standard Synergy Project Scope.
 
-### Connection States
+A project conversation is a normal Channel Session in that Scope. A task assignment creates or reuses an ordinary autonomous Session in the same Scope and stores only that `sessionID` in provider-private assignment state. Clarus does not add a second project registry, workspace manager, Session endpoint type, navigation hierarchy, composer, or timeline.
 
-The Clarus navigation surface shows one of five public connection states:
-
-| State              | Meaning                                                                |
-| ------------------ | ---------------------------------------------------------------------- |
-| `disabled`         | Holos is not enabled or Clarus is unavailable.                         |
-| `connected`        | The tunnel is open and Clarus is receiving events.                     |
-| `reconnecting`     | The tunnel is connecting or reconnecting. Navigation remains viewable. |
-| `sign_in_required` | Holos authentication is needed.                                        |
-| `sync_failed`      | The tunnel connection is blocked or has failed after retries.          |
-
-### Projects
-
-A Clarus project is a collaboration surface identified by an agent ID and project ID. Projects have:
-
-- **Lifecycle**: `active`, `archived`, `exited`, `revoked`, or `deleted`. Only `active` projects are subscribed through the Agent Tunnel to receive task assignments, messages, and status changes.
-- **Subscription**: active projects are subscribed through the Agent Tunnel to receive task assignments, messages, and status changes.
-- **Metadata**: cached project name, slug, status, and primary agent.
-
-Projects and their task bindings are persisted locally through sharded storage, so navigation remains available without a live connection.
-
-### Tasks
-
-Clarus tasks flow from `runtimeTaskAssigned` events through the Agent Tunnel. Each task is bound to a Home Scope Synergy session and tracked through eight priority-ordered statuses:
-
-1. `needs_attention` — task requires user review
-2. `running` — an agent is actively working on the task
-3. `submitting` — result submission is in progress
-4. `waiting` — task is paused pending external input
-5. `submitted` — result has been submitted and acknowledged
-6. `failed` — execution terminated with an error
-7. `expired` — deadline passed without completion
-8. `cancelled` — task was explicitly cancelled
-
-Terminal statuses (`submitted`, `failed`, `expired`, `cancelled`) stop receiving project message fanout. Within the same status, tasks are ordered by most recent activity first.
-
-### Continue Locally
-
-A task in `submitted` status with `acknowledged` result state can be continued locally. This is an **explicit, irreversible** action that transitions the task to `running` and starts execution in the bound session. Ambiguous or rejected result states are terminal read-only and are never auto-retried.
-
-### Project Activity
-
-Each project maintains a chronological activity feed of messages received through the tunnel, with content, metadata, file references, and timestamps. Activity records are indexed for paginated timeline queries.
-
-### Composer
-
-The Clarus composer lets users send messages to a Clarus project or agent. The composer supports user and project search (capped at 5 candidates) and submits messages with optional file references through the Agent Tunnel.
-
-### Navigation
-
-Clarus appears as a dedicated sidebar navigation entry after Home. It presents a project/task hierarchy grouped by active and inactive projects, a connection status bar, and detailed task views. Navigation data is refreshed through the `clarus.navigation.updated` server event and Holos reconnect-version changes rather than polling.
+Clarus projects therefore appear in the standard Scope list, and their conversations and assignments use the standard Session page. Connection health is reported through the ordinary Channel account status.
 
 ## MCP and Model Providers
 
@@ -164,5 +115,5 @@ When both credentials are present, the Sidebar shows a GitHub section between Ba
 - MCP supplies callable external tools; providers supply models.
 - Email supplies direct SMTP/IMAP operations; it is neither a Channel endpoint nor a Holos mailbox.
 - GitHub integration supports shadow diagnostics plus opt-in autonomous fix delivery and PR review through outbound API polling, not a Channel endpoint or inbound webhook.
-- Clarus manages projects, task assignments, and activity through the same Holos tunnel.
+- Clarus uses the same Holos tunnel through the Channel provider lifecycle.
 - Local projects, sessions, configuration, Library, Notes, and provider credentials continue to work without Holos.

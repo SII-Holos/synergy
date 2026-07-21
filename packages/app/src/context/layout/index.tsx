@@ -71,17 +71,15 @@ export interface NavEntry {
   scopeID: string
   scopeType: "home" | "project"
   title: string
-  category: "project" | "home" | "channel" | "background" | "github" | "clarus"
+  category: "project" | "home" | "channel" | "background" | "github"
   lastActivityAt: number
   pinned: number
   archived: boolean
   parentID?: string
-  endpointKind?: "channel" | "clarus"
+  endpointKind?: "channel"
   chatId?: string
   chatName?: string
   chatType?: string
-  clarusProjectId?: string
-  clarusTaskId?: string
   completionNotice: {
     unread: boolean
     unreadCount: number

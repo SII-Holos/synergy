@@ -17,7 +17,6 @@ export namespace ConfigDomain {
     "permissions",
     "channels",
     "holos",
-    "clarus",
     "email",
     "runtime",
     "github",
@@ -100,7 +99,6 @@ export namespace ConfigDomain {
     ]),
     def("channels", "90-channels.jsonc", "Channels", ["channel"]),
     def("holos", "100-holos.jsonc", "Holos", ["holos", "enterprise"]),
-    def("clarus", "105-clarus.jsonc", "Clarus", ["clarus"]),
     def("email", "110-email.jsonc", "Email", ["email"]),
     def("runtime", "120-runtime.jsonc", "Runtime", [
       "server",

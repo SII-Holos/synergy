@@ -31,7 +31,7 @@ describe("SessionNav.buildNavIndex", () => {
       scope,
       fn: async () => {
         const index = await SessionNav.buildNavIndex(scope.id)
-        expect(index.version).toBe(2)
+        expect(index.version).toBe(1)
         expect(index.scopeID).toBe(scope.id)
         expect(index.entries.length).toBeGreaterThanOrEqual(2)
 
@@ -425,89 +425,6 @@ test("sets endpointKind on entries from session endpoint info", async () => {
       await Session.remove(channelSession.id)
       await Session.remove(holosSession.id)
       await Session.remove(plainSession.id)
-    },
-  })
-})
-
-test("indexes Clarus sessions in the native Clarus category", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const scope = await tmp.scope()
-
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const clarusSession = await Session.create({
-        title: "Clarus Task",
-        endpoint: SessionEndpoint.fromClarus({
-          role: "task",
-          agentId: "agent-nav",
-          projectId: "project-nav",
-          taskId: "task-nav",
-        }),
-      })
-
-      const index = await SessionNav.buildNavIndex(scope.id)
-      const entry = index.entries.find((candidate) => candidate.id === clarusSession.id)
-
-      expect(entry).toBeDefined()
-      expect(entry?.category).toBe("clarus")
-      expect(entry?.endpointKind).toBe("clarus")
-      expect(entry?.clarusProjectId).toBe("project-nav")
-      expect(entry?.clarusTaskId).toBe("task-nav")
-
-      const projectPage = await SessionNav.queryScope(scope.id, { category: "project" })
-      expect(projectPage.items.some((candidate) => candidate.id === clarusSession.id)).toBe(false)
-
-      await Session.remove(clarusSession.id)
-    },
-  })
-})
-
-test("readNavIndex rebuilds stale V1 entries with native Clarus classification", async () => {
-  await using tmp = await tmpdir({ git: true })
-  const scope = await tmp.scope()
-
-  await ScopeContext.provide({
-    scope,
-    fn: async () => {
-      const clarusSession = await Session.create({
-        title: "Existing Clarus Task",
-        endpoint: SessionEndpoint.fromClarus({
-          role: "task",
-          agentId: "agent-existing-nav",
-          projectId: "project-existing-nav",
-          taskId: "task-existing-nav",
-        }),
-      })
-
-      await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(scope.id)), {
-        version: 1,
-        scopeID: scope.id,
-        updatedAt: Date.now(),
-        entries: [
-          {
-            id: clarusSession.id,
-            scopeID: scope.id,
-            scopeType: "project",
-            title: clarusSession.title,
-            category: "home",
-            lastActivityAt: clarusSession.time.updated,
-            pinned: 0,
-            archived: false,
-            completionNotice: { unread: false },
-          },
-        ],
-      })
-
-      const index = await SessionNav.readNavIndex(scope.id)
-      const entry = index.entries.find((candidate) => candidate.id === clarusSession.id)
-
-      expect(entry?.category).toBe("clarus")
-      expect(entry?.endpointKind).toBe("clarus")
-      expect(entry?.clarusProjectId).toBe("project-existing-nav")
-      expect(entry?.clarusTaskId).toBe("task-existing-nav")
-
-      await Session.remove(clarusSession.id)
     },
   })
 })

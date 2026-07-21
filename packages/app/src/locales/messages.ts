@@ -189,47 +189,6 @@ export const rawMessages = {
   wrapLines: { id: "app.rawMessages.preview.wrap", message: "Wrap lines" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
-// ── Clarus ───────────────────────────────────────────────────────────────────
-
-export const clarus = {
-  title: { id: "app.clarus.title", message: "Clarus" },
-  subtitle: { id: "app.clarus.subtitle", message: "Native project and task navigation" },
-  refresh: { id: "app.clarus.action.refresh", message: "Refresh" },
-  retry: { id: "app.clarus.action.retry", message: "Retry" },
-  loadFailed: { id: "app.clarus.error.loadFailed", message: "Failed to load Clarus data" },
-  noNavigation: { id: "app.clarus.empty.navigation", message: "No navigation data available" },
-  noProjects: { id: "app.clarus.empty.projects", message: "No projects available" },
-  noClarusProjects: { id: "app.clarus.empty.sidebarProjects", message: "No Clarus projects" },
-  noTasks: { id: "app.clarus.empty.tasks", message: "No tasks yet" },
-  loading: { id: "app.clarus.loading", message: "Loading Clarus…" },
-  stale: { id: "app.clarus.freshness.stale", message: "(stale)" },
-  active: { id: "app.clarus.group.active", message: "Active" },
-  history: { id: "app.clarus.group.history", message: "History" },
-  collapseProject: { id: "app.clarus.project.collapse", message: "Collapse Clarus project" },
-  expandProject: { id: "app.clarus.project.expand", message: "Expand Clarus project" },
-  connectionConnecting: { id: "app.clarus.connection.connecting", message: "Connecting…" },
-  connectionConnected: { id: "app.clarus.connection.connected", message: "Connected" },
-  connectionReconnecting: { id: "app.clarus.connection.reconnecting", message: "Reconnecting" },
-  connectionSignInRequired: { id: "app.clarus.connection.signInRequired", message: "Sign In Required" },
-  connectionSyncFailed: { id: "app.clarus.connection.syncFailed", message: "Sync Failed" },
-  connectionDisabled: { id: "app.clarus.connection.disabled", message: "Disabled" },
-  taskWaiting: { id: "app.clarus.task.status.waiting", message: "Waiting" },
-  taskRunning: { id: "app.clarus.task.status.running", message: "Running" },
-  taskNeedsAttention: { id: "app.clarus.task.status.needsAttention", message: "Needs attention" },
-  taskSubmitting: { id: "app.clarus.task.status.submitting", message: "Submitting" },
-  taskSubmitted: { id: "app.clarus.task.status.submitted", message: "Submitted" },
-  taskFailed: { id: "app.clarus.task.status.failed", message: "Failed" },
-  taskExpired: { id: "app.clarus.task.status.expired", message: "Expired" },
-  taskCancelled: { id: "app.clarus.task.status.cancelled", message: "Cancelled" },
-  resultNotDispatched: { id: "app.clarus.result.status.notDispatched", message: "Not dispatched" },
-  resultPrepared: { id: "app.clarus.result.status.prepared", message: "Prepared" },
-  resultDispatched: { id: "app.clarus.result.status.dispatched", message: "Dispatched" },
-  resultAcknowledged: { id: "app.clarus.result.status.acknowledged", message: "Acknowledged" },
-  resultAmbiguous: { id: "app.clarus.result.status.ambiguous", message: "Ambiguous" },
-  resultRejected: { id: "app.clarus.result.status.rejected", message: "Rejected" },
-  resultLocalOnly: { id: "app.clarus.result.status.localOnly", message: "Local only" },
-} as const satisfies Record<string, AppMessageDescriptor>
-
 // ── Browser ──────────────────────────────────────────────────────────────────
 
 export const browser = {
@@ -1233,7 +1192,6 @@ export const library = {
 // ── Plugin builtin navigation ─────────────────────────────────────────────────
 
 export const pluginNav = {
-  clarus: { id: "app.plugin.builtin.clarus", message: "Clarus" },
   agenda: { id: "app.plugin.builtin.agenda", message: "Agenda" },
   library: { id: "app.plugin.builtin.library", message: "Library" },
   performance: { id: "app.plugin.builtin.performance", message: "Performance" },
@@ -1348,7 +1306,6 @@ export const messages = {
   panels,
   contextWorkspace,
   rawMessages,
-  clarus,
   browser,
   consolePanel,
   networkPanel,

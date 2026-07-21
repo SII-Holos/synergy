@@ -202,12 +202,12 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
+  clarus_submit_task_result: entry("platform.collaboration", { stateful: true, externalIO: true }),
   openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
   openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
-  clarus_submit_task_result: entry("communication.deliver", { stateful: true, externalIO: true }),
   // browser
   browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),
   browser_snapshot: entry("browser.inspect"),

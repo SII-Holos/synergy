@@ -262,13 +262,5 @@
     "occurrence": 1,
     "category": "code",
     "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
-  },
-  {
-    "path": "packages/app/src/context/clarus/test-fixture.ts",
-    "kind": "user-visible-property",
-    "literal": "Test Task",
-    "occurrence": 1,
-    "category": "developer-output",
-    "reason": "Deterministic test-fixture title used only by automated Clarus model tests, not product UI."
   }
 ]

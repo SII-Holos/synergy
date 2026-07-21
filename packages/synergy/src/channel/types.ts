@@ -1,4 +1,5 @@
 import z from "zod"
+import type { Scope } from "@/scope"
 
 export const Info = z
   .object({
@@ -110,7 +111,7 @@ export const MessageContext = z
   .meta({ ref: "ChannelMessageContext" })
 export type MessageContext = z.infer<typeof MessageContext>
 
-export type MessageHandler = (ctx: MessageContext) => Promise<void>
+export type MessageHandler = (ctx: MessageContext, scope: Scope) => Promise<void>
 
 export type SendResult = {
   messageId: string

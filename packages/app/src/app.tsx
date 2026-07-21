@@ -11,7 +11,6 @@ import { DiffComponentProvider } from "@ericsanchezok/synergy-ui/context/diff"
 import { CodeComponentProvider } from "@ericsanchezok/synergy-ui/context/code"
 import { ThemeProvider } from "@ericsanchezok/synergy-ui/theme"
 import { DialogProvider, useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
-import { ClarusProvider } from "@/context/clarus"
 import { GlobalSyncProvider } from "@/context/global-sync"
 import { LayoutProvider } from "@/context/layout"
 import { GlobalSDKProvider } from "@/context/global-sdk"
@@ -54,7 +53,6 @@ function initialRouteWaitsForSessionSurface() {
   if (pathname.includes("/library")) return false
   if (pathname.includes("/plugins")) return false
   if (pathname.includes("/performance")) return false
-  if (pathname.includes("/clarus")) return false
   return true
 }
 
@@ -227,17 +225,15 @@ function ConnectedApp() {
                         {(scopeKey) => (
                           <PluginHostProvider scopeKey={scopeKey}>
                             <GlobalSyncProvider>
-                              <ClarusProvider>
-                                <PluginComposerSlotBridge />
-                                <PluginThemeConfigBridge />
-                                <LayoutProvider>
-                                  <NotificationProvider>
-                                    <CommandProvider>
-                                      <Layout>{props.children}</Layout>
-                                    </CommandProvider>
-                                  </NotificationProvider>
-                                </LayoutProvider>
-                              </ClarusProvider>
+                              <PluginComposerSlotBridge />
+                              <PluginThemeConfigBridge />
+                              <LayoutProvider>
+                                <NotificationProvider>
+                                  <CommandProvider>
+                                    <Layout>{props.children}</Layout>
+                                  </CommandProvider>
+                                </NotificationProvider>
+                              </LayoutProvider>
                             </GlobalSyncProvider>
                           </PluginHostProvider>
                         )}
@@ -249,7 +245,6 @@ function ConnectedApp() {
                   <Route path="/agenda" component={() => <BuiltinNavigationPage navigationId="agenda" />} />
                   <Route path="/library" component={() => <BuiltinNavigationPage navigationId="library" />} />
                   <Route path="/performance" component={() => <BuiltinNavigationPage navigationId="performance" />} />
-                  <Route path="/clarus" component={() => <BuiltinNavigationPage navigationId="clarus" />} />
                   <Route
                     path="/plugins/marketplace"
                     component={() => <BuiltinNavigationPage navigationId="plugins" />}

@@ -19,7 +19,6 @@ import "../blueprint/migration"
 import "../holos/migration"
 import "../plugin/migration"
 import type { Migration, RunOptions, MigrationContext, MigrationSummary } from "./types"
-import "../clarus/migration"
 
 export type { Migration, RunOptions, RunResult, MigrationContext, MigrationSummary, MigrationReporter } from "./types"
 

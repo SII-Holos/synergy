@@ -240,31 +240,6 @@ ToolRegistry.register({
 })
 
 ToolRegistry.register({
-  name: "clarus_submit_task_result",
-  render(props) {
-    return (
-      <BasicTool
-        {...props}
-        trigger={{
-          icon: "send",
-          title: TOOL_TITLE_DESC["clarus_submit_task_result"],
-          subtitle: props.input.success === false ? TOOL_MISC_DESC.failed : TOOL_MISC_DESC.completed,
-          tags: props.metadata?.taskID ? [{ label: props.metadata.taskID as string }] : undefined,
-        }}
-      >
-        <Show when={props.output}>
-          {(output) => (
-            <div data-component="tool-output" data-scrollable>
-              <ToolTextOutput text={output()} />
-            </div>
-          )}
-        </Show>
-      </BasicTool>
-    )
-  },
-})
-
-ToolRegistry.register({
   name: "session_control",
   render(props) {
     const info = createMemo(() => getToolInfo("session_control", props.input, props.metadata))
@@ -1667,6 +1642,29 @@ ToolRegistry.register({
           title: TOOL_TITLE_DESC["email_send"],
           subtitle: recipients(),
           tags: props.input.subject && recipients() ? [{ label: props.input.subject as string }] : undefined,
+        }}
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
+    )
+  },
+})
+
+ToolRegistry.register({
+  name: "clarus_submit_task_result",
+  render(props) {
+    return (
+      <BasicTool
+        {...props}
+        trigger={{
+          icon: "send",
+          title: TOOL_TITLE_DESC["clarus_submit_task_result"],
         }}
       >
         <Show when={props.output}>

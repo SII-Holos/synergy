@@ -32,7 +32,6 @@ import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
 import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
 import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
 import { LoopStopTool } from "./loop-stop"
-import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
 import { LightLoopApproveTool } from "./light-loop-approve"
 import { LightLoopRejectTool } from "./light-loop-reject"
 import { PathwayReadTool } from "./pathway-read"
@@ -92,6 +91,7 @@ import { Truncate } from "./truncation"
 import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
+import { ClarusSubmitTaskResultTool } from "./clarus-submit-task-result"
 import { RuntimeReloadTool } from "./runtime-reload"
 import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
@@ -380,7 +380,6 @@ export namespace ToolRegistry {
       BlueprintLoopApproveTool,
       BlueprintLoopRejectTool,
       LoopStopTool,
-      ClarusSubmitTaskResultTool,
       LightLoopApproveTool,
       LightLoopRejectTool,
       PathwayReadTool,
@@ -411,6 +410,7 @@ export namespace ToolRegistry {
       RenderTool,
       EmailSendTool,
       EmailReadTool,
+      ClarusSubmitTaskResultTool,
       RuntimeReloadTool,
       WorktreeEnterTool,
       WorktreeLeaveTool,

@@ -165,19 +165,23 @@ test("session hash updates preserve the current history state", () => {
 describe("global session navigation", () => {
   test("navigates from a global host using a cached session scope", async () => {
     const paths: string[] = []
-    const target = session("session-1", { id: "scope-clarus", type: "project", directory: "/workspace/clarus" })
+    const target = session("session-1", {
+      id: "scope-channel-project",
+      type: "project",
+      directory: "/workspace/channel-project",
+    })
     const navigate = createSessionNavigator({
       findCachedSession: (sessionID) => (sessionID === target.id ? target : undefined),
       getSession: async () => undefined,
       fallbackDir: base64Encode(HOME_SCOPE_KEY),
       fallbackScopeKey: HOME_SCOPE_KEY,
-      currentPath: () => "/clarus",
+      currentPath: () => "/agenda",
       navigate: (path) => paths.push(path),
     })
 
     await navigate(target.id)
 
-    expect(paths).toEqual([`/${base64Encode("/workspace/clarus")}/session/${target.id}`])
+    expect(paths).toEqual([`/${base64Encode("/workspace/channel-project")}/session/${target.id}`])
   })
 
   test("resolves an uncached session through the global SDK", async () => {
@@ -188,7 +192,7 @@ describe("global session navigation", () => {
       getSession: async () => target,
       fallbackDir: base64Encode(HOME_SCOPE_KEY),
       fallbackScopeKey: HOME_SCOPE_KEY,
-      currentPath: () => "/clarus",
+      currentPath: () => "/agenda",
       navigate: (path) => paths.push(path),
     })
 
@@ -207,7 +211,7 @@ describe("global session navigation", () => {
       },
       fallbackDir,
       fallbackScopeKey: HOME_SCOPE_KEY,
-      currentPath: () => "/clarus",
+      currentPath: () => "/agenda",
       navigate: (path) => paths.push(path),
     })
 

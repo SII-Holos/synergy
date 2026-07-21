@@ -19,7 +19,7 @@ Read the [product overview](docs/product/overview.md) for the complete product m
 - Browse project files through the Side Workspace file workbench with a virtualized Explorer, multi-file tabs, and source or preview modes.
 - Work with the same session-owned Browser page from the UI and browser tools.
 - Connect external messaging through Channels, mail through governed Email tools, and remote agents or hosts through Holos and Synergy Link.
-- Manage Clarus projects, task assignments, and project activity through the Holos agent tunnel.
+- Use Clarus projects as standard Synergy Project Scopes and Sessions through the Channel system.
 - Extend tools, agents, skills, commands, MCP servers, configuration, hooks, and product UI with plugins.
 
 Long sessions use compaction to replace older model context with a continuation summary while preserving the complete durable session history.

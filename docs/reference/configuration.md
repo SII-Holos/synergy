@@ -35,12 +35,31 @@ Use `synergy config path` to print the active global roots.
 | `80-permissions.jsonc` | Permissions | permissions, tool visibility, control profile, sandbox, SmartAllow                                                                                              |
 | `90-channels.jsonc`    | Channels    | Channel provider and account configuration                                                                                                                      |
 | `100-holos.jsonc`      | Holos       | Holos connection and enterprise endpoint settings                                                                                                               |
-| `105-clarus.jsonc`     | Clarus      | Clarus project binding, task session routing, and REST API origin override                                                                                      |
 | `110-email.jsonc`      | Email       | email account and delivery settings                                                                                                                             |
 | `120-runtime.jsonc`    | Runtime     | server, timeout, Cortex scheduling, watcher, formatter, LSP, questions, compaction, experimental, and observability settings                                    |
 | `130-github.jsonc`     | GitHub      | GitHub App outbound polling integration (master enable, watched repos, polling, event types, CI thresholds, classifier/proposal, fix workflow, review workflow) |
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
+
+Clarus accounts live in the Channel domain and reuse Holos credentials:
+
+```jsonc
+{
+  "channel": {
+    "clarus": {
+      "type": "clarus",
+      "accounts": {
+        "<holos-agent-id>": {
+          "enabled": true,
+          "agent": "synergy",
+        },
+      },
+    },
+  },
+}
+```
+
+Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. There is no top-level `clarus` domain or Clarus workspace-root setting.
 
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
 

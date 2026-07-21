@@ -198,6 +198,7 @@ afterEach(async () => {
 })
 
 // ═════════════════════════════════════════════════════════════════════════
+
 // Envelope tests
 // ═════════════════════════════════════════════════════════════════════════
 
@@ -253,7 +254,7 @@ describe("Envelope native parsing", () => {
 
 describe("Schema and DTO shapes", () => {
   test("ClarusPayload", async () => {
-    const { ClarusPayload } = await import("../../src/holos/clarus")
+    const { ClarusPayload } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     expect(ClarusPayload.parseKnown("clarus.project.subscribed", { project_id: "p", subscribed: true }).kind).toBe(
       "known",
     )
@@ -309,7 +310,7 @@ describe("Schema and DTO shapes", () => {
 
 describe("Clarus adapter integration", () => {
   test("requestID preserved exactly", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const sent: Array<{ requestID: string }> = []
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
@@ -337,7 +338,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("invalid response payload rejects ambiguous/invalid_response", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
       registerConnectionObserver: () => () => {},
@@ -368,7 +369,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("successful response dual-path: resolution + observer", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     const nativeMsg: NativeMessage = {
       type: "clarus.project.subscribed",
@@ -398,6 +399,7 @@ describe("Clarus adapter integration", () => {
     })
     captureObs!(nativeMsg)
     await new Promise((r) => setTimeout(r, 5))
+
     expect(events.length).toBeGreaterThanOrEqual(1)
     if (events.length > 0 && events[0].kind === "known") {
       const known = events[0] as { kind: "known"; type: string }
@@ -406,7 +408,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("classifies blank inbound task run IDs as invalid events", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<{ kind: string }> = []
     let captureObserver: ((message: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -454,7 +456,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("preserves retry lineage on assigned-task semantic events", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const events: Array<Record<string, unknown>> = []
     let captureObserver: ((message: NativeMessage) => void) | null = null
     const tunnel: NativeTunnelPort = {
@@ -498,13 +500,14 @@ describe("Clarus adapter integration", () => {
     expect(events[0]).toMatchObject({
       kind: "known",
       type: "runtimeTaskAssigned",
+
       attemptMode: "retry",
       retryOfTaskID: "task-1",
     })
   })
 
   test("adapter unsubscribe returns functions", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
       registerConnectionObserver: () => () => {},
@@ -516,7 +519,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("returns synchronous tunnel rejections through the response promise", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const rejection = {
       disposition: "rejected" as const,
       requestID: "not-connected",
@@ -539,7 +542,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("rejects blank run IDs before dispatch", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     let dispatchCount = 0
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
@@ -580,7 +583,7 @@ describe("Clarus adapter integration", () => {
   })
 
   test("ZodError from invalid response is converted to ambiguous/invalid_response", async () => {
-    const { createClarusAgentTunnelAdapter } = await import("../../src/holos/clarus")
+    const { createClarusAgentTunnelAdapter } = await import("../../src/channel/provider/clarus/tunnel-adapter")
     const tunnel: NativeTunnelPort = {
       registerNativeObserver: () => () => {},
       registerConnectionObserver: () => () => {},
@@ -598,6 +601,7 @@ describe("Clarus adapter integration", () => {
         } as NativeMessage),
       }),
     }
+
     const port = createClarusAgentTunnelAdapter(tunnel)
     let error: { disposition: string; reason?: string } | null = null
     try {
@@ -698,6 +702,7 @@ describe("HolosProvider native tunnel", () => {
       type: "clarus.project.subscribe",
       payload: {},
       requestID: "native-error",
+
       expectedResponseType: "clarus.project.subscribed",
     })
     socket.message({
@@ -898,6 +903,7 @@ test("does not let a slow native observer block settlement or legacy app events"
     appHandled = true
     return true
   })
+
   appEventUnsubscribers.add(unsubscribe)
   const { provider, socket } = await connectProvider(connection)
   const pending = provider.sendNativeRequest({
@@ -998,6 +1004,7 @@ describe("HolosProvider lifecycle hardening", () => {
 
     const second = await connectProvider(connection)
     second.socket.message(connectedFrame("session-2"))
+
     await waitFor(() => connectedEpochs.length === 2)
 
     expect(connectedEpochs[0]).toBe(connectedEpochs[1])
