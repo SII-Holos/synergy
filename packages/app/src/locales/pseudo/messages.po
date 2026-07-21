@@ -12634,6 +12634,30 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.linkID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targetAgentID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targets"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.searchTerms"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr ""
 
@@ -15510,6 +15534,166 @@ msgid "settings.stepScale.customValue"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.action"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.approved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.revoked"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.unverified"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.idle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.offline"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.enabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.stableTargetID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID.placeholder"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.notObserved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.test"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.created"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.saved"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.tested"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr ""
 
@@ -16015,6 +16199,10 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-list"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.connect-list-targets"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

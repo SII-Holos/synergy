@@ -114,6 +114,7 @@ export class SynergyLinkInboundHandler {
           status: "refused",
           title: decision === "deny" ? "Session denied" : "Session pending approval",
           output: message,
+          host: this.rpc.host.hello(),
         })
       }
     }
@@ -129,6 +130,13 @@ export class SynergyLinkInboundHandler {
       case "heartbeat":
         result = await this.sessions.heartbeat(caller, request.payload.sessionID)
         break
+    }
+    result = {
+      ...result,
+      metadata: {
+        ...result.metadata,
+        host: this.rpc.host.hello(),
+      },
     }
 
     const response = {
@@ -164,6 +172,7 @@ function sessionResult(
     remoteAgentID?: string
     remoteOwnerUserID?: number
     label?: string
+    host?: SynergyLinkSession.ResultMetadata["host"]
   },
 ): SynergyLinkSession.ExecuteResult {
   return {
@@ -182,6 +191,7 @@ function sessionResult(
         remoteOwnerUserID: input.remoteOwnerUserID,
         label: input.label,
         backend: "remote",
+        host: input.host,
       },
       output: input.output,
     },

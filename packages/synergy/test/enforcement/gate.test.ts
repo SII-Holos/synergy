@@ -413,7 +413,7 @@ describe("EnforcementGate shell classification", () => {
 })
 
 describe("EnforcementGate Synergy Link classification", () => {
-  test("bash with linkID or deprecated envID gets shell_remote_execute", async () => {
+  test("bash with any remote selector gets shell_remote_execute", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -421,6 +421,8 @@ describe("EnforcementGate Synergy Link classification", () => {
 
     for (const args of [
       { command: "echo remote", linkID: "link_test" },
+      { command: "echo remote", targetID: "target_test" },
+      { command: "echo remote", linkID: "malformed-but-still-remote-intent" },
       { command: "echo remote", envID: "link_test" },
     ]) {
       const result = gate.classify("bash", args)
@@ -430,7 +432,7 @@ describe("EnforcementGate Synergy Link classification", () => {
     }
   })
 
-  test("process with linkID or deprecated envID gets shell_remote_execute", async () => {
+  test("process with any remote selector gets shell_remote_execute", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -438,6 +440,8 @@ describe("EnforcementGate Synergy Link classification", () => {
 
     for (const args of [
       { action: "list", linkID: "link_test" },
+      { action: "list", targetID: "target_test" },
+      { action: "list", linkID: "malformed-but-still-remote-intent" },
       { action: "list", envID: "link_test" },
     ]) {
       const result = gate.classify("process", args)

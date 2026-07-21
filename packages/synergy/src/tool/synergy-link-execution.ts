@@ -1,10 +1,13 @@
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
 
 export namespace SynergyLinkExecution {
   export interface SessionRecord {
     linkID: SynergyLinkIdentity.LinkID
+    targetID?: string
     targetAgentID: string
+    sourceAgent: string
     sessionID: SynergyLinkIdentity.SessionID
     status: "opened" | "closed"
     label?: string
@@ -20,16 +23,17 @@ export namespace SynergyLinkExecution {
         session: SessionRecord
         client: SynergyLinkClient.ExecutionClient
       }
-    | { kind: "local_fallback"; warning: SynergyLinkIdentity.Warning }
 
-  let client: SynergyLinkClient.ExecutionClient | null = null
-  const sessions = new Map<SynergyLinkIdentity.LinkID, SessionRecord>()
+  type DisposableExecutionClient = SynergyLinkClient.ExecutionClient & { dispose?: () => void }
 
-  export function setClient(next: SynergyLinkClient.ExecutionClient | null) {
+  let client: DisposableExecutionClient | null = null
+  const sessions = new Map<SynergyLinkIdentity.LinkID, Map<string, SessionRecord>>()
+
+  export function setClient(next: DisposableExecutionClient | null) {
+    if (client === next) return
+    client?.dispose?.()
     client = next
-    if (!next) {
-      sessions.clear()
-    }
+    sessions.clear()
   }
 
   export function getClient() {
@@ -43,32 +47,46 @@ export namespace SynergyLinkExecution {
     return client
   }
 
-  export function getSession(linkID: SynergyLinkIdentity.LinkID) {
-    return sessions.get(linkID)
+  export function getSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const bucket = sessions.get(linkID)
+    if (!bucket) return undefined
+    if (selector?.targetAgentID) {
+      const session = bucket.get(selector.targetAgentID)
+      return session && matchesSession(session, selector) ? session : undefined
+    }
+    const matches = [...bucket.values()].filter((session) => matchesSession(session, selector))
+    return matches.length === 1 ? matches[0] : undefined
   }
 
   export function allSessions() {
-    return [...sessions.values()].sort((left, right) => right.lastUsedAt - left.lastUsedAt)
+    return [...sessions.values()]
+      .flatMap((bucket) => [...bucket.values()])
+      .sort((left, right) => right.lastUsedAt - left.lastUsedAt)
   }
 
   export function upsertSession(session: SessionRecord) {
-    sessions.set(session.linkID, session)
+    const bucket = sessions.get(session.linkID) ?? new Map<string, SessionRecord>()
+    bucket.set(session.targetAgentID, session)
+    sessions.set(session.linkID, bucket)
   }
 
-  export function touchSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
+  export function touchSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = getSession(linkID, selector)
     if (session) session.lastUsedAt = Date.now()
     return session
   }
 
-  export function clearSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
-    sessions.delete(linkID)
+  export function clearSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const bucket = sessions.get(linkID)
+    const session = getSession(linkID, selector)
+    if (!bucket || !session) return undefined
+    bucket.delete(session.targetAgentID)
+    if (bucket.size === 0) sessions.delete(linkID)
     return session
   }
 
-  export function requireSession(linkID: SynergyLinkIdentity.LinkID) {
-    const session = sessions.get(linkID)
+  export function requireSession(linkID: SynergyLinkIdentity.LinkID, selector?: SessionSelector) {
+    const session = getSession(linkID, selector)
     if (!session || session.status !== "opened") {
       throw new NoSessionError(linkID)
     }
@@ -76,63 +94,91 @@ export namespace SynergyLinkExecution {
     return session
   }
 
-  export function resolveExecutionTarget(input: {
+  export async function resolveExecutionTarget(input: {
+    targetID?: string
+    targetIDSupplied: boolean
     linkID?: string
     linkIDSupplied: boolean
     tool: "bash" | "process"
-  }): ExecutionTarget {
-    if (!input.linkIDSupplied) {
+    agent: string
+  }): Promise<ExecutionTarget> {
+    if (!input.linkIDSupplied && !input.targetIDSupplied) {
       return { kind: "local" }
     }
 
+    if (input.linkIDSupplied && input.targetIDSupplied) {
+      throw new Error("Specify targetID or linkID, not both.")
+    }
+
+    if (input.targetIDSupplied) {
+      const target = await SynergyLinkTargetStore.require(input.targetID ?? "")
+      if (!target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
+      SynergyLinkTargetStore.assertAgentAccess(target, input.agent)
+      return resolveRemoteTarget({
+        linkID: target.linkID,
+        targetID: target.id,
+        targetAgentID: target.targetAgentID,
+        tool: input.tool,
+      })
+    }
+
     const resolution = SynergyLinkIdentity.resolve(input.linkID)
-    if (resolution.kind === "local") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.invalid_link_id", input.linkID ?? "", false),
-      }
-    }
-
     if (resolution.kind === "invalid") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.invalid_link_id", resolution.input, false),
-      }
+      throw new SynergyLinkIdentity.InvalidLinkIDError(resolution.input, resolution.reason)
     }
-
-    if (!client) {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.not_connected", resolution.linkID, true),
-      }
+    if (resolution.kind === "local") {
+      throw new SynergyLinkIdentity.InvalidLinkIDError(input.linkID, "missing")
     }
+    requireClient(resolution.linkID, input.tool)
+    const session = getSession(resolution.linkID)
+    if (!session || session.status !== "opened") throw new NoSessionError(resolution.linkID)
+    const registeredTarget = await SynergyLinkTargetStore.findByLocator(resolution.linkID, session.targetAgentID)
+    if (registeredTarget) {
+      if (!registeredTarget.enabled) throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
+      SynergyLinkTargetStore.assertAgentAccess(registeredTarget, input.agent)
+    }
+    return resolveRemoteTarget({
+      linkID: resolution.linkID,
+      targetID: registeredTarget?.id,
+      targetAgentID: session.targetAgentID,
+      sourceAgent: registeredTarget ? undefined : input.agent,
+      tool: input.tool,
+    })
+  }
 
-    const session = sessions.get(resolution.linkID)
+  function resolveRemoteTarget(input: {
+    linkID: SynergyLinkIdentity.LinkID
+    targetID?: string
+    targetAgentID?: string
+    sourceAgent?: string
+    tool: "bash" | "process"
+  }): Extract<ExecutionTarget, { kind: "remote" }> {
+    const activeClient = requireClient(input.linkID, input.tool)
+    const session = getSession(input.linkID, {
+      targetID: input.targetID,
+      targetAgentID: input.targetAgentID,
+      sourceAgent: input.sourceAgent,
+    })
     if (!session || session.status !== "opened") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.no_active_session", resolution.linkID, true),
-      }
+      throw new NoSessionError(input.linkID)
     }
 
     session.lastUsedAt = Date.now()
-    return { kind: "remote", linkID: resolution.linkID, session, client }
+    return { kind: "remote", linkID: input.linkID, session, client: activeClient }
   }
 
-  export function withLocalFallbackWarning<T extends { output: string; metadata: Record<string, unknown> }>(
-    result: T,
-    warning: SynergyLinkIdentity.Warning,
-  ): T {
-    const warnings = Array.isArray(result.metadata.warnings) ? result.metadata.warnings : []
-    return {
-      ...result,
-      metadata: {
-        ...result.metadata,
-        backend: "local",
-        warnings: [...warnings, warning],
-      },
-      output: `${visibleWarning(warning)}\n\n${result.output}`,
-    }
+  export interface SessionSelector {
+    targetID?: string
+    targetAgentID?: string
+    sourceAgent?: string
+  }
+
+  function matchesSession(session: SessionRecord, selector?: SessionSelector) {
+    if (!selector) return true
+    if (selector.targetID && session.targetID !== selector.targetID) return false
+    if (selector.targetAgentID && session.targetAgentID !== selector.targetAgentID) return false
+    if (selector.sourceAgent && session.sourceAgent !== selector.sourceAgent) return false
+    return true
   }
 
   export class NotConnectedError extends Error {
@@ -153,41 +199,5 @@ export namespace SynergyLinkExecution {
       super(`No active Synergy Link session for link "${linkID}". Open a session first with the connect tool.`)
       this.name = "SynergyLinkNoSessionError"
     }
-  }
-
-  function warning(
-    code: SynergyLinkIdentity.Warning["code"],
-    requestedLinkID: string,
-    retryable: boolean,
-  ): SynergyLinkIdentity.Warning {
-    if (code === "synergy_link.invalid_link_id") {
-      return {
-        code,
-        message: `Requested linkID "${requestedLinkID}" is invalid, so this operation ran locally.`,
-        reminder: "Omit linkID for intentional local execution. To run remotely, connect a Synergy Link target first.",
-        requestedLinkID,
-        retryable,
-      }
-    }
-    if (code === "synergy_link.not_connected") {
-      return {
-        code,
-        message: `Requested link "${requestedLinkID}" is not connected, so this operation ran locally.`,
-        reminder: "Open a Synergy Link session with connect before targeting this linkID.",
-        requestedLinkID,
-        retryable,
-      }
-    }
-    return {
-      code,
-      message: `Requested link "${requestedLinkID}" has no active session, so this operation ran locally.`,
-      reminder: "Open a Synergy Link session with connect before remote execution.",
-      requestedLinkID,
-      retryable,
-    }
-  }
-
-  function visibleWarning(warning: SynergyLinkIdentity.Warning) {
-    return `[Synergy Link warning: ${warning.message} ${warning.reminder}]`
   }
 }

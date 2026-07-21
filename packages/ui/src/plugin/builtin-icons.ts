@@ -159,6 +159,7 @@ const builtinIconNames = [
   "pin",
   "pin-off",
   "plus",
+  "plug-zap",
   "quote",
   "radar",
   "redo-2",

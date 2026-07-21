@@ -49,25 +49,25 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 
 ## Ownership Map
 
-| Area                     | Primary implementation                                                             |
-| ------------------------ | ---------------------------------------------------------------------------------- |
-| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                               |
-| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                  |
-| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools  |
-| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                        |
-| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                     |
-| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/` |
-| Delegation               | `packages/synergy/src/cortex/`                                                     |
-| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`            |
-| Knowledge                | `packages/synergy/src/library/`, `note/`                                           |
-| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components           |
-| Automation               | `packages/synergy/src/agenda/`                                                     |
-| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `remote/`, `mcp/`, `github/`  |
-| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                     |
-| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules            |
-| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes      |
-| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`           |
-| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI    |
+| Area                     | Primary implementation                                                                             |
+| ------------------------ | -------------------------------------------------------------------------------------------------- |
+| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                               |
+| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                                  |
+| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools                  |
+| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                                        |
+| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                                     |
+| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/`                 |
+| Delegation               | `packages/synergy/src/cortex/`                                                                     |
+| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`                            |
+| Knowledge                | `packages/synergy/src/library/`, `note/`                                                           |
+| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                           |
+| Automation               | `packages/synergy/src/agenda/`                                                                     |
+| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`, `github/` |
+| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                                     |
+| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                            |
+| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes                      |
+| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                           |
+| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI                    |
 
 ## Related Contracts
 

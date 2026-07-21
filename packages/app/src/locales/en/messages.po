@@ -12634,6 +12634,30 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.description"
+msgstr "Persisted remote Synergy targets, authorization, and observed host details."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.label"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targetAgentID"
+msgstr "Target agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targets"
+msgstr "Targets"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.searchTerms"
+msgstr "synergy link | remote host | target | agent | link id | key"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr "Agent prompt behavior, subagent concurrency, provider timeouts, and tool timeout controls."
 
@@ -15510,6 +15534,166 @@ msgid "settings.stepScale.customValue"
 msgstr "Custom {value}"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.action"
+msgstr "Add target"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.description"
+msgstr "Copy the target agent ID and Link ID from B. B still approves the first connection."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.title"
+msgstr "Add target"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.approved"
+msgstr "Approved"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.revoked"
+msgstr "Revoked"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.unverified"
+msgstr "Unverified"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.idle"
+msgstr "Ready"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.offline"
+msgstr "Holos offline"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.description"
+msgstr "Add a target so agents can discover and connect to it by a stable target ID."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.title"
+msgstr "No Link targets yet"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents"
+msgstr "Allowed local agents"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.description"
+msgstr "Comma-separated Synergy agent names. Leave empty to allow every local agent to discover this target."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.placeholder"
+msgstr "synergy, build"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID.placeholder"
+msgstr "link_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name"
+msgstr "Name"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name.placeholder"
+msgstr "Build Mac"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.stableTargetID"
+msgstr "Stable target ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID"
+msgstr "Target agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID.placeholder"
+msgstr "agent_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.notObserved"
+msgstr "Not observed yet"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.title"
+msgstr "Observed host"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr "Link targets could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.description"
+msgstr "Persist the Synergy hosts this installation can control and inspect their last observed identity."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.title"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.refresh"
+msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.description"
+msgstr "Agents will no longer discover this target. This does not change B's trust list."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.title"
+msgstr "Remove Link target?"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.description"
+msgstr "A target stores routing identifiers, authorization state, and observed host capabilities. It never stores B's Holos credentials."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.title"
+msgstr "Targets"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.test"
+msgstr "Test connection"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.created"
+msgstr "Link target added"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.failed"
+msgstr "Synergy Link action failed"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.saved"
+msgstr "Link target saved"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.tested"
+msgstr "Connection test completed"
+
+#. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "These accounts were rejected and remain here until their credentials are recovered."
 
@@ -16016,6 +16200,10 @@ msgstr "Closing"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-list"
 msgstr "View connections"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.connect-list-targets"
+msgstr "View Link targets"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-opening"

@@ -1889,6 +1889,53 @@
   background: color-mix(in oklch, var(--settings-card-bg) 46%, transparent);
 }
 
+.settings-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-link-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid var(--settings-border);
+  background: var(--settings-card-bg);
+}
+
+.settings-link-card-header,
+.settings-link-card-footer,
+.settings-link-actions,
+.settings-link-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-link-card-header,
+.settings-link-card-footer {
+  justify-content: space-between;
+}
+
+.settings-link-actions {
+  justify-content: flex-end;
+}
+
+@media (max-width: 840px) {
+  .settings-link-card-header,
+  .settings-link-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-link-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+}
+
 /* ===== MCP settings ===== */
 
 .settings-mcp-list {
@@ -2482,7 +2529,7 @@
 }
 
 .providers-auth-warning,
-.usage-request-error {
+.settings-request-error {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -2495,13 +2542,13 @@
 }
 
 .providers-auth-warning > span,
-.usage-request-error > span,
+.settings-request-error > span,
 .usage-warning-row > span {
   min-width: 0;
   flex: 1;
 }
 
-.usage-request-error {
+.settings-request-error {
   background: color-mix(in oklch, var(--icon-critical-base) 10%, var(--settings-panel-bg));
 }
 

@@ -939,6 +939,105 @@ export type HolosReconnectResponse = {
   success: true
 }
 
+export type SynergyLinkHostObservation = {
+  type: "synergy_link.host.hello"
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  /**
+   * Synergy Link host session identifier
+   */
+  hostSessionID: string
+  capabilities: {
+    platform: string
+    arch: string
+    hostname?: string
+    runtime: "node" | "bun" | "unknown"
+    defaultShell: "none" | "sh" | "cmd" | "powershell" | "pwsh"
+    supportedShells: Array<"none" | "sh" | "cmd" | "powershell" | "pwsh">
+    supportsPty: boolean
+    supportsSendKeys: boolean
+    supportsSoftKill: boolean
+    supportsProcessGroups: boolean
+    envCaseInsensitive: boolean
+    lineEndings: "lf" | "crlf"
+  }
+  observedAt: number
+}
+
+export type SynergyLinkProbe = {
+  status: "reachable" | "refused" | "busy" | "failed"
+  checkedAt: number
+}
+
+export type SynergyLinkTargetView = {
+  id: string
+  name: string
+  enabled: boolean
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  allowedAgents: Array<string>
+  authorization: "unverified" | "approved" | "revoked"
+  host?: SynergyLinkHostObservation
+  lastProbe?: SynergyLinkProbe
+  createdAt: number
+  updatedAt: number
+  availability: "holos_offline" | "idle" | "connected"
+  /**
+   * Synergy Link session identifier
+   */
+  sessionID?: string
+}
+
+export type SynergyLinkTarget = {
+  id: string
+  name: string
+  enabled: boolean
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  allowedAgents: Array<string>
+  authorization: "unverified" | "approved" | "revoked"
+  host?: SynergyLinkHostObservation
+  lastProbe?: SynergyLinkProbe
+  createdAt: number
+  updatedAt: number
+}
+
+export type SynergyLinkTargetCreateInput = {
+  name: string
+  targetAgentID: string
+  /**
+   * Synergy Link target identifier
+   */
+  linkID: string
+  enabled?: boolean
+  allowedAgents?: Array<string>
+}
+
+export type NotFoundError = {
+  name: "NotFoundError"
+  data: {
+    message: string
+  }
+}
+
+export type SynergyLinkTargetPatchInput = {
+  name?: string
+  enabled?: boolean
+  allowedAgents?: Array<string>
+}
+
+export type SynergyLinkTargetRemoveResult = {
+  success: true
+}
+
 export type AgendaTriggerAt = {
   type: "at"
   /**
@@ -1244,13 +1343,6 @@ export type ScopeNavEntry = {
   icon?: {
     url?: string
     color?: string
-  }
-}
-
-export type NotFoundError = {
-  name: "NotFoundError"
-  data: {
-    message: string
   }
 }
 
@@ -7544,6 +7636,27 @@ export type EventCortexTasksUpdated = {
   }
 }
 
+export type EventSynergyLinkTargetCreated = {
+  type: "synergy_link.target.created"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetUpdated = {
+  type: "synergy_link.target.updated"
+  properties: {
+    target: SynergyLinkTarget
+  }
+}
+
+export type EventSynergyLinkTargetRemoved = {
+  type: "synergy_link.target.removed"
+  properties: {
+    id: string
+  }
+}
+
 export type EventPluginEvent = {
   type: "plugin.event"
   properties: {
@@ -7774,6 +7887,9 @@ export type Event =
   | EventCortexTaskCreated
   | EventCortexTaskCompleted
   | EventCortexTasksUpdated
+  | EventSynergyLinkTargetCreated
+  | EventSynergyLinkTargetUpdated
+  | EventSynergyLinkTargetRemoved
   | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
@@ -8566,6 +8682,136 @@ export type HolosReconnectResponses = {
 }
 
 export type HolosReconnectResponse2 = HolosReconnectResponses[keyof HolosReconnectResponses]
+
+export type SynergyLinkTargetsData = {
+  body?: never
+  path?: never
+  query?: never
+  url: "/synergy-link/targets"
+}
+
+export type SynergyLinkTargetsResponses = {
+  /**
+   * Persisted Synergy Link targets
+   */
+  200: Array<SynergyLinkTargetView>
+}
+
+export type SynergyLinkTargetsResponse = SynergyLinkTargetsResponses[keyof SynergyLinkTargetsResponses]
+
+export type SynergyLinkTargetCreateData = {
+  body?: SynergyLinkTargetCreateInput
+  path?: never
+  query?: never
+  url: "/synergy-link/targets"
+}
+
+export type SynergyLinkTargetCreateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type SynergyLinkTargetCreateError = SynergyLinkTargetCreateErrors[keyof SynergyLinkTargetCreateErrors]
+
+export type SynergyLinkTargetCreateResponses = {
+  /**
+   * Created target
+   */
+  200: SynergyLinkTarget
+}
+
+export type SynergyLinkTargetCreateResponse = SynergyLinkTargetCreateResponses[keyof SynergyLinkTargetCreateResponses]
+
+export type SynergyLinkTargetRemoveData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}"
+}
+
+export type SynergyLinkTargetRemoveErrors = {
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SynergyLinkTargetRemoveError = SynergyLinkTargetRemoveErrors[keyof SynergyLinkTargetRemoveErrors]
+
+export type SynergyLinkTargetRemoveResponses = {
+  /**
+   * Target removed
+   */
+  200: SynergyLinkTargetRemoveResult
+}
+
+export type SynergyLinkTargetRemoveResponse = SynergyLinkTargetRemoveResponses[keyof SynergyLinkTargetRemoveResponses]
+
+export type SynergyLinkTargetUpdateData = {
+  body?: SynergyLinkTargetPatchInput
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}"
+}
+
+export type SynergyLinkTargetUpdateErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SynergyLinkTargetUpdateError = SynergyLinkTargetUpdateErrors[keyof SynergyLinkTargetUpdateErrors]
+
+export type SynergyLinkTargetUpdateResponses = {
+  /**
+   * Updated target
+   */
+  200: SynergyLinkTarget
+}
+
+export type SynergyLinkTargetUpdateResponse = SynergyLinkTargetUpdateResponses[keyof SynergyLinkTargetUpdateResponses]
+
+export type SynergyLinkTargetProbeData = {
+  body?: never
+  path: {
+    id: string
+  }
+  query?: never
+  url: "/synergy-link/targets/{id}/probe"
+}
+
+export type SynergyLinkTargetProbeErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+  /**
+   * Not found
+   */
+  404: NotFoundError
+}
+
+export type SynergyLinkTargetProbeError = SynergyLinkTargetProbeErrors[keyof SynergyLinkTargetProbeErrors]
+
+export type SynergyLinkTargetProbeResponses = {
+  /**
+   * Observed target
+   */
+  200: SynergyLinkTargetView
+}
+
+export type SynergyLinkTargetProbeResponse = SynergyLinkTargetProbeResponses[keyof SynergyLinkTargetProbeResponses]
 
 export type GlobalAgendaListData = {
   body?: never

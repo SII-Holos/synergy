@@ -20,6 +20,7 @@ export type SynergyLinkResponse =
 
 export interface SynergyLinkTransport {
   request(input: SynergyLinkRequest): Promise<unknown>
+  dispose?(): void
 }
 
 export class SynergyLinkRemoteError extends Error {
@@ -105,6 +106,10 @@ export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient
 
     const response = await this.#request(request)
     return response.result
+  }
+
+  dispose() {
+    this.transport.dispose?.()
   }
 
   async #request<TRequest extends SynergyLinkRequest>(input: TRequest): Promise<ResponseForRequest<TRequest>> {

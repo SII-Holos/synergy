@@ -173,7 +173,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   worktree_leave: entry("platform.config", { stateful: true }),
   worktree_list: entry("platform.config"),
 
-  connect: entry("platform.config"),
+  connect: entry("platform.config", { stateful: true, externalIO: true }),
   inspire_status: entry("platform.compute", { externalIO: true }),
   inspire_config: entry("platform.compute"),
   inspire_login: entry("platform.compute", { stateful: true, externalIO: true }),

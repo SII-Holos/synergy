@@ -390,6 +390,7 @@ describe("bash note virtual paths", () => {
     SynergyLinkExecution.upsertSession({
       linkID: "link_test",
       targetAgentID: "remote-agent",
+      sourceAgent: "test-strategist",
       sessionID: "session_test",
       status: "opened",
       openedAt: Date.now(),

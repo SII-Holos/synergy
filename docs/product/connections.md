@@ -55,7 +55,11 @@ The mailbox is not a Synergy session transcript. It is network correspondence th
 
 ## Synergy Link
 
-Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. A local Synergy instance addresses a target Holos agent and Link ID, opens or manages a remote session, then routes supported operations to the Link host associated with that agent.
+Synergy Link uses the same authenticated Holos tunnel as a transport for explicit remote-execution sessions. In the one-way A-controls-B model, A persists each remote host as a Link target with a stable local target ID, display name, target Holos agent ID, Link ID, enablement state, and optional local-agent allowlist. A does not copy or store B's Holos credentials; B remains responsible for approving, denying, or revoking access.
+
+The Synergy Link Settings page creates and manages these targets. A successful connection or connection test records B's observed host session and capabilities, including platform, architecture, runtime, and shell support. These observations are metadata, not a guarantee of current reachability.
+
+Agents use `connect list_targets` to discover only the enabled targets allowed for their agent name, then use the stable `targetID` for `connect`, `bash`, and `process` calls. Raw target agent and Link IDs remain available for legacy calls and manual diagnosis, but agents do not need them in the normal flow.
 
 The protocol currently distinguishes:
 
@@ -63,7 +67,7 @@ The protocol currently distinguishes:
 - remote Bash execution
 - remote process execution and process control
 
-Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds.
+Bash and process calls require an active Link session ID. Every request carries a protocol version, request ID, Link ID, target agent, tool/action, and typed payload. Responses are correlated to the request, schema-validated, and normalized into typed remote or transport errors. A transport request times out after 30 seconds. Any supplied remote selector is classified through the non-bypassable remote-execution capability, and invalid, disconnected, or sessionless selectors fail closed instead of running the command locally.
 
 Synergy Link does not make the remote filesystem part of the local Scope. It is an explicit execution boundary with its own session lifecycle, transport failures, and remote error semantics. When the Holos connection is disposed, pending requests fail and active local Link-session state is cleared.
 
