@@ -5,42 +5,15 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { library as L } from "@/locales/messages"
+import type { MemoryCategory } from "./category-colors"
+export { MEMORY_CATEGORIES, categoryColors, type MemoryCategory } from "./category-colors"
 export type View = "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"
 export type ExperienceFilter = "all" | "scope" | "session"
 
-export type MemoryCategory =
-  | "user"
-  | "self"
-  | "relationship"
-  | "interaction"
-  | "workflow"
-  | "coding"
-  | "writing"
-  | "asset"
-  | "insight"
-  | "knowledge"
-  | "personal"
-  | "general"
-
 export type MemoryRecallMode = "always" | "contextual" | "search_only"
-
-export const MEMORY_CATEGORIES: MemoryCategory[] = [
-  "user",
-  "self",
-  "relationship",
-  "interaction",
-  "workflow",
-  "coding",
-  "writing",
-  "asset",
-  "insight",
-  "knowledge",
-  "personal",
-  "general",
-]
 
 export const categoryLabels: Record<MemoryCategory, string> = {
   user: "User",
@@ -55,21 +28,6 @@ export const categoryLabels: Record<MemoryCategory, string> = {
   knowledge: "Knowledge",
   personal: "Personal",
   general: "General",
-}
-
-export const categoryColors: Record<MemoryCategory, string> = {
-  user: "bg-avatar-background-cyan text-avatar-text-cyan",
-  self: "bg-avatar-background-purple text-avatar-text-purple",
-  relationship: "bg-avatar-background-pink text-avatar-text-pink",
-  interaction: "bg-avatar-background-orange text-avatar-text-orange",
-  workflow: "bg-avatar-background-lime text-avatar-text-lime",
-  coding: "bg-avatar-background-mint text-avatar-text-mint",
-  writing: "bg-avatar-background-orange text-avatar-text-orange",
-  asset: "bg-avatar-background-mint text-avatar-text-mint",
-  insight: "bg-avatar-background-purple text-avatar-text-purple",
-  knowledge: "bg-avatar-background-cyan text-avatar-text-cyan",
-  personal: "bg-avatar-background-lime text-avatar-text-lime",
-  general: "bg-surface-inset-base text-text-weak",
 }
 
 export const recallModeLabels: Record<MemoryRecallMode, string> = {

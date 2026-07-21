@@ -26,6 +26,10 @@ interface ManagedPageEntry {
   page: ManagedPage
 }
 
+function isThemeAwarePage(page: ManagedPage): page is BrowserWebRTCHost {
+  return "setTheme" in page
+}
+
 export class BrowserHostBrokerClient {
   private socket: WebSocket | null = null
   private pages = new Map<string, ManagedPageEntry>()
@@ -46,7 +50,7 @@ export class BrowserHostBrokerClient {
   setTheme(theme: DesktopThemeSnapshot): void {
     this.theme = theme
     for (const entry of this.pages.values()) {
-      if ("setTheme" in entry.page) entry.page.setTheme(theme)
+      if (isThemeAwarePage(entry.page)) entry.page.setTheme(theme)
     }
   }
 
@@ -157,6 +161,7 @@ export class BrowserHostBrokerClient {
           await page.destroy()
           return
         }
+        if (isThemeAwarePage(page)) page.setTheme(this.theme)
         this.pages.set(message.ownerKey, { pageId: message.page.id, page })
         this.result(message.requestId, { type: "page", page: page.state() })
       } catch (error) {

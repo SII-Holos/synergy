@@ -1,4 +1,4 @@
-import { themeToCss } from "./resolve"
+import { resolveThemeColor, themeToCss } from "./resolve"
 import type { ResolvedTheme } from "./types"
 
 export const THEME_CHANGE_EVENT = "synergy:theme-change"
@@ -40,7 +40,7 @@ export function applyThemeToDocument(
   targetDocument.documentElement.dataset.synergyColorScheme = mode
   targetDocument.documentElement.dataset.theme = themeId
   const themeColor = targetDocument.querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-  themeColor?.setAttribute("content", tokens["background-stronger"])
+  themeColor?.setAttribute("content", resolveThemeColor(tokens, "background-stronger"))
   const CustomEventConstructor = targetDocument.defaultView?.CustomEvent ?? CustomEvent
   const detail: ThemeChangeDetail = { mode, themeId, tokens }
   appliedThemes.set(targetDocument, detail)

@@ -6,7 +6,7 @@ import {
   THEME_CHANGE_EVENT,
   type ThemeChangeDetail,
 } from "../src/theme/application"
-import { resolveTheme } from "../src/theme/resolve"
+import { resolveTheme, resolveThemeColor } from "../src/theme/resolve"
 import { synergyTheme } from "../src/theme/default-themes"
 
 describe("theme application", () => {
@@ -29,8 +29,28 @@ describe("theme application", () => {
     expect(dom.window.document.documentElement.dataset.theme).toBe("second")
     expect(getAppliedTheme(dom.window.document)?.tokens).toBe(resolved.light)
     expect(dom.window.document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
-      resolved.light["background-stronger"],
+      resolveThemeColor(resolved.light, "background-stronger"),
     )
     expect(dom.window.document.querySelectorAll("#synergy-theme")).toHaveLength(1)
+  })
+
+  test("resolves CSS variable references before writing browser theme color", () => {
+    dom = new JSDOM('<!doctype html><html><head><meta name="theme-color"></head><body></body></html>')
+    const resolved = resolveTheme({
+      ...synergyTheme,
+      light: {
+        ...synergyTheme.light,
+        overrides: {
+          ...synergyTheme.light.overrides,
+          "background-stronger": "var(--surface-raised-base)",
+        },
+      },
+    }).light
+
+    applyThemeToDocument(dom.window.document, resolved, "light", "reference-background")
+
+    expect(dom.window.document.querySelector('meta[name="theme-color"]')?.getAttribute("content")).toBe(
+      resolveThemeColor(resolved, "background-stronger"),
+    )
   })
 })
