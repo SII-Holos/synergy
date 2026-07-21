@@ -20,13 +20,20 @@ export interface PluginDefinitionInput {
   license?: string
   icon?: string
   keywords?: string[]
+  assets?: PluginAsset[]
   capabilities?: PluginCapability[]
   contributions: PluginContribution[]
   activate?(context: PluginActivationContext): Promise<void>
   deactivate?(): Promise<void>
 }
 
+export interface PluginAsset {
+  source: string
+  target: string
+}
+
 export interface PluginDefinition extends PluginDefinitionInput {
+  assets: PluginAsset[]
   capabilities: PluginCapability[]
   handlerIds: string[]
 }
@@ -49,6 +56,15 @@ function validateId(id: string, label: string) {
 
 export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
   validateId(input.id, "plugin id")
+  const assets = input.assets ?? []
+  const assetTargets = new Set<string>()
+  for (const asset of assets) {
+    if (!asset.source.trim()) throw new Error("Plugin asset source cannot be empty")
+    if (!asset.target.trim()) throw new Error("Plugin asset target cannot be empty")
+    const target = asset.target.replace(/\\/g, "/").replace(/^\.\//, "")
+    if (assetTargets.has(target)) throw new Error(`Duplicate plugin asset target "${target}"`)
+    assetTargets.add(target)
+  }
   const capabilities = input.capabilities ?? []
   const capabilityIds = new Set<string>()
   for (const item of capabilities) {
@@ -87,7 +103,7 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     }
   }
 
-  return { ...input, capabilities, handlerIds }
+  return { ...input, assets, capabilities, handlerIds }
 }
 
 function compiledComponent(

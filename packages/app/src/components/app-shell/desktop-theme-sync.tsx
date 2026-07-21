@@ -1,5 +1,5 @@
 import { createEffect } from "solid-js"
-import { useTheme } from "@ericsanchezok/synergy-ui/theme"
+import { deriveShellSkin, useTheme } from "@ericsanchezok/synergy-ui/theme"
 import { usePlatform } from "@/context/platform"
 
 export function DesktopThemeSync() {
@@ -8,7 +8,10 @@ export function DesktopThemeSync() {
 
   createEffect(() => {
     const source = theme.colorScheme()
-    void platform.desktopTheme?.set(source).catch(() => undefined)
+    const shell = deriveShellSkin(theme.theme())
+    void platform.desktopTheme
+      ?.set({ source, themeId: theme.themeId(), light: shell.light, dark: shell.dark })
+      .catch(() => undefined)
   })
 
   return null

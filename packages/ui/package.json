@@ -49,6 +49,7 @@
     "vite-plugin-solid": "catalog:"
   },
   "dependencies": {
+    "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@kobalte/core": "catalog:",

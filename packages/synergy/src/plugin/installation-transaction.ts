@@ -405,4 +405,31 @@ export namespace PluginInstallationTransaction {
       }
     })
   }
+
+  export async function approve(input: {
+    pluginId: string
+    approval: PluginApprovalRecord | (() => Promise<PluginApprovalRecord>)
+    reload: () => Promise<void>
+    getLoaded: () => Promise<LoadedPlugin[]>
+  }): Promise<LoadedPlugin> {
+    return withPluginInstallationLock(async () => {
+      const previousApprovals = await readApprovals()
+      const approval = typeof input.approval === "function" ? await input.approval() : input.approval
+
+      try {
+        await saveApproval(approval)
+        await input.reload()
+        const loaded = await input.getLoaded()
+        return assertSingleLoadedPlugin(input.pluginId, loaded)
+      } catch (err) {
+        log.warn("plugin approval transaction failed; rolling back", {
+          pluginId: input.pluginId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+        await writeApprovals(previousApprovals).catch(() => {})
+        await input.reload().catch(() => {})
+        throw err
+      }
+    })
+  }
 }

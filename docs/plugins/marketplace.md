@@ -41,13 +41,13 @@ Installation follows this order:
 1. resolve or stage the package;
 2. read generated metadata without importing runtime code;
 3. validate API version, contribution schema, artifact paths, hashes, signature, and registry identity;
-4. compute capability and trusted-UI approval changes;
-5. obtain user approval when required;
+4. compute the manifest and permission hashes and build an approval review when the exact artifact has not been approved;
+5. submit approval through the server-authoritative `reviewToken` contract when required;
 6. update the plugin config domain, lockfile, approval record, and incompatible-package record under the installation lock;
 7. reload and verify exactly one plugin registration;
 8. commit staged artifacts and remove rollback state.
 
-Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Upgrade lifecycle failure leaves the previous version active.
+Any failure restores the previous config, lockfile, approvals, incompatible records, artifact directory, and runtime view. Configured approval uses the same transaction and rollback path as install/update. Registry approval completes install or update through the existing upsert transaction. Upgrade lifecycle failure leaves the previous version active.
 
 Old-format packages are recorded as incompatible and require reinstall. They are never loaded through a compatibility reader.
 

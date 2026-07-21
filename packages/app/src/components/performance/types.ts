@@ -15,6 +15,8 @@ export type PerformanceMetricPoint = {
   memory?: number
   heapUsed?: number
   heapTotal?: number
+  external?: number
+  arrayBuffers?: number
   requests?: number
   latency?: number
   activeSessions?: number

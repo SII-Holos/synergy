@@ -1,7 +1,7 @@
 import path from "path"
 import fs from "fs/promises"
 import Ajv2020 from "ajv/dist/2020"
-import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { PluginHostServiceErrorCode, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceInvocationInput } from "../plugin-runtime/manager"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
@@ -12,14 +12,33 @@ import { isPathContained } from "../util/path-contain"
 import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
 import { PluginEvent } from "./event"
-import { cancelPluginTask, getPluginTask, invokePluginTool, startPluginTask } from "./host-services"
+import {
+  cancelPluginBlueprint,
+  cancelPluginTask,
+  cancelLightLoop,
+  getCurrentPluginTask,
+  getLightLoop,
+  getPluginBlueprint,
+  getPluginTask,
+  invokePluginTool,
+  startLightLoop,
+  startPluginBlueprint,
+  startPluginTask,
+} from "./host-services"
 
 const capabilityByMethod = {
   "session.get": "session.read",
   "session.abort": "session.control",
   "task.start": "task.delegate",
+  "task.current": "task.delegate",
   "task.get": "task.delegate",
   "task.cancel": "task.delegate",
+  "blueprint.start": "blueprint.delegate",
+  "blueprint.get": "blueprint.delegate",
+  "blueprint.cancel": "blueprint.delegate",
+  "lightloop.start": "lightloop.delegate",
+  "lightloop.get": "lightloop.delegate",
+  "lightloop.cancel": "lightloop.delegate",
   "workspace.read": "workspace.read",
   "workspace.write": "workspace.write",
   "workspace.metadata": "workspace.read",
@@ -30,6 +49,10 @@ const capabilityByMethod = {
   "secrets.delete": "secrets",
   "tool.invoke": "tool.invoke",
 } as const
+
+function pluginHostServiceError(code: string, message: string) {
+  return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
+}
 
 const validators = new Map<string, ReturnType<Ajv2020["compile"]>>()
 const sequences = new Map<string, number>()
@@ -50,6 +73,17 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
   const scope = await Scope.fromID(input.invocation.scopeId)
   if (!scope) throw new Error(`Plugin invocation scope not found: ${input.invocation.scopeId}`)
   return ScopeContext.provide({ scope, fn })
+}
+
+async function sessionInInvocationScope(input: PluginHostServiceInvocationInput, sessionId: string) {
+  const session = await Session.get(sessionId)
+  if (session.scope.id !== input.invocation.scopeId) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.SESSION_SCOPE_MISMATCH,
+      `Session ${sessionId} does not belong to the active Scope`,
+    )
+  }
+  return session
 }
 
 function workspacePath(directory: string, requested: unknown): string {
@@ -101,6 +135,64 @@ async function publishEvent(input: PluginHostServiceInvocationInput) {
   })
 }
 
+/**
+ * Resolve the parent session and message for a start operation.
+ *
+ * Priority:
+ *  1. Explicit request `parent` field,
+ *  2. Agent actor invocation context (falls back to invocation session/message),
+ *  3. Reject with TASK_PARENT_REQUIRED.
+ *
+ * On success validates the resolved parent Session exists and belongs to the
+ * active invocation Scope (TASK_PARENT_SCOPE_MISMATCH).
+ *
+ * Returns a resolved RuntimeContext ready for the target service.
+ */
+async function resolveStartParent(
+  input: PluginHostServiceInvocationInput,
+  methodLabel: string,
+  value: Record<string, unknown>,
+) {
+  const actor = input.invocation.actor
+  const parentParam =
+    value.parent && typeof value.parent === "object" ? (value.parent as Record<string, unknown>) : undefined
+  const sessionID =
+    typeof parentParam?.sessionId === "string"
+      ? parentParam.sessionId
+      : actor.type === "agent"
+        ? input.invocation.sessionId
+        : undefined
+  const messageID =
+    typeof parentParam?.messageId === "string"
+      ? parentParam.messageId
+      : actor.type === "agent"
+        ? actor.messageId
+        : undefined
+  if (!sessionID || !messageID) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.TASK_PARENT_REQUIRED,
+      `${methodLabel} requires a parent Session and message`,
+    )
+  }
+  const parentSession = await Session.get(sessionID)
+  if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.TASK_PARENT_SCOPE_MISMATCH,
+      `${methodLabel} parent Session does not belong to the active Scope`,
+    )
+  }
+  return {
+    pluginId: input.pluginId,
+    pluginDir: input.pluginDir,
+    sessionID,
+    messageID,
+    agent: actor.type === "agent" ? actor.agent : "synergy",
+    callID: actor.type === "agent" ? actor.callId : undefined,
+    directory: input.invocation.directory,
+    abort: input.signal,
+  }
+}
+
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
@@ -109,11 +201,12 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     if (input.method === "session.get") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.get requires sessionId")
-      return Session.get(sessionId)
+      return sessionInInvocationScope(input, sessionId)
     }
     if (input.method === "session.abort") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.abort requires sessionId")
+      await sessionInInvocationScope(input, sessionId)
       SessionInvoke.cancel(sessionId)
       return
     }
@@ -143,6 +236,14 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       if (typeof value.value !== "string") throw new Error("secrets.set requires string value")
       return store.set(key, value.value)
     }
+    if (input.method === "task.current") {
+      return getCurrentPluginTask({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        sessionId: input.invocation.sessionId,
+      })
+    }
     if (input.method === "task.get") {
       return getPluginTask({
         pluginId: input.pluginId,
@@ -159,41 +260,61 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
         handle: value as never,
       })
     }
-    const actor = input.invocation.actor
+    if (input.method === "blueprint.get") {
+      const loopID = value.loopID
+      if (typeof loopID !== "string") throw new Error("blueprint.get requires loopID")
+      return getPluginBlueprint({
+        scopeId: input.invocation.scopeId,
+        loopID,
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+      })
+    }
+    if (input.method === "lightloop.get") {
+      const sessionID = value.sessionID
+      if (typeof sessionID !== "string") throw new Error("lightloop.get requires sessionID")
+      return getLightLoop({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        sessionID,
+      })
+    }
+
+    // --- start operations with resolved parent ---
+    if (input.method === "lightloop.start") {
+      return startLightLoop({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        pluginDir: input.pluginDir,
+        context: await resolveStartParent(input, "lightloop.start", value),
+        request: value as never,
+      })
+    }
+    if (input.method === "blueprint.start") {
+      return startPluginBlueprint({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        pluginDir: input.pluginDir,
+        context: await resolveStartParent(input, "blueprint.start", value),
+        request: value as never,
+      })
+    }
     if (input.method === "task.start") {
-      const parent =
-        value.parent && typeof value.parent === "object" ? (value.parent as Record<string, unknown>) : undefined
-      const sessionID =
-        typeof parent?.sessionId === "string"
-          ? parent.sessionId
-          : actor.type === "agent"
-            ? input.invocation.sessionId
-            : undefined
-      const messageID =
-        typeof parent?.messageId === "string" ? parent.messageId : actor.type === "agent" ? actor.messageId : undefined
-      if (!sessionID || !messageID) throw new Error("task.start requires a parent Session and message")
-      const parentSession = await Session.get(sessionID)
-      if (!parentSession || parentSession.scope.id !== input.invocation.scopeId) {
-        throw new Error("task.start parent Session does not belong to the active Scope")
-      }
       return startPluginTask({
         pluginId: input.pluginId,
         pluginGeneration: input.manifest.artifacts.generation,
         scopeId: input.invocation.scopeId,
         pluginDir: input.pluginDir,
-        context: {
-          pluginId: input.pluginId,
-          pluginDir: input.pluginDir,
-          sessionID,
-          messageID,
-          agent: actor.type === "agent" ? actor.agent : "synergy",
-          callID: actor.type === "agent" ? actor.callId : undefined,
-          directory: input.invocation.directory,
-          abort: input.signal,
-        },
+        context: await resolveStartParent(input, "task.start", value),
         request: value as never,
       })
     }
+
+    // --- remaining operations that require agent context ---
+    const actor = input.invocation.actor
     if (actor.type !== "agent" || !input.invocation.sessionId) {
       throw new Error(`${input.method} requires an agent invocation context`)
     }
@@ -206,6 +327,28 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       callID: actor.callId,
       directory: input.invocation.directory,
       abort: input.signal,
+    }
+    if (input.method === "blueprint.cancel") {
+      const loopID = value.loopID
+      if (typeof loopID !== "string") throw new Error("blueprint.cancel requires loopID")
+      return cancelPluginBlueprint({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        context: runtimeContext,
+        loopID,
+      })
+    }
+    if (input.method === "lightloop.cancel") {
+      const sessionID = value.sessionID
+      if (typeof sessionID !== "string") throw new Error("lightloop.cancel requires sessionID")
+      return cancelLightLoop({
+        pluginId: input.pluginId,
+        pluginGeneration: input.manifest.artifacts.generation,
+        scopeId: input.invocation.scopeId,
+        context: runtimeContext,
+        sessionID,
+      })
     }
     if (input.method === "tool.invoke") {
       const toolId = value.toolId

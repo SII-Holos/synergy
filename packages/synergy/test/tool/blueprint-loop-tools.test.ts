@@ -48,13 +48,20 @@ function ctx(sessionID: string, agent = "synergy"): Tool.Context {
   }
 }
 
-async function createRunningLoop(input?: { auditAgent?: string; userPrompt?: string }) {
+async function createRunningLoop(input?: {
+  auditAgent?: string
+  userPrompt?: string
+  budget?: { maxRuntimeMs: number; maxIterations: number }
+  auditTools?: Record<string, boolean>
+}) {
   const session = await Session.create({})
   const loop = await BlueprintLoopStore.create({
     noteID: "note_blueprint",
     title: "Test Blueprint",
     sessionID: session.id,
     auditAgent: input?.auditAgent,
+    budget: input?.budget,
+    auditTools: input?.auditTools,
   })
   const running = await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
     status: "running",
@@ -124,7 +131,7 @@ async function startPendingReview(sessionID: string) {
   })
 }
 
-async function requestReview(input?: { auditAgent?: string; userPrompt?: string }) {
+async function requestReview(input?: Parameters<typeof createRunningLoop>[0]) {
   const running = await createRunningLoop(input)
   const launches = installReviewerLaunch()
   const tool = await BlueprintLoopStopTool.init()
@@ -165,6 +172,7 @@ describe("blueprint_loop_stop", () => {
         const { session, loop } = await createRunningLoop({
           auditAgent: "security-reviewer",
           userPrompt: "Do not change the public CLI contract.",
+          auditTools: { plugin__truthward__context_query: true, plugin__truthward__n03_artifact_get: true },
         })
         const launches = installReviewerLaunch()
         const tool = await BlueprintLoopStopTool.init()
@@ -190,6 +198,29 @@ describe("blueprint_loop_stop", () => {
           evidence: ["Focused tests pass"],
           requesterSessionID: session.id,
         })
+
+        await startPendingReview(session.id)
+        const reviewing = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(launches).toHaveLength(1)
+        expect(launches[0].agent).toBe("security-reviewer")
+        expect(launches[0].parentSessionID).toBe(session.id)
+        expect(launches[0].notifyParentOnComplete).toBe(false)
+        expect(launches[0].visibility).toBe("visible")
+        expect(launches[0].prompt).toContain(`Session ID: ${session.id}`)
+        expect(launches[0].prompt).toContain("Do not change the public CLI contract.")
+        expect(launches[0].prompt).toContain("blueprint_loop_approve")
+        expect(launches[0].prompt).toContain("blueprint_loop_reject")
+        // Audit launch receives exactly persisted auditTools, no execution-only submit tool
+        expect(launches[0].tools).toEqual({
+          plugin__truthward__context_query: true,
+          plugin__truthward__n03_artifact_get: true,
+        })
+        expect(launches[0].tools).not.toHaveProperty("plugin__truthward__n03_submit")
+
+        expect(reviewing.status).toBe("auditing")
+        expect(reviewing.auditTaskID).toBeDefined()
+        const reviewSession = await Session.get(reviewing.auditSessionID!)
+        expect(reviewSession.blueprint).toEqual({ loopID: loop.id, loopRole: "audit" })
       },
     })
   })
@@ -420,6 +451,35 @@ describe("blueprint_loop_reject", () => {
         const part = deliveries[0].mail.parts[0]
         expect(part.type).toBe("text")
         if (part.type === "text") expect(part.origin).toBe("system")
+      },
+    })
+  })
+
+  test("exhausts the configured iteration budget when the rejection reaches the limit", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const { session, loop, reviewSessionID } = await requestReview({
+          budget: { maxRuntimeMs: 60_000, maxIterations: 1 },
+        })
+        ;(SessionManager.deliver as any) = mock(async () => {})
+        const reject = await BlueprintLoopRejectTool.init()
+        const result = await reject.execute(
+          {
+            sessionID: session.id,
+            reason: "Acceptance evidence is incomplete.",
+            remaining: "Add the missing verification. BLOCKING",
+            instructions: "Run and record the missing verification.",
+          },
+          ctx(reviewSessionID, "supervisor"),
+        )
+
+        const exhausted = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
+        expect(exhausted.status).toBe("failed")
+        expect(exhausted.error).toContain("iteration_exhausted")
+        expect(exhausted.audit?.attempts).toBe(1)
+        expect(result.metadata.iterationExhausted).toBe(true)
       },
     })
   })

@@ -9,7 +9,7 @@ Synergy Plugin API 3 has one authoring source and one host path. A plugin export
 | Create, build, validate, run, and package a plugin                                        | [Getting started](getting-started.md)                          |
 | Understand the generated `plugin.json` contract                                           | [Generated manifest](manifest.md)                              |
 | Understand capabilities, Host Services, runtime generations, hooks, events, and lifecycle | [Runtime and capabilities](runtime-and-permissions.md)         |
-| Contribute agent-callable tools and delegated work                                        | [Tools and delegation](tools-and-delegation.md)                |
+| Contribute agent-callable tools, delegation, BlueprintLoop, and LightLoop workflows       | [Tools and delegation](tools-and-delegation.md)                |
 | Add workbench, navigation, renderer, settings, theme, or icon contributions               | [UI contributions](ui-contributions.md)                        |
 | Browse, publish, install, update, or remove packages                                      | [Marketplace](marketplace.md)                                  |
 | Review trust and operational boundaries                                                   | [Security](security.md)                                        |
@@ -20,6 +20,8 @@ Synergy Plugin API 3 has one authoring source and one host path. A plugin export
 The source definition owns plugin identity, capabilities, declarations, and handlers. Authors do not maintain a source `plugin.json`, a separate handler map, or a permission tree. `plugin.json` is build output.
 
 Every contribution has a plugin-local unique `id` and a discriminating `kind`. Executable contributions are operations, tools, hooks, auth providers, and lifecycle handlers. Agents, skills, MCP servers, and UI metadata are declarative. Host adapters register each kind with its owning Synergy subsystem.
+
+Declarative contributions extend the corresponding host subsystem; they do not create plugin-local copies of it. In particular, Agent contributions enter Synergy's Agent registry, delegated Cortex tasks enter native child Sessions, BlueprintLoop and LightLoop workflow delegation enters the corresponding controller, tools enter the host Tool Registry, and settings enter the host Settings renderer.
 
 The plugin ID remains identical across the definition, generated manifest, registry entry, lockfile, approval, runtime generation, asset URLs, and UI surface IDs. A mismatch is an error, not an alias.
 

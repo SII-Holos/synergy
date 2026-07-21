@@ -953,6 +953,58 @@ describe("session migrations", () => {
       },
     })
   })
+  test("migrates legacy Light Loop task descriptions to canonical instructions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const legacySession = await Session.create({ title: "Legacy Light Loop" })
+        const migratedSession = await Session.create({ title: "Migrated Light Loop" })
+        const currentSession = await Session.create({ title: "Current Light Loop" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const legacyKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(legacySession.id))
+        const migratedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(migratedSession.id))
+        const currentKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(currentSession.id))
+
+        await Storage.write(legacyKey, {
+          ...legacySession,
+          lightLoop: { active: true, taskDescription: "Resume the legacy task" },
+        })
+        await Storage.write(migratedKey, {
+          ...migratedSession,
+          workflow: { kind: "lightloop", taskDescription: "Resume the migrated task" },
+        })
+        await Storage.write(currentKey, {
+          ...currentSession,
+          workflow: { kind: "lightloop", instructions: "Keep current instructions" },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260718-lightloop-instructions-field")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        expect((await Storage.read<any>(legacyKey)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Resume the legacy task",
+        })
+        expect((await Storage.read<any>(migratedKey)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Resume the migrated task",
+        })
+        const legacy = await Storage.read<any>(legacyKey)
+        const migrated = await Storage.read<any>(migratedKey)
+        const current = await Storage.read<any>(currentKey)
+        expect(current.workflow).toEqual({ kind: "lightloop", instructions: "Keep current instructions" })
+
+        await migration!.up(() => {})
+        expect(await Storage.read<any>(legacyKey)).toEqual(legacy)
+        expect(await Storage.read<any>(migratedKey)).toEqual(migrated)
+        expect(await Storage.read<any>(currentKey)).toEqual(current)
+      },
+    })
+  })
   test("migrates retired intent-analyst DAG assignments to self", async () => {
     await using tmp = await tmpdir({ git: true })
     const tmpScope = await tmp.scope()

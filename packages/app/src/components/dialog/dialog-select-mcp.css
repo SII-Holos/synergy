@@ -21,7 +21,7 @@
   border-color: var(--mcp-border);
   background: var(--mcp-panel-bg);
   box-shadow:
-    0 22px 70px rgba(0, 0, 0, 0.3),
+    0 22px 70px var(--surface-overlay),
     0 1px 0 color-mix(in oklch, var(--border-base) 24%, transparent);
 }
 

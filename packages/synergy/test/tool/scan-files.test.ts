@@ -80,6 +80,24 @@ describe("tool.scan_files", () => {
       })
     })
 
+    test("explains invalid regular expressions without losing the subprocess error", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "a.ts"), "const a = 1\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          await expect(tool.execute({ pattern: "[", path: tmp.path }, ctx)).rejects.toThrow(
+            "scan_files could not run this regular expression",
+          )
+        },
+      })
+    })
+
     test("guides the agent when filters are too narrow", async () => {
       await using tmp = await tmpdir({
         git: true,
@@ -240,6 +258,54 @@ describe("tool.scan_files", () => {
           expect(result.metadata.limitReached).toBe(true)
           expect(result.metadata.nextSkipFiles).toBe(2)
           expect(result.output).toContain("Result limit reached")
+        },
+      })
+    })
+
+    test("does not offer skip pagination after an output safety limit", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "a.txt"), "needle small\n")
+          await Bun.write(path.join(dir, "z.txt"), `needle ${"x".repeat(300_000)}\n`)
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const result = await tool.execute({ pattern: "needle", path: tmp.path }, ctx)
+
+          expect(result.metadata.limitReached).toBe(true)
+          expect(result.metadata.truncatedReason).toBe("max_record_bytes")
+          expect(result.metadata.nextSkipFiles).toBeUndefined()
+          expect(result.output).not.toContain("Use skipFiles=")
+        },
+      })
+    })
+
+    test("continues file pagination without retaining earlier page contents", async () => {
+      await using tmp = await tmpdir({
+        git: true,
+        init: async (dir) => {
+          await Bun.write(path.join(dir, "a.ts"), "hit\n")
+          await Bun.write(path.join(dir, "b.ts"), "hit\n")
+          await Bun.write(path.join(dir, "c.ts"), "hit\n")
+        },
+      })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const tool = await ScanFilesTool.init()
+          const first = await tool.execute({ pattern: "hit", path: tmp.path, include: "*.ts", limitFiles: 2 }, ctx)
+          const second = await tool.execute(
+            { pattern: "hit", path: tmp.path, include: "*.ts", limitFiles: 2, skipFiles: 2 },
+            ctx,
+          )
+
+          expect(first.metadata.files).toHaveLength(2)
+          expect(second.metadata.files).toHaveLength(1)
+          expect(new Set([...first.metadata.files, ...second.metadata.files]).size).toBe(3)
         },
       })
     })

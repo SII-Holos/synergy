@@ -65,34 +65,26 @@
   --radius-2xl: 0.875rem;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.08), 0 1px 1px rgb(15 23 42 / 0.04);
+  --shadow-sm: 0 1px 2px var(--surface-overlay), 0 1px 1px var(--surface-overlay);
 
   --shadow-xs:
-    0 1px 2px -0.5px light-dark(hsl(0 0% 0% / 0.04), hsl(0 0% 0% / 0.06)),
-    0 0.5px 1.5px 0 light-dark(hsl(0 0% 0% / 0.025), hsl(0 0% 0% / 0.08)),
-    0 1px 3px 0 light-dark(hsl(0 0% 0% / 0.05), hsl(0 0% 0% / 0.1));
+    0 1px 2px -0.5px var(--surface-overlay), 0 0.5px 1.5px 0 var(--surface-overlay), 0 1px 3px 0 var(--surface-overlay);
   --shadow-md:
-    0 6px 12px -2px light-dark(hsl(0 0% 0% / 0.075), hsl(0 0% 0% / 0.1)),
-    0 4px 8px -2px light-dark(hsl(0 0% 0% / 0.075), hsl(0 0% 0% / 0.15)),
-    0 1px 2px light-dark(hsl(0 0% 0% / 0.1), hsl(0 0% 0% / 0.15));
+    0 6px 12px -2px var(--surface-overlay), 0 4px 8px -2px var(--surface-overlay), 0 1px 2px var(--surface-overlay);
   --shadow-lg:
-    0 16px 48px -6px light-dark(hsl(0 0% 0% / 0.05), hsl(0 0% 0% / 0.15)),
-    0 6px 12px -2px light-dark(hsl(0 0% 0% / 0.025), hsl(0 0% 0% / 0.1)),
-    0 1px 2.5px light-dark(hsl(0 0% 0% / 0.025), hsl(0 0% 0% / 0.1));
+    0 16px 48px -6px var(--surface-overlay), 0 6px 12px -2px var(--surface-overlay), 0 1px 2.5px var(--surface-overlay);
   --shadow-xs-border:
-    0 0 0 1px var(--border-base, rgba(11, 6, 0, 0.2)), 0 1px 2px -1px rgba(19, 16, 16, 0.04),
-    0 1px 2px 0 rgba(19, 16, 16, 0.06), 0 1px 3px 0 rgba(19, 16, 16, 0.08);
+    0 0 0 1px var(--border-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
+    0 1px 3px 0 var(--surface-overlay);
   --shadow-xs-border-base:
-    0 0 0 1px var(--border-weak-base, rgba(17, 0, 0, 0.12)), 0 1px 2px -1px rgba(19, 16, 16, 0.04),
-    0 1px 2px 0 rgba(19, 16, 16, 0.06), 0 1px 3px 0 rgba(19, 16, 16, 0.08);
+    0 0 0 1px var(--border-weak-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
+    0 1px 3px 0 var(--surface-overlay);
   --shadow-xs-border-select:
-    0 0 0 3px var(--border-weak-selected, rgba(17, 24, 39, 0.16)),
-    0 0 0 1px var(--border-selected, rgba(17, 24, 39, 0.34)), 0 1px 2px -1px rgba(19, 16, 16, 0.25),
-    0 1px 2px 0 rgba(19, 16, 16, 0.08), 0 1px 3px 0 rgba(19, 16, 16, 0.12);
+    0 0 0 3px var(--border-weak-selected), 0 0 0 1px var(--border-selected), 0 1px 2px -1px var(--surface-overlay),
+    0 1px 2px 0 var(--surface-overlay), 0 1px 3px 0 var(--surface-overlay);
   --shadow-xs-border-focus:
-    0 0 0 1px var(--border-base, rgba(11, 6, 0, 0.2)), 0 1px 2px -1px rgba(19, 16, 16, 0.25),
-    0 1px 2px 0 rgba(19, 16, 16, 0.08), 0 1px 3px 0 rgba(19, 16, 16, 0.12), 0 0 0 2px var(--background-weak, #f1f0f0),
-    0 0 0 3px var(--border-selected, rgba(17, 24, 39, 0.34));
+    0 0 0 1px var(--border-base), 0 1px 2px -1px var(--surface-overlay), 0 1px 2px 0 var(--surface-overlay),
+    0 1px 3px 0 var(--surface-overlay), 0 0 0 2px var(--background-weak), 0 0 0 3px var(--border-selected);
 
   --motion-duration-fast: 120ms;
   --motion-duration-base: 180ms;

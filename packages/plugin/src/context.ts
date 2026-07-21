@@ -67,6 +67,13 @@ export type PluginTaskParent = {
   messageId: string
 }
 
+export const PluginHostServiceErrorCode = {
+  TASK_PARENT_REQUIRED: "PLUGIN_TASK_PARENT_REQUIRED",
+  TASK_PARENT_SCOPE_MISMATCH: "PLUGIN_TASK_PARENT_SCOPE_MISMATCH",
+  SESSION_SCOPE_MISMATCH: "PLUGIN_SESSION_SCOPE_MISMATCH",
+} as const
+export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
+
 export type PluginTaskStartInput = {
   subagent: string
   description: string
@@ -104,8 +111,98 @@ export type PluginCortexTaskAfterInput = {
 
 export interface TaskHostService {
   start(input: PluginTaskStartInput): Promise<PluginTaskHandle>
+  current(): Promise<PluginTaskSnapshot | undefined>
   get(handle: PluginTaskHandle): Promise<PluginTaskSnapshot>
   cancel(handle: PluginTaskHandle): Promise<void>
+}
+
+// Protocol 5: BlueprintHostService exposes only start/get/cancel.
+export type BlueprintStartInput = {
+  title: string
+  description?: string
+  markdown: string
+  sourceDigest: string
+  correlationId: string
+  executionAgent: string
+  auditAgent: string
+  executionModel?: { providerID: string; modelID: string }
+  executionTools?: Record<string, boolean>
+  auditTools?: Record<string, boolean>
+  budget: { maxRuntimeMs: number; maxIterations: number }
+  parent?: PluginTaskParent
+}
+
+export type BlueprintLoopInfo = {
+  id: string
+  noteID: string
+  noteVersion?: number
+  title: string
+  description?: string
+  sessionID: string
+  executionAgent?: string
+  auditAgent: string
+  auditSessionID?: string
+  auditTaskID?: string
+  scopeID: string
+  status: "armed" | "running" | "waiting" | "auditing" | "completed" | "failed" | "cancelled"
+  runMode?: "current" | "new" | "worktree"
+  parentSessionID?: string
+  firstPrompt?: string
+  userPrompt?: string
+  error?: string
+  loopIndex?: number
+  source: "user" | "lattice" | "plugin"
+  sourceDigest?: string
+  budget?: { maxRuntimeMs: number; maxIterations: number }
+  pluginOwner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId?: string
+  }
+  audit?: { lastReason?: string; lastAuditedAt?: number; attempts: number }
+  time: { created: number; started?: number; updated: number; completed?: number }
+  model?: { providerID: string; modelID: string }
+}
+
+export type BlueprintAfterInput = {
+  loop: BlueprintLoopInfo
+}
+
+export interface BlueprintHostService {
+  start(input: BlueprintStartInput): Promise<BlueprintLoopInfo>
+  get(loopID: string): Promise<BlueprintLoopInfo>
+  cancel(loopID: string): Promise<BlueprintLoopInfo>
+}
+
+export type LightLoopStartInput = {
+  instructions: string
+  correlationId: string
+  executionAgent: string
+  reviewAgent: string
+  model?: { providerID: string; modelID: string }
+  executionTools?: Record<string, boolean>
+  reviewTools?: Record<string, boolean>
+  budget: { maxRuntimeMs: number; maxIterations: number }
+  parent?: PluginTaskParent
+}
+
+// Protocol 5: LightLoopInfo — sessionID is the Host-returned dedicated execution session.
+export type LightLoopInfo = {
+  sessionID: string
+  status: "running" | "reviewing" | "completed" | "cancelled" | "timed_out" | "iteration_exhausted" | "failed"
+  instructions: string
+  error?: string
+}
+
+export type LightLoopAfterInput = {
+  loop: LightLoopInfo
+}
+
+export interface LightLoopHostService {
+  start(input: LightLoopStartInput): Promise<LightLoopInfo>
+  get(sessionID: string): Promise<LightLoopInfo>
+  cancel(sessionID: string): Promise<LightLoopInfo>
 }
 
 export interface WorkspaceHostService {
@@ -140,6 +237,8 @@ export interface PluginInvocationContext {
   events: ScopedPluginEventPublisher
   session?: SessionHostService
   task?: TaskHostService
+  blueprint?: BlueprintHostService
+  lightloop?: LightLoopHostService
   workspace?: WorkspaceHostService
   settings?: PluginSettingsService
   secrets?: PluginSecretsService

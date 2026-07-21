@@ -7,6 +7,7 @@ import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { BlueprintLoopReviewAccess } from "../session/blueprint-loop-review-access"
 import { SessionManager } from "../session/manager"
+import { isIterationBudgetExhausted } from "../session/iteration-budget"
 import DESCRIPTION from "./blueprint-loop-reject.txt"
 import { Tool } from "./tool"
 
@@ -49,14 +50,38 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
       targetSessionID: params.sessionID,
       action: "reject",
     })
+    const attempts = (loop.audit?.attempts ?? 0) + 1
+    const maxIterations = loop.budget?.maxIterations
+    if (isIterationBudgetExhausted(attempts, maxIterations)) {
+      // Exhausted — terminalize as failed with iteration_exhausted
+      await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+        status: "failed",
+        error: "iteration_exhausted: maxIterations budget exceeded",
+        audit: {
+          lastReason: reason,
+          lastAuditedAt: Date.now(),
+          attempts,
+        },
+      })
+      await Bus.publish(LoopEvent.Rejected, { loopID: loop.id, reason })
+      return {
+        title: "BlueprintLoop iteration exhausted",
+        output: `Max iterations (${maxIterations}) reached. Loop is now failed with iteration_exhausted.`,
+        metadata: {
+          sessionID: loop.sessionID,
+          loopID: loop.id,
+          loopRejected: true,
+          attempts,
+          iterationExhausted: true,
+        },
+      }
+    }
 
     const audit = {
       lastReason: reason,
       lastAuditedAt: Date.now(),
-      attempts: (loop.audit?.attempts ?? 0) + 1,
+      attempts,
     }
-    await BlueprintLoopStore.updateStatus(scopeID, loop.id, { status: "running", audit })
-    await Bus.publish(LoopEvent.Rejected, { loopID: loop.id, reason })
 
     const text = [
       `BlueprintLoop ${loop.id} review requested changes.`,
@@ -98,6 +123,11 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
         },
       },
     })
+    await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+      status: "running",
+      audit,
+    })
+    await Bus.publish(LoopEvent.Rejected, { loopID: loop.id, reason })
 
     return {
       title: "BlueprintLoop rejected",
@@ -107,6 +137,7 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
         loopID: loop.id,
         loopRejected: true,
         attempts: audit.attempts,
+        iterationExhausted: false,
       },
     }
   },

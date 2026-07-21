@@ -10,6 +10,16 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { tmpdir } from "../fixture/fixture"
 
 describe("performance analysis", () => {
+  test("includes all process memory categories in analysis timelines", () => {
+    expect(PerformanceAnalysis.analysisMetricNames).toEqual(
+      expect.arrayContaining([
+        "process.memory.rss",
+        "process.memory.heap_used",
+        "process.memory.external",
+        "process.memory.array_buffers",
+      ]),
+    )
+  })
   test("builds a bounded redacted telemetry snapshot for the analyst", () => {
     const summary = {
       generatedAt: new Date(0).toISOString(),

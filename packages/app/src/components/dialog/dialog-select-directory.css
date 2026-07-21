@@ -23,7 +23,7 @@
   border-color: var(--project-directory-border);
   border-radius: 14px;
   box-shadow:
-    0 24px 82px rgba(0, 0, 0, 0.28),
+    0 24px 82px var(--surface-overlay),
     0 1px 0 color-mix(in srgb, var(--border-base) 30%, transparent);
 }
 

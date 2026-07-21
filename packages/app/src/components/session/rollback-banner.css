@@ -15,7 +15,7 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--background-base) 95%, transparent);
   border: 1px solid var(--border-weak);
-  box-shadow: var(--shadow-medium, 0 8px 24px rgb(0 0 0 / 0.18));
+  box-shadow: var(--shadow-medium, 0 8px 24px var(--surface-overlay));
   backdrop-filter: blur(8px);
   font-size: var(--font-size-small);
   color: var(--text-base);

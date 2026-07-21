@@ -28,6 +28,19 @@ describe("plugin task host context", () => {
       async invokeHost(method, params) {
         calls.push({ method, params })
         if (method === "task.start") return { taskId: "task-one", sessionId: "session-one" }
+        if (method === "task.current") {
+          return {
+            taskId: "task-one",
+            sessionId: "session-one",
+            status: "running",
+            owner: {
+              pluginId: "example-plugin",
+              pluginGeneration: "generation-one",
+              scopeId: "scope-one",
+              correlationId: "stage-one",
+            },
+          }
+        }
         if (method === "task.get") {
           return { taskId: "task-one", sessionId: "session-one", status: "running" }
         }
@@ -42,10 +55,14 @@ describe("plugin task host context", () => {
       parent: { sessionId: "parent", messageId: "message" },
     })
     expect(handle).toEqual({ taskId: "task-one", sessionId: "session-one" })
+    expect(await context.task?.current()).toMatchObject({
+      taskId: "task-one",
+      owner: { correlationId: "stage-one" },
+    })
     expect(await context.task?.get(handle!)).toMatchObject({ status: "running" })
     await context.task?.cancel(handle!)
 
-    expect(calls.map((call) => call.method)).toEqual(["task.start", "task.get", "task.cancel"])
+    expect(calls.map((call) => call.method)).toEqual(["task.start", "task.current", "task.get", "task.cancel"])
   })
 
   test("does not expose task methods without task.delegate", () => {

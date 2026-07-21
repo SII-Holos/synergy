@@ -248,7 +248,7 @@ The global Runtime domain controls the process-wide Cortex subagent maximum:
 
 `cortex.maxConcurrentTasks` must be a positive integer and defaults to `8`. Changes made through global Settings or the global configuration API apply without restarting the runtime. Lowering the value leaves running tasks untouched and queues new work until capacity is available; raising it releases eligible queued work. Project configuration does not control this process-global scheduler.
 
-Memory pressure may recommend a lower value, shown in Settings and the Cortex concurrency status API, but the recommendation never overrides the effective maximum. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
+The configured value is the desired maximum. Under memory pressure, the scheduler temporarily applies a safety maximum of four tasks, or two under critical pressure, and uses the lower value without cancelling running work. ArrayBuffer pressure enters those states at 1 GiB and 2 GiB respectively. Settings and the Cortex concurrency status API report the resulting effective limit. `SYNERGY_CORTEX_GLOBAL_CONCURRENCY` is a process-local positive-integer desired-maximum override with higher precedence than the global config value; while it is set, Settings reports the environment-managed value instead of editing it.
 
 ## GitHub Integration
 

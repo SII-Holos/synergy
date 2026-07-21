@@ -225,7 +225,7 @@ describe("SessionRecovery.resumePendingStopRequests", () => {
         await Session.update(session.id, (draft) => {
           draft.workflow = {
             kind: "lightloop",
-            taskDescription: "Finish the task",
+            instructions: "Finish the task",
             stopRequest: {
               summary: "Task complete",
               requestedAt: Date.now(),
@@ -491,7 +491,7 @@ describe("SessionWorking resolution after restart", () => {
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "lightloop", taskDescription: "Recovery test" }
+          draft.workflow = { kind: "lightloop", instructions: "Recovery test" }
         })
 
         const result = await SessionWorking.resolve(session.id)

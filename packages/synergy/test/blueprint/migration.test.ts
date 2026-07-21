@@ -322,4 +322,30 @@ describe("blueprint migrations", () => {
     expect("orchestration" in latticeLoop).toBe(false)
     expect("orchestration" in userLoop).toBe(false)
   })
+  test("blocks rollback while plugin-owned BlueprintLoops exist", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = (await Scope.fromDirectory(tmp.path)).scope
+    const scopeID = Identifier.asScopeID(scope.id)
+    const loopID = Identifier.ascending("blueprint_loop")
+    await Storage.write(StoragePath.blueprintLoop(scopeID, loopID), {
+      ...blueprintLoop({
+        id: loopID,
+        noteID: Identifier.ascending("note"),
+        sessionID: Identifier.ascending("session"),
+        scopeID,
+        status: "completed",
+        updated: Date.now(),
+      }),
+      source: "plugin",
+      pluginOwner: {
+        pluginId: "research-plugin",
+        pluginGeneration: "generation-one",
+        scopeId: scope.id,
+      },
+    })
+
+    const migration = migrations.find((entry) => entry.id === "20260715-blueprint-loop-source-plugin")
+    expect(migration?.down).toBeDefined()
+    await expect(migration!.down!(() => {})).rejects.toThrow("plugin-owned loops exist")
+  })
 })

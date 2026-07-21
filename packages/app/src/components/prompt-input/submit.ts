@@ -36,7 +36,7 @@ import { createUploadedAttachmentInputPart } from "./attachment-submit"
 import { createPromptDraftSnapshot, createSubmitFailureRestoreSnapshot } from "@/utils/prompt"
 import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
-import { buildLightLoopTaskDescription } from "./light-loop-task"
+import { buildLightLoopInstructions } from "./light-loop-instructions"
 import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
 import { resolvePromptSubmitIntent } from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
@@ -260,18 +260,20 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     const armedLattice = isNewSession ? input.pendingLattice() : null
     if (armedLattice) input.clearPendingLattice()
     const armedLightLoop = input.pendingLightLoop()
-    const fileAttachmentsForTask = currentPrompt.filter((part): part is FileAttachmentPart => part.type === "file")
-    const armedLightLoopTaskDescription = armedLightLoop
-      ? buildLightLoopTaskDescription({
+    const fileAttachmentsForInstructions = currentPrompt.filter(
+      (part): part is FileAttachmentPart => part.type === "file",
+    )
+    const armedLightLoopInstructions = armedLightLoop
+      ? buildLightLoopInstructions({
           text,
           uploads: attachments,
           notes,
           sessions,
-          fileAttachments: fileAttachmentsForTask,
+          fileAttachments: fileAttachmentsForInstructions,
           contextItems: currentContext.items,
         })
       : undefined
-    if (armedLightLoop && !armedLightLoopTaskDescription && !blueprintSlot) {
+    if (armedLightLoop && !armedLightLoopInstructions && !blueprintSlot) {
       showToast({
         type: "warning",
         title: i18n._(PI.submitLightLoopTitle),
@@ -525,7 +527,7 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       session = await client.workflow.session
         .set({
           id: sessionID,
-          workflowSetInput: { kind: "lightloop", taskDescription: armedLightLoopTaskDescription! },
+          workflowSetInput: { kind: "lightloop", instructions: armedLightLoopInstructions! },
         })
         .then((x) => {
           enabledLightLoopForSubmit = { sessionID }

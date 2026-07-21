@@ -5,13 +5,14 @@ import type {
   PluginContribution,
 } from "@ericsanchezok/synergy-plugin"
 import {
+  deserializePluginRuntimeError,
   PLUGIN_RUNTIME_PROTOCOL_VERSION,
+  serializePluginRuntimeError,
   type HostToPlugin,
   type PluginHostServiceMethod,
   type PluginToHost,
   type RuntimeActivationData,
   type RuntimeInvocationContextData,
-  type SerializedPluginRuntimeError,
 } from "./protocol.js"
 import { createPluginInvocationContext } from "./context-factory.js"
 
@@ -27,18 +28,6 @@ const hostRequests = new Map<
 
 function post(message: PluginToHost) {
   process.send?.(message)
-}
-
-function serialize(error: unknown): SerializedPluginRuntimeError {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      code: "code" in error ? String(error.code) : undefined,
-    }
-  }
-  return { name: "Error", message: String(error) }
 }
 
 function findDefinition(module: Record<string, unknown>, pluginId: string): PluginDefinition {
@@ -158,7 +147,7 @@ async function shutdown() {
 function handle(message: HostToPlugin) {
   if (message.type === "activate") {
     void activate(message.input).catch((error) => {
-      post({ type: "log", level: "error", message: serialize(error).message })
+      post({ type: "log", level: "error", message: serializePluginRuntimeError(error).message })
       process.exit(1)
     })
     return
@@ -168,7 +157,7 @@ function handle(message: HostToPlugin) {
       (value) =>
         post({ type: "response", requestId: message.requestId, generation: message.generation, ok: true, value }),
       (error) => {
-        const serialized = serialize(error)
+        const serialized = serializePluginRuntimeError(error)
         post({ type: "log", level: "error", message: serialized.message })
         post({
           type: "response",
@@ -191,7 +180,7 @@ function handle(message: HostToPlugin) {
     hostRequests.delete(message.requestId)
     clearTimeout(pending.timeout)
     if (message.ok) pending.resolve(message.value)
-    else pending.reject(Object.assign(new Error(message.error.message), { name: message.error.name }))
+    else pending.reject(deserializePluginRuntimeError(message.error))
     return
   }
   if (message.type === "shutdown") {

@@ -159,6 +159,9 @@ describe.serial("performance observability store", () => {
 
       const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
       expect(summary.resources.rssBytes).toBeGreaterThan(0)
+      expect(summary.resources.heapUsedBytes).toBeGreaterThanOrEqual(0)
+      expect(summary.resources.externalBytes).toBeGreaterThanOrEqual(0)
+      expect(summary.resources.arrayBuffersBytes).toBeGreaterThanOrEqual(0)
       expect(summary.resources.rssBytes).not.toBe(8 * 1024 * 1024)
       expect(summary.resources.childProcessCount).toBe(1)
       expect(summary.resources.childProcessRssBytes).toBe(8 * 1024 * 1024)

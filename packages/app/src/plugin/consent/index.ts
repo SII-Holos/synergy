@@ -1,5 +1,5 @@
 export { PermissionRiskBadge } from "./PermissionRiskBadge"
 export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff } from "./schema"
 
-export { InstallConsentDialog } from "./InstallConsentDialog"
-export type { InstallConsentDialogProps } from "./InstallConsentDialog"
+export { PluginConsentDialog } from "./PluginConsentDialog"
+export type { PluginConsentDialogProps, PluginConsentIntent } from "./PluginConsentDialog"
