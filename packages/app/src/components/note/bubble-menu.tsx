@@ -219,7 +219,7 @@ function FormulaMenu(props: {
   }
 
   return (
-    <div class="w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-border-base/55 bg-surface-raised-stronger-non-alpha p-3 shadow-[0_18px_60px_-30px_rgba(28,34,48,0.45)]">
+    <div class="w-[min(28rem,calc(100vw-2rem))] rounded-xl border border-border-base/55 bg-surface-raised-stronger-non-alpha p-3 shadow-lg">
       <div class="mb-2 flex items-center gap-2">
         <span class="text-11-medium text-text-weak">
           {props.lingui._({ id: B.latex.id, message: B.latex.message })}

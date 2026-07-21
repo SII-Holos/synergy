@@ -609,7 +609,7 @@ function PerformanceLineChart(props: {
     return buildLineChartModel({
       points: props.points,
       datasets: props.datasets,
-      theme: { axisText: chartTheme().axis, gridColor: chartTheme().grid },
+      theme: chartTheme(),
       formatTime: (value) => fmt.time(new Date(value), { hour: "2-digit", minute: "2-digit" }),
     })
   })

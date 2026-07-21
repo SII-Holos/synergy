@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { desktopErrorPage } from "../src/error-page.js"
 import { isAllowedAppNavigation } from "../src/navigation-policy.js"
 import { desktopStartupPage, startupStatusScript, startupThemeScript } from "../src/startup-page.js"
+import { defaultDesktopSkinState, desktopThemeSnapshot } from "../src/theme.js"
 
 const mainSource = await Bun.file(new URL("../src/main.ts", import.meta.url)).text()
 const preloadSource = await Bun.file(new URL("../src/preload.ts", import.meta.url)).text()
@@ -13,10 +14,18 @@ function decodeDesktopHtml(url: string): string {
   return decodeURIComponent(body)
 }
 
+function desktopTheme(mode: "light" | "dark") {
+  return desktopThemeSnapshot(defaultDesktopSkinState(mode), mode === "dark")
+}
+
 describe("desktop startup page", () => {
   test("renders a custom desktop shell before the app surface is ready", () => {
     const html = decodeDesktopHtml(
-      desktopStartupPage({ chrome: "custom", iconDataUrl: "data:image/png;base64,c3luZXJneQ==", theme: "light" }),
+      desktopStartupPage({
+        chrome: "custom",
+        iconDataUrl: "data:image/png;base64,c3luZXJneQ==",
+        theme: desktopTheme("light"),
+      }),
     )
 
     expect(html).toContain("<title>Starting Synergy</title>")
@@ -36,8 +45,8 @@ describe("desktop startup page", () => {
   })
 
   test("uses the explicit resolved desktop theme instead of a fixed dark startup base", () => {
-    const lightHtml = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: "light" }))
-    const darkHtml = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: "dark" }))
+    const lightHtml = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: desktopTheme("light") }))
+    const darkHtml = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: desktopTheme("dark") }))
 
     expect(lightHtml).toContain('data-startup-theme="light"')
     expect(lightHtml).toContain("color-scheme: light;")
@@ -50,8 +59,23 @@ describe("desktop startup page", () => {
     expect(mainSource).not.toContain('backgroundColor: "#111214"')
   })
 
+  test("renders startup and error pages from the persisted custom skin snapshot", () => {
+    const state = defaultDesktopSkinState("dark")
+    state.themeId = "acme:violet"
+    state.dark.background = "#120B24"
+    state.dark.text = "#F8F4FF"
+    state.dark.panel = "#21153A"
+    const theme = desktopThemeSnapshot(state, true)
+    const startup = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme }))
+    const error = decodeDesktopHtml(desktopErrorPage("Failed", "details", theme))
+    expect(startup).toContain("--startup-bg: #120B24")
+    expect(startup).toContain("--startup-text: #F8F4FF")
+    expect(error).toContain("--error-bg: #120B24")
+    expect(error).toContain("--error-panel-bg: #21153A")
+  })
+
   test("centers an animated icon splash instead of mirroring app layout", () => {
-    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: "light" }))
+    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "custom", theme: desktopTheme("light") }))
 
     expect(html).toContain("place-items: center;")
     expect(html).toContain("width: 96px;")
@@ -63,17 +87,19 @@ describe("desktop startup page", () => {
   })
 
   test("renders the native titlebar spacer for macOS windows", () => {
-    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "native", theme: "dark" }))
+    const html = decodeDesktopHtml(desktopStartupPage({ chrome: "native", theme: desktopTheme("dark") }))
 
     expect(html).toContain('class="startup-native-titlebar"')
     expect(html).not.toContain('<header class="startup-chrome">')
   })
 
   test("allows themed local startup and diagnostic pages before an app origin exists", () => {
-    const errorHtml = decodeDesktopHtml(desktopErrorPage("Failed", "details", "light"))
+    const errorHtml = decodeDesktopHtml(desktopErrorPage("Failed", "details", desktopTheme("light")))
 
-    expect(isAllowedAppNavigation(desktopStartupPage({ chrome: "custom", theme: "light" }), null)).toBe(true)
-    expect(isAllowedAppNavigation(desktopErrorPage("Failed", "details", "light"), null)).toBe(true)
+    expect(isAllowedAppNavigation(desktopStartupPage({ chrome: "custom", theme: desktopTheme("light") }), null)).toBe(
+      true,
+    )
+    expect(isAllowedAppNavigation(desktopErrorPage("Failed", "details", desktopTheme("light")), null)).toBe(true)
     expect(errorHtml).toContain('data-error-theme="light"')
     expect(errorHtml).toContain("--error-bg: #FAFAFA")
     expect(errorHtml).toContain("background: var(--error-bg)")
@@ -84,7 +110,7 @@ describe("desktop startup page", () => {
     expect(startupStatusScript({ title: "Loading workspace", detail: "Connecting to the local app surface." })).toBe(
       'window.synergySetStartupStatus?.({"title":"Loading workspace","detail":"Connecting to the local app surface."})',
     )
-    expect(startupThemeScript("dark")).toBe('window.synergySetStartupTheme?.("dark")')
+    expect(startupThemeScript(desktopTheme("dark"))).toContain('window.synergySetStartupTheme?.({"version":2')
   })
 
   test("hosts the startup page in an overlay instead of the main app navigation", () => {

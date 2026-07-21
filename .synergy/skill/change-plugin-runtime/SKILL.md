@@ -25,6 +25,7 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 9. Keep operations finite and schema-validated. Use declared events for invalidation; do not add a generic plugin Job or business-data store.
 10. Use host-declared observer/transform/guard hook points with deterministic ordering and contribution-level degradation.
 11. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
+    Theme build, validate, and dev paths share `@ericsanchezok/synergy-plugin/theme`, validate source and packaged JSON, include declarative asset content in generation identity, and publish a complete theme registry generation atomically.
 12. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
 13. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
 

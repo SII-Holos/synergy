@@ -443,7 +443,7 @@
   border-radius: 1.05rem;
   background: var(--surface-raised-stronger-non-alpha);
   box-shadow:
-    0 18px 44px rgba(0, 0, 0, 0.16),
+    0 18px 44px var(--surface-overlay),
     0 1px 0 color-mix(in srgb, var(--border-weaker-base) 54%, transparent) inset;
   overflow: hidden;
 }
