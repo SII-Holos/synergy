@@ -7,44 +7,48 @@ export const RELEASE_TAG_PREFIX = "v"
 export const VERSION_MANAGED_PACKAGE_PATHS = [
   path.join(REPO_ROOT, "packages/synergy/package.json"),
   path.join(REPO_ROOT, "packages/sdk/js/package.json"),
+  path.join(REPO_ROOT, "packages/util/package.json"),
   path.join(REPO_ROOT, "packages/plugin/package.json"),
   path.join(REPO_ROOT, "packages/plugin-kit/package.json"),
-  path.join(REPO_ROOT, "packages/meta-protocol/package.json"),
-  // meta-synergy npm publish removed — package too large for npm registry
-  // path.join(REPO_ROOT, "packages/meta-synergy/package.json"),
+  path.join(REPO_ROOT, "packages/synergy-link-protocol/package.json"),
+  // synergy-link npm publish removed — package too large for npm registry
+  // path.join(REPO_ROOT, "packages/synergy-link/package.json"),
   path.join(REPO_ROOT, "packages/app/package.json"),
   path.join(REPO_ROOT, "packages/desktop/package.json"),
 ] as const
 
 export type RegistryPackageName =
   | "@ericsanchezok/synergy-sdk"
-  | "@ericsanchezok/meta-protocol"
+  | "@ericsanchezok/synergy-util"
+  | "@ericsanchezok/synergy-link-protocol"
   | "@ericsanchezok/synergy-plugin"
   | "@ericsanchezok/synergy-plugin-kit"
   | "@ericsanchezok/synergy"
-// meta-synergy npm publish removed — package too large for npm registry
-// | "@ericsanchezok/meta-synergy"
+// synergy-link npm publish removed — package too large for npm registry
+// | "@ericsanchezok/synergy-link"
 
 export const FIXED_REGISTRY_PACKAGES = [
   "@ericsanchezok/synergy-sdk",
-  "@ericsanchezok/meta-protocol",
+  "@ericsanchezok/synergy-util",
+  "@ericsanchezok/synergy-link-protocol",
   "@ericsanchezok/synergy-plugin",
   "@ericsanchezok/synergy-plugin-kit",
   "@ericsanchezok/synergy",
-  // meta-synergy npm publish removed — package too large for npm registry
-  // "@ericsanchezok/meta-synergy",
+  // synergy-link npm publish removed — package too large for npm registry
+  // "@ericsanchezok/synergy-link",
 ] as const satisfies readonly RegistryPackageName[]
 
 export const SDK_DIR = path.join(REPO_ROOT, "packages/sdk/js")
-export const META_PROTOCOL_DIR = path.join(REPO_ROOT, "packages/meta-protocol")
+export const UTIL_DIR = path.join(REPO_ROOT, "packages/util")
+export const SYNERGY_LINK_PROTOCOL_DIR = path.join(REPO_ROOT, "packages/synergy-link-protocol")
 export const PLUGIN_DIR = path.join(REPO_ROOT, "packages/plugin")
 export const PLUGIN_KIT_DIR = path.join(REPO_ROOT, "packages/plugin-kit")
 export const SYNERGY_DIR = path.join(REPO_ROOT, "packages/synergy")
 export const APP_DIR = path.join(REPO_ROOT, "packages/app")
 export const DESKTOP_DIR = path.join(REPO_ROOT, "packages/desktop")
 
-export const META_SYNERGY_DIR = path.join(REPO_ROOT, "packages/meta-synergy")
-export const META_SYNERGY_DIST_DIR = path.join(META_SYNERGY_DIR, "dist")
+export const SYNERGY_LINK_DIR = path.join(REPO_ROOT, "packages/synergy-link")
+export const SYNERGY_LINK_DIST_DIR = path.join(SYNERGY_LINK_DIR, "dist")
 
 export const APP_DIST_DIR = path.join(APP_DIR, "dist")
 export const SYNERGY_DIST_DIR = path.join(SYNERGY_DIR, "dist")

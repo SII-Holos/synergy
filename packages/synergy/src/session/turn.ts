@@ -6,8 +6,9 @@ export namespace Turn {
     assistants: MessageV2.WithParts[]
   }
 
-  function isSummaryAssistant(msg: MessageV2.WithParts): boolean {
+  function isSyntheticAssistant(msg: MessageV2.WithParts): boolean {
     if (msg.info.role !== "assistant") return false
+    if (!MessageV2.isPromptVisible(msg)) return true
     return (msg.info as MessageV2.Assistant).summary === true
   }
 
@@ -22,7 +23,7 @@ export namespace Turn {
         if (current) turns.push(current)
         current = { user: msg, assistants: [] }
       } else if (msg.info.role === "assistant" && current) {
-        if (skip && isSummaryAssistant(msg)) continue
+        if (skip && isSyntheticAssistant(msg)) continue
         if (skip || msg.info.parentID === current.user.info.id) {
           current.assistants.push(msg)
         }
@@ -51,7 +52,7 @@ export namespace Turn {
         break
       }
       if (msg.info.role === "assistant") {
-        if (skip && isSummaryAssistant(msg)) continue
+        if (skip && isSyntheticAssistant(msg)) continue
         if (skip || msg.info.parentID === userMessageID) {
           assistants.push(msg)
         }
@@ -74,13 +75,10 @@ export namespace Turn {
     if (msg.info.role !== "user") return false
     if (!MessageV2.isPromptVisible(msg)) return true
     if (msg.parts.length === 0) return true
-    return msg.parts.every((p) => {
-      if (p.type === "text" && p.synthetic) return true
-      if (p.type === "compaction") return true
-      return false
-    })
+    return msg.parts.every((p) => MessageV2.isSystemPart(p))
   }
 
+  /** @deprecated No longer needed since parentID === rootID. Kept for library callers. */
   export function resolveRealUser(messages: MessageV2.WithParts[], userMessageID: string): string {
     const idx = messages.findIndex((m) => m.info.id === userMessageID && m.info.role === "user")
     if (idx < 0) return userMessageID
@@ -93,6 +91,7 @@ export namespace Turn {
     return userMessageID
   }
 
+  /** @deprecated No longer needed since parentID === rootID. Kept for library callers. */
   export function resolveUserText(messages: MessageV2.WithParts[], userMessageID: string): string | undefined {
     const idx = messages.findIndex((m) => m.info.id === userMessageID && m.info.role === "user")
     if (idx < 0) return undefined
@@ -106,7 +105,7 @@ export namespace Turn {
     collected.reverse()
 
     const text = collected
-      .flatMap((m) => m.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic))
+      .flatMap((m) => m.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p)))
       .map((p) => p.text)
       .join("\n")
     return text.trim() || undefined

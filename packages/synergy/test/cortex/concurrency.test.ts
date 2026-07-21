@@ -1,5 +1,7 @@
-import { describe, expect, test, beforeEach } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import { CortexConcurrency } from "../../src/cortex/concurrency"
+
+const originalGlobalConcurrency = process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY
 
 async function flushMicrotasks(times = 1): Promise<void> {
   for (let i = 0; i < times; i++) {
@@ -7,8 +9,25 @@ async function flushMicrotasks(times = 1): Promise<void> {
   }
 }
 
+function memorySnapshot(rssGiB: number, arrayBuffersGiB = 0) {
+  return {
+    rssBytes: rssGiB * 1024 ** 3,
+    heapUsedBytes: 1,
+    heapTotalBytes: 1,
+    externalBytes: 1,
+    arrayBuffersBytes: arrayBuffersGiB * 1024 ** 3,
+  }
+}
+
 describe("CortexConcurrency", () => {
   beforeEach(() => {
+    delete process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY
+    CortexConcurrency.reset()
+  })
+
+  afterEach(() => {
+    if (originalGlobalConcurrency === undefined) delete process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY
+    else process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY = originalGlobalConcurrency
     CortexConcurrency.reset()
   })
 
@@ -56,6 +75,7 @@ describe("CortexConcurrency", () => {
     })
 
     test("different agents have separate limits", async () => {
+      CortexConcurrency.configure(16)
       for (let i = 0; i < 8; i++) {
         await CortexConcurrency.acquire("agent-a")
       }
@@ -66,6 +86,99 @@ describe("CortexConcurrency", () => {
       const status = CortexConcurrency.status()
       expect(status["agent-a"].running).toBe(8)
       expect(status["agent-b"].running).toBe(8)
+    })
+
+    test("caps the configured global limit under critical memory pressure", async () => {
+      CortexConcurrency.configure(3)
+      CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(10, 9))
+
+      await CortexConcurrency.acquire("agent-a")
+      await CortexConcurrency.acquire("agent-b")
+
+      let resolved = false
+      const queued = CortexConcurrency.acquire("agent-c").then(() => {
+        resolved = true
+      })
+      await flushMicrotasks(4)
+
+      expect(resolved).toBe(false)
+      expect(CortexConcurrency.globalStatus()).toMatchObject({
+        running: 2,
+        effective: 2,
+        memoryPressureLimit: 2,
+        source: "config",
+      })
+
+      CortexConcurrency.release("agent-a")
+      await queued
+      expect(resolved).toBe(true)
+    })
+
+    test("caps the environment maximum under memory pressure", () => {
+      CortexConcurrency.configure(6)
+      process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY = "4"
+      const critical = memorySnapshot(10, 9)
+
+      expect(CortexConcurrency.getGlobalLimit(critical)).toBe(2)
+      expect(CortexConcurrency.getMemoryPressureLimit(critical)).toBe(2)
+      expect(CortexConcurrency.globalStatus(critical)).toMatchObject({
+        configured: 6,
+        environment: 4,
+        effective: 2,
+        memoryPressureLimit: 2,
+        source: "environment",
+      })
+    })
+
+    test("applies memory pressure limits when unconfigured", () => {
+      expect(CortexConcurrency.getGlobalLimit(memorySnapshot(1))).toBe(8)
+      expect(CortexConcurrency.getGlobalLimit(memorySnapshot(1, 1.1))).toBe(4)
+      expect(CortexConcurrency.getGlobalLimit(memorySnapshot(1, 2.1))).toBe(2)
+    })
+
+    test("raising the configured limit wakes queued tasks", async () => {
+      CortexConcurrency.configure(2)
+      await CortexConcurrency.acquire("agent-a")
+      await CortexConcurrency.acquire("agent-b")
+
+      let resolved = false
+      const queued = CortexConcurrency.acquire("agent-c").then(() => {
+        resolved = true
+      })
+      await flushMicrotasks(2)
+      expect(resolved).toBe(false)
+
+      CortexConcurrency.configure(3)
+      await queued
+      expect(resolved).toBe(true)
+      expect(CortexConcurrency.globalStatus().running).toBe(3)
+    })
+
+    test("lowering the configured limit preserves running tasks and blocks new ones", async () => {
+      CortexConcurrency.configure(4)
+      await Promise.all([
+        CortexConcurrency.acquire("agent-a"),
+        CortexConcurrency.acquire("agent-b"),
+        CortexConcurrency.acquire("agent-c"),
+        CortexConcurrency.acquire("agent-d"),
+      ])
+
+      CortexConcurrency.configure(2)
+      let resolved = false
+      const queued = CortexConcurrency.acquire("agent-e").then(() => {
+        resolved = true
+      })
+      await flushMicrotasks(2)
+
+      expect(CortexConcurrency.globalStatus()).toMatchObject({ running: 4, effective: 2 })
+      expect(resolved).toBe(false)
+
+      CortexConcurrency.release("agent-a")
+      CortexConcurrency.release("agent-b")
+      CortexConcurrency.release("agent-c")
+      await queued
+      expect(resolved).toBe(true)
+      expect(CortexConcurrency.globalStatus().running).toBe(2)
     })
   })
 
@@ -146,10 +259,23 @@ describe("CortexConcurrency", () => {
     })
   })
 
+  describe("memory pressure limit", () => {
+    test("reports normal, soft, and critical memory limits", () => {
+      expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1))).toEqual({ limit: null, reason: "normal" })
+      expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1, 1.1))).toEqual({
+        limit: 4,
+        reason: "memory_pressure",
+      })
+      expect(CortexConcurrency.getMemoryPressure(memorySnapshot(1, 2.1))).toEqual({
+        limit: 2,
+        reason: "critical_memory_pressure",
+      })
+    })
+  })
+
   describe("getLimit", () => {
-    test("returns default limit of 8", () => {
-      const limit = CortexConcurrency.getLimit("any-agent")
-      expect(limit).toBe(8)
+    test("returns the fixed per-agent limit of 8", () => {
+      expect(CortexConcurrency.getLimit("any-agent")).toBe(8)
     })
   })
 })

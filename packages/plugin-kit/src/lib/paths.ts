@@ -1,6 +1,11 @@
-import os from "os"
-import path from "path"
+import {
+  synergyHome,
+  synergyRoot,
+  synergySigningKeyFile,
+  synergySigningKeysDir,
+} from "@ericsanchezok/synergy-plugin/paths"
 
-export const SYNERGY_ROOT = process.env.SYNERGY_HOME || path.join(os.homedir(), ".synergy")
-export const SIGNING_KEYS_DIR = path.join(SYNERGY_ROOT, "keys")
-export const SIGNING_KEY_FILE = path.join(SIGNING_KEYS_DIR, "signing-key.json")
+export const SYNERGY_HOME = synergyHome()
+export const SYNERGY_ROOT = synergyRoot()
+export const SIGNING_KEYS_DIR = synergySigningKeysDir()
+export const SIGNING_KEY_FILE = synergySigningKeyFile()

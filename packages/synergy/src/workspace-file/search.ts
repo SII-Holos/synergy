@@ -6,9 +6,11 @@ import { LSP } from "../lsp"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileIndexer } from "./indexer"
 import { WorkspaceFileService } from "./service"
+import { ProcessOutput } from "../process/output"
 
 const DEFAULT_LIMIT = 50
 const SEARCH_TIMEOUT_MS = 20_000
+const MAX_CONTENT_LINE_LENGTH = 2000
 
 function parseCursor(input: string | undefined) {
   return Math.max(0, Number.parseInt(input ?? "0", 10) || 0)
@@ -112,63 +114,55 @@ async function searchContent(input: {
     }
   }
 
-  const args = [await Ripgrep.filepath(), "--json", "--hidden", "--glob=!.git/*"]
-  for (const glob of input.include ?? []) args.push(`--glob=${glob}`)
-  for (const glob of input.exclude ?? []) args.push(`--glob=!${glob}`)
-  args.push("--", input.query)
-
-  const proc = Bun.spawn(args, {
-    cwd: ScopeContext.current.directory,
-    stdout: "pipe",
-    stderr: "ignore",
-  })
-  const signal = input.signal
-    ? AbortSignal.any([input.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)])
-    : AbortSignal.timeout(SEARCH_TIMEOUT_MS)
-  const kill = () => proc.kill()
-  signal.addEventListener("abort", kill, { once: true })
-  const text = await new Response(proc.stdout).text().finally(() => signal.removeEventListener("abort", kill))
-  await proc.exited.catch(() => {})
+  const timeoutSignal = AbortSignal.timeout(SEARCH_TIMEOUT_MS)
+  const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal
 
   const offset = parseCursor(input.cursor)
   const items: WorkspaceFile.ContentSearchItem[] = []
-  const lines = text.trim().split(/\r?\n/).filter(Boolean)
   let seen = 0
-  for (const line of lines) {
-    let parsed: any
-    try {
-      parsed = JSON.parse(line)
-    } catch {
-      continue
-    }
-    if (parsed?.type !== "match") continue
-    if (seen < offset) {
-      seen++
-      continue
-    }
-    if (items.length >= input.limit + 1) break
-    const data = parsed.data
-    try {
-      const submatches: WorkspaceFile.ContentSearchItem["submatches"] = Array.isArray(data.submatches)
-        ? data.submatches.map((item: any) => ({
-            text: String(item.match?.text ?? ""),
-            start: Number(item.start ?? 0),
-            end: Number(item.end ?? 0),
-          }))
-        : []
+  let truncated = false
+  let pageLimited = false
+  try {
+    for await (const data of Ripgrep.matches({
+      cwd: ScopeContext.current.directory,
+      pattern: input.query,
+      glob: [...(input.include ?? []), ...(input.exclude ?? []).map((glob) => `!${glob}`)],
+      fixedStrings: true,
+      hidden: true,
+      sortPath: true,
+      signal,
+    })) {
+      if (seen++ < offset) continue
+      const submatches: WorkspaceFile.ContentSearchItem["submatches"] = data.submatches.map((item) => ({
+        text: item.match.text,
+        start: item.start,
+        end: item.end,
+      }))
+      const rawLine = data.lines.text.replace(/\r?\n$/, "")
       items.push({
         kind: "content",
         path: WorkspaceFileService.relative(data.path.text),
         lineNumber: data.line_number,
         column: submatches[0]?.start ?? 0,
-        line: String(data.lines.text ?? "").replace(/\r?\n$/, ""),
+        line: rawLine.length > MAX_CONTENT_LINE_LENGTH ? `${rawLine.slice(0, MAX_CONTENT_LINE_LENGTH)}...` : rawLine,
         score: 1,
         submatches,
         previewRanges: submatches.map((item) => ({ start: item.start, end: item.end })),
       })
-      seen++
-    } catch {
-      continue
+      if (items.length > input.limit) {
+        truncated = true
+        pageLimited = true
+        break
+      }
+    }
+  } catch (error) {
+    if (input.signal?.aborted) throw input.signal.reason ?? new DOMException("Search aborted", "AbortError")
+    if (timeoutSignal.aborted) {
+      truncated = true
+    } else if (error instanceof ProcessOutput.LimitError) {
+      truncated = true
+    } else {
+      throw error
     }
   }
 
@@ -177,8 +171,8 @@ async function searchContent(input: {
     kind: "content",
     query: input.query,
     items: page,
-    nextCursor: items.length > input.limit ? String(offset + input.limit) : undefined,
-    truncated: items.length > input.limit,
+    nextCursor: pageLimited ? String(offset + page.length) : undefined,
+    truncated,
   }
 }
 

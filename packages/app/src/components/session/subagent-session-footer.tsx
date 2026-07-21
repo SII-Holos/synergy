@@ -1,8 +1,14 @@
-import { Show, createMemo, createEffect, createSignal, onCleanup } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { Show, createMemo, createEffect, createSignal, onCleanup, untrack } from "solid-js"
+import { useSync } from "@/context/sync"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
-import type { SessionCortexDelegation } from "@ericsanchezok/synergy-sdk/client"
+import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
+import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS, subagentFooterSessionStatus } from "./subagent-session-footer-model"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
+import { S } from "./session-i18n"
 
 const HIDE_MODEL_LABEL_AGENTS = new Set(["codex", "claude-code"])
 
@@ -41,14 +47,28 @@ function cleanPreview(input?: string): string | undefined {
   return preview.length > 120 ? `${preview.slice(0, 117)}...` : preview
 }
 
-export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; parentSessionID?: string }) {
-  const params = useParams()
-  const navigate = useNavigate()
+function outputPreview(output?: SessionCortexDelegation["output"]): string | undefined {
+  if (!output) return undefined
+  if (output.mode === "structured") return JSON.stringify(output.value, null, 2)
+  return output.value
+}
+
+export function SubagentSessionFooter(props: {
+  cortex: SessionCortexDelegation
+  sessionID: string
+  parentSessionID?: string
+}) {
+  const sync = useSync()
+  const navigateToSession = useNavigateToSession()
+  const { i18n } = useLocale()
+  const _ = (d: { id: string; message: string }) => i18n._(d)
 
   const visual = createMemo(() => getAgentVisual(props.cortex.agent))
-  const preview = createMemo(() => cleanPreview(props.cortex.error ?? props.cortex.result))
+  const preview = createMemo(() => cleanPreview(props.cortex.error ?? outputPreview(props.cortex.output)))
   const [tick, setTick] = createSignal(0)
-
+  const sessionStatus = createMemo<SessionStatus | undefined>(() =>
+    subagentFooterSessionStatus(sync.data.session_status, props.sessionID),
+  )
   createEffect(() => {
     if (props.cortex.status !== "running") return
     const id = setInterval(() => setTick((t) => t + 1), 1000)
@@ -63,24 +83,42 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
     if (HIDE_MODEL_LABEL_AGENTS.has(props.cortex.agent)) return undefined
     const m = props.cortex.model
     if (!m) return undefined
-    // If provider name is redundant with model prefix, show just modelID
-    const provider = m.providerID.replace(/^openai$|^anthropic$|^google$/i, "")
     const model = m.modelID
     return model.startsWith(m.providerID.split("/").pop()!) ? model : `${m.providerID}/${model}`
   })
 
+  const retryStatus = createMemo(() => {
+    const s = sessionStatus()
+    if (s?.type === "retry") return s
+    return undefined
+  })
+
   const statusInfo = createMemo(() => {
+    const rs = retryStatus()
+    if (rs) {
+      return {
+        label: i18n._({ ...S.subagentFooterRetry, values: { attempt: rs.attempt } }),
+        tone: "text-text-on-critical-base",
+        dot: "bg-icon-critical-base",
+      }
+    }
     switch (props.cortex.status) {
       case "queued":
-        return { label: "Queued", tone: "text-text-subtle", dot: "bg-text-subtle" }
+        return { label: _(S.subagentFooterQueued), tone: "text-text-subtle", dot: "bg-text-subtle" }
       case "running":
-        return { label: "Running", tone: "text-text-interactive-base", dot: "bg-text-interactive-base" }
+        return {
+          label: _(S.subagentFooterRunning),
+          tone: "text-text-interactive-base",
+          dot: "bg-text-interactive-base",
+        }
       case "completed":
-        return { label: "Completed", tone: "text-text-success", dot: "bg-border-success-base" }
+        return { label: _(S.subagentFooterCompleted), tone: "text-text-on-success-base", dot: "bg-border-success-base" }
       case "error":
-        return { label: "Error", tone: "text-text-critical", dot: "bg-icon-critical-base" }
+        return { label: _(S.subagentFooterError), tone: "text-text-on-critical-base", dot: "bg-icon-critical-base" }
       case "cancelled":
-        return { label: "Cancelled", tone: "text-text-subtle", dot: "bg-text-subtle" }
+        return { label: _(S.subagentFooterCancelled), tone: "text-text-subtle", dot: "bg-text-subtle" }
+      case "interrupted":
+        return { label: _(S.subagentFooterInterrupted), tone: "text-text-on-warning-base", dot: "bg-icon-warning-base" }
     }
   })
 
@@ -91,14 +129,20 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
 
         <div class="min-w-0 flex-1">
           <div class="flex min-w-0 items-center gap-1.5">
-            <span class="truncate text-13-medium text-text-base">{visual().label}</span>
+            <span class="truncate text-13-medium text-text-base">{translateDescriptor(visual().label, i18n)}</span>
             <span class="text-11-regular text-text-subtle">·</span>
             <span class="text-11-regular text-text-subtle">{props.cortex.agent}</span>
             <span class="text-11-regular text-text-subtle">·</span>
             <span class="text-11-regular text-text-subtle">{duration()}</span>
             <Show when={modelLabel()}>
-              <span class="text-11-regular text-text-subtle">·</span>
-              <span class="truncate text-11-regular text-text-subtle max-w-32">{modelLabel()}</span>
+              {(label) => (
+                <>
+                  <span class="text-11-regular text-text-subtle">·</span>
+                  <span class={SUBAGENT_FOOTER_MODEL_LABEL_CLASS} title={label()}>
+                    {label()}
+                  </span>
+                </>
+              )}
             </Show>
           </div>
           <div class="mt-0.5 truncate text-12-regular text-text-weak">{props.cortex.description}</div>
@@ -114,14 +158,16 @@ export function SubagentSessionFooter(props: { cortex: SessionCortexDelegation; 
           </span>
 
           <Show when={props.parentSessionID}>
-            <button
-              type="button"
-              class="workbench-control-surface workbench-control-surface-hover inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base px-3 text-12-medium text-text-weak transition-all duration-150 hover:text-text-base active:scale-[0.97]"
-              onClick={() => navigate(`/${params.dir}/session/${props.parentSessionID}`)}
-            >
-              <Icon name="arrow-left" size="small" />
-              <span class="hidden sm:inline">Parent</span>
-            </button>
+            {(parentSessionID) => (
+              <button
+                type="button"
+                class="workbench-control-surface workbench-control-surface-hover inline-flex h-8 items-center justify-center gap-1.5 rounded-full border border-border-base px-3 text-12-medium text-text-weak transition-all duration-150 hover:text-text-base active:scale-[0.97]"
+                onClick={() => navigateToSession(untrack(parentSessionID), "return-to-parent")}
+              >
+                <Icon name={getSemanticIcon("navigation.back")} size="small" />
+                <span class="hidden sm:inline">{_(S.subagentFooterParent)}</span>
+              </button>
+            )}
           </Show>
         </div>
       </div>

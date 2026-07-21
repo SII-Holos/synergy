@@ -1,6 +1,5 @@
 import { Log } from "../util/log"
 import path from "path"
-import { pathToFileURL } from "url"
 import os from "os"
 import z from "zod"
 import { Filesystem } from "../util/filesystem"
@@ -19,13 +18,12 @@ import { ScopeRuntime } from "../scope/runtime"
 import { Scope } from "../scope"
 import { BusEvent } from "../bus/bus-event"
 import { LSPServer } from "../lsp/server"
-import { BunProc } from "@/util/bun"
-import { Installation } from "@/global/installation"
 import { ConfigMarkdown } from "./markdown"
 import { existsSync } from "fs"
 import { loadFragments } from "./fragment"
 import * as Schema from "./schema"
 import { ConfigDomain } from "./domain"
+import { PluginSpec } from "../util/plugin-spec"
 
 export namespace Config {
   const log = Log.create({ service: "config" })
@@ -60,6 +58,8 @@ export namespace Config {
   export type SandboxConfig = Schema.SandboxConfig
   export const ObservabilityConfig = Schema.ObservabilityConfig
   export type ObservabilityConfig = Schema.ObservabilityConfig
+  export const GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
+  export type GitHubIntegrationConfig = Schema.GitHubIntegrationConfig
   export const Channel = Schema.Channel
   export type Channel = Schema.Channel
   export const EmailSmtp = Schema.EmailSmtp
@@ -161,7 +161,7 @@ export namespace Config {
   function mergeConfigConcatArrays(target: Info, source: Info): Info {
     const merged = mergeDeep(target, source)
     if (target.plugin && source.plugin) {
-      merged.plugin = Array.from(new Set([...target.plugin, ...source.plugin]))
+      merged.plugin = mergePluginSpecList(target.plugin, source.plugin)
     }
     if (target.instructions && source.instructions) {
       merged.instructions = Array.from(new Set([...target.instructions, ...source.instructions]))
@@ -291,12 +291,8 @@ export namespace Config {
         result.plugin ??= []
       }
 
-      const exists = existsSync(path.join(dir, "node_modules"))
-      const installing = installDependencies(dir)
-      if (!exists) await installing
       result.command = mergeDeep(result.command ?? {}, await loadCommand(dir))
       result.agent = mergeDeep(result.agent, await loadAgent(dir))
-      result.plugin.push(...(await loadPlugin(dir)))
     }
 
     result.agent ??= {}
@@ -322,13 +318,13 @@ export namespace Config {
 
     // Apply centralized defaults for fields shown in Settings UI.
     // These fill undefined values only — user-set values are preserved.
-    if (result.autoupdate === undefined) result.autoupdate = true
     if (result.snapshot === undefined) result.snapshot = true
+    if (result.lspWriteDiagnostics === undefined) result.lspWriteDiagnostics = true
     if (result.default_agent === undefined) result.default_agent = "synergy"
     if (result.project_doc_fallback_filenames === undefined) result.project_doc_fallback_filenames = []
     if (result.project_doc_max_bytes === undefined) result.project_doc_max_bytes = 32 * 1024
-    if (result.question === undefined) result.question = { timeout: 1800 }
-    else if (result.question.timeout === undefined) result.question.timeout = 1800
+    if (result.question === undefined) result.question = { timeout: 3600 }
+    else if (result.question.timeout === undefined) result.question.timeout = 3600
     if (result.compaction === undefined) {
       result.compaction = { auto: true, prune: true, overflowThreshold: 0.85, maxHistoryImages: 8 }
     } else {
@@ -371,38 +367,11 @@ export namespace Config {
     }
   })
 
-  export async function installDependencies(dir: string) {
-    const pkgPath = path.join(dir, "package.json")
-
-    if (!(await Bun.file(pkgPath).exists())) {
-      await Bun.write(pkgPath, "{}")
-    }
-
-    const gitignore = path.join(dir, ".gitignore")
-    const hasGitIgnore = await Bun.file(gitignore).exists()
-    if (!hasGitIgnore) await Bun.write(gitignore, ["node_modules", "package.json", "bun.lock", ".gitignore"].join("\n"))
-
-    const pluginPkg = "@ericsanchezok/synergy-plugin"
-    const pluginVersion = Installation.isLocal() ? "latest" : Installation.VERSION
-    const pluginInstalled = existsSync(path.join(dir, "node_modules", pluginPkg))
-
-    // Only run bun add if the plugin is not already installed to avoid
-    // repeatedly modifying bun.lock, which triggers the file watcher and
-    // causes an auto-reload loop.
-    if (!pluginInstalled) {
-      await BunProc.run(["add", `${pluginPkg}@${pluginVersion}`, "--exact"], { cwd: dir }).catch(() => {})
-    }
-
-    // Install any additional dependencies defined in the package.json
-    // This allows local plugins and custom tools to use external packages
-    if (!existsSync(path.join(dir, "node_modules"))) {
-      await BunProc.run(["install"], { cwd: dir }).catch(() => {})
-    }
-  }
-
   const COMMAND_GLOB = new Bun.Glob("{command,commands}/**/*.md")
   async function loadCommand(dir: string) {
     const result: Record<string, Command> = {}
+    if (!existsSync(dir)) return result
+
     for await (const item of COMMAND_GLOB.scan({
       absolute: true,
       followSymlinks: true,
@@ -443,6 +412,7 @@ export namespace Config {
   const AGENT_GLOB = new Bun.Glob("{agent,agents}/**/*.md")
   async function loadAgent(dir: string) {
     const result: Record<string, Agent> = {}
+    if (!existsSync(dir)) return result
 
     for await (const item of AGENT_GLOB.scan({
       absolute: true,
@@ -482,21 +452,6 @@ export namespace Config {
       log.warn("skipping invalid agent definition", { path: item, issues: parsed.error.issues })
     }
     return result
-  }
-
-  const PLUGIN_GLOB = new Bun.Glob("{plugin,plugins}/*.{ts,js}")
-  async function loadPlugin(dir: string) {
-    const plugins: string[] = []
-
-    for await (const item of PLUGIN_GLOB.scan({
-      absolute: true,
-      followSymlinks: true,
-      dot: true,
-      cwd: dir,
-    })) {
-      plugins.push(pathToFileURL(item).href)
-    }
-    return plugins
   }
 
   export const global = lazy(async () => {
@@ -901,6 +856,9 @@ export namespace Config {
     if (result.provider) {
       for (const provider of Object.values(result.provider) as any[]) {
         if (provider?.options?.apiKey) provider.options.apiKey = REDACTED_SENTINEL
+        for (const model of Object.values(provider?.models ?? {}) as any[]) {
+          if (model?.options?.apiKey) model.options.apiKey = REDACTED_SENTINEL
+        }
       }
     }
     if (result.mcp) {
@@ -940,9 +898,15 @@ export namespace Config {
     }
     if (result.provider && stored.provider) {
       for (const [key, provider] of Object.entries(result.provider) as [string, any][]) {
+        const storedProvider = (stored.provider as Record<string, any>)[key]
         if (provider?.options?.apiKey === REDACTED_SENTINEL) {
-          const storedProvider = (stored.provider as Record<string, any>)[key]
           if (storedProvider?.options?.apiKey) provider.options.apiKey = storedProvider.options.apiKey
+        }
+        for (const [modelKey, model] of Object.entries(provider?.models ?? {}) as [string, any][]) {
+          if (model?.options?.apiKey === REDACTED_SENTINEL) {
+            const storedModel = storedProvider?.models?.[modelKey]
+            if (storedModel?.options?.apiKey) model.options.apiKey = storedModel.options.apiKey
+          }
         }
       }
     }
@@ -1076,106 +1040,56 @@ export namespace Config {
     return redactForClient(await domainGet(parsed, options.root))
   }
 
-  function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
+  export function mergeDomainConfig(current: Info, patch: Info, mode: ConfigDomain.MergeMode): Info {
     if (mode === "replace-domain") return patch
-    if (mode === "append") {
-      const merged = mergeDeep(current, patch) as Info
-      if (current.plugin || patch.plugin) {
-        merged.plugin = Array.from(new Set([...(current.plugin ?? []), ...(patch.plugin ?? [])]))
+    if (mode === "append") return mergeAppendArrays(current, patch) as Info
+    const merged = mergeDeep(current, patch) as Info
+    if (current.plugin || patch.plugin) {
+      merged.plugin = mergePluginSpecList(current.plugin ?? [], patch.plugin ?? [])
+    }
+    return merged
+  }
+
+  function mergeAppendArrays(current: unknown, patch: unknown): unknown {
+    if (Array.isArray(current) && Array.isArray(patch)) return [...current, ...patch]
+    if (!isConfigObject(current) || !isConfigObject(patch)) return patch
+
+    const merged: Record<string, unknown> = { ...current }
+    for (const [key, value] of Object.entries(patch)) {
+      merged[key] = key in current ? mergeAppendArrays(current[key], value) : value
+    }
+    return merged
+  }
+
+  function isConfigObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === "object" && !Array.isArray(value)
+  }
+
+  function mergePluginSpecList(current: string[], patch: string[]): string[] {
+    const result: string[] = []
+    const indexByKey = new Map<string, number>()
+
+    const push = (spec: string) => {
+      const key = pluginSpecMergeKey(spec)
+      const index = indexByKey.get(key)
+      if (index === undefined) {
+        indexByKey.set(key, result.length)
+        result.push(spec)
+        return
       }
-      return merged
+      result[index] = spec
     }
-    return mergeDeep(current, patch) as Info
+
+    for (const spec of current) push(spec)
+    for (const spec of patch) push(spec)
+    return result
   }
 
-  export const DomainImportPlanInput = z
-    .object({
-      config: Info,
-      only: z.array(ConfigDomain.Id).optional(),
-      mode: ConfigDomain.MergeMode.optional(),
-    })
-    .meta({ ref: "ConfigDomainImportPlanInput" })
-  export type DomainImportPlanInput = z.infer<typeof DomainImportPlanInput>
-
-  export const DomainImportChange = z
-    .object({
-      key: z.string(),
-      before: z.unknown().optional(),
-      after: z.unknown().optional(),
-      conflict: z.boolean(),
-    })
-    .meta({ ref: "ConfigDomainImportChange" })
-  export const DomainImportPlan = z
-    .object({
-      domains: z.array(
-        z.object({
-          id: ConfigDomain.Id,
-          filename: z.string(),
-          path: z.string(),
-          mode: ConfigDomain.MergeMode,
-          changes: z.array(DomainImportChange),
-        }),
-      ),
-      conflicts: z.array(DomainImportChange),
-    })
-    .meta({ ref: "ConfigDomainImportPlan" })
-  export type DomainImportPlan = z.infer<typeof DomainImportPlan>
-
-  export async function domainImportPlan(input: DomainImportPlanInput): Promise<DomainImportPlan> {
-    const only = new Set(input.only ?? ConfigDomain.definitions.map((domain) => domain.id))
-    const split = ConfigDomain.split(input.config)
-    const domains: DomainImportPlan["domains"] = []
-    const conflicts: z.infer<typeof DomainImportChange>[] = []
-
-    for (const [id, fragment] of split) {
-      if (!only.has(id)) continue
-      const definition = ConfigDomain.byId.get(id)!
-      if (!definition.importable) continue
-      const current = await domainGet(id)
-      const mode = input.mode ?? definition.mergePolicy
-      const next = mergeDomainConfig(current, fragment as Info, mode)
-      const changes = diffDomain(current, next).map((change) => ({
-        ...change,
-        conflict: change.before !== undefined && change.after !== undefined && !sameJson(change.before, change.after),
-      }))
-      conflicts.push(...changes.filter((change) => change.conflict))
-      domains.push({
-        id,
-        filename: definition.filename,
-        path: ConfigDomain.filepath(id),
-        mode,
-        changes,
-      })
-    }
-    return { domains, conflicts }
-  }
-
-  export async function domainImportApply(input: DomainImportPlanInput & { yes?: boolean }) {
-    const plan = await domainImportPlan(input)
-    if (plan.conflicts.length && !input.yes) {
-      throw new InvalidError({
-        path: ConfigDomain.directory(),
-        message: `Config import has ${plan.conflicts.length} conflict(s). Re-run with confirmation to apply.`,
-      })
-    }
-    const split = ConfigDomain.split(input.config)
-    for (const domain of plan.domains) {
-      const fragment = split.get(domain.id)
-      if (!fragment) continue
-      await domainUpdate(domain.id, fragment, { mode: domain.mode })
-    }
-    return plan
-  }
-
-  function diffDomain(before: Info, after: Info) {
-    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
-    return [...keys]
-      .filter((key) => !sameJson((before as any)[key], (after as any)[key]))
-      .map((key) => ({ key, before: (before as any)[key], after: (after as any)[key] }))
-  }
-
-  function sameJson(a: unknown, b: unknown) {
-    return JSON.stringify(a) === JSON.stringify(b)
+  function pluginSpecMergeKey(spec: string): string {
+    const trimmed = spec.trim()
+    if (trimmed.startsWith("file://")) return `file:${path.resolve(trimmed.slice("file://".length))}`
+    const parsed = PluginSpec.parse(trimmed)
+    return parsed.nonRegistry ? `source:${parsed.pkg.replace(/#.*$/, "")}` : `npm:${parsed.pkg}`
   }
 
   async function writeDomainFile(id: ConfigDomain.Id, config: Partial<Info>, root = Global.Path.config) {
@@ -1184,7 +1098,7 @@ export namespace Config {
     await Bun.write(filepath, serializeConfig(config))
   }
 
-  function serializeConfig(config: Partial<Info>) {
+  export function serializeConfig(config: Partial<Info>) {
     return `${JSON.stringify(sortConfigKeys(config), null, 2)}\n`
   }
 

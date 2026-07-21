@@ -59,35 +59,34 @@ export namespace ToolExposure {
         "Expand when a task needs a real browser: JS-heavy sites, localhost UI verification, screenshots, clicking, typing, page state inspection, or browser debugging.",
       tools: [
         "browser_annotate",
-        "browser_navigate",
+        "browser_navigation",
         "browser_snapshot",
         "browser_screenshot",
         "browser_inspect",
         "browser_wait",
-        "browser_click",
-        "browser_type",
-        "browser_scroll",
+        "browser_action",
         "browser_console",
         "browser_network",
-        "browser_download",
         "browser_downloads",
-        "browser_viewport",
         "browser_read",
         "browser_clipboard",
-        "browser_list",
-        "browser_navigation",
-        "browser_action",
         "browser_eval",
         "browser_view",
         "browser_assets",
+        "browser_performance",
+        "browser_audit",
+        "browser_emulate",
+        "browser_dialog",
+        "browser_upload",
       ],
     },
     {
       id: "agenda",
       title: "Agenda",
-      description: "Scheduling, one-time wake-ups, recurring automation, manual triggers, and agenda execution logs.",
+      description:
+        "Time-based scheduling and deferred execution. Set one-time wake-ups to continue work after a delay (agenda_watch), create recurring tasks that run in fresh sessions (agenda_schedule), list/inspect/update/cancel scheduled items, manually trigger runs, and review execution logs.",
       whenToExpand:
-        "Expand when the user asks to remind, schedule, monitor over time, create recurring work, inspect scheduled tasks, or manage prior agenda runs.",
+        "Expand in these high-frequency scenarios. (1) The user says 'remind me in X minutes' or 'check back later' — use agenda_watch instead of blocking the turn. (2) You need to defer a follow-up so the user is not held hostage to a long-running session: set a watch to resume after background work completes. (3) The user wants a recurring task: daily summaries, weekly reports, periodic checks, cron-like automation. (4) The task requires multi-session orchestration or you want to split a long effort across time. (5) The user asks to list, update, cancel, or manually trigger a scheduled task. (6) You are investigating whether a scheduled task ran or need to read its execution log. (7) The user asks about 'schedule', 'reminder', 'wake me up', 'every day', 'every week', 'later today', 'in an hour', 'recurring', or 'check back'.",
       tools: [
         "agenda_schedule",
         "agenda_watch",
@@ -101,10 +100,11 @@ export namespace ToolExposure {
     {
       id: "session",
       title: "Session",
-      description: "Browse, search, read, control, and message Synergy sessions across scopes and channels.",
+      description:
+        "Browse, search, read, control, and message Synergy sessions across scopes and channels. Includes scope discovery for cross-project session creation.",
       whenToExpand:
-        "Expand when the task depends on previous conversations, session history, another active session, channel delivery, or session control actions.",
-      tools: ["session_list", "session_read", "session_search", "session_send", "session_control"],
+        "Expand when the task depends on previous conversations, session history, another active session, channel delivery, session control actions, or choosing a scopeID for cross-project session creation.",
+      tools: ["session_list", "session_read", "session_search", "session_send", "session_control", "scope_list"],
     },
     {
       id: "note",
@@ -113,16 +113,33 @@ export namespace ToolExposure {
         "Project and global long-form notes, Blueprint notes, evolving plans, research records, and structured note edits.",
       whenToExpand:
         "Expand when information should live as an editable document, when reading or writing Blueprint notes, or when a task asks for stored project/global notes.",
-      tools: ["note_list", "note_read", "note_search", "note_write", "note_edit"],
+      tools: ["note_list", "note_read", "note_search", "note_write", "note_edit", "note_archive", "note_delete"],
     },
     {
       id: "memory",
       title: "Memory",
       description:
-        "Long-term knowledge atoms: search, read, write, and correct durable user, workflow, and knowledge memories.",
+        "Durable long-term knowledge atoms that survive across sessions. Memory is the primary mechanism to persist user preferences, collaboration rules, identity facts, workflow habits, technical decisions, project conventions, and relationship context so they shape future interactions automatically. Each memory has a category (user, self, relationship, interaction, workflow, coding, writing, knowledge) and a recallMode (always injects every session, contextual auto-retrieves when relevant, search_only loads on demand).",
       whenToExpand:
-        "Expand when you need explicit long-term recall beyond auto-injected context, or when established durable knowledge should be stored or corrected.",
+        "Expand in these high-frequency scenarios. (1) The user explicitly asks you to remember something ('remember this', 'do not forget', 'note that I prefer...'). (2) The user shares a durable preference, constraint, identity fact, collaboration rule, or communication norm that should persist beyond this session. (3) You learned a correctable fact about the user, project, or working relationship that future sessions would not quickly recover from code/docs — write or edit a memory. (4) You are about to make a decision that prior conversations may have already settled — search memory first with memory_search to avoid repeating mistakes or violating established rules. (5) The user asks about 'how I usually', 'my default', 'what we agreed on', 'the way we work', 'previous conversation', or 'do you remember'. (6) You are debugging a recurring problem and suspect past sessions have relevant context you may not have auto-injected. (7) The user corrects a boundary mistake (overstepping, representation, consent) — persist it as a durable trust signal, not a verbal promise.",
       tools: ["memory_write", "memory_edit", "memory_search", "memory_get"],
+    },
+    {
+      id: "email",
+      title: "Email",
+      description: "Compose, send, and read emails via SMTP/IMAP. Supports plain text and HTML mail.",
+      whenToExpand:
+        "Expand when the user asks to send an email, check inbox, read mail, or search for specific emails.",
+      tools: ["email_send", "email_read"],
+    },
+    {
+      id: "worktree",
+      title: "Worktree",
+      description:
+        "Git worktree management for isolated parallel workspaces. Create independent checkout directories from the same repo (worktree_enter), clean up when done (worktree_leave), and list existing worktrees (worktree_list). Each worktree has its own working directory, index, and local state — ideal for working on multiple branches simultaneously without stashing, running experimental changes in isolation, or reviewing PRs in a clean checkout without contaminating the main workspace.",
+      whenToExpand:
+        "Expand in these scenarios. (1) You need to work on a separate branch while keeping the current working tree intact — use worktree_enter to create or switch to an isolated checkout. (2) You are about to make experimental, risky, or large-scale changes that should not mutate the current workspace. (3) The user asks you to review a PR, test a branch, or switch context without losing in-progress uncommitted work. (4) The user's prompt mentions 'checkout another branch', 'try this on a clean copy', 'test this branch', 'review PR', 'switch to', or 'worktree'. (5) You are handling multiple independent task streams in parallel and want physical workspace isolation. (6) You previously created a worktree and now need to return to it or clean it up.",
+      tools: ["worktree_enter", "worktree_leave", "worktree_list"],
     },
   ]
 
@@ -204,6 +221,13 @@ export namespace ToolExposure {
       expanded.add(group)
     }
     return expanded.has(normalized.group)
+  }
+
+  export function userAllows(toolID: string, userTools?: Record<string, boolean>) {
+    if (!userTools) return true
+    if (userTools[toolID] === true) return true
+    if (userTools[toolID] === false) return false
+    return userTools["*"] !== false
   }
 
   export function groupTable(groups: GroupInfo[] = BUILTIN_GROUPS): string {

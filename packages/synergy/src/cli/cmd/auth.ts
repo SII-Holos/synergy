@@ -9,19 +9,26 @@ import os from "os"
 import { Config } from "../../config/config"
 import { Global } from "../../global"
 import { Plugin } from "../../plugin"
+import { authHook } from "../../plugin/auth-provider"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
-import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
+import type { AuthHook } from "@ericsanchezok/synergy-plugin/auth"
 import { CodexProvider } from "@/provider/codex"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderRecommendation } from "@/provider/recommendation"
 import { AnthropicOAuthProvider } from "@/provider/anthropic-oauth"
 import { CopilotProvider } from "@/provider/copilot"
 import { MiniMaxProvider } from "@/provider/minimax"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import { GitHubProvider } from "@/provider/github"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { ProviderUsage } from "@/provider/usage-service"
 
-type PluginAuth = NonNullable<PluginHooks["auth"]>
+type PluginAuth = AuthHook
+
+function providerDisplayName(database: Record<string, { name?: string }>, providerID: string) {
+  if (providerID === GitHubProvider.PROVIDER_ID) return "GitHub"
+  return database[providerID]?.name || providerID
+}
 
 /**
  * Handle plugin-based authentication flow.
@@ -347,6 +354,43 @@ async function handleBuiltinAuth(provider: string): Promise<boolean> {
     return runOauthResult(provider, await CopilotProvider.authorizeDeviceCode(provider))
   }
 
+  if (provider === GitHubProvider.PROVIDER_ID) {
+    const options = [
+      { label: "GitHub device login", value: "oauth", hint: "Stores a Synergy-managed GitHub token" },
+      { label: "Import GitHub CLI token", value: "import", hint: "Reads the token from gh auth token" },
+      { label: "GitHub token", value: "api", hint: "Stores an existing GitHub token" },
+    ]
+    const method = await prompts.select({
+      message: "Login method",
+      options,
+    })
+    if (prompts.isCancel(method)) throw new UI.CancelledError()
+    if (method === "api") return false
+    if (method === "import") {
+      const result = await GitHubProvider.importCliToken()
+      if (result.type === "failed") {
+        prompts.log.error(result.message ?? "Failed to import GitHub CLI token")
+        prompts.outro("Done")
+        return true
+      }
+      await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: result.key }, { source: "import" })
+      prompts.log.success("GitHub credentials imported")
+      prompts.outro("Done")
+      return true
+    }
+    if (method === "oauth") {
+      try {
+        return runOauthResult(provider, await GitHubProvider.authorizeDeviceCode())
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        prompts.log.error(`GitHub device login failed: ${message}`)
+        prompts.outro("Done")
+        return true
+      }
+    }
+    return false
+  }
+
   if (provider === MiniMaxProvider.PROVIDER_ID) {
     return runOauthResult(provider, await MiniMaxProvider.authorizeOAuth())
   }
@@ -419,7 +463,7 @@ export const AuthListCommand = cmd({
     const database = await ProviderCatalog.resolve()
 
     for (const [providerID, result] of results) {
-      const name = database[providerID]?.name || providerID
+      const name = providerDisplayName(database, providerID)
       prompts.log.info(`${name} ${UI.Style.TEXT_DIM}${result.type}`)
     }
 
@@ -436,6 +480,11 @@ export const AuthListCommand = cmd({
             envVar,
           })
         }
+      }
+    }
+    for (const envVar of ["GH_TOKEN", "GITHUB_TOKEN"]) {
+      if (process.env[envVar]) {
+        activeEnvVars.push({ provider: "GitHub", envVar })
       }
     }
 
@@ -544,6 +593,11 @@ export const AuthLoginCommand = cmd({
               })),
             ),
             {
+              value: GitHubProvider.PROVIDER_ID,
+              label: "GitHub",
+              hint: "Issues, pull requests, releases",
+            },
+            {
               value: "other",
               label: "Other",
             },
@@ -561,15 +615,18 @@ export const AuthLoginCommand = cmd({
           provider === AnthropicOAuthProvider.PROVIDER_ID ||
           provider === CopilotProvider.PROVIDER_ID ||
           provider === CopilotProvider.ENTERPRISE_PROVIDER_ID ||
-          provider === MiniMaxProvider.PROVIDER_ID
+          provider === MiniMaxProvider.PROVIDER_ID ||
+          provider === GitHubProvider.PROVIDER_ID
         ) {
           const handled = await handleBuiltinAuth(provider)
           if (handled) return
         }
 
-        const plugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
-        if (plugin && plugin.auth) {
-          const handled = await handlePluginAuth({ auth: plugin.auth }, provider)
+        const plugin = await Plugin.authProviderEntries().then((entries) =>
+          entries.find((entry) => entry.contribution.id === provider),
+        )
+        if (plugin) {
+          const handled = await handlePluginAuth({ auth: authHook(plugin.plugin, plugin.contribution) }, provider)
           if (handled) return
         }
 
@@ -583,9 +640,14 @@ export const AuthLoginCommand = cmd({
           if (prompts.isCancel(provider)) throw new UI.CancelledError()
 
           // Check if a plugin provides auth for this custom provider
-          const customPlugin = await Plugin.allHooks().then((x) => x.find((x) => x.auth?.provider === provider))
-          if (customPlugin && customPlugin.auth) {
-            const handled = await handlePluginAuth({ auth: customPlugin.auth }, provider)
+          const customPlugin = await Plugin.authProviderEntries().then((entries) =>
+            entries.find((entry) => entry.contribution.id === provider),
+          )
+          if (customPlugin) {
+            const handled = await handlePluginAuth(
+              { auth: authHook(customPlugin.plugin, customPlugin.contribution) },
+              provider,
+            )
             if (handled) return
           }
 
@@ -652,7 +714,7 @@ export const AuthLogoutCommand = cmd({
     const providerID = await prompts.select({
       message: "Select provider",
       options: credentials.map(([key, value]) => ({
-        label: (database[key]?.name || key) + UI.Style.TEXT_DIM + " (" + value.type + ")",
+        label: providerDisplayName(database, key) + UI.Style.TEXT_DIM + " (" + value.type + ")",
         value: key,
       })),
     })

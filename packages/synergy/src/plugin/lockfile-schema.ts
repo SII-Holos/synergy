@@ -3,21 +3,20 @@ import z from "zod"
 export const PluginLockEntry = z
   .object({
     spec: z.string(),
+    source: z.enum(["local", "official", "npm", "git", "url", "builtin"]),
     version: z.string(),
+    apiVersion: z.string(),
+    generation: z.string(),
     resolved: z.string(),
     integrity: z.string().optional(),
-    dependencies: z.record(z.string(), z.string()).optional(),
-    signature: z.object({ algorithm: z.string(), signature: z.string(), signer: z.string() }).optional(),
-    permissionsHash: z.string().optional(),
-    manifestHash: z.string().optional(),
+    manifestHash: z.string(),
     approvalId: z.string().optional(),
-    runtimeMode: z.enum(["in-process", "worker", "process"]).optional(),
   })
   .strict()
 
 export const PluginLockfile = z
   .object({
-    version: z.literal(1),
+    version: z.literal(2),
     plugins: z.record(z.string(), PluginLockEntry),
   })
   .strict()

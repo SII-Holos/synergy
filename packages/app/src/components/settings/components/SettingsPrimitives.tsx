@@ -1,8 +1,18 @@
 import { For, Show, type JSX } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import type { IconName } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+
+function mergePolicyText(policy: string) {
+  return { id: "settings.pathRow.mergePolicy", message: "Merge policy: {policy}", values: { policy } }
+}
+const copyPathLabel = { id: "settings.pathRow.copy", message: "Copy Path" }
+const copiedLabel = { id: "settings.pathRow.copied", message: "Copied" }
+const openFileLabel = { id: "settings.pathRow.open", message: "Open File" }
+const openingLabel = { id: "settings.pathRow.opening", message: "Opening..." }
 
 export function SettingsPage(props: {
   title: string
@@ -80,21 +90,27 @@ export function SettingsPathRow(props: {
   status?: string
   ownedKeys?: string[]
   mergePolicy?: string
-  onCopy?: () => void
   onOpen?: () => void
   opening?: boolean
 }) {
+  const { _ } = useLingui()
+  const copy = createCopyController({
+    text: () => props.path,
+    copyLabel: "Copy path",
+    failureDescription: "Unable to copy the path.",
+  })
+
   return (
     <div class="ds-path-row">
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 min-w-0">
-          <span class="text-13-medium text-text-base truncate">{props.label}</span>
+          <span class="settings-path-label truncate">{props.label}</span>
           <Show when={props.status}>
             <span class="ds-inline-badge ds-inline-badge-muted">{props.status}</span>
           </Show>
         </div>
         <Show when={props.description}>
-          <div class="text-12-regular text-text-weak mt-0.5">{props.description}</div>
+          <div class="settings-path-description mt-0.5">{props.description}</div>
         </Show>
         <div class="ds-path-text" title={props.path}>
           {props.path}
@@ -105,21 +121,21 @@ export function SettingsPathRow(props: {
           </div>
         </Show>
         <Show when={props.mergePolicy}>
-          <div class="text-11-regular text-text-weaker mt-1">Merge policy: {props.mergePolicy}</div>
+          <div class="settings-path-meta mt-1">{_(mergePolicyText(props.mergePolicy!))}</div>
         </Show>
       </div>
       <div class="ds-path-actions">
-        <Show when={props.onCopy}>
-          <Button
-            type="button"
-            variant="ghost"
-            size="small"
-            icon={getSemanticIcon("action.copy")}
-            onClick={props.onCopy}
-          >
-            Copy Path
-          </Button>
-        </Show>
+        <Button
+          type="button"
+          variant="ghost"
+          size="small"
+          icon={copy.copied() ? getSemanticIcon("state.success") : copy.icon()}
+          data-copy-state={copy.state()}
+          disabled={copy.disabled()}
+          onClick={() => void copy.copy()}
+        >
+          {copy.copied() ? _(copiedLabel) : _(copyPathLabel)}
+        </Button>
         <Show when={props.onOpen}>
           <Button
             type="button"
@@ -129,10 +145,24 @@ export function SettingsPathRow(props: {
             disabled={props.opening}
             onClick={props.onOpen}
           >
-            {props.opening ? "Opening..." : "Open File"}
+            {props.opening ? _(openingLabel) : _(openFileLabel)}
           </Button>
         </Show>
       </div>
+    </div>
+  )
+}
+
+export function SettingsSubsection(props: { title?: string; description?: string; children: JSX.Element }) {
+  return (
+    <div class="ds-setting-subsection">
+      <Show when={props.title}>
+        <h3 class="ds-subsection-title">{props.title}</h3>
+      </Show>
+      <Show when={props.description}>
+        <p class="ds-section-hint">{props.description}</p>
+      </Show>
+      {props.children}
     </div>
   )
 }

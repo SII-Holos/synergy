@@ -19,7 +19,8 @@ export function resolveFilePath(filePath: string): string {
 
 export function displayPath(filePath: string): string {
   const relative = path.relative(ScopeContext.current.directory, filePath)
-  return relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
+  const display = relative && !relative.startsWith("..") && !path.isAbsolute(relative) ? relative : filePath
+  return display.replaceAll("\\", "/")
 }
 
 function isKnownBinaryPath(filePath: string): boolean {

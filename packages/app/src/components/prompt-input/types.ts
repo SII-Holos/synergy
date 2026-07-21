@@ -1,4 +1,11 @@
 import type { ControlProfileId } from "@/context/input"
+import type { MessageDescriptor } from "@lingui/core"
+import type { NewSessionWorkspaceSelection } from "@/components/session/worktree-session"
+import type {
+  SessionTransitionActions,
+  SessionTransitionProgress,
+} from "@/components/session/session-transition-progress"
+import type { JSX } from "solid-js"
 
 export type DroppedSessionData = {
   id: string
@@ -43,11 +50,20 @@ export type PromptInputStore = {
 export interface PromptInputProps {
   class?: string
   ref?: (el: HTMLDivElement) => void
-  newSessionWorktree?: string
+  newSessionWorkspaceSelection?: NewSessionWorkspaceSelection
+  newSessionCanonicalDirectory?: string
+  newSessionCurrentDirectory?: string
   newSessionCanCreateWorktree?: boolean
-  onNewSessionWorktreeChange?: (worktree: string) => void
-  onNewSessionWorktreeReset?: () => void
+  onNewSessionWorkspaceSelectionChange?: (selection: NewSessionWorkspaceSelection) => void
+  onNewSessionWorkspaceSelectionReset?: () => void
+  onNewSessionTransitionChange?: (input: {
+    sessionID: string
+    progress: SessionTransitionProgress | null
+    actions?: SessionTransitionActions
+  }) => void
+  sessionTransitionPending?: boolean
   hideAgentSelector?: boolean
+  onPriorityControlChange?: (control: JSX.Element | undefined) => void
 }
 
 export interface SlashCommand {
@@ -70,9 +86,9 @@ export type PromptPopoverMode = "at" | "slash" | null
 
 export type PermissionModeVisual = {
   id: ControlProfileId
-  label: string
-  shortLabel: string
-  description: string
-  icon: "shield-check" | "orbit" | "shield-alert"
+  label: MessageDescriptor
+  shortLabel: MessageDescriptor
+  description: MessageDescriptor
+  icon: import("@ericsanchezok/synergy-ui/semantic-icon").SemanticIconTokenName
   iconClass: string
 }

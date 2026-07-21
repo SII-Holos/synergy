@@ -1,43 +1,36 @@
 import type { Component } from "solid-js"
 import type { SemanticIconTokenName } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { SurfaceRegistry } from "@/surface/registry"
+import type { SurfaceEntry } from "@/surface/types"
 import { BUILTIN_SETTINGS_SECTIONS } from "@/components/settings/catalog"
 
-export interface SettingsSection {
-  id: string
-  label: string
-  icon?: string
+export interface SettingsSection extends SurfaceEntry {
   iconToken?: SemanticIconTokenName
   group: string
-  order?: number
+  formSchema?: Record<string, unknown>
   description?: string
   keywords?: string[]
   domainIds?: string[]
   rowLabels?: string[]
   hidden?: boolean
+  visibility?: "standard" | "developer"
   component?: Component
-  loader?: () => Promise<{ default: Component }> // lazy-load for Tier 2
-  sandbox?: boolean
-  sandboxUrl?: string
-  pluginId?: string // undefined for built-in
-  exportName?: string // named export from the plugin UI bundle (for lazy loading)
+  loader?: () => Promise<{ default: Component }>
+  exportName?: string
 }
-const sections: SettingsSection[] = []
+
+const registry = new SurfaceRegistry<SettingsSection>()
 
 export function registerSettingsSection(section: SettingsSection): () => void {
-  sections.push(section)
-  return () => {
-    const index = sections.indexOf(section)
-    if (index !== -1) sections.splice(index, 1)
-  }
+  return registry.register(section)
 }
 
 export function getSettingsSections(): SettingsSection[] {
-  return [...sections]
+  return registry.list()
 }
 
-/** Look up a single settings section by id. */
 export function getSettingsSection(id: string): SettingsSection | undefined {
-  return sections.find((s) => s.id === id)
+  return registry.get(id)
 }
 
 // Built-in settings sections — registered at module init, consumed by SettingsPanel via getSettingsSections()

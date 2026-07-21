@@ -6,6 +6,7 @@ import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "@/session/interaction"
 import { opaque } from "@/util/schema"
 import { SessionEndpoint } from "./endpoint"
+import { CortexTypes } from "@/cortex/types"
 
 // Workspace metadata intentionally allows extra fields so future workspace
 // implementations can carry type-specific data without breaking old sessions.
@@ -34,6 +35,7 @@ const ScopeField = opaque<Scope>(
 )
 
 const CortexDelegationInfoInner = z.object({
+  taskID: z.string(),
   parentSessionID: z.string(),
   parentMessageID: z.string(),
   description: z.string(),
@@ -41,19 +43,23 @@ const CortexDelegationInfoInner = z.object({
   executionRole: z.enum(["primary", "delegated_subagent"]).optional(),
   startedAt: z.number(),
   completedAt: z.number().optional(),
-  status: z.enum(["queued", "running", "completed", "error", "cancelled"]),
+  status: z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"]),
   model: z
     .object({
       providerID: z.string(),
       modelID: z.string(),
     })
     .optional(),
-  result: z.string().optional(),
   error: z.string().optional(),
+  notifyParentOnComplete: z.boolean().optional(),
+  deliveryNotifiedAt: z.number().optional(),
   visibility: z.enum(["visible", "hidden"]).optional(),
   tools: z.record(z.string(), z.boolean()).optional(),
-  output: z.any().optional(),
-  outputResult: z.any().optional(),
+  outputConfig: CortexTypes.OutputConfig.optional(),
+  output: CortexTypes.TaskOutput.optional(),
+  owner: CortexTypes.PluginTaskOwner.optional(),
+  timeoutMs: z.number().int().positive().optional(),
+  usage: CortexTypes.TaskUsage.optional(),
 })
 
 export const CortexDelegationInfo = CortexDelegationInfoInner.meta({ ref: "SessionCortexDelegation" })
@@ -71,6 +77,69 @@ export const SuperPlanSessionInfo = z
   .meta({ ref: "SessionSuperPlanInfo" })
 export type SuperPlanSessionInfo = z.infer<typeof SuperPlanSessionInfo>
 
+export const WorkflowInfo = z
+  .discriminatedUnion("kind", [
+    z.object({
+      kind: z.literal("plan"),
+    }),
+    z.object({
+      kind: z.literal("lightloop"),
+      instructions: z.string(),
+      status: z
+        .enum(["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"])
+        .optional(),
+      executionAgent: z.string().optional(),
+      reviewAgent: z.string().optional(),
+      pluginOwner: z
+        .object({
+          pluginId: z.string(),
+          pluginGeneration: z.string(),
+          scopeId: z.string(),
+          correlationId: z.string().optional(),
+        })
+        .optional(),
+      budget: z
+        .object({
+          maxRuntimeMs: z.number().int().positive(),
+          maxIterations: z.number().int().positive(),
+        })
+        .optional(),
+      deadlineAt: z.number().positive().optional(),
+      terminalError: z.string().optional(),
+      terminalHookDeliveredAt: z.number().optional(),
+      terminalHookError: z.string().optional(),
+      reviewTools: z.record(z.string(), z.boolean()).optional(),
+      stopRequest: z
+        .object({
+          summary: z.string(),
+          completed: z.array(z.string()).optional(),
+          evidence: z.array(z.string()).optional(),
+          remaining: z.array(z.string()).optional(),
+          requestedAt: z.number(),
+          requesterSessionID: z.string(),
+          requesterMessageID: z.string(),
+          reviewTaskID: z.string().optional(),
+          reviewSessionID: z.string().optional(),
+        })
+        .optional(),
+      review: z
+        .object({
+          attempts: z.number(),
+          lastReason: z.string().optional(),
+          lastReviewedAt: z.number().optional(),
+        })
+        .optional(),
+    }),
+    z.object({
+      kind: z.literal("lattice"),
+      runID: z.string(),
+      mode: z.enum(["auto", "collaborative"]),
+      firstBlueprintStarted: z.boolean().optional(),
+    }),
+  ])
+  .meta({ ref: "SessionWorkflowInfo" })
+export type WorkflowInfo = z.infer<typeof WorkflowInfo>
+
 export const HistoryInfo = z
   .object({
     rollback: z
@@ -81,6 +150,7 @@ export const HistoryInfo = z
         messageID: Identifier.schema("message").optional(),
         droppedMessageIDs: z.array(Identifier.schema("message")),
         droppedUserMessageIDs: z.array(Identifier.schema("message")),
+        cutMessageID: Identifier.schema("message").optional(),
         files: z.array(z.string()),
         patchPartIDs: z.array(Identifier.schema("part")),
         canUnrollback: z.boolean(),
@@ -109,6 +179,15 @@ export const WorkingInfo = z
   .meta({ ref: "SessionWorkingInfo" })
 export type WorkingInfo = z.infer<typeof WorkingInfo>
 
+export const CompletionNotice = z
+  .object({
+    unread: z.boolean(),
+    unreadCount: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+    silent: z.boolean(),
+  })
+  .meta({ ref: "SessionCompletionNotice" })
+export type CompletionNotice = z.infer<typeof CompletionNotice>
+
 export const Info = z
   .preprocess(
     (data: any) => {
@@ -116,6 +195,12 @@ export const Info = z
         if (data.projectID && !data.scopeID) {
           data.scopeID = data.projectID
           delete data.projectID
+        }
+        if (data.completionNotice && typeof data.completionNotice === "object") {
+          const notice = data.completionNotice as Record<string, unknown>
+          if (notice.unreadCount === undefined) {
+            notice.unreadCount = notice.unread === true && notice.silent !== true ? 1 : 0
+          }
         }
       }
       return data
@@ -131,7 +216,8 @@ export const Info = z
           title: z.string().optional(),
         })
         .optional(),
-      category: z.enum(["project", "home", "channel", "background"]).optional(),
+      category: z.enum(["project", "home", "channel", "background", "github"]).optional(),
+      provenance: z.literal("github").optional(),
       endpoint: SessionEndpoint.Info.optional(),
       summary: z
         .object({
@@ -164,6 +250,15 @@ export const Info = z
           activatedTools: z.array(z.string()).optional(),
         })
         .optional(),
+      completionNotice: CompletionNotice.default(() => ({ unread: false, unreadCount: 0, silent: false })),
+      modelOverride: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional()
+        .describe("Per-session model override set by /model command"),
+      agentOverride: z.string().optional().describe("Per-session agent override set by session control"),
       pendingReply: z.boolean().optional(),
       interaction: SessionInteraction.Info.optional(),
       agenda: z
@@ -186,9 +281,9 @@ export const Info = z
         .object({
           loopID: z.string().optional(),
           loopRole: z.enum(["execution", "audit"]).optional(),
-          planMode: z.boolean().optional(),
         })
         .optional(),
+      workflow: WorkflowInfo.optional(),
     }),
   )
   .meta({

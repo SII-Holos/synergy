@@ -31,6 +31,12 @@ export namespace StoragePath {
 
   export const sessionsRoot = (scopeID: ScopeID) => ["sessions", scopeID as string]
   export const sessionsPageIndex = (scopeID: ScopeID) => ["sessions_page_index", scopeID as string]
+  export const sessionChildIndexRoot = (scopeID: ScopeID) => ["session_child_index", scopeID as string]
+  export const sessionChildIndex = (scopeID: ScopeID, parentSessionID: SessionID) => [
+    "session_child_index",
+    scopeID as string,
+    parentSessionID as string,
+  ]
   export const sessionNavIndexRoot = () => ["session_nav_v2"]
   export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
 
@@ -43,6 +49,10 @@ export namespace StoragePath {
   export const sessionSummary = (scopeID: ScopeID, sessionID: SessionID) => [
     ...sessionRoot(scopeID, sessionID),
     "summary",
+  ]
+  export const sessionSummaryCursor = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionRoot(scopeID, sessionID),
+    "summary_cursor",
   ]
   export const sessionTodo = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "todo"]
   export const sessionDag = (scopeID: ScopeID, sessionID: SessionID) => [...sessionRoot(scopeID, sessionID), "dag"]
@@ -124,6 +134,22 @@ export namespace StoragePath {
     eventID,
   ]
 
+  // Lattice: one run per session, keyed by sessionID so the bridge can locate a
+  // run from a loop's sessionID in O(1). Events live in a sibling collection so
+  // the frequently-rewritten run document does not carry an ever-growing array.
+  export const latticeRunsRoot = (scopeID: ScopeID) => ["lattice", "runs", scopeID as string]
+  export const latticeRun = (scopeID: ScopeID, sessionID: string) => [...latticeRunsRoot(scopeID), sessionID]
+  export const latticeEventsRoot = (scopeID: ScopeID, sessionID: string) => [
+    "lattice",
+    "events",
+    scopeID as string,
+    sessionID,
+  ]
+  export const latticeEvent = (scopeID: ScopeID, sessionID: string, eventID: string) => [
+    ...latticeEventsRoot(scopeID, sessionID),
+    eventID,
+  ]
+
   export const holosContactsRoot = () => ["holos", "contacts"]
   export const holosContact = (id: string) => ["holos", "contacts", id]
 
@@ -142,6 +168,20 @@ export namespace StoragePath {
     "outbox",
     contactId,
     messageId,
+  ]
+
+  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
+  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
+
+  export const githubDeliveriesRoot = () => ["github", "deliveries"]
+  export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]
+  export const githubRuntimeState = () => ["github", "runtime"]
+  export const githubPollState = (repository: string) => ["github", "poll-state", encodeURIComponent(repository)]
+  export const githubCiState = (repository: string, workflowName: string) => [
+    "github",
+    "ci",
+    encodeURIComponent(repository),
+    encodeURIComponent(workflowName),
   ]
 
   // Stats

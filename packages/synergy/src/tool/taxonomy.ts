@@ -53,7 +53,6 @@ export type ToolKind =
   | "browser.navigate"
   | "browser.interact"
   | "browser.inspect"
-  | "browser.tab"
   | "browser.download"
   | "browser.annotate"
 
@@ -103,6 +102,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   view_file: entry("code.read"),
   list: entry("code.read"),
   look_at: entry("code.analyze"),
+  view_image: entry("code.analyze"),
   scan_document: entry("code.analyze"),
   edit: entry("code.write", { stateful: true }),
   revise_file: entry("code.write", { stateful: true }),
@@ -116,11 +116,17 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   memory_write: entry("knowledge.memory", { stateful: true, auxiliary: true }),
   memory_edit: entry("knowledge.memory", { stateful: true, auxiliary: true }),
   note_write: entry("knowledge.note", { stateful: true, auxiliary: true }),
+  note_archive: entry("knowledge.note", { stateful: true, auxiliary: true }),
+  note_delete: entry("knowledge.note", { stateful: true }),
   note_edit: entry("knowledge.note", { stateful: true, auxiliary: true }),
   note_list: entry("knowledge.note"),
   note_read: entry("knowledge.note"),
-  blueprint_loop_finish: entry("orchestration.task", { stateful: true }),
-  blueprint_loop_restart: entry("orchestration.task", { stateful: true }),
+  blueprint_loop_stop: entry("orchestration.task", { stateful: true }),
+  blueprint_loop_approve: entry("orchestration.task", { stateful: true }),
+  blueprint_loop_reject: entry("orchestration.task", { stateful: true }),
+  loop_stop: entry("orchestration.task", { stateful: true }),
+  light_loop_approve: entry("orchestration.task", { stateful: true }),
+  light_loop_reject: entry("orchestration.task", { stateful: true }),
   skill: entry("knowledge.skill"),
 
   // orchestration
@@ -133,10 +139,13 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   dagpatch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   todowrite: entry("orchestration.todo", { stateful: true, auxiliary: true }),
   todoread: entry("orchestration.todo", { auxiliary: true }),
+  pathway_read: entry("orchestration.dag", { auxiliary: true }),
+  pathway_patch: entry("orchestration.dag", { stateful: true, auxiliary: true }),
   session_list: entry("orchestration.session"),
   session_read: entry("orchestration.session"),
   session_send: entry("orchestration.session", { stateful: true }),
   session_control: entry("orchestration.session_control", { stateful: true }),
+  scope_list: entry("orchestration.session"),
   agenda_schedule: entry("orchestration.agenda", { stateful: true }),
   agenda_watch: entry("orchestration.agenda", { stateful: true }),
   agenda_list: entry("orchestration.agenda"),
@@ -164,7 +173,7 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   worktree_leave: entry("platform.config", { stateful: true }),
   worktree_list: entry("platform.config"),
 
-  connect: entry("platform.config"),
+  connect: entry("platform.config", { stateful: true, externalIO: true }),
   inspire_status: entry("platform.compute", { externalIO: true }),
   inspire_config: entry("platform.compute"),
   inspire_login: entry("platform.compute", { stateful: true, externalIO: true }),
@@ -193,32 +202,32 @@ const REGISTRY: Record<string, ToolTaxonomyEntry> = {
   question: entry("communication.question"),
   email_send: entry("communication.email", { stateful: true, externalIO: true }),
   email_read: entry("communication.email", { externalIO: true }),
+  openai_image_gen: entry("communication.visual", { externalIO: true, stateful: true }),
+  openai_image_edit: entry("communication.visual", { externalIO: true, stateful: true }),
   // 🔇 diagram: entry("communication.visual"),  — 已注释，待重构
   render: entry("communication.visual"),
   attach: entry("communication.deliver"),
   // browser
-  browser_navigate: entry("browser.navigate", { externalIO: true, stateful: true }),
+  browser_navigation: entry("browser.navigate", { externalIO: true, stateful: true }),
   browser_snapshot: entry("browser.inspect"),
   browser_screenshot: entry("browser.inspect", { stateful: true }),
   browser_inspect: entry("browser.inspect"),
   browser_wait: entry("browser.inspect"),
-  browser_click: entry("browser.interact", { stateful: true }),
-  browser_type: entry("browser.interact", { stateful: true }),
-  browser_scroll: entry("browser.interact", { stateful: true }),
   browser_action: entry("browser.interact", { stateful: true }),
   browser_console: entry("browser.inspect"),
   browser_network: entry("browser.inspect"),
-  browser_download: entry("browser.download", { externalIO: true }),
-  browser_downloads: entry("browser.download", { stateful: true }),
-  browser_viewport: entry("browser.inspect", { stateful: true }),
+  browser_downloads: entry("browser.download", { externalIO: true, stateful: true }),
   browser_annotate: entry("browser.annotate", { stateful: true }),
   browser_read: entry("browser.inspect"),
   browser_eval: entry("browser.inspect", { stateful: true }),
-  browser_clipboard: entry("browser.interact", { externalIO: true }),
-  browser_list: entry("browser.inspect"),
-  browser_assets: entry("browser.inspect"),
-  browser_view: entry("browser.inspect"),
-  browser_navigation: entry("browser.navigate", { stateful: true }),
+  browser_clipboard: entry("browser.interact", { externalIO: true, stateful: true }),
+  browser_assets: entry("browser.inspect", { externalIO: true, stateful: true }),
+  browser_view: entry("browser.inspect", { stateful: true }),
+  browser_performance: entry("browser.inspect", { externalIO: true, stateful: true }),
+  browser_audit: entry("browser.inspect"),
+  browser_emulate: entry("browser.inspect", { stateful: true }),
+  browser_dialog: entry("browser.interact", { stateful: true }),
+  browser_upload: entry("browser.interact", { externalIO: true, stateful: true }),
 }
 
 // ── Pattern fallbacks ────────────────────────────────────────────────
@@ -249,6 +258,7 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(dag|plan)/i, kind: "orchestration.dag" },
   { pattern: /^todo/i, kind: "orchestration.todo" },
   { pattern: /^session[-_]/i, kind: "orchestration.session" },
+  { pattern: /^scope[-_]/i, kind: "orchestration.session" },
   { pattern: /^(agenda|schedule|cron|timer|remind)/i, kind: "orchestration.agenda" },
   { pattern: /^research[-_]/i, kind: "orchestration.research" },
   { pattern: /^(config|setting|profile|runtime)/i, kind: "platform.config" },
@@ -258,6 +268,11 @@ const PATTERN_FALLBACKS: { pattern: RegExp; kind: ToolKind; traits?: ToolTraits 
   { pattern: /^(send|notify|message)/i, kind: "communication.deliver" },
   { pattern: /^question/i, kind: "communication.question" },
   // 🔇 { pattern: /^diagram/i, kind: "communication.visual" },  — 已注释，待重构
+  {
+    pattern: /^(openai[-_])?image[-_](gen|edit)/i,
+    kind: "communication.visual",
+    traits: { externalIO: true, stateful: true },
+  },
   { pattern: /^render/i, kind: "communication.visual" },
   { pattern: /^attach/i, kind: "communication.deliver" },
   { pattern: /^browser_/i, kind: "browser.inspect" },
@@ -318,12 +333,11 @@ export namespace ToolTaxonomy {
     "platform.external": "Tool",
     "communication.question": "Ask",
     "communication.email": "Email",
-    "communication.visual": "Diagram",
+    "communication.visual": "Visual",
     "communication.deliver": "Deliver",
     "browser.navigate": "Navigate",
     "browser.interact": "Interact",
     "browser.inspect": "Inspect",
-    "browser.tab": "Tabs",
     "browser.download": "Download",
     "browser.annotate": "Annotate",
   }

@@ -1,3 +1,6 @@
+import type { MessageDescriptor } from "@lingui/core"
+
+import type { LocalePreference } from "@/context/locale/types"
 import type { SendShortcut } from "@/context/input"
 
 export type ProviderModel = {
@@ -5,6 +8,7 @@ export type ProviderModel = {
   providerName: string
   modelId: string
   modelName: string
+  variantKeys: string[]
 }
 
 export type ModelKey =
@@ -31,34 +35,42 @@ export const MODEL_DEFAULTS: Record<ModelKey, string> = {
 
 /** Defaults used by frontend form fallbacks, kept in sync with backend Config.state() defaults. */
 export const UI_DEFAULTS = {
-  autoupdate: "true" as string, // backend injects true → UI shows "true" / On
+  locale: "system" as LocalePreference,
   theme: "" as string,
   username: "" as string,
   snapshot: true,
   permission: "ask" as string, // resolved from backend { "*": "ask" } object
   sandboxEnabled: "true" as string,
   sandboxFallbackPolicy: "warn" as string,
-  questionTimeout: 1800,
+  questionTimeout: 3600,
   compactionAuto: "true" as string,
   compactionPrune: "true" as string,
   compactionOverflowThreshold: "0.85" as string,
   compactionMaxHistoryImages: "8" as string,
+  cortexConcurrency: "8" as string,
   libraryLearning: "true" as string,
   libraryAutonomy: "true" as string,
   memorySimThreshold: "0.7" as string,
   memoryTopK: "3" as string,
+  embeddingSource: "huggingface" as LocalEmbeddingSource,
+  embeddingRemoteHost: "" as string,
   experienceSimThreshold: "0.7" as string,
   experienceTopK: "8" as string,
   experienceEpsilon: "0.1" as string,
   controlProfile: "guarded" as string,
-  invokeTimeout: "" as string,
-  providerTtfbTimeout: "" as string,
-  providerIdleTimeout: "" as string,
+  invokeTimeout: "21600" as string,
+  providerTtfbTimeout: "3600" as string,
+  providerIdleTimeout: "900" as string,
   providerWallTimeout: "" as string,
-  toolDefaultTimeout: "" as string,
+  toolDefaultTimeout: "7200" as string,
   toolOverrides: "" as string,
   watcherIgnore: "" as string,
   logLevel: "" as string,
+  coauthorReminder: "true" as string,
+  lspWriteDiagnostics: "true" as string,
+  lspDiagnosticsSeverity: "error" as string,
+  lspDiagnosticsScope: "project" as string,
+  defaultAgent: "synergy" as string,
 } as const
 
 /** Resolve Config.permission (object or string) into a simple UI string. */
@@ -73,29 +85,72 @@ export function resolvePermissionForUi(permission: unknown): string {
   }
   return UI_DEFAULTS.permission
 }
-export const MODEL_ROLES: Array<{ key: ModelKey; label: string; description: string }> = [
-  { key: "model", label: "Default Model", description: "Primary model for conversations and agent tasks" },
-  { key: "nano_model", label: "Nano Model", description: "Cheapest model for trivial tasks like title generation" },
+export type ModelRoleDefinition = { key: ModelKey; label: MessageDescriptor; description: MessageDescriptor }
+
+export const MODEL_ROLES: ModelRoleDefinition[] = [
+  {
+    key: "model",
+    label: { id: "settings.modelRole.model.label", message: "Default Model" },
+    description: {
+      id: "settings.modelRole.model.description",
+      message: "Primary model for conversations and agent tasks",
+    },
+  },
+  {
+    key: "nano_model",
+    label: { id: "settings.modelRole.nanoModel.label", message: "Nano Model" },
+    description: {
+      id: "settings.modelRole.nanoModel.description",
+      message: "Cheapest model for trivial tasks like title generation",
+    },
+  },
   {
     key: "mini_model",
-    label: "Mini Model",
-    description: "Intent detection, script extraction, and reward evaluation",
+    label: { id: "settings.modelRole.miniModel.label", message: "Mini Model" },
+    description: {
+      id: "settings.modelRole.miniModel.description",
+      message: "Intent detection, script extraction, and reward evaluation",
+    },
   },
   {
     key: "mid_model",
-    label: "Mid Model",
-    description: "Explore, scout, and quick-category task routing",
+    label: { id: "settings.modelRole.midModel.label", message: "Mid Model" },
+    description: {
+      id: "settings.modelRole.midModel.description",
+      message: "Explore, scout, and quick-category task routing",
+    },
   },
-  { key: "vision_model", label: "Vision Model", description: "Image, PDF, and file analysis" },
-  { key: "thinking_model", label: "Thinking Model", description: "Complex reasoning and architecture decisions" },
+  {
+    key: "vision_model",
+    label: { id: "settings.modelRole.visionModel.label", message: "Vision Model" },
+    description: { id: "settings.modelRole.visionModel.description", message: "Image, PDF, and file analysis" },
+  },
+  {
+    key: "thinking_model",
+    label: { id: "settings.modelRole.thinkingModel.label", message: "Thinking Model" },
+    description: {
+      id: "settings.modelRole.thinkingModel.description",
+      message: "Complex reasoning and architecture decisions",
+    },
+  },
   {
     key: "long_context_model",
-    label: "Long Context Model",
-    description: "Session compaction, long document analysis",
+    label: { id: "settings.modelRole.longContextModel.label", message: "Long Context Model" },
+    description: {
+      id: "settings.modelRole.longContextModel.description",
+      message: "Session compaction, long document analysis",
+    },
   },
-  { key: "creative_model", label: "Creative Model", description: "Writing, design, and artistry" },
+  {
+    key: "creative_model",
+    label: { id: "settings.modelRole.creativeModel.label", message: "Creative Model" },
+    description: { id: "settings.modelRole.creativeModel.description", message: "Writing, design, and artistry" },
+  },
 ]
 
+export function getModelRoleDefinition(key: string): ModelRoleDefinition | undefined {
+  return MODEL_ROLES.find((role) => role.key === key)
+}
 export type PluginEntry = {
   value: string
 }
@@ -130,6 +185,7 @@ export type EmailSettings = {
 export type AccountToggle = {
   key: string
   enabled: boolean
+  model: string
 }
 
 export type ChannelSettings = {
@@ -173,7 +229,7 @@ export type DialogSettingsProps = {
 export type ProviderGroup = {
   providerId: string
   providerName: string
-  models: Array<{ id: string; name: string }>
+  models: Array<{ id: string; name: string; variantKeys: string[] }>
 }
 
 export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
@@ -184,19 +240,25 @@ export function groupByProvider(list: ProviderModel[]): ProviderGroup[] {
       group = { providerId: item.providerId, providerName: item.providerName, models: [] }
       map.set(item.providerId, group)
     }
-    group.models.push({ id: item.modelId, name: item.modelName })
+    group.models.push({ id: item.modelId, name: item.modelName, variantKeys: item.variantKeys })
   }
   return Array.from(map.values())
 }
 
 export type GeneralStore = {
   snapshot: boolean
-  autoupdate: string
   username: string
   theme: string
+  locale: LocalePreference
   mutedToasts: string[]
   toastDurations: ToastDurationOverrides
   sendShortcut: SendShortcut
+}
+
+export type QuickSwitcherPreference = {
+  providerID: string
+  modelID: string
+  state: "add" | "remove"
 }
 
 export type ModelsStore = {
@@ -208,6 +270,11 @@ export type ModelsStore = {
   thinking_model: string
   long_context_model: string
   creative_model: string
+  quick_switcher: QuickSwitcherPreference[]
+}
+
+export type AgentsStore = {
+  defaultAgent: string
 }
 
 export type PluginsStore = {
@@ -218,6 +285,8 @@ export type McpsStore = {
   entries: McpEntry[]
 }
 
+export type LocalEmbeddingSource = "huggingface" | "hf-mirror" | "custom"
+
 export type LibrarySettingsStore = {
   learning: string
   autonomy: string
@@ -226,6 +295,8 @@ export type LibrarySettingsStore = {
   experienceSimThreshold: string
   experienceTopK: string
   experienceEpsilon: string
+  embeddingSource: LocalEmbeddingSource
+  embeddingRemoteHost: string
 }
 
 export type ProvidersStore = {
@@ -247,6 +318,7 @@ export type RuntimeStore = {
   compactionPrune: string
   compactionOverflowThreshold: string
   compactionMaxHistoryImages: string
+  cortexConcurrency: string
   invokeTimeout: string
   providerTtfbTimeout: string
   providerIdleTimeout: string
@@ -255,11 +327,16 @@ export type RuntimeStore = {
   toolOverrides: string
   watcherIgnore: string
   logLevel: string
+  coauthorReminder: string
+  lspWriteDiagnostics: string
+  lspDiagnosticsSeverity: string
+  lspDiagnosticsScope: string
 }
 
 export type SettingsState = {
   general: GeneralStore
   models: ModelsStore
+  agents: AgentsStore
   providers: ProvidersStore
   plugins: PluginsStore
   mcps: McpsStore
@@ -268,15 +345,16 @@ export type SettingsState = {
   runtime: RuntimeStore
   email: EmailSettings
   channels: ChannelSettings
+  roleVariant: Record<string, string>
 }
 
 export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState {
   return {
     general: {
       snapshot: UI_DEFAULTS.snapshot,
-      autoupdate: UI_DEFAULTS.autoupdate,
       username: UI_DEFAULTS.username,
       theme: UI_DEFAULTS.theme,
+      locale: UI_DEFAULTS.locale,
       mutedToasts: [],
       toastDurations: emptyToastDurationOverrides(),
       sendShortcut,
@@ -290,6 +368,10 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       thinking_model: MODEL_DEFAULTS.thinking_model,
       long_context_model: MODEL_DEFAULTS.long_context_model,
       creative_model: MODEL_DEFAULTS.creative_model,
+      quick_switcher: [],
+    },
+    agents: {
+      defaultAgent: UI_DEFAULTS.defaultAgent,
     },
     providers: {
       enabledProviders: "",
@@ -309,6 +391,8 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       experienceSimThreshold: UI_DEFAULTS.experienceSimThreshold,
       experienceTopK: UI_DEFAULTS.experienceTopK,
       experienceEpsilon: UI_DEFAULTS.experienceEpsilon,
+      embeddingSource: UI_DEFAULTS.embeddingSource,
+      embeddingRemoteHost: UI_DEFAULTS.embeddingRemoteHost,
     },
     safety: {
       controlProfile: UI_DEFAULTS.controlProfile,
@@ -323,6 +407,7 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       compactionPrune: UI_DEFAULTS.compactionPrune,
       compactionOverflowThreshold: UI_DEFAULTS.compactionOverflowThreshold,
       compactionMaxHistoryImages: UI_DEFAULTS.compactionMaxHistoryImages,
+      cortexConcurrency: UI_DEFAULTS.cortexConcurrency,
       invokeTimeout: UI_DEFAULTS.invokeTimeout,
       providerTtfbTimeout: UI_DEFAULTS.providerTtfbTimeout,
       providerIdleTimeout: UI_DEFAULTS.providerIdleTimeout,
@@ -331,6 +416,10 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
       toolOverrides: UI_DEFAULTS.toolOverrides,
       watcherIgnore: UI_DEFAULTS.watcherIgnore,
       logLevel: UI_DEFAULTS.logLevel,
+      coauthorReminder: UI_DEFAULTS.coauthorReminder,
+      lspWriteDiagnostics: UI_DEFAULTS.lspWriteDiagnostics,
+      lspDiagnosticsSeverity: UI_DEFAULTS.lspDiagnosticsSeverity,
+      lspDiagnosticsScope: UI_DEFAULTS.lspDiagnosticsScope,
     },
     email: {
       enabled: true,
@@ -350,5 +439,6 @@ export function defaultSettingsState(sendShortcut: SendShortcut): SettingsState 
     channels: {
       feishuAccounts: [],
     },
+    roleVariant: {},
   }
 }

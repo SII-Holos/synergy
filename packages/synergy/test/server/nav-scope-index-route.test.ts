@@ -6,6 +6,8 @@ import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
 import { Server } from "../../src/server/server"
+import { $ } from "bun"
+import path from "path"
 
 Log.init({ print: false })
 
@@ -150,6 +152,74 @@ describe("GET /scope/index", () => {
         })
       },
     })
+  })
+
+  test("uses the canonical project checkout after a linked worktree is opened", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const rootScope = await tmp.scope()
+    const worktreePath = path.join(path.dirname(tmp.path), `${path.basename(tmp.path)}-scope-index-worktree`)
+    await $`git worktree add ${worktreePath} -b scope-index-worktree`.cwd(tmp.path).quiet()
+
+    try {
+      await Scope.fromDirectory(worktreePath)
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          const app = Server.App()
+          const res = await app.request("/scope/index")
+          const body = await res.json()
+
+          const entry = body.find((item: ScopeNavEntry) => item.scopeID === rootScope.id)
+          expect(entry).toBeDefined()
+          expect(entry.directory).toBe(tmp.path)
+        },
+      })
+    } finally {
+      await $`git worktree remove --force ${worktreePath}`.cwd(tmp.path).quiet().nothrow()
+    }
+  })
+
+  test("excludes archived scopes from the index", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    let sessionID: string | undefined
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({ title: "Archived Scope Session" })
+        sessionID = session.id
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const before = await app.request("/scope/index")
+        const beforeBody = await before.json()
+        expect(beforeBody.find((entry: ScopeNavEntry) => entry.scopeID === scope.id)).toBeDefined()
+      },
+    })
+
+    await Scope.remove(scope.id)
+
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => {
+        const app = Server.App()
+        const after = await app.request("/scope/index")
+        const afterBody = await after.json()
+        expect(afterBody.find((entry: ScopeNavEntry) => entry.scopeID === scope.id)).toBeUndefined()
+      },
+    })
+
+    const navIndex = await SessionNav.readNavIndex(scope.id)
+    expect(navIndex.entries.some((entry) => entry.id === sessionID)).toBe(true)
+
+    if (sessionID) await Session.remove(sessionID)
   })
 
   test("latestActivityAt reflects most recent session in scope", async () => {

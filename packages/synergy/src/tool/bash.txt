@@ -19,41 +19,33 @@ Before executing the command, please follow these steps:
      - python /path/with spaces/script.py (incorrect - will fail)
    - After ensuring proper quoting, execute the command.
    - Capture the output of the command.
-
 3. User-visible artifacts:
    - If the command generates a visual or document result the user should inspect (for example .png, .jpg, .svg, .pdf, .html, plots, screenshots, rendered figures, or LaTeX output), call `attach` afterward to show the generated file in the conversation.
    - Prefer attaching final results, not intermediate build artifacts, caches, dependency downloads, logs, or unrelated files.
-   - If you need to inspect an image yourself before showing it, use `look_at`; if the user should see the same image, set `show_to_user: true` or follow with `attach`.
+   - If you need to inspect an image yourself before showing it, use `view_image` when it is available for direct current-model visual context; use `look_at` when `view_image` is unavailable. If the user should see the same image, use `look_at` with `show_to_user: true` or follow with `attach`.
 
 Usage notes:
   - The `command` parameter is required.
   - The `description` parameter is required — write a clear, concise description (5-10 words).
   - If the output exceeds ${maxLines} lines or ${maxBytes} bytes, it will be truncated and the full output written to a file. You can use Read with offset/limit to read specific sections or Grep to search the full content. Because of this, you do NOT need to use `head`, `tail`, or other truncation commands to limit output — just run the command directly.
-  - `envID` is optional. Omit it to run in the current local environment; provide it to target a remote execution backend.
-  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `envID`. Omit the field entirely.
-  - When targeting a remote `meta-synergy` host with `envID`, open a remote collaboration session first using the `remote_session` tool. Remote bash does not implicitly create sessions.
-  - Remote envIDs always start with `env_` (e.g. `"env_abc123"`). Any other value will be rejected.
+  - `linkID` is optional. Omit it to run in the current local environment; provide it to target a Synergy Link target.
+  - For local execution, do NOT pass placeholder or local alias values such as `":local"`, `"local"`, `"localhost"`, or `"undefined"` as `linkID`. Omit the field entirely.
+  - When targeting a remote `synergy-link` host with `linkID`, open a remote collaboration session first using the `connect` tool. Remote bash does not implicitly create sessions.
+  - Remote linkIDs always start with `link_` (e.g. `"link_abc123"`). Any other value will be rejected.
 
-  - Use `yieldSeconds` for commands that may run longer than expected:
-    - Set `yieldSeconds` to auto-background if the command exceeds that duration. Default behavior: the tool waits for completion with no hard time limit.
-    - If the command completes before `yieldSeconds`, it returns normally.
-    - After auto-backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
-  - Use `background: true` to run a command in the background immediately (returns `processId` right away). Prefer this over `yieldSeconds` when you know the command will take a while.
-  - After launching a background or auto-backgrounded process, use `process(action: "log")` or `process(action: "poll")` (without `block: true`) to check initial output. `block: true` holds the agent turn until the process exits — use it only after completing any other pending work first.
+  - For outbound text that the user should review before it is published (for example a PR body, issue body, commit message, or channel message), draft it as a Note and let the user edit the Note first. Local bash commands can then pass `/synergy/note/<note-id>` as a file argument, for example `gh pr create --body-file /synergy/note/<note-id>` or `git commit -F /synergy/note/<note-id>`.
+  - Prefer a command's file-input option over command substitution. The virtual path keeps the Note content out of shell parsing, permission patterns, and the visible command while preserving the command's normal approval boundary.
+  - Note virtual paths are materialized only for local bash execution. A remote Synergy Link command receives the virtual path unchanged.
+
+  - Use `background` (boolean) to run a command in the background immediately; it returns a processId for use with the process tool.
+  - Use `yieldSeconds` to delay before auto-backgrounding a command that runs longer than the given number of seconds. Default is 10. If the command completes before yieldSeconds, it returns normally.
+  - After backgrounding, use the `process` tool to monitor/interact (list, poll, log, write, send-keys, kill).
+  - Example: bash(command: "npm run dev", background: true, yieldSeconds: 30) → { processId: "proc_xxx" }
 
   **For very long-running commands** (experiments, training, large downloads, data processing, etc. that run for minutes or hours):
-  - Do NOT use `background: true` or `yieldSeconds` for these.
-  - Use `tmux` (preferred) or `nohup` instead, with output redirected to a log file.
-  - Example with tmux:
-    ```bash
-    tmux new-session -d -s my-task 'python train.py 2>&1 | tee /path/to/logs/train.log'
-    ```
-  - Example with nohup:
-    ```bash
-    nohup python train.py > /path/to/logs/train.log 2>&1 &
-    ```
-  - Then monitor progress by reading the log file with the Read tool, or use tail/grep as needed.
-  - The bash tool's background mode is designed for short-to-medium interactive processes (builds, tests, installations), not long-running server-type workloads.
+  - Use the bash tool's tracked `background` / `yieldSeconds` flow so Synergy can show a processId and later poll, log, or kill the process.
+  - Do not launch detached shell daemons with `tmux new-session -d`, `screen -dm`, `nohup`, `setsid`, `disown`, or shell `&`. These processes stay charged to the Synergy service cgroup and are blocked by default.
+  - Operator-managed runtimes that intentionally allow detached daemons can set `SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1`; the guard is also bypassed under `full_access` profiles.
 
   - Avoid using Bash with the `find`, `grep`, `cat`, `head`, `tail`, `sed`, `awk`, or `echo` commands, unless explicitly instructed or when these commands are truly necessary for the task. Instead, always prefer using the dedicated tools for these commands:
     - File search: Use Glob (NOT find or ls)

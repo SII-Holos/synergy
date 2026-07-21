@@ -1,0 +1,93 @@
+.desktop-window-chrome {
+  --desktop-chrome-height: 36px;
+  display: flex;
+  align-items: center;
+  flex: 0 0 var(--desktop-chrome-height);
+  height: var(--desktop-chrome-height);
+  min-height: var(--desktop-chrome-height);
+  color: var(--text-base);
+  background: var(--background-base);
+  border-bottom: 1px solid var(--border-weaker-base);
+  user-select: none;
+  -webkit-app-region: drag;
+}
+
+.desktop-window-chrome__brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 168px;
+  height: 100%;
+  padding: 0 12px;
+  color: var(--text-strong);
+  -webkit-app-region: no-drag;
+}
+
+.desktop-window-chrome__icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+
+.desktop-window-chrome__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--font-size-small);
+  font-weight: var(--font-weight-medium);
+}
+
+.desktop-window-chrome__drag-region {
+  flex: 1;
+  align-self: stretch;
+}
+
+.desktop-window-chrome__controls {
+  display: flex;
+  align-items: stretch;
+  height: 100%;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.desktop-window-chrome__control {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 100%;
+  color: var(--icon-base);
+  border-radius: 0;
+  transition:
+    background-color 140ms cubic-bezier(0.16, 1, 0.3, 1),
+    color 140ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.desktop-window-chrome__control:hover,
+.desktop-window-chrome__control:focus-visible {
+  color: var(--icon-strong);
+  background: var(--surface-hover-base);
+}
+
+.desktop-window-chrome__control:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--text-strong) 18%, transparent);
+  outline-offset: -2px;
+}
+
+.desktop-window-chrome__control--close:hover,
+.desktop-window-chrome__control--close:focus-visible {
+  color: var(--text-on-critical-strong);
+  background: var(--surface-critical-base);
+}
+
+@media (max-width: 720px) {
+  .desktop-window-chrome__brand {
+    min-width: 72px;
+  }
+
+  .desktop-window-chrome__title {
+    display: none;
+  }
+}

@@ -6,6 +6,7 @@ import { Identifier } from "@/id/id"
 import { Global } from "@/global"
 import type { MessageV2 } from "@/session/message-v2"
 import { Document } from "@/util/document"
+import { Asset } from "@/asset/asset"
 
 const LOCAL_MEDIA_MIME_PREFIXES = ["image/", "audio/", "video/"]
 
@@ -22,7 +23,7 @@ export namespace Attachment {
     filename?: string
   }
 
-  export interface FilePartInput {
+  export interface PartInput {
     filepath: string
     mime: string
     sessionID: string
@@ -30,8 +31,10 @@ export namespace Attachment {
     filename?: string
     id?: string
     localPath?: string
-    source?: MessageV2.FilePart["source"]
-    metadata?: MessageV2.FilePart["metadata"]
+    source?: MessageV2.AttachmentPart["source"]
+    presentation?: MessageV2.AttachmentPart["presentation"]
+    model?: MessageV2.AttachmentPart["model"]
+    metadata?: MessageV2.AttachmentPart["metadata"]
   }
 
   export interface Policy {
@@ -39,6 +42,8 @@ export namespace Attachment {
     keepBinary: boolean
     saveLocal: boolean
     kind: "image" | "pdf" | "document" | "media" | "other"
+    presentation?: MessageV2.AttachmentPresentation
+    model: MessageV2.AttachmentModelPolicy
   }
 
   export function policy(target: Target): Policy {
@@ -51,6 +56,7 @@ export namespace Attachment {
         extractText: false,
         keepBinary: true,
         saveLocal: true,
+        model: { mode: "provider-file", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -60,6 +66,7 @@ export namespace Attachment {
         extractText: true,
         keepBinary: true,
         saveLocal: false,
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -69,6 +76,7 @@ export namespace Attachment {
         extractText: true,
         keepBinary: false,
         saveLocal: false,
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -78,6 +86,7 @@ export namespace Attachment {
         extractText: false,
         keepBinary: true,
         saveLocal: true,
+        model: { mode: "summary", summary: attachmentSummary(target, mime) },
       }
     }
 
@@ -86,6 +95,7 @@ export namespace Attachment {
       extractText: false,
       keepBinary: false,
       saveLocal: false,
+      model: { mode: "summary", summary: attachmentSummary(target, mime) },
     }
   }
 
@@ -159,19 +169,40 @@ export namespace Attachment {
     return localPath
   }
 
-  export async function toFilePart(input: FilePartInput): Promise<MessageV2.FilePart> {
+  export async function toPart(input: PartInput): Promise<MessageV2.AttachmentPart> {
     const file = Bun.file(input.filepath)
+    const fallbackPolicy = policy({ filepath: input.filepath, filename: input.filename, mime: input.mime })
+    const bytes = await file.bytes()
+    const model = input.model ?? fallbackPolicy.model
+    const attachmentMetadata =
+      input.metadata?.attachment &&
+      typeof input.metadata.attachment === "object" &&
+      !Array.isArray(input.metadata.attachment)
+        ? input.metadata.attachment
+        : {}
+    const url =
+      model.mode === "provider-file"
+        ? dataUrl(input.mime, bytes)
+        : `asset://${await Asset.write(Buffer.from(bytes), input.mime, input.filename)}`
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
       messageID: input.messageID,
-      type: "file",
-      url: dataUrl(input.mime, await file.bytes()),
+      type: "attachment",
+      url,
       mime: input.mime,
       filename: input.filename,
       localPath: input.localPath,
       source: input.source,
-      metadata: input.metadata,
+      presentation: input.presentation ?? fallbackPolicy.presentation,
+      model,
+      metadata: {
+        ...input.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: bytes.byteLength,
+        },
+      },
     }
   }
 
@@ -195,5 +226,10 @@ export namespace Attachment {
 
   function fileExtensionFromMime(mime: string) {
     return mime.split("/")[1]?.replace("jpeg", "jpg").replace("svg+xml", "svg").split("+")[0] || "bin"
+  }
+
+  function attachmentSummary(target: Target, mime: string) {
+    const name = target.filename ?? (target.filepath ? path.basename(target.filepath) : undefined)
+    return name ? `${name} (${mime})` : mime
   }
 }

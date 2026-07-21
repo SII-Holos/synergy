@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test"
+import { createAnthropic } from "@ai-sdk/anthropic"
 import { ProviderTransform } from "../../src/provider/transform"
+import type { Provider } from "../../src/provider/provider"
 
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
@@ -73,6 +75,61 @@ describe("ProviderTransform.options - setCacheKey", () => {
     const result = ProviderTransform.options(openaiModel, sessionID, {})
     expect(result.promptCacheKey).toBe(sessionID)
   })
+
+  test("sets promptCacheKey for OpenAI-Codex provider", () => {
+    const codexModel = {
+      ...mockModel,
+      providerID: "openai-codex",
+      api: {
+        id: "gpt-5-codex",
+        url: "https://api.openai.com",
+        npm: "@ai-sdk/openai",
+      },
+    }
+    const result = ProviderTransform.options(codexModel, sessionID, {})
+    expect(result.promptCacheKey).toBe(sessionID)
+  })
+
+  test("sets promptCacheKey and store=false for Azure models", () => {
+    const azureModel = {
+      ...mockModel,
+      providerID: "azure",
+      api: {
+        id: "gpt-5",
+        url: "https://example.openai.azure.com",
+        npm: "@ai-sdk/azure",
+      },
+    }
+    const result = ProviderTransform.options(azureModel, sessionID, {})
+    expect(result.promptCacheKey).toBe(sessionID)
+    expect(result.store).toBe(false)
+  })
+
+  test("openai-compatible models only receive promptCacheKey when setCacheKey is enabled", () => {
+    const compatibleModel = {
+      ...mockModel,
+      providerID: "deepseek",
+      api: {
+        id: "deepseek-chat",
+        url: "https://api.deepseek.com",
+        npm: "@ai-sdk/openai-compatible",
+      },
+    }
+
+    expect(ProviderTransform.options(compatibleModel, sessionID, {}).promptCacheKey).toBeUndefined()
+    expect(ProviderTransform.options(compatibleModel, sessionID, { setCacheKey: true }).promptCacheKey).toBe(sessionID)
+  })
+
+  test("maps OpenAI and Azure options into provider-specific providerOptions", () => {
+    const options = { promptCacheKey: sessionID, store: false }
+    const openaiModel = { ...mockModel, providerID: "openai", api: { ...mockModel.api, npm: "@ai-sdk/openai" } }
+    const azureModel = { ...mockModel, providerID: "azure", api: { ...mockModel.api, npm: "@ai-sdk/azure" } }
+
+    expect(ProviderTransform.providerOptions(openaiModel, options).openai).toBe(options)
+    const azureOptions = ProviderTransform.providerOptions(azureModel, options)
+    expect(azureOptions.openai).toBe(options)
+    expect(azureOptions.azure).toBe(options)
+  })
 })
 
 describe("ProviderTransform.message - Anthropic cache boundary", () => {
@@ -122,6 +179,24 @@ describe("ProviderTransform.message - Anthropic cache boundary", () => {
     expect(result[0].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[1].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[2].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+  })
+
+  test("keeps Anthropic cache control on stable boundary when late advisory system blocks follow", () => {
+    const msgs = [
+      { role: "system", content: "agent prompt" },
+      { role: "system", content: "permission context" },
+      { role: "system", content: "memory changes" },
+      { role: "system", content: "env time changes" },
+      { role: "user", content: "hello" },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, mockModel, { systemCacheBreakpoint: 1 })
+
+    expect(result[0].providerOptions?.anthropic?.cacheControl).toBeUndefined()
+    expect(result[1].providerOptions?.anthropic?.cacheControl).toEqual({ type: "ephemeral" })
+    expect(result[2].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[3].providerOptions?.anthropic?.cacheControl).toBeUndefined()
     expect(result[4].providerOptions?.anthropic?.cacheControl).toBeUndefined()
   })
@@ -473,9 +548,42 @@ describe("ProviderTransform.message - empty image handling", () => {
     const result = ProviderTransform.message(msgs, mockModel)
 
     expect(result).toHaveLength(1)
-    expect(result[0].content).toHaveLength(2)
-    expect(result[0].content[0]).toEqual({ type: "text", text: "What is in this image?" })
-    expect(result[0].content[1]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
+    expect(result[0].content).toHaveLength(3)
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+    })
+    expect(result[0].content[1]).toEqual({ type: "text", text: "What is in this image?" })
+    expect(result[0].content[2]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
+  })
+
+  test("replaces images whose MIME type is not supported by the model", () => {
+    const jpegBase64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2Q=="
+    const restrictedModel = {
+      ...mockModel,
+      capabilities: {
+        ...mockModel.capabilities,
+        input: {
+          ...mockModel.capabilities.input,
+          supportedImageMediaTypes: ["image/png"],
+        },
+      },
+    }
+    const msgs = [
+      {
+        role: "user",
+        content: [{ type: "image", image: `data:image/jpeg;base64,${jpegBase64}` }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, restrictedModel)
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    expect(content.some((part) => part.type === "image")).toBe(false)
+    expect(content[0]).toMatchObject({ type: "text" })
+    expect(content[0]?.type === "text" ? content[0].text : "").toContain("image/jpeg")
+    expect(content[0]?.type === "text" ? content[0].text : "").toContain("image/png")
   })
 
   test("should handle mixed valid and empty images", () => {
@@ -495,10 +603,14 @@ describe("ProviderTransform.message - empty image handling", () => {
     const result = ProviderTransform.message(msgs, mockModel)
 
     expect(result).toHaveLength(1)
-    expect(result[0].content).toHaveLength(3)
-    expect(result[0].content[0]).toEqual({ type: "text", text: "Compare these images" })
-    expect(result[0].content[1]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
-    expect(result[0].content[2]).toEqual({
+    expect(result[0].content).toHaveLength(4)
+    expect(result[0].content[0]).toEqual({
+      type: "text",
+      text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+    })
+    expect(result[0].content[1]).toEqual({ type: "text", text: "Compare these images" })
+    expect(result[0].content[2]).toEqual({ type: "image", image: `data:image/png;base64,${validBase64}` })
+    expect(result[0].content[3]).toEqual({
       type: "text",
       text: "ERROR: Image file is empty or corrupted. Please provide a valid image.",
     })
@@ -530,14 +642,84 @@ describe("ProviderTransform.message - empty image handling", () => {
       },
     ] as any[]
 
-    const result = ProviderTransform.message(msgs, bedrockModel)
+    const result = ProviderTransform.message(msgs, bedrockModel, {
+      lookAtAvailable: true,
+      viewImageAvailable: true,
+    })
 
     expect(result).toHaveLength(1)
     expect(result[0].content).toHaveLength(2)
     expect(result[0].content[1]).toMatchObject({
       type: "text",
-      text: '["huge.png" was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use the look_at tool with the file\'s local path to analyze it or attach a smaller image.]',
+      text: '["huge.png" was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use view_image with a smaller local image when the active model supports image input, use look_at for separate vision-model analysis, or attach a smaller image.]',
     })
+  })
+})
+describe("ProviderTransform.message - unsupported image replacement hint", () => {
+  const validBase64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+  const textOnlyModel = {
+    id: "anthropic/claude-3-5-sonnet",
+    providerID: "anthropic",
+    api: {
+      id: "claude-3-5-sonnet-20241022",
+      url: "https://api.anthropic.com",
+      npm: "@ai-sdk/anthropic",
+    },
+    name: "Claude 3.5 Sonnet",
+    capabilities: {
+      temperature: true,
+      reasoning: false,
+      attachment: true,
+      toolcall: true,
+      input: { text: true, audio: false, image: false, video: false, pdf: true },
+      output: { text: true, audio: false, image: false, video: false, pdf: false },
+      interleaved: false,
+    },
+    cost: { input: 0.003, output: 0.015, cache: { read: 0.0003, write: 0.00375 } },
+    limit: { context: 200000, output: 8192 },
+    status: "active",
+    options: {},
+    headers: {},
+  } as any
+
+  test("must not mention look_at when lookAtAvailable is false", () => {
+    const msgs = [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Check this out" },
+          { type: "image", image: `data:image/png;base64,${validBase64}` },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, textOnlyModel, { lookAtAvailable: false })
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    const textBlocks = content.filter((item) => item.type === "text")
+    const replacement = textBlocks[1]?.text ?? ""
+
+    expect(replacement).not.toContain("look_at")
+    expect(replacement).toContain("does not support")
+  })
+
+  test("may mention look_at when lookAtAvailable is true", () => {
+    const msgs = [
+      {
+        role: "user",
+        content: [{ type: "image", image: `data:image/png;base64,${validBase64}` }],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(msgs, textOnlyModel, { lookAtAvailable: true })
+    const content = result[0].content
+    expect(Array.isArray(content)).toBe(true)
+    if (!Array.isArray(content)) throw new Error("Expected multipart message content")
+    const text = content[0]?.type === "text" ? content[0].text : ""
+
+    expect(text).toContain("look_at")
   })
 })
 
@@ -717,16 +899,12 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
 })
 
 describe("ProviderTransform.variants", () => {
-  const createMockModel = (overrides: Partial<any> = {}): any => ({
-    id: "test/test-model",
-    providerID: "test",
-    api: {
-      id: "test-model",
-      url: "https://api.test.com",
-      npm: "@ai-sdk/openai",
-    },
-    name: "Test Model",
-    capabilities: {
+  type ModelOverrides = Omit<Partial<Provider.Model>, "capabilities"> & {
+    capabilities?: Partial<Provider.Model["capabilities"]>
+  }
+
+  const createMockModel = (overrides: ModelOverrides = {}): Provider.Model => {
+    const capabilities = {
       temperature: true,
       reasoning: true,
       attachment: true,
@@ -734,22 +912,33 @@ describe("ProviderTransform.variants", () => {
       input: { text: true, audio: false, image: true, video: false, pdf: false },
       output: { text: true, audio: false, image: false, video: false, pdf: false },
       interleaved: false,
-    },
-    cost: {
-      input: 0.001,
-      output: 0.002,
-      cache: { read: 0.0001, write: 0.0002 },
-    },
-    limit: {
-      context: 128000,
-      output: 8192,
-    },
-    status: "active",
-    options: {},
-    headers: {},
-    release_date: "2024-01-01",
-    ...overrides,
-  })
+    }
+    return {
+      id: "test/test-model",
+      providerID: "test",
+      api: {
+        id: "test-model",
+        url: "https://api.test.com",
+        npm: "@ai-sdk/openai",
+      },
+      name: "Test Model",
+      cost: {
+        input: 0.001,
+        output: 0.002,
+        cache: { read: 0.0001, write: 0.0002 },
+      },
+      limit: {
+        context: 128000,
+        output: 8192,
+      },
+      status: "active",
+      options: {},
+      headers: {},
+      release_date: "2024-01-01",
+      ...overrides,
+      capabilities: { ...capabilities, ...overrides.capabilities },
+    }
+  }
 
   test("returns empty object when model has no reasoning capabilities", () => {
     const model = createMockModel({
@@ -757,6 +946,217 @@ describe("ProviderTransform.variants", () => {
     })
     const result = ProviderTransform.variants(model)
     expect(result).toEqual({})
+  })
+  test("Kimi K3 exposes catalog reasoning efforts on Anthropic-compatible endpoints", () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: {},
+    })
+
+    const variants = ProviderTransform.variants(model)
+    expect(ProviderTransform.providerOptions(model, variants.high)).toEqual({
+      anthropic: { effort: "high" },
+    })
+    expect(ProviderTransform.providerOptions(model, variants.max)).toEqual({ anthropic: {} })
+  })
+
+  test("Kimi K3 effort variants pass the locked Anthropic SDK validator", async () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    for (const [variant, options] of Object.entries(ProviderTransform.variants(model))) {
+      let requestBody: Record<string, unknown> | undefined
+      const fetchFn = (async (_input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+        return new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error" } }), {
+          status: 400,
+          headers: { "content-type": "application/json" },
+        })
+      }) as unknown as typeof fetch
+      const anthropic = createAnthropic({
+        apiKey: "test",
+        baseURL: "https://example.invalid",
+        fetch: fetchFn,
+      })
+
+      try {
+        await anthropic("k3").doGenerate({
+          prompt: [{ role: "user", content: [{ type: "text", text: "hi" }] }],
+          maxOutputTokens: 16,
+          providerOptions: ProviderTransform.providerOptions(model, options),
+        })
+      } catch {}
+
+      expect(requestBody, `${variant} should pass Anthropic provider-option validation`).toBeDefined()
+      expect(requestBody?.output_config).toEqual(variant === "max" ? undefined : { effort: variant })
+    }
+  })
+
+  test("custom Kimi K3 aliases retain catalog reasoning efforts", () => {
+    const model = createMockModel({
+      id: "custom-kimi-k3",
+      family: "kimi-k3",
+      providerID: "custom-provider",
+      api: {
+        id: "k3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+      capabilities: { reasoningEfforts: ["low", "high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      low: { effort: "low" },
+      high: { effort: "high" },
+      max: {},
+    })
+  })
+
+  test("Kimi K3 without catalog efforts does not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "k3",
+      family: "kimi-k3",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "k3",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("Kimi Coding Plan leaves K2 reasoning provider-managed without catalog efforts", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "kimi-for-coding",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://api.kimi.com/coding/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test.each(["minimax", "minimax-cn", "minimax-coding-plan", "minimax-cn-coding-plan", "minimax-oauth"])(
+    "%s leaves Anthropic-compatible reasoning provider-managed",
+    (providerID) => {
+      const model = createMockModel({
+        id: "MiniMax-M2.1",
+        providerID,
+        api: {
+          id: "MiniMax-M2.1",
+          url: "https://api.minimax.io/anthropic/v1",
+          npm: "@ai-sdk/anthropic",
+        },
+        capabilities: { reasoningEfforts: ["max"] },
+      })
+
+      expect(ProviderTransform.variants(model)).toEqual({})
+    },
+  )
+
+  test("MiniMax M3 exposes adaptive thinking on Anthropic-compatible endpoints", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "minimax-oauth",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://api.minimax.io/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom MiniMax aliases do not receive Anthropic budget variants", () => {
+    const model = createMockModel({
+      id: "MiniMax-M2.1",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M2.1",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test("custom MiniMax M3 aliases preserve adaptive thinking", () => {
+    const model = createMockModel({
+      id: "MiniMax-M3",
+      providerID: "custom-provider",
+      api: {
+        id: "MiniMax-M3",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      max: { thinking: { type: "adaptive" } },
+    })
+  })
+
+  test("custom Kimi aliases keep reasoning provider-managed", () => {
+    const model = createMockModel({
+      id: "kimi-k2-thinking",
+      providerID: "custom-provider",
+      api: {
+        id: "kimi-k2-thinking",
+        url: "https://proxy.example.com/anthropic/v1",
+        npm: "@ai-sdk/anthropic",
+      },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({})
+  })
+
+  test.each(["zhipuai-coding-plan", "zai-coding-plan"])("%s keeps OpenAI-compatible effort variants", (providerID) => {
+    const model = createMockModel({
+      id: "glm-5.2",
+      providerID,
+      api: {
+        id: "glm-5.2",
+        url: "https://api.z.ai/api/coding/paas/v4",
+        npm: "@ai-sdk/openai-compatible",
+      },
+      capabilities: { reasoningEfforts: ["high", "max"] },
+    })
+
+    expect(ProviderTransform.variants(model)).toEqual({
+      high: { reasoningEffort: "high" },
+      max: { reasoningEffort: "max" },
+    })
   })
 
   test("deepseek returns empty object", () => {
@@ -773,7 +1173,7 @@ describe("ProviderTransform.variants", () => {
     expect(result).toEqual({})
   })
 
-  test("minimax returns empty object", () => {
+  test("MiniMax OpenAI-compatible Chat models do not expose reasoning effort variants", () => {
     const model = createMockModel({
       id: "minimax/minimax-model",
       providerID: "minimax",
@@ -783,8 +1183,8 @@ describe("ProviderTransform.variants", () => {
         npm: "@ai-sdk/openai-compatible",
       },
     })
-    const result = ProviderTransform.variants(model)
-    expect(result).toEqual({})
+
+    expect(ProviderTransform.variants(model)).toEqual({})
   })
 
   test("glm returns empty object", () => {
@@ -830,7 +1230,7 @@ describe("ProviderTransform.variants", () => {
       expect(result).toEqual({})
     })
 
-    test("gpt models return OPENAI_EFFORTS with reasoning", () => {
+    test("gpt models use the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/gpt-4",
         providerID: "openrouter",
@@ -846,7 +1246,7 @@ describe("ProviderTransform.variants", () => {
       expect(result.high).toEqual({ reasoning: { effort: "high" } })
     })
 
-    test("gemini-3 returns OPENAI_EFFORTS with reasoning", () => {
+    test("gemini-3 uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/gemini-3-5-pro",
         providerID: "openrouter",
@@ -860,7 +1260,7 @@ describe("ProviderTransform.variants", () => {
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
 
-    test("grok-4 returns OPENAI_EFFORTS with reasoning", () => {
+    test("grok-4 uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "openrouter/grok-4",
         providerID: "openrouter",
@@ -873,10 +1273,26 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
+
+    test("explicit model efforts enable future model families", () => {
+      const model = createMockModel({
+        id: "openrouter/future-reasoning-model",
+        providerID: "openrouter",
+        api: {
+          id: "future-reasoning-model",
+          url: "https://openrouter.ai",
+          npm: "@openrouter/ai-sdk-provider",
+        },
+        capabilities: { reasoningEfforts: ["low", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "max"])
+      expect(result.max).toEqual({ reasoning: { effort: "max" } })
+    })
   })
 
   describe("@ai-sdk/gateway", () => {
-    test("returns OPENAI_EFFORTS with reasoningEffort", () => {
+    test("uses the routed effort fallback", () => {
       const model = createMockModel({
         id: "gateway/gateway-model",
         providerID: "gateway",
@@ -890,6 +1306,22 @@ describe("ProviderTransform.variants", () => {
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
       expect(result.low).toEqual({ reasoningEffort: "low" })
       expect(result.high).toEqual({ reasoningEffort: "high" })
+    })
+
+    test("explicit model efforts override the routed fallback", () => {
+      const model = createMockModel({
+        id: "gateway/future-reasoning-model",
+        providerID: "gateway",
+        api: {
+          id: "future-reasoning-model",
+          url: "https://gateway.ai",
+          npm: "@ai-sdk/gateway",
+        },
+        capabilities: { reasoningEfforts: ["low", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "max"])
+      expect(result.max).toEqual({ reasoningEffort: "max" })
     })
   })
 
@@ -1030,6 +1462,21 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["minimal", "low", "medium", "high"])
     })
+
+    test("explicit model efforts override the Azure fallback", () => {
+      const model = createMockModel({
+        id: "gpt-5.6",
+        providerID: "azure",
+        api: {
+          id: "gpt-5.6",
+          url: "https://azure.com",
+          npm: "@ai-sdk/azure",
+        },
+        capabilities: { reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+    })
   })
 
   describe("@ai-sdk/openai", () => {
@@ -1096,9 +1543,56 @@ describe("ProviderTransform.variants", () => {
       const result = ProviderTransform.variants(model)
       expect(Object.keys(result)).toEqual(["none", "minimal", "low", "medium", "high", "xhigh"])
     })
+    test("explicit model efforts override the OpenAI fallback", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5.6",
+        providerID: "openai",
+        api: {
+          id: "gpt-5.6",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
+        },
+        capabilities: { reasoningEfforts: ["none", "low", "medium", "high", "xhigh", "max"] },
+        release_date: "2026-07-01",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["none", "low", "medium", "high", "xhigh", "max"])
+    })
+
+    test("explicit model efforts can narrow the OpenAI fallback", () => {
+      const model = createMockModel({
+        id: "openai/gpt-5.4-pro",
+        providerID: "openai",
+        api: {
+          id: "gpt-5.4-pro",
+          url: "https://api.openai.com",
+          npm: "@ai-sdk/openai",
+        },
+        capabilities: { reasoningEfforts: ["medium", "high", "xhigh"] },
+        release_date: "2026-03-05",
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["medium", "high", "xhigh"])
+    })
   })
 
   describe("@ai-sdk/anthropic", () => {
+    test("official Anthropic models keep catalog effort variants", () => {
+      const model = createMockModel({
+        id: "anthropic/claude-future",
+        providerID: "anthropic",
+        api: {
+          id: "claude-future",
+          url: "https://api.anthropic.com",
+          npm: "@ai-sdk/anthropic",
+        },
+        capabilities: { reasoningEfforts: ["low", "xhigh", "max"] },
+      })
+      const result = ProviderTransform.variants(model)
+      expect(Object.keys(result)).toEqual(["low", "xhigh", "max"])
+      expect(result.max).toEqual({ effort: "max" })
+    })
+
     test("returns high and max with thinking config", () => {
       const model = createMockModel({
         id: "anthropic/claude-4",

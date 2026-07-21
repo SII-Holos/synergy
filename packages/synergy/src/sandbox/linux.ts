@@ -4,7 +4,7 @@ import * as fs from "fs"
 import * as crypto from "crypto"
 import type { PrepareLinuxWrapperOpts, SandboxExecutionWrapper } from "./types"
 import { detectPlatform } from "./detect"
-import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots } from "./policy"
+import { DEFAULT_PROTECTED_PATHS, defaultRuntimeReadRoots, joinPathLike } from "./policy"
 import { Log } from "@/util/log"
 import { isWsl1 } from "./wsl"
 import { isTarballHelperUpToDate, verifyHelperHash } from "./utils"
@@ -22,15 +22,28 @@ const log = Log.create({ service: "sandbox-linux" })
  */
 export const LINUX_HELPER_SEARCH_PATHS = [
   // Bundled with Synergy installation
-  (homedir: string) => path.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox-linux"),
+  (homedir: string) => path.posix.join(homedir, ".synergy", "sandbox-helper", "synergy-sandbox-linux"),
   // Global Synergy binary directory
-  (homedir: string) => path.join(homedir, ".synergy", "bin", "synergy-sandbox-linux"),
+  (homedir: string) => path.posix.join(homedir, ".synergy", "bin", "synergy-sandbox-linux"),
   // Global npm install — node_modules in user home
   (homedir: string) =>
-    path.join(homedir, "node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
+    path.posix.join(
+      homedir,
+      "node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-linux-x64",
+      "bin",
+      "synergy-sandbox-linux",
+    ),
   // System-wide npm install
   (_homedir: string) =>
-    path.join("/usr/lib/node_modules", "@ericsanchezok", "synergy-sandbox-linux-x64", "bin", "synergy-sandbox-linux"),
+    path.posix.join(
+      "/usr/lib/node_modules",
+      "@ericsanchezok",
+      "synergy-sandbox-linux-x64",
+      "bin",
+      "synergy-sandbox-linux",
+    ),
 ]
 
 /**
@@ -140,7 +153,7 @@ function tryInstallCargoHelper(): boolean {
 
   for (const srcPath of cargoPaths) {
     try {
-      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || isTarballHelperUpToDate(srcPath, destPath))) {
+      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || !isTarballHelperUpToDate(srcPath, destPath))) {
         fs.mkdirSync(destDir, { recursive: true })
         fs.copyFileSync(srcPath, destPath)
         fs.chmodSync(destPath, 0o755)
@@ -305,8 +318,11 @@ export function isBundledBwrapAvailable(): boolean {
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
-  // Empty map is intentional until release — no helper will be trusted.
+  ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
+    ? {
+        [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-linux")]: SYNERGY_SANDBOX_HELPER_SHA256,
+      }
+    : {}),
 }
 
 /**
@@ -483,7 +499,7 @@ function prepareInlineBwrap(opts: PrepareLinuxWrapperOpts): SandboxExecutionWrap
   }
 
   // Controlled tmp
-  const tmpDir = path.join(workspace, ".synergy", "tmp")
+  const tmpDir = joinPathLike(workspace, ".synergy", "tmp")
   bwrapArgs.push("--bind", tmpDir, "/tmp")
 
   // Separator

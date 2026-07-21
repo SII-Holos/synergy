@@ -15,6 +15,23 @@ const libraryShared = await Bun.file(new URL("./components/library/shared.tsx", 
 const questionPromptCss = await Bun.file(new URL("./components/session/question-prompt.css", import.meta.url)).text()
 const questionPrompt = await Bun.file(new URL("./components/session/question-prompt.tsx", import.meta.url)).text()
 const sidebarCss = await Bun.file(new URL("./components/sidebar/sidebar.css", import.meta.url)).text()
+const nativeTitlebarCss = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.css", import.meta.url),
+).text()
+const nativeTitlebar = await Bun.file(
+  new URL("./components/app-shell/desktop-native-titlebar.tsx", import.meta.url),
+).text()
+const sessionTopBarCss = await Bun.file(new URL("./components/top-bar/session-top-bar.css", import.meta.url)).text()
+const sessionTopBar = await Bun.file(new URL("./components/top-bar/session-top-bar.tsx", import.meta.url)).text()
+const sessionPage = await Bun.file(new URL("./pages/session.tsx", import.meta.url)).text()
+const workbenchSurface = await Bun.file(new URL("./components/workspace/workbench-surface.tsx", import.meta.url)).text()
+const workbenchSurfaceCss = await Bun.file(
+  new URL("./components/workspace/workbench-surface.css", import.meta.url),
+).text()
+const workbenchPanels = await Bun.file(new URL("./context/workbench/index.tsx", import.meta.url)).text()
+const builtinWorkbenchPanels = await Bun.file(
+  new URL("./components/workspace/builtin-workbench-panels.tsx", import.meta.url),
+).text()
 const appSrc = fileURLToPath(new URL(".", import.meta.url))
 const uiSrc = fileURLToPath(new URL("../../ui/src", import.meta.url))
 
@@ -90,6 +107,57 @@ describe("workbench surface polarity", () => {
     }
   })
 
+  test("macOS native chrome keeps a narrow draggable header above the Holos sidebar", () => {
+    expect(nativeTitlebar).toContain("desktopWindowNativeChromeActive(platform)")
+    expect(nativeTitlebar).not.toContain('getSemanticIcon("app.sidebar")')
+    expect(nativeTitlebar).not.toContain('getSemanticIcon("action.search")')
+    expect(nativeTitlebarCss).toContain("position: relative;")
+    expect(nativeTitlebarCss).toContain("flex: 0 0 var(--desktop-native-titlebar-height);")
+    expect(nativeTitlebarCss).toContain("-webkit-app-region: drag;")
+    expect(css).toContain("--desktop-native-titlebar-height: 18px;")
+    expect(css).toContain("--desktop-native-titlebar-traffic-width: 90px;")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__traffic-space")
+    expect(nativeTitlebarCss).toContain(".desktop-native-titlebar__drag-region")
+    expect(sessionPage).toContain("session-workbench-pane")
+    expect(sessionTopBar).not.toContain('import { Portal } from "solid-js/web"')
+    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome .stb-root")
+    expect(sessionTopBarCss).not.toContain(".app-shell--desktop-native-chrome.app-shell--sidebar-collapsed .stb-root")
+    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-header")
+    expect(sidebarCss).not.toContain(".app-shell--desktop-native-chrome .sb-actions")
+    expect(sidebarCss).not.toContain("--sb-native-titlebar-height")
+  })
+
+  test("workbench panel tabs keep close and add controls compact", () => {
+    expect(builtinWorkbenchPanels.match(/cardinality: "singleton"/g)?.length).toBeGreaterThanOrEqual(3)
+    expect(builtinWorkbenchPanels).toContain('id: "file"')
+    expect(builtinWorkbenchPanels).toContain('cardinality: "multi"')
+    expect(workbenchSurface).toContain("addablePanels")
+    expect(workbenchSurface).toContain('panel.cardinality === "multi" || !openPanelIds.has(panel.id)')
+    expect(workbenchSurface).toContain("const activePanel = createMemo")
+    expect(workbenchSurface).toContain("when={activePanel()}")
+    expect(workbenchSurface).toContain("keyed")
+    expect(workbenchSurface).not.toContain('aria-label={isSide() ? "Close side workspace" : "Close BottomSpace"}')
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-tab:hover .workbench-surface-tab-close")
+    expect(workbenchSurfaceCss).toContain("position: absolute;")
+    expect(workbenchSurfaceCss).toContain("border-radius: 999px;")
+    expect(workbenchSurfaceCss).toContain("pointer-events: none;")
+    expect(workbenchSurfaceCss).toContain("var(--workbench-tab-bg)")
+    expect(workbenchSurfaceCss).toContain(".workbench-surface-add-wrap")
+    expect(workbenchSurface).toContain("<Popover")
+    expect(workbenchSurface).toContain('aria-haspopup="menu"')
+    expect(workbenchSurface).toContain("resolveWorkbenchEscapeAction")
+    expect(workbenchSurfaceCss).toContain('.workbench-surface-add-menu [data-slot="popover-body"]')
+    expect(builtinWorkbenchPanels).not.toContain("DialogSelectFile")
+    expect(builtinWorkbenchPanels).toContain('return { title: i18n._(P.openFile), source: "explorer" }')
+    expect(builtinWorkbenchPanels).toContain("controller.activeLocale()")
+    expect(builtinWorkbenchPanels).toContain("label: i18n._(P.files)")
+    expect(builtinWorkbenchPanels).toContain("createContextWorkbenchPanel(i18n._(P.context))")
+  })
+
+  test("workbench surfaces close instead of persisting empty launchers", () => {
+    expect(workbenchPanels).toContain("if (next.tabs.length === 0) target.close()")
+  })
+
   test("raised stronger non-alpha utilities resolve to popover surfaces inside the workbench", () => {
     expect(css).toContain(".bg-surface-raised-stronger-non-alpha")
     expect(css).toContain("background-color: var(--workbench-popover-bg);")
@@ -99,8 +167,8 @@ describe("workbench surface polarity", () => {
   })
 
   test("agenda time grid uses centered labels and scoped line tokens", () => {
-    expect(agendaCss).toContain("--agenda-grid-line: light-dark(")
-    expect(agendaCss).toContain("--agenda-grid-line-strong: light-dark(")
+    expect(agendaCss).toContain("--agenda-grid-line: var(--border-weak-base)")
+    expect(agendaCss).toContain("--agenda-grid-line-strong: var(--border-base)")
     expect(agendaCss).toContain(".agenda-time-label")
     expect(agendaCss).toContain("text-align: center;")
     expect(agendaCss).toContain("border-left: 1px solid var(--agenda-grid-line);")
@@ -138,30 +206,45 @@ describe("workbench surface polarity", () => {
 
     expect(libraryCss).toContain(".library-header-controls")
     expect(libraryCss).toContain("--library-panel-bg")
-    expect(libraryShared).toContain('export const libraryCardBaseClass =\n  "library-card-surface')
+    expect(libraryShared).toMatch(/export const libraryCardBaseClass\s*=\s*"library-card-surface/)
     expect(libraryShared).not.toContain("uppercase tracking-[0.16em]")
   })
 
   test("question prompts use a dedicated decision surface instead of a generic tool card", () => {
-    expect(questionPrompt).toContain('<section class="question-prompt-shell">')
+    expect(questionPrompt).toContain('class="question-prompt-shell"')
     expect(questionPrompt).toContain("question-prompt-option")
+    expect(questionPrompt).toContain('class="question-prompt-option question-prompt-other-trigger"')
+    expect(questionPrompt).toContain("question-prompt-skip")
     expect(questionPrompt).toContain("disabled={!currentAnswered()}")
     expect(questionPrompt).toContain("disabled={!allAnswered()}")
+    expect(questionPrompt).not.toContain("Dismiss")
     expect(questionPrompt).not.toContain('Card variant="info"')
     expect(questionPrompt).not.toContain("workbench-card-surface workbench-card-surface-hover")
 
     expect(questionPromptCss).toContain("--question-shell-bg")
     expect(questionPromptCss).toContain("--question-content-bg")
     expect(questionPromptCss).toContain("--question-selected-bg")
+    expect(questionPromptCss).toContain("border-radius: var(--radius-2xl);")
     expect(questionPromptCss).toContain(".question-prompt-option.is-picked")
+    expect(questionPromptCss).toContain(".question-prompt-option-copy")
     expect(questionPromptCss).toContain(".question-prompt-footer")
+    expect(questionPrompt).toContain('role={multi() ? "checkbox" : "radio"}')
+    expect(questionPrompt).toContain("aria-checked={picked()}")
+    expect(questionPrompt).toContain("question-prompt-option-shortcut")
+    expect(questionPrompt).toContain("question-prompt-meta")
+    expect(questionPrompt).toContain('getSemanticIcon("action.more")')
+    expect(questionPrompt).toContain("scopeActive")
+    expect(questionPrompt).toContain("Boolean(root?.contains(activeElement))")
+    expect(questionPrompt).not.toContain("question-prompt-header-actions")
+    expect(questionPromptCss).toContain(".question-prompt-choice-hint")
+    expect(questionPromptCss).toContain(".question-prompt-option-shortcut")
   })
 
   test("generic surface utilities used by the frontend are covered by workbench mappings", () => {
     const sourceFiles = [...walkSourceFiles(appSrc), ...walkSourceFiles(uiSrc)]
     const genericBgClass = /(?:^|[\s"'`])((?:hover:)?bg-(?:surface|background|input|button)-[A-Za-z0-9\-/]+)/g
     const semanticState =
-      /success|warning|critical|info|diff|action|brand|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
+      /success|warning|critical|info|diff|action|brand|overlay|interactive-solid|interactive-weak|interactive-hover|muted|disabled/
     const missing = new Set<string>()
 
     for (const filepath of sourceFiles) {

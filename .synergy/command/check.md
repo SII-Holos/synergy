@@ -1,22 +1,45 @@
-Run all quality checks in sequence: typecheck, tests, and format verification.
+Verify the current Synergy changes from narrow checks to repository gates. Interpret `$ARGUMENTS` as a requested scope or additional check.
 
-Execute these commands and report results:
-
-```bash
-bun run typecheck
-```
-
-If typecheck passes:
+1. Inspect `git diff --stat` and select the affected package/domain tests.
+2. Run the narrow test first. Core runtime tests run from `packages/synergy`.
+3. Run the default root preflight:
 
 ```bash
-cd packages/synergy && bun test
+bun run quality:quick
 ```
 
-If tests pass:
+4. Run `bun run quality` when the change crosses shared abstractions, the user requests the full suite, or the work is ready for PR-level verification.
+
+For core-runtime harness changes or CI-equivalent verification, run `bun run test:ci` from `packages/synergy` after focused tests. This uses sequential fresh-process shards and may replace a redundant second single-process full-suite run when the CI boundary is the intended signal.
+
+5. Add specialized checks when relevant:
 
 ```bash
-./script/format.ts
-git diff --exit-code || echo "Formatting changes detected — run ./script/format.ts and commit"
+bun run deadcode
+bun run workflow:check
+bun run secrets:check
+bun run desktop:test
 ```
 
-Summarize: which checks passed, which failed, and what needs fixing. $ARGUMENTS
+Frontend changes use the package test entry points before the root gates:
+
+```bash
+bun run --cwd packages/app test
+bun run --cwd packages/ui test
+```
+
+Theme changes also run `bun run --cwd packages/ui generate:theme` and verify that no generated artifact changes remain after a second generation.
+
+Localization changes update the catalogs and then run the single repository localization gate:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run localization:check
+bun run --cwd packages/app build
+```
+
+Extraction must leave no catalog diff. The repository gate repeats extraction, rejects drift, strict-compiles every catalog, and scans App/UI source. Report catalog completeness, ICU compilation, production locale chunking, and any reviewed pass-through allowlist entries.
+
+Do not use root `bun test`; it intentionally fails. Do not bypass hooks or weaken tests. Report each command, pass/fail counts, causal failure, fixes made, rerun result, and checks not run.
+
+$ARGUMENTS

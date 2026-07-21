@@ -2,127 +2,16 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import z from "zod"
-import { mapValues } from "remeda"
-import { Provider } from "../provider/provider"
-import { Config } from "../config/config"
-import { ModelsDev } from "../provider/models"
 import { ProviderAuth } from "../provider/auth"
 import { Log } from "../util/log"
 import { errors } from "./error"
-import { ProviderCatalog } from "@/provider/catalog"
+import { RuntimeReload } from "@/runtime/reload"
 import { ProviderUsage } from "@/provider/usage-service"
 import { AccountUsage } from "@/provider/usage"
-import { Auth } from "@/provider/api-key"
-import { ProviderProfile } from "@/provider/profile"
+import { GitHubProvider } from "@/provider/github"
+import { listProvidersForClient, ProviderListResponse } from "./provider-view"
 
 const log = Log.create({ service: "provider" })
-
-const ProviderAuthHealth = z
-  .object({
-    providerID: z.string(),
-    status: z.enum(["connected", "not_configured", "expired", "exhausted", "dead"]),
-    authKind: z.string().optional(),
-    source: z.string().optional(),
-    updatedAt: z.number().optional(),
-    reloginRequired: z.boolean().optional(),
-    cooldownUntil: z.number().optional(),
-    resetAt: z.number().optional(),
-    failureCode: z.string().optional(),
-  })
-  .meta({ ref: "ProviderAuthHealth" })
-
-const ProviderRuntimeAvailability = z
-  .object({
-    providerID: z.string(),
-    available: z.boolean(),
-    reason: z.enum(["connected", "not_connected", "disabled", "no_models"]).optional(),
-    healthCheck: z.enum(["models", "none"]).optional(),
-    modelCount: z.number(),
-  })
-  .meta({ ref: "ProviderRuntimeAvailability" })
-
-async function authHealth(
-  providerID: string,
-  entry: Auth.StoreEntry | undefined,
-): Promise<z.infer<typeof ProviderAuthHealth>> {
-  if (!entry) {
-    return {
-      providerID,
-      status: "not_configured",
-      reloginRequired: false,
-    }
-  }
-  const now = Date.now()
-  const selected = await Auth.select(providerID)
-  if (selected) {
-    const info = selected.auth
-    if (info.type === "oauth" && info.expires * 1000 <= now) {
-      return {
-        providerID,
-        status: "expired",
-        authKind: selected.poolEntry?.authKind ?? entry.authKind,
-        source: selected.poolEntry?.source ?? entry.source,
-        updatedAt: selected.poolEntry?.updatedAt ?? entry.updatedAt,
-        reloginRequired: false,
-      }
-    }
-    return {
-      providerID,
-      status: "connected",
-      authKind: selected.poolEntry?.authKind ?? entry.authKind,
-      source: selected.poolEntry?.source ?? entry.source,
-      updatedAt: selected.poolEntry?.updatedAt ?? entry.updatedAt,
-      reloginRequired: false,
-    }
-  }
-
-  const pool = entry.pool ?? []
-  const dead = pool.find((item) => item.status === "dead")
-  const exhausted = pool.find((item) => item.status === "exhausted")
-  if (dead && pool.every((item) => item.status === "dead")) {
-    return {
-      providerID,
-      status: "dead",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: true,
-      failureCode: dead.failureCode,
-    }
-  }
-  if (exhausted) {
-    return {
-      providerID,
-      status: "exhausted",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: false,
-      cooldownUntil: exhausted.cooldownUntil,
-      resetAt: exhausted.resetAt,
-      failureCode: exhausted.failureCode,
-    }
-  }
-  const info = Auth.infoFromEntry(entry)
-  if (info?.type === "oauth" && info.expires * 1000 <= now) {
-    return {
-      providerID,
-      status: "expired",
-      authKind: entry.authKind,
-      source: entry.source,
-      updatedAt: entry.updatedAt,
-      reloginRequired: false,
-    }
-  }
-  return {
-    providerID,
-    status: "connected",
-    authKind: entry.authKind,
-    source: entry.source,
-    updatedAt: entry.updatedAt,
-    reloginRequired: false,
-  }
-}
 
 export const ProviderRoute = new Hono()
   .get(
@@ -136,18 +25,7 @@ export const ProviderRoute = new Hono()
           description: "List of providers",
           content: {
             "application/json": {
-              schema: resolver(
-                z.object({
-                  all: ModelsDev.Provider.array(),
-                  default: z.record(z.string(), z.string()),
-                  connected: z.array(z.string()),
-                  configProviders: z.array(z.string()),
-                  catalogProviders: z.array(z.string()),
-                  profiles: z.record(z.string(), ProviderProfile.Metadata),
-                  authHealth: z.record(z.string(), ProviderAuthHealth),
-                  runtimeAvailability: z.record(z.string(), ProviderRuntimeAvailability),
-                }),
-              ),
+              schema: resolver(ProviderListResponse),
             },
           },
         },
@@ -155,73 +33,7 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       using _ = log.time("providers")
-      const config = await Config.current()
-      const disabled = new Set(config.disabled_providers ?? [])
-      const enabled = config.enabled_providers ? new Set(config.enabled_providers) : undefined
-
-      const allProviders = await ProviderCatalog.resolve({ config, includeLive: false })
-      const filteredProviders: Record<string, (typeof allProviders)[string]> = {}
-      for (const [key, value] of Object.entries(allProviders)) {
-        if ((enabled ? enabled.has(key) : true) && !disabled.has(key)) {
-          filteredProviders[key] = value
-        }
-      }
-
-      const connected = await Provider.list()
-      // Get custom provider IDs: providers that are loaded from config but NOT in models.dev
-      // (i.e., user-created providers, not standard providers with custom options)
-      const configProviders = Object.entries(connected)
-        .filter(([id, provider]) => provider.source === "config" && !allProviders[id])
-        .map(([id]) => id)
-      const providers = Object.assign(
-        mapValues(filteredProviders, (x) => Provider.fromModelsDevProvider(x)),
-        connected,
-      )
-      const profiles = Object.fromEntries(
-        Object.entries(providers).map(([providerID, provider]) => [
-          providerID,
-          ProviderCatalog.providerMetadata(filteredProviders[providerID] ?? provider),
-        ]),
-      )
-      const entries = await Auth.entries()
-      const authHealthByProvider = Object.fromEntries(
-        await Promise.all(
-          Object.values(providers).map(async (provider) => [
-            provider.id,
-            await authHealth(provider.id, entries[provider.id]),
-          ]),
-        ),
-      )
-      const runtimeAvailability = mapValues(providers, (provider) => {
-        const disabledProvider = disabled.has(provider.id)
-        const modelCount = Object.keys(provider.models).length
-        const available =
-          !disabledProvider && Object.prototype.hasOwnProperty.call(connected, provider.id) && modelCount > 0
-        const profile = ProviderProfile.get(provider.id)
-        return {
-          providerID: provider.id,
-          available,
-          reason: disabledProvider
-            ? ("disabled" as const)
-            : modelCount === 0
-              ? ("no_models" as const)
-              : available
-                ? ("connected" as const)
-                : ("not_connected" as const),
-          healthCheck: profile?.healthCheck ?? "models",
-          modelCount,
-        }
-      })
-      return c.json({
-        all: Object.values(providers),
-        default: mapValues(providers, (item) => Provider.sort(Object.values(item.models))[0].id),
-        connected: Object.keys(connected),
-        configProviders,
-        catalogProviders: Object.keys(filteredProviders),
-        profiles,
-        authHealth: authHealthByProvider,
-        runtimeAvailability,
-      })
+      return c.json(await listProvidersForClient())
     },
   )
   .get(
@@ -293,6 +105,51 @@ export const ProviderRoute = new Hono()
     }),
     async (c) => {
       return c.json(await ProviderAuth.methods())
+    },
+  )
+  .get(
+    "/auth/github/status",
+    describeRoute({
+      summary: "Get GitHub auth status",
+      description: "Get the managed GitHub account status used for GitHub CLI-backed actions.",
+      operationId: "provider.auth.githubStatus",
+      responses: {
+        200: {
+          description: "GitHub auth status",
+          content: {
+            "application/json": {
+              schema: resolver(GitHubProvider.Status),
+            },
+          },
+        },
+      },
+    }),
+    async (c) => {
+      return c.json(await GitHubProvider.status())
+    },
+  )
+  .delete(
+    "/auth/github",
+    describeRoute({
+      summary: "Remove GitHub auth credentials",
+      description: "Remove the managed GitHub credential used for GitHub CLI-backed actions.",
+      operationId: "provider.auth.githubLogout",
+      responses: {
+        200: {
+          description: "GitHub credentials removed",
+          content: {
+            "application/json": {
+              schema: resolver(z.boolean()),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      await GitHubProvider.remove()
+      await RuntimeReload.reload({ targets: ["provider"], reason: "GitHub credentials removed" })
+      return c.json(true)
     },
   )
   .post(

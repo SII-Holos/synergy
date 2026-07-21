@@ -1,378 +1,156 @@
-import path from "path"
 import fs from "fs"
-import { EOL } from "os"
+import path from "path"
+import { pathToFileURL } from "url"
 import type { Argv } from "yargs"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import type { PluginDescriptor, PluginHooks, PluginInput } from "@ericsanchezok/synergy-plugin"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { PluginId } from "../lib/ids"
-import { baseCapabilities } from "../lib/capability"
-import { computeRisk } from "../lib/risk"
-import { validateRuntimePolicy, type CheckResult } from "../lib/runtime-policy"
-import { validateRuntimeDiscovery } from "../lib/runtime-discovery"
-import { assertCanonicalPluginIdentity, importUrlForEntry, resolveEntryFromPluginDir } from "../lib/spec"
-import { collectPackagedAssets, resolveUnder } from "../lib/artifact-assets"
+import {
+  PluginArtifact,
+  PluginManifest,
+  isExecutableContributionKind,
+  type PluginDefinition,
+} from "@ericsanchezok/synergy-plugin"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { sha256File } from "../lib/crypto.js"
+import { loadPluginDefinition } from "../lib/definition.js"
+import { validateThemeAssets } from "../lib/theme-assets.js"
 
-function scanExports(source: string): string[] {
-  const names = new Set<string>()
-  const declRe = /^export\s+(?:const|function|class|interface|type|let|var)\s+(\w+)/gm
-  let match: RegExpExecArray | null
-  while ((match = declRe.exec(source)) !== null) names.add(match[1]!)
-
-  const listRe = /^export\s*\{([^}]+)\}/gm
-  while ((match = listRe.exec(source)) !== null) {
-    for (const spec of match[1]!.split(",")) {
-      const name = spec
-        .trim()
-        .split(/\s+as\s+/)[0]
-        ?.trim()
-      if (name) names.add(name)
-    }
-  }
-
-  if (/^export\s+default\s+(?:function|class|async\s+function)\b/m.test(source)) names.add("default")
-  if (/^export\s+default\s+[$A-Z_a-z][$\w]*\s*;?$/m.test(source)) names.add("default")
-  return [...names]
+export interface PluginValidationResult {
+  type: "pass" | "warning" | "error"
+  message: string
 }
 
-function isValidJsonSchema(obj: unknown): boolean {
-  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return false
-  const schema = obj as Record<string, unknown>
-  const keywords = [
-    "type",
-    "properties",
-    "required",
-    "items",
-    "anyOf",
-    "oneOf",
-    "allOf",
-    "enum",
-    "const",
-    "additionalProperties",
-    "patternProperties",
-    "$ref",
-    "$defs",
-    "definitions",
-    "title",
-    "description",
-    "default",
-    "examples",
-    "format",
-    "minimum",
-    "maximum",
-    "minLength",
-    "maxLength",
-    "minItems",
-    "maxItems",
-    "uniqueItems",
-    "pattern",
-  ]
-  return keywords.some((key) => key in schema)
+function executableIds(definition: PluginDefinition) {
+  return definition.contributions
+    .filter((item) => isExecutableContributionKind(item.kind))
+    .map((item) => `${item.kind}:${item.id}`)
+    .sort()
 }
 
-function findUiSource(pluginDir: string): string | undefined {
-  const candidates = ["src/ui.tsx", "src/ui/index.tsx", "src/ui.ts", "src/ui/index.ts"]
-  return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
+function trustedComponentSources(definition: PluginDefinition) {
+  return definition.contributions.flatMap((item) => {
+    if (!item.kind.startsWith("ui.") || !("component" in item) || !item.component) return []
+    return [item.component.source]
+  })
 }
 
-function printResults(results: CheckResult[]) {
-  const passCount = results.filter((result) => result.type === "pass").length
-  const warnCount = results.filter((result) => result.type === "warn").length
-  const errorCount = results.filter((result) => result.type === "error").length
-
-  for (const result of results) {
-    const prefix =
-      result.type === "pass"
-        ? `${UI.Style.TEXT_SUCCESS}✓${UI.Style.TEXT_NORMAL}`
-        : result.type === "warn"
-          ? `${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL}`
-          : `${UI.Style.TEXT_DANGER}✗${UI.Style.TEXT_NORMAL}`
-    process.stdout.write(`${prefix} ${result.message}${EOL}`)
-  }
-
-  process.stdout.write(EOL)
-  const parts: string[] = []
-  if (passCount > 0) parts.push(`${passCount} passed`)
-  if (warnCount > 0) parts.push(`${warnCount} warning${warnCount !== 1 ? "s" : ""}`)
-  if (errorCount > 0) parts.push(`${errorCount} error${errorCount !== 1 ? "s" : ""}`)
-  process.stdout.write(parts.join(", ") + EOL)
-
-  if (errorCount > 0) process.exitCode = 1
+async function runtimeHandlerIds(runtimePath: string, pluginId: string): Promise<string[]> {
+  const url = pathToFileURL(runtimePath)
+  url.searchParams.set("validate", String(Date.now()))
+  const module = (await import(url.toString())) as Record<string, unknown>
+  const definitions = [module.default, ...Object.values(module)].filter((value): value is PluginDefinition => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false
+    const record = value as Record<string, unknown>
+    return record.id === pluginId && Array.isArray(record.handlerIds)
+  })
+  if (definitions.length === 0) throw new Error(`Runtime does not export definePlugin() definition for ${pluginId}`)
+  return [...definitions[0]!.handlerIds].sort()
 }
 
-export async function validatePluginProject(pluginPath: string, options: { runtimeDiscovery?: boolean } = {}) {
-  const results: CheckResult[] = []
-  const resolved = path.isAbsolute(pluginPath) ? pluginPath : path.resolve(process.cwd(), pluginPath)
-  const manifestPath = fs.statSync(resolved).isDirectory() ? path.join(resolved, "plugin.json") : resolved
-  const pluginDir = path.dirname(manifestPath)
-
-  let rawManifest: unknown
-  let manifest: ReturnType<typeof PluginManifest.safeParse> | null = null
+export async function validatePluginProject(
+  pluginDir: string,
+  options: { runtimeDiscovery?: boolean } = {},
+): Promise<PluginValidationResult[]> {
+  const results: PluginValidationResult[] = []
   try {
-    rawManifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
-    manifest = PluginManifest.safeParse(rawManifest)
-    if (manifest.success) {
-      results.push({ type: "pass", message: "manifest schema valid" })
-    } else {
-      const issues = manifest.error.issues.map((issue) => `  • ${issue.path.join(".")}: ${issue.message}`).join(EOL)
-      results.push({ type: "error", message: `manifest schema invalid${EOL}${issues}` })
+    if (fs.existsSync(path.join(pluginDir, "plugin.json"))) {
+      results.push({ type: "error", message: "Source plugin.json is not allowed; the manifest is generated by build" })
     }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error)
-    results.push({
-      type: "error",
-      message: rawManifest === undefined ? `manifest not found at ${manifestPath}` : `invalid JSON: ${msg}`,
-    })
-    printResults(results)
-    return
-  }
+    const { definition } = await loadPluginDefinition(pluginDir)
+    results.push({ type: "pass", message: `definePlugin() descriptor valid: ${definition.id}@${definition.version}` })
+    expectEqual(definition.handlerIds.slice().sort(), executableIds(definition), "descriptor handler ids", results)
+    for (const asset of validateThemeAssets(pluginDir, definition.contributions)) {
+      results.push({ type: "pass", message: `source theme valid: ${asset.contribution.id}` })
+    }
 
-  if (!manifest?.success) {
-    printResults(results)
-    return
-  }
-
-  const m = manifest.data
-  const id = ((rawManifest as Record<string, unknown>)?.id as string | undefined) ?? m.name
-  if (id && PluginId.isValid(id)) results.push({ type: "pass", message: `id "${id}" valid` })
-  else results.push({ type: "error", message: `id "${id ?? ""}" invalid - must be lowercase alphanumeric with dashes` })
-
-  if (m.version) results.push({ type: "pass", message: `version ${m.version}` })
-  else results.push({ type: "error", message: "version missing" })
-
-  if (m.contributes?.tools && m.contributes.tools.length > 0) {
-    if (m.permissions?.tools) results.push({ type: "pass", message: "permissions declared" })
-    else results.push({ type: "error", message: "tools contributed but permissions.tools not declared" })
-  }
-
-  if (m.contributes?.ui) {
-    const ui = m.contributes.ui
-    if (ui.entry) {
-      const entryPath = path.resolve(pluginDir, ui.entry)
-      const uiSource = findUiSource(pluginDir)
-      if (fs.existsSync(entryPath)) {
-        results.push({ type: "pass", message: `UI entry ${ui.entry} exists` })
-      } else if (uiSource) {
-        results.push({
-          type: "pass",
-          message: `UI entry ${ui.entry} will be built from ${path.relative(pluginDir, uiSource)}`,
-        })
+    for (const source of trustedComponentSources(definition)) {
+      if (fs.existsSync(path.resolve(pluginDir, source))) {
+        results.push({ type: "pass", message: `trusted UI source exists: ${source}` })
       } else {
-        results.push({ type: "error", message: `UI entry ${ui.entry} not found` })
-      }
-
-      if (uiSource) {
-        const exports = scanExports(fs.readFileSync(uiSource, "utf-8"))
-        const checkExport = (
-          category: string,
-          items: Array<{ exportName?: string; id?: string; tool?: string }> | undefined,
-        ) => {
-          for (const item of items ?? []) {
-            const exportName = item.exportName || "default"
-            if (!exports.includes(exportName)) {
-              const label = item.id ?? item.tool ?? exportName
-              results.push({
-                type: "error",
-                message: `${category} "${label}" exportName "${exportName}" not found in UI entry`,
-              })
-            }
-          }
-        }
-        checkExport("workspacePanel", ui.workspacePanels)
-        checkExport("globalPanel", ui.globalPanels)
-        checkExport("settings", ui.settings)
-        checkExport("toolRenderer", ui.toolRenderers)
-        checkExport("partRenderer", ui.partRenderers)
-        checkExport("chatComponent", ui.chatComponents)
-        checkExport("uiCommand", ui.commands)
+        results.push({ type: "error", message: `trusted UI source is missing: ${source}` })
       }
     }
-  }
 
-  const uiSource = findUiSource(pluginDir)
-  let packagedAssets: ReturnType<typeof collectPackagedAssets> = []
-  try {
-    packagedAssets = collectPackagedAssets(m)
+    const manifestPath = path.join(pluginDir, "dist", PluginArtifact.manifestFile)
+    if (!fs.existsSync(manifestPath)) {
+      results.push({ type: "warning", message: "dist/plugin.json not found; run build to validate packaged artifacts" })
+      return results
+    }
+    const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8")))
+    results.push({ type: "pass", message: "generated manifest schema valid" })
+    if (manifest.id !== definition.id || manifest.version !== definition.version) {
+      results.push({ type: "error", message: "generated manifest identity does not match definePlugin()" })
+    }
+    const runtime = manifest.artifacts.runtime
+    const ui = manifest.artifacts.ui
+    if (runtime) verifyArtifact(pluginDir, runtime.entry, runtime.sha256, "runtime", results)
+    if (ui) verifyArtifact(pluginDir, ui.entry, ui.sha256, "UI", results)
+    for (const asset of validateThemeAssets(path.join(pluginDir, "dist"), manifest.contributions)) {
+      results.push({ type: "pass", message: `packaged theme valid: ${asset.contribution.id}` })
+    }
+
+    if (options.runtimeDiscovery && runtime) {
+      const discovered = await runtimeHandlerIds(path.join(pluginDir, "dist", runtime.entry), manifest.id)
+      const declared = manifest.contributions
+        .filter((item) => isExecutableContributionKind(item.kind))
+        .map((item) => `${item.kind}:${item.id}`)
+        .sort()
+      expectEqual(discovered, declared, "runtime handlers", results)
+    }
   } catch (error) {
     results.push({ type: "error", message: error instanceof Error ? error.message : String(error) })
   }
-  for (const asset of packagedAssets) {
-    if (asset.label === "UI entry" && uiSource && !fs.existsSync(path.resolve(pluginDir, asset.sourceRelative)))
-      continue
-    try {
-      const assetPath = resolveUnder(pluginDir, asset.sourceRelative)
-      if (!fs.existsSync(assetPath)) {
-        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} not found` })
-        continue
-      }
-      const stat = fs.statSync(assetPath)
-      if (asset.kind === "dir" && !stat.isDirectory()) {
-        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} is not a directory` })
-      }
-      if (asset.kind === "file" && !stat.isFile()) {
-        results.push({ type: "error", message: `${asset.label} ${asset.sourceRelative} is not a file` })
-      }
-    } catch (error) {
-      results.push({ type: "error", message: error instanceof Error ? error.message : String(error) })
-    }
+  return results
+}
+
+function verifyArtifact(
+  pluginDir: string,
+  entry: string,
+  expectedHash: string,
+  label: string,
+  results: PluginValidationResult[],
+) {
+  const artifact = path.join(pluginDir, "dist", entry)
+  if (!fs.existsSync(artifact)) {
+    results.push({ type: "error", message: `${label} artifact is missing: ${entry}` })
+    return
   }
-
-  for (const tool of m.contributes?.tools ?? []) {
-    if (!tool.capabilities)
-      results.push({ type: "warn", message: `tool "${tool.name}" missing capabilities declaration` })
+  if (sha256File(artifact) !== expectedHash) {
+    results.push({ type: "error", message: `${label} artifact hash does not match generated manifest` })
+    return
   }
+  results.push({ type: "pass", message: `${label} artifact integrity valid` })
+}
 
-  if (m.contributes?.config?.schema) {
-    if (isValidJsonSchema(m.contributes.config.schema)) results.push({ type: "pass", message: "config schema valid" })
-    else
-      results.push({
-        type: "warn",
-        message:
-          'config schema does not appear to be valid JSON Schema; wrap plugin settings in a top-level schema such as { "type": "object", "properties": { ... } }',
-      })
+function expectEqual(actual: string[], expected: string[], label: string, results: PluginValidationResult[]) {
+  if (JSON.stringify(actual) === JSON.stringify(expected)) {
+    results.push({ type: "pass", message: `${label} match generated contributions` })
+    return
   }
+  results.push({
+    type: "error",
+    message: `${label} mismatch: expected [${expected.join(", ")}], received [${actual.join(", ")}]`,
+  })
+}
 
-  const pluginRisk = computeRisk(baseCapabilities(m), m)
-  results.push(...validateRuntimePolicy({ manifest: m, source: "local", trustTier: "declarative", risk: pluginRisk }))
-
-  if (options.runtimeDiscovery) {
-    const manifestToolNames = (m.contributes?.tools ?? []).map((tool) => tool.name)
-    const resolvedEntry = resolveEntryFromPluginDir(pluginDir, m)
-    const entryPath = fs.existsSync(resolvedEntry) ? resolvedEntry : null
-
-    if (!entryPath) {
-      results.push({
-        type: "warn",
-        message: "runtime-discovery: no build output found - run 'synergy-plugin build' first",
-      })
-    } else {
-      try {
-        const mod = await import(importUrlForEntry(entryPath, Date.now()))
-        const descriptors: PluginDescriptor[] = []
-        const seenDescriptors = new Set<PluginDescriptor>()
-        for (const value of Object.values(mod)) {
-          if (value && typeof value === "object" && !Array.isArray(value) && "id" in value && "init" in value) {
-            const descriptor = value as PluginDescriptor
-            if (!seenDescriptors.has(descriptor)) {
-              descriptors.push(descriptor)
-              seenDescriptors.add(descriptor)
-            }
-          }
-        }
-
-        if (descriptors.length === 0) {
-          results.push({
-            type: "warn",
-            message: `runtime-discovery: no PluginDescriptor found in ${path.relative(process.cwd(), entryPath)}`,
-          })
-        } else {
-          for (const desc of descriptors) {
-            try {
-              assertCanonicalPluginIdentity({ manifest: m, descriptor: desc })
-            } catch (error) {
-              results.push({ type: "error", message: error instanceof Error ? error.message : String(error) })
-              continue
-            }
-
-            let hooks: PluginHooks | undefined
-            let loadError: string | undefined
-            try {
-              const input: PluginInput = {
-                client: undefined as any,
-                scope: undefined as any,
-                worktree: "",
-                directory: pluginDir,
-                serverUrl: new URL("http://localhost"),
-                $: undefined as any,
-                pluginDir,
-                config: { get: async () => ({}), set: async () => {} },
-                auth: {
-                  get: async () => undefined,
-                  set: async () => {},
-                  delete: async () => {},
-                  has: async () => false,
-                },
-                cache: {
-                  directory: path.join(pluginDir, ".cache"),
-                  get: async () => undefined,
-                  set: async () => {},
-                  delete: async () => {},
-                },
-              }
-              hooks = await desc.init(input)
-            } catch (error) {
-              loadError = error instanceof Error ? error.message : String(error)
-            }
-
-            const runtimeToolNames = hooks?.tool ? Object.keys(hooks.tool) : loadError ? null : []
-            const discovery = validateRuntimeDiscovery({ manifestToolNames, runtimeToolNames, pluginId: desc.id })
-            results.push({
-              type: "pass",
-              message: `runtime-discovery: loaded plugin "${desc.id}"${loadError ? ` (init failed: ${loadError})` : ""}`,
-            })
-            if (discovery.loadFailed) {
-              results.push({
-                type: "error",
-                message: `runtime-discovery: plugin "${desc.id}" failed to initialize - cannot validate tool registration`,
-              })
-              if (loadError) results.push({ type: "error", message: `  init error: ${loadError}` })
-            } else {
-              const total = runtimeToolNames !== null ? runtimeToolNames.length : 0
-              results.push({
-                type: "pass",
-                message: `runtime-discovery: ${total} tool(s) registered at runtime, ${manifestToolNames.length} declared in manifest`,
-              })
-              if (discovery.matched.length > 0) {
-                results.push({
-                  type: "pass",
-                  message: `runtime-discovery: ${discovery.matched.length} tool(s) matched - ${discovery.matched.join(", ")}`,
-                })
-              }
-              if (discovery.undeclared.length > 0) {
-                results.push({
-                  type: "error",
-                  message: `runtime-discovery: ${discovery.undeclared.length} undeclared tool(s) - ${discovery.undeclared.join(", ")}`,
-                })
-              }
-              if (discovery.declaredButMissing.length > 0) {
-                results.push({
-                  type: "warn",
-                  message: `runtime-discovery: ${discovery.declaredButMissing.length} tool(s) declared but not registered - ${discovery.declaredButMissing.join(", ")}`,
-                })
-              }
-            }
-          }
-        }
-      } catch (error) {
-        results.push({
-          type: "error",
-          message: `runtime-discovery: failed to load plugin - ${error instanceof Error ? error.message : String(error)}`,
-        })
-      }
-    }
+function printResults(results: PluginValidationResult[]) {
+  for (const result of results) {
+    const prefix = result.type === "pass" ? "PASS" : result.type === "warning" ? "WARN" : "ERROR"
+    UI.println(`${prefix} ${result.message}`)
   }
-
-  printResults(results)
 }
 
 export const PluginValidateCommand = cmd({
   command: "validate [path]",
-  describe: "validate a plugin manifest",
+  describe: "validate definePlugin() source and generated artifacts",
   builder: (yargs: Argv) =>
     yargs
-      .positional("path", {
-        type: "string",
-        describe: "path to plugin directory or plugin.json (defaults to current directory)",
-      })
-      .option("runtime-discovery", {
-        type: "boolean",
-        describe: "safely load plugin in dev mode, collect runtime tools, and compare with manifest",
-        default: false,
-      }),
+      .positional("path", { type: "string", describe: "plugin directory (defaults to cwd)" })
+      .option("runtime-discovery", { type: "boolean", default: false, describe: "verify packaged runtime handlers" }),
   async handler(args) {
-    await validatePluginProject((args.path as string) || process.cwd(), {
+    const results = await validatePluginProject(path.resolve((args.path as string) ?? process.cwd()), {
       runtimeDiscovery: Boolean(args["runtime-discovery"]),
     })
+    printResults(results)
+    if (results.some((result) => result.type === "error")) process.exitCode = 1
   },
 })

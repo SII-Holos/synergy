@@ -163,8 +163,19 @@ describe("resolvePathInput", () => {
     })
   })
 
-  test("Windows drive letter with single level keeps drive as parent", () => {
-    expect(resolvePathInput("D:\\data", homeDir)).toEqual({ path: "D:", query: "data" })
+  test("Windows drive letter with single level keeps drive root as parent", () => {
+    expect(resolvePathInput("D:\\data", homeDir)).toEqual({ path: "D:/", query: "data" })
+    expect(resolvePathInput("D:/data", homeDir)).toEqual({ path: "D:/", query: "data" })
+  })
+
+  test("Windows drive root inputs resolve to drive root", () => {
+    expect(resolvePathInput("D:\\", homeDir)).toEqual({ path: "D:/", query: "" })
+    expect(resolvePathInput("D:/", homeDir)).toEqual({ path: "D:/", query: "" })
+    expect(resolvePathInput("D:", homeDir)).toEqual({ path: "D:/", query: "" })
+  })
+
+  test("Windows nested drive path normalizes and splits", () => {
+    expect(resolvePathInput("D:\\work\\repo", homeDir)).toEqual({ path: "D:/work", query: "repo" })
   })
 
   test("Windows path with two segments", () => {
@@ -182,6 +193,17 @@ describe("resolvePathInput", () => {
     expect(resolvePathInput("C:/Users/mixed\\separators", homeDir)).toEqual({
       path: "C:/Users/mixed",
       query: "separators",
+    })
+    expect(resolvePathInput("C:/Users\\Tel13/proj", homeDir)).toEqual({
+      path: "C:/Users/Tel13",
+      query: "proj",
+    })
+  })
+
+  test("backslash UNC path splits at last component", () => {
+    expect(resolvePathInput("\\\\server\\share\\dir", homeDir)).toEqual({
+      path: "//server/share",
+      query: "dir",
     })
   })
 

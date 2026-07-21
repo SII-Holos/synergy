@@ -14,6 +14,7 @@ import { createBuiltinMaxSubagents } from "./builtin-max-subagents"
 import { buildSynergyPrompt } from "./prompt/synergy/builder"
 import { buildSynergyMaxPrompt } from "./prompt/synergy-max/builder"
 import { buildSupervisorPrompt } from "./prompt/supervisor/builder"
+import { buildLightLoopReviewerPrompt } from "./prompt/lightloop-reviewer/builder"
 
 import { PermissionNext } from "@/permission/next"
 import { mergeDeep, pipe, sortBy, values } from "remeda"
@@ -21,10 +22,18 @@ import { Log } from "@/util/log"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { ExternalAgentDiscovery } from "@/external-agent/discovery"
 import { Plugin } from "../plugin"
-import { MODEL_ROLE_IDS } from "../provider/model-role"
+import { MODEL_ROLE_IDS, ModelRole, type ModelRole as ModelRoleType } from "../provider/model-role"
+import { CodexProvider } from "@/provider/codex"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
+  export type PluginOwner = {
+    pluginId: string
+    pluginGeneration: string
+  }
+  // Host-only provenance: ownership authorizes programmatic invocation but is
+  // not part of the public Agent descriptor or model-visible Agent metadata.
+  const pluginOwners = new WeakMap<Info, PluginOwner>()
 
   const ModelRef = z.object({
     providerID: z.string(),
@@ -52,17 +61,19 @@ export namespace Agent {
       mode: z.enum(["subagent", "primary", "all"]),
       hidden: z.boolean().optional(),
       visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
       native: z.boolean().optional(),
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
       model: ModelRef.optional(),
+      defaultVariant: z.string().optional(),
     })
     .meta({ ref: "ModelRoleUsage" })
 
   export const ModelRoleSummary = z
     .object({
       id: ModelRoleSummaryID,
-      role: Provider.ModelRole.optional(),
+      role: ModelRole.optional(),
       field: ModelRoleField,
       label: z.string(),
       summary: z.string(),
@@ -78,7 +89,7 @@ export namespace Agent {
 
   const MODEL_ROLE_DEFINITIONS: Array<{
     id: z.infer<typeof ModelRoleSummaryID>
-    role?: Provider.ModelRole
+    role?: ModelRoleType
     field: z.infer<typeof ModelRoleField>
     label: string
     summary: string
@@ -152,6 +163,7 @@ export namespace Agent {
       native: z.boolean().optional(),
       hidden: z.boolean().optional(),
       visibleTo: z.array(z.string()).optional(),
+      delegationGroups: z.array(z.string()).optional(),
       topP: z.number().optional(),
       temperature: z.number().optional(),
       color: z.string().optional(),
@@ -163,13 +175,14 @@ export namespace Agent {
           providerID: z.string(),
         })
         .optional(),
-      modelRole: Provider.ModelRole.optional(),
+      modelRole: ModelRole.optional(),
       modelSource: z.enum(["role", "explicit"]).optional(),
       source: z.enum(["builtin", "config", "plugin", "external"]).optional(),
       prompt: z.string().optional(),
       options: z.record(z.string(), z.any()),
       steps: z.number().int().positive().optional(),
       external: ExternalAgent.Info.optional(),
+      defaultVariant: z.string().optional(),
     })
     .meta({
       ref: "Agent",
@@ -180,7 +193,7 @@ export namespace Agent {
     const cfg = await Config.current()
     const evolutionActive =
       ((cfg as any).library?.memory?.enabled ?? true) && (cfg as any).library?.experience?.encode !== false
-    const role = (r: Provider.ModelRole) => Provider.resolveRoleModelSync(cfg, r)
+    const role = (r: ModelRoleType) => Provider.resolveRoleModelSync(cfg, r)
 
     const defaults = PermissionNext.fromConfig({
       "*": "allow",
@@ -254,11 +267,14 @@ export namespace Agent {
       item.topP = value.top_p ?? item.topP
       item.mode = value.mode ?? item.mode
       item.hidden = value.hidden ?? item.hidden
+      item.visibleTo = value.visibleTo ?? item.visibleTo
+      item.delegationGroups = value.delegationGroups ?? item.delegationGroups
       item.name = value.name ?? item.name
       item.color = value.color ?? item.color
       item.steps = value.steps ?? item.steps
       item.options = mergeDeep(item.options, value.options ?? {})
       item.permission = PermissionNext.merge(item.permission, PermissionNext.fromConfig(value.permission ?? {}))
+      item.defaultVariant = value.defaultVariant ?? item.defaultVariant
       if (value.controlProfile !== undefined) item.controlProfile = value.controlProfile as Agent.Info["controlProfile"]
     }
 
@@ -269,7 +285,7 @@ export namespace Agent {
         log.info("plugin agent skipped, name already exists", { name: key })
         continue
       }
-      result[key] = {
+      const registered: Info = {
         name: agent.name,
         description: agent.description,
         prompt: agent.prompt,
@@ -286,8 +302,15 @@ export namespace Agent {
         topP: agent.topP,
         steps: agent.steps,
         hidden: agent.hidden,
+        visibleTo: agent.visibleTo,
+        delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
+      result[key] = registered
+      pluginOwners.set(registered, {
+        pluginId: agent.pluginId,
+        pluginGeneration: agent.pluginGeneration,
+      })
     }
 
     for (const [name, item] of Object.entries(result)) {
@@ -343,7 +366,7 @@ export namespace Agent {
     } catch (e) {
       log.warn("failed to import external agent adapters", { error: String(e) })
     }
-    const discovered = await ExternalAgentDiscovery.discover()
+    const discovered = await ExternalAgentDiscovery.discover(externalConfig)
     log.info("external agent discovery results", {
       discovered: [...discovered.keys()],
     })
@@ -357,6 +380,13 @@ export namespace Agent {
         log.info("external agent auto_discover disabled", { name })
         continue
       }
+      if (name === "codex") {
+        const access = await CodexProvider.resolveToken({ allowMissing: true }).catch(() => undefined)
+        if (!access) {
+          log.info("codex external agent skipped until openai-codex provider is authenticated")
+          continue
+        }
+      }
       const { disabled: _, path, model, auto_discover: __, ...adapterConfig } = overrides ?? {}
       const externalField = {
         adapter: info.adapter,
@@ -364,6 +394,7 @@ export namespace Agent {
         version: info.version,
         config: {
           ...(model ? { model } : {}),
+          ...(name === "codex" ? { nativeAuth: true } : {}),
           ...adapterConfig,
         },
       }
@@ -391,10 +422,14 @@ export namespace Agent {
       mode: agent.mode,
       hidden: agent.hidden,
       visibleTo: agent.visibleTo,
+      delegationGroups: agent.delegationGroups,
     }))
     if (result.synergy) result.synergy.prompt = buildSynergyPrompt(agentInfos)
     if (result["synergy-max"]) result["synergy-max"].prompt = buildSynergyMaxPrompt(agentInfos)
     if (result.supervisor) result.supervisor.prompt = buildSupervisorPrompt(agentInfos)
+    if (result["lightloop-reviewer"]) {
+      result["lightloop-reviewer"].prompt = buildLightLoopReviewerPrompt(agentInfos)
+    }
 
     return result
   })
@@ -407,6 +442,10 @@ export namespace Agent {
 
   export async function get(agent: string) {
     return state().then((x) => x[agent])
+  }
+
+  export function pluginOwner(agent: Info): PluginOwner | undefined {
+    return pluginOwners.get(agent)
   }
 
   export async function getAvailableModel(agent: Info): Promise<{ providerID: string; modelID: string } | undefined> {
@@ -444,10 +483,12 @@ export namespace Agent {
           mode: agent.mode,
           hidden: agent.hidden,
           visibleTo: agent.visibleTo,
+          delegationGroups: agent.delegationGroups,
           native: agent.native,
           source: agent.source,
           modelSource: agent.modelSource,
           model: agent.model,
+          defaultVariant: agent.defaultVariant ?? cfg.role_variant?.[agent.modelRole || "default"],
         }))
 
       return {
@@ -473,7 +514,7 @@ export namespace Agent {
 
   function resolveSummaryModel(
     cfg: Config.Info,
-    role: Provider.ModelRole | undefined,
+    role: ModelRoleType | undefined,
     fallbackChain: Array<z.infer<typeof ModelRoleField>>,
   ): ({ providerID: string; modelID: string } & { via: z.infer<typeof ModelRoleField> }) | undefined {
     for (const field of fallbackChain) {
@@ -523,7 +564,7 @@ export namespace Agent {
       system: [],
       retries: 1,
     })
-    const text = (await result.text.catch(() => "")) ?? ""
+    const text = (await LLM.collectText(result).catch(() => "")) ?? ""
     const match = text.match(/\{[\s\S]*\}/)
     if (!match) throw new Error("agent generator did not return JSON")
     return z

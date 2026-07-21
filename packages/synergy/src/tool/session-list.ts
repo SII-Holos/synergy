@@ -10,24 +10,38 @@ import { SessionNav, type SessionNavEntry } from "../session/nav"
 import DESCRIPTION from "./session-list.txt"
 import path from "node:path"
 
-const parameters = z.object({
-  scope: z
-    .enum(["project", "home", "feishu"])
-    .describe(
-      "'project' = sessions across all projects (each entry includes its scope), " +
-        "'home' = sessions in the home scope, " +
-        "'feishu' = Feishu/Lark channel sessions.",
-    ),
-  limit: z.coerce.number().default(20).describe("Maximum number of items to return."),
-  offset: z.coerce.number().default(0).describe("Number of items to skip."),
-  since: z
-    .string()
-    .optional()
-    .describe(
-      "Only include sessions updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
-    ),
-  before: z.string().optional().describe("Only include sessions updated before this date (ISO 8601)."),
-})
+const parameters = z
+  .object({
+    scope: z
+      .enum(["project", "home", "feishu"])
+      .describe(
+        "'project' = ordinary sessions across all projects or one project selected by scopeID, " +
+          "'home' = all top-level sessions in the Home Scope, including channel sessions, " +
+          "'feishu' = Feishu/Lark channel sessions across Home and project Scopes.",
+      ),
+    scopeID: z
+      .string()
+      .trim()
+      .min(1, "scopeID cannot be empty")
+      .optional()
+      .describe(
+        "When scope is 'project', filter to one project using an id from scope_list. " +
+          "Omit to list ordinary sessions across all projects.",
+      ),
+    limit: z.coerce.number().default(20).describe("Maximum number of items to return."),
+    offset: z.coerce.number().default(0).describe("Number of items to skip."),
+    since: z
+      .string()
+      .optional()
+      .describe(
+        "Only include sessions updated on or after this date (ISO 8601, e.g. '2026-03-15' or '2026-03-15T18:00:00').",
+      ),
+    before: z.string().optional().describe("Only include sessions updated before this date (ISO 8601)."),
+  })
+  .refine((data) => !data.scopeID || data.scope === "project", {
+    message: "scopeID can only be used with scope='project'",
+    path: ["scopeID"],
+  })
 
 interface TimeFilter {
   sinceMs?: number
@@ -69,8 +83,10 @@ function applyTimeFilter(entries: SessionNavEntry[], filter: TimeFilter): Sessio
   return result
 }
 
-async function listProject(limit: number, offset: number, filter: TimeFilter) {
-  const result = await SessionNav.queryGlobal({ limit: QueryLimit })
+async function listProject(scopeID: string | undefined, limit: number, offset: number, filter: TimeFilter) {
+  const result = scopeID
+    ? await SessionNav.queryScope(scopeID, { category: "project", limit: QueryLimit })
+    : await SessionNav.queryGlobal({ category: "project", limit: QueryLimit })
   const filtered = applyTimeFilter(result.items, filter)
   const total = filtered.length
   const page = filtered.slice(offset, offset + limit)
@@ -80,7 +96,7 @@ async function listProject(limit: number, offset: number, filter: TimeFilter) {
 }
 
 async function listHome(limit: number, offset: number, filter: TimeFilter) {
-  const result = await SessionNav.queryScope("global", { category: "home", limit: QueryLimit })
+  const result = await SessionNav.queryScope(Scope.home().id, { limit: QueryLimit })
   const filtered = applyTimeFilter(result.items, filter)
   const total = filtered.length
   const page = filtered.slice(offset, offset + limit)
@@ -90,7 +106,7 @@ async function listHome(limit: number, offset: number, filter: TimeFilter) {
 }
 
 async function listFeishu(limit: number, offset: number, filter: TimeFilter) {
-  const result = await SessionNav.queryScope("global", { category: "channel", limit: QueryLimit })
+  const result = await SessionNav.queryGlobal({ category: "channel", limit: QueryLimit })
   const filtered = applyTimeFilter(result.items, filter)
   const total = filtered.length
   const page = filtered.slice(offset, offset + limit)
@@ -103,18 +119,29 @@ export const SessionListTool = Tool.define("session_list", {
   description: DESCRIPTION,
   parameters,
   async execute(params: z.infer<typeof parameters>) {
-    const { scope, limit, offset } = params
+    const { scope, scopeID, limit, offset } = params
     const clampedLimit = Math.min(limit, 50)
     const filter: TimeFilter = {
       sinceMs: params.since ? new Date(params.since).getTime() : undefined,
       beforeMs: params.before ? new Date(params.before).getTime() : undefined,
     }
 
+    if (scope === "project" && scopeID) {
+      const project = await Scope.fromID(scopeID)
+      if (!project || project.type !== "project") {
+        return {
+          title: "No project scope found",
+          output: `No project scope found with id "${scopeID}". Use scope_list to see available project IDs.`,
+          metadata: { scope, scopeID, total: 0 },
+        }
+      }
+    }
+
     let result: { entries: string[]; total: number; shown: number }
 
     switch (scope) {
       case "project":
-        result = await listProject(clampedLimit, offset, filter)
+        result = await listProject(scopeID, clampedLimit, offset, filter)
         break
       case "home":
         result = await listHome(clampedLimit, offset, filter)
@@ -127,8 +154,8 @@ export const SessionListTool = Tool.define("session_list", {
     if (result.total === 0) {
       return {
         title: `No ${scope} sessions`,
-        output: `No sessions found for scope "${scope}".`,
-        metadata: { scope, total: 0 } as Record<string, any>,
+        output: scopeID ? `No sessions found for project "${scopeID}".` : `No sessions found for scope "${scope}".`,
+        metadata: { scope, ...(scopeID ? { scopeID } : {}), total: 0 },
       }
     }
 
@@ -139,7 +166,7 @@ export const SessionListTool = Tool.define("session_list", {
     return {
       title: `${result.total} ${scope} session${result.total === 1 ? "" : "s"}`,
       output: `${header}\n\n${result.entries.join("\n\n")}`,
-      metadata: { scope, total: result.total, shown: result.shown } as Record<string, any>,
+      metadata: { scope, ...(scopeID ? { scopeID } : {}), total: result.total, shown: result.shown },
     }
   },
 })

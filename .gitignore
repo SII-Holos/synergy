@@ -27,6 +27,7 @@ log/
 # Bun build temp files
 *.bun-build
 .bun-version.info
+packages/synergy/coverage/
 
 # Windows special device files
 nul
@@ -46,6 +47,8 @@ ref/
 holos-paper/
 awcp-paper/
 research/
+!docs/research/
+!docs/research/**
 .research/
 /data/
 *.tgz

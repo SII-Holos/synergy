@@ -26,7 +26,7 @@ export namespace Scope {
 
   export const Event = {
     Updated: BusEvent.define("scope.updated", Info),
-    Removed: BusEvent.define("scope.removed", z.object({ id: z.string() })),
+    Removed: BusEvent.define("scope.removed", z.object({ id: z.string(), directory: z.string().optional() })),
   }
 
   export function contains(scope: Scope, targetPath: string): boolean {
@@ -64,11 +64,12 @@ export namespace Scope {
     return {
       type: "project" as const,
       id: data.id,
-      directory: data.directory ?? data.worktree,
+      directory: data.worktree,
       worktree: data.worktree,
       vcs: data.vcs,
       name: data.name,
       icon: data.icon,
+      pinned: data.pinned,
       sandboxes: data.sandboxes,
       time: data.time,
     }
@@ -216,7 +217,7 @@ export namespace Scope {
           .then((x) => {
             const dirname = path.dirname(x.trim())
             if (dirname === ".") return directory
-            return dirname
+            return path.resolve(directory, dirname)
           })
           .catch(() => undefined)
 
@@ -283,6 +284,7 @@ export namespace Scope {
         vcs: existing.vcs,
         name: existing.name,
         icon: existing.icon,
+        pinned: existing.pinned,
         sandboxes: existing.sandboxes ?? [],
         time: existing.time,
       }
@@ -309,7 +311,7 @@ export namespace Scope {
     const persisted: z.infer<typeof Info> = {
       ...existing,
       type: "project" as const,
-      directory: sandbox,
+      directory: worktree,
       worktree,
       vcs: vcs as Scope.Project["vcs"],
       time: { ...existing.time },
@@ -326,6 +328,7 @@ export namespace Scope {
       vcs: persisted.vcs,
       name: persisted.name,
       icon: persisted.icon,
+      pinned: persisted.pinned,
       sandboxes: persisted.sandboxes,
       time: persisted.time,
     }
@@ -364,11 +367,12 @@ export namespace Scope {
     return valid.map((data) => ({
       type: "project" as const,
       id: data.id,
-      directory: data.directory ?? data.worktree,
+      directory: data.worktree,
       worktree: data.worktree,
       vcs: data.vcs,
       name: data.name,
       icon: data.icon,
+      pinned: data.pinned,
       sandboxes: data.sandboxes,
       time: data.time,
     }))
@@ -392,6 +396,7 @@ export namespace Scope {
     scopeID: string
     name?: string
     icon?: { url?: string; color?: string }
+    pinned?: number | null
     archived?: number | null
   }) {
     if (input.scopeID === "home") return undefined
@@ -401,6 +406,9 @@ export namespace Scope {
         draft.icon = { ...draft.icon }
         if (input.icon.url !== undefined) draft.icon!.url = input.icon.url
         if (input.icon.color !== undefined) draft.icon!.color = input.icon.color
+      }
+      if (input.pinned !== undefined) {
+        draft.pinned = input.pinned ?? undefined
       }
       if (input.archived !== undefined) {
         draft.time.archived = input.archived ?? undefined
@@ -424,7 +432,7 @@ export namespace Scope {
     GlobalBus.emit("event", {
       payload: {
         type: Event.Removed.type,
-        properties: { id: scopeID },
+        properties: { id: scopeID, directory: result.worktree },
       },
     })
     return result

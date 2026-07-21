@@ -49,6 +49,8 @@ export namespace ProviderProfile {
       displayName: z.string().optional(),
       description: z.string().optional(),
       signupUrl: z.string().optional(),
+      authKind: z.string().optional(),
+      environment: z.array(z.string()).optional(),
       recommendation: Recommendation.optional(),
     })
     .strict()
@@ -84,9 +86,18 @@ export namespace ProviderProfile {
     body?: unknown
   }
 
+  export interface ModelCatalogEntry {
+    id: string
+    rank?: number
+    model?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
+  }
+
   export interface Profile {
     id: string
     name: string
+    origin?: "builtin" | "plugin"
     aliases?: string[]
     displayName?: string
     description?: string
@@ -100,6 +111,7 @@ export namespace ProviderProfile {
     aiSdkPackage?: string
     modelFactory?: ModelFactory
     modelsDevProviderID?: string
+    sourceModelProviderID?: string
     fallbackModels?: string[]
     defaultAuxModel?: string
     healthCheck?: HealthCheck
@@ -122,7 +134,13 @@ export namespace ProviderProfile {
     }): ClassifiedError | undefined
     runtimeOptions?(input: RuntimeOptionsInput): Promise<Record<string, any>>
     getModel?(input: ModelFactoryInput): Promise<any>
+    fetchModelCatalog?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<ModelCatalogEntry[]>
     fetchModels?(input: { auth?: Auth.Info; fetch?: FetchLike; baseURL?: string }): Promise<string[]>
+    modelCatalogIdentity?(input: {
+      auth?: Auth.Info
+      credentialID?: string
+      authUpdatedAt?: number
+    }): Promise<string | undefined> | string | undefined
     fetchUsage?(input?: { fetch?: FetchLike }): Promise<AccountUsage.Snapshot>
   }
 
@@ -144,6 +162,15 @@ export namespace ProviderProfile {
     return [...profiles.values()]
   }
 
+  export function clearPluginProfiles() {
+    for (const [providerID, profile] of profiles) {
+      if (profile.origin === "plugin") profiles.delete(providerID)
+    }
+    for (const [alias, providerID] of aliases) {
+      if (!profiles.has(providerID)) aliases.delete(alias)
+    }
+  }
+
   export function canonicalID(providerID: string): string {
     return aliases.get(providerID) ?? providerID
   }
@@ -155,6 +182,8 @@ export namespace ProviderProfile {
       ...(profile.displayName ? { displayName: profile.displayName } : {}),
       ...(profile.description ? { description: profile.description } : {}),
       ...(profile.signupUrl ? { signupUrl: profile.signupUrl } : {}),
+      ...(profile.authKind ? { authKind: profile.authKind } : {}),
+      ...(profile.env?.length ? { environment: profile.env } : {}),
       ...(profile.recommendation ? { recommendation: profile.recommendation } : {}),
     }
   }

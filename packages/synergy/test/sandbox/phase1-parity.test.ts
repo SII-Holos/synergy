@@ -358,11 +358,11 @@ describe("Phase 1: Windows protected paths parity", () => {
     const paths = DEFAULT_PROTECTED_PATHS(homedir, workspace)
 
     // Workspace-specific protections
-    expect(paths).toContain(path.join(workspace, ".git"))
-    expect(paths).toContain(path.join(workspace, ".synergy"))
+    expect(paths).toContain(path.posix.join(workspace, ".git"))
+    expect(paths).not.toContain(path.posix.join(workspace, ".synergy"))
 
-    // Synergy internal config/auth — must be protected on all platforms
-    expect(paths).toContain(path.join(homedir, ".synergy", "config"))
+    // Synergy auth roots remain protected; non-secret config/output areas are writable.
+    expect(paths).not.toContain(path.join(homedir, ".synergy", "config"))
     expect(paths).toContain(path.join(homedir, ".synergy", "data", "auth"))
 
     // Network and cloud credentials — critical for Windows where users
@@ -385,9 +385,9 @@ describe("Phase 1: Windows protected paths parity", () => {
     expect(paths).toContain(path.join(homedir, ".gemini"))
 
     // Verify total count is reasonable — shared list should contain all
-    // CREDENTIAL_PATHS plus workspace .git/.synergy.
-    // CREDENTIAL_PATHS has 20 entries + 2 workspace = 22 minimum
-    expect(paths.length).toBeGreaterThanOrEqual(20)
+    // credential roots plus workspace .git, but not workspace .synergy.
+    // DEFAULT_PROTECTED_PATHS currently has 17 credential entries plus workspace .git.
+    expect(paths.length).toBeGreaterThanOrEqual(18)
   })
 
   test("BLOCKER: WindowsBackend config uses local 3-path list instead of DEFAULT_PROTECTED_PATHS", () => {

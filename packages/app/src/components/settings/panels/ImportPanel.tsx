@@ -1,58 +1,169 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
-import { parse as parseJsonc, printParseErrorCode, type ParseError } from "jsonc-parser"
+import { useLingui } from "@lingui/solid"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import type {
+  Config,
+  ConfigDomainImportApplyResult,
+  ConfigDomainImportPlan,
+  ConfigDomainSummary,
+  ConfigImportScope,
+  Scope,
+} from "@ericsanchezok/synergy-sdk/client"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { overwriteImportConfirm } from "@/components/dialog/confirm-copy"
 import { useGlobalSDK } from "@/context/global-sdk"
-import type { ConfigDomainImportPlan, ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
+import { requestErrorMessage } from "@/utils/error"
+import { getScopeLabel } from "@/utils/scope"
+import { SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
+import {
+  buildImportApplyParameters,
+  buildImportPlanParameters,
+  formatImportValue,
+  isConfigImportRevisionConflict,
+  loadImportUrl,
+  parseImportText,
+  planMatchesSelection,
+  projectImportScopes,
+  type ImportDomainID,
+} from "./import-panel-model"
 
-export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported: () => Promise<void> }) {
+const pageTitle = { id: "settings.import.page.title", message: "Import" }
+const pageDescription = {
+  id: "settings.import.page.description",
+  message: "Review and import selected configuration domains.",
+}
+const targetTitle = { id: "settings.import.target.title", message: "Target" }
+const targetDescription = {
+  id: "settings.import.target.description",
+  message: "Choose whether imported values apply globally or to one project.",
+}
+const sourceTitle = { id: "settings.import.source.title", message: "Source" }
+const sourceDescription = {
+  id: "settings.import.source.description",
+  message: "Load JSON or JSONC from a file, a URL, or pasted text.",
+}
+const planTitle = { id: "settings.import.plan.title", message: "Plan" }
+const resultTitle = { id: "settings.import.result.title", message: "Result" }
+const importFailedTitle = { id: "settings.import.failed", message: "Import failed" }
+const configImportedTitle = { id: "settings.import.configImported", message: "Config imported" }
+const configImportedWarnTitle = { id: "settings.import.configImportedWarn", message: "Config imported with warnings" }
+const planRefreshedTitle = { id: "settings.import.planRefreshed", message: "Import plan refreshed" }
+const planRefreshedDesc = {
+  id: "settings.import.planRefreshedDesc",
+  message: "Configuration changed after review. Check the refreshed plan before applying again.",
+}
+const runtimeUpdatedText = { id: "settings.import.runtimeUpdated", message: "Runtime updated" }
+const runtimeNeedsAttentionText = {
+  id: "settings.import.runtimeNeedsAttention",
+  message: "Files imported; runtime needs attention",
+}
+const scopeLabel = { id: "settings.import.scope.label", message: "Scope" }
+const globalLabel = { id: "settings.import.global", message: "Global" }
+const projectLabel = { id: "settings.import.project", message: "Project" }
+const noProjectLabel = { id: "settings.import.noProject", message: "No project available" }
+const reviewTargetLabel = { id: "settings.import.reviewTarget", message: "Review Target" }
+const fileLabel = { id: "settings.import.file", message: "File" }
+const configUrlAria = { id: "settings.import.configUrl", message: "Config URL" }
+const urlPlaceholder = { id: "settings.import.urlPlaceholder", message: "https://..." }
+const loadUrlLabel = { id: "settings.import.loadUrl", message: "Load URL" }
+const pasteAria = { id: "settings.import.pasteJson", message: "Paste JSON or JSONC" }
+const pastePlaceholder = { id: "settings.import.pastePlaceholder", message: '{\n  "model": "provider/model"\n}' }
+const reviewPasteLabel = { id: "settings.import.reviewPaste", message: "Review Paste" }
+const conflictLabel = { id: "settings.import.conflict", message: "Conflict" }
+const currentLabel = { id: "settings.import.current", message: "Current" }
+const importedLabel = { id: "settings.import.imported", message: "Imported" }
+const importingLabel = { id: "settings.import.importing", message: "Importing..." }
+const applyLabel = { id: "settings.import.apply", message: "Apply" }
+const reviewSelectionLabel = { id: "settings.import.reviewSelection", message: "Review Selection" }
+const importSelectionChanged = { id: "settings.import.selectionChanged", message: "Selection changed" }
+const importChangedDetail = {
+  id: "settings.import.changedDetail",
+  message: "Changed {count} field(s) · Reloaded {executed}",
+}
+const importRestartRequired = {
+  id: "settings.import.restartRequired",
+  message: "Restart required for: {targets}",
+}
+function updatedDomainsDesc(count: number) {
+  return {
+    id: "settings.import.updatedDomains",
+    message: "Updated {count, plural, one {# domain} other {# domains}}.",
+    values: { count },
+  }
+}
+function detectedDomains(count: number) {
+  return { id: "settings.import.detectedDomains", message: "{count} detected domain(s)", values: { count } }
+}
+export function ImportPanel(props: {
+  domains: ConfigDomainSummary[]
+  scopes: Scope[]
+  onImported: () => Promise<void>
+}) {
+  const { _ } = useLingui()
   const globalSDK = useGlobalSDK()
+  const confirm = useConfirm()
   const [sourceLabel, setSourceLabel] = createSignal("")
   const [url, setUrl] = createSignal("")
-  const [config, setConfig] = createSignal<Record<string, unknown> | undefined>()
-  const [plan, setPlan] = createSignal<ConfigDomainImportPlan | undefined>()
-  const [selected, setSelected] = createSignal<Array<ConfigDomainSummary["id"]>>([])
+  const [pasted, setPasted] = createSignal("")
+  const [config, setConfig] = createSignal<Config>()
+  const [plan, setPlan] = createSignal<ConfigDomainImportPlan>()
+  const [result, setResult] = createSignal<ConfigDomainImportApplyResult>()
+  const [selected, setSelected] = createSignal<ImportDomainID[]>([])
+  const [scope, setScope] = createSignal<ConfigImportScope>("global")
+  const [projectID, setProjectID] = createSignal("")
   const [loading, setLoading] = createSignal(false)
   const [applying, setApplying] = createSignal(false)
 
+  const projects = createMemo(() => projectImportScopes(props.scopes))
+  const project = createMemo(() => projects().find((item) => item.id === projectID()) ?? projects()[0])
   const selectedSet = createMemo(() => new Set(selected()))
   const availableDomains = createMemo(() => new Set((plan()?.domains ?? []).map((domain) => domain.id)))
   const visibleDomains = createMemo(() => (plan()?.domains ?? []).filter((domain) => selectedSet().has(domain.id)))
+  const reviewedSelection = createMemo(() => {
+    const current = plan()
+    return current ? planMatchesSelection(current.domains, selected()) : false
+  })
   const selectedConflicts = createMemo(
     () => plan()?.conflicts.filter((change) => selectedSet().has(domainForKey(change.key))) ?? [],
   )
 
-  function domainForKey(key: string): ConfigDomainSummary["id"] {
+  function domainForKey(key: string): ImportDomainID {
     return plan()?.domains.find((domain) => domain.changes.some((change) => change.key === key))?.id ?? "general"
   }
 
-  function parseInput(text: string) {
-    const errors: ParseError[] = []
-    const parsed = parseJsonc(text, errors, { allowTrailingComma: true })
-    if (errors.length > 0) {
-      const first = errors[0]
-      throw new Error(`JSONC parse failed: ${printParseErrorCode(first.error)} at offset ${first.offset}`)
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      throw new Error("Import payload must be an object")
-    }
-    return parsed as Record<string, unknown>
+  function target() {
+    return { scope: scope(), project: scope() === "project" ? project() : undefined }
   }
 
-  async function createPlan(nextConfig: Record<string, unknown>, label: string) {
+  function clearReview() {
+    setPlan(undefined)
+    setResult(undefined)
+    setSelected([])
+  }
+
+  async function createPlan(nextConfig: Record<string, unknown>, label: string, only?: ImportDomainID[]) {
     setLoading(true)
     try {
-      const res = await globalSDK.client.config.import.plan({
-        configDomainImportPlanInput: { config: nextConfig as any },
-      })
-      const nextPlan = res.data!
-      setConfig(nextConfig)
-      setPlan(nextPlan)
-      setSelected(nextPlan.domains.map((domain) => domain.id))
+      const response = await globalSDK.client.config.import.plan(
+        buildImportPlanParameters({
+          config: nextConfig as Config,
+          source: label,
+          only,
+          ...target(),
+        }),
+      )
+      if (!response.data) throw new Error("The server did not return an import plan")
+      setConfig(nextConfig as Config)
+      setPlan(response.data)
+      setSelected(response.data.domains.map((domain) => domain.id))
       setSourceLabel(label)
-    } catch (error: any) {
-      showToast({ type: "error", title: "Import failed", description: error.message })
+      setResult(undefined)
+      return response.data
+    } catch (error) {
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
@@ -61,9 +172,9 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
   async function handleFile(file: File | undefined) {
     if (!file) return
     try {
-      await createPlan(parseInput(await file.text()), file.name)
-    } catch (error: any) {
-      showToast({ type: "error", title: "Import failed", description: error.message })
+      await createPlan(parseImportText(await file.text(), file.name), file.name)
+    } catch (error) {
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
   }
 
@@ -72,62 +183,158 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
     if (!value) return
     setLoading(true)
     try {
-      const res = await fetch(value)
-      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-      await createPlan(parseInput(await res.text()), value)
-    } catch (error: any) {
-      showToast({ type: "error", title: "Import failed", description: error.message })
+      const loaded = await loadImportUrl(value)
+      await createPlan(loaded, value)
+    } catch (error) {
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setLoading(false)
     }
   }
 
-  function toggleDomain(id: ConfigDomainSummary["id"], enabled: boolean) {
-    if (enabled) {
-      setSelected((prev) => (prev.includes(id) ? prev : [...prev, id]))
-      return
+  async function handlePaste() {
+    try {
+      await createPlan(parseImportText(pasted(), "pasted"), "pasted")
+    } catch (error) {
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     }
-    setSelected((prev) => prev.filter((item) => item !== id))
   }
 
-  async function applyImport() {
-    const input = config()
-    if (!input || selected().length === 0) return
-    if (
-      selectedConflicts().length > 0 &&
-      !window.confirm(`${selectedConflicts().length} conflicting key(s) will be overwritten. Continue?`)
-    ) {
+  function toggleDomain(id: ImportDomainID, enabled: boolean) {
+    setResult(undefined)
+    if (enabled) {
+      setSelected((previous) => (previous.includes(id) ? previous : [...previous, id]))
       return
     }
+    setSelected((previous) => previous.filter((item) => item !== id))
+  }
+
+  async function reviewCurrentTarget() {
+    const input = config()
+    if (!input) return
+    await createPlan(input, sourceLabel())
+  }
+
+  async function runApplyImport(input: Config, only: ImportDomainID[]) {
+    const currentPlan = plan()
+    if (!currentPlan) return
     setApplying(true)
     try {
-      await globalSDK.client.config.import.apply({
-        config: input as any,
-        only: selected(),
-        yes: true,
+      const response = await globalSDK.client.config.import.apply(
+        buildImportApplyParameters({
+          config: input,
+          source: sourceLabel(),
+          only,
+          revision: currentPlan.revision,
+          ...target(),
+        }),
+      )
+      if (!response.data) throw new Error("The server did not return an import result")
+      setPlan(response.data.plan)
+      setResult(response.data)
+      showToast({
+        type: response.data.reload.success ? "success" : "warning",
+        title: response.data.reload.success ? _(configImportedTitle) : _(configImportedWarnTitle),
+        description: _(updatedDomainsDesc(response.data.plan.domains.length)),
       })
-      showToast({ type: "success", title: "Config imported", description: `Updated ${selected().length} domain(s).` })
       await props.onImported()
-    } catch (error: any) {
-      showToast({ type: "error", title: "Import failed", description: error.message })
+    } catch (error) {
+      if (isConfigImportRevisionConflict(error)) {
+        const refreshed = await createPlan(input, sourceLabel(), only)
+        if (!refreshed) return
+        showToast({
+          type: "warning",
+          title: _(planRefreshedTitle),
+          description: _(planRefreshedDesc),
+        })
+        return
+      }
+      showToast({ type: "error", title: _(importFailedTitle), description: requestErrorMessage(error) })
     } finally {
       setApplying(false)
     }
   }
 
-  return (
-    <div class="ds-content-inner">
-      <div class="ds-content-header">
-        <div>
-          <h2 class="ds-content-title">Import</h2>
-        </div>
-      </div>
+  async function applyImport() {
+    const input = config()
+    const only = selected()
+    if (!input || only.length === 0) return
 
-      <div class="ds-setting-section">
+    if (!reviewedSelection()) {
+      await createPlan(input, sourceLabel(), only)
+      return
+    }
+
+    const conflictCount = selectedConflicts().length
+    if (conflictCount > 0) {
+      confirm.show({
+        ...overwriteImportConfirm(conflictCount),
+        onConfirm: () => runApplyImport(input, only),
+      })
+      return
+    }
+
+    await runApplyImport(input, only)
+  }
+
+  return (
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
+      <SettingsSection title={_(targetTitle)} description={_(targetDescription)}>
+        <div class="ds-import-target-row">
+          <label class="ds-import-field">
+            <span>{_(scopeLabel)}</span>
+            <select
+              class="settings-select"
+              value={scope()}
+              onChange={(event) => {
+                setScope(event.currentTarget.value as ConfigImportScope)
+                clearReview()
+              }}
+            >
+              <option value="global">{_(globalLabel)}</option>
+              <option value="project">{_(projectLabel)}</option>
+            </select>
+          </label>
+          <Show when={scope() === "project"}>
+            <label class="ds-import-field">
+              <span>{_(projectLabel)}</span>
+              <select
+                class="settings-select"
+                value={project()?.id ?? ""}
+                disabled={projects().length === 0}
+                onChange={(event) => {
+                  setProjectID(event.currentTarget.value)
+                  clearReview()
+                }}
+              >
+                <Show when={projects().length === 0}>
+                  <option value="">{_(noProjectLabel)}</option>
+                </Show>
+                <For each={projects()}>
+                  {(item) => <option value={item.id}>{getScopeLabel(item, item.directory)}</option>}
+                </For>
+              </select>
+            </label>
+          </Show>
+          <Show when={config() && !plan()}>
+            <Button
+              type="button"
+              variant="secondary"
+              size="normal"
+              disabled={loading() || (scope() === "project" && !project())}
+              onClick={() => void reviewCurrentTarget()}
+            >
+              {_(reviewTargetLabel)}
+            </Button>
+          </Show>
+        </div>
+      </SettingsSection>
+
+      <SettingsSection title={_(sourceTitle)} description={_(sourceDescription)}>
         <div class="ds-import-source-row">
           <label class="ds-import-file-button">
-            <Icon name="upload" size="small" />
-            File
+            <Icon name={getSemanticIcon("settings.import")} size="small" />
+            {_(fileLabel)}
             <input
               type="file"
               accept=".json,.jsonc,application/json"
@@ -137,33 +344,62 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
           <input
             class="ds-import-url-input"
             value={url()}
-            placeholder="https://..."
+            aria-label={_(configUrlAria)}
+            placeholder={_(urlPlaceholder)}
             onInput={(event) => setUrl(event.currentTarget.value)}
           />
-          <Button type="button" variant="secondary" size="normal" disabled={loading()} onClick={() => void handleUrl()}>
-            Load URL
+          <Button
+            type="button"
+            variant="secondary"
+            size="normal"
+            disabled={loading() || !url().trim() || (scope() === "project" && !project())}
+            onClick={() => void handleUrl()}
+          >
+            {_(loadUrlLabel)}
           </Button>
         </div>
-      </div>
+        <div class="ds-import-paste-row">
+          <textarea
+            class="ds-import-paste-input"
+            value={pasted()}
+            aria-label={_(pasteAria)}
+            placeholder={_(pastePlaceholder)}
+            rows={7}
+            onInput={(event) => setPasted(event.currentTarget.value)}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="normal"
+            disabled={loading() || !pasted().trim() || (scope() === "project" && !project())}
+            onClick={() => void handlePaste()}
+          >
+            {_(reviewPasteLabel)}
+          </Button>
+        </div>
+      </SettingsSection>
 
       <Show when={plan()}>
-        <div class="ds-setting-section">
+        <SettingsSection title={_(planTitle)}>
           <div class="ds-import-plan-header">
             <div>
-              <div class="text-14-medium text-text-strong">{sourceLabel()}</div>
-              <div class="text-12-regular text-text-weak">{plan()!.domains.length} detected domain(s)</div>
+              <div class="settings-import-source-title">{sourceLabel()}</div>
+              <div class="settings-import-source-meta">
+                {plan()!.scope === "project" ? _(projectLabel) : _(globalLabel)} ·{" "}
+                {_(detectedDomains(plan()!.domains.length))}
+                {!reviewedSelection() ? ` · ${_(importSelectionChanged)}` : ""}
+              </div>
             </div>
             <Button
               type="button"
               variant="primary"
               size="normal"
-              disabled={applying() || selected().length === 0}
+              disabled={applying() || loading() || selected().length === 0}
               onClick={() => void applyImport()}
             >
-              {applying() ? "Importing..." : "Apply"}
+              {applying() ? _(importingLabel) : reviewedSelection() ? _(applyLabel) : _(reviewSelectionLabel)}
             </Button>
           </div>
-
           <div class="ds-import-domain-grid">
             <For each={props.domains}>
               {(domain) => (
@@ -188,8 +424,13 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
               {(domain) => (
                 <div class="ds-import-domain-card">
                   <div class="ds-import-domain-card-header">
-                    <div class="text-13-medium text-text-strong">{domain.filename}</div>
-                    <div class="text-12-regular text-text-weak">{domain.mode}</div>
+                    <div>
+                      <div class="settings-import-domain-title">{domain.filename}</div>
+                      <div class="settings-import-domain-meta" title={domain.path}>
+                        {domain.path}
+                      </div>
+                    </div>
+                    <span class="ds-inline-badge ds-inline-badge-muted">{domain.mode}</span>
                   </div>
                   <For each={domain.changes}>
                     {(change) => (
@@ -197,8 +438,32 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
                         class="ds-import-change-row"
                         classList={{ "ds-import-change-row-conflict": change.conflict }}
                       >
-                        <span>{change.conflict ? "!" : "-"}</span>
-                        <span>{change.key}</span>
+                        <div class="ds-import-change-heading">
+                          <span class={`ds-import-change-type ds-import-change-type-${change.type}`}>
+                            {change.type}
+                          </span>
+                          <span>{change.key}</span>
+                          <Show when={change.conflict}>
+                            <span class="ds-inline-badge">{_(conflictLabel)}</span>
+                          </Show>
+                        </div>
+                        <div class="ds-import-value-grid">
+                          <div>
+                            <span>{_(currentLabel)}</span>
+                            <pre>{formatImportValue(change.before)}</pre>
+                          </div>
+                          <div>
+                            <span>{_(importedLabel)}</span>
+                            <pre>{formatImportValue(change.after)}</pre>
+                          </div>
+                        </div>
+                        <For each={change.diagnostics}>
+                          {(diagnostic) => (
+                            <div class="ds-import-diagnostic" data-severity={diagnostic.severity}>
+                              {diagnostic.message}
+                            </div>
+                          )}
+                        </For>
                       </div>
                     )}
                   </For>
@@ -206,8 +471,51 @@ export function ImportPanel(props: { domains: ConfigDomainSummary[]; onImported:
               )}
             </For>
           </div>
-        </div>
+        </SettingsSection>
       </Show>
-    </div>
+
+      <Show when={result()}>
+        {(applied) => (
+          <SettingsSection title={_(resultTitle)}>
+            <div class="ds-import-result" data-success={applied().reload.success}>
+              <div class="settings-import-source-title">
+                {applied().reload.success ? _(runtimeUpdatedText) : _(runtimeNeedsAttentionText)}
+              </div>
+              <div class="settings-import-source-meta">
+                {_({
+                  ...importChangedDetail,
+                  values: {
+                    count: applied().reload.changedFields.length,
+                    executed: applied().reload.executed.join(", ") || "none",
+                  },
+                })}
+              </div>
+              <Show when={applied().reload.restartRequired.length > 0}>
+                <div>
+                  {_({
+                    ...importRestartRequired,
+                    values: { targets: applied().reload.restartRequired.join(", ") },
+                  })}
+                </div>
+              </Show>
+              <For each={applied().reload.warnings}>
+                {(warning) => (
+                  <div class="ds-import-diagnostic" data-severity="warning">
+                    {warning}
+                  </div>
+                )}
+              </For>
+              <For each={applied().reload.failures}>
+                {(failure) => (
+                  <div class="ds-import-diagnostic" data-severity="error">
+                    {failure.target}: {failure.message}
+                  </div>
+                )}
+              </For>
+            </div>
+          </SettingsSection>
+        )}
+      </Show>
+    </SettingsPage>
   )
 }

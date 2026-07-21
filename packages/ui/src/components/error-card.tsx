@@ -1,84 +1,93 @@
-import { createSignal, Show, splitProps } from "solid-js"
+import { Show, splitProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { useDialog } from "../context/dialog"
+import { Button } from "./button"
 import { Card } from "./card"
+import { createCopyController } from "./clipboard"
+import { Dialog } from "./dialog"
+import { errorDetailsText, errorInputText, errorPreview } from "./error-card-content"
 import { Icon } from "./icon"
-import { Tooltip } from "./tooltip"
 import "./error-card.css"
+import { getSemanticIcon } from "./semantic-icon"
+
+const errorDetailsTitleDescriptor = { id: "ui.errorCard.detailsTitle", message: "Error details" }
+const errorMessageLabelDescriptor = { id: "ui.errorCard.errorMessage", message: "Error message" }
+const toolInputLabelDescriptor = { id: "ui.errorCard.toolInput", message: "Tool input" }
+const copyDetailsDescriptor = { id: "ui.errorCard.copyDetails", message: "Copy details" }
+const copiedDescriptor = { id: "ui.errorCard.copied", message: "Copied" }
+const copyFailureDescriptor = { id: "ui.errorCard.copyFailure", message: "Unable to copy the error details." }
+const viewDetailsDescriptor = { id: "ui.errorCard.viewDetails", message: "View details" }
 
 export interface ErrorCardProps {
-  /** Full raw error text — copy button copies this exactly */
   error: string
-  /** Compact single-line mode for session-level errors. Default false. */
   compact?: boolean
+  input?: Record<string, unknown>
 }
 
-const copyResetDelay = 2000
+function ErrorDetailsDialog(props: Pick<ErrorCardProps, "error" | "input">) {
+  const { _ } = useLingui()
+  const copy = createCopyController({
+    text: () => errorDetailsText(props.error, props.input),
+    copyLabel: _(copyDetailsDescriptor),
+    copiedLabel: _(copiedDescriptor),
+    failureDescription: _(copyFailureDescriptor),
+    copyIcon: getSemanticIcon("action.copy"),
+    copiedIcon: getSemanticIcon("state.success"),
+    failedIcon: getSemanticIcon("state.error"),
+  })
 
-/** Copy text to clipboard, falling back to execCommand for insecure contexts */
-async function copyToClipboard(text: string): Promise<boolean> {
-  if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text)
-    return true
-  }
-  try {
-    const ta = document.createElement("textarea")
-    ta.value = text
-    ta.style.position = "fixed"
-    ta.style.opacity = "0"
-    ta.style.pointerEvents = "none"
-    document.body.appendChild(ta)
-    ta.focus()
-    ta.select()
-    const ok = document.execCommand("copy")
-    document.body.removeChild(ta)
-    return ok
-  } catch {
-    return false
-  }
-}
-
-function parseError(raw: string): { title: string | null; message: string } {
-  const stripped = raw.replace(/^error:\s*/i, "")
-  const colonSpace = stripped.indexOf(": ")
-  if (colonSpace > 0 && colonSpace < 30) {
-    return { title: stripped.slice(0, colonSpace), message: stripped.slice(colonSpace + 2) }
-  }
-  return { title: null, message: stripped }
+  return (
+    <Dialog title={_(errorDetailsTitleDescriptor)} size="wide" class="error-details-dialog">
+      <section data-slot="error-details-section">
+        <div data-slot="error-details-label">{_(errorMessageLabelDescriptor)}</div>
+        <pre data-slot="error-details-content">{props.error}</pre>
+      </section>
+      <Show when={errorInputText(props.input)}>
+        {(input) => (
+          <section data-slot="error-details-section">
+            <div data-slot="error-details-label">{_(toolInputLabelDescriptor)}</div>
+            <pre data-slot="error-details-content">{input()}</pre>
+          </section>
+        )}
+      </Show>
+      <div data-slot="dialog-actions">
+        <Button
+          type="button"
+          variant="secondary"
+          size="large"
+          icon={copy.icon()}
+          data-copy-state={copy.state()}
+          disabled={copy.disabled()}
+          onClick={() => void copy.copy()}
+        >
+          {copy.tooltip()}
+        </Button>
+      </div>
+    </Dialog>
+  )
 }
 
 export function ErrorCard(props: ErrorCardProps) {
-  const [local] = splitProps(props, ["error", "compact"])
-  const [copied, setCopied] = createSignal(false)
-  const parsed = () => parseError(local.error)
+  const { _ } = useLingui()
+  const [local] = splitProps(props, ["error", "input"])
+  const dialog = useDialog()
 
-  async function handleCopy() {
-    const ok = await copyToClipboard(local.error)
-    if (ok) {
-      setCopied(true)
-      setTimeout(() => setCopied(false), copyResetDelay)
-    }
+  const openDetails = () => {
+    dialog.show(() => <ErrorDetailsDialog error={local.error} input={local.input} />)
   }
 
   return (
-    <Card variant="error">
-      <div data-component="error-card" data-compact={local.compact ? "" : undefined}>
-        <Icon name="ban" size="small" />
+    <Card variant="error" class="error-card-shell">
+      <button type="button" data-component="error-card" onClick={openDetails}>
+        <Icon name={getSemanticIcon("state.error")} size="small" />
         <div data-slot="error-card-content">
-          <Show when={local.compact}>
-            <span data-slot="error-card-message">{local.error}</span>
-          </Show>
-          <Show when={!local.compact}>
-            <Show when={parsed().title}>
-              <span data-slot="error-card-title">{parsed().title}</span>
-            </Show>
-            <span data-slot="error-card-message">{parsed().message}</span>
-          </Show>
+          <span data-slot="error-card-message">{errorPreview(local.error)}</span>
         </div>
-        <Tooltip value={copied() ? "Copied" : "Copy error"} placement="top" gutter={4}>
-          <button type="button" data-slot="error-card-copy" onClick={handleCopy}>
-            <Icon name={copied() ? "check" : "copy"} size="small" />
-          </button>
-        </Tooltip>
-      </div>
+        <span data-slot="error-card-details">
+          {_(viewDetailsDescriptor)}
+          <Icon name={getSemanticIcon("navigation.expand")} size="small" />
+        </span>
+      </button>
     </Card>
   )
 }

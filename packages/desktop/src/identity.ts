@@ -1,6 +1,6 @@
 export const DESKTOP_APP_ID = "io.holosai.synergy"
 export const DESKTOP_PRODUCT_NAME = "Synergy"
-export const DESKTOP_EXECUTABLE_NAME = "synergy"
+export const DESKTOP_EXECUTABLE_NAME = "synergy-desktop"
 export const DESKTOP_PROTOCOL = "synergy"
 
 export type DesktopChannel = "dev" | "stable"
@@ -14,6 +14,10 @@ export function desktopChannel(isPackaged = false): DesktopChannel {
 
 export function desktopWindowTitle(channel: DesktopChannel): string {
   return channel === "dev" ? `${DESKTOP_PRODUCT_NAME} Dev` : DESKTOP_PRODUCT_NAME
+}
+
+export function desktopAppUserModelId(channel: DesktopChannel): string {
+  return channel === "dev" ? `${DESKTOP_APP_ID}.dev` : DESKTOP_APP_ID
 }
 
 export function desktopServerMode(channel: DesktopChannel): DesktopServerMode {

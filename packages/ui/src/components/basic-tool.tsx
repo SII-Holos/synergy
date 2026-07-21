@@ -1,12 +1,24 @@
 import { createEffect, createMemo, createSignal, Match, Show, Switch, type JSX } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import type { I18n, MessageDescriptor } from "@lingui/core"
 import { Collapsible } from "./collapsible"
 import { Spinner } from "./spinner"
 import { Countdown } from "./countdown"
 import { ToolTrigger, type ToolTriggerProps } from "./tool/trigger"
+import { withSubtitleClickHandler } from "./tool/trigger-normalization"
 import { type IconName } from "./icon"
 import { ToolTextOutput } from "./tool-output-text"
 import { classifyTool } from "./tool/classifier"
 import { toolCountdown, type ToolTime } from "./tool/timeout"
+
+const charsLabelDescriptor = { id: "ui.basicTool.chars", message: "{count} chars" }
+function translateToolDescriptor(
+  i18n: Pick<I18n, "_">,
+  descriptor: MessageDescriptor,
+  values?: Record<string, number>,
+): string {
+  return i18n._({ ...descriptor, values })
+}
 
 /** Legacy trigger value shape (pre-ToolTriggerProps). */
 interface LegacyTriggerValue {
@@ -51,7 +63,7 @@ function fromTrigger(
   // ToolTriggerProps — non-function object with icon field
   if (typeof trigger === "object" && !Array.isArray(trigger) && !("$$typeof" in (trigger as any))) {
     const t = trigger as any
-    if (t.icon) return trigger as ToolTriggerProps
+    if (t.icon) return withSubtitleClickHandler(trigger as ToolTriggerProps, onSubtitleClick)
     if (typeof t.title === "string") {
       return {
         icon: icon ?? "settings",
@@ -88,6 +100,7 @@ function fromTrigger(
 }
 
 export function BasicTool(props: BasicToolProps) {
+  const { _ } = useLingui()
   const [open, setOpen] = createSignal(props.defaultOpen ?? false)
   const active = () => props.status === "pending" || props.status === "running" || props.status === "generating"
 
@@ -97,7 +110,7 @@ export function BasicTool(props: BasicToolProps) {
 
   const charsLabel = createMemo(() => {
     if (props.status !== "generating" || !props.charsReceived) return null
-    return `${props.charsReceived.toLocaleString()} chars`
+    return _({ ...charsLabelDescriptor, values: { count: props.charsReceived.toLocaleString() } })
   })
   const countdown = createMemo(() => {
     if (props.countdown !== undefined) {
@@ -107,18 +120,25 @@ export function BasicTool(props: BasicToolProps) {
   })
 
   const triggerProps = createMemo(() => fromTrigger(props.trigger, props.icon, props.onSubtitleClick))
+  const rawTrigger = createMemo<JSX.Element | undefined>(() => {
+    if (triggerProps()) return undefined
+    const trigger = props.trigger
+    if (!trigger) return undefined
+    return typeof trigger === "function" ? (trigger as unknown as () => JSX.Element)() : (trigger as JSX.Element)
+  })
 
   return (
     <Collapsible open={open()} onOpenChange={setOpen} variant="tool" data-tool-status={props.status ?? "completed"}>
       <Collapsible.Trigger>
         <Show
+          keyed
           when={triggerProps()}
           fallback={
             // Raw JSX.Element fallback (anchored-tool-card, file-ops custom triggers)
-            <Show when={props.trigger as JSX.Element}>{(el) => el()}</Show>
+            rawTrigger()
           }
         >
-          {(tp) => <ToolTrigger {...tp()} />}
+          {(tp) => <ToolTrigger {...tp} />}
         </Show>
         <div data-slot="tool-trigger-status">
           <Switch>
@@ -126,8 +146,8 @@ export function BasicTool(props: BasicToolProps) {
               <Show when={charsLabel()}>
                 <span data-slot="tool-trigger-chars">{charsLabel()}</span>
               </Show>
-              <Show when={countdown()}>
-                {(value) => <Countdown seconds={value().seconds} startedAt={value().startedAt} active={active()} />}
+              <Show keyed when={countdown()}>
+                {(value) => <Countdown seconds={value.seconds} startedAt={value.startedAt} active={active()} />}
               </Show>
               <Spinner />
             </Match>
@@ -179,6 +199,7 @@ export function SmartTool(props: {
     subtitleTemplate?: string
   }
 }) {
+  const { i18n } = useLingui()
   const classified = createMemo(() =>
     classifyTool(props.tool, props.input, { ...props.metadata, title: props.title ?? props.metadata?.title }),
   )
@@ -192,7 +213,8 @@ export function SmartTool(props: {
   const title = createMemo(() => {
     const fb = props.fallbackMeta
     if (fb?.title) return fb.title
-    return classified().title
+    const descriptor = classified().titleDescriptor
+    return descriptor ? translateToolDescriptor(i18n(), descriptor) : classified().title
   })
 
   const subtitle = createMemo(() => {
@@ -201,6 +223,13 @@ export function SmartTool(props: {
       return resolveTemplate(fb.subtitleTemplate, props.input, props.metadata ?? {})
     }
     return classified().subtitle
+  })
+  const tags = createMemo(() => {
+    const items = classified().args?.map((label) => ({ label })) ?? []
+    const descriptor = classified().countDescriptor
+    const values = classified().countValues
+    if (descriptor && values) items.push({ label: translateToolDescriptor(i18n(), descriptor, values) })
+    return items.length > 0 ? items : undefined
   })
 
   return (
@@ -213,14 +242,14 @@ export function SmartTool(props: {
         icon: icon(),
         title: title(),
         subtitle: subtitle(),
-        tags: classified().args?.map((a) => ({ label: a })),
+        tags: tags(),
       }}
       hideDetails={props.hideDetails}
     >
-      <Show when={props.output}>
+      <Show keyed when={props.output}>
         {(output) => (
           <div data-component="tool-output" data-scrollable>
-            <ToolTextOutput text={output()} />
+            <ToolTextOutput text={output} />
           </div>
         )}
       </Show>

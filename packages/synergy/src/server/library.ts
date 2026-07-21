@@ -1,13 +1,18 @@
 import { Hono } from "hono"
+import { streamSSE } from "hono/streaming"
 import { describeRoute, validator, resolver } from "hono-openapi"
 import z from "zod"
 import { errors } from "./error"
 import { LibraryDB } from "../library/database"
 import { MemoryRecall } from "../library/memory-recall"
 import { ExperienceRecall } from "../library/experience-recall"
+import { ExperienceReencode } from "../library/experience-reencode"
+import { detect } from "../library/experience-detect"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
+import { Global } from "../global"
 import { LibraryStatsEngine } from "../library"
+import { Embedding } from "../vector/embedding"
 
 const log = Log.create({ service: "server.library" })
 
@@ -97,6 +102,44 @@ const MemoryStats = z
   })
   .meta({ ref: "MemoryStats" })
 
+const EmbeddingProgressInfo = z.object({
+  loadedBytes: z.number(),
+  totalBytes: z.number(),
+  percent: z.number(),
+})
+
+const EmbeddingErrorInfo = z.object({
+  code: z.enum(["invalid_source", "load_failed"]),
+  message: z.string(),
+})
+
+const LocalEmbeddingStatus = z.object({
+  mode: z.literal("local"),
+  model: z.string(),
+  source: z.enum(["huggingface", "hf-mirror", "custom"]),
+  asset: z.enum(["missing", "downloading", "cached", "failed"]),
+  runtime: z.enum(["unloaded", "loading", "ready"]),
+  progress: EmbeddingProgressInfo.optional(),
+  error: EmbeddingErrorInfo.optional(),
+})
+
+const RemoteEmbeddingStatus = z.object({
+  mode: z.literal("remote"),
+  model: z.string(),
+  baseURL: z.string(),
+})
+
+const EmbeddingStatus = z
+  .discriminatedUnion("mode", [LocalEmbeddingStatus, RemoteEmbeddingStatus])
+  .meta({ ref: "EmbeddingStatus" })
+
+const EmbeddingRemoteConfiguredError = z
+  .object({
+    code: z.literal("EMBEDDING_REMOTE_CONFIGURED"),
+    message: z.string(),
+  })
+  .meta({ ref: "EmbeddingRemoteConfiguredError" })
+
 const ResetResult = z
   .object({
     deleted: z.object({
@@ -105,6 +148,72 @@ const ResetResult = z
     }),
   })
   .meta({ ref: "MemoryResetResult" })
+
+const ExperienceDetectGroup = z
+  .object({
+    reason: z
+      .string()
+      .meta({ description: "Detection reason: too-long, intent-in-raw, encoding_failed, empty, invalid, no-content" }),
+    count: z.number(),
+    label: z.string().meta({ description: "Human-readable label for this group" }),
+    samples: z
+      .array(
+        z.object({
+          id: z.string(),
+          detail: z.string(),
+          preview: z.string().optional().meta({ description: "First 80 chars of intent or script" }),
+        }),
+      )
+      .meta({ description: "Up to 5 sample items for preview" }),
+  })
+  .meta({ ref: "ExperienceDetectGroup" })
+
+const ExperienceDetectResult = z
+  .object({
+    scannedAt: z.number(),
+    intent: z.object({
+      total: z.number(),
+      groups: z.array(ExperienceDetectGroup),
+    }),
+    script: z.object({
+      total: z.number(),
+      groups: z.array(ExperienceDetectGroup),
+    }),
+  })
+  .meta({ ref: "ExperienceDetectResult" })
+
+const ReencodeJobStatus = z
+  .enum(["running", "completed", "failed", "cancelled", "interrupted"])
+  .meta({ ref: "ReencodeJobStatus" })
+const ReencodeJobState = z
+  .object({
+    id: z.string(),
+    status: ReencodeJobStatus,
+    type: z.enum(["intent", "script"]),
+    reason: z.string().nullable(),
+    totalCount: z.number().int().min(0),
+    okCount: z.number().int().min(0),
+    skippedCount: z.number().int().min(0),
+    failedCount: z.number().int().min(0),
+    completedCount: z.number().int().min(0),
+    startedAt: z.number(),
+    completedAt: z.number().nullable(),
+    error: z.string().nullable(),
+  })
+  .meta({ ref: "ReencodeJobState" })
+const ReencodeJobInput = z.object({
+  type: z.enum(["intent", "script"]).meta({ description: "What to re-encode" }),
+  reason: z.string().optional().meta({ description: "Filter to one detection reason; omit for all" }),
+})
+const ReencodeJobError = z
+  .object({
+    code: z.string(),
+    message: z.string(),
+  })
+  .meta({ ref: "ReencodeJobError" })
+const ReencodeJobConflict = ReencodeJobError.extend({ job: ReencodeJobState }).meta({
+  ref: "ReencodeJobConflict",
+})
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -212,6 +321,65 @@ function toExperienceSearchResult(result: ExperienceRecall.Result): z.infer<type
 // ── Routes ──────────────────────────────────────────────────────────────────
 
 export const LibraryRoute = new Hono()
+  .get(
+    "/embedding/status",
+    describeRoute({
+      summary: "Get embedding status",
+      description: "Report the configured embedding mode and local model asset lifecycle without loading the model.",
+      operationId: "library.embedding.status",
+      responses: {
+        200: {
+          description: "Embedding mode and local asset status",
+          content: { "application/json": { schema: resolver(EmbeddingStatus) } },
+        },
+      },
+    }),
+    async (c) => c.json(await Embedding.status()),
+  )
+
+  .post(
+    "/embedding/download",
+    describeRoute({
+      summary: "Download local embedding model",
+      description: "Start or join the local embedding model download and return its current observable status.",
+      operationId: "library.embedding.download",
+      responses: {
+        202: {
+          description: "Local model download accepted or already active",
+          content: { "application/json": { schema: resolver(LocalEmbeddingStatus) } },
+        },
+        409: {
+          description: "A remote embedding service is configured",
+          content: { "application/json": { schema: resolver(EmbeddingRemoteConfiguredError) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = await Embedding.status()
+      if (current.mode === "remote") {
+        return c.json(
+          {
+            code: "EMBEDDING_REMOTE_CONFIGURED" as const,
+            message: "Local embedding download is unavailable while a remote embedding service is configured",
+          },
+          409,
+        )
+      }
+
+      void Embedding.warmup().catch(() => undefined)
+      const status = await Embedding.status()
+      if (status.mode === "remote") {
+        return c.json(
+          {
+            code: "EMBEDDING_REMOTE_CONFIGURED" as const,
+            message: "Local embedding download is unavailable while a remote embedding service is configured",
+          },
+          409,
+        )
+      }
+      return c.json(status, 202)
+    },
+  )
 
   // ── Experience sub-routes (must be registered before /:id) ──────────────
 
@@ -433,6 +601,289 @@ export const LibraryRoute = new Hono()
       const { scopeID } = c.req.valid("query")
       const rows = scopeID ? LibraryDB.Experience.list(scopeID) : LibraryDB.Experience.listAll()
       return c.json(rows.map(toExperienceInfo))
+    },
+  )
+
+  // ── Experience detect & reencode ──────────────────────────────────────
+
+  .post(
+    "/experience/detect",
+    describeRoute({
+      summary: "Detect experience encoding issues",
+      description:
+        "Scan the experience database for encoding quality issues. Groups candidates by detection reason and returns up to 5 samples per group.",
+      operationId: "library.experience.detect",
+      responses: {
+        200: {
+          description: "Detection results grouped by type and reason",
+          content: { "application/json": { schema: resolver(ExperienceDetectResult) } },
+        },
+        ...errors(400),
+      },
+    }),
+    async (c) => {
+      const dbPath = Global.Path.libraryDB
+      const raw = detect(dbPath)
+      const scannedAt = Date.now()
+
+      const reasonLabels: Record<string, string> = {
+        encoding_failed: "Encoding pipeline failed",
+        empty: "Intent is empty",
+        "too-long": "Intent too long (>150 chars)",
+        "intent-in-raw": "Intent copied from raw user message",
+        invalid: "Intent.isValid returned false",
+        "no-content": "No experience content record",
+      }
+
+      const preview = (text?: string) => (text ? text.slice(0, 80) : undefined)
+
+      function buildGroups(
+        candidates: Array<{ id: string; reason: string; detail: string; intent?: string; script?: string }>,
+      ) {
+        const groups = new Map<
+          string,
+          { count: number; samples: Array<{ id: string; detail: string; preview?: string }> }
+        >()
+        for (const c of candidates) {
+          let entry = groups.get(c.reason)
+          if (!entry) {
+            entry = { count: 0, samples: [] }
+            groups.set(c.reason, entry)
+          }
+          entry.count++
+          if (entry.samples.length < 5) {
+            entry.samples.push({
+              id: c.id,
+              detail: c.detail,
+              preview: preview(c.intent ?? c.script),
+            })
+          }
+        }
+        // Sort by count descending (most frequent first)
+        return Array.from(groups.entries())
+          .sort((a, b) => b[1].count - a[1].count)
+          .map(([reason, group]) => ({
+            reason,
+            count: group.count,
+            label: reasonLabels[reason] ?? reason,
+            samples: group.samples,
+          }))
+      }
+
+      return c.json({
+        scannedAt,
+        intent: { total: raw.intent.length, groups: buildGroups(raw.intent) },
+        script: { total: raw.script.length, groups: buildGroups(raw.script) },
+      })
+    },
+  )
+
+  .post(
+    "/experience/reencode/jobs",
+    describeRoute({
+      summary: "Start an experience reencode job",
+      description: "Create a durable server-owned reencode job and return its initial state.",
+      operationId: "library.experience.startReencodeJob",
+      responses: {
+        200: {
+          description: "Reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        409: {
+          description: "A reencode job is already running",
+          content: { "application/json": { schema: resolver(ReencodeJobConflict) } },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", ReencodeJobInput),
+    async (c) => {
+      const active = ExperienceReencode.currentSummary()
+      if (active?.status === "running") {
+        return c.json(
+          {
+            code: "REENCODE_JOB_ALREADY_RUNNING",
+            message: "An experience reencode job is already running",
+            job: active,
+          },
+          409,
+        )
+      }
+
+      try {
+        return c.json(ExperienceReencode.start(c.req.valid("json")))
+      } catch (error) {
+        const current = ExperienceReencode.currentSummary()
+        if (current?.status === "running") {
+          return c.json(
+            {
+              code: "REENCODE_JOB_ALREADY_RUNNING",
+              message: "An experience reencode job is already running",
+              job: current,
+            },
+            409,
+          )
+        }
+        throw error
+      }
+    },
+  )
+
+  .get(
+    "/experience/reencode/jobs/current",
+    describeRoute({
+      summary: "Get the current experience reencode job",
+      description: "Return the most recently created reencode job with durable aggregate progress.",
+      operationId: "library.experience.getReencodeJob",
+      responses: {
+        200: {
+          description: "Current reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        404: {
+          description: "No reencode job exists",
+          content: { "application/json": { schema: resolver(ReencodeJobError) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = ExperienceReencode.currentSummary()
+      if (!current) {
+        return c.json({ code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" }, 404)
+      }
+      return c.json(current)
+    },
+  )
+
+  .post(
+    "/experience/reencode/jobs/current/cancel",
+    describeRoute({
+      summary: "Cancel the current experience reencode job",
+      description: "Cancel the active server-owned job without discarding completed item results.",
+      operationId: "library.experience.cancelReencodeJob",
+      responses: {
+        200: {
+          description: "Cancelled reencode job state",
+          content: { "application/json": { schema: resolver(ReencodeJobState) } },
+        },
+        404: {
+          description: "No reencode job exists",
+          content: { "application/json": { schema: resolver(ReencodeJobError) } },
+        },
+        409: {
+          description: "The current job is not running",
+          content: { "application/json": { schema: resolver(ReencodeJobConflict) } },
+        },
+      },
+    }),
+    async (c) => {
+      const current = ExperienceReencode.currentSummary()
+      if (!current) {
+        return c.json({ code: "REENCODE_JOB_NOT_FOUND", message: "No reencode job exists" }, 404)
+      }
+      if (current.status !== "running") {
+        return c.json(
+          {
+            code: "REENCODE_JOB_NOT_RUNNING",
+            message: "The current experience reencode job is not running",
+            job: current,
+          },
+          409,
+        )
+      }
+      return c.json(await ExperienceReencode.cancel(current.id))
+    },
+  )
+
+  .post(
+    "/experience/reencode",
+    describeRoute({
+      summary: "Observe experience reencoding",
+      description:
+        "Compatibility SSE observer for the durable reencode job. Disconnecting closes only the observer; the server-owned job continues.",
+      operationId: "library.experience.reencode",
+      responses: {
+        200: {
+          description: "SSE stream of reencode job progress",
+          content: {
+            "text/event-stream": {
+              schema: resolver(
+                z.object({
+                  type: z.enum(["start", "progress", "done", "error"]),
+                  total: z.number().optional(),
+                  id: z.string().optional(),
+                  status: z.string().optional(),
+                  reason: z.string().optional(),
+                  completed: z.number().optional(),
+                  ok: z.number().optional(),
+                  skipped: z.number().optional(),
+                  failed: z.number().optional(),
+                  message: z.string().optional(),
+                }),
+              ),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator("json", ReencodeJobInput),
+    async (c) => {
+      const input = c.req.valid("json")
+      let job = ExperienceReencode.currentSummary()
+      if (!job || job.status !== "running") job = ExperienceReencode.start(input)
+
+      c.header("X-Accel-Buffering", "no")
+      c.header("Cache-Control", "no-cache, no-transform")
+
+      return streamSSE(c, async (stream) => {
+        const emitted = new Set<string>()
+        let updatedAt = 0
+
+        await stream.writeSSE({ data: JSON.stringify({ type: "start", total: job.totalCount }) })
+
+        while (true) {
+          if (stream.aborted) return
+          const latest = ExperienceReencode.getSummary(job.id)
+          if (!latest) {
+            await stream.writeSSE({ data: JSON.stringify({ type: "error", message: "Reencode job disappeared" }) })
+            return
+          }
+
+          const updates = ExperienceReencode.terminalItemsSince(job.id, updatedAt)
+          for (const item of updates) {
+            updatedAt = Math.max(updatedAt, item.updatedAt)
+            if (emitted.has(item.id)) continue
+            emitted.add(item.id)
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "progress",
+                id: item.id,
+                status: item.status,
+                reason: item.reason,
+                completed: emitted.size,
+              }),
+            })
+          }
+
+          if (latest.status !== "running") {
+            await stream.writeSSE({
+              data: JSON.stringify({
+                type: "done",
+                status: latest.status,
+                total: latest.totalCount,
+                ok: latest.okCount,
+                skipped: latest.skippedCount,
+                failed: latest.failedCount,
+                message: latest.error ?? undefined,
+              }),
+            })
+            return
+          }
+
+          await Bun.sleep(500)
+        }
+      })
     },
   )
 

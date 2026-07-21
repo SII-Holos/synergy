@@ -5,8 +5,10 @@ import { Ripgrep } from "../file/ripgrep"
 import DESCRIPTION from "./grep.txt"
 import { ScopeContext } from "../scope/context"
 import path from "path"
+import { ProcessOutput } from "../process/output"
 
 const MAX_LINE_LENGTH = 2000
+const LIMIT = 100
 
 export const GrepTool = Tool.define("grep", {
   description: DESCRIPTION,
@@ -36,70 +38,44 @@ export const GrepTool = Tool.define("grep", {
         : path.resolve(ScopeContext.current.directory, params.path)
       : ScopeContext.current.directory
 
-    const rgPath = await Ripgrep.filepath()
-    const args = ["-nH", "--field-match-separator=|", "--regexp", params.pattern]
-    if (params.include) {
-      args.push("--glob", params.include)
-    }
-    args.push(searchPath)
-
-    const proc = Bun.spawn([rgPath, ...args], {
-      stdout: "pipe",
-      stderr: "pipe",
-    })
-
-    const output = await new Response(proc.stdout).text()
-    const errorOutput = await new Response(proc.stderr).text()
-    const exitCode = await proc.exited
-
-    if (exitCode === 1) {
-      return {
-        title: params.pattern,
-        metadata: { matches: 0, truncated: false },
-        output: "No files found",
+    const matches: Array<{ path: string; lineNum: number; lineText: string }> = []
+    let truncated = false
+    let truncatedReason: ProcessOutput.LimitReason | "max_matches" | undefined
+    try {
+      for await (const match of Ripgrep.matches({
+        cwd: ScopeContext.current.directory,
+        pattern: params.pattern,
+        paths: [searchPath],
+        glob: params.include ? [params.include] : undefined,
+        sortModifiedDesc: true,
+        signal: ctx.abort,
+      })) {
+        matches.push({
+          path: match.path.text,
+          lineNum: match.line_number,
+          lineText: match.lines.text.replace(/\r?\n$/, ""),
+        })
+        if (matches.length > LIMIT) {
+          truncated = true
+          truncatedReason = "max_matches"
+          break
+        }
       }
+    } catch (error) {
+      if (!(error instanceof ProcessOutput.LimitError)) throw error
+      truncated = true
+      truncatedReason = error.reason
     }
 
-    if (exitCode !== 0) {
-      throw new Error(`ripgrep failed: ${errorOutput}`)
-    }
-
-    // Handle both Unix (\n) and Windows (\r\n) line endings
-    const lines = output.trim().split(/\r?\n/)
-    const matches = []
-
-    for (const line of lines) {
-      if (!line) continue
-
-      const [filePath, lineNumStr, ...lineTextParts] = line.split("|")
-      if (!filePath || !lineNumStr || lineTextParts.length === 0) continue
-
-      const lineNum = parseInt(lineNumStr, 10)
-      const lineText = lineTextParts.join("|")
-
-      const file = Bun.file(filePath)
-      const stats = await file.stat().catch(() => null)
-      if (!stats) continue
-
-      matches.push({
-        path: filePath,
-        modTime: stats.mtime.getTime(),
-        lineNum,
-        lineText,
-      })
-    }
-
-    matches.sort((a, b) => b.modTime - a.modTime)
-
-    const limit = 100
-    const truncated = matches.length > limit
-    const finalMatches = truncated ? matches.slice(0, limit) : matches
+    const finalMatches = matches.slice(0, LIMIT)
 
     if (finalMatches.length === 0) {
       return {
         title: params.pattern,
-        metadata: { matches: 0, truncated: false },
-        output: "No files found",
+        metadata: { matches: 0, truncated, truncatedReason },
+        output: truncated
+          ? "Search stopped at the output safety limit before a complete match was available. Narrow the path or pattern."
+          : "No files found",
       }
     }
 
@@ -129,6 +105,7 @@ export const GrepTool = Tool.define("grep", {
       metadata: {
         matches: finalMatches.length,
         truncated,
+        truncatedReason,
       },
       output: outputLines.join("\n"),
     }

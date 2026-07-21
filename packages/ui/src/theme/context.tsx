@@ -1,52 +1,53 @@
-import { onMount, onCleanup, createEffect } from "solid-js"
+import { createEffect, createMemo, createSignal, onCleanup, onMount } from "solid-js"
 import { createStore } from "solid-js/store"
+import { applyThemeToDocument } from "./application"
 import { synergyTheme } from "./default-themes"
-import { resolveThemeVariant, themeToCss } from "./resolve"
+import { resolveThemeVariant } from "./resolve"
+import type { Theme } from "./types"
 import { createSimpleContext } from "../context/helper"
+import {
+  getPluginTheme,
+  isPluginThemeRegistryReady,
+  listThemeChoices,
+  subscribePluginThemes,
+} from "./plugin-theme-registry"
+import { createSkinBootstrapSnapshot, readSkinBootstrapSnapshot, writeSkinBootstrapSnapshot } from "./shell-skin"
+import {
+  COLOR_SCHEME_STORAGE_KEY,
+  getSavedColorScheme,
+  getSystemMode,
+  resolveColorSchemeMode,
+  type ColorScheme,
+} from "./color-scheme"
 
-export type ColorScheme = "light" | "dark" | "system"
-
-const STORAGE_KEYS = {
-  COLOR_SCHEME: "synergy-color-scheme",
-} as const
-
-const THEME_STYLE_ID = "synergy-theme"
-
-function ensureThemeStyleElement(): HTMLStyleElement {
-  const existing = document.getElementById(THEME_STYLE_ID) as HTMLStyleElement | null
-  if (existing) return existing
-  const element = document.createElement("style")
-  element.id = THEME_STYLE_ID
-  document.head.appendChild(element)
-  return element
-}
-
-function getSystemMode(): "light" | "dark" {
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-}
-
-function applyThemeCss(mode: "light" | "dark") {
+function resolveThemeForMode(theme: Theme, mode: "light" | "dark") {
   const isDark = mode === "dark"
-  const variant = isDark ? synergyTheme.dark : synergyTheme.light
-  const tokens = resolveThemeVariant(variant, isDark)
-  const css = themeToCss(tokens)
-
-  const fullCss = `:root {
-  color-scheme: ${mode};
-  --text-mix-blend-mode: ${isDark ? "plus-lighter" : "multiply"};
-  ${css}
-}`
-
-  ensureThemeStyleElement().textContent = fullCss
-  document.documentElement.dataset.colorScheme = mode
+  return resolveThemeVariant(isDark ? theme.dark : theme.light, isDark)
 }
 
 export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   name: "Theme",
   init: () => {
+    const initialColorScheme = getSavedColorScheme() ?? "system"
+    const initialMode = resolveColorSchemeMode(initialColorScheme)
+    const bootstrap = readSkinBootstrapSnapshot()
     const [store, setStore] = createStore({
-      colorScheme: "system" as ColorScheme,
-      mode: getSystemMode(),
+      colorScheme: initialColorScheme,
+      mode: initialMode,
+      themeId: bootstrap?.themeId ?? synergyTheme.id,
+    })
+    const initialTheme = bootstrap?.theme ?? synergyTheme
+    applyThemeToDocument(document, resolveThemeForMode(initialTheme, initialMode), initialMode, store.themeId)
+    const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
+    const activeTheme = createMemo(() => {
+      themeRegistryVersion()
+      const registered = getPluginTheme(store.themeId)?.theme
+      if (registered) return registered
+      if (!isPluginThemeRegistryReady() && bootstrap?.themeId === store.themeId) return bootstrap.theme
+      return synergyTheme
+    })
+    const tokens = createMemo(() => {
+      return resolveThemeForMode(activeTheme(), store.mode)
     })
 
     onMount(() => {
@@ -59,30 +60,46 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
       mediaQuery.addEventListener("change", handler)
       onCleanup(() => mediaQuery.removeEventListener("change", handler))
 
-      const savedScheme = localStorage.getItem(STORAGE_KEYS.COLOR_SCHEME) as ColorScheme | null
-      if (savedScheme) {
-        setStore("colorScheme", savedScheme)
-        if (savedScheme !== "system") {
-          setStore("mode", savedScheme)
-        }
-      }
+      const unsubscribe = subscribePluginThemes(() => setThemeRegistryVersion((version) => version + 1))
+      onCleanup(unsubscribe)
     })
 
     createEffect(() => {
-      applyThemeCss(store.mode)
+      const activeId = store.themeId || synergyTheme.id
+      const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
+      if (activeId !== synergyTheme.id && !pluginTheme && isPluginThemeRegistryReady()) {
+        setStore("themeId", synergyTheme.id)
+        return
+      }
+      const theme = activeTheme()
+      applyThemeToDocument(document, tokens(), store.mode, activeId)
+      writeSkinBootstrapSnapshot(createSkinBootstrapSnapshot(activeId, theme))
     })
 
     const setColorScheme = (scheme: ColorScheme) => {
       setStore("colorScheme", scheme)
-      localStorage.setItem(STORAGE_KEYS.COLOR_SCHEME, scheme)
+      localStorage.setItem(COLOR_SCHEME_STORAGE_KEY, scheme)
       setStore("mode", scheme === "system" ? getSystemMode() : scheme)
+    }
+
+    const setThemeId = (id: string) => {
+      const next = !id || id === synergyTheme.id ? synergyTheme.id : id
+      if (next !== synergyTheme.id && !getPluginTheme(next)) return
+      setStore("themeId", next)
     }
 
     return {
       colorScheme: () => store.colorScheme,
       mode: () => store.mode,
-      theme: () => synergyTheme,
+      theme: activeTheme,
+      tokens,
+      themeId: () => store.themeId,
+      themes: () => {
+        themeRegistryVersion()
+        return listThemeChoices()
+      },
       setColorScheme,
+      setThemeId,
     }
   },
 })

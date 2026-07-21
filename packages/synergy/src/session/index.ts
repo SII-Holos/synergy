@@ -16,11 +16,17 @@ import { fn } from "@/util/fn"
 import { Snapshot } from "@/session/snapshot"
 import { SnapshotSchema } from "@/session/snapshot-schema"
 import { SessionHistory } from "./history"
+import { publishCompareKey, decideSessionPublish } from "./publish-dedup"
+import { PartWriteBuffer } from "./part-write-buffer"
+import { Config } from "@/config/config"
+import { ControlProfileCompiler } from "@/control-profile/compiler"
+import type { ProfileId } from "@/control-profile/types"
 
 import type { Provider } from "@/provider/provider"
 import { PermissionNext } from "@/permission/next"
 import { SessionInteraction } from "./interaction"
 import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
 import { SessionEvent } from "./event"
 import { Info as InfoSchema, StatusInfo as StatusInfoSchema } from "./types"
 import type {
@@ -57,7 +63,8 @@ export namespace Session {
   }
 
   export function withoutRuntimeInfo(session: Info): Info {
-    return { ...session }
+    const { working: _working, ...rest } = session
+    return rest
   }
 
   export type PageIndex = {
@@ -70,6 +77,60 @@ export namespace Session {
       parentID?: string
     }>
   }
+
+  export type ChildIndexEntry = {
+    id: string
+    title: string
+    updated: number
+    created: number
+    archived: boolean
+  }
+
+  export type ChildIndex = {
+    version: 1
+    scopeID: string
+    parentID: string
+    updatedAt: number
+    entries: ChildIndexEntry[]
+  }
+
+  export const ChildCursor = z
+    .object({
+      lastActivityAt: z.number(),
+      id: z.string(),
+    })
+    .meta({ ref: "SessionChildCursor" })
+
+  export const ChildrenPage = z
+    .object({
+      items: Info.array(),
+      nextCursor: ChildCursor.nullable(),
+      total: z.number(),
+    })
+    .meta({ ref: "SessionChildrenPage" })
+
+  export type ChildCursor = z.infer<typeof ChildCursor>
+  export type ChildrenPage = z.infer<typeof ChildrenPage>
+
+  export const WorkspaceSelection = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("current"),
+      }),
+      z.object({
+        mode: z.literal("existing"),
+        target: z.string().min(1),
+        force: z.boolean().optional(),
+      }),
+      z.object({
+        mode: z.literal("create"),
+        name: z.string().optional(),
+        baseRef: z.enum(["current", "fresh"]).optional(),
+        baseRevision: z.string().min(1).optional(),
+      }),
+    ])
+    .meta({ ref: "SessionWorkspaceSelection" })
+  export type WorkspaceSelection = z.infer<typeof WorkspaceSelection>
 
   export async function readPageIndex(scopeID: string): Promise<PageIndex> {
     return Storage.read<PageIndex>(StoragePath.sessionsPageIndex(asScopeID(scopeID))).catch(() => ({ entries: [] }))
@@ -106,6 +167,60 @@ export namespace Session {
     }
   }
 
+  function toChildIndexEntry(session: Info): ChildIndexEntry {
+    return {
+      id: session.id,
+      title: session.title,
+      updated: session.time.updated,
+      created: session.time.created,
+      archived: !!session.time.archived,
+    }
+  }
+
+  function sortChildIndexEntries(entries: ChildIndexEntry[]) {
+    entries.sort((a, b) => b.updated - a.updated || b.id.localeCompare(a.id))
+  }
+
+  export async function readChildIndex(scopeID: string, parentID: string): Promise<ChildIndex> {
+    return Storage.read<ChildIndex>(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID))).catch(
+      () => ({
+        version: 1,
+        scopeID,
+        parentID,
+        updatedAt: 0,
+        entries: [],
+      }),
+    )
+  }
+
+  export async function writeChildIndex(scopeID: string, parentID: string, index: ChildIndex) {
+    sortChildIndexEntries(index.entries)
+    await Storage.write(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)), {
+      ...index,
+      updatedAt: Date.now(),
+    })
+  }
+
+  export async function upsertChildIndexEntry(scopeID: string, parentID: string, entry: ChildIndexEntry) {
+    const index = await readChildIndex(scopeID, parentID)
+    const existing = index.entries.findIndex((e) => e.id === entry.id)
+    if (existing >= 0) index.entries.splice(existing, 1)
+    index.entries.push(entry)
+    await writeChildIndex(scopeID, parentID, index)
+  }
+
+  export async function removeChildIndexEntry(scopeID: string, parentID: string, sessionID: string) {
+    const index = await readChildIndex(scopeID, parentID)
+    const nextEntries = index.entries.filter((e) => e.id !== sessionID)
+    if (nextEntries.length === index.entries.length) return
+    index.entries = nextEntries
+    await writeChildIndex(scopeID, parentID, index)
+  }
+
+  export async function removeChildIndex(scopeID: string, parentID: string) {
+    await Storage.remove(StoragePath.sessionChildIndex(asScopeID(scopeID), asSessionID(parentID)))
+  }
+
   function toNavEntry(session: Info): SessionNavEntry {
     const scope = session.scope as Scope
     const scopeType = scope.type === "home" ? "home" : "project"
@@ -114,6 +229,7 @@ export namespace Session {
       SessionNav.deriveCategory({
         scopeType,
         endpointKind: session.endpoint?.kind,
+        provenance: session.provenance,
         parentID: session.parentID,
         cortex: session.cortex,
         agenda: session.agenda,
@@ -129,6 +245,13 @@ export namespace Session {
       archived: !!session.time.archived,
       parentID: session.parentID,
       endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+      chatId: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatId : undefined,
+      chatName: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatName : undefined,
+      chatType: session.endpoint?.kind === "channel" ? session.endpoint.channel?.chatType : undefined,
+      completionNotice: {
+        unread: session.completionNotice.unread,
+        unreadCount: session.completionNotice.unreadCount,
+      },
     }
   }
 
@@ -150,25 +273,59 @@ export namespace Session {
   }
 
   export async function withRuntimeInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
-    const working = await SessionWorking.resolve(session.id)
-    const history = await SessionHistory.liveInfo(session.id).catch(() => session.history)
+    const [working, history] = await Promise.all([
+      SessionWorking.resolve(session.id),
+      session.history?.rollback ? SessionHistory.storedInfo(session.id).catch(() => session.history) : session.history,
+    ])
     const result = { ...withoutRuntimeInfo(session), history }
     if (!working) return result
     return { ...result, working }
   }
 
-  async function publishInfo(event: typeof SessionEvent.Updated, session: Info) {
-    Bus.publish(event, {
-      info: await withRuntimeInfo(session),
-    })
+  async function withClientInfo(session: Info): Promise<Info & { working?: WorkingInfoType }> {
+    const info = await withRuntimeInfo(session)
+    if (info.controlProfile) return info
+    return {
+      ...info,
+      controlProfile: await resolveControlProfile(info.id),
+    }
+  }
+
+  // Dedup redundant session.updated publishes: a diff limited to time.updated
+  // (or a byte-identical payload) is throttled to a heartbeat, while any real
+  // field change publishes immediately (issue #319, defense in depth).
+  const lastPublish = new Map<string, { key: string; at: number }>()
+  const PUBLISH_DEDUP_THROTTLE_MS = 1000
+
+  async function publishInfo(event: typeof SessionEvent.Updated, session: Info, navEntry?: SessionNavEntry) {
+    const info = await withRuntimeInfo(session)
+    const key = publishCompareKey(info)
+    const now = Date.now()
+    const prev = lastPublish.get(session.id)
+    if (
+      !decideSessionPublish({
+        prevKey: prev?.key,
+        prevAt: prev?.at,
+        nextKey: key,
+        now,
+        throttleMs: PUBLISH_DEDUP_THROTTLE_MS,
+      })
+    ) {
+      return
+    }
+    if (info.time.archived) lastPublish.delete(session.id)
+    else lastPublish.set(session.id, { key, at: now })
+    Bus.publish(event, { info, navEntry })
   }
 
   export async function create(input?: {
     scope?: Scope
     parentID?: string
+    provenance?: Info["provenance"]
     title?: string
     permission?: PermissionNext.Ruleset
     controlProfile?: Info["controlProfile"]
+    agentOverride?: Info["agentOverride"]
     preAuthorizedActions?: string[]
     endpoint?: SessionEndpoint.Info
     id?: string
@@ -178,6 +335,9 @@ export namespace Session {
     superplan?: SuperPlanSessionInfoType
     workspace?: import("./types").Workspace
     forkedFrom?: Info["forkedFrom"]
+    completionNotice?: {
+      silent?: boolean
+    }
   }) {
     const scope = input?.scope ?? ScopeContext.current.scope
     const parent = input?.parentID ? await SessionManager.getSession(input.parentID) : undefined
@@ -189,6 +349,11 @@ export namespace Session {
       }
     const inheritedInteraction = input?.interaction ?? parent?.interaction
     const controlProfile = input?.parentID ? undefined : input?.controlProfile
+    const completionNotice = {
+      unread: false,
+      unreadCount: 0,
+      silent: input?.completionNotice?.silent ?? parent?.completionNotice.silent ?? false,
+    }
 
     const endpoint = input?.endpoint
     const createdAt = Date.now()
@@ -196,6 +361,7 @@ export namespace Session {
     const category = SessionNav.deriveCategory({
       scopeType,
       endpointKind: endpoint?.kind,
+      provenance: input?.provenance,
       parentID: input?.parentID,
       cortex: input?.cortex,
       agenda: input?.agenda,
@@ -207,10 +373,12 @@ export namespace Session {
       scope,
       parentID: input?.parentID,
       forkedFrom: input?.forkedFrom,
+      provenance: input?.provenance,
       category,
       title: input?.title ?? createDefaultTitle(!!input?.parentID),
       permission: input?.permission,
       controlProfile,
+      agentOverride: input?.agentOverride,
       preAuthorizedActions: input?.preAuthorizedActions,
       endpoint,
       interaction: inheritedInteraction,
@@ -218,6 +386,7 @@ export namespace Session {
       cortex: input?.cortex,
       superplan: input?.superplan,
       workspace,
+      completionNotice,
       time: {
         created: createdAt,
         updated: createdAt,
@@ -232,7 +401,8 @@ export namespace Session {
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await writeEndpointIndex(result)
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
-    await SessionNav.upsertNavEntry(toNavEntry(result))
+    if (result.parentID) await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
 
     if (result.agenda) {
       await Storage.write(StoragePath.agendaSession(result.agenda.itemID, result.id), {
@@ -244,8 +414,34 @@ export namespace Session {
     SessionManager.registerRuntime(result.id)
     Scope.touch(scope.id)
 
-    await publishInfo(SessionEvent.Updated, result)
+    await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
+  }
+
+  export async function applyWorkspaceSelection(
+    sessionID: string,
+    selection?: WorkspaceSelection,
+  ): Promise<Info & { working?: WorkingInfoType }> {
+    if (!selection || selection.mode === "current") return get(sessionID)
+
+    const { Worktree } = await import("../project/worktree")
+    if (selection.mode === "create") {
+      await Worktree.create({
+        sessionID,
+        name: selection.name,
+        baseRef: selection.baseRef ?? "current",
+        baseRevision: selection.baseRevision,
+        bind: true,
+      })
+      return get(sessionID)
+    }
+
+    await Worktree.enter({
+      sessionID,
+      target: selection.target,
+      force: selection.force ?? false,
+    })
+    return get(sessionID)
   }
 
   export const fork = fn(
@@ -263,24 +459,7 @@ export namespace Session {
           }),
         ])
         .optional(),
-      workspace: z
-        .discriminatedUnion("mode", [
-          z.object({
-            mode: z.literal("current"),
-          }),
-          z.object({
-            mode: z.literal("existing"),
-            target: z.string().min(1),
-            force: z.boolean().optional(),
-          }),
-          z.object({
-            mode: z.literal("create"),
-            name: z.string().optional(),
-            baseRef: z.enum(["current", "fresh"]).optional(),
-            baseRevision: z.string().min(1).optional(),
-          }),
-        ])
-        .optional(),
+      workspace: WorkspaceSelection.optional(),
       title: z.string().optional(),
       controlProfile: z.enum(["guarded", "autonomous", "full_access"]).optional(),
     }),
@@ -291,7 +470,7 @@ export namespace Session {
         scope: source.scope as Scope,
         workspace: source.workspace,
         title: input.title,
-        controlProfile: input.controlProfile,
+        controlProfile: input.controlProfile ?? (await resolveControlProfile(source.id)),
         forkedFrom: {
           sessionID: source.id,
           messageID: forkPoint,
@@ -301,7 +480,7 @@ export namespace Session {
       const msgs = await messages({ sessionID: input.sessionID })
       const messageMap = new Map<string, string>()
       for (const msg of msgs) {
-        if (forkPoint && msg.info.id >= forkPoint) break
+        if (forkPoint && msg.info.id === forkPoint) break
         const id = Identifier.ascending("message")
         messageMap.set(msg.info.id, id)
         const cloned = await updateMessage({
@@ -324,26 +503,7 @@ export namespace Session {
       }
 
       try {
-        if (input.workspace?.mode === "create") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.create({
-            sessionID: session.id,
-            name: input.workspace.name,
-            baseRef: input.workspace.baseRef ?? "current",
-            baseRevision: input.workspace.baseRevision,
-            bind: true,
-          })
-          session = await get(session.id)
-        }
-        if (input.workspace?.mode === "existing") {
-          const { Worktree } = await import("../project/worktree")
-          await Worktree.enter({
-            sessionID: session.id,
-            target: input.workspace.target,
-            force: input.workspace.force ?? false,
-          })
-          session = await get(session.id)
-        }
+        session = await applyWorkspaceSelection(session.id, input.workspace)
       } catch (error) {
         await remove(session.id)
         throw error
@@ -378,16 +538,52 @@ export namespace Session {
     return updated
   }
 
-  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+  async function sessionControlProfileState(
+    sessionID: string,
+  ): Promise<{ controlProfile?: Info["controlProfile"]; root: Info }> {
     let currentID = sessionID
     while (true) {
       const session = await SessionManager.requireSession(currentID)
       const scope = session.scope as Scope
-      const info = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))
-      if (info?.controlProfile) return info.controlProfile
-      if (!info?.parentID) return "guarded"
+      const info =
+        (await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(currentID)))) ?? session
+      if (info.controlProfile) return { controlProfile: info.controlProfile, root: info }
+      if (!info.parentID) return { root: info }
       currentID = info.parentID
     }
+  }
+
+  export function defaultControlProfileForSessionSource(session?: Pick<Info, "endpoint" | "agenda">): ProfileId {
+    if (session?.endpoint?.kind === "channel") return "autonomous"
+    if (session?.agenda) return "autonomous"
+    return "guarded"
+  }
+
+  export async function resolveSessionControlProfile(sessionID: string): Promise<Info["controlProfile"] | undefined> {
+    return (await sessionControlProfileState(sessionID)).controlProfile
+  }
+
+  export async function resolveEffectiveControlProfile(input: {
+    sessionID?: string
+    agentControlProfile?: string
+    topLevelControlProfile?: string
+  }): Promise<ProfileId> {
+    const sessionState = input.sessionID ? await sessionControlProfileState(input.sessionID) : undefined
+    if (sessionState?.controlProfile) return ControlProfileCompiler.normalize(sessionState.controlProfile)
+    if (input.agentControlProfile) return ControlProfileCompiler.normalize(input.agentControlProfile)
+
+    const topLevelProfile =
+      input.topLevelControlProfile ??
+      (await Config.current()
+        .then((cfg) => cfg.controlProfile)
+        .catch(() => undefined))
+    if (topLevelProfile) return ControlProfileCompiler.normalize(topLevelProfile)
+
+    return defaultControlProfileForSessionSource(sessionState?.root)
+  }
+
+  export async function resolveControlProfile(sessionID: string): Promise<NonNullable<Info["controlProfile"]>> {
+    return resolveEffectiveControlProfile({ sessionID })
   }
 
   export const get = fn(Identifier.schema("session"), async (id) => {
@@ -395,11 +591,40 @@ export namespace Session {
     const scope = session.scope as Scope
     const read = await Storage.read<Info>(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)))
     const info = read as Info
-    if (info.parentID && !info.controlProfile) {
-      info.controlProfile = await resolveControlProfile(id)
-    }
-    return withRuntimeInfo(info)
+    return withClientInfo(info)
   })
+
+  export async function clearCompletionNotice(id: string) {
+    const session = await SessionManager.requireSession(id)
+    const scope = session.scope as Scope
+    const key = StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id))
+    const before = await Storage.read<Info>(key)
+    if (!before.completionNotice.unread && !before.completionNotice.unreadCount) return withRuntimeInfo(before)
+
+    const result = await Storage.update<Info>(key, (draft) => {
+      draft.completionNotice.unread = false
+      draft.completionNotice.unreadCount = 0
+    })
+
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result))
+    await publishInfo(SessionEvent.Updated, result, navEntry)
+    return withRuntimeInfo(result)
+  }
+  export async function recordCompletionNotice(id: string, options?: { publishEvent?: boolean }) {
+    let unreadCount: number | undefined
+    const result = await update(id, (draft) => {
+      if (draft.time.archived || draft.completionNotice.silent) return
+      const current = draft.completionNotice.unreadCount ?? (draft.completionNotice.unread ? 1 : 0)
+      const next = Math.min(Number.MAX_SAFE_INTEGER, current + 1)
+      draft.completionNotice.unread = true
+      draft.completionNotice.unreadCount = next
+      if (next !== current) unreadCount = next
+    })
+    if (unreadCount !== undefined && options?.publishEvent !== false) {
+      await Bus.publish(SessionEvent.Completion, { sessionID: id, unreadCount })
+    }
+    return result
+  }
 
   export async function update(id: string, editor: (session: Info) => void) {
     const session = await SessionManager.requireSession(id)
@@ -416,7 +641,15 @@ export namespace Session {
     await Storage.write(StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(id)), withoutRuntimeInfo(result))
     await Storage.write(StoragePath.sessionIndex(asSessionID(result.id)), toIndex(result))
     await upsertPageIndexEntry(scope.id, toPageIndexEntry(result))
-    await SessionNav.upsertNavEntry(toNavEntry(result))
+    if (before.parentID && before.parentID !== result.parentID) {
+      await removeChildIndexEntry(scope.id, before.parentID, result.id)
+    }
+    if (result.parentID) {
+      await upsertChildIndexEntry(scope.id, result.parentID, toChildIndexEntry(result))
+    }
+    const navEntry = await SessionNav.upsertNavEntry(toNavEntry(result), {
+      preserveActivityAt: before.pendingReply === true && result.pendingReply === true,
+    })
 
     const beforeKey = before.endpoint ? SessionEndpoint.toKey(before.endpoint) : undefined
     const afterKey = result.endpoint ? SessionEndpoint.toKey(result.endpoint) : undefined
@@ -433,7 +666,7 @@ export namespace Session {
         log.warn("failed to detach worktree during session archive", { sessionID: result.id, error })
       })
     }
-    await publishInfo(SessionEvent.Updated, result)
+    await publishInfo(SessionEvent.Updated, result, navEntry)
     return withRuntimeInfo(result)
   }
 
@@ -442,8 +675,8 @@ export namespace Session {
     const scopeID = asScopeID((session.scope as Scope).id)
     const diffs = await Storage.read<SnapshotSchema.FileDiff[]>(
       StoragePath.sessionSummary(scopeID, asSessionID(sessionID)),
-    )
-    return diffs ?? []
+    ).catch(() => [])
+    return SnapshotSchema.normalizeArray(diffs) ?? []
   })
 
   export const messages = fn(
@@ -454,6 +687,18 @@ export namespace Session {
     }),
     async (input) => {
       return SessionHistory.messages(input)
+    },
+  )
+
+  export const messagePage = fn(
+    z.object({
+      sessionID: Identifier.schema("session"),
+      cursor: z.string().optional(),
+      limit: z.number().int().min(1).max(500).optional(),
+    }),
+    async (input) => {
+      await flushPartWrites(input.sessionID)
+      return SessionHistory.messagePage(input)
     },
   )
 
@@ -494,7 +739,7 @@ export namespace Session {
       const total = matched.length
       const offset = options?.offset ?? 0
       const limit = options?.limit ?? total
-      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withRuntimeInfo(s)))
+      const data = await Promise.all(matched.slice(offset, offset + limit).map((s) => withClientInfo(s)))
       return { data, total }
     }
 
@@ -508,7 +753,7 @@ export namespace Session {
     const keys = slice.map((e) => StoragePath.sessionInfo(scopeID, asSessionID(e.id)))
     const sessions = await Storage.readMany<Info>(keys)
     const data = await Promise.all(
-      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withRuntimeInfo(s)),
+      sessions.filter((s): s is Info => s != null && !!s.scope).map((s) => withClientInfo(s)),
     )
 
     return { data, total }
@@ -524,12 +769,67 @@ export namespace Session {
     }
   }
 
-  export const children = fn(Identifier.schema("session"), async (parentID) => {
-    const sessions: Info[] = []
-    for await (const session of listAll()) {
-      if (session.parentID === parentID) sessions.push(session)
+  async function queryChildren(input: {
+    parentID: string
+    cursor?: ChildCursor | null
+    limit?: number
+    search?: string
+    includeArchived?: boolean
+  }): Promise<ChildrenPage> {
+    const parent = await SessionManager.requireSession(input.parentID)
+    const scope = parent.scope as Scope
+    const index = await readChildIndex(scope.id, input.parentID)
+    let entries = index.entries
+
+    if (!input.includeArchived) entries = entries.filter((entry) => !entry.archived)
+
+    const search = input.search?.trim().toLowerCase()
+    if (search) {
+      entries = entries.filter((entry) => entry.title.toLowerCase().includes(search))
     }
-    return sessions
+
+    const total = entries.length
+    let startIdx = 0
+    if (input.cursor) {
+      const cursor = input.cursor
+      startIdx = entries.findIndex(
+        (entry) =>
+          entry.updated < cursor.lastActivityAt || (entry.updated === cursor.lastActivityAt && entry.id < cursor.id),
+      )
+      if (startIdx === -1) startIdx = entries.length
+    }
+
+    const limit = input.limit ?? total
+    const slice = entries.slice(startIdx, startIdx + limit)
+    const hasMore = startIdx + slice.length < total
+    const last = slice.at(-1)
+    const nextCursor = hasMore && last ? { lastActivityAt: last.updated, id: last.id } : null
+
+    const keys = slice.map((entry) => StoragePath.sessionInfo(asScopeID(scope.id), asSessionID(entry.id)))
+    const sessions = await Storage.readMany<Info>(keys)
+    const items = await Promise.all(
+      sessions
+        .filter((session): session is Info => session != null && !!session.scope)
+        .map((session) => withClientInfo(session)),
+    )
+
+    return { items, nextCursor, total }
+  }
+
+  export const childPage = fn(
+    z.object({
+      parentID: Identifier.schema("session"),
+      cursor: ChildCursor.nullable().optional(),
+      limit: z.number().int().min(1).max(50).optional(),
+      search: z.string().optional(),
+      includeArchived: z.boolean().optional(),
+    }),
+    queryChildren,
+  )
+
+  export const children = fn(Identifier.schema("session"), async (parentID) => {
+    const page = await queryChildren({ parentID, includeArchived: true })
+    return page.items
   })
 
   export const remove = fn(Identifier.schema("session"), async (sessionID) => {
@@ -545,12 +845,16 @@ export namespace Session {
         log.warn("failed to detach worktree during session removal", { sessionID, error })
       })
       SessionManager.unregisterRuntime(sessionID)
+      SessionManager.forgetSession(sessionID)
+      SessionMessageCache.disable(sessionID)
       await removeEndpointIndex(session)
       await Storage.removeTree(StoragePath.sessionRoot(scopeID, asSessionID(sessionID)))
       await Storage.remove(StoragePath.sessionIndex(asSessionID(sessionID)))
       await removePageIndexEntry(scope.id, sessionID)
+      if (session.parentID) await removeChildIndexEntry(scope.id, session.parentID, sessionID)
+      await removeChildIndex(scope.id, sessionID)
       await SessionNav.removeNavEntry(scope.id, sessionID)
-      Bus.publish(SessionEvent.Deleted, {
+      await Bus.publish(SessionEvent.Deleted, {
         info: session,
       })
     } catch (e) {
@@ -562,7 +866,7 @@ export namespace Session {
     const session = await SessionManager.requireSession(sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
     const lastExchange: NonNullable<Info["lastExchange"]> = {}
-    const msgs = await messages({ sessionID })
+    const msgs = await SessionHistory.modelMessages({ sessionID })
     for (let i = msgs.length - 1; i >= 0; i--) {
       const msg = msgs[i]
       if (!lastExchange.assistant && msg.info.role === "assistant") {
@@ -584,13 +888,18 @@ export namespace Session {
   }
 
   export const updateMessage = fn(MessageV2.Info, async (msg) => {
+    const canonical = MessageV2.canonicalMessage(msg)
     const session = await SessionManager.requireSession(msg.sessionID)
     const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(StoragePath.messageInfo(scopeID, asSessionID(msg.sessionID), asMessageID(msg.id)), msg)
+    await Storage.write(
+      StoragePath.messageInfo(scopeID, asSessionID(canonical.sessionID), asMessageID(canonical.id)),
+      canonical,
+    )
+    SessionMessageCache.upsertMessage(canonical.sessionID, canonical)
     Bus.publish(MessageV2.Event.Updated, {
-      info: msg,
+      info: canonical,
     })
-    return msg
+    return canonical
   })
 
   export const mergeMessageMetadata = fn(
@@ -611,6 +920,7 @@ export namespace Session {
           }
         },
       )
+      SessionMessageCache.upsertMessage(result.sessionID, result)
       Bus.publish(MessageV2.Event.Updated, {
         info: result,
       })
@@ -627,6 +937,8 @@ export namespace Session {
       const session = await SessionManager.requireSession(input.sessionID)
       const scopeID = asScopeID((session.scope as Scope).id)
       await Storage.remove(StoragePath.messageInfo(scopeID, asSessionID(input.sessionID), asMessageID(input.messageID)))
+      // Structural change: drop the cache and let the next read repopulate.
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.Removed, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -652,6 +964,7 @@ export namespace Session {
           asPartID(input.partID),
         ),
       )
+      SessionMessageCache.invalidate(input.sessionID)
       Bus.publish(MessageV2.Event.PartRemoved, {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -673,21 +986,88 @@ export namespace Session {
     }),
   ])
 
-  export const updatePart = fn(UpdatePartInput, async (input) => {
-    const part = "delta" in input ? input.part : input
+  // Write-behind for streaming part persistence (perf hotspot S1). Text/reasoning
+  // deltas are coalesced to at most one disk write per interval; discrete updates
+  // (tool state, the final no-delta part write) persist immediately so nothing is
+  // lost at a meaningful boundary. The event is always broadcast on every delta.
+  // Part files are the highest-frequency writes and are never hand-edited, so
+  // they persist as compact JSON (no pretty-print) to cut serialization and disk
+  // bytes on the streaming path.
+  const partWriteBuffer = new PartWriteBuffer<MessageV2.Part, string[]>((path, value) =>
+    Storage.write(path, value, { compact: true }),
+  )
+
+  /**
+   * Flush all buffered streaming part writes to disk and await them. Called at
+   * turn finalization so the persisted parts reflect everything streamed — most
+   * importantly when a turn is interrupted mid-stream and the terminal part
+   * write that normally flushes never fired (issue #327).
+   */
+  export function flushPartWrites(sessionID?: string) {
+    if (!sessionID) return partWriteBuffer.flushAll()
+    return partWriteBuffer.flushWhere((part) => part.sessionID === sessionID)
+  }
+
+  type UpdatePartInternalInput =
+    | MessageV2.Part
+    | { part: MessageV2.TextPart; delta: string }
+    | { part: MessageV2.ReasoningPart; delta: string }
+
+  async function updatePartInternal(input: UpdatePartInternalInput) {
+    const part = "delta" in input ? input.part : MessageV2.canonicalPart(input)
     const delta = "delta" in input ? input.delta : undefined
-    const session = await SessionManager.requireSession(part.sessionID)
-    const scopeID = asScopeID((session.scope as Scope).id)
-    await Storage.write(
-      StoragePath.messagePart(scopeID, asSessionID(part.sessionID), asMessageID(part.messageID), asPartID(part.id)),
-      part,
+    // Streaming hot path (issue #350 H1): resolve the scopeID from the permanent
+    // sessionID -> scopeID cache instead of loading full session info on every
+    // delta. A session's scope is immutable, so this is safe; on a cold cache it
+    // reads only the small session-index record.
+    const scopeID = asScopeID(await SessionManager.resolveScopeID(part.sessionID))
+    const path = StoragePath.messagePart(
+      scopeID,
+      asSessionID(part.sessionID),
+      asMessageID(part.messageID),
+      asPartID(part.id),
     )
+    if (delta !== undefined) {
+      partWriteBuffer.defer(part.id, path, part)
+    } else {
+      // Discrete/terminal update: cancel any pending streamed write and persist
+      // durably before returning (preserves the original write-through contract).
+      partWriteBuffer.cancel(part.id)
+      await Storage.write(path, part, { compact: true })
+      // Maintain the loop-scoped message cache on durable writes only (#350 D2);
+      // per-delta streamed updates are coalesced by the write-behind buffer and
+      // do not need to advance the cache — the terminal write for each part does.
+      SessionMessageCache.upsertPart(part.sessionID, part)
+    }
+    if (part.type === "tool") {
+      // Tool parts are published as unsequenced streaming events. Keep a
+      // durable breadcrumb so missing frontend cards can be correlated with
+      // backend settlement (issue #509).
+      const tool = part as MessageV2.ToolPart
+      log.info("tool.part.publish", {
+        sessionID: tool.sessionID,
+        messageID: tool.messageID,
+        partID: tool.id,
+        callID: tool.callID,
+        tool: tool.tool,
+        status: tool.state.status,
+        durable: delta === undefined,
+      })
+    }
     Bus.publish(MessageV2.Event.PartUpdated, {
       part,
       delta,
     })
     return part
-  })
+  }
+
+  export const updatePart = fn(UpdatePartInput, updatePartInternal)
+
+  export function updatePartDelta(part: MessageV2.TextPart | MessageV2.ReasoningPart, delta: string) {
+    // The union member is selected by the concrete part type at the call site;
+    // both text and reasoning parts take the identical internal delta path.
+    return updatePartInternal({ part, delta } as UpdatePartInternalInput)
+  }
 
   export const getUsage = fn(
     z.object({
@@ -696,6 +1076,8 @@ export namespace Session {
       metadata: z.custom<ProviderMetadata>().optional(),
     }),
     (input) => {
+      const usageCacheHitTokens = usageNumber(input.usage, ["prompt_cache_hit_tokens", "promptCacheHitTokens"])
+      const usageCacheMissTokens = usageNumber(input.usage, ["prompt_cache_miss_tokens", "promptCacheMissTokens"])
       const providerCacheHitTokens = providerMetadataNumber(input.metadata, [
         ["deepseek", "prompt_cache_hit_tokens"],
         ["openaiCompatible", "prompt_cache_hit_tokens"],
@@ -708,13 +1090,14 @@ export namespace Session {
         ["openai-compatible", "prompt_cache_miss_tokens"],
         ["openai", "prompt_cache_miss_tokens"],
       ])
-      const cachedInputTokens = input.usage.cachedInputTokens ?? providerCacheHitTokens ?? 0
+      const cachedInputTokens = input.usage.cachedInputTokens ?? usageCacheHitTokens ?? providerCacheHitTokens ?? 0
       const excludesCachedTokens = !!(input.metadata?.["anthropic"] || input.metadata?.["bedrock"])
       const safe = (value: number) => {
         if (!Number.isFinite(value)) return 0
         return value
       }
       const adjustedInputTokens =
+        usageCacheMissTokens ??
         providerCacheMissTokens ??
         (excludesCachedTokens ? (input.usage.inputTokens ?? 0) : (input.usage.inputTokens ?? 0) - cachedInputTokens)
 
@@ -752,6 +1135,15 @@ export namespace Session {
     },
   )
 
+  function usageNumber(usage: LanguageModelUsage, keys: string[]): number | undefined {
+    const record = usage as unknown as Record<string, unknown>
+    for (const key of keys) {
+      const value = record[key]
+      if (typeof value === "number" && Number.isFinite(value)) return value
+    }
+    return undefined
+  }
+
   function providerMetadataNumber(metadata: ProviderMetadata | undefined, paths: string[][]): number | undefined {
     for (const path of paths) {
       let current: unknown = metadata
@@ -778,6 +1170,22 @@ export namespace Session {
   ) {
     const existing = await SessionManager.getSession(endpoint)
     if (existing) {
+      const existingChatName = existing.endpoint?.kind === "channel" ? existing.endpoint.channel?.chatName : undefined
+      const newChatName = endpoint.kind === "channel" ? endpoint.channel.chatName : undefined
+      const isPlatformID = (name: string | undefined): boolean => !!name && /^(ou_|on_|oc_|user_)/.test(name)
+      const chatNameChanged =
+        (newChatName != null && existingChatName !== newChatName) ||
+        (isPlatformID(existingChatName) && newChatName == null)
+      if (chatNameChanged) {
+        return update(existing.id, (draft) => {
+          if (draft.endpoint?.kind === "channel") {
+            draft.endpoint.channel.chatName = newChatName
+          }
+          if (interaction && draft.interaction?.mode !== interaction.mode) {
+            draft.interaction = interaction
+          }
+        })
+      }
       if (interaction && existing.interaction?.mode !== interaction.mode) {
         return update(existing.id, (draft) => {
           draft.interaction = interaction
@@ -801,7 +1209,11 @@ export namespace Session {
     return SessionManager.isRunning(sessionID)
   }
 
-  export async function deliver(input: { target: string | SessionEndpoint.Info; mail: SessionManager.SessionMail }) {
+  export async function deliver(input: {
+    target: string | SessionEndpoint.Info
+    mail: SessionManager.SessionMail
+    waitForProcessing?: boolean
+  }) {
     await SessionManager.deliver(input)
   }
 }

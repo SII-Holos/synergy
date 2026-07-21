@@ -1,8 +1,12 @@
 import { Log } from "../util/log"
 import z from "zod"
+import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
+import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
+import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
+import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 
 export const McpRetry = z
   .object({
@@ -162,6 +166,10 @@ export const ChannelFeishuAccount = z
       .optional()
       .default(0)
       .describe("Debounce rapid-fire messages from the same sender in the same chat (0 = disabled)"),
+    model: z
+      .string()
+      .optional()
+      .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
     resolveSenderNames: z
       .boolean()
       .optional()
@@ -282,15 +290,96 @@ export type SandboxConfig = z.infer<typeof SandboxConfig>
 
 export const ObservabilityConfig = z
   .object({
-    enabled: z.boolean().optional().describe("Enable local observability trace JSONL events (default: true)"),
-    retentionDays: z.number().int().positive().optional().describe("Days to retain local trace files (default: 7)"),
-    maxBytes: z.number().int().positive().optional().describe("Maximum total trace storage in bytes (default: 250MB)"),
+    enabled: z
+      .boolean()
+      .optional()
+      .describe("Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)"),
+    retentionDays: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Days to retain optional observability mirror files (default: 7)"),
+    maxBytes: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum total local observability storage in bytes (default: 250MB)"),
     stalledToolMs: z
       .number()
       .int()
       .positive()
       .optional()
-      .describe("Milliseconds without tool activity before emitting a stalled-tool trace event"),
+      .describe("Milliseconds without tool activity before emitting a stalled-tool observability event"),
+    performance: z
+      .object({
+        enabled: z.boolean().optional().describe("Enable structured local performance metrics and traces"),
+        samplingRate: z.number().min(0).max(1).optional().describe("Default performance metric sampling rate"),
+        metricRetentionMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Milliseconds to retain raw performance metrics"),
+        traceRetentionMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Milliseconds to retain performance spans and trace details"),
+        resourceSampleIntervalMs: z.number().int().positive().optional().describe("Runtime resource sampling interval"),
+        slowTraceThresholdMs: z.number().int().positive().optional().describe("Default slow trace issue threshold"),
+        maxTraceEvents: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum related events returned for a trace detail"),
+        maxTimelineBuckets: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum timeline buckets returned to the dashboard"),
+        maxTraceListLimit: z.number().int().positive().optional().describe("Maximum trace list rows returned"),
+        maxAttributeStringLength: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum redacted attribute string length"),
+        dashboardRefreshMs: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Performance dashboard polling refresh interval"),
+        sseHeartbeatMs: z.number().int().positive().optional().describe("Performance SSE heartbeat interval"),
+        sseBufferSize: z.number().int().positive().optional().describe("Performance event stream replay buffer size"),
+        perClientSseQueueSize: z.number().int().positive().optional().describe("Per-client performance SSE queue size"),
+        redactAttributeKeys: z
+          .array(z.string())
+          .optional()
+          .describe("Additional performance telemetry attribute keys to redact"),
+        rateLimits: z.record(z.string(), z.number().int().positive()).optional(),
+        storage: z
+          .object({
+            sqliteEnabled: z.boolean().optional(),
+            jsonlMirrorEnabled: z
+              .boolean()
+              .optional()
+              .describe("Enable optional JSONL mirror files for debugging exports"),
+            maxSqliteBytes: z.number().int().positive().optional(),
+            walCheckpointIntervalMs: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
+        thresholds: z.record(z.string(), z.number().positive()).optional(),
+      })
+      .strict()
+      .optional()
+      .describe("Structured local performance observability settings"),
   })
   .strict()
   .meta({ ref: "ObservabilityConfig" })
@@ -438,6 +527,14 @@ export const Agent = z
       .boolean()
       .optional()
       .describe("Hide this subagent from the @ autocomplete menu (default: false, only applies to mode: subagent)"),
+    visibleTo: z
+      .array(z.string())
+      .optional()
+      .describe("Agent or delegation group names allowed to delegate to this subagent"),
+    delegationGroups: z
+      .array(z.string())
+      .optional()
+      .describe("Additional delegation catalogs this agent may use when dispatching subagents"),
     options: z.record(z.string(), z.any()).optional(),
     color: z
       .string()
@@ -453,6 +550,12 @@ export const Agent = z
     maxSteps: z.number().int().positive().optional().describe("@deprecated Use 'steps' field instead."),
     permission: Permission.optional(),
     controlProfile: ControlProfileId.optional().describe("Control profile for this agent's enforcement gate"),
+    defaultVariant: z
+      .string()
+      .optional()
+      .describe(
+        "Default variant to apply when this agent runs. Overrides the role-level variant. Per-request variant overrides this.",
+      ),
   })
   .catchall(z.any())
   .transform((agent, ctx) => {
@@ -466,6 +569,8 @@ export const Agent = z
       "top_p",
       "mode",
       "hidden",
+      "visibleTo",
+      "delegationGroups",
       "color",
       "steps",
       "maxSteps",
@@ -474,6 +579,7 @@ export const Agent = z
       "disable",
       "tools",
       "controlProfile",
+      "defaultVariant",
     ])
 
     // Extract unknown properties into options
@@ -729,6 +835,40 @@ export const Learning = z
       .min(0)
       .optional()
       .describe("LLM retry count for intent/script/reward generation (default: 3)"),
+    encoderTimeoutMs: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)"),
+    encoderMaxOutputChars: z
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .describe("Maximum characters collected from one encoder model stream before abort (default: 16000)"),
+    reencodeConcurrency: z
+      .number()
+      .int()
+      .min(1)
+      .max(32)
+      .optional()
+      .describe("Maximum concurrent experience reencode workers (default: 5)"),
+    reencodeRetries: z
+      .number()
+      .int()
+      .min(0)
+      .max(10)
+      .optional()
+      .describe(
+        "Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)",
+      ),
+    reencodeRetryBackoffMs: z
+      .number()
+      .int()
+      .min(0)
+      .optional()
+      .describe("Initial backoff for transient reencode stage retries in milliseconds (default: 1000)"),
     digestToolOutputBudget: z
       .number()
       .int()
@@ -810,6 +950,11 @@ export const LEARNING_DEFAULTS = {
   snapThreshold: 0.5,
   legacyRewardConfidence: 0.3,
   encoderRetries: 3,
+  encoderTimeoutMs: 60_000,
+  encoderMaxOutputChars: 16_000,
+  reencodeConcurrency: 5,
+  reencodeRetries: 3,
+  reencodeRetryBackoffMs: 1_000,
   digestToolOutputBudget: 800,
   encoderToolFieldBudget: 500,
   encoderToolOutputBudget: 300,
@@ -849,11 +994,45 @@ const CategoryRetrieveConfig = z
   })
   .strict()
 
+export const LocalEmbeddingConfig = z
+  .object({
+    source: z
+      .enum(["huggingface", "hf-mirror", "custom"])
+      .optional()
+      .describe("Download source for the bundled local embedding model (default: huggingface)"),
+    remoteHost: z.string().url().optional().describe("Public HTTPS origin used when source is custom"),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const source = value.source ?? "huggingface"
+    if (source !== "custom") return
+    if (!value.remoteHost) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: "remoteHost is required when the local embedding source is custom",
+      })
+      return
+    }
+    try {
+      normalizePublicHttpsOrigin(value.remoteHost)
+    } catch (error) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["remoteHost"],
+        message: error instanceof Error ? error.message : "remoteHost must be a public HTTPS origin",
+      })
+    }
+  })
+  .meta({ ref: "LocalEmbeddingConfig" })
+export type LocalEmbeddingConfig = z.infer<typeof LocalEmbeddingConfig>
+
 export const EmbeddingConfig = z
   .object({
     baseURL: z.string().optional().describe("Base URL for the embedding API"),
     apiKey: z.string().optional().describe("API key for the embedding service"),
     model: z.string().optional().describe("Embedding model name"),
+    local: LocalEmbeddingConfig.optional().describe("Bundled local embedding model download settings"),
   })
   .strict()
   .optional()
@@ -971,15 +1150,11 @@ export const Provider = ModelsDev.Provider.partial()
               .number()
               .int()
               .positive()
-              .describe(
-                "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-              ),
+              .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
             z.literal(false).describe("Disable timeout for this provider entirely."),
           ])
           .optional()
-          .describe(
-            "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
-          ),
+          .describe("Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout."),
       })
       .catchall(z.any())
       .optional(),
@@ -1035,36 +1210,52 @@ export const PLUGIN_APPROVAL_POLICY_DEFAULTS = {
   denyHighRiskThirdParty: true,
   requireSignatureForMarketplace: false,
 } as const satisfies Required<PluginApprovalPolicy>
+
+export const PluginRuntimeLimits = z
+  .object({
+    startupTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for plugin runtime startup"),
+    toolInvocationTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for a plugin tool invocation"),
+    hostServiceRequestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Maximum milliseconds for one plugin Host Service request"),
+    taskRunTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("Default maximum milliseconds for plugin delegated task runs"),
+    shutdownGraceMs: z.number().int().positive().optional().describe("Graceful shutdown window before force kill"),
+    heartbeatIntervalMs: z.number().int().positive().optional().describe("Heartbeat interval in milliseconds"),
+  })
+  .strict()
+  .meta({ ref: "PluginRuntimeLimitsConfig" })
+export type PluginRuntimeLimits = z.infer<typeof PluginRuntimeLimits>
+
 export const PluginRuntimePolicy = z
   .object({
-    thirdPartyDefaultMode: z
-      .enum(["process", "worker"])
-      .optional()
-      .default("process")
-      .describe("Default isolation mode for third-party plugins (npm, git, url)"),
-    highRiskRequiresProcess: z
-      .boolean()
-      .optional()
-      .default(true)
-      .describe("Require process isolation for high-risk plugins regardless of source"),
-    allowThirdPartyInProcess: z
-      .boolean()
-      .optional()
-      .default(false)
-      .describe("Allow third-party plugins to request in-process mode (not recommended)"),
-    allowWorkerMode: z.boolean().optional().default(true).describe("Allow plugins to request worker thread isolation"),
-    allowLocalInProcess: z.boolean().optional().default(true).describe("Allow local plugins to run in-process"),
+    limits: PluginRuntimeLimits.optional()
+      .default(DEFAULT_PLUGIN_RUNTIME_LIMITS)
+      .describe("Default plugin runtime resource and request limits"),
   })
   .strict()
   .meta({ ref: "PluginRuntimePolicyConfig" })
 export type PluginRuntimePolicy = z.infer<typeof PluginRuntimePolicy>
 
 export const PLUGIN_RUNTIME_POLICY_DEFAULTS = {
-  thirdPartyDefaultMode: "process" as const,
-  highRiskRequiresProcess: true,
-  allowThirdPartyInProcess: false,
-  allowWorkerMode: true,
-  allowLocalInProcess: true,
+  limits: DEFAULT_PLUGIN_RUNTIME_LIMITS,
 } as const satisfies Required<PluginRuntimePolicy>
 
 export const PluginMarketplace = z
@@ -1074,7 +1265,7 @@ export const PluginMarketplace = z
       .string()
       .url()
       .optional()
-      .default("https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json")
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.registryUrl)
       .describe("URL of the official plugin registry.json index"),
     includeLocalRegistry: z
       .boolean()
@@ -1086,28 +1277,65 @@ export const PluginMarketplace = z
       .int()
       .positive()
       .optional()
-      .default(300000)
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.cacheTtlMs)
       .describe("Remote marketplace cache TTL in milliseconds"),
     offlineCache: z
       .boolean()
       .optional()
       .default(true)
       .describe("Use stale marketplace cache for browsing when the remote registry cannot be reached"),
+    requestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.requestTimeoutMs)
+      .describe("Timeout in milliseconds for registry and entry metadata requests"),
+    artifactDownloadTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.artifactDownloadTimeoutMs)
+      .describe("Timeout in milliseconds for plugin artifact and signature downloads"),
+    cliRequestTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .default(DEFAULT_PLUGIN_MARKETPLACE_CONFIG.cliRequestTimeoutMs)
+      .describe("Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server"),
   })
   .strict()
   .meta({ ref: "PluginMarketplaceConfig" })
 export type PluginMarketplace = z.infer<typeof PluginMarketplace>
 
-export const PLUGIN_MARKETPLACE_DEFAULTS = {
-  enabled: true,
-  registryUrl: "https://raw.githubusercontent.com/SII-Holos/synergy-plugins/main/registry.json",
-  includeLocalRegistry: true,
-  cacheTtlMs: 300000,
-  offlineCache: true,
-} as const satisfies Required<PluginMarketplace>
+export const PLUGIN_MARKETPLACE_DEFAULTS = DEFAULT_PLUGIN_MARKETPLACE_CONFIG as Required<PluginMarketplace>
+const QuickSwitcherModel = z
+  .object({
+    providerID: z.string().describe("Provider id for the quick switcher model preference"),
+    modelID: z.string().describe("Model id for the quick switcher model preference"),
+    state: z.enum(["add", "remove"]).describe("Whether to force-add or force-remove the model from the quick switcher"),
+  })
+  .strict()
+  .meta({ ref: "QuickSwitcherModelConfig" })
+export type QuickSwitcherModel = z.infer<typeof QuickSwitcherModel>
+
+export const QuickSwitcher = z
+  .object({
+    models: z.array(QuickSwitcherModel).optional().describe("Per-model quick switcher visibility preferences"),
+  })
+  .strict()
+  .meta({ ref: "QuickSwitcherConfig" })
+export type QuickSwitcher = z.infer<typeof QuickSwitcher>
+
+export const GitHubIntegrationConfig = GitHubIntegrationConfigSchema
+export type GitHubIntegrationConfig = z.infer<typeof GitHubIntegrationConfig>
+
 export const Info = z
   .object({
     $schema: z.string().optional().describe("JSON schema reference for configuration validation"),
+    locale: z.enum(["system", "en", "zh-CN"]).optional().describe("UI locale (system = follow OS, default: system)"),
     theme: z.string().optional().describe("Theme name to use for the interface"),
     keybinds: Keybinds.optional().describe("Custom keybind configurations"),
     logLevel: Log.Level.optional().describe("Log level"),
@@ -1119,7 +1347,7 @@ export const Info = z
           .number()
           .positive()
           .optional()
-          .describe("Max wall-clock seconds for one agent turn (default: 900 = 15min)"),
+          .describe("Max wall-clock seconds for one assistant step (default: 21600 = 6h)"),
         provider: z
           .object({
             ttfb_sec: z
@@ -1129,13 +1357,14 @@ export const Info = z
               .describe(
                 "Max seconds to wait for first byte (TTFB) from provider. " +
                   "Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). " +
-                  "Default: 600 = 10min",
+                  "Default: 3600 = 1h",
               ),
             idle_sec: z
-              .number()
-              .min(0)
+              .union([z.number().min(0), z.literal(false)])
               .optional()
-              .describe("Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk."),
+              .describe(
+                "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+              ),
             wall_sec: z
               .number()
               .min(0)
@@ -1154,16 +1383,38 @@ export const Info = z
               .number()
               .positive()
               .optional()
-              .describe("Default timeout per tool execution in seconds (default: 300 = 5min)"),
+              .describe("Default timeout per tool execution in seconds (default: 7200 = 2h)"),
             overrides: z
               .record(z.string(), z.number().positive())
               .optional()
               .describe("Per-tool timeout overrides by tool name, e.g. { bash: 600, webfetch: 120 }"),
           })
           .optional(),
+        permission: z
+          .object({
+            ask_sec: z
+              .number()
+              .positive()
+              .optional()
+              .describe("Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)"),
+          })
+          .optional(),
       })
       .optional()
-      .describe("Timeout configuration for agent turns, provider requests, and tool execution"),
+      .describe("Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts"),
+    cortex: z
+      .object({
+        maxConcurrentTasks: z
+          .number()
+          .int()
+          .positive()
+          .optional()
+          .describe("Maximum number of Cortex subagent tasks that may run concurrently (default: 8)"),
+      })
+      .strict()
+      .optional()
+      .describe("Cortex task scheduling configuration"),
+    github: GitHubIntegrationConfig.optional().describe("Outbound GitHub App polling and automation configuration"),
     watcher: z
       .object({
         ignore: z.array(z.string()).optional(),
@@ -1174,12 +1425,6 @@ export const Info = z
     pluginRuntimePolicy: PluginRuntimePolicy.optional().describe("Plugin runtime isolation policy configuration"),
     pluginMarketplace: PluginMarketplace.optional().describe("Public plugin marketplace registry configuration"),
     snapshot: z.boolean().optional(),
-    autoupdate: z
-      .union([z.boolean(), z.literal("notify")])
-      .optional()
-      .describe(
-        "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-      ),
     disabled_providers: z.array(z.string()).optional().describe("Disable providers that are loaded automatically"),
     enabled_providers: z
       .array(z.string())
@@ -1229,9 +1474,16 @@ export const Info = z
     vision_model: z
       .string()
       .describe(
-        "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
+        "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
       )
       .optional(),
+    role_variant: z
+      .record(z.string(), z.string())
+      .optional()
+      .describe(
+        "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+      ),
+    quick_switcher: QuickSwitcher.optional().describe("Quick switcher model visibility preferences"),
     default_agent: z
       .string()
       .optional()
@@ -1287,7 +1539,7 @@ export const Info = z
       .optional()
       .describe("Channel configurations for messaging platform integrations"),
     sandbox: SandboxConfig.optional().describe("Sandbox configuration for workspace boundary enforcement"),
-    observability: ObservabilityConfig.optional().describe("Local logs, traces, and diagnostics settings"),
+    observability: ObservabilityConfig.optional().describe("Local logs, indexed telemetry, and diagnostics settings"),
     controlProfile: ControlProfileId.optional().describe("Default control profile applied to all agents"),
     holos: Holos.optional().describe("Holos platform configuration"),
     email: Email.optional().describe("Outgoing email configuration"),
@@ -1341,6 +1593,17 @@ export const Info = z
           error: "For custom LSP servers, 'extensions' array is required.",
         },
       ),
+    lspWriteDiagnostics: z
+      .boolean()
+      .optional()
+      .describe("Include LSP diagnostics after file-writing tools complete (default: true)"),
+    lspDiagnostics: z
+      .object({
+        severity: z.enum(["error", "warning"]).optional(),
+        scope: z.enum(["delta", "file", "project"]).optional(),
+      })
+      .optional()
+      .describe("Severity and scope policy for diagnostics returned after file-writing tools"),
     instructions: z.array(z.string()).optional().describe("Additional instruction files or patterns to include"),
     project_doc_fallback_filenames: z
       .array(z.string())
@@ -1359,7 +1622,9 @@ export const Info = z
     smartAllow: z
       .boolean()
       .optional()
-      .describe("Use the Smart allow internal agent to auto-allow safe asks and soft denies"),
+      .describe(
+        "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
+      ),
     tools: z.record(z.string(), z.boolean()).optional(),
     enterprise: z
       .object({
@@ -1383,7 +1648,7 @@ export const Info = z
           .number()
           .min(0)
           .optional()
-          .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)"),
+          .describe("Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)"),
       })
       .optional(),
     compaction: z
@@ -1408,6 +1673,10 @@ export const Info = z
     experimental: z
       .object({
         batch_tool: z.boolean().optional().describe("Enable the batch tool"),
+        coauthor_reminder: z
+          .boolean()
+          .optional()
+          .describe("Include the git commit Co-authored-by footer reminder in agent prompts"),
         openTelemetry: z
           .boolean()
           .optional()

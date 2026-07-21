@@ -2,8 +2,26 @@ import z from "zod"
 import { Identifier } from "../id/id"
 
 export namespace CortexTypes {
-  export const TaskStatus = z.enum(["pending", "queued", "running", "completed", "error", "cancelled"])
+  export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
+
+  export const PluginTaskOwner = z.object({
+    pluginId: z.string(),
+    pluginGeneration: z.string(),
+    scopeId: z.string(),
+    correlationId: z.string(),
+  })
+  export type PluginTaskOwner = z.infer<typeof PluginTaskOwner>
+
+  export const TaskUsage = z.object({
+    inputTokens: z.number(),
+    outputTokens: z.number(),
+    reasoningTokens: z.number(),
+    cacheReadTokens: z.number(),
+    cacheWriteTokens: z.number(),
+    cost: z.number(),
+  })
+  export type TaskUsage = z.infer<typeof TaskUsage>
 
   export const TaskToolProgress = z.object({
     id: z.string(),
@@ -29,7 +47,8 @@ export namespace CortexTypes {
   export const ExecutionRole = z.enum(["primary", "delegated_subagent"])
   export type ExecutionRole = z.infer<typeof ExecutionRole>
 
-  const OutputSchema = z.record(z.string(), z.unknown())
+  export const JsonSchemaObject = z.record(z.string(), z.unknown())
+  export type JsonSchemaObject = z.infer<typeof JsonSchemaObject>
   const MaxRepairTurns = z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3)])
 
   export const OutputConfig = z.union([
@@ -37,29 +56,27 @@ export namespace CortexTypes {
     z.object({ mode: z.literal("final_response") }),
     z.object({
       mode: z.literal("structured"),
-      schema: OutputSchema,
+      schema: JsonSchemaObject,
       maxRepairTurns: MaxRepairTurns.optional(),
     }),
   ])
   export type OutputConfig = z.infer<typeof OutputConfig>
 
-  export const OutputResult = z.union([
+  export const TaskOutput = z.union([
+    z.object({
+      mode: z.literal("summary"),
+      value: z.string(),
+    }),
     z.object({
       mode: z.literal("final_response"),
-      text: z.string(),
+      value: z.string(),
     }),
     z.object({
       mode: z.literal("structured"),
-      status: z.enum(["valid", "invalid"]),
-      source: z.enum(["structured_tool", "final_response"]).optional(),
-      data: z.unknown().optional(),
-      text: z.string().optional(),
-      repairTurns: z.number().int().min(0),
-      error: z.string().optional(),
-      validationErrors: z.array(z.string()).optional(),
+      value: z.unknown(),
     }),
   ])
-  export type OutputResult = z.infer<typeof OutputResult>
+  export type TaskOutput = z.infer<typeof TaskOutput>
 
   export const Task = z
     .object({
@@ -70,6 +87,12 @@ export namespace CortexTypes {
       description: z.string(),
       prompt: z.string(),
       agent: z.string(),
+      model: z
+        .object({
+          providerID: z.string(),
+          modelID: z.string(),
+        })
+        .optional(),
       executionRole: ExecutionRole.optional(),
       category: z.string().optional(),
 
@@ -77,14 +100,16 @@ export namespace CortexTypes {
       status: TaskStatus,
       startedAt: z.number(),
       completedAt: z.number().optional(),
-      result: z.string().optional(),
       error: z.string().optional(),
       progress: TaskProgress.optional(),
       notifyParentOnComplete: z.boolean().optional(),
       visibility: z.enum(["visible", "hidden"]).optional(),
       tools: z.record(z.string(), z.boolean()).optional(),
-      output: OutputConfig.optional(),
-      outputResult: OutputResult.optional(),
+      outputConfig: OutputConfig.optional(),
+      output: TaskOutput.optional(),
+      owner: PluginTaskOwner.optional(),
+      timeoutMs: z.number().int().positive().optional(),
+      usage: TaskUsage.optional(),
     })
     .meta({ ref: "CortexTask" })
   export type Task = z.infer<typeof Task>
@@ -95,10 +120,12 @@ export namespace CortexTypes {
     agent: z.string(),
     executionRole: ExecutionRole.optional(),
     category: z.string().optional(),
+    provenance: z.literal("github").optional(),
     parentSessionID: Identifier.schema("session"),
     parentMessageID: Identifier.schema("message"),
     dagNodeId: z.string().optional(),
     sessionID: Identifier.schema("session").optional(),
+    reuseInterrupted: z.boolean().optional(),
     model: z
       .object({
         providerID: z.string(),
@@ -110,12 +137,19 @@ export namespace CortexTypes {
         create: z.literal(true),
         name: z.string().optional(),
         baseRef: z.enum(["current", "fresh"]).optional().default("current"),
+        baseRevision: z.string().min(1).optional(),
+        failOnError: z.boolean().optional().default(false),
       })
       .optional(),
     notifyParentOnComplete: z.boolean().optional(),
     visibility: z.enum(["visible", "hidden"]).optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     output: OutputConfig.optional(),
+    owner: PluginTaskOwner.optional(),
+    timeoutMs: z.number().int().positive().optional(),
+    maxOutputTokens: z.number().int().positive().optional(),
+    maxCost: z.number().nonnegative().optional(),
   })
-  export type LaunchInput = z.infer<typeof LaunchInput>
+  export type LaunchInput = z.input<typeof LaunchInput>
+  export type ParsedLaunchInput = z.output<typeof LaunchInput>
 }

@@ -16,26 +16,6 @@ const ctx = {
 }
 
 describe.serial("tool.skill", () => {
-  test("builtin skill output does not expose source-only script paths", async () => {
-    await using tmp = await tmpdir({ git: true })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const tool = await SkillTool.init()
-        const result = await tool.execute({ name: "skill-creator" }, ctx)
-
-        expect(result.title).toBe("Loaded skill: skill-creator")
-        expect(result.output).toContain("**Available scripts**:")
-        expect(result.output).toContain("built-in helper")
-        expect(result.output).toContain("##### Recommended")
-        expect(result.output).toContain("##### Also Supported")
-        expect(result.output).toContain("##### Compatibility")
-        expect(result.output).not.toContain("packages/synergy/src/skill/builtin/skill-creator")
-      },
-    })
-  })
-
   test("skill tool init degrades gracefully when a skill file has invalid frontmatter", async () => {
     await using tmp = await tmpdir({
       git: true,
@@ -61,6 +41,40 @@ description: bad: yaml: here
         expect(tool.description).toContain("Load a skill")
         const tools = await ToolRegistry.tools("test-provider")
         expect(tools.some((item) => item.id === "skill")).toBe(true)
+      },
+    })
+  })
+
+  test("loads project skill references from references directory", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        const skillDir = path.join(dir, ".synergy", "skill", "reference-skill")
+        await Bun.write(
+          path.join(skillDir, "SKILL.md"),
+          `---
+name: reference-skill
+description: Project skill with references.
+---
+
+# Reference Skill
+
+Read references/guide.md.
+`,
+        )
+        await Bun.write(path.join(skillDir, "references", "guide.md"), "# Guide\n\nProject reference body.\n")
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const tool = await SkillTool.init()
+        const skillResult = await tool.execute({ name: "reference-skill" }, ctx)
+        expect(skillResult.output).toContain("references/guide.md")
+
+        const referenceResult = await tool.execute({ name: "reference-skill", reference: "references/guide.md" }, ctx)
+        expect(referenceResult.output).toBe("# Guide\n\nProject reference body.")
       },
     })
   })

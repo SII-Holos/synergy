@@ -1,7 +1,8 @@
 import { z } from "zod"
-import type { ToolDisplay } from "./display"
+import type { ToolDisplay } from "./display.js"
+import type { BunShell } from "./shell.js"
 
-export type { ToolDisplay, ToolMediaDisplay } from "./display"
+export type { ToolDisplay, ToolMediaDisplay } from "./display.js"
 
 export type ToolContext = {
   sessionID: string
@@ -11,6 +12,8 @@ export type ToolContext = {
   directory?: string
   /** Request permission from the user before proceeding */
   ask?(input: { permission: string; patterns: string[]; metadata?: Record<string, any> }): Promise<void>
+  /** Run shell commands through Synergy's current workspace shell boundary. */
+  $?: BunShell
   /** Run a Synergy delegated subagent task from inside this tool. */
   task?: ToolTaskService
   /** Invoke another visible/explicitly-allowed Synergy tool from inside this tool. */
@@ -23,18 +26,10 @@ export type ToolTaskOutput =
   | { mode: "final_response" }
   | { mode: "structured"; schema: Record<string, unknown>; maxRepairTurns?: 0 | 1 | 2 | 3 }
 
-export type ToolTaskOutputResult =
-  | { mode: "final_response"; text: string }
-  | {
-      mode: "structured"
-      status: "valid" | "invalid"
-      source?: "structured_tool" | "final_response"
-      data?: unknown
-      text?: string
-      repairTurns: number
-      error?: string
-      validationErrors?: string[]
-    }
+export type ToolTaskRunOutput =
+  | { mode: "summary"; value: string }
+  | { mode: "final_response"; value: string }
+  | { mode: "structured"; value: unknown }
 
 export interface ToolTaskRunInput {
   subagent: string
@@ -54,9 +49,8 @@ export interface ToolTaskRunInput {
 export interface ToolTaskRunResult {
   taskId: string
   sessionId: string
-  status: "pending" | "queued" | "running" | "completed" | "error" | "cancelled" | "timeout"
-  output: string
-  outputResult?: ToolTaskOutputResult
+  status: "completed" | "error" | "cancelled" | "timeout"
+  output?: ToolTaskRunOutput
   error?: string
 }
 
@@ -76,7 +70,6 @@ export interface ToolInvokeService {
 
 export type ToolResultMetadata = Record<string, any> & {
   display?: ToolDisplay
-  primaryAttachmentIds?: string[]
 }
 
 export interface ToolResult {
@@ -84,7 +77,7 @@ export interface ToolResult {
   output: string
   metadata?: ToolResultMetadata
   attachments?: Array<{
-    type: "file"
+    type: "attachment"
     id: string
     sessionID: string
     messageID: string
@@ -92,6 +85,29 @@ export interface ToolResult {
     filename?: string
     url: string
     localPath?: string
+    presentation?: {
+      hidden?: boolean
+      renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+      size?: "original" | "small" | "medium" | "large"
+      crop?: boolean
+    }
+    model?:
+      | {
+          mode: "summary"
+          summary?: string
+        }
+      | {
+          mode: "content"
+          text?: string
+        }
+      | {
+          mode: "provider-file"
+          summary?: string
+        }
+      | {
+          mode: "none"
+        }
+    metadata?: Record<string, any>
   }>
 }
 

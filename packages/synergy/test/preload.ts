@@ -3,14 +3,31 @@
 import os from "os"
 import path from "path"
 import fs from "fs/promises"
-import fsSync from "fs"
 import { afterAll } from "bun:test"
 
 const dir = path.join(os.tmpdir(), "synergy-test-data-" + process.pid)
 await fs.mkdir(dir, { recursive: true })
-afterAll(() => {
-  fsSync.rmSync(dir, { recursive: true, force: true })
+const fixtureRoot = path.join(dir, "fixtures")
+await fs.mkdir(fixtureRoot, { recursive: true })
+process.env["SYNERGY_TEST_ROOT"] = fixtureRoot
+afterAll(async () => {
+  try {
+    await fs.rm(dir, {
+      recursive: true,
+      force: true,
+      maxRetries: 20,
+      retryDelay: 100,
+    })
+  } catch (error) {
+    if (process.platform === "win32" && isTransientCleanupError(error)) return
+    throw error
+  }
 })
+
+function isTransientCleanupError(error: unknown) {
+  const code = (error as { code?: unknown })?.code
+  return code === "EBUSY" || code === "EPERM" || code === "ENOTEMPTY"
+}
 // Set test home directory to isolate tests from user's actual home directory
 // This makes Global.Path.root resolve to <dir>/home/.synergy
 // Clear SYNERGY_HOME first: homeDir() in global/index.ts checks SYNERGY_HOME
@@ -21,25 +38,18 @@ const testHome = path.join(dir, "home")
 await fs.mkdir(testHome, { recursive: true })
 process.env["SYNERGY_TEST_HOME"] = testHome
 
-// Pre-fetch models.json so tests don't need the macro fallback
-// Also write the cache version file to prevent global/index.ts from clearing the cache
+// Always seed the model catalog from the checked-in fixture rather than fetching
+// models.dev live. The live catalog drifts (models get renamed/removed), which
+// makes tests that reference specific models non-deterministic — a network-
+// reachable-but-drifted catalog turns CI red with no code change (e.g.
+// claude-sonnet-4-20250514 was removed upstream). The fixture is the pinned
+// source of truth; update it deliberately when a test needs a new model.
 const cacheDir = path.join(testHome, ".synergy", "cache")
 await fs.mkdir(cacheDir, { recursive: true })
 await fs.writeFile(path.join(cacheDir, "version"), "15")
-// Pre-create node_modules in global config dir so Config.installDependencies skips the await
-const globalConfigDir = path.join(testHome, ".synergy", "config")
-await fs.mkdir(path.join(globalConfigDir, "node_modules"), { recursive: true })
 const modelsCachePath = path.join(cacheDir, "models.json")
-try {
-  const response = await fetch("https://models.dev/api.json", {
-    signal: AbortSignal.timeout(2000),
-  })
-  if (!response.ok) throw new Error(`unexpected status ${response.status}`)
-  await fs.writeFile(modelsCachePath, await response.text())
-} catch {
-  const fixture = await Bun.file(new URL("./tool/fixtures/models-api.json", import.meta.url)).text()
-  await fs.writeFile(modelsCachePath, fixture)
-}
+const fixture = await Bun.file(new URL("./tool/fixtures/models-api.json", import.meta.url)).text()
+await fs.writeFile(modelsCachePath, fixture)
 process.env["MODELS_DEV_API_JSON"] = modelsCachePath
 // Disable models.dev refresh to avoid race conditions during tests
 process.env["SYNERGY_DISABLE_MODELS_FETCH"] = "true"
@@ -48,7 +58,7 @@ process.env["SYNERGY_DISABLE_PROVIDER_CATALOG_FETCH"] = "true"
 process.env["SYNERGY_DISABLE_DEFAULT_PLUGINS"] = "true"
 process.env["SYNERGY_DISABLE_LSP_DOWNLOAD"] = "true"
 // Disable file watcher to avoid native module / inotify hangs in CI
-process.env["SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER"] = "true"
+process.env["SYNERGY_DISABLE_FILEWATCHER"] = "true"
 
 // Clear provider env vars to ensure clean test state
 delete process.env["ANTHROPIC_API_KEY"]

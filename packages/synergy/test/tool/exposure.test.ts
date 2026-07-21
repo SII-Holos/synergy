@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test"
 import z from "zod"
 import { Agent } from "../../src/agent/agent"
+import { createBuiltinMaxSubagents } from "../../src/agent/builtin-max-subagents"
+import { createBuiltinLegacySubagents } from "../../src/agent/builtin-legacy-subagents"
+import { BlueprintLoopStore } from "../../src/blueprint"
+import { MCP } from "../../src/mcp"
 import { PermissionNext } from "../../src/permission/next"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -12,7 +16,6 @@ import { SearchToolsTool } from "../../src/tool/search-tools"
 import { Tool } from "../../src/tool/tool"
 import { ToolRegistry } from "../../src/tool/registry"
 import { Log } from "../../src/util/log"
-import { PluginManifest } from "../../../plugin/src/manifest"
 import { tool as pluginTool } from "../../../plugin/src/tool"
 import { tmpdir } from "../fixture/fixture"
 
@@ -36,6 +39,25 @@ const model = {
   options: {},
 } as any
 
+const imageModel = {
+  ...model,
+  capabilities: {
+    ...model.capabilities,
+    input: { ...model.capabilities.input, image: true },
+  },
+} as any
+
+const restrictedImageModel = {
+  ...imageModel,
+  capabilities: {
+    ...imageModel.capabilities,
+    input: {
+      ...imageModel.capabilities.input,
+      supportedImageMediaTypes: ["image/png", "image/jpeg"],
+    },
+  },
+} as any
+
 const allowAllAgent: Agent.Info = {
   name: "synergy",
   mode: "primary",
@@ -43,13 +65,20 @@ const allowAllAgent: Agent.Info = {
   options: {},
 }
 
+const builtinCtx = {
+  defaults: [],
+  user: [],
+  role: () => undefined,
+  evolutionActive: false,
+}
+
 async function definitionIDs(
   session: Session.Info,
-  input?: { agent?: Agent.Info; userTools?: Record<string, boolean> },
+  input?: { agent?: Agent.Info; model?: typeof model; userTools?: Record<string, boolean> },
 ) {
   const defs = await ToolResolver.definitions({
     agent: input?.agent ?? allowAllAgent,
-    model,
+    model: input?.model ?? model,
     sessionID: session.id,
     session,
     userTools: input?.userTools,
@@ -80,6 +109,37 @@ function toolContext(sessionID: string): Tool.Context {
   }
 }
 
+function runtimeProcessor() {
+  const callbacks = new Map<string, Promise<unknown>>()
+  return {
+    message: { id: "message_test" },
+    partFromToolCall: () => undefined,
+    updateToolCallState: async () => {},
+    executeOnce<T>(callID: string, execute: () => Promise<T>) {
+      const existing = callbacks.get(callID)
+      if (existing) return existing as Promise<T>
+      const callback = Promise.resolve().then(execute)
+      callbacks.set(callID, callback)
+      return callback
+    },
+    beginExecution(callID: string) {
+      return {
+        callID,
+        promise: Promise.resolve(undefined),
+        resolve() {},
+        complete() {},
+        fail() {},
+        get outcome() {
+          return undefined
+        },
+        get status() {
+          return "pending" as const
+        },
+      }
+    },
+  } as any
+}
+
 describe("tool exposure", () => {
   test("defaults to resident and classifies built-in groups and explicit search/internal tools", () => {
     const explicit = Tool.define(
@@ -106,9 +166,99 @@ describe("tool exposure", () => {
     )
 
     expect(ToolExposure.normalize("ordinary_tool")).toEqual({ mode: "resident" })
-    expect(ToolExposure.normalize("browser_navigate")).toEqual({ mode: "group", group: "browser" })
+    expect(ToolExposure.normalize("browser_navigation")).toEqual({ mode: "group", group: "browser" })
     expect(explicit.exposure).toEqual({ mode: "search", title: "Explicit Search Tool", keywords: ["needle"] })
     expect(internal.exposure).toEqual({ mode: "internal" })
+  })
+
+  test("text-only model with no vision_model exposes neither look_at nor view_image", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session)
+        // Without a configured vision_model neither image inspection tool should be exposed.
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
+
+  test("text-only model with vision_model configured exposes look_at only", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/gpt-4.1-mini",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session)
+        // With vision_model set, look_at should be usable.
+        expect(ids.has("look_at")).toBe(true)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
+
+  test("text-only model with unavailable vision_model exposes neither image inspection tool", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/missing-vision-model",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session)
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(false)
+      },
+    })
+  })
+
+  test("image-capable model exposes view_image and hides look_at regardless of vision_model", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session, { model: imageModel })
+        expect(ids.has("look_at")).toBe(false)
+        expect(ids.has("view_image")).toBe(true)
+      },
+    })
+  })
+
+  test("format-restricted image model also exposes configured look_at fallback", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      config: {
+        vision_model: "openai/gpt-4.1-mini",
+        provider: { openai: { options: { apiKey: "test-key" } } },
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+
+        const ids = await definitionIDs(session, { model: restrictedImageModel })
+        expect(ids.has("look_at")).toBe(true)
+        expect(ids.has("view_image")).toBe(true)
+      },
+    })
   })
 
   test("ToolResolver hides deferred groups until the session expands them", async () => {
@@ -121,11 +271,13 @@ describe("tool exposure", () => {
 
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
-        expect(ids.has("browser_navigate")).toBe(false)
+        expect(ids.has("browser_navigation")).toBe(false)
         expect(ids.has("agenda_list")).toBe(false)
         expect(ids.has("session_list")).toBe(false)
         expect(ids.has("note_list")).toBe(false)
         expect(ids.has("memory_get")).toBe(false)
+        expect(ids.has("email_send")).toBe(false)
+        expect(ids.has("worktree_enter")).toBe(false)
 
         await Session.update(session.id, (draft) => {
           draft.toolState = { expandedGroups: ["browser"] }
@@ -133,11 +285,35 @@ describe("tool exposure", () => {
 
         const expanded = await Session.get(session.id)
         ids = await definitionIDs(expanded)
-        expect(ids.has("browser_navigate")).toBe(true)
+        expect(ids.has("browser_navigation")).toBe(true)
         expect(ids.has("browser_screenshot")).toBe(true)
         expect(ids.has("agenda_list")).toBe(false)
 
         expect((await Session.get(session.id)).toolState?.expandedGroups).toEqual(["browser"])
+      },
+    })
+  })
+
+  test("native subagents can expand only deferred tools they are allowed to use", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+        const session = await Session.create({})
+        let ids = await definitionIDs(session, { agent })
+
+        expect(ids.has("search_tools")).toBe(true)
+        expect(ids.has("expand_tools")).toBe(true)
+        expect(ids.has("note_read")).toBe(false)
+
+        await Session.update(session.id, (draft) => {
+          draft.toolState = { expandedGroups: ["note", "browser"] }
+        })
+
+        ids = await definitionIDs(await Session.get(session.id), { agent })
+        expect(ids.has("note_read")).toBe(true)
+        expect(ids.has("browser_navigation")).toBe(false)
       },
     })
   })
@@ -174,6 +350,79 @@ describe("tool exposure", () => {
     })
   })
 
+  test("runtime tools defer afterPersist effects to processor settlement", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const id = `post_persist_test_${Math.random().toString(36).slice(2)}`
+        let committed = false
+        await ToolRegistry.register(
+          Tool.define(id, {
+            description: "A test tool with a post-persist effect.",
+            parameters: z.object({ value: z.string() }),
+            async execute({ value }) {
+              return { title: id, output: value, metadata: {} }
+            },
+            afterPersist() {
+              committed = true
+            },
+          }),
+        )
+
+        const session = await Session.create({})
+        const outcome = Promise.withResolvers<any>()
+        const callbacks = new Map<string, Promise<unknown>>()
+        const processor = {
+          message: { id: "message_test" },
+          partFromToolCall: () => undefined,
+          updateToolCallState: async () => {},
+          executeOnce: <T>(callID: string, execute: () => Promise<T>) => {
+            const existing = callbacks.get(callID)
+            if (existing) return existing as Promise<T>
+            const callback = Promise.resolve().then(execute)
+            callbacks.set(callID, callback)
+            return callback
+          },
+          beginExecution: (callID: string) => ({
+            callID,
+            promise: outcome.promise,
+            resolve: outcome.resolve,
+            complete(input: unknown, result: unknown) {
+              outcome.resolve({ status: "completed", input, result })
+            },
+            fail(input: unknown, error: string, metadata?: Record<string, unknown>) {
+              outcome.resolve({ status: "error", input, error, metadata })
+            },
+            get outcome() {
+              return undefined
+            },
+            get status() {
+              return "pending" as const
+            },
+          }),
+        } as any
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          processor,
+          session: await Session.get(session.id),
+          includeMCP: false,
+        })
+
+        await (resolved.tools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
+        const completed = await outcome.promise
+
+        expect(committed).toBe(false)
+        expect(completed.result.output).toBe("persist me")
+        expect(completed.result.afterPersist).toBeFunction()
+        await completed.result.afterPersist()
+        expect(committed).toBe(true)
+      },
+    })
+  })
+
   test("internal tools are hidden from search and visible only when force-enabled", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -205,6 +454,64 @@ describe("tool exposure", () => {
     })
   })
 
+  test("skips plugin tools with incompatible schemas without hiding valid tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const suffix = Math.random().toString(36).slice(2)
+        const goodId = `good_plugin_schema_${suffix}`
+        const badId = `bad_plugin_schema_${suffix}`
+        await ToolRegistry.register(
+          Tool.define(goodId, {
+            description: "A valid test plugin tool.",
+            parameters: z.object({ query: z.string() }),
+            async execute() {
+              return { title: goodId, output: "ok", metadata: {} }
+            },
+          }),
+        )
+        await ToolRegistry.register({
+          id: badId,
+          source: {
+            type: "plugin",
+            pluginId: "focus",
+            toolId: "bad_schema",
+            pluginDir: "/tmp/focus",
+            runtimeMode: "inProcess",
+          },
+          init: async () => ({
+            description: "An invalid plugin tool.",
+            parameters: z.object({ broken: { _def: { typeName: "ZodString" } } as any }),
+            async execute() {
+              return { title: badId, output: "should not run", metadata: {} }
+            },
+          }),
+        })
+
+        const session = await Session.create({})
+        const availability = await ToolResolver.availability({
+          agent: allowAllAgent,
+          model,
+          sessionID: session.id,
+          session,
+          includeMCP: false,
+        })
+
+        expect(availability.visible.some((item) => item.id === goodId)).toBe(true)
+        expect(availability.visible.some((item) => item.id === badId)).toBe(false)
+        const diagnostic = availability.diagnostics.get(badId)
+        expect(diagnostic?.code).toBe("tool_unavailable")
+        expect(diagnostic?.message).toContain("invalid JSON Schema input")
+        expect(diagnostic?.metadata).toMatchObject({
+          pluginId: "focus",
+          pluginToolId: "bad_schema",
+          runtimeMode: "inProcess",
+        })
+      },
+    })
+  })
+
   test("search_tools is read-only and expand_tools persists session state", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -230,9 +537,16 @@ describe("tool exposure", () => {
         )
         expect(result.metadata.availableNextStep).toBe(true)
         expect(result.metadata.availableOn).toBe("next_model_request")
-        expect(result.metadata.newlyVisibleTools).toContain("browser_navigate")
+        expect(result.metadata.availableRequestedTools).toContain("browser_navigation")
+        expect(result.metadata.newlyVisibleTools).toContain("browser_navigation")
         expect(result.metadata.newlyVisibleTools).not.toContain("search_tools")
         expect(result.metadata.visibleTools).toBeUndefined()
+        expect(result.output).toContain("You can call these tools directly:")
+        expect(result.output).toContain("browser_navigation")
+        expect(result.output).not.toContain("availableNextStep")
+        expect(result.output).not.toContain("availableOn")
+        expect(result.output).not.toContain("activatedTools: (none)")
+        expect(result.output).not.toContain("visibleToolCount")
         expect(result.output).not.toContain("Structured result")
         expect((await Session.get(session.id)).toolState?.expandedGroups).toEqual(["browser"])
       },
@@ -251,26 +565,109 @@ describe("tool exposure", () => {
         const expanded = await Session.get(session.id)
         const denyNavigate: Agent.Info = {
           ...allowAllAgent,
-          permission: PermissionNext.fromConfig({ "*": "allow", browser_navigate: "deny" }),
+          permission: PermissionNext.fromConfig({ "*": "allow", browser_navigation: "deny" }),
         }
 
-        expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_navigate")).toBe(false)
+        expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_navigation")).toBe(false)
         expect(
-          (await definitionIDs(expanded, { userTools: { browser_navigate: false } })).has("browser_navigate"),
+          (await definitionIDs(expanded, { userTools: { browser_navigation: false } })).has("browser_navigation"),
         ).toBe(false)
         expect((await definitionIDs(expanded, { agent: denyNavigate })).has("browser_screenshot")).toBe(true)
       },
     })
   })
 
-  test("Plan Mode keeps bash visible and forces the note group without exposing other deferred groups", async () => {
+  test("tool discovery applies the current invocation tool allowlist", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+        const session = await Session.create({})
+        const userTools = { "*": false, search_tools: true, expand_tools: true, note_read: true }
+        const resolved = await ToolResolver.resolveWithAvailability({
+          agent,
+          model,
+          sessionID: session.id,
+          session,
+          processor: runtimeProcessor(),
+          userTools,
+          includeMCP: false,
+        })
+
+        const searchResult = await (resolved.tools.search_tools as any).execute(
+          { query: "note", limit: 8 },
+          { toolCallId: "call_search" },
+        )
+        const noteResult = (searchResult.metadata.results as Array<any>).find((result) => result.id === "note")
+        expect(noteResult?.matchedToolPreview).toEqual(["note_read"])
+
+        const expandResult = await (resolved.tools.expand_tools as any).execute(
+          { groups: ["note"] },
+          { toolCallId: "call_expand" },
+        )
+        expect(expandResult.metadata.availableRequestedTools).toEqual(["note_read"])
+
+        const ids = await definitionIDs(await Session.get(session.id), { agent, userTools })
+        expect(ids.has("note_read")).toBe(true)
+        expect(ids.has("note_write")).toBe(false)
+        expect(ids.has("note_edit")).toBe(false)
+      },
+    })
+  })
+
+  test("restricted subagents cannot enumerate permission-hidden MCP groups", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalToolEntries = MCP.toolEntries
+    const serverName = "private-server"
+    const groupID = ToolExposure.mcpGroupID(serverName)
+    const toolIDs = Array.from({ length: ToolExposure.MCP_DEFER_THRESHOLD }, (_, index) =>
+      ToolExposure.mcpToolID(serverName, `secret_${index}`),
+    )
+    ;(MCP as any).toolEntries = async () =>
+      toolIDs.map((id, index) => ({
+        id,
+        serverName,
+        toolName: `secret_${index}`,
+        tool: { description: "Permission-hidden MCP tool" },
+      }))
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const agent = createBuiltinMaxSubagents(builtinCtx)["code-cartographer"]
+          const session = await Session.create({})
+          const search = await SearchToolsTool.init({ agent })
+          const searchResult = await search.execute({ query: "no-match", limit: 8 }, toolContext(session.id))
+          expect(searchResult.metadata.groups).not.toContain(groupID)
+          expect(searchResult.output).not.toContain(serverName)
+
+          const expand = await ExpandToolsTool.init({ agent })
+          const unknownResult = await expand.execute({ groups: ["missing"] }, toolContext(session.id))
+          expect(unknownResult.output).not.toContain(groupID)
+
+          const hiddenResult = await expand.execute({ groups: [groupID] }, toolContext(session.id))
+          expect(hiddenResult.metadata.changed).toBe(false)
+          expect(hiddenResult.metadata.issues.unknownGroups).toEqual([groupID])
+          expect(hiddenResult.metadata.issues.permissionHidden).toEqual([])
+          expect(hiddenResult.output).not.toContain(toolIDs[0])
+          expect((await Session.get(session.id)).toolState).toBeUndefined()
+        },
+      })
+    } finally {
+      ;(MCP as any).toolEntries = originalToolEntries
+    }
+  })
+
+  test("Plan keeps bash visible and forces the note group without exposing other deferred groups", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
 
         const ids = await definitionIDs(await Session.get(session.id))
@@ -286,14 +683,14 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode does not override explicit permission denial for bash", async () => {
+  test("Plan does not override explicit permission denial for bash", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
         const denyBash: Agent.Info = {
           ...allowAllAgent,
@@ -314,20 +711,343 @@ describe("tool exposure", () => {
     })
   })
 
-  test("Plan Mode resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
+  test("LightLoop primary and recorded reviewer sessions expose the correct review tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({})
+        await Session.update(parent.id, (draft) => {
+          draft.workflow = { kind: "lightloop", instructions: "Finish the feature" }
+        })
+        const primarySession = await Session.get(parent.id)
+
+        let availability = await ToolResolver.availability({
+          agent: allowAllAgent,
+          model,
+          sessionID: primarySession.id,
+          session: primarySession,
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+        expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
+        expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
+
+        const child = await Session.create({
+          parentID: parent.id,
+          cortex: {
+            taskID: "cortex-lightloop-review",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_parent",
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(parent.id, (draft) => {
+          if (draft.workflow?.kind !== "lightloop") throw new Error("expected lightloop")
+          draft.workflow.stopRequest = {
+            summary: "done",
+            requestedAt: Date.now(),
+            requesterSessionID: parent.id,
+            requesterMessageID: "msg_parent",
+            reviewSessionID: child.id,
+            reviewTaskID: "ctx_review",
+          }
+        })
+
+        const reviewerAgent = {
+          ...allowAllAgent,
+          name: "lightloop-reviewer",
+          mode: "subagent" as const,
+        }
+        const reviewerSession = await Session.get(child.id)
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: reviewerSession.id,
+          session: reviewerSession,
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "loop_stop")).toBe(false)
+
+        await Session.update(child.id, (draft) => {
+          if (!draft.cortex) throw new Error("expected cortex child")
+          draft.cortex.agent = "implementation-engineer"
+        })
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: child.id,
+          session: await Session.get(child.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+      },
+    })
+  })
+
+  test("BlueprintLoop execution and recorded reviewer sessions expose symmetric control tools", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const execution = await Session.create({})
+        const loop = await BlueprintLoopStore.create({
+          noteID: "note_blueprint",
+          title: "Test Blueprint",
+          sessionID: execution.id,
+          auditAgent: "security-reviewer",
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, { status: "running" })
+        await Session.update(execution.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "execution" }
+        })
+
+        const executionAgents = {
+          developer: createBuiltinLegacySubagents(builtinCtx).developer,
+          "implementation-engineer": createBuiltinMaxSubagents(builtinCtx)["implementation-engineer"],
+          "refactoring-engineer": createBuiltinMaxSubagents(builtinCtx)["refactoring-engineer"],
+        }
+        for (const [name, agent] of Object.entries(executionAgents)) {
+          if (!agent) throw new Error(`missing ${name}`)
+          const executionAvailability = await ToolResolver.availability({
+            agent,
+            model,
+            sessionID: execution.id,
+            session: await Session.get(execution.id),
+            includeMCP: false,
+          })
+          expect(
+            executionAvailability.visible.some((def) => def.id === "blueprint_loop_stop"),
+            `${name}:blueprint_loop_stop`,
+          ).toBe(true)
+          expect(executionAvailability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
+          expect(executionAvailability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
+        }
+
+        let availability: Awaited<ReturnType<typeof ToolResolver.availability>>
+
+        const reviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "cortex-blueprint-review",
+            parentSessionID: execution.id,
+            parentMessageID: "msg_parent",
+            description: "Audit BlueprintLoop",
+            agent: "security-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(reviewer.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+        await BlueprintLoopStore.updateStatus(ScopeContext.current.scope.id, loop.id, {
+          status: "auditing",
+          auditSessionID: reviewer.id,
+          auditTaskID: "ctx_review",
+        })
+
+        const reviewerAgent = createBuiltinMaxSubagents(builtinCtx)["security-reviewer"]
+        if (!reviewerAgent) throw new Error("missing security-reviewer")
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: reviewer.id,
+          session: await Session.get(reviewer.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_stop")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(true)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(true)
+
+        const unrelatedReviewer = await Session.create({
+          parentID: execution.id,
+          cortex: {
+            taskID: "cortex-unrelated-blueprint-review",
+            parentSessionID: execution.id,
+            parentMessageID: "msg_parent",
+            description: "Unrecorded Blueprint audit",
+            agent: "security-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        await Session.update(unrelatedReviewer.id, (draft) => {
+          draft.blueprint = { loopID: loop.id, loopRole: "audit" }
+        })
+        availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: unrelatedReviewer.id,
+          session: await Session.get(unrelatedReviewer.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "blueprint_loop_reject")).toBe(false)
+      },
+    })
+  })
+
+  test("LightLoop review tools stay diagnostically denied outside the recorded reviewer session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const parent = await Session.create({})
+        await Session.update(parent.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Finish the feature",
+            stopRequest: {
+              summary: "done",
+              requestedAt: Date.now(),
+              requesterSessionID: parent.id,
+              requesterMessageID: "msg_parent",
+              reviewSessionID: "ses_other_reviewer",
+              reviewTaskID: "ctx_review",
+            },
+          }
+        })
+        const child = await Session.create({
+          parentID: parent.id,
+          cortex: {
+            taskID: "cortex-unrecorded-lightloop-review",
+            parentSessionID: parent.id,
+            parentMessageID: "msg_parent",
+            description: "Review LightLoop",
+            agent: "lightloop-reviewer",
+            executionRole: "delegated_subagent",
+            startedAt: Date.now(),
+            status: "running",
+          },
+        })
+        const reviewerAgent = {
+          ...allowAllAgent,
+          name: "lightloop-reviewer",
+          mode: "subagent" as const,
+        }
+
+        const availability = await ToolResolver.availability({
+          agent: reviewerAgent,
+          model,
+          sessionID: child.id,
+          session: await Session.get(child.id),
+          includeMCP: false,
+        })
+        expect(availability.visible.some((def) => def.id === "light_loop_approve")).toBe(false)
+        expect(availability.visible.some((def) => def.id === "light_loop_reject")).toBe(false)
+        expect(availability.diagnostics.get("light_loop_approve")?.code).toBe("permission_denied")
+        expect(availability.diagnostics.get("light_loop_reject")?.code).toBe("permission_denied")
+      },
+    })
+  })
+
+  test("recursive coordinator agents resolve task tools while ordinary subagents do not", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        const agents = createBuiltinMaxSubagents(builtinCtx)
+        const recursiveTools = ["task", "task_list", "task_output", "task_cancel", "dagwrite", "dagread", "dagpatch"]
+
+        for (const name of ["supervisor", "lightloop-reviewer"]) {
+          const agent = agents[name]
+          if (!agent) throw new Error(`missing ${name}`)
+          const availability = await ToolResolver.availability({
+            agent,
+            model,
+            sessionID: session.id,
+            session,
+            includeMCP: false,
+          })
+          const visible = new Set(availability.visible.map((def) => def.id))
+          for (const tool of recursiveTools) {
+            expect(visible.has(tool), `${name}:${tool}`).toBe(true)
+          }
+          const task = availability.visible.find((def) => def.id === "task")
+          expect(task?.description).toContain("implementation-engineer")
+        }
+
+        const ordinary = agents["implementation-engineer"]
+        if (!ordinary) throw new Error("missing implementation-engineer")
+        const availability = await ToolResolver.availability({
+          agent: ordinary,
+          model,
+          sessionID: session.id,
+          session,
+          includeMCP: false,
+        })
+        const visible = new Set(availability.visible.map((def) => def.id))
+        for (const tool of recursiveTools) {
+          expect(visible.has(tool), `implementation-engineer:${tool}`).toBe(false)
+          expect(availability.diagnostics.get(tool)?.code).toBe("permission_denied")
+        }
+      },
+    })
+  })
+
+  test("Plan resolve keeps hidden tools inactive while preserving semantic diagnostic wrappers", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.blueprint = { planMode: true }
+          draft.workflow = { kind: "plan" }
         })
         const executions = new Map<string, Promise<any>>()
+        const callbacks = new Map<string, Promise<unknown>>()
         const processor = {
           message: { id: "message_test" },
           partFromToolCall: () => undefined,
-          trackExecution: (id: string, promise: Promise<any>) => executions.set(id, promise),
+          executeOnce: <T>(id: string, execute: () => Promise<T>) => {
+            const existing = callbacks.get(id)
+            if (existing) return existing as Promise<T>
+            const callback = Promise.resolve().then(execute)
+            callbacks.set(id, callback)
+            return callback
+          },
+          beginExecution: (id: string) => {
+            let outcome: any
+            let resolvePromise!: (value: any) => void
+            const promise = new Promise<any>((resolve) => {
+              resolvePromise = resolve
+            })
+            executions.set(id, promise)
+            return {
+              callID: id,
+              promise,
+              resolve(value: any) {
+                if (outcome) return
+                outcome = value
+                resolvePromise(value)
+              },
+              complete(input: unknown, result: any) {
+                this.resolve({ status: "completed", input, result })
+              },
+              fail(input: unknown, error: string, metadata?: Record<string, any>) {
+                this.resolve({ status: "error", input, error, metadata })
+              },
+              get outcome() {
+                return outcome
+              },
+              get status() {
+                return outcome ? "resolved" : "pending"
+              },
+            }
+          },
         } as any
 
         const resolved = await ToolResolver.resolveWithAvailability({
@@ -345,7 +1065,7 @@ describe("tool exposure", () => {
 
         await expect(
           (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
-        ).rejects.toThrow("Plan Mode")
+        ).rejects.toThrow("Plan")
         const outcome = await executions.get("call_edit")
         expect(outcome.status).toBe("error")
         expect(outcome.metadata.toolDiagnostic.code).toBe("plan_mode_blocked")
@@ -405,41 +1125,8 @@ describe("tool exposure", () => {
         return "ok"
       },
     })
-    const manifest = PluginManifest.parse({
-      name: "demo-plugin",
-      version: "1.0.0",
-      description: "Demo plugin",
-      contributes: {
-        tools: [
-          {
-            name: "plugin_search",
-            description: "Search-only plugin tool",
-            exposure: { mode: "search", title: "Plugin Search", keywords: ["plugin"] },
-          },
-          {
-            id: "plugin_grouped",
-            name: "grouped",
-            description: "Grouped plugin tool",
-            exposure: {
-              mode: "group",
-              group: "plugin:demo",
-              title: "Demo Plugin",
-              description: "Demo plugin tools",
-              whenToExpand: "Expand when using the demo plugin.",
-            },
-          },
-        ],
-      },
-    })
-
     expect(deferred.exposure).toEqual({ mode: "search", title: "Deferred Plugin", keywords: ["plugin"] })
     expect(compatible.exposure).toBeUndefined()
-    expect(manifest.contributes?.tools?.[0]?.exposure).toEqual({
-      mode: "search",
-      title: "Plugin Search",
-      keywords: ["plugin"],
-    })
-    expect(manifest.contributes?.tools?.[1]?.exposure).toMatchObject({ mode: "group", group: "plugin:demo" })
   })
 
   test("ToolDiscovery marks grouped tool results with expandable groups", async () => {

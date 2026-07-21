@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test"
 
 const modelRoleRow = await Bun.file(new URL("../components/ModelRoleRow.tsx", import.meta.url)).text()
+const modelRoleDraft = await Bun.file(new URL("../model-role-draft.ts", import.meta.url)).text()
 const modelsPanel = await Bun.file(new URL("./ModelsPanel.tsx", import.meta.url)).text()
-const modelManager = await Bun.file(new URL("../../model-manager.tsx", import.meta.url)).text()
+const modelManager = await Bun.file(new URL("../../provider/model-manager.tsx", import.meta.url)).text()
 
 describe("Models panel UI contract", () => {
   test("uses compact popover model pickers instead of native role selects", () => {
@@ -19,8 +20,8 @@ describe("Models panel UI contract", () => {
   })
 
   test("vision unset state is presented as disabled image analysis", () => {
-    expect(modelRoleRow).toContain("Image analysis disabled")
-    expect(modelRoleRow).toContain("Not configured")
+    expect(modelRoleDraft).toContain("Image analysis disabled")
+    expect(modelRoleDraft).toContain("Not configured")
     expect(modelRoleRow).not.toContain("global required")
   })
 
@@ -31,6 +32,14 @@ describe("Models panel UI contract", () => {
     expect(modelsPanel).not.toContain("onManageModels")
     expect(modelsPanel).not.toContain(">Manage models<")
     expect(modelManager).toContain("setQuickSwitcher")
-    expect(modelManager).toContain('Persist.global("model"')
+    expect(modelManager).toContain("onQuickSwitcherChange")
+    expect(modelManager).not.toContain('Persist.global("model"')
+  })
+
+  test("quick-switcher management rows are static rows with labeled switches", () => {
+    expect(modelsPanel).toContain("selectable={false}")
+    expect(modelManager).toContain("interactive={selectable()}")
+    expect(modelManager).toContain(": undefined")
+    expect(modelManager).toContain('<span class="model-manager-quick-label')
   })
 })

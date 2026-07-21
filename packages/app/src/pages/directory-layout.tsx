@@ -1,21 +1,17 @@
 import { createMemo, Show, type ParentProps } from "solid-js"
-import { useNavigate, useParams } from "@solidjs/router"
+import { useParams } from "@solidjs/router"
 import { SDKProvider, useSDK } from "@/context/sdk"
 import { SyncProvider, useSync } from "@/context/sync"
 import { LocalProvider } from "@/context/local"
-import { useGlobalSync } from "@/context/global-sync"
-import { useGlobalSDK } from "@/context/global-sdk"
+import { FileProvider } from "@/context/file"
 
-import { base64Decode, base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { base64Decode } from "@ericsanchezok/synergy-util/encode"
 import { DataProvider } from "@ericsanchezok/synergy-ui/context"
 import { iife } from "@ericsanchezok/synergy-util/iife"
-import { HOME_SCOPE_KEY } from "@/utils/scope"
+import { useNavigateToSession } from "@/composables/use-navigate-to-session"
 
 export default function Layout(props: ParentProps) {
   const params = useParams()
-  const navigate = useNavigate()
-  const globalSync = useGlobalSync()
-  const globalSDK = useGlobalSDK()
   const scopeKey = createMemo(() => {
     return base64Decode(params.dir!)
   })
@@ -26,47 +22,12 @@ export default function Layout(props: ParentProps) {
           {iife(() => {
             const sync = useSync()
             const sdk = useSDK()
+            const navigateToSession = useNavigateToSession()
             const respond = (input: {
               sessionID: string
               permissionID: string
               response: "once" | "session" | "always" | "reject"
             }) => sdk.client.permission.respond(input)
-
-            const routeDir = (scope: { type?: string; directory?: string }) =>
-              base64Encode(scope.type === "home" ? HOME_SCOPE_KEY : (scope.directory ?? scopeKey()))
-
-            const navigateToSession = (sessionID: string) => {
-              const navState = { state: { from: window.location.pathname } }
-
-              const localMatch = sync.data.session.find((s) => s.id === sessionID)
-              if (localMatch) {
-                navigate(`/${routeDir(localMatch.scope)}/session/${sessionID}`, navState)
-                return
-              }
-
-              for (const scope of globalSync.data.scope) {
-                const [store] = globalSync.ensureScopeState(scope.worktree)
-                const match = store.session.find((s) => s.id === sessionID)
-                if (match) {
-                  navigate(`/${routeDir(match.scope)}/session/${sessionID}`, navState)
-                  return
-                }
-              }
-
-              globalSDK.client.session
-                .get({ sessionID })
-                .then((res) => {
-                  const session = res.data
-                  if (session) {
-                    navigate(`/${routeDir(session.scope)}/session/${sessionID}`, navState)
-                  } else {
-                    navigate(`/${params.dir}/session/${sessionID}`, navState)
-                  }
-                })
-                .catch(() => {
-                  navigate(`/${params.dir}/session/${sessionID}`, navState)
-                })
-            }
 
             return (
               <DataProvider
@@ -76,7 +37,9 @@ export default function Layout(props: ParentProps) {
                 onPermissionRespond={respond}
                 onNavigateToSession={navigateToSession}
               >
-                <LocalProvider>{props.children}</LocalProvider>
+                <LocalProvider>
+                  <FileProvider>{props.children}</FileProvider>
+                </LocalProvider>
               </DataProvider>
             )
           })}

@@ -1,3 +1,4 @@
+import { TOOL_TITLE_DESC } from "../../tool-title-descriptors"
 import { Show } from "solid-js"
 import { BasicTool } from "../../basic-tool"
 import { DiagramRenderer } from "../../diagram"
@@ -33,24 +34,25 @@ ToolRegistry.register({
         forceOpen
         trigger={{
           icon: "layout-grid",
-          title: "Diagram",
+          title: TOOL_TITLE_DESC["diagram"],
           subtitle: props.input.title || "",
           tags: statsLabel() ? [{ label: statsLabel() }] : undefined,
         }}
       >
         <Show
+          keyed
           when={doc()}
           fallback={
-            <Show when={props.output}>
+            <Show keyed when={props.output}>
               {(output) => (
                 <div data-component="tool-output">
-                  <ToolTextOutput text={output()} />
+                  <ToolTextOutput text={output} />
                 </div>
               )}
             </Show>
           }
         >
-          {(document) => <DiagramRenderer document={document()} />}
+          {(document) => <DiagramRenderer document={document} />}
         </Show>
       </BasicTool>
     )

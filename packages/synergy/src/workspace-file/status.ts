@@ -3,14 +3,16 @@ import path from "path"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { WorkspaceFile } from "./types"
+import { WorkspaceFileStatusCache } from "./status-cache"
 
 type StatusEntry = {
-  fetchedAt: number
   summary: WorkspaceFile.StatusSummary
   byPath: Map<string, WorkspaceFile.GitStatus>
 }
 
 const STATUS_TTL_MS = 5_000
+const MAX_UNTRACKED_LINE_COUNT_FILES = 200
+const MAX_UNTRACKED_LINE_COUNT_BYTES = 256 * 1024
 
 function root() {
   return ScopeContext.current.directory
@@ -29,9 +31,14 @@ function parseStatus(input: string): WorkspaceFile.GitStatus {
 }
 
 async function lineCount(filepath: string) {
+  const stat = await Bun.file(filepath)
+    .stat()
+    .catch(() => undefined)
+  if (!stat || stat.size > MAX_UNTRACKED_LINE_COUNT_BYTES) return undefined
   const content = await Bun.file(filepath)
     .text()
-    .catch(() => "")
+    .catch(() => undefined)
+  if (content === undefined) return undefined
   if (!content) return 0
   return content.split(/\r?\n/).length
 }
@@ -67,14 +74,16 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
   }
 
   const untracked = await $`git ls-files --others --exclude-standard`.cwd(cwd).quiet().nothrow().text()
-  for (const filepath of untracked.trim().split(/\r?\n/).filter(Boolean)) {
+  const untrackedFiles = untracked.trim().split(/\r?\n/).filter(Boolean)
+  const shouldCountUntrackedLines = untrackedFiles.length <= MAX_UNTRACKED_LINE_COUNT_FILES
+  for (const filepath of untrackedFiles) {
     const relative = cleanRelative(filepath)
     const absolute = path.join(cwd, relative)
+    const added = shouldCountUntrackedLines ? await lineCount(absolute) : undefined
     files.set(relative, {
       path: relative,
       status: "untracked",
-      added: await lineCount(absolute),
-      removed: 0,
+      ...(added === undefined ? {} : { added, removed: 0 }),
     })
   }
 
@@ -84,31 +93,33 @@ async function build(): Promise<WorkspaceFile.StatusSummary> {
 }
 
 export namespace WorkspaceFileStatus {
-  const state = ScopedState.create<StatusEntry>(() => ({
-    fetchedAt: 0,
-    summary: { files: [] },
-    byPath: new Map(),
-  }))
+  const state = ScopedState.create(() =>
+    WorkspaceFileStatusCache.create<StatusEntry>({
+      ttlMs: STATUS_TTL_MS,
+      build: async () => {
+        const summary = await build()
+        return {
+          summary,
+          byPath: new Map(summary.files.map((file) => [file.path, file.status])),
+        }
+      },
+    }),
+  )
 
   export function invalidate() {
-    state().fetchedAt = 0
+    state().invalidate()
   }
 
   export async function summary(options?: { force?: boolean }): Promise<WorkspaceFile.StatusSummary> {
-    const entry = state()
-    const stale = Date.now() - entry.fetchedAt > STATUS_TTL_MS
-    if (options?.force || entry.fetchedAt === 0 || stale) {
-      entry.summary = await build()
-      entry.byPath = new Map(entry.summary.files.map((file) => [file.path, file.status]))
-      entry.fetchedAt = Date.now()
-    }
-    return entry.summary
+    return (await state().get(options)).summary
   }
 
   export async function statusForPath(relativePath: string): Promise<WorkspaceFile.GitStatus | undefined> {
     if (!relativePath) return undefined
-    const current = await summary()
-    const exact = current.files.find((file) => file.path === relativePath)
-    return exact?.status
+    return (await state().get()).byPath.get(relativePath)
+  }
+
+  export async function statusMap(): Promise<ReadonlyMap<string, WorkspaceFile.GitStatus>> {
+    return (await state().get()).byPath
   }
 }

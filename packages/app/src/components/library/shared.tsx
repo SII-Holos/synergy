@@ -1,44 +1,19 @@
+import { useLingui } from "@lingui/solid"
 import { Show } from "solid-js"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
-
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { library as L } from "@/locales/messages"
+import type { MemoryCategory } from "./category-colors"
+export { MEMORY_CATEGORIES, categoryColors, type MemoryCategory } from "./category-colors"
 export type View = "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"
 export type ExperienceFilter = "all" | "scope" | "session"
 
-export type MemoryCategory =
-  | "user"
-  | "self"
-  | "relationship"
-  | "interaction"
-  | "workflow"
-  | "coding"
-  | "writing"
-  | "asset"
-  | "insight"
-  | "knowledge"
-  | "personal"
-  | "general"
-
 export type MemoryRecallMode = "always" | "contextual" | "search_only"
-
-export const MEMORY_CATEGORIES: MemoryCategory[] = [
-  "user",
-  "self",
-  "relationship",
-  "interaction",
-  "workflow",
-  "coding",
-  "writing",
-  "asset",
-  "insight",
-  "knowledge",
-  "personal",
-  "general",
-]
 
 export const categoryLabels: Record<MemoryCategory, string> = {
   user: "User",
@@ -55,21 +30,6 @@ export const categoryLabels: Record<MemoryCategory, string> = {
   general: "General",
 }
 
-export const categoryColors: Record<MemoryCategory, string> = {
-  user: "bg-[oklch(0.93_0.03_250)] text-[oklch(0.55_0.08_250)]",
-  self: "bg-[oklch(0.93_0.03_290)] text-[oklch(0.55_0.08_290)]",
-  relationship: "bg-[oklch(0.93_0.03_350)] text-[oklch(0.55_0.08_350)]",
-  interaction: "bg-[oklch(0.93_0.03_40)] text-[oklch(0.55_0.08_40)]",
-  workflow: "bg-[oklch(0.93_0.03_110)] text-[oklch(0.55_0.08_110)]",
-  coding: "bg-[oklch(0.93_0.03_210)] text-[oklch(0.55_0.08_210)]",
-  writing: "bg-[oklch(0.93_0.03_20)] text-[oklch(0.55_0.08_20)]",
-  asset: "bg-[oklch(0.93_0.03_160)] text-[oklch(0.55_0.08_160)]",
-  insight: "bg-[oklch(0.93_0.03_270)] text-[oklch(0.55_0.08_270)]",
-  knowledge: "bg-[oklch(0.93_0.03_180)] text-[oklch(0.55_0.08_180)]",
-  personal: "bg-[oklch(0.93_0.03_80)] text-[oklch(0.55_0.08_80)]",
-  general: "bg-surface-inset-base text-text-weak",
-}
-
 export const recallModeLabels: Record<MemoryRecallMode, string> = {
   always: "Always",
   contextual: "Contextual",
@@ -78,7 +38,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
   always: "workbench-selected-surface text-text-strong ring-border-base/20",
-  contextual: "bg-surface-success-base/20 text-on-success-base",
+  contextual: "bg-surface-success-base/20 text-text-on-success-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
 
@@ -104,6 +64,91 @@ export const DISCRETE_DIMENSIONS: Array<{ key: keyof RewardsInfo; short: string;
   { key: "orchestration", short: "Orc", full: "Orchestration" },
   { key: "expression", short: "Exp", full: "Expression" },
 ]
+
+export function getCategoryLabel(_: ReturnType<typeof useLingui>["_"], cat: MemoryCategory): string {
+  switch (cat) {
+    case "user":
+      return _(L.categoryUser)
+    case "self":
+      return _(L.categorySelf)
+    case "relationship":
+      return _(L.categoryRelationship)
+    case "interaction":
+      return _(L.categoryInteraction)
+    case "workflow":
+      return _(L.categoryWorkflow)
+    case "coding":
+      return _(L.categoryCoding)
+    case "writing":
+      return _(L.categoryWriting)
+    case "asset":
+      return _(L.categoryAsset)
+    case "insight":
+      return _(L.categoryInsight)
+    case "knowledge":
+      return _(L.categoryKnowledge)
+    case "personal":
+      return _(L.categoryPersonal)
+    case "general":
+      return _(L.categoryGeneral)
+  }
+}
+
+export function getRecallModeLabel(_: ReturnType<typeof useLingui>["_"], mode: MemoryRecallMode): string {
+  switch (mode) {
+    case "always":
+      return _(L.recallAlways)
+    case "contextual":
+      return _(L.recallContextual)
+    case "search_only":
+      return _(L.recallSearchOnly)
+  }
+}
+
+export function getMemorySortLabel(_: ReturnType<typeof useLingui>["_"], key: MemorySortKey): string {
+  switch (key) {
+    case "newest":
+      return _(L.sortNewest)
+    case "oldest":
+      return _(L.sortOldest)
+    case "relevance":
+      return _(L.sortRelevance)
+  }
+}
+
+export function getExperienceSortLabel(_: ReturnType<typeof useLingui>["_"], key: ExperienceSortKey): string {
+  switch (key) {
+    case "newest":
+      return _(L.sortNewest)
+    case "oldest":
+      return _(L.sortOldest)
+    case "relevance":
+      return _(L.sortRelevance)
+    case "reward":
+      return _(L.sortReward)
+    case "qvalue":
+      return _(L.sortQValue)
+    case "visits":
+      return _(L.sortMostVisited)
+  }
+}
+
+export function getDimensionFullLabel(_: ReturnType<typeof useLingui>["_"], key: keyof RewardsInfo): string {
+  switch (key) {
+    case "outcome":
+      return _(L.dimOutcome)
+    case "intent":
+      return _(L.dimIntent)
+    case "execution":
+      return _(L.dimExecution)
+    case "orchestration":
+      return _(L.dimOrchestration)
+    case "expression":
+      return _(L.dimExpression)
+    default:
+      return key
+  }
+}
 
 export const libraryShellClass = "library-main-surface"
 
@@ -135,11 +180,16 @@ export function SelectionBar(props: {
   onDelete: () => void
   onCancel: () => void
 }) {
+  const { _ } = useLingui()
   return (
     <div class={`flex items-center justify-between gap-3 px-3 py-2.5 ${libraryInsetClass}`}>
       <div class="flex min-w-0 items-center gap-2">
         <span class="text-12-medium text-text-base">
-          {props.count} / {props.total} selected
+          {_({
+            id: "app.library.selection.count",
+            message: "{selected} / {total} selected",
+            values: { selected: String(props.count), total: String(props.total) },
+          })}
         </span>
         <Show when={props.count < props.total}>
           <button
@@ -147,7 +197,7 @@ export function SelectionBar(props: {
             class="rounded-full px-2.5 py-1 text-11-medium text-text-base ring-1 ring-inset ring-border-base/35 transition-colors hover:bg-surface-raised-base-hover"
             onClick={props.onSelectAll}
           >
-            Select all
+            {_({ id: "app.library.selection.selectAll", message: "Select all" })}
           </button>
         </Show>
       </div>
@@ -164,9 +214,20 @@ export function SelectionBar(props: {
             onClick={props.onDelete}
             disabled={props.deleting}
           >
-            <Show when={props.deleting} fallback={<>Delete ({props.count})</>}>
+            <Show
+              when={props.deleting}
+              fallback={
+                <>
+                  {_({
+                    id: "app.library.selection.deleteCount",
+                    message: "Delete ({count})",
+                    values: { count: String(props.count) },
+                  })}
+                </>
+              }
+            >
               <Spinner class="size-3" />
-              Deleting...
+              {_({ id: "app.library.selection.deleting", message: "Deleting..." })}
             </Show>
           </button>
         </Show>
@@ -175,7 +236,7 @@ export function SelectionBar(props: {
           class="rounded-full px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-all hover:bg-surface-raised-base-hover hover:text-text-base"
           onClick={props.onCancel}
         >
-          Cancel
+          {_({ id: "app.library.selection.cancel", message: "Cancel" })}
         </button>
       </div>
     </div>
@@ -209,7 +270,7 @@ export function SelectionCheckbox(props: { selected: boolean }) {
       }}
     >
       <Show when={props.selected}>
-        <Icon name="check" size="small" class="scale-75" />
+        <Icon name={getSemanticIcon("state.success")} size="small" class="scale-75" color="inherit" />
       </Show>
     </div>
   )

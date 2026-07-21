@@ -435,6 +435,7 @@ export namespace Channel {
           accountId: ctx.accountId,
           chatId: ctx.chatId,
           chatType: ctx.chatType,
+          chatName: ctx.chatName,
           senderId: ctx.senderId,
           senderName: ctx.senderName,
           scopeKey: ctx.scopeKey,
@@ -449,6 +450,9 @@ export namespace Channel {
           streaming.start(),
         ])
         const sessionID = session.id
+        const sessionModel = session.modelOverride
+          ? { providerID: session.modelOverride.providerID, modelID: session.modelOverride.modelID }
+          : undefined
 
         let activeTextMessageId: string | null = null
         const assistantTranscript = new Map<string, string>()
@@ -491,7 +495,7 @@ export namespace Channel {
           if (role !== "assistant") return
 
           if (part.type === "text") {
-            if (part.ignored || part.synthetic || !part.text.trim()) return
+            if (MessageV2.isSystemPart(part) || !part.text.trim()) return
             if (activeTextMessageId !== part.messageID) {
               activeTextMessageId = part.messageID
             }
@@ -519,6 +523,7 @@ export namespace Channel {
         try {
           const result = await SessionInvoke.invoke({
             sessionID,
+            model: sessionModel,
             parts: buildPromptParts(ctx),
           })
 
@@ -560,10 +565,19 @@ export namespace Channel {
     if (ctx.attachments && ctx.attachments.length > 0) {
       for (const attachment of ctx.attachments) {
         parts.push({
-          type: "file",
+          type: "attachment",
           url: pathToFileURL(attachment.path).href,
           filename: attachment.filename ?? path.basename(attachment.path) ?? "attachment",
           mime: attachment.contentType,
+          model: attachment.contentType.startsWith("image/")
+            ? {
+                mode: "provider-file",
+                summary: `${attachment.filename ?? path.basename(attachment.path) ?? "attachment"} (${attachment.contentType})`,
+              }
+            : {
+                mode: "summary",
+                summary: `${attachment.filename ?? path.basename(attachment.path) ?? "attachment"} (${attachment.contentType})`,
+              },
         })
       }
     }
@@ -581,7 +595,7 @@ export namespace Channel {
   function extractResponseText(parts: MessageV2.Part[]): string {
     return parts
       .filter((p): p is MessageV2.TextPart => p.type === "text")
-      .filter((p) => !p.ignored && !p.synthetic && p.text.trim().length > 0)
+      .filter((p) => !MessageV2.isSystemPart(p) && p.text.trim().length > 0)
       .map((p) => p.text)
       .join("\n")
   }

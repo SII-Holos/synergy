@@ -8,7 +8,8 @@ export function isTarballHelperUpToDate(src: string, dst: string): boolean {
   try {
     const srcStat = fs.statSync(src)
     const dstStat = fs.statSync(dst)
-    return srcStat.mtimeMs <= dstStat.mtimeMs
+    if (!srcStat.isFile() || !dstStat.isFile() || srcStat.size !== dstStat.size) return false
+    return fs.readFileSync(src).equals(fs.readFileSync(dst))
   } catch {
     return false
   }

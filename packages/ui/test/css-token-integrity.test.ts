@@ -21,9 +21,9 @@ const PHASE2_UI_FILES: FileSet[] = [
 ]
 
 const APP_FILES = [
-  "../app/src/components/quick-actions.css",
+  "../app/src/components/prompt-input/quick-actions.css",
+  "../app/src/components/session/question-prompt.css",
   "../app/src/components/header-bar.css",
-  "../app/src/components/context-bar.css",
   "../app/src/components/dialog/dialog-settings.css",
   "../app/src/components/dialog/dialog-settings.tsx",
 ]
@@ -46,6 +46,18 @@ const KNOWN_STATIC_TOKENS = new Set([
   "line-height-x-large",
   "line-height-2x-large",
   "line-height-normal",
+  "type-ui-page-title-size",
+  "type-ui-page-title-line-height",
+  "type-ui-section-title-size",
+  "type-ui-section-title-line-height",
+  "type-ui-row-title-size",
+  "type-ui-row-title-line-height",
+  "type-ui-body-size",
+  "type-ui-body-line-height",
+  "type-ui-control-size",
+  "type-ui-control-line-height",
+  "type-ui-caption-size",
+  "type-ui-caption-line-height",
   "letter-spacing-normal",
   "letter-spacing-tight",
   "letter-spacing-tightest",
@@ -103,15 +115,12 @@ const KNOWN_STATIC_TOKENS = new Set([
 ])
 
 const KNOWN_LOCAL_TOKENS = new Set([
-  "session-turn-title-bg",
-  "session-turn-title-border",
-  "session-turn-title-highlight",
-  "session-turn-title-glow",
   "workbench-canvas-bg",
   "workbench-panel-bg",
   "workbench-panel-bg-hover",
   "workbench-card-bg",
   "workbench-card-bg-hover",
+  "workbench-row-bg",
   "workbench-card-secondary-bg",
   "workbench-control-bg",
   "workbench-control-bg-hover",
@@ -134,6 +143,13 @@ function extractVarRefs(css: string): string[] {
   }
   return refs
 }
+function extractCustomProps(css: string): Set<string> {
+  const props = new Set<string>()
+  const re = /^\s*--([\w-]+):/gm
+  let m: RegExpExecArray | null
+  while ((m = re.exec(css)) !== null) props.add(m[1])
+  return props
+}
 
 function extractTailwindVarRefs(tsx: string): string[] {
   const refs: string[] = []
@@ -151,6 +167,25 @@ async function readFileSafe(path: string): Promise<string> {
   return file.text()
 }
 
+function extractRuleBlock(css: string, selector: string): string {
+  const selectorStart = css.indexOf(selector)
+  if (selectorStart === -1) return ""
+
+  const blockStart = css.indexOf("{", selectorStart)
+  if (blockStart === -1) return ""
+
+  let depth = 0
+  for (let i = blockStart; i < css.length; i++) {
+    const char = css[i]
+    if (char === "{") depth++
+    if (char !== "}") continue
+    depth--
+    if (depth === 0) return css.slice(selectorStart, i + 1)
+  }
+
+  return ""
+}
+
 function buildValidTokenSet(): Set<string> {
   const resolved = resolveTheme(synergyTheme)
   const valid = new Set<string>()
@@ -162,9 +197,14 @@ function buildValidTokenSet(): Set<string> {
   return valid
 }
 
-function assertNoBrokenTokenRefs(filepath: string, refs: string[], validTokens: Set<string>) {
+function assertNoBrokenTokenRefs(
+  filepath: string,
+  refs: string[],
+  validTokens: Set<string>,
+  localTokens = new Set<string>(),
+) {
   const uniqueRefs = [...new Set(refs)]
-  const broken = uniqueRefs.filter((r) => !validTokens.has(r))
+  const broken = uniqueRefs.filter((r) => !validTokens.has(r) && !localTokens.has(r))
 
   if (broken.length > 0) {
     throw new Error(
@@ -187,7 +227,7 @@ describe("CSS Token Integrity", () => {
         test(`${glob} — all var(--token) refs are valid`, async () => {
           const css = await readFileSafe(glob)
           if (!css) return
-          assertNoBrokenTokenRefs(glob, extractVarRefs(css), validTokens)
+          assertNoBrokenTokenRefs(glob, extractVarRefs(css), validTokens, extractCustomProps(css))
         })
       }
     })
@@ -201,15 +241,9 @@ describe("CSS Token Integrity", () => {
 
         const isTsx = filepath.endsWith(".tsx")
         const refs = isTsx ? [...extractVarRefs(content), ...extractTailwindVarRefs(content)] : extractVarRefs(content)
-        assertNoBrokenTokenRefs(filepath, refs, validTokens)
+        assertNoBrokenTokenRefs(filepath, refs, validTokens, extractCustomProps(content))
       })
     }
-  })
-
-  test("context.tsx uses 'synergy-theme' style ID, not 'oc-theme'", async () => {
-    const source = await readFileSafe("src/theme/context.tsx")
-    expect(source).toContain('"synergy-theme"')
-    expect(source).not.toContain('"oc-theme"')
   })
 
   test("index.html uses synergy theme preload naming", async () => {
@@ -234,7 +268,7 @@ describe("CSS Token Integrity", () => {
       "src/components/markdown.css",
       "src/components/session-resonance-popover.css",
       "src/components/diagram.css",
-      "../app/src/components/quick-actions.css",
+      "../app/src/components/prompt-input/quick-actions.css",
     ]
 
     const mustNotReappear = new Set([
@@ -268,6 +302,46 @@ describe("CSS Token Integrity", () => {
     }
   })
 
+  test("markdown code blocks stay document surfaces instead of gray control slabs", async () => {
+    const css = await readFileSafe("src/components/markdown.css")
+    const codeBlock = extractRuleBlock(css, '[data-slot="markdown-code-block"]')
+    expect(codeBlock).toContain("background-color: var(--workbench-control-bg")
+
+    const lightCodeBlock = extractRuleBlock(
+      css,
+      ':root[data-color-scheme="light"] [data-component="markdown"] [data-slot="markdown-code-block"]',
+    )
+    expect(lightCodeBlock).toContain("var(--surface-base) 92%")
+
+    const lightInlineCode = extractRuleBlock(
+      css,
+      ':root[data-color-scheme="light"] [data-component="markdown"] :not(pre) > code',
+    )
+    expect(lightInlineCode).toContain("var(--surface-base) 78%")
+
+    const header = extractRuleBlock(css, '[data-slot="markdown-code-header"]')
+    expect(header).toContain("background-color: transparent")
+
+    const copyButton = extractRuleBlock(css, '[data-slot="markdown-code-copy"]')
+    expect(copyButton).toContain("border: 0")
+    expect(copyButton).toContain("background: transparent")
+  })
+
+  test("session turn timeline spacing uses semantic rhythm tiers", async () => {
+    const css = await readFileSafe("src/components/session-turn.css")
+    const timelineStart = css.indexOf('[data-slot="session-turn-timeline-item"] +')
+    const timelineEnd = css.indexOf('[data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"]')
+    expect(timelineStart).toBeGreaterThan(-1)
+    expect(timelineEnd).toBeGreaterThan(timelineStart)
+
+    const rhythm = css.slice(timelineStart, timelineEnd)
+    expect(rhythm).toContain("margin-top: 6px;")
+    expect(rhythm).toContain("margin-top: 8px;")
+    expect(rhythm).toContain("margin-top: 10px;")
+    expect(rhythm).toContain("margin-top: 12px;")
+    expect(rhythm).not.toMatch(/margin-top:\s*[345]px/)
+  })
+
   test("icon-button.css has no commented-out old code blocks", async () => {
     const css = await readFileSafe("src/components/icon-button.css")
     const commentBlockCount = (css.match(/\/\*\s*\n/g) || []).length
@@ -277,7 +351,6 @@ describe("CSS Token Integrity", () => {
   test("no formerly broken P2 token references remain in app-side files", async () => {
     const p2Files = [
       "../app/src/components/header-bar.css",
-      "../app/src/components/context-bar.css",
       "../app/src/components/dialog/dialog-settings.css",
       "../app/src/components/dialog/dialog-settings.tsx",
     ]

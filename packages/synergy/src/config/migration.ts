@@ -763,6 +763,21 @@ async function migrateLegacyLibraryConfig(): Promise<number> {
   return changed
 }
 
+async function removeDeprecatedAutoupdateConfig(): Promise<number> {
+  let changed = 0
+
+  for (const filepath of await findConfigFiles()) {
+    if (await removeTopLevelConfigKeys(filepath, ["autoupdate"])) changed++
+  }
+
+  for (const dir of await findConfigDomainDirs()) {
+    const generalFile = path.join(dir, "00-general.jsonc")
+    if (await removeTopLevelConfigKeys(generalFile, ["autoupdate"])) changed++
+  }
+
+  return changed
+}
+
 async function ensureProviderCatalogConfig(): Promise<boolean> {
   const providersFile = ConfigDomain.filepath("providers", Global.Path.config)
   return mergeTopLevelKey(providersFile, "providerCatalog", {
@@ -1135,6 +1150,15 @@ export const migrations: Migration[] = [
     async up(progress) {
       progress(0, 1)
       await migrateLegacyLibraryConfig()
+      progress(1, 1)
+    },
+  },
+  {
+    id: "20260628-config-remove-autoupdate",
+    description: "Remove deprecated product update config",
+    async up(progress) {
+      progress(0, 1)
+      await removeDeprecatedAutoupdateConfig()
       progress(1, 1)
     },
   },

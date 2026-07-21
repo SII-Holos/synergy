@@ -1,6 +1,8 @@
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import { GlobalBus } from "@/bus/global"
+import { EventWire } from "./event-wire"
+import { GlobalEventClients } from "./global-event-clients"
 import { Log } from "../util/log"
 import { describeRoute, generateSpecs, validator, resolver, openAPIRouteHandler } from "hono-openapi"
 import { Hono, type Context, type MiddlewareHandler, type Next } from "hono"
@@ -12,6 +14,7 @@ import z from "zod"
 import { Provider } from "../provider/provider"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Config } from "../config/config"
+import { ConfigImport } from "../config/import"
 import { LSP } from "../lsp"
 import { Format } from "../file/format"
 import { ScopeContext } from "../scope/context"
@@ -38,6 +41,8 @@ import { CortexRoute } from "./cortex"
 import { Installation } from "@/global/installation"
 import { MDNS } from "./mdns"
 import { Worktree } from "../project/worktree"
+import { Session } from "../session"
+import { SessionManager } from "../session/manager"
 import { SessionRoute } from "./session"
 import { PtyRoute } from "./pty"
 import { ProviderRoute } from "./provider"
@@ -62,23 +67,54 @@ import { RuntimeRoute } from "./runtime-route"
 import { GlobalSessionRoute } from "./global-session"
 import { SessionNavRoute } from "./session-nav"
 import { GlobalNavRoute } from "./global-nav"
+import { GitHubConfiguredRoute } from "./github-configured"
 import { ControlProfileRoute } from "./control-profile-route"
 import { SandboxReadinessRoute } from "./sandbox-readiness-route"
 import { BrowserRoute } from "./browser-route"
 import { BlueprintRoute } from "./blueprint"
+import { LatticeRoute } from "./lattice"
+import { WorkflowRoute } from "./workflow"
 import { RuntimeReload } from "../runtime/reload"
 import { ObservabilityRoute } from "./observability-route"
+import { PerformanceRoute } from "./performance-route"
 import { Observability } from "@/observability"
+import { ObservabilityIssues } from "@/observability/issues"
+import { ServerSseMetrics } from "./sse-metrics"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityRedaction } from "@/observability/redaction"
+import { ObservabilityConfig } from "@/observability/config"
+import { ObservabilityResources } from "@/observability/resources"
+import { DEFAULT_SERVER_HOST, DEFAULT_SERVER_PORT, DEFAULT_SERVER_URL } from "./defaults"
+import { ObservabilityStore } from "@/observability/store"
+import { ObservabilityContext } from "@/observability/context"
+import { UpdateRoute } from "./update-route"
+import { ScopeBootstrapRoute } from "./scope-bootstrap-route"
+import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
+import { SynergyLinkRoute } from "./synergy-link-route"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
 
 RuntimeReload.startAutoReload()
+void Config.current()
+  .then((config) => {
+    ObservabilityConfig.refresh(config)
+    ObservabilityStore.reconfigure()
+    ObservabilityResources.reconfigure()
+  })
+  .catch(() => {
+    ObservabilityConfig.refresh()
+    ObservabilityStore.reconfigure()
+    ObservabilityResources.reconfigure()
+  })
+ObservabilityResources.start()
+ObservabilityStore.open()
 
 export namespace Server {
-  export const DEFAULT_PORT = 4096
-  export const DEFAULT_HOST = "localhost"
-  export const DEFAULT_URL = `http://${DEFAULT_HOST}:${DEFAULT_PORT}`
+  export const DEFAULT_PORT = DEFAULT_SERVER_PORT
+  export const DEFAULT_HOST = DEFAULT_SERVER_HOST
+  export const DEFAULT_URL = DEFAULT_SERVER_URL
 
   const log = Log.create({ service: "server" })
   const APP_DIST = (() => {
@@ -88,30 +124,32 @@ export namespace Server {
   })()
 
   // Baseline Content-Security-Policy for SPA responses.
-  // style-src 'unsafe-inline' is required for Solid's reactive CSS-in-JS <style> injection.
-  // script-src is extended per-request: the theme preloader hash is always included;
-  // the fallback handler adds a per-request nonce for the dynamic route-tag script.
-  export const CSP_BASELINE =
+  // script-src 'unsafe-inline' and style-src 'unsafe-inline' are required for:
+  //   - Solid's reactive CSS-in-JS <style> injection
+  //   - Ghostty Web WASM terminal (creates scripts dynamically)
+  //   - the theme preloader and route-tag inline scripts in index.html
+  // Hash/nonce are deliberately NOT used in script-src because CSP Level 2
+  // dictates that browsers ignore 'unsafe-inline' when hash or nonce is present.
+  const CSP_BASELINE =
     "default-src 'self'; " +
-    "script-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; " +
     "style-src 'self' 'unsafe-inline'; " +
     "img-src 'self' data: https: blob:; " +
     "font-src 'self' data:; " +
-    "connect-src 'self' ws: wss:; " +
+    "connect-src 'self' ws: wss: blob: data:; " +
     "frame-src 'self'; " +
     "media-src 'self'; " +
     "object-src 'none'; " +
     "base-uri 'self'; " +
     "form-action 'self'"
 
-  // SHA-256 of index.html's <script id="synergy-theme-preload-script"> body.
-  // Update this hash when the inline theme preloader script changes.
-  export const CSP_THEME_SCRIPT_HASH = "'sha256-Qf8GAcLAwW4P3mUyGKGC4j67XnDPP6d00NW/TNjPNE0='"
+  // script-src uses 'unsafe-inline' in the baseline — see CSP_BASELINE.
+  // Hash and nonce are NOT added to script-src because browsers ignore
+  // 'unsafe-inline' when either is present (CSP Level 2), which would break
+  // third-party components that dynamically create scripts (e.g., Ghostty Web).
 
-  export function spaCsp(nonce?: string): string {
-    const sources = [CSP_THEME_SCRIPT_HASH]
-    if (nonce) sources.push(`'nonce-${nonce}'`)
-    return CSP_BASELINE.replace("script-src 'self'", `script-src 'self' ${sources.join(" ")}`)
+  export function spaCsp(_nonce?: string): string {
+    return CSP_BASELINE
   }
 
   export function cspMiddleware(): MiddlewareHandler {
@@ -131,7 +169,7 @@ export namespace Server {
   let _appMounted = false
   let _globalEventBroadcastOff: (() => void) | undefined
   let _globalEventHeartbeatInterval: ReturnType<typeof setInterval> | undefined
-  let _globalEventClients: Set<any> | undefined
+  let _globalEventClients: ReturnType<typeof GlobalEventClients.createRegistry> | undefined
 
   function isLoopbackOrigin(input: string) {
     try {
@@ -162,10 +200,12 @@ export namespace Server {
       pathname === "/scope/index" ||
       pathname === "/holos" ||
       pathname.startsWith("/holos/") ||
+      pathname === "/synergy-link" ||
+      pathname.startsWith("/synergy-link/") ||
       pathname === "/channel" ||
       pathname.startsWith("/channel/") ||
-      pathname === "/plugin" ||
-      pathname.startsWith("/plugin/") ||
+      pathname === "/plugin/assets" ||
+      pathname.startsWith("/plugin/assets/") ||
       pathname === "/api/plugins" ||
       pathname.startsWith("/api/plugins/") ||
       pathname === "/api/registry" ||
@@ -194,6 +234,10 @@ export namespace Server {
       pathname.startsWith("/note/") ||
       pathname === "/blueprint" ||
       pathname.startsWith("/blueprint/") ||
+      pathname === "/lattice" ||
+      pathname.startsWith("/lattice/") ||
+      pathname === "/workflow" ||
+      pathname.startsWith("/workflow/") ||
       pathname === "/lsp" ||
       pathname.startsWith("/lsp/") ||
       pathname === "/formatter" ||
@@ -219,6 +263,29 @@ export namespace Server {
     } catch {
       return scopeID
     }
+  }
+
+  function safeHeaderId(value: string | undefined) {
+    if (!value) return undefined
+    const trimmed = value.trim()
+    if (!trimmed || trimmed.length > 128) {
+      log.debug("safeHeaderId rejected: value too long or empty", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    if (!/^[a-zA-Z0-9_.:-]+$/.test(trimmed)) {
+      log.debug("safeHeaderId rejected: invalid characters", { trimmed: trimmed.slice(0, 64) })
+      return undefined
+    }
+    return trimmed
+  }
+
+  function assertWorktreeSessionIdle(sessionID: string | undefined) {
+    if (!sessionID) return
+    if (!SessionManager.isRunning(sessionID)) return
+    throw new Worktree.SessionBusyError({
+      sessionID,
+      message: "Stop the session before changing worktree.",
+    })
   }
 
   async function resolveScopedRequestScope(
@@ -266,7 +333,17 @@ export namespace Server {
     return ScopeContext.provide({
       scope,
       async fn() {
-        return next()
+        // Snapshot watermark: capture the scope's event seq before the handler
+        // reads data, then advertise it as a response header. It is a
+        // conservative lower bound on the snapshot's freshness, so the client
+        // apply-gate never rejects a newer event as stale (frontend sync gate).
+        const stampSeq = c.req.method === "GET" ? Bus.currentSeq() : undefined
+        const stampEpoch = stampSeq !== undefined ? Bus.epoch() : undefined
+        await next()
+        if (stampSeq !== undefined && c.res) {
+          if (!c.res.headers.has("x-synergy-seq")) c.res.headers.set("x-synergy-seq", String(stampSeq))
+          if (stampEpoch && !c.res.headers.has("x-synergy-epoch")) c.res.headers.set("x-synergy-epoch", stampEpoch)
+        }
       },
     })
   }
@@ -285,17 +362,35 @@ export namespace Server {
     (): Hono =>
       app
         .onError((err, c) => {
+          if (err instanceof Storage.NotFoundError) return c.json(err.toObject(), { status: 404 })
+          if (err && typeof err === "object" && "code" in err && err.code === "ENOENT") {
+            return c.json(new Storage.NotFoundError({ message: "Resource not found" }).toObject(), { status: 404 })
+          }
           log.error("failed", {
             method: c.req.method,
-            path: c.req.path,
+            route: ObservabilityRedaction.routePath(c.req.path),
             error: err,
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof Storage.NotFoundError) status = 404
-            else if (err instanceof Provider.ModelNotFoundError) status = 400
+            if (
+              err instanceof ConfigImport.RevisionConflictError ||
+              err instanceof ConfigImport.LockedError ||
+              err instanceof Worktree.UnavailableError
+            )
+              status = 409
+            else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
+            else if (
+              err instanceof ConfigImport.ProjectScopeRequiredError ||
+              err instanceof ConfigImport.SourceParseError ||
+              err instanceof ConfigImport.SourceFetchError ||
+              err instanceof Config.InvalidError ||
+              err instanceof Provider.ModelNotFoundError
+            )
+              status = 400
             else if (err.name === "ChannelStartError") status = 400
             else if (err.name.startsWith("Worktree") || err.name.startsWith("Command")) status = 400
+            else if (err.name.startsWith("ProviderAuth")) status = 400
             else status = 500
             return c.json(err.toObject(), { status })
           }
@@ -305,32 +400,117 @@ export namespace Server {
         })
         .use(async (c, next) => {
           const reqPath = c.req.path
+          const routePath = ObservabilityRedaction.routePath(reqPath)
           const skipLogging = reqPath === "/log" || reqPath === "/global/health" || reqPath.startsWith("/assets/")
+          const skipPerformance = skipLogging || reqPath.startsWith("/global/performance/")
           const start = Date.now()
           const requestId = crypto.randomUUID().slice(0, 8)
-          try {
-            await next()
-          } finally {
-            if (!skipLogging) {
-              log.info("request", {
-                rid: requestId,
-                method: c.req.method,
-                path: reqPath,
-                status: c.res.status,
-                duration: Date.now() - start,
-              })
-              void Observability.emit("http.request", {
-                rid: requestId,
-                level: c.res.status >= 500 ? "error" : c.res.status >= 400 ? "warn" : "info",
-                data: {
-                  method: c.req.method,
-                  path: reqPath,
-                  status: c.res.status,
-                  duration: Date.now() - start,
-                },
-              })
-            }
-          }
+          const incomingCorrelationId = safeHeaderId(c.req.header("x-synergy-correlation-id"))
+          const incomingTraceId = safeHeaderId(c.req.header("x-synergy-trace-id"))
+          const correlationId = incomingCorrelationId ?? `corr_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+          const rootTraceId = `http_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`
+
+          return ObservabilityContext.withContextAsync(
+            {
+              correlationId,
+              traceId: rootTraceId,
+              rid: requestId,
+              source: "backend",
+              module: "server",
+            },
+            async () => {
+              const span = skipPerformance
+                ? undefined
+                : ObservabilitySpans.start({
+                    name: "http.request",
+                    module: "server",
+                    rid: requestId,
+                    attributes: { method: c.req.method, route: routePath, externalTraceId: incomingTraceId },
+                  })
+              const traceId = span?.traceId ?? rootTraceId
+              c.header("x-synergy-correlation-id", correlationId)
+              c.header("x-synergy-trace-id", traceId)
+              c.header("x-synergy-request-id", requestId)
+
+              const requestLength = Number(c.req.header("content-length") ?? 0)
+              if (span && Number.isFinite(requestLength) && requestLength > 0) {
+                ObservabilityMetrics.record({
+                  name: "http.request.size",
+                  value: requestLength,
+                  unit: "bytes",
+                  module: "server",
+                  rid: requestId,
+                  labels: { method: c.req.method, route: routePath },
+                })
+              }
+              try {
+                await next()
+              } finally {
+                const duration = Date.now() - start
+                const status = c.res.status
+                if (span) {
+                  ObservabilitySpans.end(span, {
+                    status: status >= 500 ? "error" : "ok",
+                    attributes: { method: c.req.method, route: routePath, status, externalTraceId: incomingTraceId },
+                  })
+                }
+                const responseLength = Number(c.res.headers.get("content-length") ?? 0)
+                if (span && Number.isFinite(responseLength) && responseLength > 0) {
+                  ObservabilityMetrics.record({
+                    name: "http.response.size",
+                    value: responseLength,
+                    unit: "bytes",
+                    module: "server",
+                    traceId: span.traceId,
+                    spanId: span.spanId,
+                    rid: requestId,
+                    labels: { method: c.req.method, route: routePath, status },
+                  })
+                }
+                if (span && (status >= 500 || duration >= 1000)) {
+                  ObservabilityIssues.raise({
+                    code: status >= 500 ? "PERF_HTTP_ERROR" : "PERF_HTTP_SLOW_REQUEST",
+                    severity: status >= 500 ? "error" : "warning",
+                    module: "server",
+                    title: status >= 500 ? "HTTP request failed" : "Slow HTTP request",
+                    message: `${c.req.method} ${routePath} returned ${status} in ${duration}ms`,
+                    recommendation: "Open the trace detail to identify the owning server route or downstream module.",
+                    traceId: span.traceId,
+                    spanId: span.spanId,
+                    rid: requestId,
+                    evidence: {
+                      method: c.req.method,
+                      route: routePath,
+                      status,
+                      durationMs: duration,
+                      externalTraceId: incomingTraceId,
+                    },
+                  })
+                }
+                if (!skipLogging) {
+                  log.info("request", {
+                    rid: requestId,
+                    method: c.req.method,
+                    route: routePath,
+                    status,
+                    duration,
+                  })
+                  void Observability.emit("http.request", {
+                    rid: requestId,
+                    traceId: span?.traceId,
+                    level: status >= 500 ? "error" : status >= 400 ? "warn" : "info",
+                    data: {
+                      externalTraceId: incomingTraceId,
+                      method: c.req.method,
+                      route: routePath,
+                      status,
+                      duration,
+                    },
+                  })
+                }
+              }
+            },
+          )
         })
         .use(
           cors({
@@ -349,6 +529,10 @@ export namespace Server {
 
               return
             },
+            // Expose the snapshot sync watermark so the client apply-gate can
+            // read it cross-origin (frontend sync redesign).
+            exposeHeaders: ["x-synergy-seq", "x-synergy-epoch"],
+            maxAge: 600,
           }),
         )
         .use(provideRequestScope)
@@ -464,78 +648,98 @@ export namespace Server {
         )
         .route("/global/git", GitRoute)
         .route("/global/stats", StatsRoute)
+        .route("/global/update", UpdateRoute)
         .route("/global", ObservabilityRoute)
+        .route("/global", PerformanceRoute)
         .get(
           "/global/event/ws",
           (() => {
-            const globalEventClients: Set<any> = new Set()
+            // Track clients by stable raw socket identity. Hono's Bun adapter
+            // constructs a fresh WSContext wrapper per callback, so Map keys based
+            // on the wrapper leak across reconnects (#551). The registry also
+            // applies send backpressure limits so a slow UI cannot hard-stall the
+            // event loop (#524).
+            const globalEventClients = GlobalEventClients.createRegistry()
+            // One encoder shared by all delta clients on this route: they receive
+            // identical frames, so the checkpoint throttle is shared correctly.
+            const wire = EventWire.createEncoder()
             const broadcastHandler = (event: any) => {
-              const data = JSON.stringify(event)
-              for (const client of globalEventClients) {
-                try {
-                  client.send(data)
-                } catch {
-                  globalEventClients.delete(client)
-                }
+              const result = globalEventClients.broadcast((mode) => {
+                if (mode === "full") return JSON.stringify(event)
+                const dp = wire.deltaPayload(event.payload)
+                return dp === event.payload
+                  ? JSON.stringify(event)
+                  : JSON.stringify({ directory: event.directory, payload: dp })
+              })
+              const payload = event?.payload
+              const part = payload?.properties?.part
+              if (result.dropped > 0 && payload?.type === "message.part.updated" && part?.type === "tool") {
+                log.warn("global event ws tool part send failed", {
+                  sessionID: part.sessionID,
+                  messageID: part.messageID,
+                  partID: part.id,
+                  callID: part.callID,
+                  tool: part.tool,
+                  status: part.state?.status,
+                  dropped: result.dropped,
+                  removed: result.removed,
+                  clients: result.clients,
+                })
               }
             }
             GlobalBus.on("event", broadcastHandler)
             _globalEventBroadcastOff = () => GlobalBus.off("event", broadcastHandler)
+            const heartbeatData = JSON.stringify({
+              payload: {
+                type: "server.heartbeat",
+                properties: {},
+              },
+            })
             const heartbeat = setInterval(() => {
-              for (const client of globalEventClients) {
-                try {
-                  client.send(
+              globalEventClients.heartbeat(heartbeatData)
+            }, 30000)
+            _globalEventHeartbeatInterval = heartbeat
+            _globalEventClients = globalEventClients
+            return upgradeWebSocket((c) => {
+              const mode: "full" | "delta" = c.req.query("stream") === "delta" ? "delta" : "full"
+              return {
+                onOpen(_event, ws) {
+                  log.info("global event ws connected", { mode })
+                  globalEventClients.add(ws, mode)
+                  ws.send(
                     JSON.stringify({
                       payload: {
-                        type: "server.heartbeat",
+                        type: "server.connected",
                         properties: {},
                       },
                     }),
                   )
-                } catch {
-                  globalEventClients.delete(client)
-                }
+                },
+                onClose(_event, ws) {
+                  globalEventClients.remove(ws)
+                  log.info("global event ws disconnected")
+                },
+                onError(_event, ws) {
+                  globalEventClients.remove(ws)
+                },
+                onMessage(_event, ws) {
+                  try {
+                    if (typeof _event.data !== "string") return
+                    const data = JSON.parse(_event.data)
+                    if (data?.payload?.type === "client.ping") {
+                      ws.send(
+                        JSON.stringify({
+                          payload: {
+                            type: "server.pong",
+                            properties: {},
+                          },
+                        }),
+                      )
+                    }
+                  } catch {}
+                },
               }
-            }, 30000)
-            _globalEventHeartbeatInterval = heartbeat
-            _globalEventClients = globalEventClients
-            return upgradeWebSocket(() => ({
-              onOpen(_event, ws) {
-                log.info("global event ws connected")
-                globalEventClients.add(ws)
-                ws.send(
-                  JSON.stringify({
-                    payload: {
-                      type: "server.connected",
-                      properties: {},
-                    },
-                  }),
-                )
-              },
-              onClose(_event, ws) {
-                globalEventClients.delete(ws)
-                log.info("global event ws disconnected")
-              },
-              onError(_event, ws) {
-                globalEventClients.delete(ws)
-              },
-              onMessage(_event, ws) {
-                try {
-                  if (typeof _event.data !== "string") return
-                  const data = JSON.parse(_event.data)
-                  if (data?.payload?.type === "client.ping") {
-                    ws.send(
-                      JSON.stringify({
-                        payload: {
-                          type: "server.pong",
-                          properties: {},
-                        },
-                      }),
-                    )
-                  }
-                } catch {}
-              },
-            }))
+            })
           })(),
         )
         .post(
@@ -568,6 +772,7 @@ export namespace Server {
           },
         )
         .route("/holos", HolosRoute)
+        .route("/synergy-link", SynergyLinkRoute)
         .get(
           "/global/agenda",
           describeRoute({
@@ -593,6 +798,7 @@ export namespace Server {
         )
         .route("/global/session", GlobalSessionRoute)
         .route("/global", GlobalNavRoute)
+        .route("/github", GitHubConfiguredRoute)
         .post(
           "/agenda/webhook/:token",
           describeRoute({
@@ -645,6 +851,7 @@ export namespace Server {
         .use(validator("query", z.object({ directory: z.string().optional(), scopeID: z.string().optional() })))
 
         .route("/scope", ScopeRoute)
+        .route("/scope", ScopeBootstrapRoute)
         .route("/pty", PtyRoute)
         .route("/config", ConfigRoute)
         .route("/runtime", RuntimeRoute)
@@ -807,6 +1014,7 @@ export namespace Server {
           validator("json", Worktree.PublicCreateInput),
           async (c) => {
             const body = c.req.valid("json")
+            if (body.bind !== false) assertWorktreeSessionIdle(body.sessionID)
             const worktree = await Worktree.create(body)
             return c.json(worktree)
           },
@@ -832,6 +1040,108 @@ export namespace Server {
           async (c) => {
             const worktrees = await Worktree.list()
             return c.json(worktrees)
+          },
+        )
+        .post(
+          "/experimental/worktree/session/:sessionID/enter",
+          describeRoute({
+            summary: "Enter worktree",
+            description: "Bind an existing git worktree to a session.",
+            operationId: "worktree.enter",
+            responses: {
+              200: {
+                description: "Session moved to worktree",
+                content: {
+                  "application/json": {
+                    schema: resolver(Session.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              sessionID: z.string(),
+            }),
+          ),
+          validator(
+            "json",
+            z
+              .object({
+                target: z.string().min(1),
+                force: z.boolean().optional().default(false),
+              })
+              .meta({ ref: "WorktreeEnterInput" }),
+          ),
+          async (c) => {
+            const sessionID = c.req.valid("param").sessionID
+            const body = c.req.valid("json")
+            const existing = await Session.get(sessionID)
+            if (!existing) {
+              return c.json({ name: "SessionNotFound", data: { message: `Session not found: ${sessionID}` } }, 404)
+            }
+            assertWorktreeSessionIdle(sessionID)
+            await Worktree.enter({ sessionID, target: body.target, force: body.force })
+            const session = await Session.get(sessionID)
+            return c.json(session)
+          },
+        )
+        .post(
+          "/experimental/worktree/session/:sessionID/leave",
+          describeRoute({
+            summary: "Leave worktree",
+            description: "Leave the current git worktree for a session and return it to the main checkout.",
+            operationId: "worktree.leave",
+            responses: {
+              200: {
+                description: "Session returned to main checkout",
+                content: {
+                  "application/json": {
+                    schema: resolver(Session.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator(
+            "param",
+            z.object({
+              sessionID: z.string(),
+            }),
+          ),
+          async (c) => {
+            const sessionID = c.req.valid("param").sessionID
+            assertWorktreeSessionIdle(sessionID)
+            const session = await Worktree.leave(sessionID)
+            return c.json(session)
+          },
+        )
+        .post(
+          "/experimental/worktree/remove",
+          describeRoute({
+            summary: "Remove worktree",
+            description: "Remove a git worktree after leaving every bound session. Dirty worktrees require force=true.",
+            operationId: "worktree.remove",
+            responses: {
+              200: {
+                description: "Worktree removed",
+                content: {
+                  "application/json": {
+                    schema: resolver(Worktree.Info),
+                  },
+                },
+              },
+              ...errors(400, 404),
+            },
+          }),
+          validator("json", Worktree.RemoveInput),
+          async (c) => {
+            const body = c.req.valid("json")
+            const worktree = await Worktree.remove(body)
+            return c.json(worktree)
           },
         )
         .get(
@@ -862,6 +1172,7 @@ export namespace Server {
 
         .route("/session", SessionNavRoute)
         .route("/session", SessionRoute)
+        .route("/session", SessionVolatileBatchRoute)
         .route("", PermissionRoute)
         .route("/question", QuestionRoute)
         .route("/session", SessionExportRoute)
@@ -897,6 +1208,8 @@ export namespace Server {
         .route("/agenda", AgendaRoute)
         .route("/note", NoteRoute)
         .route("/blueprint", BlueprintRoute)
+        .route("/lattice", LatticeRoute)
+        .route("/workflow", WorkflowRoute)
         .route("/asset", AssetRoute)
         .route("/holos", HolosDataRoute)
         .route("", BrowserRoute)
@@ -1103,6 +1416,40 @@ export namespace Server {
           },
         )
         .get(
+          "/event/replay",
+          describeRoute({
+            summary: "Replay missed events",
+            description:
+              "After a reconnect, return the state events published for this scope since `since`. " +
+              'Returns status "reset" when the client\'s epoch is stale or the required events have ' +
+              "aged out of the journal, in which case the client must resync from snapshots.",
+            operationId: "event.replay",
+            responses: {
+              200: { description: "Replay result" },
+              ...errors(400),
+            },
+          }),
+          validator(
+            "query",
+            z.object({
+              since: z.coerce.number().int().min(0),
+              epoch: z.string().optional(),
+              directory: z.string().optional(),
+              scopeID: z.string().optional(),
+            }),
+          ),
+          async (c) => {
+            const { since, epoch } = c.req.valid("query")
+            const currentEpoch = Bus.epoch()
+            // Epoch mismatch means the runtime restarted; the seq space is
+            // unrelated, so force a full resync.
+            if (epoch && epoch !== currentEpoch) {
+              return c.json({ status: "reset" as const, epoch: currentEpoch, seq: Bus.currentSeq() })
+            }
+            return c.json(Bus.replay(since))
+          },
+        )
+        .get(
           "/event",
           describeRoute({
             summary: "Subscribe to events",
@@ -1123,7 +1470,13 @@ export namespace Server {
             log.info("event connected")
             c.header("X-Accel-Buffering", "no")
             c.header("Cache-Control", "no-cache, no-transform")
+            // Opt-in compact streaming protocol (#350 D1). Each SSE connection
+            // owns its own encoder so its checkpoint throttle is independent.
+            const deltaMode = c.req.query("stream") === "delta"
+            const wire = deltaMode ? EventWire.createEncoder() : undefined
             return streamSSE(c, async (stream) => {
+              const connectedAt = Date.now()
+              ServerSseMetrics.open("events")
               stream.writeSSE({
                 data: JSON.stringify({
                   type: "server.connected",
@@ -1131,9 +1484,14 @@ export namespace Server {
                 }),
               })
               const unsub = Bus.subscribeAll(async (event) => {
-                await stream.writeSSE({
-                  data: JSON.stringify(event),
-                })
+                const outbound = wire ? wire.deltaPayload(event) : event
+                await stream
+                  .writeSSE({
+                    data: JSON.stringify(outbound),
+                  })
+                  .catch(() => {
+                    ServerSseMetrics.writeFailure("events")
+                  })
                 if (event.type === Bus.ScopeRuntimeDisposed.type) {
                   stream.close()
                 }
@@ -1141,17 +1499,21 @@ export namespace Server {
 
               // Send heartbeat every 30s to prevent WKWebView timeout (60s default)
               const heartbeat = setInterval(() => {
-                stream.writeSSE({
-                  data: JSON.stringify({
-                    type: "server.heartbeat",
-                    properties: {},
-                  }),
-                })
+                void stream
+                  .writeSSE({
+                    data: JSON.stringify({
+                      type: "server.heartbeat",
+                      properties: {},
+                    }),
+                  })
+                  .then(() => ServerSseMetrics.heartbeat("events"))
+                  .catch(() => ServerSseMetrics.writeFailure("events", "heartbeat"))
               }, 30000)
 
               await new Promise<void>((resolve) => {
                 stream.onAbort(() => {
                   clearInterval(heartbeat)
+                  ServerSseMetrics.duration("events", connectedAt)
                   unsub()
                   resolve()
                   log.info("event disconnected")
@@ -1213,10 +1575,13 @@ export namespace Server {
         if (await file.exists().catch(() => false)) {
           const html = await file.text()
           const reqPath = new URL(c.req.url).pathname
-          const nonce = crypto.randomUUID().replace(/-/g, "")
-          const routeTag = `<script nonce="${nonce}">window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
-          c.header("Content-Security-Policy", spaCsp(nonce))
-          const rendered = html.includes("</head>") ? html.replace("</head>", `${routeTag}\n</head>`) : routeTag + html
+          const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+          c.header("Content-Security-Policy", spaCsp())
+          const rendered = html.includes("<head>")
+            ? html.replace("<head>", `<head>\n${routeTag}`)
+            : html.includes("</head>")
+              ? html.replace("</head>", `${routeTag}\n</head>`)
+              : routeTag + html
           return c.body(rendered, { headers: { "Content-Type": "text/html; charset=utf-8" } })
         }
         return c.notFound()

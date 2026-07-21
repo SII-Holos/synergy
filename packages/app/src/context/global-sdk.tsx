@@ -3,7 +3,13 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { createGlobalEmitter } from "@solid-primitives/event-bus"
 import { batch, createSignal, onCleanup } from "solid-js"
 import { usePlatform } from "./platform"
+import {
+  recordTokenReceive,
+  startBrowserPerformanceMetrics,
+  stopBrowserPerformanceMetrics,
+} from "@/components/performance/browser-metrics"
 import { useServer } from "./server"
+import { streamingTokenReceipt } from "./streaming-token-event"
 
 const PING_INTERVAL = 20_000
 const PONG_TIMEOUT = 10_000
@@ -110,7 +116,10 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
 
     function connect() {
       if (disposed) return
-      const wsUrl = `${server.url}/global/event/ws`
+      // Opt into the compact streaming protocol (#350 D1): the server sends
+      // `message.part.delta` frames during streaming plus periodic full-part
+      // checkpoints, instead of the full accumulated part on every delta.
+      const wsUrl = `${server.url}/global/event/ws?stream=delta`
       const socket = new WebSocket(wsUrl)
       ws = socket
 
@@ -140,6 +149,9 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
         }
 
         if (type === "server.heartbeat") return
+
+        const tokenReceipt = streamingTokenReceipt(payload)
+        if (tokenReceipt) recordTokenReceive(tokenReceipt.part, { delta: tokenReceipt.delta })
 
         const directory = parsed.directory ?? "global"
         const k = key(directory, payload)
@@ -179,6 +191,7 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       if (reconnectTimer) clearTimeout(reconnectTimer)
       ws?.close()
       flush()
+      stopBrowserPerformanceMetrics()
     })
 
     const platform = usePlatform()
@@ -187,6 +200,8 @@ export const { use: useGlobalSDK, provider: GlobalSDKProvider } = createSimpleCo
       fetch: platform.fetch,
       throwOnError: true,
     })
+
+    startBrowserPerformanceMetrics({ url: server.url, client: sdk })
 
     return { url: server.url, client: sdk, event: emitter, connected, disconnectedAt }
   },

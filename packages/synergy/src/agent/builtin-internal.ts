@@ -1,10 +1,12 @@
 import { PermissionNext } from "@/permission/next"
+import { INTENT_MAX_CHARS } from "../library/encoder-constants"
 import type { Agent } from "./agent"
 import { resolveAgentModelRole, type BuiltinAgentContext } from "./builtin-context"
 import PROMPT_ANIMA from "./prompt/anima.txt"
 import PROMPT_CHRONICLER from "./prompt/chronicler.txt"
 import PROMPT_AGENT_GENERATE from "./generate.txt"
 import { buildCompactionPrompt } from "./prompt/compaction/builder"
+import { createPerformanceAnalystAgent } from "./prompt/performance-analyst/builder"
 import PROMPT_INTENT from "./prompt/intent.txt"
 import PROMPT_MULTIMODAL_LOOKER from "./prompt/multimodal-looker.txt"
 import PROMPT_REWARD from "./prompt/reward.txt"
@@ -12,9 +14,16 @@ import PROMPT_SCRIPT from "./prompt/script.txt"
 import PROMPT_SMART_ALLOW from "./prompt/smart-allow.txt"
 import PROMPT_SUMMARY from "./prompt/summary.txt"
 import PROMPT_TITLE from "./prompt/title.txt"
+import PROMPT_GITHUB_CLASSIFIER from "./prompt/github-classifier.txt"
+import PROMPT_GITHUB_PROPOSER from "./prompt/github-proposer.txt"
+import PROMPT_GITHUB_FIX_CODER from "./prompt/github-fix-coder.txt"
+import PROMPT_GITHUB_ISSUE_LOCATOR from "./prompt/github-issue-locator.txt"
+import PROMPT_GITHUB_REVIEW_AGENT from "./prompt/github-review-agent.txt"
 
 export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<string, Agent.Info> {
+  const performanceAnalyst = createPerformanceAnalystAgent(ctx)
   return {
+    [performanceAnalyst.name]: performanceAnalyst,
     "multimodal-looker": {
       name: "multimodal-looker",
       prompt: PROMPT_MULTIMODAL_LOOKER,
@@ -38,16 +47,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       native: true,
       hidden: true,
       prompt: buildCompactionPrompt(),
-      permission: PermissionNext.merge(
-        ctx.defaults,
-        PermissionNext.fromConfig({
-          "*": "deny",
-          session_list: "allow",
-          session_read: "allow",
-          session_send: "allow",
-        }),
-        ctx.user,
-      ),
+      permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
       options: {},
       ...resolveAgentModelRole(ctx, "long"),
     },
@@ -110,7 +110,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       native: true,
       hidden: true,
       permission: PermissionNext.merge(ctx.defaults, PermissionNext.fromConfig({ "*": "deny" }), ctx.user),
-      prompt: PROMPT_INTENT,
+      prompt: PROMPT_INTENT.replace("__INTENT_LIMIT__", String(INTENT_MAX_CHARS)),
       ...resolveAgentModelRole(ctx, "mini"),
     },
     script: {
@@ -142,7 +142,7 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       temperature: 0,
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_SMART_ALLOW,
-      ...resolveAgentModelRole(ctx, "mini"),
+      ...resolveAgentModelRole(ctx, "mid"),
     },
     "agent-generator": {
       name: "agent-generator",
@@ -154,6 +154,98 @@ export function createBuiltinInternalAgents(ctx: BuiltinAgentContext): Record<st
       permission: PermissionNext.fromConfig({ "*": "deny" }),
       prompt: PROMPT_AGENT_GENERATE,
       ...resolveAgentModelRole(ctx, "mini"),
+    },
+    "github-shadow-classifier": {
+      name: "github-shadow-classifier",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_CLASSIFIER,
+      ...resolveAgentModelRole(ctx, "nano"),
+    },
+    "github-shadow-proposer": {
+      name: "github-shadow-proposer",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({ "*": "deny" }),
+      prompt: PROMPT_GITHUB_PROPOSER,
+      ...resolveAgentModelRole(ctx, "mid"),
+    },
+    "github-issue-locator": {
+      name: "github-issue-locator",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_ISSUE_LOCATOR,
+      ...resolveAgentModelRole(ctx, "mini"),
+    },
+    "github-fix-coder": {
+      name: "github-fix-coder",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        edit: "allow",
+        write: "allow",
+        todoread: "allow",
+        todowrite: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_FIX_CODER,
+      ...resolveAgentModelRole(ctx, "mid"),
+    },
+    "github-review-agent": {
+      name: "github-review-agent",
+      mode: "primary",
+      options: {},
+      native: true,
+      hidden: true,
+      temperature: 0,
+      permission: PermissionNext.fromConfig({
+        "*": "deny",
+        read: "allow",
+        grep: "allow",
+        glob: "allow",
+        bash: {
+          "*": "allow",
+          "gh*": "deny",
+          "git push*": "deny",
+          "git remote*": "deny",
+        },
+      }),
+      prompt: PROMPT_GITHUB_REVIEW_AGENT,
+      ...resolveAgentModelRole(ctx, "mid"),
     },
     anima: {
       name: "anima",

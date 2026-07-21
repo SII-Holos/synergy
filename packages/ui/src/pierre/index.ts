@@ -18,9 +18,9 @@ const unsafeCSS = `
   --diffs-bg-separator: var(--diffs-bg-separator-override, light-dark( color-mix(in lab, var(--diffs-bg) 96%, var(--diffs-mixer)), color-mix(in lab, var(--diffs-bg) 85%, var(--diffs-mixer))));
   --diffs-fg: light-dark(var(--diffs-light), var(--diffs-dark));
   --diffs-fg-number: var(--diffs-fg-number-override, light-dark(color-mix(in lab, var(--diffs-fg) 65%, var(--diffs-bg)), color-mix(in lab, var(--diffs-fg) 65%, var(--diffs-bg))));
-  --diffs-deletion-base: var(--diffs-deletion-color-override, light-dark(var(--diffs-light-deletion-color, var(--diffs-deletion-color, rgb(255, 0, 0))), var(--diffs-dark-deletion-color, var(--diffs-deletion-color, rgb(255, 0, 0)))));
-  --diffs-addition-base: var(--diffs-addition-color-override, light-dark(var(--diffs-light-addition-color, var(--diffs-addition-color, rgb(0, 255, 0))), var(--diffs-dark-addition-color, var(--diffs-addition-color, rgb(0, 255, 0)))));
-  --diffs-modified-base: var(--diffs-modified-color-override, light-dark(var(--diffs-light-modified-color, var(--diffs-modified-color, rgb(0, 0, 255))), var(--diffs-dark-modified-color, var(--diffs-modified-color, rgb(0, 0, 255)))));
+  --diffs-deletion-base: var(--diffs-deletion-color-override, light-dark(var(--diffs-light-deletion-color, var(--diffs-deletion-color, var(--icon-diff-delete-base))), var(--diffs-dark-deletion-color, var(--diffs-deletion-color, var(--icon-diff-delete-base)))));
+  --diffs-addition-base: var(--diffs-addition-color-override, light-dark(var(--diffs-light-addition-color, var(--diffs-addition-color, var(--icon-diff-add-base))), var(--diffs-dark-addition-color, var(--diffs-addition-color, var(--icon-diff-add-base)))));
+  --diffs-modified-base: var(--diffs-modified-color-override, light-dark(var(--diffs-light-modified-color, var(--diffs-modified-color, var(--icon-interactive-base))), var(--diffs-dark-modified-color, var(--diffs-modified-color, var(--icon-interactive-base)))));
   --diffs-bg-deletion: var(--diffs-bg-deletion-override, light-dark( color-mix(in lab, var(--diffs-bg) 98%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 92%, var(--diffs-deletion-base))));
   --diffs-bg-deletion-number: var(--diffs-bg-deletion-number-override, light-dark( color-mix(in lab, var(--diffs-bg) 91%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 85%, var(--diffs-deletion-base))));
   --diffs-bg-deletion-hover: var(--diffs-bg-deletion-hover-override, light-dark( color-mix(in lab, var(--diffs-bg) 80%, var(--diffs-deletion-base)), color-mix(in lab, var(--diffs-bg) 75%, var(--diffs-deletion-base))));
@@ -89,6 +89,9 @@ export const styleVariables = {
   "--diffs-header-font-family": "var(--font-family-sans)",
   "--diffs-gap-block": 0,
   "--diffs-min-number-column-width": "4ch",
-  "--diffs-light-bg": "#f6f6f6",
-  "--diffs-dark-bg": "#181818",
+  "--diffs-light-bg": "var(--surface-inset-base)",
+  "--diffs-dark-bg": "var(--surface-inset-base)",
+  "--diffs-deletion-color-override": "var(--icon-diff-delete-base)",
+  "--diffs-addition-color-override": "var(--icon-diff-add-base)",
+  "--diffs-modified-color-override": "var(--icon-interactive-base)",
 }

@@ -4,6 +4,13 @@ import { CellSelection, tableEditingKey } from "@tiptap/pm/tables"
 import { FileHandler } from "@tiptap/extension-file-handler"
 import mermaid from "mermaid"
 import { assetHttpUrl } from "@/utils/asset-url"
+import {
+  getAppliedTheme,
+  resolveThemeColor,
+  THEME_CHANGE_EVENT,
+  type ThemeChangeDetail,
+  type ThemeTokenName,
+} from "@ericsanchezok/synergy-ui/theme"
 
 declare module "@tiptap/core" {
   interface Commands<ReturnType> {
@@ -15,8 +22,6 @@ declare module "@tiptap/core" {
     }
   }
 }
-
-mermaid.initialize({ startOnLoad: false, theme: "neutral" })
 
 const crossCellSelectionKey = new PluginKey("crossCellSelection")
 
@@ -88,6 +93,77 @@ export const CrossCellSelection = Extension.create({
 })
 
 let mermaidCounter = 0
+let mermaidRenderQueue = Promise.resolve()
+
+export function mermaidThemeVariables(theme: ThemeChangeDetail) {
+  const color = (token: ThemeTokenName) => resolveThemeColor(theme.tokens, token)
+  const series = Array.from({ length: 9 }, (_, index) => color(`chart-series-${index + 1}` as ThemeTokenName))
+  return {
+    darkMode: theme.mode === "dark",
+    background: color("surface-raised-base"),
+    primaryColor: color("surface-interactive-weak"),
+    primaryTextColor: color("text-base"),
+    primaryBorderColor: color("border-interactive-base"),
+    secondaryColor: color("surface-info-weak"),
+    secondaryTextColor: color("text-on-info-base"),
+    secondaryBorderColor: color("border-info-base"),
+    tertiaryColor: color("surface-inset-base"),
+    tertiaryTextColor: color("text-base"),
+    tertiaryBorderColor: color("border-base"),
+    mainBkg: color("surface-raised-base"),
+    secondBkg: color("surface-inset-base"),
+    tertiaryBkg: color("surface-hover-base"),
+    lineColor: color("icon-weak-base"),
+    textColor: color("text-base"),
+    titleColor: color("text-strong"),
+    nodeTextColor: color("text-base"),
+    clusterBkg: color("surface-inset-base"),
+    clusterBorder: color("border-base"),
+    edgeLabelBackground: color("surface-raised-base"),
+    noteBkgColor: color("surface-warning-weak"),
+    noteTextColor: color("text-on-warning-base"),
+    noteBorderColor: color("border-warning-base"),
+    actorBkg: color("surface-raised-base"),
+    actorBorder: color("border-base"),
+    actorTextColor: color("text-base"),
+    signalColor: color("icon-base"),
+    signalTextColor: color("text-base"),
+    labelBoxBkgColor: color("surface-inset-base"),
+    labelBoxBorderColor: color("border-base"),
+    labelTextColor: color("text-base"),
+    loopTextColor: color("text-base"),
+    activationBkgColor: color("surface-interactive-weak"),
+    activationBorderColor: color("border-interactive-base"),
+    sequenceNumberColor: color("text-on-interactive-base"),
+    ...Object.fromEntries(series.map((value, index) => [`pie${index + 1}`, value])),
+  }
+}
+
+async function renderMermaid(code: string) {
+  const theme = getAppliedTheme(document)
+  if (!theme) throw new Error("Theme is not applied")
+  const task = mermaidRenderQueue.then(async () => {
+    mermaid.initialize({ startOnLoad: false, theme: "base", themeVariables: mermaidThemeVariables(theme) })
+    return mermaid.render(`mermaid-${++mermaidCounter}`, code)
+  })
+  mermaidRenderQueue = task.then(
+    () => undefined,
+    () => undefined,
+  )
+  return task
+}
+
+export function subscribeMermaidThemeChanges(
+  target: Pick<Document, "addEventListener" | "removeEventListener">,
+  listener: (theme: ThemeChangeDetail) => void,
+) {
+  const handleThemeChange = (event: Event) => {
+    const detail = (event as CustomEvent<ThemeChangeDetail>).detail
+    if (detail?.tokens) listener(detail)
+  }
+  target.addEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+  return () => target.removeEventListener(THEME_CHANGE_EVENT, handleThemeChange)
+}
 
 export const Video = Node.create({
   name: "video",
@@ -156,8 +232,8 @@ export const Mermaid = Node.create({
         "padding: 0.75em",
         "font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
         "font-size: 0.8125rem",
-        "background: #0d1117",
-        "color: #e6edf3",
+        "background: var(--surface-inset-base)",
+        "color: var(--text-base)",
         "border: none",
         "outline: none",
         "resize: vertical",
@@ -172,16 +248,22 @@ export const Mermaid = Node.create({
       dom.appendChild(preview)
 
       let renderTimeout: ReturnType<typeof setTimeout>
+      let renderVersion = 0
+      let currentNode = node
 
       async function renderDiagram(code: string) {
+        const version = ++renderVersion
         try {
-          const id = `mermaid-${++mermaidCounter}`
-          const { svg } = await mermaid.render(id, code)
+          const { svg } = await renderMermaid(code)
+          if (version !== renderVersion) return
           preview.innerHTML = svg
         } catch {
+          if (version !== renderVersion) return
           preview.innerHTML = `<span style="color: var(--text-diff-delete-base); font-size: 0.8125rem;">Invalid diagram</span>`
         }
       }
+
+      const unsubscribeTheme = subscribeMermaidThemeChanges(document, () => renderDiagram(codeArea.value))
 
       codeArea.addEventListener("input", () => {
         clearTimeout(renderTimeout)
@@ -189,7 +271,7 @@ export const Mermaid = Node.create({
           const pos = typeof getPos === "function" ? getPos() : 0
           if (pos === undefined) return
           editor.view.dispatch(
-            editor.view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, content: codeArea.value }),
+            editor.view.state.tr.setNodeMarkup(pos, undefined, { ...currentNode.attrs, content: codeArea.value }),
           )
           renderDiagram(codeArea.value)
         }, 500)
@@ -202,13 +284,17 @@ export const Mermaid = Node.create({
         stopEvent: (event: Event) => event.target === codeArea,
         update: (updatedNode) => {
           if (updatedNode.type.name !== "mermaid") return false
+          currentNode = updatedNode
           if (codeArea.value !== updatedNode.attrs.content) {
             codeArea.value = updatedNode.attrs.content
             renderDiagram(updatedNode.attrs.content)
           }
           return true
         },
-        destroy: () => clearTimeout(renderTimeout),
+        destroy: () => {
+          clearTimeout(renderTimeout)
+          unsubscribeTheme()
+        },
       }
     }
   },

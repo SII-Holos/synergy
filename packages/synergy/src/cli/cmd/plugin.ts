@@ -1,14 +1,6 @@
-import {
-  HOOKS,
-  HOOK_CATEGORIES,
-  BUS_EVENT_NAMES,
-  type HookCategory,
-  type HookDescriptor,
-} from "@ericsanchezok/synergy-plugin/hooks"
 import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
 import { PluginRuntimeCommand } from "./plugin-runtime"
 import { PluginTestCommand } from "./plugin-test"
-import { PluginPublishCommand } from "./plugin-publish"
 import { PluginPublishMarketCommand } from "./plugin-publish-market"
 import { PluginEntryCommand } from "./plugin-entry"
 import { PluginInfoCommand } from "./plugin-info"
@@ -20,6 +12,8 @@ import { PluginValidateCommand } from "./plugin-validate"
 import { PluginSignCommand } from "./plugin-sign"
 import { PluginDevCommand } from "./plugin-dev"
 import { PluginCreateCommand } from "./plugin-create"
+import { pluginCliRequestTimeoutMs } from "./plugin-server"
+import { pluginStatusText, printPluginPermissionDiff } from "./plugin-consent"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { Plugin } from "@/plugin"
@@ -33,54 +27,12 @@ import { EOL } from "os"
 import path from "path"
 import fs from "fs"
 import * as prompts from "@clack/prompts"
-import { read as readManifestFile } from "../../plugin/manifest-reader"
-import { BunProc } from "../../util/bun"
-import { findPackageRoot } from "../../plugin/loader"
-import { resolveSpecPluginDir } from "../../plugin/loader"
 import { diffPermissions } from "../../plugin/consent/diff"
 import { baseCapabilities } from "../../plugin/capability"
-import { computeRisk } from "../../plugin/consent/risk"
-import { saveApproval, computeManifestHash, computePermissionsHash } from "../../plugin/consent/approval-store"
-import * as Lockfile from "../../plugin/lockfile"
-import { derivePluginSource } from "../../plugin/trust"
-import { recordEvent } from "../../plugin/audit"
 import { Server } from "../../server/server"
 import { isServerReachable } from "../network"
-import { resolveRuntimeMode } from "../../plugin-runtime/mode-resolver"
-import { Installation } from "../../global/installation"
-import type { PluginPermissionDiff } from "../../plugin/consent/schema"
-
-// ---------------------------------------------------------------------------
-// Helpers
-function formatHookList(category?: HookCategory) {
-  const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
-  const grouped = category
-    ? [[category, hooks] as const]
-    : HOOK_CATEGORIES.map(
-        (name: HookCategory) => [name, hooks.filter((hook: HookDescriptor) => hook.category === name)] as const,
-      )
-
-  for (const [groupName, groupHooks] of grouped) {
-    if (groupHooks.length === 0) continue
-    process.stdout.write(UI.Style.TEXT_HIGHLIGHT_BOLD + groupName + UI.Style.TEXT_NORMAL + EOL)
-    for (const hook of groupHooks) {
-      const mutates = hook.mutatesOutput ? "mutates" : "observe"
-      process.stdout.write(`  ${hook.name.padEnd(38)} ${mutates.padEnd(8)} ${hook.summary}` + EOL)
-      if (hook.name === "event") {
-        for (const eventName of BUS_EVENT_NAMES) {
-          process.stdout.write(`    ${eventName}` + EOL)
-        }
-      }
-    }
-    process.stdout.write(EOL)
-  }
-}
-
-// ---------------------------------------------------------------------------
-
-async function readManifest(pluginDir: string): Promise<PluginManifest | null> {
-  return readManifestFile(pluginDir)
-}
+import { resolvePluginSpec } from "../../plugin/spec-resolver"
+import { doctor as runPluginDoctor } from "../../plugin/doctor"
 
 function readPkgVersion(pluginDir: string): string | undefined {
   try {
@@ -96,79 +48,30 @@ function readPkgVersion(pluginDir: string): string | undefined {
 interface ContributedSummary {
   skills: number
   agents: number
-  commands: number
+  operations: number
   mcpServers: number
 }
 
-function getContributed(manifest: PluginManifest | null): ContributedSummary {
+function getContributed(manifest: PluginManifest): ContributedSummary {
   return {
-    skills: manifest?.contributes?.skills?.length ?? 0,
-    agents: manifest?.contributes?.agents?.length ?? 0,
-    commands: manifest?.contributes?.commands?.length ?? 0,
-    mcpServers: manifest?.contributes?.mcp ? Object.keys(manifest.contributes.mcp).length : 0,
+    skills: manifest.contributions.filter((item) => item.kind === "skill").length,
+    agents: manifest.contributions.filter((item) => item.kind === "agent").length,
+    operations: manifest.contributions.filter((item) => item.kind === "operation").length,
+    mcpServers: manifest.contributions.filter((item) => item.kind === "mcp").length,
   }
 }
 
-function printContributed(manifest: PluginManifest | null) {
+function printContributed(manifest: PluginManifest) {
   const c = getContributed(manifest)
   const parts: string[] = []
   if (c.skills > 0) parts.push(`${c.skills} skill${c.skills !== 1 ? "s" : ""}`)
   if (c.agents > 0) parts.push(`${c.agents} agent${c.agents !== 1 ? "s" : ""}`)
-  if (c.commands > 0) parts.push(`${c.commands} command${c.commands !== 1 ? "s" : ""}`)
+  if (c.operations > 0) parts.push(`${c.operations} operation${c.operations !== 1 ? "s" : ""}`)
   if (c.mcpServers > 0) parts.push(`${c.mcpServers} MCP server${c.mcpServers !== 1 ? "s" : ""}`)
   if (parts.length > 0) {
     UI.println(`  ${UI.Style.TEXT_DIM}Contributes:${UI.Style.TEXT_NORMAL} ${parts.join(", ")}`)
   }
 }
-
-// ---------------------------------------------------------------------------
-// hooks
-// ---------------------------------------------------------------------------
-
-export const PluginHooksCommand = cmd({
-  command: "hooks",
-  describe: "list all supported plugin hooks",
-  builder: (yargs: Argv) =>
-    yargs
-      .option("json", {
-        type: "boolean",
-        describe: "print hooks as JSON",
-      })
-      .option("category", {
-        type: "string",
-        describe: "filter hooks by category",
-        choices: HOOK_CATEGORIES,
-      }),
-  async handler(args) {
-    const category = args.category as HookCategory | undefined
-    const hooks = category ? HOOKS.filter((hook: HookDescriptor) => hook.category === category) : HOOKS
-
-    if (args.json) {
-      const hooksWithEvents = hooks.map((hook) =>
-        hook.name === "event" ? { ...hook, eventNames: BUS_EVENT_NAMES } : hook,
-      )
-      process.stdout.write(JSON.stringify(hooksWithEvents, null, 2) + EOL)
-      return
-    }
-
-    UI.empty()
-    process.stdout.write(UI.logo() + EOL + EOL)
-    process.stdout.write(UI.Style.TEXT_NORMAL_BOLD + "Plugin Hooks" + UI.Style.TEXT_NORMAL + EOL)
-    process.stdout.write("Current formal plugin hook surface for Synergy." + EOL + EOL)
-
-    if (category) {
-      process.stdout.write(`Category: ${category.padEnd(12)}` + EOL + EOL)
-    }
-
-    formatHookList(category)
-    process.stdout.write(
-      UI.Style.TEXT_DIM +
-        "Tip: use --json for structured output. See packages/plugin/README.md for authoring guidance." +
-        UI.Style.TEXT_NORMAL +
-        EOL,
-    )
-  },
-})
 
 // ---------------------------------------------------------------------------
 // add <spec>
@@ -194,6 +97,7 @@ export const PluginAddCommand = cmd({
         try {
           const plugin = await Plugin.add(spec)
           const manifest = await Plugin.manifest(plugin.id)
+          if (!manifest) throw new Error(`Plugin manifest not found: ${plugin.id}`)
 
           spinner.stop(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} ${plugin.name ?? plugin.id}`)
           UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
@@ -205,7 +109,7 @@ export const PluginAddCommand = cmd({
 
           printContributed(manifest)
 
-          if (manifest?.description) {
+          if (manifest.description) {
             UI.println(`  ${UI.Style.TEXT_DIM}Description:${UI.Style.TEXT_NORMAL} ${manifest.description}`)
           }
         } catch (e: unknown) {
@@ -347,14 +251,19 @@ export const PluginUpdateCommand = cmd({
           // Compute permission diff
           const oldCaps = oldManifest ? baseCapabilities(oldManifest) : []
           const newCaps = baseCapabilities(newManifest)
-          const diff = diffPermissions(id, oldManifest, newManifest, oldCaps, newCaps)
+          const diff = diffPermissions(id, {
+            oldVersion: oldManifest?.version,
+            newVersion: newManifest.version,
+            oldCapabilities: oldCaps,
+            newCapabilities: newCaps,
+          })
 
           if (!diff.requiresApproval) {
             consented.push({ current, resolved })
             continue
           }
 
-          printDiff(diff)
+          printPluginPermissionDiff(diff)
 
           if (autoApprove) {
             consented.push({ current, resolved })
@@ -390,48 +299,16 @@ export const PluginUpdateCommand = cmd({
         let failed = 0
 
         for (const { current, resolved } of consented) {
-          const { spec, id } = current
+          const { spec } = current
           const spinner = prompts.spinner()
           spinner.start(`Updating ${SpecToDisplay(spec)}`)
-
-          // Save backup of current lockfile entry for rollback
-          let backupEntry: import("../../plugin/lockfile-schema").PluginLockEntry | null = null
-          try {
-            const { pkg } = PluginSpec.parse(spec)
-            const currentLockfile = await Lockfile.read()
-            backupEntry = currentLockfile.plugins[current.id] ?? currentLockfile.plugins[pkg] ?? null
-          } catch {
-            // No existing lockfile entry
-          }
 
           let oldVersion: string | undefined
           let newVersion: string | undefined
           try {
             oldVersion = current.installedVersion
-            newVersion = resolved.manifest?.version ?? readPkgVersion(resolved.pluginDir)
-            await writeUpdatedPackageLock(current, resolved)
-
-            // Write new approval record
-            const updatedManifest = resolved.manifest
-            if (updatedManifest) {
-              const caps = baseCapabilities(updatedManifest)
-              const source = derivePluginSource(resolved.pluginDir)
-              const risk = computeRisk(caps, updatedManifest)
-              await saveApproval({
-                pluginId: id,
-                source,
-                version: updatedManifest.version ?? "0.0.0",
-                manifestHash: computeManifestHash(updatedManifest),
-                permissionsHash: computePermissionsHash(updatedManifest, caps),
-                approvedAt: Date.now(),
-                approvedBy: "user",
-                trustTier: "trusted-import",
-                approvedCapabilities: caps,
-                approvedNetworkDomains: updatedManifest.permissions?.network?.connectDomains ?? [],
-                approvedUISurfaces: [],
-                risk,
-              })
-            }
+            newVersion = resolved.manifest.version ?? readPkgVersion(resolved.pluginDir)
+            await Plugin.add(spec, { skipConsent: true })
 
             const versionInfo =
               oldVersion && newVersion
@@ -444,36 +321,6 @@ export const PluginUpdateCommand = cmd({
             const message = e instanceof Error ? e.message : String(e)
             spinner.stop(`${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${SpecToDisplay(spec)}`)
             UI.println(`${UI.Style.TEXT_DIM}  ${message}${UI.Style.TEXT_NORMAL}`)
-
-            // Rollback: restore old lockfile entry and re-install old version
-            if (backupEntry) {
-              try {
-                const { pkg } = PluginSpec.parse(spec)
-                const currentLockfile = await Lockfile.read()
-                const restoredLockfile = Lockfile.addEntry(currentLockfile, id, backupEntry)
-                await Lockfile.write(restoredLockfile)
-                UI.println(
-                  `  ${UI.Style.TEXT_WARNING}↩${UI.Style.TEXT_NORMAL} Rolled back lockfile for ${SpecToDisplay(spec)}`,
-                )
-              } catch {
-                UI.println(
-                  `  ${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} Could not roll back lockfile for ${SpecToDisplay(spec)}`,
-                )
-              }
-            }
-
-            // Record audit event for rollback
-            void recordEvent({
-              pluginId: id,
-              type: "update_failed_rolled_back",
-              details: {
-                spec,
-                oldVersion: oldVersion ?? "unknown",
-                newVersion: newVersion ?? "unknown",
-                error: message,
-                rolledBack: backupEntry != null,
-              },
-            })
             failed++
           }
         }
@@ -514,65 +361,37 @@ export const PluginListCommand = cmd({
     await ScopeContext.provide({
       scope: Scope.home(),
       async fn() {
-        const config = await Config.current()
-        const configSpecs = config.plugin ?? []
-        const loaded = await Plugin.getLoaded()
+        const statuses = await Plugin.getAllStatus()
         if (args.json) {
-          const result = []
-          for (const p of loaded) {
-            const m = await readManifest(p.pluginDir)
-            const version = readPkgVersion(p.pluginDir)
-            result.push({
-              id: p.id,
-              name: p.name,
-              version: version ?? null,
-              pluginDir: p.pluginDir,
-              contributed: getContributed(m),
-              manifest: m
-                ? {
-                    name: m.name,
-                    version: m.version,
-                    description: m.description,
-                    author: m.author,
-                    homepage: m.homepage,
-                  }
-                : null,
-            })
-          }
-          process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+          process.stdout.write(JSON.stringify(statuses, null, 2) + EOL)
           return
         }
 
-        if (configSpecs.length === 0) {
+        if (statuses.length === 0) {
           UI.println(UI.Style.TEXT_DIM + "No plugins configured." + UI.Style.TEXT_NORMAL)
           return
         }
 
-        for (const spec of configSpecs) {
-          const plugin = await Plugin.lookupSpec(spec)
-          const displayName = plugin?.name ?? plugin?.id ?? PluginSpec.displayName(spec)
-          const installed = plugin != null
-          const status = installed
-            ? `${UI.Style.TEXT_SUCCESS}✔ loaded${UI.Style.TEXT_NORMAL}`
-            : `${UI.Style.TEXT_DANGER}✘ not installed${UI.Style.TEXT_NORMAL}`
+        for (const status of statuses) {
+          const state = pluginStatusText(status)
+          const styledState = status.loaded
+            ? `${UI.Style.TEXT_SUCCESS}✔ ${state}${UI.Style.TEXT_NORMAL}`
+            : status.disabledPhase === "approval"
+              ? `${UI.Style.TEXT_WARNING}⚠ ${state}${UI.Style.TEXT_NORMAL}`
+              : `${UI.Style.TEXT_DANGER}✘ ${state}${UI.Style.TEXT_NORMAL}`
 
-          UI.println(`${displayName.padEnd(36)} ${status}`)
+          UI.println(`${status.name.padEnd(36)} ${styledState}`)
+          if (status.disabledReason) UI.println(`  ${UI.Style.TEXT_DIM}${status.disabledReason}${UI.Style.TEXT_NORMAL}`)
 
-          if (args.verbose && installed && plugin) {
-            const version = readPkgVersion(plugin.pluginDir)
-            if (version) {
-              UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${version}`)
-            }
-            UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${plugin.id}`)
-
-            const manifest = await readManifest(plugin.pluginDir)
-            if (manifest) {
-              UI.println(`  ${UI.Style.TEXT_DIM}Manifest:${UI.Style.TEXT_NORMAL} ${manifest.name} v${manifest.version}`)
-              if (manifest.description) {
-                UI.println(`    ${manifest.description}`)
-              }
-            }
-            printContributed(manifest)
+          if (args.verbose) {
+            if (status.version) UI.println(`  ${UI.Style.TEXT_DIM}Version:${UI.Style.TEXT_NORMAL} ${status.version}`)
+            UI.println(`  ${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL} ${status.id}`)
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${status.risk}  ${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.join(", ") || "none"}`,
+            )
+            UI.println(
+              `  ${UI.Style.TEXT_DIM}Contributions:${UI.Style.TEXT_NORMAL} ${status.tools.length} tools, ${status.operations.length} operations, ${status.uiContributions} UI surfaces`,
+            )
           }
         }
       },
@@ -656,74 +475,70 @@ export const PluginSearchCommand = cmd({
 })
 
 // ---------------------------------------------------------------------------
+// doctor [--fix]
+// ---------------------------------------------------------------------------
+
+export const PluginDoctorCommand = cmd({
+  command: "doctor",
+  describe: "diagnose plugin config, lockfile, and cache drift",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("fix", {
+        type: "boolean",
+        describe: "repair duplicate config specs, stale lock entries, and orphan archive caches",
+        default: false,
+      })
+      .option("json", {
+        type: "boolean",
+        describe: "output machine-readable JSON",
+        default: false,
+      }),
+  async handler(args) {
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      async fn() {
+        const result = await runPluginDoctor({ fix: args.fix as boolean })
+        if (args.json) {
+          process.stdout.write(JSON.stringify(result, null, 2) + EOL)
+          return
+        }
+
+        if (result.issues.length === 0) {
+          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugin installation state is clean.`)
+          return
+        }
+
+        for (const issue of result.issues) {
+          const marker =
+            issue.fixed === true
+              ? `${UI.Style.TEXT_SUCCESS}fixed${UI.Style.TEXT_NORMAL}`
+              : issue.fixed === false
+                ? `${UI.Style.TEXT_WARNING}manual${UI.Style.TEXT_NORMAL}`
+                : `${UI.Style.TEXT_DIM}found${UI.Style.TEXT_NORMAL}`
+          UI.println(`  ${marker} ${issue.message}`)
+        }
+
+        if (!args.fix) {
+          UI.println(
+            `${UI.Style.TEXT_DIM}Run ${UI.Style.TEXT_NORMAL}synergy plugin doctor --fix${UI.Style.TEXT_DIM} to repair safe drift automatically.${UI.Style.TEXT_NORMAL}`,
+          )
+        } else if (result.changed) {
+          UI.println(`${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Plugin installation state repaired.`)
+        } else {
+          UI.println(`${UI.Style.TEXT_DIM}No automatic repairs were needed.${UI.Style.TEXT_NORMAL}`)
+        }
+      },
+    })
+  },
+})
+
+// ---------------------------------------------------------------------------
 // Helpers (dependency)
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Consent gate helpers
 // ---------------------------------------------------------------------------
-
-function severityColor(severity: string): string {
-  switch (severity) {
-    case "high":
-      return UI.Style.TEXT_DANGER
-    case "medium":
-      return UI.Style.TEXT_WARNING
-    default:
-      return UI.Style.TEXT_DIM
-  }
-}
-
-function severityLabel(severity: string): string {
-  return `${severityColor(severity)}${severity}${UI.Style.TEXT_NORMAL}`
-}
-
-function printDiff(diff: PluginPermissionDiff) {
-  UI.println()
-  UI.println(
-    `${UI.Style.TEXT_NORMAL_BOLD}Permission changes:${UI.Style.TEXT_NORMAL} ${diff.fromVersion ?? "none"} → ${diff.toVersion}`,
-  )
-
-  if (diff.riskBefore || diff.riskAfter) {
-    const before = diff.riskBefore ? severityLabel(diff.riskBefore) : "—"
-    const after = diff.riskAfter ? severityLabel(diff.riskAfter) : "—"
-    UI.println(`  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${before} → ${after}`)
-  }
-
-  if (diff.added.length > 0) {
-    UI.println(`  ${severityColor("high")}Added:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.added) {
-      UI.println(
-        `    ${severityLabel(item.severity)} ${item.title}${item.description ? ` — ${UI.Style.TEXT_DIM}${item.description}${UI.Style.TEXT_NORMAL}` : ""}`,
-      )
-    }
-  }
-
-  if (diff.removed.length > 0) {
-    UI.println(`  ${severityColor("low")}Removed:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.removed) {
-      UI.println(`    ${item.title}`)
-    }
-  }
-
-  if (diff.unchanged.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_SUCCESS}Unchanged:${UI.Style.TEXT_NORMAL}`)
-    for (const item of diff.unchanged) {
-      UI.println(`    ${severityLabel(item.severity)} ${item.title}`)
-    }
-  }
-
-  if (diff.changed.length > 0) {
-    UI.println(`  ${UI.Style.TEXT_INFO}Changed severity:${UI.Style.TEXT_NORMAL}`)
-    for (const c of diff.changed) {
-      const before = severityLabel(c.before ?? "none")
-      const after = severityLabel(c.after ?? "none")
-      UI.println(`    ${c.key}: ${before} → ${after}`)
-    }
-  }
-
-  UI.println()
-}
 
 /**
  * Resolve a new plugin manifest from a spec string by installing it to the
@@ -736,29 +551,32 @@ interface ConfiguredPluginPackage {
   pkg: string
   version: string
   pluginDir: string
-  manifest: PluginManifest | null
+  manifest: PluginManifest
   installedVersion?: string
 }
 
 interface ResolvedPluginPackage {
-  manifest: PluginManifest | null
+  manifest: PluginManifest
   pluginDir: string
   pkg: string
   version: string
-  entryPath: string
+  entryPath?: string
 }
 
 async function readConfiguredPluginPackage(spec: string): Promise<ConfiguredPluginPackage> {
-  const { pkg, version } = PluginSpec.parse(spec)
-  const pluginDir = resolveSpecPluginDir(spec)
-  const manifest = await readManifest(pluginDir)
+  const resolved = await resolvePluginSpec(spec, {
+    install: false,
+    refresh: false,
+  })
+  const pluginDir = resolved.pluginDir
+  const manifest = resolved.manifest
   return {
     spec,
-    pkg,
-    version,
+    pkg: resolved.pkg,
+    version: resolved.version,
     pluginDir,
     manifest,
-    id: manifest?.name ?? PluginSpec.displayName(spec),
+    id: manifest.id,
     installedVersion: readPkgVersion(pluginDir),
   }
 }
@@ -767,7 +585,7 @@ function pluginMatches(plugin: ConfiguredPluginPackage, target: string): boolean
   return (
     plugin.id === target ||
     plugin.pkg === target ||
-    plugin.manifest?.name === target ||
+    plugin.manifest.name === target ||
     PluginSpec.displayName(plugin.spec) === target
   )
 }
@@ -776,47 +594,21 @@ async function resolveNewManifest(
   spec: string,
   options: { refresh?: boolean } = {},
 ): Promise<ResolvedPluginPackage | null> {
-  const { pkg, version } = PluginSpec.parse(spec)
   try {
-    if (options.refresh) {
-      await BunProc.invalidateCache(pkg)
+    const resolved = await resolvePluginSpec(spec, {
+      install: !spec.startsWith("file://"),
+      refresh: options.refresh && !spec.startsWith("file://"),
+    })
+    return {
+      manifest: resolved.manifest,
+      pluginDir: resolved.pluginDir,
+      pkg: resolved.pkg,
+      version: resolved.version,
+      entryPath: resolved.entryPath,
     }
-    const result = await BunProc.install(pkg, version)
-    const pluginDir = findPackageRoot(result.entryPath)
-    const manifest = await readManifest(pluginDir)
-    return { manifest, pluginDir, pkg, version, entryPath: result.entryPath }
   } catch {
     return null
   }
-}
-
-async function writeUpdatedPackageLock(current: ConfiguredPluginPackage, resolved: ResolvedPluginPackage) {
-  const manifest = resolved.manifest
-  const capabilities = manifest ? baseCapabilities(manifest) : []
-  const manifestHash = manifest ? computeManifestHash(manifest) : undefined
-  const permissionsHash = manifest ? computePermissionsHash(manifest, capabilities) : undefined
-  const source = derivePluginSource(resolved.pluginDir)
-  const risk = manifest ? computeRisk(capabilities, manifest) : "low"
-  const runtimeMode = resolveRuntimeMode({
-    source,
-    manifestMode: manifest?.runtime?.mode,
-    devMode: Installation.CHANNEL === "local",
-    userTrusted: false,
-    risk,
-  })
-  const lockfile = await Lockfile.read()
-  const integrity = await Lockfile.computeIntegrity(resolved.entryPath)
-  const updatedLockfile = Lockfile.addEntry(lockfile, current.id, {
-    spec: current.spec,
-    version: manifest?.version ?? resolved.version,
-    resolved: resolved.entryPath,
-    ...(integrity ? { integrity } : {}),
-    ...(permissionsHash ? { permissionsHash } : {}),
-    ...(manifestHash ? { manifestHash } : {}),
-    runtimeMode,
-    ...(manifest ? { approvalId: current.id } : {}),
-  })
-  await Lockfile.write(updatedLockfile)
 }
 
 async function notifyServerPluginReload() {
@@ -835,7 +627,7 @@ async function notifyServerPluginReload() {
       scope: "global",
       reason: "plugin update",
     }),
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(await pluginCliRequestTimeoutMs()),
   }).catch((error) => ({ ok: false, status: 0, text: async () => String(error) }) as Response)
 
   if (!response.ok) {
@@ -868,7 +660,6 @@ export const PluginCommand = cmd({
   describe: "install, remove, update, and inspect plugins",
   builder: (yargs: Argv) =>
     yargs
-      .command(PluginHooksCommand)
       .command(PluginCreateCommand)
       .command(PluginAddCommand)
       .command(PluginRemoveCommand)
@@ -878,11 +669,11 @@ export const PluginCommand = cmd({
       .command(PluginPackCommand)
       .command(PluginListCommand)
       .command(PluginSearchCommand)
+      .command(PluginDoctorCommand)
       .command(PluginValidateCommand)
       .command(PluginDevCommand)
       .command(PluginRuntimeCommand)
       .command(PluginTestCommand)
-      .command(PluginPublishCommand)
       .command(PluginPublishMarketCommand)
       .command(PluginEntryCommand)
       .command(PluginInfoCommand)

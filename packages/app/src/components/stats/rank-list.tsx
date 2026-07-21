@@ -1,7 +1,10 @@
 import { createMemo, For, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLocale } from "@/context/locale"
+import { translateDescriptor } from "@/locales/translate"
 import type { RankingMetric, RankingRow } from "./model"
 import { formatCompact, formatCost } from "./use-stats"
+import { S } from "./stats-i18n"
 
 type LegacyRankItem = {
   id: string
@@ -42,62 +45,40 @@ const ANIMATION_STYLE = `
 
 const LEGACY_METRIC: RankingMetric = {
   id: "value",
-  label: "Value",
+  label: S.rankLegacyValue,
   unit: "",
   color: "indigo",
 }
 
-const PALETTE = {
+const ACTIVE_METRIC_CLASSES = "bg-surface-interactive-selected text-text-base ring-border-selected"
+const METRIC_SERIES = {
   indigo: {
-    tab: "bg-[rgba(56,88,182,0.14)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.28)] dark:text-[rgba(157,183,255,0.92)]",
-    text: "text-[rgba(73,103,194,0.96)] dark:text-[rgba(157,183,255,0.92)]",
-    badge:
-      "bg-[rgba(56,88,182,0.12)] text-[rgba(73,103,194,0.96)] ring-[rgba(73,103,194,0.2)] dark:text-[rgba(157,183,255,0.92)]",
-    rail: "rgba(56, 88, 182, 0.14)",
-    bar: "linear-gradient(90deg, rgba(56,88,182,0.88), rgba(86,118,204,0.62))",
-    glow: "0 0 0 1px rgba(73,103,194,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-1) 14%, transparent)",
+    bar: "var(--chart-series-1)",
   },
   emerald: {
-    tab: "bg-[rgba(39,143,116,0.14)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.26)] dark:text-[rgba(126,213,188,0.92)]",
-    text: "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]",
-    badge:
-      "bg-[rgba(39,143,116,0.12)] text-[rgba(34,126,102,0.96)] ring-[rgba(39,143,116,0.2)] dark:text-[rgba(126,213,188,0.92)]",
-    rail: "rgba(39, 143, 116, 0.14)",
-    bar: "linear-gradient(90deg, rgba(39,143,116,0.88), rgba(72,175,144,0.62))",
-    glow: "0 0 0 1px rgba(39,143,116,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-3) 14%, transparent)",
+    bar: "var(--chart-series-3)",
   },
   amber: {
-    tab: "bg-[rgba(196,132,36,0.14)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.28)] dark:text-[rgba(245,202,134,0.92)]",
-    text: "text-[rgba(155,103,26,0.96)] dark:text-[rgba(245,202,134,0.92)]",
-    badge:
-      "bg-[rgba(196,132,36,0.12)] text-[rgba(155,103,26,0.96)] ring-[rgba(196,132,36,0.2)] dark:text-[rgba(245,202,134,0.92)]",
-    rail: "rgba(196, 132, 36, 0.14)",
-    bar: "linear-gradient(90deg, rgba(196,132,36,0.9), rgba(222,168,84,0.64))",
-    glow: "0 0 0 1px rgba(196,132,36,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-4) 14%, transparent)",
+    bar: "var(--chart-series-4)",
   },
   rose: {
-    tab: "bg-[rgba(163,92,68,0.14)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.24)] dark:text-[rgba(236,176,156,0.9)]",
-    text: "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]",
-    badge:
-      "bg-[rgba(163,92,68,0.12)] text-[rgba(145,79,57,0.96)] ring-[rgba(163,92,68,0.18)] dark:text-[rgba(236,176,156,0.9)]",
-    rail: "rgba(163, 92, 68, 0.13)",
-    bar: "linear-gradient(90deg, rgba(163,92,68,0.86), rgba(196,125,102,0.6))",
-    glow: "0 0 0 1px rgba(163,92,68,0.12), inset 0 1px 0 rgba(214,204,190,0.05)",
+    rail: "color-mix(in srgb, var(--chart-series-7) 14%, transparent)",
+    bar: "var(--chart-series-7)",
   },
-} satisfies Record<
-  RankingMetric["color"],
-  { tab: string; text: string; badge: string; rail: string; bar: string; glow: string }
->
+} satisfies Record<RankingMetric["color"], { rail: string; bar: string }>
 
 function isNewProps(props: RankListProps): props is Extract<RankListProps, { rows: RankingRow[] }> {
   return "rows" in props
 }
 
-function normalizeProps(props: RankListProps) {
+function normalizeProps(props: RankListProps, i18n: ReturnType<typeof useLocale>["i18n"]) {
   if (isNewProps(props)) return props
   return {
     title: props.title,
-    description: "Switch metrics to re-rank this list.",
+    description: i18n._(S.rankFallbackDesc.id),
     metrics: [LEGACY_METRIC],
     rows: props.items.map((item) => ({
       id: item.id,
@@ -115,28 +96,38 @@ function trimDecimal(value: number, digits = 1) {
   return value.toFixed(digits).replace(/\.0$/, "")
 }
 
-function formatCount(value: number) {
+function formatCount(value: number, fmt: (n: number) => string) {
   if (Math.abs(value) >= 100_000) return formatCompact(value)
-  return Math.round(value).toLocaleString()
+  return fmt(Math.round(value))
 }
 
-function formatMetricValue(metric: RankingMetric, raw: number, mode: "full" | "compact" = "full") {
+function metricLabel(metric: RankingMetric, i18n: ReturnType<typeof useLocale>["i18n"]): string {
+  return translateDescriptor(metric.label, i18n)
+}
+
+function formatMetricValue(
+  metric: RankingMetric,
+  raw: number,
+  fmt: (n: number) => string,
+  i18n: ReturnType<typeof useLocale>["i18n"],
+  mode: "full" | "compact" = "full",
+) {
   const value = Number.isFinite(raw) ? raw : 0
   if (metric.unit === "usd") return formatCost(value)
   if (metric.unit === "%")
-    return `${value >= 10 ? Math.round(value) : trimDecimal(value)}% ${mode === "full" ? metric.label.toLowerCase() : ""}`.trim()
+    return `${value >= 10 ? Math.round(value) : trimDecimal(value)}% ${mode === "full" ? metricLabel(metric, i18n).toLowerCase() : ""}`.trim()
   if (metric.unit === "ms") {
-    if (value >= 1000) return `${trimDecimal(value / 1000)}s avg`
-    return `${Math.round(value)}ms avg`
+    if (value >= 1000) return i18n._(S.rankAvgSec.id, { value: trimDecimal(value / 1000) })
+    return i18n._(S.rankAvgMs.id, { value: String(Math.round(value)) })
   }
-  if (!metric.unit) return formatCount(value)
-  return `${formatCount(value)} ${metric.unit}`
+  if (!metric.unit) return formatCount(value, fmt)
+  return `${formatCount(value, fmt)} ${metric.unit}`
 }
 
-function metricUnitLabel(metric: RankingMetric) {
-  if (metric.unit === "usd") return "USD"
-  if (metric.unit === "%") return "rate"
-  if (metric.unit === "ms") return "time"
+function metricUnitLabel(metric: RankingMetric, i18n: ReturnType<typeof useLocale>["i18n"]) {
+  if (metric.unit === "usd") return i18n._(S.rankMetricUSD.id)
+  if (metric.unit === "%") return i18n._(S.rankMetricRate.id)
+  if (metric.unit === "ms") return i18n._(S.rankMetricTime.id)
   return metric.unit
 }
 
@@ -149,7 +140,8 @@ function sortedByMetric(rows: RankingRow[], metricID: string) {
 }
 
 export function RankList(props: RankListProps) {
-  const normalized = createMemo(() => normalizeProps(props))
+  const { i18n, fmt } = useLocale()
+  const normalized = createMemo(() => normalizeProps(props, i18n))
   const [state, setState] = createStore({
     activeMetricID: isNewProps(props)
       ? (props.defaultMetric ?? props.metrics[0]?.id ?? LEGACY_METRIC.id)
@@ -162,31 +154,37 @@ export function RankList(props: RankListProps) {
   const activeMetric = createMemo(
     () => metrics().find((metric) => metric.id === state.activeMetricID) ?? metrics()[0] ?? LEGACY_METRIC,
   )
-  const palette = createMemo(() => PALETTE[activeMetric().color])
+  const metricSeries = createMemo(() => METRIC_SERIES[activeMetric().color])
   const sortedRows = createMemo(() => sortedByMetric(normalized().rows, activeMetric().id))
   const visibleRows = createMemo(() => (state.expanded ? sortedRows() : sortedRows().slice(0, top())))
   const hiddenCount = createMemo(() => Math.max(0, sortedRows().length - top()))
   const maxValue = createMemo(() => Math.max(...sortedRows().map((row) => row.values[activeMetric().id] ?? 0), 0))
   const description = createMemo(() => {
     const text = normalized().description.trim()
-    const sortHint = `Sorted by ${activeMetric().label.toLowerCase()}${metricUnitLabel(activeMetric()) ? ` · ${metricUnitLabel(activeMetric())}` : ""}`
+    const unit = metricUnitLabel(activeMetric(), i18n)
+    const sortHint = i18n._(S.rankSortedBy.id, {
+      metric: metricLabel(activeMetric(), i18n).toLowerCase(),
+      unit: unit ? ` · ${unit}` : "",
+    })
     return text ? `${text} · ${sortHint}` : sortHint
   })
 
   return (
     <>
       <style>{ANIMATION_STYLE}</style>
-      <section class="rounded-[1.25rem] bg-surface-raised-base/95 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06),inset_0_-1px_0_rgba(24,28,38,0.04)]">
+      <section class="rounded-[1.25rem] bg-surface-raised-base/95 p-3 ring-1 ring-inset ring-border-weaker-base">
         <div class="flex items-start justify-between gap-4 px-1 pb-3">
           <div class="min-w-0">
-            <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">Ranking</div>
+            <div class="text-[9px] font-medium uppercase tracking-[0.18em] text-text-weaker">
+              {i18n._(S.rankLabel.id)}
+            </div>
             <h3 class="mt-1 text-15-semibold text-text-strong tracking-tight">{normalized().title}</h3>
             <p class="mt-1 text-10-regular text-text-weak line-clamp-2">{description()}</p>
           </div>
           <div
-            class={`hidden rounded-full px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.16em] ring-1 ring-inset md:block ${palette().tab}`}
+            class={`hidden rounded-full px-2.5 py-1 text-[9px] font-medium uppercase tracking-[0.16em] ring-1 ring-inset md:block ${ACTIVE_METRIC_CLASSES}`}
           >
-            {activeMetric().label}
+            {metricLabel(activeMetric(), i18n)}
           </div>
         </div>
 
@@ -199,14 +197,14 @@ export function RankList(props: RankListProps) {
                   type="button"
                   class={`rounded-full px-2.5 py-1.5 text-10-medium ring-1 ring-inset transition-all ${
                     isActive()
-                      ? `${PALETTE[metric.color].tab} shadow-[inset_0_1px_0_rgba(214,204,190,0.07)]`
+                      ? ACTIVE_METRIC_CLASSES
                       : "bg-surface-inset-base/65 text-text-weak ring-border-base/45 hover:bg-surface-inset-base hover:text-text-base"
                   }`}
                   onClick={() => setState({ activeMetricID: metric.id, expanded: false })}
                 >
-                  <span>{metric.label}</span>
+                  <span>{metricLabel(metric, i18n)}</span>
                   <span class="ml-1.5 text-[9px] uppercase tracking-[0.12em] opacity-70">
-                    {metric.unit || "metric"}
+                    {metric.unit || i18n._(S.rankMetricUnit.id)}
                   </span>
                 </button>
               )
@@ -219,7 +217,7 @@ export function RankList(props: RankListProps) {
             when={visibleRows().length > 0}
             fallback={
               <div class="rounded-xl bg-surface-inset-base/45 px-3.5 py-5 text-11-regular text-text-weak">
-                No ranking data yet.
+                {i18n._(S.rankNoData.id)}
               </div>
             }
           >
@@ -236,14 +234,11 @@ export function RankList(props: RankListProps) {
                 return (
                   <article
                     class="rounded-xl bg-surface-inset-base/45 px-3.5 py-3 ring-1 ring-inset ring-border-base/45"
-                    style={{
-                      animation: `rankListEnter 0.32s ease-out ${index() * 34}ms both`,
-                      "box-shadow": palette().glow,
-                    }}
+                    style={{ animation: `rankListEnter 0.32s ease-out ${index() * 34}ms both` }}
                   >
                     <div class="flex items-start gap-3">
                       <div
-                        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-10-semibold tabular-nums ring-1 ring-inset ${palette().badge}`}
+                        class={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-10-semibold tabular-nums ring-1 ring-inset ${ACTIVE_METRIC_CLASSES}`}
                       >
                         {index() + 1}
                       </div>
@@ -258,19 +253,19 @@ export function RankList(props: RankListProps) {
                             </Show>
                           </div>
                           <div class="shrink-0 text-right">
-                            <div class={`text-12-semibold tabular-nums ${palette().text}`}>
-                              {formatMetricValue(activeMetric(), value())}
+                            <div class="text-12-semibold tabular-nums text-text-base">
+                              {formatMetricValue(activeMetric(), value(), fmt.number, i18n)}
                             </div>
                             <div class="mt-1 text-[9px] uppercase tracking-[0.16em] text-text-weaker">
-                              {activeMetric().label}
+                              {metricLabel(activeMetric(), i18n)}
                             </div>
                           </div>
                         </div>
 
-                        <div class="mt-3 h-1.5 rounded-full" style={{ background: palette().rail }}>
+                        <div class="mt-3 h-1.5 rounded-full" style={{ background: metricSeries().rail }}>
                           <div
                             class="h-full rounded-full transition-all duration-300 ease-out"
-                            style={{ width: `${width()}%`, background: palette().bar }}
+                            style={{ width: `${width()}%`, background: metricSeries().bar }}
                           />
                         </div>
 
@@ -279,7 +274,8 @@ export function RankList(props: RankListProps) {
                             <For each={secondaryMetrics()}>
                               {(metric) => (
                                 <span class="rounded-full bg-surface-raised-stronger-non-alpha/70 px-2 py-1 text-[9px] font-medium tabular-nums text-text-weak ring-1 ring-inset ring-border-base/45">
-                                  {metric.label} {formatMetricValue(metric, row.values[metric.id] ?? 0, "compact")}
+                                  {metricLabel(metric, i18n)}{" "}
+                                  {formatMetricValue(metric, row.values[metric.id] ?? 0, fmt.number, i18n, "compact")}
                                 </span>
                               )}
                             </For>
@@ -301,7 +297,9 @@ export function RankList(props: RankListProps) {
               class="rounded-full bg-surface-inset-base/65 px-3 py-1.5 text-10-medium text-text-weak ring-1 ring-inset ring-border-base/45 transition-colors hover:bg-surface-inset-base hover:text-text-base"
               onClick={() => setState("expanded", (expanded) => !expanded)}
             >
-              {state.expanded ? `Show top ${top()}` : `Show all ${sortedRows().length}`}
+              {state.expanded
+                ? i18n._(S.rankShowTop.id, { n: String(top()) })
+                : i18n._(S.rankShowAll.id, { n: String(sortedRows().length) })}
             </button>
           </div>
         </Show>

@@ -28,9 +28,9 @@ export function StarRating(props: {
             size="small"
             class={
               state === "filled"
-                ? "text-text-warning"
+                ? "text-text-on-warning-base"
                 : state === "half"
-                  ? "text-text-warning/60"
+                  ? "text-text-on-warning-base/60"
                   : "text-text-weaker/40"
             }
           />

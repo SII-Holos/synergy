@@ -7,10 +7,12 @@ import { parse as parseJsonc } from "jsonc-parser"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Identifier } from "../id/id"
 import { Session } from "../session"
+import { isDefaultTitle } from "../session/title"
 import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { fn } from "../util/fn"
 import { Log } from "../util/log"
+import { isPathContained } from "../util/path-contain"
 
 export namespace Worktree {
   export const Owner = z.discriminatedUnion("type", [
@@ -43,6 +45,7 @@ export namespace Worktree {
       managed: z.boolean().optional(),
       stale: z.boolean().optional(),
       dirty: z.boolean().optional(),
+      diskBytes: z.number().optional(),
       owner: Owner.optional(),
       bindings: z.array(z.string()).optional(),
       lifecycle: z.enum(["active", "detached", "gc_candidate", "deleted"]).optional(),
@@ -87,7 +90,15 @@ export namespace Worktree {
       force: z.boolean().optional().default(false),
     })
     .meta({ ref: "WorktreeTargetInput" })
-  export type TargetInput = z.infer<typeof TargetInput>
+  export type TargetInput = z.input<typeof TargetInput>
+
+  export const RemoveInput = z
+    .object({
+      target: z.string().min(1),
+      force: z.boolean().optional().default(false),
+    })
+    .meta({ ref: "WorktreeRemoveInput" })
+  export type RemoveInput = z.input<typeof RemoveInput>
 
   export const CommandResult = z
     .object({
@@ -118,7 +129,18 @@ export namespace Worktree {
   export const SetupConfigError = NamedError.create("WorktreeSetupConfigError", z.object({ message: z.string() }))
   export const LockFailedError = NamedError.create("WorktreeLockFailedError", z.object({ message: z.string() }))
   export const NotFoundError = NamedError.create("WorktreeNotFoundError", z.object({ message: z.string() }))
+  export const UnavailableError = NamedError.create(
+    "WorktreeUnavailableError",
+    z.object({
+      message: z.string(),
+      reason: z.literal("missing"),
+    }),
+  )
   export const DirtyError = NamedError.create("WorktreeDirtyError", z.object({ message: z.string() }))
+  export const SessionBusyError = NamedError.create(
+    "WorktreeSessionBusyError",
+    z.object({ message: z.string(), sessionID: z.string() }),
+  )
 
   const ADJECTIVES = [
     "brave",
@@ -205,7 +227,98 @@ export namespace Worktree {
     synergyAcquired: boolean
   }
 
+  interface UseState {
+    removing: boolean
+    active: Map<symbol, string | undefined>
+  }
+
   const activeLocks = new Map<string, LockState>()
+  const activeUses = new Map<string, UseState>()
+  const registryMutations = new Map<string, Promise<void>>()
+
+  function useState(directory: string) {
+    const resolved = path.resolve(directory)
+    const existing = activeUses.get(resolved)
+    if (existing) return { resolved, state: existing }
+    const state: UseState = { removing: false, active: new Map() }
+    activeUses.set(resolved, state)
+    return { resolved, state }
+  }
+
+  function releaseUse(resolved: string, state: UseState, token: symbol) {
+    state.active.delete(token)
+    if (!state.removing && state.active.size === 0 && activeUses.get(resolved) === state) {
+      activeUses.delete(resolved)
+    }
+  }
+
+  async function acquireUse(directory: string, sessionID?: string) {
+    const current = useState(directory)
+    if (current.state.removing) {
+      throw new CreateFailedError({ message: `Worktree ${path.basename(current.resolved)} is being removed.` })
+    }
+    const token = Symbol("worktree-use")
+    current.state.active.set(token, sessionID)
+    try {
+      if (!(await exists(current.resolved))) {
+        throw new NotFoundError({ message: `Worktree directory not found: ${current.resolved}` })
+      }
+      return () => releaseUse(current.resolved, current.state, token)
+    } catch (error) {
+      releaseUse(current.resolved, current.state, token)
+      throw error
+    }
+  }
+
+  export async function withUse<T>(directory: string, sessionID: string | undefined, fn: () => Promise<T>) {
+    const release = await acquireUse(directory, sessionID)
+    try {
+      return await fn()
+    } finally {
+      release()
+    }
+  }
+
+  function beginRemoval(info: Info) {
+    const current = useState(info.path)
+    if (current.state.removing) {
+      throw new CreateFailedError({ message: `Worktree ${info.name} is already being removed.` })
+    }
+    if (current.state.active.size > 0) {
+      const sessionID = Array.from(current.state.active.values()).find((value) => value !== undefined)
+      if (sessionID) {
+        throw new SessionBusyError({
+          sessionID,
+          message: `Wait for session ${sessionID} to finish using worktree ${info.name} before removing it.`,
+        })
+      }
+      throw new CreateFailedError({ message: `Worktree ${info.name} is currently in use.` })
+    }
+    current.state.removing = true
+    return () => {
+      current.state.removing = false
+      if (current.state.active.size === 0 && activeUses.get(current.resolved) === current.state) {
+        activeUses.delete(current.resolved)
+      }
+    }
+  }
+
+  async function withRegistryMutation<T>(key: string, fn: () => Promise<T>) {
+    const previous = registryMutations.get(key) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    const next = previous.catch(() => undefined).then(() => current)
+    registryMutations.set(key, next)
+    await previous.catch(() => undefined)
+    try {
+      return await fn()
+    } finally {
+      release()
+      if (registryMutations.get(key) === next) registryMutations.delete(key)
+    }
+  }
 
   function pick<const T extends readonly string[]>(items: T) {
     return items[Math.floor(Math.random() * items.length)]
@@ -223,6 +336,16 @@ export namespace Worktree {
       .replace(/^-+/, "")
       .replace(/-+$/, "")
     return result || randomName()
+  }
+
+  function purposeSlug(input?: string) {
+    const base = input ? slug(input) : "session"
+    const withoutBrand = base.replace(/^synergy(?:-+|$)/, "")
+    return withoutBrand || "session"
+  }
+
+  function worktreeName(segment: string) {
+    return `synergy-${segment}`
   }
 
   function hashID(input: string) {
@@ -264,6 +387,13 @@ export namespace Worktree {
       .then(() => true)
       .catch(() => false)
   }
+  export async function assertAvailable(directory: string) {
+    if (await exists(path.resolve(directory))) return
+    throw new UnavailableError({
+      message: "The worktree for this session is no longer available.",
+      reason: "missing",
+    })
+  }
 
   async function readJson<T>(filepath: string, schema: z.ZodType<T>): Promise<T | undefined> {
     const text = await Bun.file(filepath)
@@ -279,12 +409,13 @@ export namespace Worktree {
   }
 
   async function removeRegistry(id: string, repoRoot = ensureGitScope().repoRoot) {
-    await fs.rm(registryPath({ id }, repoRoot), { force: true }).catch(() => {})
+    const filepath = registryPath({ id }, repoRoot)
+    await withRegistryMutation(filepath, () => fs.rm(filepath, { force: true }).catch(() => {}))
   }
 
   function normalizeRegistryPath(info: RegistryInfo, repoRoot: string): RegistryInfo {
     const resolved = path.resolve(info.path)
-    if (resolved.startsWith(path.resolve(repoRoot) + path.sep)) return info
+    if (isPathContained(repoRoot, resolved)) return info
     return { ...info, path: path.join(worktreesRoot(repoRoot), path.basename(resolved)) }
   }
 
@@ -386,7 +517,51 @@ export namespace Worktree {
     })
   }
 
-  export async function list(): Promise<Info[]> {
+  async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T, index: number) => Promise<R>) {
+    const result = new Array<R>(items.length)
+    let cursor = 0
+    const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor++
+        result[index] = await fn(items[index]!, index)
+      }
+    })
+    await Promise.all(workers)
+    return result
+  }
+
+  async function directorySize(info: Info, repoRoot: string) {
+    const root = path.resolve(info.path)
+    const excluded = new Set([path.join(root, ".git")])
+    if (info.isMain) excluded.add(path.resolve(worktreesRoot(repoRoot)))
+
+    let total = 0
+    const pending = [root]
+    while (pending.length > 0) {
+      const batch = pending.splice(0, 32)
+      const inspected = await Promise.all(
+        batch.map(async (current) => {
+          if (excluded.has(path.resolve(current))) return { size: 0, children: [] as string[] }
+          try {
+            const stat = await fs.lstat(current)
+            if (!stat.isDirectory() || stat.isSymbolicLink()) return { size: stat.size, children: [] as string[] }
+            const entries = await fs.readdir(current)
+            return { size: 0, children: entries.map((entry) => path.join(current, entry)) }
+          } catch (error) {
+            if (current === root) throw error
+            return { size: 0, children: [] as string[] }
+          }
+        }),
+      )
+      for (const item of inspected) {
+        total += item.size
+        pending.push(...item.children)
+      }
+    }
+    return total
+  }
+
+  async function inventory() {
     const { scope, repoRoot } = ensureGitScope()
     const [gitEntries, registry] = await Promise.all([gitList(repoRoot), readRegistry(repoRoot)])
     const seen = new Set<string>()
@@ -401,7 +576,22 @@ export namespace Worktree {
       result.push({ ...info, stale: true })
     }
 
-    return result
+    return { items: result, repoRoot }
+  }
+
+  export async function list(): Promise<Info[]> {
+    const { items, repoRoot } = await inventory()
+    return mapConcurrent(items, 4, async (item) => {
+      const [dirty, diskBytes] = await Promise.all([
+        item.stale ? undefined : isDirty(item.path).catch(() => undefined),
+        item.stale || !item.managed ? undefined : directorySize(item, repoRoot).catch(() => undefined),
+      ])
+      return {
+        ...item,
+        dirty,
+        diskBytes,
+      }
+    })
   }
 
   async function isDirty(directory: string) {
@@ -494,11 +684,12 @@ export namespace Worktree {
 
   async function candidate(repoRoot: string, baseName?: string, sessionID?: string) {
     const root = worktreesRoot(repoRoot)
-    const base = slug(baseName || randomName())
+    const purpose = purposeSlug(baseName)
     const suffix = sessionID ? sessionID.replace(/^ses_/, "").slice(0, 6) : Date.now().toString(36).slice(-6)
     for (const attempt of Array.from({ length: 26 }, (_, i) => i)) {
-      const name = attempt === 0 ? `${base}-${suffix}` : `${base}-${suffix}-${attempt + 1}`
-      const branch = `synergy/${name}`
+      const segment = attempt === 0 ? `${purpose}-${suffix}` : `${purpose}-${suffix}-${attempt + 1}`
+      const name = worktreeName(segment)
+      const branch = `synergy/${segment}`
       const directory = path.join(root, name)
       if (await exists(directory)) continue
       const ref = `refs/heads/${branch}`
@@ -521,7 +712,7 @@ export namespace Worktree {
     await fs.mkdir(worktreesRoot(repoRoot), { recursive: true })
 
     const session = parsed.sessionID ? await Session.get(parsed.sessionID) : undefined
-    const titleName = session?.title && !session.title.startsWith("New Session") ? session.title : undefined
+    const titleName = session?.title && !isDefaultTitle(session.title) ? session.title : undefined
     const info = await candidate(repoRoot, parsed.name ?? titleName, parsed.sessionID)
     const base = await resolveBase({ baseRef: parsed.baseRef, baseRevision: parsed.baseRevision }, repoRoot)
 
@@ -552,17 +743,19 @@ export namespace Worktree {
     })
 
     try {
-      const setup = await setupInfo(repoRoot)
-      try {
-        await copyIgnoredFiles(setup, repoRoot, registry.path)
-        await runSetup(setup, repoRoot, registry.path, registry)
-      } catch (error) {
-        registry.setupFailed = true
-        registry.setupError = error instanceof Error ? error.message : String(error)
-      }
-      await writeRegistry(registry, repoRoot)
-      if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
-      return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
+      return await withUse(registry.path, parsed.sessionID, async () => {
+        const setup = await setupInfo(repoRoot)
+        try {
+          await copyIgnoredFiles(setup, repoRoot, registry.path)
+          await runSetup(setup, repoRoot, registry.path, registry)
+        } catch (error) {
+          registry.setupFailed = true
+          registry.setupError = error instanceof Error ? error.message : String(error)
+        }
+        await writeRegistry(registry, repoRoot)
+        if (parsed.sessionID && parsed.bind) await bindSession(parsed.sessionID, registry)
+        return fromGitEntry({ path: registry.path, branch: registry.branch }, registry, repoRoot, scope.id)
+      })
     } catch (error) {
       await cleanupCreatedWorktree(repoRoot, registry.path, registry.branch)
       throw error
@@ -574,7 +767,7 @@ export namespace Worktree {
   }
 
   async function find(target: string) {
-    const items = await list()
+    const { items } = await inventory()
     const found = items.find((item) => match(item, target))
     if (!found) throw new NotFoundError({ message: `Worktree not found: ${target}` })
     return found
@@ -583,19 +776,22 @@ export namespace Worktree {
   async function updateBinding(info: Info, sessionID: string, action: "add" | "remove") {
     if (!info.managed || !info.id) return
     const { repoRoot } = ensureGitScope()
-    const current = await readJson(registryPath({ id: info.id }, repoRoot), RegistryInfo)
-    if (!current) return
-    const bindings = new Set(current.bindings)
-    if (action === "add") bindings.add(sessionID)
-    else bindings.delete(sessionID)
-    const updated = RegistryInfo.parse({
-      ...current,
-      bindings: Array.from(bindings),
-      lastUsedAt: Date.now(),
-      updatedAt: Date.now(),
-      lifecycle: bindings.size === 0 ? "detached" : "active",
+    const filepath = registryPath({ id: info.id }, repoRoot)
+    await withRegistryMutation(filepath, async () => {
+      const current = await readJson(filepath, RegistryInfo)
+      if (!current) return
+      const bindings = new Set(current.bindings)
+      if (action === "add") bindings.add(sessionID)
+      else bindings.delete(sessionID)
+      const updated = RegistryInfo.parse({
+        ...current,
+        bindings: Array.from(bindings),
+        lastUsedAt: Date.now(),
+        updatedAt: Date.now(),
+        lifecycle: bindings.size === 0 ? "detached" : "active",
+      })
+      await writeRegistry(updated, repoRoot)
     })
-    await writeRegistry(updated, repoRoot)
   }
 
   async function bindSession(sessionID: string, info: Info) {
@@ -612,20 +808,37 @@ export namespace Worktree {
       resolvedBaseCommit: info.resolvedBaseCommit,
       originalCheckout: path.resolve(repoRoot),
     }
-    await Session.updateWorkspace(sessionID, workspace)
-    ScopeContext.refreshWorkspace(workspace as import("../session/types").Workspace)
     await updateBinding(info, sessionID, "add")
+    try {
+      await Session.updateWorkspace(sessionID, workspace)
+      ScopeContext.refreshWorkspace(workspace as import("../session/types").Workspace)
+    } catch (error) {
+      await updateBinding(info, sessionID, "remove").catch(() => undefined)
+      throw error
+    }
   }
 
   export async function enter(input: TargetInput) {
     const info = await find(input.target)
-    await bindSession(input.sessionID, info)
-    return info
+    return withUse(info.path, input.sessionID, async () => {
+      const current = await find(input.target)
+      await bindSession(input.sessionID, current)
+      return current
+    })
   }
 
-  export async function leave(sessionID: string) {
+  async function leaveSession(sessionID: string) {
     const session = await Session.get(sessionID)
     const previous = session.workspace
+    const scope = session.scope as Scope
+    const originalCheckout =
+      previous?.type === "git_worktree" && typeof previous.originalCheckout === "string"
+        ? previous.originalCheckout
+        : undefined
+    const mainPath = originalCheckout ?? scope.worktree ?? scope.directory
+    const mainWorkspace = { type: "main" as const, path: mainPath, scopeID: scope.id }
+    const result = await Session.updateWorkspace(sessionID, mainWorkspace)
+    ScopeContext.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
     if (previous?.type === "git_worktree" && previous.worktreeID) {
       await updateBinding(
         {
@@ -639,11 +852,14 @@ export namespace Worktree {
         "remove",
       )
     }
-    const scope = session.scope as Scope
-    const mainWorkspace = { type: "main" as const, path: scope.directory, scopeID: scope.id }
-    const result = await Session.updateWorkspace(sessionID, mainWorkspace)
-    ScopeContext.refreshWorkspace(mainWorkspace as import("../session/types").Workspace)
     return result
+  }
+
+  export async function leave(sessionID: string) {
+    const session = await Session.get(sessionID)
+    const workspace = session.workspace
+    if (workspace?.type !== "git_worktree") return leaveSession(sessionID)
+    return withUse(workspace.path, sessionID, () => leaveSession(sessionID))
   }
 
   export async function status(sessionID: string) {
@@ -660,28 +876,68 @@ export namespace Worktree {
     }
   }
 
-  export async function remove(input: TargetInput) {
-    const parsed = TargetInput.parse(input)
-    const info = await find(parsed.target)
-    if (info.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
-    if (!parsed.force && (await isDirty(info.path))) {
-      throw new DirtyError({ message: `Worktree ${info.name} has uncommitted changes. Re-run with force to remove.` })
-    }
-    const removed = parsed.force
-      ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
-      : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
-    if (removed.exitCode !== 0)
-      throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
-    if (info.managed) await removeRegistry(info.id)
-    let session: Awaited<ReturnType<typeof Session.get>> | undefined
+  async function isSessionRunning(sessionID: string) {
+    const { SessionManager } = await import("../session/manager")
+    return SessionManager.isRunning(sessionID)
+  }
+
+  async function getSession(sessionID: string) {
     try {
-      session = await Session.get(parsed.sessionID)
+      return await Session.get(sessionID)
     } catch {
-      // sessionID may be a placeholder like "none" — ignore
+      return undefined
     }
-    if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id)
-      await leave(parsed.sessionID)
-    return info
+  }
+
+  async function leaveBoundSessions(info: Info, extraSessionID?: string) {
+    const bindings = new Set(info.bindings ?? [])
+    if (extraSessionID) bindings.add(extraSessionID)
+    for (const sessionID of bindings) {
+      if (await isSessionRunning(sessionID)) {
+        throw new SessionBusyError({
+          sessionID,
+          message: `Stop session ${sessionID} before removing worktree ${info.name}.`,
+        })
+      }
+    }
+    for (const sessionID of bindings) {
+      const session = await getSession(sessionID)
+      if (session?.workspace?.type === "git_worktree" && session.workspace.worktreeID === info.id) {
+        await leaveSession(sessionID)
+      } else if (info.managed) {
+        await updateBinding(info, sessionID, "remove")
+      }
+    }
+  }
+
+  export async function remove(input: RemoveInput & { sessionID?: string }) {
+    const sessionID = input.sessionID
+    const parsed = RemoveInput.parse(input)
+    const initial = await find(parsed.target)
+    if (initial.isMain) throw new CreateFailedError({ message: "Cannot remove the main worktree" })
+    const finishRemoval = beginRemoval(initial)
+    try {
+      const info = await find(parsed.target)
+      if (info.stale) {
+        await leaveBoundSessions(info, sessionID)
+        if (info.managed) await removeRegistry(info.id)
+        return info
+      }
+      if (!parsed.force && (await isDirty(info.path))) {
+        throw new DirtyError({ message: `Worktree ${info.name} has uncommitted changes. Re-run with force to remove.` })
+      }
+      await leaveBoundSessions(info, sessionID)
+      const removed = parsed.force
+        ? await $`git worktree remove --force ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
+        : await $`git worktree remove ${info.path}`.quiet().nothrow().cwd(ensureGitScope().repoRoot)
+      if (removed.exitCode !== 0) {
+        throw new CreateFailedError({ message: errorText(removed) || "Failed to remove git worktree" })
+      }
+      if (info.managed) await removeRegistry(info.id)
+      return info
+    } finally {
+      finishRemoval()
+    }
   }
 
   export async function pruneStaleRegistry() {

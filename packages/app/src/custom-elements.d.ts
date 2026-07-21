@@ -1,1 +1,1 @@
-export * from "../../ui/src/custom-elements"
+../../ui/src/custom-elements.d.ts

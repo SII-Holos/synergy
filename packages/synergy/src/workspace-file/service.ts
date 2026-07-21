@@ -6,8 +6,11 @@ import { FileIgnore } from "../file/ignore"
 import { WorkspaceFile } from "./types"
 import { WorkspaceFileRead, likelyBinaryByExtension } from "./read"
 import { WorkspaceFileStatus } from "./status"
+import { isPathContained } from "../util/path-contain"
 
 const DEFAULT_CHILDREN_LIMIT = 200
+const NODE_CONCURRENCY = 16
+const naturalCollator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 
 function root() {
   return path.resolve(ScopeContext.current.directory)
@@ -25,11 +28,6 @@ function stripFileProtocol(input: string) {
 function isControlPath(input: string) {
   // eslint-disable-next-line no-control-regex
   return /[\x00-\x1f]/.test(input)
-}
-
-function contains(parent: string, child: string) {
-  const rel = path.relative(parent, child)
-  return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))
 }
 
 async function realpathIfExists(input: string) {
@@ -60,7 +58,7 @@ export namespace WorkspaceFileService {
     const cleaned = stripFileProtocol(input.trim())
     const workspace = root()
     const absolute = path.resolve(workspace, cleaned || ".")
-    if (!contains(workspace, absolute)) {
+    if (!isPathContained(workspace, absolute)) {
       throw new AccessDeniedError("Access denied: path escapes workspace")
     }
     return absolute
@@ -68,13 +66,13 @@ export namespace WorkspaceFileService {
 
   export function relative(input: string) {
     const absolute = path.isAbsolute(input) ? path.resolve(input) : resolve(input)
-    if (!contains(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
     return displayRelative(absolute)
   }
 
   export async function assertRealpathInside(absolute: string) {
     const real = await realpathIfExists(absolute)
-    if (real && !contains(root(), real)) {
+    if (real && !isPathContained(root(), real)) {
       throw new AccessDeniedError("Access denied: real path escapes workspace")
     }
   }
@@ -84,9 +82,12 @@ export namespace WorkspaceFileService {
     return FileIgnore.match(relativePath)
   }
 
-  export async function node(input: string): Promise<WorkspaceFile.Node> {
+  export async function node(
+    input: string,
+    options?: { resolveGitStatus?: boolean; gitStatus?: WorkspaceFile.GitStatus },
+  ): Promise<WorkspaceFile.Node> {
     const absolute = path.isAbsolute(input) ? input : resolve(input)
-    if (!contains(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
+    if (!isPathContained(root(), absolute)) throw new AccessDeniedError("Access denied: path escapes workspace")
     await assertRealpathInside(absolute)
 
     const relativePath = displayRelative(absolute)
@@ -103,7 +104,8 @@ export namespace WorkspaceFileService {
     const file = Bun.file(absolute)
     const mime = file.type
     const binary = type === "file" && (mime?.startsWith("text/") ? false : likelyBinaryByExtension(absolute))
-    const gitStatus = await WorkspaceFileStatus.statusForPath(relativePath)
+    const gitStatus =
+      options?.resolveGitStatus === false ? options.gitStatus : await WorkspaceFileStatus.statusForPath(relativePath)
 
     return {
       path: relativePath,
@@ -121,14 +123,31 @@ export namespace WorkspaceFileService {
     }
   }
 
-  export async function maybeNode(input: string) {
-    return node(input).catch(() => undefined)
+  export async function maybeNode(
+    input: string,
+    options?: { resolveGitStatus?: boolean; gitStatus?: WorkspaceFile.GitStatus },
+  ) {
+    return node(input, options).catch(() => undefined)
   }
 
   function visible(node: WorkspaceFile.Node, options: { showHidden?: boolean; showIgnored?: boolean }) {
     if (!options.showHidden && node.hidden) return false
     if (!options.showIgnored && node.ignored) return false
     return true
+  }
+
+  async function mapConcurrent<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+    const result = new Array<R>(items.length)
+    let next = 0
+    await Promise.all(
+      Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (next < items.length) {
+          const index = next++
+          result[index] = await fn(items[index]!)
+        }
+      }),
+    )
+    return result
   }
 
   export async function children(input: {
@@ -150,34 +169,45 @@ export namespace WorkspaceFileService {
       }
     }
 
-    const entries = await fs.readdir(absolute, { withFileTypes: true }).catch(() => [])
-    const nodes = (
-      await Promise.all(
-        entries.map(async (entry) => {
-          if (entry.name === "." || entry.name === "..") return undefined
-          return maybeNode(path.join(absolute, entry.name))
-        }),
-      )
-    )
-      .filter((item): item is WorkspaceFile.Node => !!item)
-      .filter((item) => visible(item, input))
+    const entries = (await fs.readdir(absolute, { withFileTypes: true }).catch(() => []))
+      .filter((entry) => entry.name !== "." && entry.name !== "..")
+      .map((entry) => {
+        const relativePath = displayRelative(path.join(absolute, entry.name))
+        return {
+          entry,
+          relativePath,
+          hidden: hiddenPath(relativePath),
+          ignored: isIgnored(relativePath),
+        }
+      })
+      .filter((item) => input.showHidden || !item.hidden)
+      .filter((item) => input.showIgnored || !item.ignored)
       .sort((a, b) => {
-        const aDir = a.type === "directory"
-        const bDir = b.type === "directory"
+        const aDir = a.entry.isDirectory()
+        const bDir = b.entry.isDirectory()
         if (aDir !== bDir) return aDir ? -1 : 1
-        return a.name.localeCompare(b.name)
+        return naturalCollator.compare(a.entry.name, b.entry.name)
       })
 
     const offset = Math.max(0, Number.parseInt(input.cursor ?? "0", 10) || 0)
     const limit = Math.max(1, Math.min(input.limit ?? DEFAULT_CHILDREN_LIMIT, 1000))
-    const page = nodes.slice(offset, offset + limit)
-    const next = offset + page.length
+    const pageEntries = entries.slice(offset, offset + limit)
+    const statusMap = await WorkspaceFileStatus.statusMap()
+    const page = (
+      await mapConcurrent(pageEntries, NODE_CONCURRENCY, (item) =>
+        node(path.join(absolute, item.entry.name), {
+          resolveGitStatus: false,
+          gitStatus: statusMap.get(item.relativePath),
+        }).catch(() => undefined),
+      )
+    ).filter((item): item is WorkspaceFile.Node => !!item && visible(item, input))
+    const next = offset + pageEntries.length
     return {
       path: parent.path,
       parent,
       children: page,
-      nextCursor: next < nodes.length ? String(next) : undefined,
-      truncated: next < nodes.length,
+      nextCursor: next < entries.length ? String(next) : undefined,
+      truncated: next < entries.length,
     }
   }
 
@@ -186,6 +216,7 @@ export namespace WorkspaceFileService {
     offset?: number
     limit?: number
     preview?: boolean
+    mode?: "range" | "document"
   }): Promise<WorkspaceFile.ReadResult> {
     return WorkspaceFileRead.read(input, { resolve, node })
   }

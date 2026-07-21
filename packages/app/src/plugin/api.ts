@@ -1,29 +1,24 @@
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestContribution } from "@ericsanchezok/synergy-plugin"
 import { createSynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { HOME_SCOPE_KEY, isHomeScope } from "@/utils/scope"
 
-/** UI contributions shape matching the manifest's contributes.ui schema (all optional). */
-export type PluginUIContributions = NonNullable<NonNullable<PluginManifest["contributes"]>["ui"]>
-
-/** Permissions shape matching the manifest's permissions schema (all optional). */
-export type PluginPermissions = NonNullable<PluginManifest["permissions"]>
-
-/** A single plugin's aggregated UI contribution from the server. */
 export interface PluginContribution {
   pluginId: string
   name: string
   version: string
-  trustTier: "declarative" | "trusted-import" | "sandbox"
-  ui: PluginUIContributions
-  permissions: PluginPermissions
+  generation: string
+  scopeId: string
+  capabilities: string[]
+  contributions: PluginManifestContribution[]
+  uiArtifact?: { entry: string; sha256: string }
 }
 
-/**
- * Fetch aggregated UI contributions from the server.
- *
- * The server exposes this at /plugin/ui/contributions (mounted from PluginRoute).
- */
-export async function fetchUIContributions(serverUrl: string): Promise<PluginContribution[]> {
-  const sdk = createSynergyClient({ baseUrl: serverUrl, throwOnError: true })
-  const res = await sdk.plugin.listUiContributions()
-  return (res.data ?? []) as PluginContribution[]
+export async function fetchUIContributions(serverUrl: string, scopeKey: string): Promise<PluginContribution[]> {
+  const sdk = createSynergyClient({
+    baseUrl: serverUrl,
+    throwOnError: true,
+    ...(isHomeScope(scopeKey) ? { scopeID: HOME_SCOPE_KEY } : { directory: scopeKey }),
+  })
+  const response = await sdk.plugin.listUiContributions()
+  return (response.data ?? []) as PluginContribution[]
 }

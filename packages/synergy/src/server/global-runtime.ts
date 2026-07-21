@@ -3,13 +3,20 @@ import { ChannelOutbound } from "@/channel/outbound"
 import { registerProviders } from "@/channel/provider"
 import { Channel } from "@/channel"
 import { Config } from "@/config/config"
+import { CortexConcurrency } from "@/cortex/concurrency"
 import { HolosRuntime } from "@/holos/runtime"
+import { GitHubRuntime } from "@/github/runtime"
+import { GitHubPollRuntime } from "@/github/poll-runtime"
+import { PluginMarketplaceRegistry } from "@/plugin/marketplace-registry"
 import { MCP } from "@/mcp"
 import { Plugin } from "@/plugin"
 import { FileWatcher } from "@/file/watcher"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
+import { SessionRecovery } from "@/session/recovery"
+import { SessionInvoke } from "@/session/invoke"
+import { Embedding } from "@/vector/embedding"
 
 export namespace GlobalRuntime {
   const log = Log.create({ service: "global-runtime" })
@@ -22,12 +29,21 @@ export namespace GlobalRuntime {
         fn: async () => {
           log.info("starting")
           await Plugin.init()
-          await startChannels()
+          const config = await Config.globalResolved()
+          CortexConcurrency.configure(config.cortex?.maxConcurrentTasks)
+          await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
+            log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
+          })
+          await startChannels(config)
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
+          PluginMarketplaceRegistry.prefetchRegistry()
+          await SessionInvoke.resumePending()
           await Agenda.start()
           await AgendaBootstrap.seed()
+          await GitHubRuntime.start(config.github)
+          await GitHubPollRuntime.start(config.github)
           log.info("started")
         },
       })
@@ -36,18 +52,23 @@ export namespace GlobalRuntime {
   }
 
   export async function stop() {
+    await GitHubPollRuntime.stop()
+    await GitHubRuntime.stop()
     Agenda.stop()
-    await ScopeContext.provide({
-      scope: Scope.home(),
-      fn: async () => {
-        await Channel.stopAll().catch(() => undefined)
-      },
-    })
+    await Promise.all([
+      ScopeContext.provide({
+        scope: Scope.home(),
+        fn: async () => {
+          await Channel.stopAll().catch(() => undefined)
+        },
+      }),
+      MCP.stop(),
+      Embedding.dispose(),
+    ])
     started = undefined
   }
 
-  async function startChannels() {
-    const cfg = await Config.globalResolved()
+  async function startChannels(cfg: Config.Info) {
     const channels = cfg.channel ?? {}
     if (Object.keys(channels).length === 0) return
     registerProviders()

@@ -7,9 +7,12 @@ import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { useLingui } from "@lingui/solid"
 import type { HolosAccountMeta, HolosAgentProfile } from "@ericsanchezok/synergy-sdk/client"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useHolos } from "@/context/holos"
+import { usePlatform } from "@/context/platform"
+import "./agent-actions.css"
 
 type GlobalSDK = ReturnType<typeof useGlobalSDK>
 type HolosProfileInput = {
@@ -19,8 +22,10 @@ type HolosProfileInput = {
 }
 
 export function useHolosAgentActions(globalSDK: GlobalSDK) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const holos = useHolos()
+  const platform = usePlatform()
   let loginMessageHandler: ((event: MessageEvent) => void) | undefined
   let loginMessageTimeout: ReturnType<typeof setTimeout> | undefined
 
@@ -38,10 +43,17 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
 
   async function startCreateAgent(profile: HolosProfileInput): Promise<boolean> {
     try {
-      const res = await globalSDK.client.holos.login({ callbackUrl: callbackUrl(), profile }, { throwOnError: true })
+      const res = await globalSDK.client.holos.login(
+        { callbackUrl: callbackUrl(), clientSurface: platform.platform, profile },
+        { throwOnError: true },
+      )
       const authUrl = res.data?.url
       if (!authUrl) {
-        showToast({ type: "error", title: "Holos login failed", description: "No login URL returned." })
+        showToast({
+          type: "error",
+          title: _({ id: "app.holos.loginFailed", message: "Holos login failed" }),
+          description: _({ id: "app.holos.noLoginUrl", message: "No login URL returned." }),
+        })
         return false
       }
 
@@ -51,32 +63,53 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
         if (event.data?.type === "holos-login-success") {
           clearLoginMessageHandler()
           void holos.refresh()
-          showToast({ type: "success", title: "Holos connected", description: "Your agent is now linked to Holos." })
+          showToast({
+            type: "success",
+            title: _({ id: "app.holos.connected", message: "Holos connected" }),
+            description: _({ id: "app.holos.connectedDesc", message: "Your agent is now linked to Holos." }),
+          })
           return
         }
         if (event.data?.type === "holos-login-failed") {
           clearLoginMessageHandler()
           const errMsg = typeof event.data?.error === "string" ? event.data.error : "Please try again."
-          showToast({ type: "error", title: "Holos login failed", description: errMsg })
+          showToast({
+            type: "error",
+            title: _({ id: "app.holos.loginFailed", message: "Holos login failed" }),
+            description: errMsg,
+          })
         }
       }
 
       window.addEventListener("message", loginMessageHandler)
+      if (platform.platform === "desktop") {
+        platform.openLink(authUrl)
+        loginMessageTimeout = setTimeout(clearLoginMessageHandler, 300_000)
+        return true
+      }
+
       const popup = window.open(authUrl, "holos-login", "width=600,height=700")
       loginMessageTimeout = setTimeout(clearLoginMessageHandler, 300_000)
       if (!popup) {
         clearLoginMessageHandler()
         showToast({
           type: "warning",
-          title: "Popup blocked",
-          description: "Allow popups for this site to sign in to Holos.",
+          title: _({ id: "app.holos.popupBlocked", message: "Popup blocked" }),
+          description: _({
+            id: "app.holos.popupBlockedDesc",
+            message: "Allow popups for this site to sign in to Holos.",
+          }),
           duration: 8000,
         })
         return false
       }
       return true
     } catch (e) {
-      showToast({ type: "error", title: "Holos login failed", description: getErrorMessage(e, String(e)) })
+      showToast({
+        type: "error",
+        title: _({ id: "app.holos.loginFailed", message: "Holos login failed" }),
+        description: getErrorMessage(e, String(e)),
+      })
       return false
     }
   }
@@ -92,7 +125,7 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
     } catch (e) {
       showToast({
         type: "error",
-        title: "Holos reconnect failed",
+        title: _({ id: "app.holos.reconnectFailed", message: "Holos reconnect failed" }),
         description: getErrorMessage(e, "Reconnect failed."),
       })
     }
@@ -102,11 +135,19 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
     try {
       await globalSDK.client.holos.accounts.switch({ agentId }, { throwOnError: true })
       void holos.refresh()
-      showToast({ type: "success", title: "Agent switched", description: `Switched to ${agentId.slice(0, 8)}` })
+      showToast({
+        type: "success",
+        title: _({ id: "app.holos.agentSwitched", message: "Agent switched" }),
+        description: _({
+          id: "app.holos.agentSwitchedDesc",
+          message: "Switched to {id}",
+          values: { id: agentId.slice(0, 8) },
+        }),
+      })
     } catch (e) {
       showToast({
         type: "error",
-        title: "Agent switch failed",
+        title: _({ id: "app.holos.switchFailed", message: "Agent switch failed" }),
         description: getErrorMessage(e, "Unable to switch agent."),
       })
     }
@@ -118,11 +159,18 @@ export function useHolosAgentActions(globalSDK: GlobalSDK) {
       void holos.refresh()
       showToast({
         type: "success",
-        title: "Agent logged out",
-        description: "The active Holos agent was removed locally.",
+        title: _({ id: "app.holos.agentLoggedOut", message: "Agent logged out" }),
+        description: _({
+          id: "app.holos.agentLoggedOutDesc",
+          message: "The active Holos agent was removed locally.",
+        }),
       })
     } catch (e) {
-      showToast({ type: "error", title: "Logout failed", description: getErrorMessage(e, "Unable to log out.") })
+      showToast({
+        type: "error",
+        title: _({ id: "app.holos.logoutFailed", message: "Logout failed" }),
+        description: getErrorMessage(e, "Unable to log out."),
+      })
     }
   }
 
@@ -172,14 +220,14 @@ export function getErrorMessage(err: unknown, fallback: string): string {
   return fallback
 }
 
-function validateUrl(value: string): string | undefined {
+function validateUrl(value: string, _: ReturnType<typeof useLingui>["_"]): string | undefined {
   const trimmed = value.trim()
   if (!trimmed) return undefined
   try {
     new URL(trimmed)
     return undefined
   } catch {
-    return "Enter a valid URL"
+    return _({ id: "app.holos.form.urlInvalid", message: "Enter a valid URL" })
   }
 }
 
@@ -191,6 +239,8 @@ export function DialogSwitchHolosAgent(props: {
   onCreate: () => void
   onImport: () => void
 }) {
+  const { _ } = useLingui()
+
   function shortID(agentId: string) {
     return agentId.slice(0, 8)
   }
@@ -199,48 +249,57 @@ export function DialogSwitchHolosAgent(props: {
     return account.agentId === props.activeAgentId
   }
 
+  function profile(account: HolosAccountMeta) {
+    return account.profile ?? (isActive(account) ? props.activeProfile : undefined)
+  }
+
   function label(account: HolosAccountMeta) {
-    if (!isActive(account)) return `Agent ${shortID(account.agentId)}`
-    return props.activeProfile?.name || `Agent ${shortID(account.agentId)}`
+    return profile(account)?.name || `Agent ${shortID(account.agentId)}`
   }
 
   function description(account: HolosAccountMeta) {
-    if (!isActive(account)) return "Saved on this device"
-    return props.activeProfile?.description || "Current Holos agent"
+    const accountDesc = profile(account)?.description?.trim()
+    if (accountDesc) return accountDesc
+    if (account.profileError) return _({ id: "app.holos.profileUnavailable", message: "Profile unavailable" })
+    return isActive(account)
+      ? _({ id: "app.holos.currentAgent", message: "Current Holos agent" })
+      : _({ id: "app.holos.savedAgent", message: "Saved on this device" })
   }
 
   function avatarUrl(account: HolosAccountMeta) {
-    if (!isActive(account)) return undefined
-    return props.activeProfile?.avatarUrl ?? undefined
+    return profile(account)?.avatarUrl ?? undefined
   }
 
   return (
     <Dialog
-      title="Switch Agent"
-      description="Choose which saved Holos agent Synergy should use."
-      class="sidebar-agent-switch-dialog-shell"
+      title={_({ id: "app.holos.switchAgent.title", message: "Switch Agent" })}
+      description={_({
+        id: "app.holos.switchAgent.description",
+        message: "Choose which saved Holos agent Synergy should use.",
+      })}
+      class="holos-agent-switch-dialog"
     >
-      <div class="sidebar-agent-switch-dialog">
+      <div class="holos-agent-switch">
         <Show
           when={props.accounts.length > 0}
           fallback={
-            <div class="sidebar-agent-switch-empty">
-              <Icon name="user" size="normal" />
-              <span>No saved agents</span>
+            <div class="holos-agent-switch-empty">
+              <Icon name={getSemanticIcon("settings.account")} size="normal" />
+              <span>{_({ id: "app.holos.noSavedAgents", message: "No saved agents" })}</span>
             </div>
           }
         >
-          <div class="sidebar-agent-switch-list">
+          <div class="holos-agent-switch-list">
             <For each={props.accounts}>
               {(account) => (
                 <button
                   type="button"
-                  class="sidebar-agent-switch-row"
-                  classList={{ "sidebar-agent-switch-row-active": isActive(account) }}
+                  class="holos-agent-switch-row"
+                  data-active={isActive(account)}
                   disabled={isActive(account)}
                   onClick={() => void props.onSwitch(account.agentId)}
                 >
-                  <span class="sidebar-agent-switch-avatar">
+                  <span class="holos-agent-switch-avatar">
                     <Show
                       when={avatarUrl(account)}
                       fallback={
@@ -253,25 +312,25 @@ export function DialogSwitchHolosAgent(props: {
                       {(src) => <img src={src()} alt="" />}
                     </Show>
                   </span>
-                  <span class="sidebar-agent-switch-copy">
-                    <span class="sidebar-agent-switch-name">{label(account)}</span>
-                    <span class="sidebar-agent-switch-description">{description(account)}</span>
-                    <span class="sidebar-agent-switch-id">{shortID(account.agentId)}</span>
+                  <span class="holos-agent-switch-copy">
+                    <span class="holos-agent-switch-name">{label(account)}</span>
+                    <span class="holos-agent-switch-description">{description(account)}</span>
+                    <span class="holos-agent-switch-id">{shortID(account.agentId)}</span>
                   </span>
                   <Show when={!isActive(account)}>
-                    <span class="sidebar-agent-switch-status">Switch</span>
+                    <span class="holos-agent-switch-status">{_({ id: "app.holos.switch", message: "Switch" })}</span>
                   </Show>
                 </button>
               )}
             </For>
           </div>
         </Show>
-        <div class="sidebar-agent-switch-actions">
-          <Button type="button" variant="secondary" size="small" onClick={props.onImport}>
-            Import Agent
+        <div class="holos-agent-switch-actions">
+          <Button type="button" variant="secondary" size="large" onClick={props.onImport}>
+            {_({ id: "app.holos.importAgent", message: "Import Agent" })}
           </Button>
-          <Button type="button" variant="primary" size="small" onClick={props.onCreate}>
-            Create Agent
+          <Button type="button" variant="primary" size="large" onClick={props.onCreate}>
+            {_({ id: "app.holos.createAgent", message: "Create Agent" })}
           </Button>
         </div>
       </div>
@@ -280,6 +339,7 @@ export function DialogSwitchHolosAgent(props: {
 }
 
 export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfileInput) => Promise<boolean> }) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const [form, setForm] = createStore({
     name: "",
@@ -295,9 +355,9 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
     const name = form.name.trim()
     const description = form.description.trim()
     const avatarUrl = form.avatarUrl.trim()
-    const avatarUrlError = validateUrl(avatarUrl)
+    const avatarUrlError = validateUrl(avatarUrl, _)
 
-    setForm("nameError", name ? undefined : "Name is required")
+    setForm("nameError", name ? undefined : _({ id: "app.holos.form.nameRequired", message: "Name is required" }))
     setForm("avatarUrlError", avatarUrlError)
     if (!name || avatarUrlError) return
 
@@ -315,23 +375,22 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
   }
 
   return (
-    <Dialog title="Create Agent">
-      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-hero">
-          <span class="sidebar-agent-import-icon">
-            <Icon name="sparkles" size="normal" />
-          </span>
-          <div class="sidebar-agent-import-heading">
-            <span class="sidebar-agent-import-kicker">Agent profile</span>
-            <p>Set the initial Holos profile. Holos remains the source of truth after the agent is created.</p>
-          </div>
-        </div>
-        <div class="sidebar-agent-import-fields">
+    <Dialog
+      title={_({ id: "app.holos.createAgent.title", message: "Create Agent" })}
+      description={_({
+        id: "app.holos.createAgent.description",
+        message: "Choose how this agent should appear in Holos.",
+      })}
+      size="form"
+      class="holos-agent-form-dialog"
+    >
+      <form onSubmit={handleSubmit} class="holos-agent-form">
+        <div class="holos-agent-form-fields">
           <TextField
             autofocus
-            label="Name"
+            label={_({ id: "app.holos.form.name", message: "Name" })}
             type="text"
-            placeholder="Agent name"
+            placeholder={_({ id: "app.holos.form.namePlaceholder", message: "Agent name" })}
             value={form.name}
             onChange={(value) => {
               setForm("name", value)
@@ -341,35 +400,33 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
             error={form.nameError}
           />
           <TextField
-            label="Description"
+            label={_({ id: "app.holos.form.description", message: "Description" })}
             multiline
-            placeholder="What this agent represents"
+            placeholder={_({ id: "app.holos.form.descriptionPlaceholder", message: "Optional description" })}
             value={form.description}
             onChange={(value) => setForm("description", value)}
           />
           <TextField
-            label="Avatar URL"
+            label={_({ id: "app.holos.form.avatarUrl", message: "Avatar URL" })}
             type="url"
-            placeholder="https://..."
+            placeholder={_({ id: "app.holos.form.avatarUrlPlaceholder", message: "Optional image URL" })}
             value={form.avatarUrl}
             onChange={(value) => {
               setForm("avatarUrl", value)
-              setForm("avatarUrlError", validateUrl(value))
+              setForm("avatarUrlError", validateUrl(value, _))
             }}
             validationState={form.avatarUrlError ? "invalid" : undefined}
             error={form.avatarUrlError}
           />
         </div>
-        <div class="sidebar-agent-import-note">
-          <Icon name="shield-check" size="small" />
-          <span>The profile is sent to Holos during creation and is not stored in local Synergy settings.</span>
-        </div>
-        <div class="sidebar-agent-import-actions">
+        <div class="holos-agent-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
-            Cancel
+            {_({ id: "app.holos.cancel", message: "Cancel" })}
           </Button>
           <Button type="submit" variant="primary" size="large" disabled={form.submitting}>
-            {form.submitting ? "Opening..." : "Continue"}
+            {form.submitting
+              ? _({ id: "app.holos.opening", message: "Opening..." })
+              : _({ id: "app.holos.continue", message: "Continue" })}
           </Button>
         </div>
       </form>
@@ -378,6 +435,7 @@ export function DialogCreateHolosAgent(props: { onCreate: (profile: HolosProfile
 }
 
 export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported?: () => void | Promise<void> }) {
+  const { _ } = useLingui()
   const dialog = useDialog()
   const [form, setForm] = createStore({
     agentSecret: "",
@@ -389,7 +447,10 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
     e.preventDefault()
     const agentSecret = form.agentSecret.trim()
 
-    setForm("agentSecretError", agentSecret ? undefined : "Agent secret is required")
+    setForm(
+      "agentSecretError",
+      agentSecret ? undefined : _({ id: "app.holos.form.secretRequired", message: "Agent secret is required" }),
+    )
     if (!agentSecret) return
 
     setForm("submitting", true)
@@ -400,14 +461,18 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
       const name = res.data?.profile.name || agentId?.slice(0, 8) || "Holos agent"
       showToast({
         type: "success",
-        title: "Agent imported",
-        description: `Imported ${name}`,
+        title: _({ id: "app.holos.agentImported", message: "Agent imported" }),
+        description: _({
+          id: "app.holos.agentImportedDesc",
+          message: "Imported {name}",
+          values: { name },
+        }),
       })
       dialog.close()
     } catch (err) {
       showToast({
         type: "error",
-        title: "Import failed",
+        title: _({ id: "app.holos.importFailed", message: "Import failed" }),
         description: getErrorMessage(err, "Check the agent ID and secret, then try again."),
       })
     } finally {
@@ -416,23 +481,22 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
   }
 
   return (
-    <Dialog title="Import Agent">
-      <form onSubmit={handleSubmit} class="sidebar-agent-import-form">
-        <div class="sidebar-agent-import-hero">
-          <span class="sidebar-agent-import-icon">
-            <Icon name="key-round" size="normal" />
-          </span>
-          <div class="sidebar-agent-import-heading">
-            <span class="sidebar-agent-import-kicker">Holos Agent</span>
-            <p>Connect an existing agent with its secret. Synergy verifies the identity from Holos before saving.</p>
-          </div>
-        </div>
-        <div class="sidebar-agent-import-fields">
+    <Dialog
+      title={_({ id: "app.holos.importAgent.title", message: "Import Agent" })}
+      description={_({
+        id: "app.holos.importAgent.description",
+        message: "Paste the secret for an existing Holos agent.",
+      })}
+      size="form"
+      class="holos-agent-form-dialog"
+    >
+      <form onSubmit={handleSubmit} class="holos-agent-form">
+        <div class="holos-agent-form-fields">
           <TextField
             autofocus
-            label="Agent Secret"
+            label={_({ id: "app.holos.form.agentSecret", message: "Agent Secret" })}
             type="password"
-            placeholder="Secret"
+            placeholder={_({ id: "app.holos.form.agentSecretPlaceholder", message: "Paste agent secret" })}
             value={form.agentSecret}
             onChange={(value) => {
               setForm("agentSecret", value)
@@ -442,16 +506,14 @@ export function DialogImportHolosAgent(props: { globalSDK: GlobalSDK; onImported
             error={form.agentSecretError}
           />
         </div>
-        <div class="sidebar-agent-import-note">
-          <Icon name="shield-check" size="small" />
-          <span>Only the agent secret and canonical agent ID are stored locally. Profile stays in Holos.</span>
-        </div>
-        <div class="sidebar-agent-import-actions">
+        <div class="holos-agent-actions">
           <Button type="button" variant="ghost" size="large" onClick={() => dialog.close()}>
-            Cancel
+            {_({ id: "app.holos.cancel", message: "Cancel" })}
           </Button>
           <Button type="submit" variant="primary" size="large" disabled={form.submitting}>
-            {form.submitting ? "Importing..." : "Import Agent"}
+            {form.submitting
+              ? _({ id: "app.holos.importing", message: "Importing..." })
+              : _({ id: "app.holos.import", message: "Import" })}
           </Button>
         </div>
       </form>

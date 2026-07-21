@@ -6,25 +6,27 @@ export function installAppMenu(options: {
   debug: boolean
   getMainWindow(): BrowserWindow | null
 }): void {
-  const appMenu: MenuItemConstructorOptions[] =
-    process.platform === "darwin"
-      ? [
-          {
-            label: DESKTOP_PRODUCT_NAME,
-            submenu: [
-              { role: "about" },
-              { type: "separator" },
-              { role: "services" },
-              { type: "separator" },
-              { role: "hide" },
-              { role: "hideOthers" },
-              { role: "unhide" },
-              { type: "separator" },
-              { role: "quit" },
-            ],
-          },
-        ]
-      : []
+  if (process.platform !== "darwin") {
+    Menu.setApplicationMenu(null)
+    return
+  }
+
+  const appMenu: MenuItemConstructorOptions[] = [
+    {
+      label: DESKTOP_PRODUCT_NAME,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+  ]
 
   const viewMenu: MenuItemConstructorOptions = {
     label: "View",

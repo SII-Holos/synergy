@@ -1,0 +1,8 @@
+<lattice-phase>
+Current phase: initial_planning.
+You should: turn the user's high-level goal into an initial ordered Pathway. Investigate read-only as needed, ask blocking questions if truly required, then call pathway_patch with `steps` to create the ordered list of steps (title, objective, acceptance criteria). Order the steps in the intended execution order.
+
+Pathway granularity: create coarse, outcome-oriented steps where each step is worth a full BlueprintLoop. Prefer phases that produce an auditable milestone (for example: inventory, design, implementation by independent owner group, verification, delivery) over micro-steps for individual commands, file edits, searches, or tests. Split only when there is a real dependency boundary, distinct ownership/risk surface, or useful parallel branch.
+You should not: edit project files or start any execution work in this phase.
+Next: once you write at least one selectable step, the backend selects the first step and moves you to step_blueprinting.
+</lattice-phase>

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test"
+import { ApprovalPolicy } from "../../src/control-profile/approval"
 import { buildProfile } from "../../src/control-profile/profiles"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -54,19 +55,31 @@ describe("autonomous profile capabilities", () => {
     })
   })
 
-  test("autonomous allows mcp and ordinary plugin capabilities but denies plugin secrets", async () => {
+  test("autonomous allows PR publication while denying generic remote writes", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await autonomousProfile()
+        expect(rule(profile, "shell_remote_publish")?.action).toBe("allow")
+        expect(rule(profile, "shell_remote_write")?.action).toBe("deny")
+      },
+    })
+  })
+
+  test("autonomous allows mcp and ordinary delegated capabilities but denies secrets", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
         expect(rule(profile, "mcp_invoke")?.action).toBe("allow")
-        expect(rule(profile, "plugin_file_read")?.action).toBe("allow")
-        expect(rule(profile, "plugin_file_write")?.action).toBe("allow")
-        expect(rule(profile, "plugin_shell")?.action).toBe("allow")
-        expect(rule(profile, "plugin_network")?.action).toBe("allow")
-        expect(rule(profile, "plugin_secret_read")?.action).toBe("deny")
-        expect(rule(profile, "plugin_secret_read")?.nonBypassable).toBe(true)
+        expect(rule(profile, "file_read")?.action).toBe("allow")
+        expect(rule(profile, "file_write")?.action).toBe("allow")
+        expect(rule(profile, "shell")?.action).toBe("allow")
+        expect(rule(profile, "network_request")?.action).toBe("allow")
+        expect(rule(profile, "secrets")?.action).toBe("deny")
+        expect(rule(profile, "secrets")?.nonBypassable).toBe(true)
       },
     })
   })
@@ -141,6 +154,33 @@ describe("autonomous profile filesystem", () => {
       },
     })
   })
+
+  test("autonomous filesystem includes trusted skill roots as writeRoots", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const trustedRoots = ["/tmp/test/.codex/skills", "/tmp/test/.claude/skills"]
+        const profile = await buildProfile("autonomous", { workspace, workspaceType: "main", trustedRoots })
+
+        expect(profile.filesystem.writeRoots).toEqual([workspace, ...trustedRoots])
+      },
+    })
+  })
+
+  test("guarded filesystem includes trusted skill roots as writeRoots", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const trustedRoots = ["/tmp/test/.codex/skills", "/tmp/test/.claude/skills"]
+        const profile = await buildProfile("guarded", { workspace, workspaceType: "main", trustedRoots })
+
+        expect(profile.filesystem.writeRoots).toEqual([workspace, ...trustedRoots])
+        expect(profile.filesystem.readRoots).toEqual([workspace, ...trustedRoots])
+      },
+    })
+  })
 })
 
 describe("autonomous profile sandbox", () => {
@@ -157,27 +197,99 @@ describe("autonomous profile sandbox", () => {
 })
 
 describe("profile isolation", () => {
-  test("guarded still has original rules (not affected by autonomous changes)", async () => {
+  test("guarded auto-allows low-risk reads while keeping shell gated", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await guardedProfile()
-        // Guarded should still ask for file_external_read — it was NOT changed to "allow"
-        expect(rule(profile, "file_external_read")?.action).toBe("ask")
+        expect(rule(profile, "file_external_read")?.action).toBe("allow")
+        expect(rule(profile, "shell")?.action).toBe("ask")
       },
     })
   })
 })
 
 describe("autonomous profile summary", () => {
-  test("autonomous deniedCapabilities contains shell_hardline and shell_destructive", async () => {
+  test("autonomous deniedCapabilities is derived from its denied rules", async () => {
     await using tmp = await tmpdir()
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const profile = await autonomousProfile()
-        expect(profile.summary?.deniedCapabilities).toEqual(["shell_hardline", "shell_destructive"])
+        expect(profile.summary?.deniedCapabilities).toEqual([
+          "shell_branch_mutation",
+          "shell_remote_write",
+          "shell_destructive",
+          "shell_hardline",
+          "file_external_write",
+          "secrets",
+          "prompt_transform",
+          "compaction_transform",
+          "permission_hook",
+          "browser_eval_trusted",
+        ])
+      },
+    })
+  })
+})
+
+describe("autonomous profile approval risk", () => {
+  test("delegated task is a low-risk capability and MCP invocation is medium-risk", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await autonomousProfile()
+        expect(ApprovalPolicy.decidePermission(profile, "task", {}).action).toBe("allow")
+        expect(ApprovalPolicy.decidePermission(profile, "mcp_invoke", {}).action).toBe("allow")
+
+        expect(ApprovalPolicy.decidePermission(profile, "secrets", {}).action).toBe("deny")
+      },
+    })
+  })
+
+  test("workspace boundary read metadata remains low risk", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const profile = await guardedProfile()
+        const decision = ApprovalPolicy.decidePermission(profile, "external_directory", {
+          workspaceBoundary: true,
+          outsideWorkspace: true,
+        })
+        expect(decision).toMatchObject({
+          action: "allow",
+          risk: "low",
+          capabilities: ["file_external_read"],
+        })
+
+        const approval = ApprovalPolicy.withAudit(ApprovalPolicy.metadata(profile.approval, decision, "auto_allowed"))
+        expect(approval.audit?.visible).toBe(false)
+      },
+    })
+  })
+
+  test("audit visibility belongs to approval metadata", async () => {
+    await using tmp = await tmpdir()
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const guarded = await guardedProfile()
+        const autonomous = await autonomousProfile()
+
+        const guardedWrite = ApprovalPolicy.decidePermission(guarded, "edit", {})
+        const guardedApproval = ApprovalPolicy.withAudit(
+          ApprovalPolicy.metadata(guarded.approval, guardedWrite, "auto_allowed"),
+        )
+        expect(guardedApproval.audit?.visible).toBe(false)
+
+        const autonomousTask = ApprovalPolicy.decidePermission(autonomous, "task", {})
+        const autonomousApproval = ApprovalPolicy.withAudit(
+          ApprovalPolicy.metadata(autonomous.approval, autonomousTask, "auto_allowed"),
+        )
+        expect(autonomousApproval.audit?.visible).toBe(false)
       },
     })
   })

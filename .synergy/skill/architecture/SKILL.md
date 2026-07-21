@@ -1,82 +1,53 @@
 ---
 name: architecture
-description: "Synergy codebase architecture guide. Use when navigating the codebase, understanding module boundaries, finding where functionality lives, or planning cross-cutting changes. Triggers: 'architecture', 'codebase structure', 'where is', 'how does X work', 'module layout', 'find the code for'."
+description: Navigate and trace the Synergy codebase, identify subsystem ownership, explain a runtime flow, or plan a cross-cutting change from current implementation evidence. Use when locating code, mapping state and event flow, checking architecture boundaries, or assessing impact across runtime, Web, Desktop, SDK, plugins, and persistence.
 ---
 
-# Synergy Architecture Guide
+# Trace Synergy Architecture
 
-## Runtime Model
+## Orient
 
-Synergy is a **client-server** system:
+1. Read [Architecture overview](../../../docs/architecture/README.md) and [Package map](../../../docs/reference/packages.md).
+2. Select only the relevant canonical documents:
+   - runtime/Scope: `runtime-and-scope.md`
+   - workspace and files: `workspace-and-files.md`
+   - session/message/compaction: `session-and-messages.md`, `llm-loop.md`
+   - Web state: `frontend-data-sync.md`
+   - permissions/tools: `execution-boundaries.md`
+   - delegation: `cortex.md`
+   - Plan, BlueprintLoop, Light Loop, Lattice: `workflows.md`
+   - Browser: `browser-runtime.md`
+3. Read the nearest `AGENTS.md` before inspecting package code.
+4. Load the focused implementation workflow when the trace becomes a change:
+   - Web/shared UI: `develop-frontend`
+   - LLM-backed operation: `integrate-llm`
+   - HTTP/OpenAPI/SDK contract: `change-server-api`
+   - durable state or migration: `change-persistence`
+   - capability/permission/sandbox behavior: `change-execution-boundaries`
+   - Browser/Desktop/WebRTC runtime: `change-browser-runtime`
+   - plugin public/host/runtime behavior: `change-plugin-runtime`
 
-- **Server** (`packages/synergy`) — the core runtime, always running
-- **Clients** — Web UI (`packages/app`), CLI (`synergy send`), external via SDK
+## Trace from Evidence
 
-Clients connect to the server and provide a working directory (scope). The server handles sessions, agents, tools, and all orchestration.
+1. Identify the user-facing entry point: CLI command, server route, Web action, Desktop IPC, tool, Agenda trigger, Channel event, plugin hook, or migration.
+2. Search with `rg` for the public name, schema, event, route operation ID, storage path, and error string.
+3. Follow the write path through ownership boundaries. Record the module that validates input, owns state, enforces capabilities, persists data, and emits events.
+4. Follow the read/sync path independently. For Web behavior, trace generated SDK calls, snapshot watermarks, bus events, replay, reconcile writes, and loading/eviction.
+5. Inspect adjacent domains before concluding that a directory boundary is the abstraction boundary.
+6. Verify tests and migrations that encode the behavior. Treat comments, docs, and old design files as supporting evidence only when code/tests agree.
 
-## Package Map
+## Produce the Result
 
-| Package            | Role                                                                   |
-| ------------------ | ---------------------------------------------------------------------- |
-| `packages/synergy` | Core runtime: server, CLI, agents, tools, sessions, config, everything |
-| `packages/app`     | SolidJS web client                                                     |
-| `packages/plugin`  | Plugin SDK for extensions                                              |
-| `packages/sdk/js`  | Generated TypeScript SDK                                               |
-| `packages/ui`      | Shared UI component library                                            |
-| `packages/util`    | Shared utilities and error helpers                                     |
-| `packages/script`  | Build and release tooling                                              |
+For an explanation, report:
 
-## Core Domains (`packages/synergy/src/`)
+- entry point and owner
+- state model and persistence
+- execution/permission boundary
+- events and downstream consumers
+- lifecycle, cancellation, retry, and failure behavior
+- tests or migrations that prove the invariants
+- uncertainties that still require runtime evidence
 
-### Request Flow
+For a change plan, name the smallest coherent set of owners and verification gates. Include SDK regeneration, config/help/docs sync, or persistence migration only when the change actually crosses those contracts.
 
-`cli/` or `server/` → `session/` → `agent/` → `tool/`
-
-### Key domains
-
-| Directory     | What it does                         | When you'd touch it               |
-| ------------- | ------------------------------------ | --------------------------------- |
-| `agent/`      | Agent definitions and prompts        | Adding/modifying agents           |
-| `agenda/`     | Scheduled tasks and automation       | Cron, triggers, background jobs   |
-| `bus/`        | Event system                         | Adding new system events          |
-| `channel/`    | External messaging (Feishu, etc.)    | Adding new channel types          |
-| `cli/`        | CLI commands and startup             | New commands, CLI UX              |
-| `config/`     | Config loading and merging           | Config schema changes             |
-| `cortex/`     | Task orchestration (DAGs, subagents) | Delegation and parallel execution |
-| `engram/`     | Memory/knowledge (embedding, recall) | Memory features                   |
-| `mcp/`        | Model Context Protocol integration   | MCP server/client features        |
-| `note/`       | Notes system                         | Note features                     |
-| `permission/` | Permission model                     | Access control                    |
-| `process/`    | Process management                   | Shell execution, PTY              |
-| `provider/`   | LLM provider integration             | Adding providers                  |
-| `scope/`      | Workspace/project scope resolution   | Scope and context logic           |
-| `server/`     | HTTP server, API routes              | New endpoints, CORS               |
-| `session/`    | Session lifecycle, prompting         | Session features                  |
-| `skill/`      | Skill loading and built-ins          | Skill system                      |
-| `tool/`       | All tool implementations             | Adding/modifying tools            |
-
-### Cross-cutting concerns
-
-- **Config** touches everything — changes ripple through CLI, server, agents
-- **Scope/Instance** — most domain code runs within an Instance context
-- **Bus events** — domains communicate through the event bus, not direct imports
-- **Migrations** — schema changes go in `*/migration.ts`, run by `migration/`
-
-## Testing
-
-```bash
-cd packages/synergy
-bun test                          # all tests
-bun test test/tool/read.test.ts   # specific test
-bun test --watch                  # watch mode
-```
-
-Tests live in `packages/synergy/test/` mirroring the `src/` structure.
-
-## Common Patterns
-
-- **Namespace exports**: `export namespace Foo { ... }` — the dominant pattern
-- **Zod schemas**: all validation, all API types
-- **Instance state**: `Instance.state()` for scoped singletons
-- **Bus events**: `BusEvent.define()` + `Bus.subscribe()` for loose coupling
-- **NamedError**: `NamedError.create()` for typed, structured errors
+Do not reproduce a static directory inventory. Link canonical docs and cite current files or symbols so the analysis survives repository growth.

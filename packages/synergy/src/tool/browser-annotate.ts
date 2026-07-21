@@ -2,23 +2,59 @@ import z from "zod"
 import { Tool } from "./tool"
 import { BrowserToolHelper } from "./browser-shared"
 import { BrowserOwner } from "../browser/owner"
+import { truncateBrowserOutput } from "./browser-shared"
 
-const parameters = z.object({
-  action: z
-    .enum(["list", "read", "resolve", "create"])
-    .describe("Action: list all annotations, read a specific one, resolve, or create a new annotation"),
-  annotationId: z.string().optional().describe("Annotation ID for read/resolve actions"),
-  pageId: z.string().optional(),
-  ref: z.string().optional().describe("Reference ID for create action"),
-  element: z.string().optional().describe("Element selector for create action"),
-  comment: z.string().optional().describe("Annotation comment text for create action"),
-  styleFeedback: z.record(z.string(), z.string()).optional().describe("Style feedback for create action"),
-})
+const parameters = z
+  .object({
+    action: z
+      .enum(["list", "read", "resolve", "create"])
+      .describe("Action: list all annotations, read a specific one, resolve, or create a new annotation"),
+    annotationId: z.string().min(1).max(20_000).optional().describe("Annotation ID for read/resolve actions"),
+    pageId: z.string().min(1).max(20_000).optional(),
+    ref: z.string().min(1).max(20_000).optional().describe("Reference ID for create action"),
+    element: z.string().min(1).max(20_000).optional().describe("Element selector for create action"),
+    comment: z.string().min(1).max(20_000).optional().describe("Annotation comment text for create action"),
+    styleFeedback: z
+      .record(z.string().max(1_000), z.string().max(10_000))
+      .optional()
+      .describe("Style feedback for create action"),
+    page: z.number().int().min(0).optional().describe("Valid only for list; defaults to 0."),
+    pageSize: z.number().int().min(1).max(100).optional().describe("Valid only for list; defaults to 50."),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    const createFields = ["pageId", "ref", "element", "comment", "styleFeedback"] as const
+    if ((value.action === "read" || value.action === "resolve") && !value.annotationId) {
+      ctx.addIssue({ code: "custom", path: ["annotationId"], message: `annotationId is required for ${value.action}.` })
+    }
+    if (value.action !== "read" && value.action !== "resolve" && value.annotationId !== undefined) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["annotationId"],
+        message: "annotationId is valid only for read or resolve.",
+      })
+    }
+    if (value.action === "create" && !value.comment) {
+      ctx.addIssue({ code: "custom", path: ["comment"], message: "comment is required for create." })
+    }
+    if (value.action !== "create") {
+      for (const field of createFields) {
+        if (value[field] !== undefined) {
+          ctx.addIssue({ code: "custom", path: [field], message: `${field} is valid only for create.` })
+        }
+      }
+    }
+    if (value.action !== "list" && (value.page !== undefined || value.pageSize !== undefined)) {
+      ctx.addIssue({ code: "custom", path: ["page"], message: "page and pageSize are valid only for list." })
+    }
+  })
 
 interface BrowserAnnotateMetadata {
   count?: number
   pending?: number
   id?: string
+  page?: number
+  outputTruncated?: boolean
 }
 
 export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotateMetadata>("browser_annotate", {
@@ -36,16 +72,26 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
           return { title: "No annotations", output: "No pending annotations.", metadata: { count: 0 } }
         }
         const pending = annotations.filter((a) => !a.resolved)
-        const text = pending
-          .map(
-            (a) =>
-              `[${a.id}] ${a.ref || "region"} "${a.comment}"${a.styleFeedback ? ` (style: ${JSON.stringify(a.styleFeedback)})` : ""}`,
-          )
-          .join("\n")
+        const page = params.page ?? 0
+        const pageSize = params.pageSize ?? 50
+        const visible = pending.slice(page * pageSize, (page + 1) * pageSize)
+        const formatted = truncateBrowserOutput(
+          visible
+            .map(
+              (a) =>
+                `[${a.id}] ${a.ref || "region"} "${a.comment}"${a.styleFeedback ? ` (style: ${JSON.stringify(a.styleFeedback)})` : ""}`,
+            )
+            .join("\n") || "No pending annotations.",
+        )
         return {
           title: `${pending.length} annotations`,
-          output: text,
-          metadata: { count: annotations.length, pending: pending.length },
+          output: formatted.output,
+          metadata: {
+            count: annotations.length,
+            pending: pending.length,
+            page,
+            outputTruncated: formatted.truncated,
+          },
         }
       }
       case "read": {
@@ -71,20 +117,17 @@ export const BrowserAnnotateTool = Tool.define<typeof parameters, BrowserAnnotat
         }
       }
       case "create": {
-        const tab = await BrowserToolHelper.getPage(owner, params.pageId)
-        const comment = params.comment
-        if (!comment)
-          return { title: "Missing comment", output: "The 'comment' field is required for create.", metadata: {} }
+        const page = await BrowserToolHelper.getPage(owner, params.pageId)
         const input = {
           ref: params.ref,
           element: params.element,
-          comment,
+          comment: params.comment!,
           styleFeedback: params.styleFeedback,
           createdBy: "agent" as const,
-          pageID: tab.id,
-          tabURL: tab.url,
+          pageID: page.id,
+          pageURL: page.url,
         }
-        const ann = session.addAnnotation(input)
+        const ann = await session.addAnnotation(input)
         return {
           title: `Created annotation ${ann.id}`,
           output: `Annotation created: "${ann.comment}"`,

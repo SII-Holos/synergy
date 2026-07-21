@@ -95,6 +95,19 @@ export namespace Token {
     return "o200k_base"
   }
 
+  /** Count tokens with the selected model encoding without heuristic fallback. */
+  export async function countModel(modelID: string, input: string): Promise<number | undefined> {
+    if (!input) return 0
+    const encoding = encodingForModelID(modelID)
+    const tokenizer = await getTokenizer(encoding)
+    if (!tokenizer) return undefined
+    try {
+      return tokenizer.encode(input).length
+    } catch {
+      return undefined
+    }
+  }
+
   /**
    * Count tokens using a tiktoken encoding matched to the model.
    * Falls back to the `chars / 4` heuristic only when BPE data fails to load.
@@ -104,15 +117,8 @@ export namespace Token {
    * encoding are synchronous cache hits and complete in microseconds.
    */
   export async function estimateModel(modelID: string, input: string): Promise<number> {
-    if (!input) return 0
-    const encoding = encodingForModelID(modelID)
-    const tokenizer = await getTokenizer(encoding)
-    if (!tokenizer) return estimate(input)
-    try {
-      return tokenizer.encode(input).length
-    } catch {
-      return estimate(input)
-    }
+    const measured = await countModel(modelID, input)
+    return measured ?? estimate(input)
   }
 
   /**

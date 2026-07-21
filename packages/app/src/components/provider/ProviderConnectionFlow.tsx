@@ -9,7 +9,9 @@ import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { createMemo, For, Match, onMount, Show, Switch } from "solid-js"
 import { createStore, produce } from "solid-js/store"
-import { Link } from "@/components/link"
+import { useLingui } from "@lingui/solid"
+import { providerFlow } from "@/locales/messages"
+import { Link } from "./external-link"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
 import { usePlatform } from "@/context/platform"
@@ -19,26 +21,35 @@ export { compareProviderIDs, providerConnectCopy } from "./provider-recommendati
 
 export function ProviderConnectionFlow(props: {
   providerID: string
+  providerName?: string
+  intent?: "connect" | "recover"
+  connectedOverride?: boolean
+  completeDescription?: string
+  iconID?: string
   compact?: boolean
+  skipAutoAdvance?: boolean
   onBack?: () => void
   onComplete?: () => void | Promise<void>
 }) {
   const globalSync = useGlobalSync()
   const globalSDK = useGlobalSDK()
   const platform = usePlatform()
+  const { _ } = useLingui()
   const provider = createMemo(() => globalSync.data.provider.all.find((x) => x.id === props.providerID))
-  const providerName = createMemo(() => provider()?.name ?? props.providerID)
+  const providerName = createMemo(() => props.providerName ?? provider()?.name ?? props.providerID)
   const profiles = createMemo(() => globalSync.data.provider.profiles)
   const methods = createMemo<ProviderAuthMethod[]>(
     () =>
       globalSync.data.provider_auth[props.providerID] ?? [
         {
           type: "api",
-          label: "API key",
+          label: _(providerFlow.methodApiDefaultLabel),
         },
       ],
   )
-  const connected = createMemo(() => globalSync.data.provider.connected.includes(props.providerID))
+  const connected = createMemo(
+    () => props.connectedOverride ?? globalSync.data.provider.connected.includes(props.providerID),
+  )
   const [store, setStore] = createStore({
     methodIndex: undefined as undefined | number,
     authorization: undefined as undefined | ProviderAuthAuthorization,
@@ -73,9 +84,9 @@ export function ProviderConnectionFlow(props: {
           setStore("state", "complete")
           setStore("authorization", x.data!)
         })
-        .catch((e) => {
+        .catch((e: any) => {
           setStore("state", "error")
-          setStore("error", String(e))
+          setStore("error", typeof e?.data?.message === "string" ? e.data.message : String(e))
         })
     }
 
@@ -98,18 +109,18 @@ export function ProviderConnectionFlow(props: {
   }
 
   onMount(() => {
-    if (!connected() && methods().length === 1) void selectMethod(0)
+    if (!connected() && methods().length === 1 && !props.skipAutoAdvance) void selectMethod(0)
   })
 
   async function complete() {
-    await globalSDK.client.global.dispose()
-    await globalSync.refreshAllConfigs()
+    await globalSync.refreshProviders()
     await props.onComplete?.()
+    const suffix = props.intent === "recover" ? _(providerFlow.reconnected) : _(providerFlow.connected)
     showToast({
       type: "success",
-      icon: "circle-check",
-      title: `${provider()?.name ?? props.providerID} connected`,
-      description: `${provider()?.name ?? props.providerID} models are now available to use.`,
+      icon: getSemanticIcon("state.complete"),
+      title: `${providerName()} ${suffix}`,
+      description: props.completeDescription ?? _(providerFlow.modelsAvailable.id, { provider: providerName() }),
     })
   }
 
@@ -125,27 +136,32 @@ export function ProviderConnectionFlow(props: {
   }
 
   function methodDescription(item: ProviderAuthMethod) {
-    if (item.type === "api") return "Paste a provider API key."
-    if (item.type === "oauth") return "Authorize in the browser and return here."
-    if (item.type === "import") return "Use credentials already available on this device."
-    return "Connect this provider."
+    if (item.type === "api") return _(providerFlow.methodApiDesc)
+    if (item.type === "oauth") return _(providerFlow.methodOauthDesc)
+    if (item.type === "import") return _(providerFlow.methodImportDesc)
+    return _(providerFlow.methodGenericDesc)
   }
 
   function methodIcon(item: ProviderAuthMethod) {
     if (item.type === "api" || item.type === "import") return getSemanticIcon("account.import")
     if (item.type === "oauth") return getSemanticIcon("action.open")
-    return getSemanticIcon("settings.providers")
+    return getSemanticIcon("providers.main")
   }
 
   return (
     <div classList={{ "provider-flow": true, "provider-flow-compact": !!props.compact }}>
       <div class="provider-flow-header">
         <Show when={props.onBack}>
-          <button type="button" class="provider-flow-back" onClick={props.onBack} aria-label="Back to providers">
+          <button
+            type="button"
+            class="provider-flow-back"
+            onClick={props.onBack}
+            aria-label={_(providerFlow.backToProviders)}
+          >
             <Icon name={getSemanticIcon("navigation.back")} size="small" />
           </button>
         </Show>
-        <ProviderIcon id={props.providerID} class="size-5 shrink-0 icon-strong-base" />
+        <ProviderIcon id={props.iconID ?? props.providerID} class="size-5 shrink-0 icon-strong-base" />
         <div class="min-w-0">
           <div class="provider-flow-title">{providerConnectCopy(props.providerID, profiles(), provider()?.name)}</div>
           <div class="provider-flow-subtitle">
@@ -159,8 +175,12 @@ export function ProviderConnectionFlow(props: {
           <Match when={store.methodIndex === undefined}>
             <div class="provider-method-list">
               <div class="provider-flow-intro">
-                <div class="provider-flow-eyebrow">{connected() ? "Credential refresh" : "Connection method"}</div>
-                <div class="provider-flow-heading">{connected() ? "Refresh credentials" : "Choose how to connect"}</div>
+                <div class="provider-flow-eyebrow">
+                  {props.intent === "recover" ? _(providerFlow.accountRecovery) : _(providerFlow.connectionMethod)}
+                </div>
+                <div class="provider-flow-heading">
+                  {props.intent === "recover" ? _(providerFlow.reconnectOrReplace) : _(providerFlow.chooseHowToConnect)}
+                </div>
               </div>
               <For each={methods()}>
                 {(item, index) => (
@@ -181,15 +201,15 @@ export function ProviderConnectionFlow(props: {
           <Match when={store.state === "pending"}>
             <div class="provider-flow-message">
               <Spinner />
-              <span>Authorization in progress...</span>
+              <span>{_(providerFlow.authInProgress)}</span>
             </div>
           </Match>
           <Match when={store.state === "error"}>
             <div class="provider-flow-message provider-flow-message-error">
               <Icon name={getSemanticIcon("state.error")} class="text-icon-critical-base" />
-              <span>Authorization failed: {store.error}</span>
+              <span>{_(providerFlow.authFailed.id, { error: store.error })}</span>
               <Button type="button" variant="ghost" size="small" onClick={resetMethod}>
-                Try another method
+                {_(providerFlow.tryAnotherMethod)}
               </Button>
             </div>
           </Match>
@@ -206,7 +226,7 @@ export function ProviderConnectionFlow(props: {
                 const apiKey = formDataValue(new FormData(form), "apiKey")
 
                 if (!apiKey?.trim()) {
-                  setFormStore("error", "API key is required")
+                  setFormStore("error", _(providerFlow.apiKeyRequired))
                   return
                 }
 
@@ -224,9 +244,13 @@ export function ProviderConnectionFlow(props: {
               return (
                 <form onSubmit={handleSubmit} class="provider-api-form">
                   <div class="provider-step-header">
-                    <div class="provider-flow-eyebrow">API key</div>
-                    <div class="provider-flow-heading">Add a {providerName()} key</div>
-                    <p>Use a key from your provider account to make this provider available in Synergy.</p>
+                    <div class="provider-flow-eyebrow">{_(providerFlow.apiKey)}</div>
+                    <div class="provider-flow-heading">
+                      {props.intent === "recover"
+                        ? _(providerFlow.replaceKey.id, { provider: providerName() })
+                        : _(providerFlow.addKey.id, { provider: providerName() })}
+                    </div>
+                    <p>{_(providerFlow.apiKeyDescription)}</p>
                   </div>
                   <Show when={providerCTA(props.providerID, profiles())}>
                     {(cta) => (
@@ -239,8 +263,8 @@ export function ProviderConnectionFlow(props: {
                   <TextField
                     autofocus
                     type="password"
-                    label={`${provider()?.name ?? props.providerID} API key`}
-                    placeholder="API key"
+                    label={_(providerFlow.apiKeyLabel.id, { provider: providerName() })}
+                    placeholder={_(providerFlow.apiKeyPlaceholder)}
                     name="apiKey"
                     value={formStore.value}
                     onChange={setFormStore.bind(null, "value")}
@@ -249,10 +273,10 @@ export function ProviderConnectionFlow(props: {
                   />
                   <div class="provider-form-actions">
                     <Button type="button" variant="ghost" size="large" onClick={resetMethod}>
-                      Back
+                      {_(providerFlow.back)}
                     </Button>
                     <Button class="w-auto" type="submit" size="large" variant="primary">
-                      Save key
+                      {_(providerFlow.saveKey)}
                     </Button>
                   </div>
                 </form>
@@ -277,7 +301,7 @@ export function ProviderConnectionFlow(props: {
                     const code = formDataValue(new FormData(e.currentTarget as HTMLFormElement), "code")
 
                     if (!code?.trim()) {
-                      setFormStore("error", "Authorization code is required")
+                      setFormStore("error", _(providerFlow.authCodeRequired))
                       return
                     }
 
@@ -291,29 +315,29 @@ export function ProviderConnectionFlow(props: {
                       await complete()
                       return
                     }
-                    setFormStore("error", "Invalid authorization code")
+                    setFormStore("error", _(providerFlow.invalidAuthCode))
                   }
 
                   return (
                     <form onSubmit={handleSubmit} class="provider-api-form">
                       <div class="provider-step-header">
-                        <div class="provider-flow-eyebrow">Step 1</div>
-                        <div class="provider-flow-heading">Authorize in your browser</div>
-                        <p>We opened the authorization page automatically. Use the button if it did not appear.</p>
+                        <div class="provider-flow-eyebrow">{_(providerFlow.step1)}</div>
+                        <div class="provider-flow-heading">{_(providerFlow.authorizeInBrowser)}</div>
+                        <p>{_(providerFlow.autoOpened)}</p>
                       </div>
                       <Link href={store.authorization!.url} class="provider-auth-link">
-                        <span>Open authorization page</span>
+                        <span>{_(providerFlow.openAuthPage)}</span>
                         <Icon name={getSemanticIcon("action.open")} size="small" />
                       </Link>
                       <div class="provider-step-header provider-step-header-compact">
-                        <div class="provider-flow-eyebrow">Step 2</div>
-                        <div class="provider-flow-heading">Paste the authorization code</div>
+                        <div class="provider-flow-eyebrow">{_(providerFlow.step2)}</div>
+                        <div class="provider-flow-heading">{_(providerFlow.pasteAuthCode)}</div>
                       </div>
                       <TextField
                         autofocus
                         type="text"
-                        label="Authorization code"
-                        placeholder="Authorization code"
+                        label={_(providerFlow.authCodeLabel)}
+                        placeholder={_(providerFlow.authCodePlaceholder)}
                         name="code"
                         value={formStore.value}
                         onChange={setFormStore.bind(null, "value")}
@@ -322,10 +346,10 @@ export function ProviderConnectionFlow(props: {
                       />
                       <div class="provider-form-actions">
                         <Button type="button" variant="ghost" size="large" onClick={resetMethod}>
-                          Back
+                          {_(providerFlow.back)}
                         </Button>
                         <Button class="w-auto" type="submit" size="large" variant="primary">
-                          Submit
+                          {_(providerFlow.submit)}
                         </Button>
                       </div>
                     </form>
@@ -341,33 +365,41 @@ export function ProviderConnectionFlow(props: {
                   })
 
                   onMount(async () => {
+                    if (store.authorization?.url) platform.openLink(store.authorization.url)
                     const result = await globalSDK.client.provider.oauth.callback({
                       providerID: props.providerID,
                       method: store.methodIndex,
                     })
                     if (result.error) {
                       setStore("state", "error")
-                      setStore("error", "Authorization did not complete.")
+                      setStore("error", _(providerFlow.authTimeout))
                       return
                     }
                     await complete()
+                    resetMethod()
                   })
 
                   return (
                     <div class="provider-device-flow">
                       <div class="provider-step-header">
-                        <div class="provider-flow-eyebrow">Authorize</div>
-                        <div class="provider-flow-heading">Finish in your browser</div>
-                        <p>Open the authorization page and enter this confirmation code when prompted.</p>
+                        <div class="provider-flow-eyebrow">{_(providerFlow.authorize)}</div>
+                        <div class="provider-flow-heading">{_(providerFlow.finishInBrowser)}</div>
+                        <p>{_(providerFlow.deviceInstructions)}</p>
                       </div>
                       <Link href={store.authorization!.url} class="provider-auth-link">
-                        <span>Open authorization page</span>
+                        <span>{_(providerFlow.openAuthPage)}</span>
                         <Icon name={getSemanticIcon("action.open")} size="small" />
                       </Link>
-                      <TextField label="Confirmation code" class="font-mono" value={code()} readOnly copyable />
+                      <TextField
+                        label={_(providerFlow.confirmationCode)}
+                        class="font-mono"
+                        value={code()}
+                        readOnly
+                        copyable
+                      />
                       <div class="provider-flow-message">
                         <Spinner />
-                        <span>Waiting for authorization...</span>
+                        <span>{_(providerFlow.waitingForAuth)}</span>
                       </div>
                     </div>
                   )

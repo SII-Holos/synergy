@@ -11,6 +11,7 @@ export namespace Flag {
   export const SYNERGY_DISABLE_LSP_DOWNLOAD = truthy("SYNERGY_DISABLE_LSP_DOWNLOAD")
   export const SYNERGY_DISABLE_AUTOCOMPACT = truthy("SYNERGY_DISABLE_AUTOCOMPACT")
   export const SYNERGY_DISABLE_MODELS_FETCH = truthy("SYNERGY_DISABLE_MODELS_FETCH")
+  export const SYNERGY_DISABLE_FILEWATCHER = truthy("SYNERGY_DISABLE_FILEWATCHER")
   export const SYNERGY_DISABLE_CLAUDE_CODE = truthy("SYNERGY_DISABLE_CLAUDE_CODE")
   export const SYNERGY_DISABLE_CLAUDE_CODE_PROMPT =
     SYNERGY_DISABLE_CLAUDE_CODE || truthy("SYNERGY_DISABLE_CLAUDE_CODE_PROMPT")
@@ -26,11 +27,16 @@ export namespace Flag {
   export const SYNERGY_BUG_REPORT_URL = process.env["SYNERGY_BUG_REPORT_URL"]
   // Experimental
   export const SYNERGY_EXPERIMENTAL = truthy("SYNERGY_EXPERIMENTAL")
-  export const SYNERGY_EXPERIMENTAL_FILEWATCHER = truthy("SYNERGY_EXPERIMENTAL_FILEWATCHER")
-  export const SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER = truthy("SYNERGY_EXPERIMENTAL_DISABLE_FILEWATCHER")
   export const SYNERGY_EXPERIMENTAL_OXFMT = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_OXFMT")
   export const SYNERGY_EXPERIMENTAL_LSP_TY = truthy("SYNERGY_EXPERIMENTAL_LSP_TY")
   export const SYNERGY_EXPERIMENTAL_LSP_TOOL = SYNERGY_EXPERIMENTAL || truthy("SYNERGY_EXPERIMENTAL_LSP_TOOL")
+  // Escape hatch for the loop-scoped in-memory session message cache (#350 D2).
+  export const SYNERGY_DISABLE_MESSAGE_CACHE = truthy("SYNERGY_DISABLE_MESSAGE_CACHE")
+  // Escape hatch for idle LSP client reaping (#350 D3).
+  export const SYNERGY_DISABLE_LSP_REAP = truthy("SYNERGY_DISABLE_LSP_REAP")
+  // Cross-check the message cache against a fresh disk read on every read and
+  // fall back to disk on mismatch. For tests/soak; off by default.
+  export const SYNERGY_VERIFY_MESSAGE_CACHE = truthy("SYNERGY_VERIFY_MESSAGE_CACHE")
 
   function truthy(key: string) {
     const value = process.env[key]?.toLowerCase()

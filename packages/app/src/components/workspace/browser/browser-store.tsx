@@ -1,21 +1,15 @@
 import { createContext, createSignal, useContext, type ParentProps } from "solid-js"
-import type { BrowserPresentationSelection } from "@ericsanchezok/synergy-util/browser-protocol"
+import type {
+  BrowserDownloadEntry,
+  BrowserEvent as BrowserProtocolEvent,
+  BrowserHostStatus,
+  BrowserPage as BrowserProtocolPage,
+  BrowserPresentationSelection,
+} from "@ericsanchezok/synergy-browser"
 import { createStore, type SetStoreFunction } from "solid-js/store"
 import { browserDebug, shouldLogBrowserMessage, summarizeBrowserMessage } from "./browser-debug"
 
-export interface BrowserPage {
-  id: string
-  title: string
-  url: string
-  isLoading: boolean
-  lastActiveAt?: number | null
-}
-
-export interface ScreenshotEntry {
-  url: string
-  width: number
-  height: number
-}
+export type BrowserPage = BrowserProtocolPage
 
 export interface ConsoleEntry {
   level: string
@@ -41,18 +35,7 @@ export interface AccessibilityElement {
   children: AccessibilityElement[]
 }
 
-export interface DownloadEntry {
-  id: string
-  url: string
-  fileName: string
-  mimeType: string
-  state: "in_progress" | "completed" | "cancelled" | "interrupted" | "blocked"
-  totalBytes: number
-  receivedBytes: number
-  timestamp: number
-  path?: string
-  warning?: string
-}
+export type DownloadEntry = BrowserDownloadEntry
 
 export interface AgentActivity {
   pageId: string | null
@@ -63,19 +46,14 @@ export interface AgentActivity {
   label: string | null
 }
 
-export interface FileChooserRequest {
-  pageId: string
-  requestId: string
-  multiple: boolean
-  accept: string[]
-}
+export type FileChooserRequest = Pick<
+  Extract<BrowserProtocolEvent, { type: "filechooser.request" }>,
+  "pageId" | "requestId" | "multiple" | "accept"
+>
 
-export interface DialogRequest {
-  pageId: string
-  requestId: string
-  type: string
-  message: string
-  defaultValue?: string
+type DialogEvent = Extract<BrowserProtocolEvent, { type: "dialog.opened" }>
+export type DialogRequest = Pick<DialogEvent, "pageId" | "requestId" | "message" | "defaultValue"> & {
+  type: DialogEvent["dialogType"]
 }
 
 export interface BrowserErrorState {
@@ -83,8 +61,6 @@ export interface BrowserErrorState {
   message: string
   code?: string
 }
-
-export type BrowserHostStatus = "pending" | "ready" | "detached" | "restarting" | "failed"
 
 export interface AnnotationTarget {
   displayX: number
@@ -98,7 +74,7 @@ export interface AssetEntry {
   type: "image" | "script" | "stylesheet" | "font" | "media" | "document" | "other"
 }
 
-export type DevPanel = "closed" | "console" | "network" | "elements" | "screenshot" | "inspect" | "downloads" | "assets"
+export type DevPanel = "closed" | "console" | "network" | "elements" | "downloads" | "assets"
 export type ViewportMode = "fit" | "fixed"
 
 export interface SetViewportOptions {
@@ -116,9 +92,10 @@ export function createBrowserStore() {
     page: null as BrowserPage | null,
     connectionStatus: "disconnected" as "disconnected" | "connecting" | "connected" | "failed" | "error",
     controlMode: "user" as "user" | "agent",
+    seq: 0,
+    epoch: null as string | null,
   })
 
-  const [pageScreenshots, setPageScreenshots] = createStore<Record<string, ScreenshotEntry>>({})
   const [consoleEntries, setConsoleEntries] = createStore<Record<string, ConsoleEntry[]>>({})
   const [networkRequests, setNetworkRequests] = createStore<Record<string, NetworkEntry[]>>({})
   const [elements, setElements] = createStore<Record<string, AccessibilityElement[]>>({})
@@ -143,7 +120,6 @@ export function createBrowserStore() {
   const [presentation, setPresentation] = createSignal<BrowserPresentationSelection | null>(null)
   const [annotationTarget, setAnnotationTarget] = createSignal<AnnotationTarget | null>(null)
   const [browserTraceId] = createSignal(createBrowserTraceId())
-  const pendingViewportByPage = new Map<string, Record<string, unknown>>()
 
   const page = () => session.page
   const pageId = () => session.page?.id ?? null
@@ -179,7 +155,7 @@ export function createBrowserStore() {
     })
     setFollowAgent(false)
     if (current) setPageLoading(current.id, true)
-    send({ type: "navigate", source: "user", url, pageId: current?.id })
+    send({ type: "navigate", source: "user", url })
   }
 
   function setPageLoading(nextPageId: string | null | undefined, isLoading: boolean) {
@@ -210,12 +186,6 @@ export function createBrowserStore() {
     setSession("page", null)
   }
 
-  function requestScreenshot() {
-    const id = pageId()
-    if (!id) return
-    send({ type: "requestScreenshot", pageId: id })
-  }
-
   function toggleDevPanel(panel: DevPanel) {
     setDevPanel((prev) => (prev === panel ? "closed" : panel))
   }
@@ -230,7 +200,6 @@ export function createBrowserStore() {
     const id = pageId()
     const message = {
       type: "input.resize",
-      pageId: id,
       width: nextWidth,
       height: nextHeight,
     }
@@ -239,16 +208,6 @@ export function createBrowserStore() {
         width: nextWidth,
         height: nextHeight,
         reason: "missing-page",
-      })
-      return
-    }
-    if (presentation()?.kind === "webrtc" && hostStatus(id) !== "ready") {
-      pendingViewportByPage.set(id, message)
-      browserDebug("store.viewport.deferred", {
-        pageId: id,
-        width: nextWidth,
-        height: nextHeight,
-        hostStatus: hostStatus(id),
       })
       return
     }
@@ -261,7 +220,6 @@ export function createBrowserStore() {
 
   function setFollowAgent(enabled: boolean) {
     setFollowAgentSignal(enabled)
-    send({ type: "setFollowAgent", enabled })
   }
 
   function followAgentNow() {
@@ -292,11 +250,6 @@ export function createBrowserStore() {
     setHostStatuses(nextPageId, status)
     if (status !== "ready") return
     clearTransientHostError()
-    const pending = pendingViewportByPage.get(nextPageId)
-    if (!pending) return
-    pendingViewportByPage.delete(nextPageId)
-    browserDebug("store.viewport.flush", summarizeBrowserMessage(pending))
-    send(pending)
   }
 
   function clearTransientHostError() {
@@ -324,10 +277,7 @@ export function createBrowserStore() {
     removePage,
     send,
     _setSend,
-    requestScreenshot,
     toggleDevPanel,
-    pageScreenshots,
-    setPageScreenshots,
     consoleEntries,
     setConsoleEntries,
     networkRequests,

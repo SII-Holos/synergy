@@ -1,36 +1,18 @@
-import { createStore, produce, reconcile } from "solid-js/store"
-import { batch, createMemo, onCleanup } from "solid-js"
+import { createStore } from "solid-js/store"
+import { batch, createMemo, createRoot, onCleanup } from "solid-js"
 import { firstBy, uniqueBy } from "remeda"
-import type {
-  ProviderListResponse,
-  WorkspaceFileNode,
-  WorkspaceFileReadResult,
-  WorkspaceFileStatusSummary,
-} from "@ericsanchezok/synergy-sdk"
+import type { ProviderListResponse } from "@ericsanchezok/synergy-sdk"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
+import { useParams } from "@solidjs/router"
 import { useSDK } from "./sdk"
 import { useSync } from "./sync"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
 import { useProviders } from "@/hooks/use-providers"
-import { DateTime } from "luxon"
 import { Persist, persisted } from "@/utils/persist"
-import { showToast } from "@ericsanchezok/synergy-ui/toast"
+import { createModelVariantSession } from "./prompt/model-variant"
+import * as ComposerIntent from "./prompt/composer-intent"
 
-export type LocalFile = WorkspaceFileNode &
-  Partial<{
-    loaded: boolean
-    pinned: boolean
-    expanded: boolean
-    content: WorkspaceFileReadResult
-    selection: { startLine: number; startChar: number; endLine: number; endChar: number }
-    scrollTop: number
-    view: "raw" | "diff-unified" | "diff-split"
-    folded: string[]
-    selectedChange: number
-    status: WorkspaceFileStatusSummary["files"][number]
-  }>
-export type TextSelection = LocalFile["selection"]
-export type View = LocalFile["view"]
+export type TextSelection = { startLine: number; startChar: number; endLine: number; endChar: number }
 
 type ProviderListItem = ProviderListResponse["all"][number]
 type ProviderListModel = ProviderListItem["models"][string]
@@ -44,10 +26,21 @@ export type ModelKey = { providerID: string; modelID: string }
 export type FileContext = { type: "file"; path: string; selection?: TextSelection }
 export type ContextItem = FileContext
 
+const WORKSPACE_KEY = "__workspace__"
+const MAX_MODEL_VARIANT_SESSIONS = 20
+
+type ModelVariantSession = ReturnType<typeof createModelVariantSession>
+
+type ModelVariantCacheEntry = {
+  value: ModelVariantSession
+  dispose: VoidFunction
+}
+
 export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
   name: "Local",
   init: () => {
     const sdk = useSDK()
+    const params = useParams()
     const sync = useSync()
     const providers = useProviders()
 
@@ -70,49 +63,72 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     }
 
+    // Composer intent is scoped per session visit; a not-yet-created session
+    // (new-session composer) uses a stable sentinel key so a selection made
+    // before the session exists still applies to the first prompt.
+    const NEW_SESSION_INTENT_KEY = "__new__"
+    const intentKey = () => params.id ?? NEW_SESSION_INTENT_KEY
+
     const agent = (() => {
       const list = createMemo(() => sync.data.agent.filter((x) => x.mode !== "subagent" && !x.hidden))
+      // draft: explicit per-session user choice; global: last choice, used for the
+      // new-session composer. History (sessionDefault) is a read-only derivation
+      // and is never written back here — that is the #318 fix.
       const [store, setStore] = createStore<{
-        current?: string
+        global?: string
+        draft: Record<string, string>
       }>({
-        current: list()[0]?.name,
+        global: undefined,
+        draft: {},
+      })
+      const sessionDefault = createMemo(() =>
+        ComposerIntent.sessionDefaultAgent(params.id ? sync.data.message[params.id] : undefined),
+      )
+      const isSelectable = (name: string) => list().some((x) => x.name === name)
+      const currentName = createMemo(() => {
+        const available = list()
+        if (available.length === 0) return undefined
+        return (
+          ComposerIntent.resolveAgent([store.draft[intentKey()], sessionDefault(), store.global], isSelectable) ??
+          available[0].name
+        )
       })
       return {
         list,
         current() {
           const available = list()
           if (available.length === 0) return undefined
-          return available.find((x) => x.name === store.current) ?? available[0]
+          const name = currentName()
+          return available.find((x) => x.name === name) ?? available[0]
         },
         set(name: string | undefined) {
           const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          if (name && available.some((x) => x.name === name)) {
-            setStore("current", name)
-            return
-          }
-          setStore("current", available[0].name)
+          if (available.length === 0) return
+          const target = name && isSelectable(name) ? name : available[0].name
+          setStore("draft", intentKey(), target)
+          setStore("global", target)
         },
         move(direction: 1 | -1) {
           const available = list()
-          if (available.length === 0) {
-            setStore("current", undefined)
-            return
-          }
-          let next = available.findIndex((x) => x.name === store.current) + direction
+          if (available.length === 0) return
+          let next = available.findIndex((x) => x.name === currentName()) + direction
           if (next < 0) next = available.length - 1
           if (next >= available.length) next = 0
           const value = available[next]
           if (!value) return
-          setStore("current", value.name)
+          setStore("draft", intentKey(), value.name)
+          setStore("global", value.name)
           if (value.model)
             model.set({
               providerID: value.model.providerID,
               modelID: value.model.modelID,
             })
+        },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(store.draft, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === store.draft) return
+          const value = next[sessionID]
+          if (value !== undefined) setStore("draft", sessionID, value)
         },
       }
     })()
@@ -122,24 +138,22 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (!value || typeof value !== "object") return value
 
         const record = value as Record<string, unknown>
-        if (Array.isArray(record.quickSwitcher)) return record
-
         const recent = Array.isArray(record.recent) ? (record.recent as ModelKey[]) : []
-        const variant = record.variant && typeof record.variant === "object" ? record.variant : {}
-        const quickSwitcher = Array.isArray(record.user)
-          ? record.user.flatMap((item) => {
-              if (!item || typeof item !== "object") return []
-              const entry = item as Record<string, unknown>
-              if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
-              const state = entry.visibility === "hide" ? "remove" : "add"
-              return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
-            })
-          : []
+        const quickSwitcher = Array.isArray(record.quickSwitcher)
+          ? (record.quickSwitcher as (ModelKey & { state: "add" | "remove" })[])
+          : Array.isArray(record.user)
+            ? record.user.flatMap((item) => {
+                if (!item || typeof item !== "object") return []
+                const entry = item as Record<string, unknown>
+                if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+                const state = entry.visibility === "hide" ? "remove" : "add"
+                return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+              })
+            : []
 
         return {
           quickSwitcher,
           recent,
-          variant,
         }
       }
 
@@ -151,19 +165,63 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         createStore<{
           quickSwitcher: (ModelKey & { state: "add" | "remove" })[]
           recent: ModelKey[]
-          variant?: Record<string, string | undefined>
         }>({
           quickSwitcher: [],
           recent: [],
-          variant: {},
         }),
       )
 
-      const [ephemeral, setEphemeral] = createStore<{
+      // Session-scoped draft of the user's explicit model choice (keyed by
+      // session id, or the new-session sentinel). Replaces the old agent-scoped
+      // ephemeral store, which leaked model choices across sessions sharing an
+      // agent and could not distinguish user intent from history (#318).
+      const [draft, setDraft] = createStore<{
         model: Record<string, ModelKey>
       }>({
         model: {},
       })
+
+      const variantCache = new Map<string, ModelVariantCacheEntry>()
+
+      const disposeVariantCache = () => {
+        for (const entry of variantCache.values()) {
+          entry.dispose()
+        }
+        variantCache.clear()
+      }
+
+      onCleanup(disposeVariantCache)
+
+      const pruneVariantCache = () => {
+        while (variantCache.size > MAX_MODEL_VARIANT_SESSIONS) {
+          const first = variantCache.keys().next().value
+          if (!first) return
+          const entry = variantCache.get(first)
+          entry?.dispose()
+          variantCache.delete(first)
+        }
+      }
+
+      const loadVariantSession = (dir: string, id: string | undefined) => {
+        const key = `${dir}:${id ?? WORKSPACE_KEY}`
+        const existing = variantCache.get(key)
+        if (existing) {
+          variantCache.delete(key)
+          variantCache.set(key, existing)
+          return existing.value
+        }
+
+        const entry = createRoot((dispose) => ({
+          value: createModelVariantSession(dir, id),
+          dispose,
+        }))
+
+        variantCache.set(key, entry)
+        pruneVariantCache()
+        return entry.value
+      }
+
+      const variantSession = createMemo(() => loadVariantSession(sdk.scopeKey, params.id))
 
       const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`
       const keyOfLocalModel = (model: LocalModel) => keyOf({ providerID: model.provider.id, modelID: model.id })
@@ -207,7 +265,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
           const defaultModelID = providers.default()[provider.id]
           push(find(defaultModelID ? { providerID: provider.id, modelID: defaultModelID } : undefined))
-          push(newest(providerModels.filter((model) => model.reasoning)))
+          push(newest(providerModels.filter((model) => model.capabilities.reasoning)))
           push(
             newest(providerModels.filter((model) => (model.cost?.input ?? 0) === 0 && (model.cost?.output ?? 0) === 0)),
           )
@@ -215,9 +273,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
             newest(
               providerModels.filter(
                 (model) =>
-                  model.modalities?.input?.includes("image") ||
-                  model.modalities?.input?.includes("pdf") ||
-                  model.modalities?.input?.includes("video"),
+                  model.capabilities.input.image || model.capabilities.input.pdf || model.capabilities.input.video,
               ),
             ),
           )
@@ -228,9 +284,11 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
 
       const recommendedSet = createMemo(() => new Set(recommended().map(keyOf)))
 
+      const quickSwitcherPreferences = createMemo(() => sync.data.config.quick_switcher?.models ?? [])
+
       const quickSwitcherPreferenceMap = createMemo(() => {
         const map = new Map<string, "add" | "remove">()
-        for (const item of store.quickSwitcher) {
+        for (const item of quickSwitcherPreferences()) {
           map.set(keyOf(item), item.state)
         }
         return map
@@ -269,17 +327,51 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         return undefined
       })
 
+      // Layer 2: the session's default model — server modelOverride, else the
+      // model inherited from the last root user message. Read-only derivation;
+      // never written back, so it cannot clobber the user's draft (#318).
+      const sessionDefaultModel = createMemo((): ModelKey | undefined => {
+        const id = params.id
+        if (!id) return undefined
+        return ComposerIntent.sessionDefaultModel(sync.session.get(id)?.modelOverride, sync.data.message[id])
+      })
+
       const current = createMemo(() => {
         const a = agent.current()
         if (!a) return undefined
         const key = getFirstValidModel(
-          () => ephemeral.model[a.name],
+          () => draft.model[intentKey()],
+          () => sessionDefaultModel(),
           () => a.model,
           fallbackModel,
         )
         if (!key) return undefined
         return find(key)
       })
+
+      const sessionDefaultVariant = createMemo((): string | undefined => {
+        const id = params.id
+        const m = current()
+        if (!id || !m) return undefined
+        return ComposerIntent.sessionDefaultVariant({ providerID: m.provider.id, modelID: m.id }, sync.data.message[id])
+      })
+      const currentVariant = () => {
+        const m = current()
+        if (!m) return undefined
+        const modelKey = { providerID: m.provider.id, modelID: m.id }
+        const session = variantSession()
+        if (session.has(modelKey)) return session.get(modelKey)
+        return sessionDefaultVariant()
+      }
+
+      const displayedVariant = () => {
+        const a = agent.current()
+        return ComposerIntent.resolveVariantDisplay(
+          currentVariant(),
+          a?.defaultVariant,
+          a ? sync.data.config.role_variant?.[a.modelRole || "default"] : undefined,
+        )
+      }
 
       const recent = createMemo(() => store.recent.map(find).filter((model): model is LocalModel => !!model))
 
@@ -289,28 +381,6 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         if (preference === "remove") return false
         if (preference === "add") return true
         return recommendedSet().has(key)
-      }
-
-      function updateQuickSwitcherPreference(model: ModelKey, included: boolean) {
-        const recommendedByDefault = recommendedSet().has(keyOf(model))
-        const nextState = included === recommendedByDefault ? undefined : included ? "add" : "remove"
-        const index = store.quickSwitcher.findIndex(
-          (item) => item.providerID === model.providerID && item.modelID === model.modelID,
-        )
-
-        if (!nextState) {
-          if (index >= 0) {
-            setStore("quickSwitcher", (items) => items.filter((_, itemIndex) => itemIndex !== index))
-          }
-          return
-        }
-
-        if (index >= 0) {
-          setStore("quickSwitcher", index, { ...store.quickSwitcher[index], state: nextState })
-          return
-        }
-
-        setStore("quickSwitcher", store.quickSwitcher.length, { ...model, state: nextState })
       }
 
       const quickSwitcherOnly = createMemo(() =>
@@ -348,51 +418,60 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         recent,
         all,
         quickSwitcher,
+        quickSwitcherPreferences,
         cycle,
         set(model: ModelKey | undefined, options?: { recent?: boolean }) {
           batch(() => {
-            const currentAgent = agent.current()
-            if (currentAgent) {
-              const resolved = model ?? fallbackModel()
-              if (resolved) setEphemeral("model", currentAgent.name, resolved)
-            }
-            if (model) updateQuickSwitcherPreference(model, true)
+            // Explicit user choice → session-scoped draft (layer 1). Falling back
+            // to fallbackModel() keeps a concrete value when the caller clears.
+            const resolved = model ?? fallbackModel()
+            if (resolved) setDraft("model", intentKey(), resolved)
             if (options?.recent && model) {
               const uniq = uniqueBy([model, ...store.recent], (x) => x.providerID + x.modelID)
               if (uniq.length > 5) uniq.pop()
               setStore("recent", uniq)
             }
           })
+          // A genuine selector pick (recent) persists as the session's
+          // modelOverride (layer 2), so the choice survives reload and matches
+          // the channel /model command. Fire-and-forget; the draft already
+          // reflects it locally. Skipped for the new-session composer.
+          if (options?.recent && model && params.id) {
+            void sdk.client.session
+              .update({ sessionID: params.id, modelOverride: { providerID: model.providerID, modelID: model.modelID } })
+              .catch(() => {})
+          }
+        },
+        handoffNewSessionIntent(sessionID: string) {
+          const next = ComposerIntent.handoffNewSessionDraft(draft.model, NEW_SESSION_INTENT_KEY, sessionID)
+          if (next === draft.model) return
+          const value = next[sessionID]
+          if (value !== undefined) setDraft("model", sessionID, value)
         },
         inQuickSwitcher,
-        setQuickSwitcher(model: ModelKey, included: boolean) {
-          updateQuickSwitcherPreference(model, included)
-        },
         isRecommended(model: ModelKey) {
           return recommendedSet().has(keyOf(model))
         },
         variant: {
-          current() {
-            const m = current()
-            if (!m) return undefined
-            const key = `${m.provider.id}/${m.id}`
-            return store.variant?.[key]
-          },
+          current: currentVariant,
+          displayed: displayedVariant,
           list() {
             const m = current()
             if (!m) return []
             if (!m.variants) return []
             return Object.keys(m.variants)
           },
-          set(value: string | undefined) {
+          set(value: string | undefined, target?: ModelKey) {
             const m = current()
-            if (!m) return
-            const key = `${m.provider.id}/${m.id}`
-            if (!store.variant) {
-              setStore("variant", { [key]: value })
-            } else {
-              setStore("variant", key, value)
-            }
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            variantSession().set(modelKey, value)
+          },
+          setForSession(sessionID: string, value: string | undefined, target?: ModelKey, scopeKey = sdk.scopeKey) {
+            const m = current()
+            const modelKey = target ?? (m ? { providerID: m.provider.id, modelID: m.id } : undefined)
+            if (!modelKey) return
+            loadVariantSession(scopeKey, sessionID).set(modelKey, value)
           },
           cycle() {
             const variants = this.list()
@@ -413,261 +492,16 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       }
     })()
 
-    const file = (() => {
-      const [store, setStore] = createStore<{
-        node: Record<string, LocalFile>
-        children: Record<string, string[]>
-      }>({
-        node: {}, //  Object.fromEntries(sync.data.node.map((x) => [x.path, x])),
-        children: {},
-      })
-
-      const relative = (input: string) => {
-        const root = sync.data.path.directory
-        const prefix = root.endsWith("/") ? root : root + "/"
-        if (input === root) return ""
-        if (input.startsWith(prefix)) return input.slice(prefix.length)
-        if (input.startsWith("./")) return input.slice(2)
-        if (input.startsWith("/")) return input.slice(1)
-        return input
-      }
-
-      const load = async (path: string) => {
-        const relativePath = relative(path)
-        await sdk.client.workspace.files
-          .read({ path: relativePath })
-          .then((x) => {
-            if (!store.node[relativePath]) return
-            setStore(
-              "node",
-              relativePath,
-              produce((draft) => {
-                draft.loaded = true
-                draft.content = x.data
-              }),
-            )
-          })
-          .catch((e) => {
-            showToast({
-              type: "error",
-              title: "Failed to load file",
-              description: e.message,
-            })
-          })
-      }
-
-      const fetch = async (path: string) => {
-        const relativePath = relative(path)
-        const parent = relativePath.split("/").slice(0, -1).join("/")
-        if (parent) {
-          await list(parent)
-        }
-      }
-
-      const isDirectChild = (parent: string, child: string) => {
-        if (!parent) return !!child && !child.includes("/")
-        if (!child.startsWith(parent + "/")) return false
-        const rest = child.slice(parent.length + 1)
-        return !!rest && !rest.includes("/")
-      }
-
-      const init = async (path: string) => {
-        const relativePath = relative(path)
-        if (!store.node[relativePath]) await fetch(path)
-        if (store.node[relativePath]?.loaded) return
-        return load(relativePath)
-      }
-
-      const open = async (path: string, options?: { pinned?: boolean; view?: LocalFile["view"] }) => {
-        const relativePath = relative(path)
-        if (!store.node[relativePath]) await fetch(path)
-        // setStore("opened", (x) => {
-        //   if (x.includes(relativePath)) return x
-        //   return [
-        //     ...opened()
-        //       .filter((x) => x.pinned)
-        //       .map((x) => x.path),
-        //     relativePath,
-        //   ]
-        // })
-        // setStore("active", relativePath)
-        // context.addActive()
-        if (options?.pinned) setStore("node", relativePath, "pinned", true)
-        if (options?.view && store.node[relativePath].view === undefined)
-          setStore("node", relativePath, "view", options.view)
-        if (store.node[relativePath]?.loaded) return
-        return load(relativePath)
-      }
-
-      const list = async (path: string) => {
-        const relativePath = relative(path)
-        return sdk.client.workspace.files
-          .children({ path: relativePath })
-          .then((x) => {
-            setStore(
-              produce((draft) => {
-                if (x.data?.parent) {
-                  const parent = x.data.parent
-                  draft.node[parent.path] = { ...draft.node[parent.path], ...parent }
-                }
-                const parentPath = x.data?.path ?? relativePath
-                const childPaths = new Set(x.data?.children.map((node) => node.path) ?? [])
-                draft.children[parentPath] = Array.from(childPaths)
-                for (const key of Object.keys(draft.node)) {
-                  if (isDirectChild(parentPath, key) && !childPaths.has(key)) {
-                    delete draft.node[key]
-                  }
-                }
-                x.data!.children.forEach((node) => {
-                  draft.node[node.path] = { ...draft.node[node.path], ...node }
-                })
-              }),
-            )
-          })
-          .catch(() => {})
-      }
-
-      const searchFiles = (query: string) =>
-        sdk.client.workspace.files
-          .search({ query, kind: "files" })
-          .then((x) => (x.data?.items ?? []).filter((item) => item.kind === "file" && item.type === "file"))
-          .then((items) => items.map((item) => item.path))
-      const searchFilesAndDirectories = (query: string) =>
-        sdk.client.workspace.files
-          .search({ query, kind: "files" })
-          .then((x) => (x.data?.items ?? []).filter((item) => item.kind === "file"))
-          .then((items) => items.map((item) => item.path))
-
-      const unsub = sdk.event.listen((e) => {
-        const event = e.details
-        switch (event.type) {
-          case "file.watcher.updated":
-            const relativePath = relative(event.properties.file)
-            if (relativePath.startsWith(".git/")) return
-            const parent = relative(event.properties.parent ?? relativePath.split("/").slice(0, -1).join("/"))
-            const oldPath = relative(event.properties.oldPath ?? "")
-            const oldParent = oldPath ? oldPath.split("/").slice(0, -1).join("/") : undefined
-            if (event.properties.event === "deleted") {
-              setStore(
-                produce((draft) => {
-                  for (const key of Object.keys(draft.node)) {
-                    if (key === relativePath || key.startsWith(relativePath + "/")) {
-                      delete draft.node[key]
-                      delete draft.children[key]
-                    }
-                  }
-                  draft.children[parent] = (draft.children[parent] ?? []).filter((item) => item !== relativePath)
-                }),
-              )
-              if (store.node[parent]?.loaded) list(parent)
-              return
-            }
-            if (event.properties.event === "renamed") {
-              setStore(
-                produce((draft) => {
-                  if (!oldPath) return
-                  for (const key of Object.keys(draft.node)) {
-                    if (key === oldPath || key.startsWith(oldPath + "/")) {
-                      delete draft.node[key]
-                      delete draft.children[key]
-                    }
-                  }
-                  if (oldParent !== undefined) {
-                    draft.children[oldParent] = (draft.children[oldParent] ?? []).filter((item) => item !== oldPath)
-                  }
-                }),
-              )
-              if (oldParent !== undefined && store.node[oldParent]?.loaded) list(oldParent)
-              if (store.node[parent]?.loaded) list(parent)
-              return
-            }
-            if (event.properties.event === "added") {
-              if (store.node[parent]?.loaded) list(parent)
-              return
-            }
-            if (store.node[relativePath]) load(relativePath)
-            if (store.node[parent]?.loaded) list(parent)
-            break
-        }
-      })
-      onCleanup(unsub)
-
-      return {
-        node: async (path: string) => {
-          if (!store.node[path] || !store.node[path].loaded) {
-            await init(path)
-          }
-          return store.node[path]
-        },
-        update: (path: string, node: LocalFile) => setStore("node", path, reconcile(node)),
-        open,
-        load,
-        init,
-        expand(path: string) {
-          setStore("node", path, "expanded", true)
-          if (store.node[path]?.loaded) return
-          setStore("node", path, "loaded", true)
-          list(path)
-        },
-        collapse(path: string) {
-          setStore("node", path, "expanded", false)
-        },
-        select(path: string, selection: TextSelection | undefined) {
-          setStore("node", path, "selection", selection)
-        },
-        scroll(path: string, scrollTop: number) {
-          setStore("node", path, "scrollTop", scrollTop)
-        },
-        view(path: string): View {
-          const n = store.node[path]
-          return n && n.view ? n.view : "raw"
-        },
-        setView(path: string, view: View) {
-          setStore("node", path, "view", view)
-        },
-        unfold(path: string, key: string) {
-          setStore("node", path, "folded", (xs) => {
-            const a = xs ?? []
-            if (a.includes(key)) return a
-            return [...a, key]
-          })
-        },
-        fold(path: string, key: string) {
-          setStore("node", path, "folded", (xs) => (xs ?? []).filter((k) => k !== key))
-        },
-        folded(path: string) {
-          const n = store.node[path]
-          return n && n.folded ? n.folded : []
-        },
-        changeIndex(path: string) {
-          return store.node[path]?.selectedChange
-        },
-        setChangeIndex(path: string, index: number | undefined) {
-          setStore("node", path, "selectedChange", index)
-        },
-        // changes,
-        // changed,
-        children(path: string) {
-          const parent = relative(path)
-          return (store.children[parent] ?? [])
-            .map((childPath) => store.node[childPath])
-            .filter((node): node is LocalFile => !!node)
-            .sort((a, b) => {
-              if (a.type !== b.type) return a.type === "directory" ? -1 : b.type === "directory" ? 1 : 0
-              return a.name.localeCompare(b.name)
-            })
-        },
-        searchFiles,
-        searchFilesAndDirectories,
-        relative,
-      }
-    })()
-
     const result = {
       slug: createMemo(() => base64Encode(sdk.scopeKey)),
       model,
       agent,
-      file,
+      handoffNewSessionIntent(sessionID: string) {
+        batch(() => {
+          agent.handoffNewSessionIntent(sessionID)
+          model.handoffNewSessionIntent(sessionID)
+        })
+      },
     }
     return result
   },

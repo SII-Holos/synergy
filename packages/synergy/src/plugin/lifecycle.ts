@@ -1,165 +1,284 @@
-import type { PluginHooks } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
-import { Bus } from "../bus"
-import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
-import { ScopedState } from "../scope/scoped-state"
+import { Log } from "../util/log"
+import { pluginRuntimeManager } from "./runtime"
+import { PluginHookPointRegistry } from "./hook-points"
+import {
+  ensureRuntime,
+  getLoadedPlugins,
+  getPlugin,
+  markContributionDegraded,
+  resetAllPluginState,
+  state,
+  contributions,
+  type LoadedPlugin,
+} from "./loader"
 import { startForPlugin, stopForPlugin } from "./mcp"
-import * as ManifestReader from "./manifest-reader"
-import { state, getPlugin, incrementReloadVersion } from "./loader"
-import { restoreRuntimeState, startRuntime } from "../plugin-runtime/supervisor.js"
-import { getRuntime, triggerRuntimeHook } from "../plugin-runtime/supervisor.js"
-import { PluginToolId } from "./ids"
+import Ajv2020 from "ajv/dist/2020"
+import { LightLoopRuntime } from "../session/light-loop-runtime"
+import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
-// ---------------------------------------------------------------------------
-// Hook triggering — unchanged interface for all existing consumers
-// ---------------------------------------------------------------------------
-
-export async function trigger<
-  Name extends Exclude<
-    keyof Required<PluginHooks>,
-    "auth" | "provider" | "event" | "tool" | "cli" | "skills" | "agents" | "dispose"
-  >,
-  Input = Parameters<Required<PluginHooks>[Name]>[0],
-  Output = Parameters<Required<PluginHooks>[Name]>[1],
->(name: Name, input: Input, output: Output): Promise<Output> {
-  if (!name) return output
-  const isToolHook = name === "tool.execute.before" || name === "tool.execute.after"
-  const isPermissionAsk = name === "permission.ask"
-  for (const { id, hooks, pluginDir, runtimeMode } of await state().then((x) => x.loaded)) {
-    const fn = hooks[name]
-    if (!fn) continue
-
-    // Hook gating: scope filtering from manifest permissions.hooks
-    if (isToolHook) {
-      const manifest = await ManifestReader.read(pluginDir)
-      const scope = manifest?.permissions?.hooks?.toolExecute ?? "own"
-      if (scope !== "all") {
-        // "own" scope: only fire if this plugin owns the tool being executed.
-        // The input carries the prefixed full tool ID (e.g. plugin__myplugin__mytool).
-        const toolId = (input as any)?.tool as string | undefined
-        if (scope === "own" && toolId && PluginToolId.is(toolId)) {
-          const parsed = PluginToolId.parse(toolId)
-          if (parsed?.pluginId !== id) continue
-        } else if (scope === "declared") {
-          // "declared" scope: fire if the tool is in this plugin's declared contributes.tools
-          const toolName = toolId ? (PluginToolId.is(toolId) ? PluginToolId.parse(toolId)?.toolId : toolId) : undefined
-          const declared = manifest?.contributes?.tools?.some((t) => t.name === toolName || t.id === toolName)
-          if (!declared) continue
-        } else {
-          // "none" or unrecognized: skip
-          continue
-        }
-      }
-    }
-
-    if (isPermissionAsk) {
-      const manifest = await ManifestReader.read(pluginDir)
-      const scope = manifest?.permissions?.hooks?.permissionAsk ?? "none"
-      if (scope === "none") continue
-      if (scope === "own") {
-        // "own" scope: only fire for permissions triggered by this plugin's own tools.
-        // The input carries the tool name/id.
-        const toolId = (input as any)?.tool as string | undefined
-        if (toolId && PluginToolId.is(toolId)) {
-          const parsed = PluginToolId.parse(toolId)
-          if (parsed?.pluginId !== id) continue
-        }
-      }
-    }
-
-    if (runtimeMode && runtimeMode !== "in-process") {
-      const runtime = getRuntime(id)
-      if (runtime?.hooks?.includes(String(name))) {
-        const nextOutput = await triggerRuntimeHook(id, String(name), input, output)
-        if (nextOutput && typeof nextOutput === "object" && output && typeof output === "object") {
-          Object.assign(output as any, nextOutput)
-        }
-      }
-      continue
-    }
-
-    // @ts-expect-error - hook signature variance
-    await fn(input, output)
-  }
-  return output
+function mcpDeclarations(plugin: LoadedPlugin) {
+  return Object.fromEntries(contributions(plugin, "mcp").map((item) => [item.id, item.server]))
 }
 
-// ---------------------------------------------------------------------------
-// Lifecycle
-// ---------------------------------------------------------------------------
+function hookContributions(plugin: LoadedPlugin, point: string) {
+  return contributions(plugin, "hook")
+    .filter((item) => item.point === point)
+    .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+}
 
-export async function reload() {
-  log.info("reloading plugin state")
-  incrementReloadVersion()
-  const current = await state().catch(() => null)
-  if (current) {
-    for (const { hooks, id } of current.loaded) {
-      await stopForPlugin(id).catch((err) => log.error("plugin mcp stop error", { id, err }))
-      if (hooks.dispose) {
-        log.info("disposing plugin", { id })
-        await hooks.dispose().catch((err) => log.error("plugin dispose error", { id, err }))
-      }
+export class PluginHookDeniedError extends Error {
+  constructor(
+    readonly point: string,
+    message: string,
+  ) {
+    super(message)
+    this.name = "PluginHookDeniedError"
+  }
+}
+
+export function sortPluginHookHandlers<
+  Handler extends { plugin: { id: string }; contribution: { id: string; priority: number } },
+>(handlers: Handler[]) {
+  return [...handlers].sort(
+    (left, right) =>
+      left.contribution.priority - right.contribution.priority ||
+      left.plugin.id.localeCompare(right.plugin.id) ||
+      left.contribution.id.localeCompare(right.contribution.id),
+  )
+}
+
+export function applyPluginHookResult<Output>(
+  point: { name: string; mode: "observer" | "transform" | "guard" },
+  value: Output,
+  result: unknown,
+): Output {
+  if (point.mode === "observer" || result === undefined) return value
+  if (point.mode === "guard") {
+    if (
+      !result ||
+      typeof result !== "object" ||
+      !("allow" in result) ||
+      typeof (result as { allow?: unknown }).allow !== "boolean"
+    ) {
+      throw new Error(`Guard hook ${point.name} must return { allow, reason? }`)
+    }
+    const guard = result as { allow: boolean; reason?: string; value?: Output }
+    if (!guard.allow)
+      throw new PluginHookDeniedError(point.name, guard.reason ?? `Plugin hook ${point.name} denied the operation`)
+    return guard.value === undefined ? value : guard.value
+  }
+  return result as Output
+}
+
+function validateHookValue(schema: Record<string, unknown>, value: unknown, label: string) {
+  const ajv = new Ajv2020({ allErrors: true, strict: false })
+  const validate = ajv.compile(schema)
+  if (!validate(value)) throw new Error(`${label}: ${ajv.errorsText(validate.errors)}`)
+}
+
+function sessionId(input: unknown): string | undefined {
+  if (!input || typeof input !== "object") return undefined
+  const record = input as Record<string, unknown>
+  if (typeof record.sessionID === "string") return record.sessionID
+  if (typeof record.sessionId === "string") return record.sessionId
+  if (!record.loop || typeof record.loop !== "object") return undefined
+  const loop = record.loop as Record<string, unknown>
+  return typeof loop.sessionID === "string"
+    ? loop.sessionID
+    : typeof loop.sessionId === "string"
+      ? loop.sessionId
+      : undefined
+}
+
+type PluginHookExecution<Output> = {
+  value: Output
+  matchedHandlers: number
+  succeededHandlers: number
+  errors: string[]
+}
+
+async function executePluginHooks<Input, Output>(
+  pointName: string,
+  input: Input,
+  initial: Output,
+  plugins: LoadedPlugin[],
+): Promise<PluginHookExecution<Output>> {
+  const point = PluginHookPointRegistry.get(pointName)
+  validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
+  let value = initial
+  let succeededHandlers = 0
+  const errors: string[] = []
+  const handlers = sortPluginHookHandlers(
+    plugins.flatMap((plugin) => hookContributions(plugin, pointName).map((contribution) => ({ plugin, contribution }))),
+  )
+  for (const { plugin, contribution } of handlers) {
+    try {
+      await ensureRuntime(plugin)
+      const result = await pluginRuntimeManager.invoke({
+        pluginId: plugin.id,
+        handlerId: `hook:${contribution.id}`,
+        value: point.mode === "transform" ? value : input,
+        context: {
+          scopeId: ScopeContext.current.scope.id,
+          sessionId: sessionId(input),
+          directory: ScopeContext.current.directory,
+          actor: { type: "lifecycle" },
+        },
+        pluginDir: plugin.pluginDir,
+        manifest: plugin.manifest,
+        timeoutMs: point.timeoutMs,
+      })
+      value = applyPluginHookResult(point, value, result)
+      if (point.mode !== "observer")
+        validateHookValue(point.outputSchema, value, `Invalid output for hook point ${pointName}`)
+      succeededHandlers++
+    } catch (error) {
+      if (error instanceof PluginHookDeniedError) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      errors.push(`Hook ${pointName} handler ${contribution.id} failed: ${message}`)
+      markContributionDegraded(plugin, contribution.id, error)
+      log.error("plugin contribution failed", {
+        pluginId: plugin.id,
+        contributionId: contribution.id,
+        point: pointName,
+        error: message,
+      })
+      if (point.failure === "fail") throw error
     }
   }
-  await state.resetAll()
-  log.info("plugin state reloaded")
+  return { value, matchedHandlers: handlers.length, succeededHandlers, errors }
+}
+
+async function triggerPlugins<Input, Output>(
+  pointName: string,
+  input: Input,
+  initial: Output,
+  plugins: LoadedPlugin[],
+): Promise<Output> {
+  return executePluginHooks(pointName, input, initial, plugins).then((result) => result.value)
+}
+
+export async function trigger<Input, Output>(pointName: string, input: Input, initial: Output): Promise<Output> {
+  const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
+  return triggerPlugins(pointName, input, initial, plugins)
+}
+
+export async function triggerForPlugin<Input, Output>(
+  pluginId: string,
+  pluginGeneration: string,
+  pointName: string,
+  input: Input,
+  initial: Output,
+): Promise<Output> {
+  const plugin = await getPlugin(pluginId)
+  if (!plugin || plugin.manifest.artifacts.generation !== pluginGeneration) return initial
+  return triggerPlugins(pointName, input, initial, [plugin])
+}
+
+export type PluginHookDeliveryResult =
+  | { status: "delivered"; handlerCount: number }
+  | { status: "plugin_mismatch" | "no_handler"; handlerCount: 0; error: string }
+  | { status: "failed"; handlerCount: number; succeededHandlerCount: number; error: string }
+
+export async function deliverHookForPlugin<Input>(
+  pluginId: string,
+  pluginGeneration: string,
+  pointName: string,
+  input: Input,
+): Promise<PluginHookDeliveryResult> {
+  const point = PluginHookPointRegistry.get(pointName)
+  if (point.mode !== "observer")
+    throw new Error(`Hook delivery acknowledgment requires an observer point: ${pointName}`)
+
+  const plugin = await getPlugin(pluginId)
+  if (!plugin || plugin.manifest.artifacts.generation !== pluginGeneration) {
+    return {
+      status: "plugin_mismatch",
+      handlerCount: 0,
+      error: `Plugin ${pluginId} generation ${pluginGeneration} is not active`,
+    }
+  }
+
+  const result = await executePluginHooks(pointName, input, undefined, [plugin])
+  if (result.matchedHandlers === 0) {
+    return {
+      status: "no_handler",
+      handlerCount: 0,
+      error: `Plugin ${pluginId} has no handler for ${pointName}`,
+    }
+  }
+  if (result.errors.length > 0) {
+    return {
+      status: "failed",
+      handlerCount: result.matchedHandlers,
+      succeededHandlerCount: result.succeededHandlers,
+      error: result.errors.join("; "),
+    }
+  }
+  return { status: "delivered", handlerCount: result.succeededHandlers }
 }
 
 export async function init() {
-  await restoreRuntimeState()
-  const config = await Config.current()
-
-  const loaded = await state().then((x) => x.loaded)
-  const { Server } = await import("../server/server")
-  for (const { id, hooks, runtimeMode, source, entryPath, pluginDir } of loaded) {
-    await hooks.config?.(config)
-    if (runtimeMode && runtimeMode !== "in-process" && entryPath && source) {
-      void startRuntime(id, {
-        mode: runtimeMode,
-        source,
-        entryPath,
-        pluginDir,
-        serverUrl: Server.url().toString(),
-      }).catch((err) => log.error("plugin runtime start error", { id, err }))
-    }
-    const m = await manifest(id)
-    if (m?.contributes?.mcp) {
-      // Plugin-contributed MCP servers may spawn network-backed `npx` processes.
-      // Start them in the background so server readiness, channel bootstrap, and the UI banner are not blocked.
-      void startForPlugin(id, m.contributes.mcp).catch((err) => log.error("plugin mcp start error", { id, err }))
+  const plugins = await state().then((value) => value.loaded)
+  for (const plugin of plugins) {
+    const declarations = mcpDeclarations(plugin)
+    if (Object.keys(declarations).length > 0) {
+      void startForPlugin(plugin.id, declarations).catch((error) =>
+        log.error("plugin MCP start failed", { pluginId: plugin.id, error }),
+      )
     }
   }
-  const pluginEventState = ScopedState.create(
-    () => {
-      const unsub = Bus.subscribeAll(async (input) => {
-        const loaded = await state().then((x) => x.loaded)
-        for (const { hooks, pluginDir } of loaded) {
-          if (!(await canReceiveEvent(pluginDir, input.type))) continue
-          hooks["event"]?.({ event: input })
-        }
-      })
-      return { unsub }
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
+}
+
+export async function reload() {
+  const plugins = await state()
+    .then((value) => [...value.loaded])
+    .catch(() => [])
+  for (const plugin of plugins) {
+    await Promise.all([
+      stopForPlugin(plugin.id).catch(() => undefined),
+      pluginRuntimeManager.stop(plugin.id).catch(() => undefined),
+    ])
+  }
+  await resetAllPluginState()
+  const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
+  await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
+}
+
+export async function reloadMcpContributions() {
+  for (const plugin of await getLoadedPlugins()) {
+    const declarations = mcpDeclarations(plugin)
+    if (Object.keys(declarations).length > 0) await startForPlugin(plugin.id, declarations)
+  }
+}
+
+export async function notifyConfigHooks(input: {
+  source: "startup" | "reload" | "plugin_reload"
+  config?: Config.Info
+  changedFields?: string[]
+}) {
+  const config = Config.redactForClient(input.config ?? (await Config.current()))
+  await trigger(
+    "config.changed",
+    {
+      source: input.source,
+      scopeId: ScopeContext.current.scope.id,
+      changedFields: input.changedFields,
+      timestamp: Date.now(),
+      config,
     },
-    async (s) => s.unsub(),
+    {},
   )
-  void pluginEventState()
 }
 
-/** Look up a plugin's manifest — used both internally and re-exported by the facade */
 export async function manifest(pluginId: string) {
-  const plugin = await getPlugin(pluginId)
-  if (!plugin) return null
-  return ManifestReader.read(plugin.pluginDir)
-}
-
-async function canReceiveEvent(pluginDir: string, eventName: string): Promise<boolean> {
-  const manifest = await ManifestReader.read(pluginDir)
-  const hooks = manifest?.permissions?.hooks
-  const mode = hooks?.events ?? "selected"
-  if (mode === "all") return true
-  if (mode === "none") return false
-  return (hooks?.eventNames ?? []).includes(eventName)
+  return (await getPlugin(pluginId))?.manifest ?? null
 }

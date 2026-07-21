@@ -35,15 +35,42 @@ export namespace SessionCompaction {
   export const PRUNE_PROTECT = 40_000
 
   const PRUNE_PROTECTED_TOOLS = ["skill"]
+  type CompactionAttemptState = "running" | "committed" | "failed" | "empty"
+
+  function setAttemptState(msg: MessageV2.Assistant, state: CompactionAttemptState) {
+    msg.metadata = {
+      ...msg.metadata,
+      compactionAttempt: { state },
+    }
+  }
 
   /** Detect whether a processor error was caused by exceeding the model's context window. */
   export function isContextExceeded(error: unknown): boolean {
     if (!error || typeof error !== "object") return false
-    const obj = error as { name?: string; data?: { message?: string; statusCode?: number; responseBody?: string } }
-    if (obj.name !== "APIError") return false
-    // Check the primary error message and the raw response body, since
-    // ProviderTransform.error() may rewrite the message and drop keywords.
-    const texts = [obj.data?.message ?? "", obj.data?.responseBody ?? ""].map((s) => s.toLowerCase())
+    const obj = error as {
+      name?: string
+      message?: string
+      cause?: unknown
+      data?: { message?: string; statusCode?: number; responseBody?: string; code?: string; error?: unknown }
+    }
+    // Gather text from every place the context-window signal might survive
+    // normalization: the top-level message (wrapped/plain errors), the APIError
+    // data fields, and — as a last resort — a bounded stringification of the
+    // whole error object so a nested `code: "context_length_exceeded"` still
+    // matches even when the shape was rewritten (issue #321).
+    let serialized = ""
+    try {
+      serialized = JSON.stringify(obj).slice(0, 4000)
+    } catch {
+      serialized = ""
+    }
+    const texts = [
+      obj.message ?? "",
+      obj.data?.message ?? "",
+      obj.data?.responseBody ?? "",
+      obj.data?.code ?? "",
+      serialized,
+    ].map((s) => String(s).toLowerCase())
     return texts.some(
       (msg) =>
         msg.includes("context_length_exceeded") ||
@@ -54,6 +81,28 @@ export namespace SessionCompaction {
         (msg.includes("too long") && msg.includes("context")) ||
         (msg.includes("request too large") && msg.includes("token")),
     )
+  }
+
+  /**
+   * Whether the task root R has an unfulfilled compaction request: more
+   * `compaction` parts than completed compaction summaries anchored on R. Used
+   * to gate both proactive injection and the compact loop signal so compaction
+   * can repeat across a long task (issue #321) — a completed compaction no
+   * longer permanently blocks the next one — without re-compacting endlessly.
+   */
+  export function hasPendingCompaction(
+    rootParts: readonly MessageV2.Part[],
+    messages: readonly MessageV2.WithParts[],
+    rootID: string,
+  ): boolean {
+    const requests = rootParts.reduce((n, p) => (p.type === "compaction" ? n + 1 : n), 0)
+    if (requests === 0) return false
+    const fulfilled = messages.reduce((n, m) => {
+      if (m.info.role !== "assistant") return n
+      const a = m.info as MessageV2.Assistant
+      return a.summary === true && !!a.finish && a.parentID === rootID ? n + 1 : n
+    }, 0)
+    return requests > fulfilled
   }
 
   const IMAGE_TOKEN_ESTIMATE = 500
@@ -132,9 +181,7 @@ export namespace SessionCompaction {
     const sections: string[] = []
 
     const recentUsers = messages
-      .filter(
-        (m) => m.info.role === "user" && !m.parts.some((p) => p.type === "text" && "synthetic" in p && p.synthetic),
-      )
+      .filter((m) => m.info.role === "user" && !m.parts.some((p) => MessageV2.isSystemPart(p) && p.type === "text"))
       .slice(-3)
       .map((m) => {
         const text = m.parts
@@ -153,7 +200,12 @@ export namespace SessionCompaction {
     for (const msg of messages) {
       for (const part of msg.parts) {
         if (part.type === "patch") {
-          for (const file of part.files) files.add(file)
+          for (const file of part.files) {
+            // Filter out temporary/internal files — they add noise to recovery UI
+            const base = file.split("/").pop() ?? file
+            if (base.startsWith(".tmp-") || base.startsWith("._")) continue
+            files.add(file)
+          }
         }
       }
     }
@@ -186,7 +238,7 @@ export namespace SessionCompaction {
     return "## Conversation Summary (Automatic Fallback)\n\n" + sections.join("\n\n")
   }
 
-  /** Overwrite the compaction assistant message with a mechanical summary. */
+  /** Commit the hidden attempt as a complete mechanical summary boundary. */
   async function writeMechanicalSummary(
     msg: MessageV2.Assistant,
     input: { messages: MessageV2.WithParts[]; sessionID: string },
@@ -198,10 +250,24 @@ export namespace SessionCompaction {
       sessionID: input.sessionID,
       type: "text",
       text: summary,
+      origin: "system",
       time: { start: Date.now(), end: Date.now() },
     })
+    await Session.updatePart({
+      id: Identifier.ascending("part"),
+      messageID: msg.id,
+      sessionID: input.sessionID,
+      type: "compaction_recovery",
+      summary,
+      mechanical: true,
+      validated: false,
+    })
+    setAttemptState(msg, "committed")
     msg.error = undefined
     msg.finish = "stop"
+    msg.summary = true
+    msg.visible = true
+    msg.includeInContext = true
     if (!msg.time.completed) msg.time.completed = Date.now()
     await Session.updateMessage(msg)
     log.info("wrote mechanical fallback summary", { sessionID: input.sessionID })
@@ -224,7 +290,7 @@ export namespace SessionCompaction {
 
     loop: for (let msgIndex = protectBoundary - 1; msgIndex >= 0; msgIndex--) {
       const msg = msgs[msgIndex]
-      if (msg.info.role === "assistant" && msg.info.summary) break loop
+      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) break loop
       for (let partIndex = msg.parts.length - 1; partIndex >= 0; partIndex--) {
         const part = msg.parts[partIndex]
         if (part.type === "tool")
@@ -244,25 +310,29 @@ export namespace SessionCompaction {
     return pruned > PRUNE_MINIMUM ? toPrune : []
   }
 
-  export async function prune(input: { sessionID: string; modelID?: string }) {
+  export async function prune(input: { sessionID: string; messages: MessageV2.WithParts[]; modelID?: string }) {
     const config = await Config.current()
     if (config.compaction?.prune === false) return
     log.info("pruning")
-    const msgs = await Session.messages({ sessionID: input.sessionID })
-
-    const toPrune = selectPartsToPrune(msgs, input.modelID)
+    const toPrune = selectPartsToPrune(input.messages, input.modelID)
 
     if (toPrune.length > 0) {
       const completed = toPrune.filter(
         (part): part is MessageV2.ToolPart & { state: { status: "completed"; time: { compacted?: number } } } =>
           part.state.status === "completed",
       )
+      const compacted = Date.now()
       await Promise.all(
-        completed.map((part) => {
-          part.state.time.compacted = Date.now()
-          part.state.output = ""
-          return Session.updatePart(part)
-        }),
+        completed.map((part) =>
+          Session.updatePart({
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+              time: { ...part.state.time, compacted },
+            },
+          }),
+        ),
       )
       log.info("pruned", { count: completed.length })
     }
@@ -271,26 +341,56 @@ export namespace SessionCompaction {
   const ANCHOR_OPEN = "<anchor>"
   const ANCHOR_CLOSE = "</anchor>"
 
-  /**
-   * Extract the last real (non-synthetic) user message before the compaction
-   * trigger as an anchor, so the agent remembers what it was working on.
-   */
-  function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const msg = messages[i]
-      if (msg.info.role !== "user") continue
-      if (msg.info.id === parentID) continue
-      const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !p.synthetic)
-      if (textParts.length === 0) continue
-      const text = textParts
-        .map((p) => p.text)
-        .join("\n")
-        .trim()
-      if (!text) continue
-      return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
-    }
+  type Anchor = {
+    text: string
+    sourceMessageID?: string
+  }
 
-    return undefined
+  function realUserText(msg: MessageV2.WithParts): string | undefined {
+    const textParts = msg.parts.filter((p): p is MessageV2.TextPart => p.type === "text" && !MessageV2.isSystemPart(p))
+    if (textParts.length === 0) return undefined
+    const text = textParts
+      .map((p) => p.text)
+      .join("\n")
+      .trim()
+    return text || undefined
+  }
+
+  function formatAnchor(text: string): string {
+    return [ANCHOR_OPEN, "This is the most recent request before compaction.", "", text, ANCHOR_CLOSE].join("\n")
+  }
+
+  /**
+   * Preserve the active task's request across compaction (issue #281 §7).
+   * The compaction parent is the task root R, so this is an O(1) lookup by id:
+   * take R's user-authored text, falling back to its summary title. No backward
+   * scan, no carried-anchor metadata — the root is a persisted message reachable
+   * by rootID even after it leaves the context window.
+   */
+  export function resolveAnchor(messages: MessageV2.WithParts[], parentID: string): Anchor | undefined {
+    const root = messages.find((m) => m.info.id === parentID && m.info.role === "user")
+    if (!root) return undefined
+    const text = realUserText(root) ?? (root.info as MessageV2.User).summary?.title?.trim()
+    return text ? { text, sourceMessageID: root.info.id } : undefined
+  }
+
+  export function buildAnchor(messages: MessageV2.WithParts[], parentID: string): string | undefined {
+    const anchor = resolveAnchor(messages, parentID)
+    return anchor ? formatAnchor(anchor.text) : undefined
+  }
+
+  export function buildRecoveryHint(input: { sessionID: string; summaryMessageID: string }): string {
+    return [
+      "<recovery-hint>",
+      "This task is continuing after context compaction.",
+      "Use the latest compaction summary as the primary handoff, resume from its first unfinished next step, and do not repeat work recorded as completed.",
+      "Earlier message text and tool-call summaries remain durably stored in this session.",
+      "Do not read the earlier history unless the continuation summary is insufficient.",
+      'If exact earlier message context is required and `session_read` is not visible, first expand the "session" tool group.',
+      `Then use \`session_read\` with target session "${input.sessionID}", around message "${input.summaryMessageID}", and limit 50.`,
+      "Do not guess when the missing context can be recovered from the stored session.",
+      "</recovery-hint>",
+    ].join("\n")
   }
 
   export async function process(input: {
@@ -315,10 +415,15 @@ export namespace SessionCompaction {
       id: Identifier.ascending("message"),
       role: "assistant",
       parentID: input.parentID,
+      rootID: input.parentID,
+      visible: false,
+      includeInContext: false,
       sessionID: input.sessionID,
       mode: "compaction",
       agent: "compaction",
-      summary: true,
+      metadata: {
+        compactionAttempt: { state: "running" },
+      },
       path: {
         cwd: directory,
         root: directory,
@@ -347,8 +452,15 @@ export namespace SessionCompaction {
       { sessionID: input.sessionID },
       { context: [], prompt: undefined },
     )
-    const defaultPrompt =
-      "Provide a detailed prompt for continuing our conversation above. Focus on information that would be helpful for continuing the conversation, including what we did, what we're doing, which files we're working on, and what we're going to do next considering new session will not have access to our conversation."
+    const defaultPrompt = [
+      "Write the compaction continuation summary now.",
+      "Strictly follow the compaction system prompt and its required Markdown section headers.",
+      "Only summarize the prior conversation for a future session; do not continue the user's task or answer pending requests.",
+      "Do not call tools. Do not emit tool-call-shaped text, DSML/XML tool blocks, JSON-RPC requests, shell transcripts, patches, file writes, or structured tool arguments.",
+      "Preserve exact observed facts, including user requests, decisions, constraints, file paths, commands already run, results already observed, completed work, current state, and pending work.",
+      "If something is unknown or was not observed, say it is unknown. Do not infer or fabricate.",
+      "Output only the Markdown continuation summary.",
+    ].join("\n")
     const promptText = compacting.prompt ?? [defaultPrompt, ...compacting.context].join("\n\n")
 
     // Trim the conversation history so it fits within the compaction model's
@@ -360,58 +472,82 @@ export namespace SessionCompaction {
       ? await trimMessagesForContext(modelMessages, messageBudget, model.id)
       : modelMessages
 
-    const result = await processor.process({
-      user: userMessage,
-      agent,
-      abort: input.abort,
-      sessionID: input.sessionID,
-      tools: {},
-      system: [],
-      messages: [
-        ...safeMessages,
-        {
-          role: "user" as const,
-          content: [
-            {
-              type: "text" as const,
-              text: promptText,
-            },
-          ],
-        },
-      ],
-      model,
-    })
+    try {
+      await processor.process({
+        user: userMessage,
+        agent,
+        abort: input.abort,
+        sessionID: input.sessionID,
+        tools: {},
+        system: [],
+        messages: [
+          ...safeMessages,
+          {
+            role: "user" as const,
+            content: [
+              {
+                type: "text" as const,
+                text: promptText,
+              },
+            ],
+          },
+        ],
+        model,
+      })
+    } catch (error) {
+      setAttemptState(msg, "failed")
+      await Session.updateMessage(msg)
+      throw error
+    }
 
     // If the LLM call failed due to context limits (e.g. bad token estimation
     // or model-reported limits don't match reality), fall back to a
     // deterministic mechanical summary rather than letting compaction fail.
-    let compactionOk = true
+    let usedMechanicalFallback = false
     if (processor.message.error) {
       if (isContextExceeded(processor.message.error)) {
         log.warn("compaction LLM context exceeded, using mechanical fallback", {
           sessionID: input.sessionID,
         })
         await writeMechanicalSummary(msg, input)
+        usedMechanicalFallback = true
       } else {
-        compactionOk = false
+        setAttemptState(msg, "failed")
+        await Session.updateMessage(msg)
+        return "stop"
       }
     }
 
-    if (!compactionOk) return "stop"
+    if (!usedMechanicalFallback) {
+      const msgParts = await MessageV2.parts({ sessionID: input.sessionID, messageID: msg.id })
+      const textParts = msgParts.filter((p): p is MessageV2.TextPart => p.type === "text")
+      const allText = textParts.map((p) => p.text).join("\n")
+      if (!allText.trim()) {
+        setAttemptState(msg, "empty")
+        await Session.updateMessage(msg)
+        return "stop"
+      }
 
-    // Ensure the compaction assistant message is marked as finished even if the
-    // processor didn't emit a finish-step event (e.g. stream was interrupted).
-    // Without this, filterCompacted can't identify the compaction boundary and
-    // the loop may incorrectly break on the next user message.
-    if (!msg.finish) {
-      msg.finish = "stop"
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: msg.id,
+        sessionID: input.sessionID,
+        type: "compaction_recovery",
+        summary: allText,
+        mechanical: false,
+        validated: true,
+      })
+      if (!msg.finish) msg.finish = "stop"
+      if (!msg.time.completed) msg.time.completed = Date.now()
+      setAttemptState(msg, "committed")
+      msg.summary = true
+      msg.visible = true
+      msg.includeInContext = true
+      await Session.updateMessage(msg)
     }
-    if (!msg.time.completed) {
-      msg.time.completed = Date.now()
-    }
-    await Session.updateMessage(msg)
 
     if (input.auto) {
+      const anchor = resolveAnchor(input.messages, input.parentID)
       const continueMsg = await Session.updateMessage({
         id: Identifier.ascending("message"),
         role: "user",
@@ -421,6 +557,10 @@ export namespace SessionCompaction {
         },
         agent: userMessage.agent,
         model: userMessage.model,
+        origin: { type: "compaction", detail: "auto_continue" },
+        isRoot: false,
+        rootID: input.parentID,
+        visible: false,
         summary: { title: "Compaction complete", diffs: [] },
       })
       const now = Date.now()
@@ -430,10 +570,20 @@ export namespace SessionCompaction {
         sessionID: input.sessionID,
         type: "text",
         synthetic: true,
+        origin: "system",
         text: "Continue if you have next steps",
         time: { start: now, end: now },
       })
-      const anchor = buildAnchor(input.messages, input.parentID)
+      await Session.updatePart({
+        id: Identifier.ascending("part"),
+        messageID: continueMsg.id,
+        sessionID: input.sessionID,
+        type: "text",
+        synthetic: true,
+        origin: "system",
+        text: buildRecoveryHint({ sessionID: input.sessionID, summaryMessageID: msg.id }),
+        time: { start: now, end: now },
+      })
       if (anchor) {
         await Session.updatePart({
           id: Identifier.ascending("part"),
@@ -441,7 +591,8 @@ export namespace SessionCompaction {
           sessionID: input.sessionID,
           type: "text",
           synthetic: true,
-          text: anchor,
+          origin: "system",
+          text: formatAnchor(anchor.text),
           time: { start: now, end: now },
         })
       }
@@ -480,7 +631,7 @@ export namespace SessionCompaction {
       return [{ type: "prune" }]
     },
     async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID, modelID: ctx.modelID })
+      await prune({ sessionID: ctx.sessionID, messages: ctx.messages, modelID: ctx.modelID })
       return "pass"
     },
   })

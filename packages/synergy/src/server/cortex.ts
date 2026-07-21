@@ -2,6 +2,7 @@ import { Hono } from "hono"
 import { describeRoute, validator } from "hono-openapi"
 import { resolver } from "hono-openapi"
 import { CortexTypes } from "../cortex/types"
+import { CortexConcurrency } from "../cortex/concurrency"
 import "../cortex/event"
 import z from "zod"
 import { errors } from "./error"
@@ -41,6 +42,25 @@ export const CortexRoute = new Hono()
       const tasks = sessionID ? Cortex.getVisibleTasks(sessionID) : Cortex.listVisible()
       return c.json(tasks)
     },
+  )
+  .get(
+    "/concurrency",
+    describeRoute({
+      summary: "Get Cortex concurrency status",
+      description: "Get the configured, effective, and memory-pressure Cortex task concurrency limits.",
+      operationId: "cortex.concurrency",
+      responses: {
+        200: {
+          description: "Cortex concurrency status",
+          content: {
+            "application/json": {
+              schema: resolver(CortexConcurrency.GlobalStatus),
+            },
+          },
+        },
+      },
+    }),
+    (c) => c.json(CortexConcurrency.globalStatus()),
   )
   .get(
     "/:taskID",
@@ -89,7 +109,11 @@ export const CortexRoute = new Hono()
             "application/json": {
               schema: resolver(
                 z.object({
-                  output: z.string(),
+                  taskID: z.string(),
+                  status: CortexTypes.TaskStatus,
+                  rendered: z.string(),
+                  output: CortexTypes.TaskOutput.optional(),
+                  error: z.string().optional(),
                 }),
               ),
             },
@@ -107,8 +131,8 @@ export const CortexRoute = new Hono()
     async (c) => {
       const { taskID } = c.req.valid("param")
       const Cortex = await getCortex()
-      const output = await Cortex.output(taskID)
-      return c.json({ output })
+      const view = Cortex.outputView(taskID)
+      return c.json(view)
     },
   )
   .post(

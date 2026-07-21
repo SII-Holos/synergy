@@ -6,6 +6,17 @@ The `target` parameter identifies which session to control:
 
 ## Actions
 
+### `create` — Create a standalone primary session
+Creates a normal top-level session in the sidebar. `target` is not used. Optional parameters:
+- `title`: session title
+- `scopeID` or `directory`: where to create it; defaults to the current scope. If you need a valid `scopeID`, call `scope_list` first. If you already know the absolute project path, pass `directory` instead.
+- `workspace`: `{ "mode": "current" }`, `{ "mode": "existing", "target": "..." }`, or `{ "mode": "create", "name": "...", "baseRef": "current|fresh" }`
+- `agent`: per-session agent override for new user messages
+- `model`: per-session model override, `{ "providerID": "...", "modelID": "..." }`
+- `mode`: `interactive` or `unattended`
+- `controlProfile`: `guarded`, `autonomous`, or `full_access`
+- `initialMessage`: enqueue a first user message and wake the new session asynchronously
+
 ### `status` — Query session state
 Returns the session's current runtime status, pending questions, and pending permission requests. Use this before other actions to understand what the session needs. For example, before answering a question, call `status` first to see what questions are pending and what options are available.
 
@@ -14,6 +25,24 @@ Forces the target session to compact its conversation history. Useful when a chi
 
 ### `abort` — Abort execution
 Stops any ongoing processing in the target session. Use when a delegated agent is stuck or doing the wrong thing.
+
+### `worktree_enter` — Create, enter, or switch the target session's worktree
+Uses `worktreeTarget` as an existing worktree name/ID/branch/path when it matches; otherwise creates a new worktree using `worktreeTarget` as the name. Omit `worktreeTarget` to create a uniquely named worktree. Use `baseRef`, `baseRevision`, and `force` as needed.
+
+### `worktree_leave` — Return the target session to the main checkout
+Use `cleanup: "keep"` or `cleanup: "remove_if_clean"` to control whether a clean managed worktree is removed after leaving.
+
+### `set_agent` — Set the target session's agent override
+Requires `agent`. Future user messages without an explicit agent use this override.
+
+### `set_model` — Set the target session's model override
+Requires `model: { "providerID": "...", "modelID": "..." }`. Future user messages without an explicit model use this override.
+
+### `set_mode` — Set interactive vs unattended behavior
+Requires `mode: "interactive"` or `mode: "unattended"`. `modeSource` defaults to `session_control`.
+
+### `set_control_profile` — Set the target session's permission control profile
+Requires `controlProfile`. This changes the target session's guarded/autonomous/full-access profile.
 
 ### `question_reply` — Answer a pending question
 Provide answers to a question that the target session's agent has asked. The `answers` format is an array of arrays of selected labels — one array per question, each containing the label(s) the user selected. For single-select questions, pass one label; for multiple-select, pass multiple. Use `status` first to discover pending question IDs and available options.
@@ -25,5 +54,6 @@ Reject a question the target session's agent has asked. The agent will receive a
 Respond to a pending permission request in the target session. Use `reply: "once"` to approve this specific request, or `reply: "reject"` to deny it. When rejecting, you can optionally provide a `message` to guide the agent. Use `status` first to discover pending permission IDs.
 
 ## Typical workflow
-1. Call `session_control` with `action: "status"` to see what the session needs
-2. Based on the response, call `session_control` again with the appropriate action (e.g. `question_reply`, `permission_reply`)
+1. To create a session in another project, call `scope_list` to discover available scope IDs, then call `session_control` with `action: "create"` and the chosen `scopeID`. For an existing session, call `action: "status"` first.
+2. Use `set_agent`, `set_model`, `set_mode`, or worktree actions to adjust the target session.
+3. Use `question_reply` or `permission_reply` when `status` reports pending user input.

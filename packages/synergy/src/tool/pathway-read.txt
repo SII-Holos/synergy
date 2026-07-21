@@ -1,0 +1,1 @@
+Read the current Lattice run: mode, phase, status, model-call budget, the current step (with objective, acceptance criteria, and Blueprint/loop bindings), the ordered Pathway summary, and recent Lattice events. Use this whenever you need to confirm the phase or what to do next. Available in every Lattice phase.

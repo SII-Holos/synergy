@@ -3,8 +3,8 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
 import process from "node:process"
-import { MetaSynergyMigrationRunner } from "../src/migration"
-import { MetaSynergyStore } from "../src/state/store"
+import { MetaSynergyMigrationRunner } from "../src/migration/index.js"
+import { MetaSynergyStore } from "../src/state/store.js"
 
 async function createTempRoot() {
   return await mkdtemp(path.join(os.tmpdir(), "meta-synergy-migration-test-"))

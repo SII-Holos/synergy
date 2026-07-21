@@ -1,3 +1,4 @@
+import { emptyOnNotFound } from "./storage-read"
 import { BusEvent } from "@/bus/bus-event"
 import { Bus } from "@/bus"
 import z from "zod"
@@ -21,7 +22,6 @@ export namespace Dag {
     "inspector",
     "scribe",
     "scholar",
-    "intent-analyst",
     "requirements-engineer",
     "code-cartographer",
     "dependency-tracer",
@@ -29,7 +29,6 @@ export namespace Dag {
     "api-contract-designer",
     "migration-architect",
     "test-strategist",
-    "regression-reproducer",
     "fixture-builder",
     "property-test-engineer",
     "type-test-engineer",
@@ -87,6 +86,16 @@ export namespace Dag {
     .meta({ ref: "DagNode" })
   export type Node = z.infer<typeof Node>
 
+  export function normalizeRetiredAssignments(nodes: Node[]): Node[] {
+    let changed = false
+    const normalized = nodes.map((node) => {
+      if (node.assign !== "intent-analyst") return node
+      changed = true
+      return { ...node, assign: "self" }
+    })
+    return changed ? normalized : nodes
+  }
+
   export const Event = {
     Updated: BusEvent.define(
       "dag.updated",
@@ -111,7 +120,7 @@ export namespace Dag {
     const scopeID = Identifier.asScopeID((session.scope as Scope).id)
     return Storage.read<Node[]>(StoragePath.sessionDag(scopeID, asSessionID(sessionID)))
       .then((x) => x || [])
-      .catch(() => [])
+      .catch(emptyOnNotFound<Node>)
   }
 
   export function computeReady(nodes: Node[]): string[] {

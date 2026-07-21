@@ -1,6 +1,6 @@
 import { createMemo, Show } from "solid-js"
 import { useSync } from "@/context/sync"
-import { StatusBarIndicator } from "@/components/status-bar-indicator"
+import { StatusBarIndicator } from "@/components/status-bar"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { computeCortexStats } from "./session-connection-stats"
 
@@ -16,7 +16,7 @@ export function SessionCortexIndicator(props: Props) {
   return (
     <Show when={stats().active > 0 || stats().completed > 0}>
       <StatusBarIndicator
-        icon={getSemanticIcon("connection.cortex")}
+        icon={getSemanticIcon("cortex.main")}
         value={stats().active}
         secondary={stats().completed > 0 ? stats().completed : undefined}
         iconClass={stats().hasRunning ? "text-text-interactive-base animate-pulse" : undefined}

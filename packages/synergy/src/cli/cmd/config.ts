@@ -3,10 +3,10 @@ import { cmd } from "./cmd"
 import * as prompts from "@clack/prompts"
 import { UI } from "../ui"
 import { Config } from "../../config/config"
+import { ConfigImport } from "../../config/import"
 import { Global } from "../../global"
-import { ConfigSetup } from "../../config/setup"
+import { withScopeContext } from "../scope"
 import { ConfigDomain } from "../../config/domain"
-import { parse as parseJsonc } from "jsonc-parser"
 import { ProviderCatalog } from "@/provider/catalog"
 import { ProviderRecommendation } from "@/provider/recommendation"
 
@@ -44,14 +44,16 @@ function formatError(error: unknown): string {
   return String(error)
 }
 
-async function importConfigFromURL(input: {
+async function importConfigFromSource(input: {
   source: string
   only: ConfigDomain.Id[]
   mode?: ConfigDomain.MergeMode
+  scope: ConfigImport.Scope
   dryRun: boolean
   yes: boolean
+  force: boolean
 }) {
-  const { source, only, mode, dryRun, yes } = input
+  const { source, only, mode, scope, dryRun, yes, force } = input
 
   UI.empty()
   const spinner = prompts.spinner()
@@ -63,14 +65,17 @@ async function importConfigFromURL(input: {
     spinner.stop("✓ Config loaded")
 
     const selected = only.length > 0 ? only : ConfigDomain.definitions.map((domain) => domain.id)
-    const plan = await Config.domainImportPlan({ config, only: selected, mode })
+    const plan = await ConfigImport.plan({ config, only: selected, mode, scope, source })
 
     prompts.intro("Import Config")
     prompts.log.info(`Source: ${source}`)
     for (const domain of plan.domains) {
       prompts.log.info(`${domain.id} -> ${domain.path}`)
       for (const change of domain.changes) {
-        prompts.log.message(`  ${change.conflict ? "!" : "-"} ${change.key}`)
+        prompts.log.message(
+          `  ${change.conflict ? "!" : change.type === "add" ? "+" : change.type === "remove" ? "−" : "~"} ${change.key} (${change.type})`,
+        )
+        for (const diagnostic of change.diagnostics) prompts.log.warn(`    ${diagnostic.message}`)
       }
     }
     if (plan.conflicts.length > 0) {
@@ -94,10 +99,23 @@ async function importConfigFromURL(input: {
     }
 
     spinner.start("Importing config...")
-    const applied = await Config.domainImportApply({ config, only: selected, mode, yes })
+    const applied = await ConfigImport.apply({
+      config,
+      only: selected,
+      mode,
+      scope,
+      source,
+      revision: plan.revision,
+      yes: true,
+      force,
+    })
     spinner.stop("✓ Config imported")
 
-    prompts.log.success(`Imported ${applied.domains.length} domain(s)`)
+    prompts.log.success(`Imported ${applied.plan.domains.length} domain(s)`)
+    if (applied.reload.failed.length > 0) {
+      prompts.log.warn(`Runtime reload failed for: ${applied.reload.failed.join(", ")}`)
+    }
+    for (const warning of applied.reload.warnings) prompts.log.warn(warning)
     prompts.outro("Done")
   } catch (error) {
     spinner.stop("✗ Import failed")
@@ -106,11 +124,8 @@ async function importConfigFromURL(input: {
 }
 
 async function loadImportSource(source: string): Promise<Config.Info> {
-  if (URL.canParse(source) && /^https?:/.test(new URL(source).protocol)) {
-    return Config.Info.parse(await ConfigSetup.downloadConfigFromURL(source))
-  }
-  const text = await Bun.file(source).text()
-  return Config.Info.parse(parseJsonc(text))
+  if (URL.canParse(source) && /^https?:/.test(new URL(source).protocol)) return ConfigImport.fetchSource(source)
+  return ConfigImport.parseSourceText(await Bun.file(source).text(), source)
 }
 
 export const ConfigImportCommand = cmd({
@@ -133,10 +148,21 @@ export const ConfigImportCommand = cmd({
         choices: ConfigDomain.MergeMode.options,
         describe: "Import merge mode",
       })
+      .option("scope", {
+        type: "string",
+        choices: ["global", "project"] as const,
+        default: "global" as const,
+        describe: "Import into global or current project config",
+      })
       .option("dry-run", {
         type: "boolean",
         default: false,
         describe: "Show import plan without writing files",
+      })
+      .option("force", {
+        type: "boolean",
+        default: false,
+        describe: "Apply even if config changed after planning",
       })
       .option("yes", {
         type: "boolean",
@@ -146,13 +172,19 @@ export const ConfigImportCommand = cmd({
       }),
   async handler(args) {
     const only = args.only ? (Array.isArray(args.only) ? args.only : [args.only]) : []
-    await importConfigFromURL({
-      source: args.source as string,
-      only: only.map((id) => ConfigDomain.Id.parse(id)),
-      mode: args.mode ? ConfigDomain.MergeMode.parse(args.mode) : undefined,
-      dryRun: Boolean(args.dryRun),
-      yes: Boolean(args.yes),
-    })
+    const scope = ConfigImport.Scope.parse(args.scope)
+    const run = () =>
+      importConfigFromSource({
+        source: args.source as string,
+        only: only.map((id) => ConfigDomain.Id.parse(id)),
+        mode: args.mode ? ConfigDomain.MergeMode.parse(args.mode) : undefined,
+        scope,
+        dryRun: Boolean(args.dryRun),
+        yes: Boolean(args.yes),
+        force: Boolean(args.force),
+      })
+    if (scope === "project") return withScopeContext(process.cwd(), run)
+    return run()
   },
 })
 export const ConfigEmbeddingCommand = cmd({

@@ -3,14 +3,12 @@ export interface ToolMediaDisplay {
   actionLabel?: string
   pendingTitle?: string
   pendingDescription?: string
-  promptField?: string
   aspectRatio?: "1:1" | "4:3" | "16:9" | "auto"
+  size?: "small" | "medium" | "large"
 }
 
 export interface ToolDisplay {
   kind?: "default" | "media-generation"
-  visibility?: "default" | "media" | "hidden-unless-error"
-  presentation?: "default" | "artifact-only"
+  toolCard?: "visible" | "hidden"
   media?: ToolMediaDisplay
-  primaryAttachmentIds?: string[]
 }

@@ -1,9 +1,15 @@
+import { LIST_DESC } from "./tool-title-descriptors"
+
 import { type FilteredListProps, useFilteredList } from "../hooks"
 import { createEffect, createSignal, For, onCleanup, onMount, type JSX, on, Show } from "solid-js"
 import { createStore } from "solid-js/store"
+import { useLingui } from "@lingui/solid"
 import { Icon, type IconProps, type IconName } from "./icon"
 import { IconButton } from "./icon-button"
 import { TextField } from "./text-field"
+
+const listLoadingDescriptor = { id: "ui.list.loading", message: "Loading" }
+const listNoResultsDescriptor = { id: "ui.list.noResults", message: "No results" }
 
 export interface ListSearchProps {
   placeholder?: string
@@ -14,6 +20,7 @@ export interface ListProps<T> extends FilteredListProps<T> {
   class?: string
   children: (item: T) => JSX.Element
   emptyMessage?: string
+  interactive?: boolean
   onKeyEvent?: (event: KeyboardEvent, item: T | undefined) => void
   onMove?: (item: T | undefined) => void
   activeIcon?: IconName
@@ -27,6 +34,7 @@ export interface ListRef {
 }
 
 export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) {
+  const { _ } = useLingui()
   const [scrollRef, setScrollRef] = createSignal<HTMLDivElement | undefined>(undefined)
   const [internalFilter, setInternalFilter] = createSignal("")
   const [store, setStore] = createStore({
@@ -36,6 +44,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
   const { filter, grouped, flat, active, setActive, onKeyDown, onInput } = useFilteredList<T>(props)
 
   const searchProps = () => (typeof props.search === "object" ? props.search : {})
+  const interactive = () => props.interactive ?? true
   let searchContainerRef: HTMLDivElement | undefined
 
   onMount(() => {
@@ -121,6 +130,7 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     props.onKeyEvent?.(e, selected)
 
     if (e.key === "Enter") {
+      if (!interactive()) return
       e.preventDefault()
       if (selected) handleSelect(selected, index)
     } else {
@@ -160,6 +170,26 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
     )
   }
 
+  function ListItemContent(row: { item: T }): JSX.Element {
+    return (
+      <>
+        {props.children(row.item)}
+        <Show when={interactive() && row.item === props.current}>
+          <span data-slot="list-item-selected-icon">
+            <Icon name="check" />
+          </span>
+        </Show>
+        <Show when={interactive() && props.activeIcon}>
+          {(icon) => (
+            <span data-slot="list-item-active-icon">
+              <Icon name={icon()} />
+            </span>
+          )}
+        </Show>
+      </>
+    )
+  }
+
   return (
     <div data-component="list" classList={{ [props.class ?? ""]: !!props.class }}>
       <Show when={!!props.search}>
@@ -191,8 +221,8 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
           fallback={
             <div data-slot="list-empty-state">
               <div data-slot="list-message">
-                {props.emptyMessage ?? (grouped.loading ? "Loading" : "No results")} for{" "}
-                <span data-slot="list-filter">&quot;{filter()}&quot;</span>
+                {props.emptyMessage ?? _(grouped.loading ? listLoadingDescriptor : listNoResultsDescriptor)}{" "}
+                {_(LIST_DESC.forLabel)}{" "}
               </div>
             </div>
           }
@@ -206,35 +236,38 @@ export function List<T>(props: ListProps<T> & { ref?: (ref: ListRef) => void }) 
                 <div data-slot="list-items">
                   <For each={group.items}>
                     {(item, i) => (
-                      <button
-                        data-slot="list-item"
-                        data-key={props.key(item)}
-                        data-active={props.key(item) === active()}
-                        data-selected={item === props.current}
-                        onClick={() => handleSelect(item, i())}
-                        type="button"
-                        onMouseMove={() => {
-                          setStore("mouseActive", true)
-                          setActive(props.key(item))
-                        }}
-                        onMouseLeave={() => {
-                          setActive(null)
-                        }}
+                      <Show
+                        when={interactive()}
+                        fallback={
+                          <div
+                            data-slot="list-item"
+                            data-key={props.key(item)}
+                            data-active={false}
+                            data-interactive="false"
+                          >
+                            <ListItemContent item={item} />
+                          </div>
+                        }
                       >
-                        {props.children(item)}
-                        <Show when={item === props.current}>
-                          <span data-slot="list-item-selected-icon">
-                            <Icon name="check" />
-                          </span>
-                        </Show>
-                        <Show when={props.activeIcon}>
-                          {(icon) => (
-                            <span data-slot="list-item-active-icon">
-                              <Icon name={icon()} />
-                            </span>
-                          )}
-                        </Show>
-                      </button>
+                        <button
+                          data-slot="list-item"
+                          data-key={props.key(item)}
+                          data-active={props.key(item) === active()}
+                          data-selected={item === props.current}
+                          data-interactive="true"
+                          onClick={() => handleSelect(item, i())}
+                          type="button"
+                          onMouseMove={() => {
+                            setStore("mouseActive", true)
+                            setActive(props.key(item))
+                          }}
+                          onMouseLeave={() => {
+                            setActive(null)
+                          }}
+                        >
+                          <ListItemContent item={item} />
+                        </button>
+                      </Show>
                     )}
                   </For>
                 </div>

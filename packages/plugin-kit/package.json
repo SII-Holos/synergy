@@ -17,8 +17,9 @@
     "synergy-plugin-kit": "./dist/cli.js"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "build": "tsc"
+    "build": "bun run --cwd ../plugin build && rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -30,20 +31,30 @@
       "bun": "./src/commands/index.ts",
       "types": "./src/commands/index.ts",
       "import": "./dist/commands/index.js"
+    },
+    "./market-entry": {
+      "bun": "./src/lib/market-entry.ts",
+      "types": "./src/lib/market-entry.ts",
+      "import": "./dist/lib/market-entry.js"
     }
   },
   "files": [
     "dist"
   ],
   "dependencies": {
+    "@babel/core": "catalog:",
+    "@babel/preset-typescript": "catalog:",
     "@ericsanchezok/synergy-plugin": "workspace:*",
+    "babel-preset-solid": "catalog:",
     "yargs": "18.0.0"
   },
   "peerDependencies": {
     "zod": ">=4.0.0"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "catalog:",
     "@tsconfig/node22": "catalog:",
+    "@types/babel__core": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@types/yargs": "17.0.33",

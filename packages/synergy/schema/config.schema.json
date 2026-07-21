@@ -7,6 +7,11 @@
       "description": "JSON schema reference for configuration validation",
       "type": "string"
     },
+    "locale": {
+      "description": "UI locale (system = follow OS, default: system)",
+      "type": "string",
+      "enum": ["system", "en", "zh-CN"]
+    },
     "theme": {
       "description": "Theme name to use for the interface",
       "type": "string"
@@ -73,11 +78,11 @@
       }
     },
     "timeout": {
-      "description": "Timeout configuration for agent turns, provider requests, and tool execution",
+      "description": "Timeout configuration for assistant steps, provider requests, tool execution, and permission prompts",
       "type": "object",
       "properties": {
         "invoke_sec": {
-          "description": "Max wall-clock seconds for one agent turn (default: 900 = 15min)",
+          "description": "Max wall-clock seconds for one assistant step (default: 21600 = 6h)",
           "type": "number",
           "exclusiveMinimum": 0
         },
@@ -85,14 +90,22 @@
           "type": "object",
           "properties": {
             "ttfb_sec": {
-              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 600 = 10min",
+              "description": "Max seconds to wait for first byte (TTFB) from provider. Accommodates reasoning/thinking models (e.g. o1-pro, deepseek-r1). Default: 3600 = 1h",
               "type": "number",
               "exclusiveMinimum": 0
             },
             "idle_sec": {
-              "description": "Idle timeout in seconds (0 = disable, default: 180 = 3min). Resets on each data chunk.",
-              "type": "number",
-              "minimum": 0
+              "description": "Idle timeout in seconds (0/false = disable, default: 900 = 15min). Resets on each data chunk.",
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "type": "boolean",
+                  "const": false
+                }
+              ]
             },
             "wall_sec": {
               "description": "Hard wall-clock timeout per HTTP request in seconds (0 = disabled, default: 0). CAUTION: conflicts with streaming — will interrupt normal token output. Only enable if you need a hard cap beyond idle+TTFB",
@@ -106,7 +119,7 @@
           "type": "object",
           "properties": {
             "default_sec": {
-              "description": "Default timeout per tool execution in seconds (default: 300 = 5min)",
+              "description": "Default timeout per tool execution in seconds (default: 7200 = 2h)",
               "type": "number",
               "exclusiveMinimum": 0
             },
@@ -123,6 +136,30 @@
             }
           },
           "additionalProperties": false
+        },
+        "permission": {
+          "type": "object",
+          "properties": {
+            "ask_sec": {
+              "description": "Max seconds to wait for permission approval before auto-denying (default: 3600 = 1h)",
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "cortex": {
+      "description": "Cortex task scheduling configuration",
+      "type": "object",
+      "properties": {
+        "maxConcurrentTasks": {
+          "description": "Maximum number of Cortex subagent tasks that may run concurrently (default: 8)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false
@@ -184,40 +221,60 @@
       "ref": "PluginRuntimePolicyConfig",
       "type": "object",
       "properties": {
-        "thirdPartyDefaultMode": {
-          "description": "Default isolation mode for third-party plugins (npm, git, url)",
-          "default": "process",
-          "type": "string",
-          "enum": ["process", "worker"]
-        },
-        "highRiskRequiresProcess": {
-          "description": "Require process isolation for high-risk plugins regardless of source",
-          "default": true,
-          "type": "boolean"
-        },
-        "allowThirdPartyInProcess": {
-          "description": "Allow third-party plugins to request in-process mode (not recommended)",
-          "default": false,
-          "type": "boolean"
-        },
-        "allowWorkerMode": {
-          "description": "Allow plugins to request worker thread isolation",
-          "default": true,
-          "type": "boolean"
-        },
-        "allowLocalInProcess": {
-          "description": "Allow local plugins to run in-process",
-          "default": true,
-          "type": "boolean"
+        "limits": {
+          "description": "Default plugin runtime resource and request limits",
+          "default": {
+            "startupTimeoutMs": 5000,
+            "toolInvocationTimeoutMs": 120000,
+            "hostServiceRequestTimeoutMs": 120000,
+            "taskRunTimeoutMs": 120000,
+            "shutdownGraceMs": 1500,
+            "heartbeatIntervalMs": 5000
+          },
+          "ref": "PluginRuntimeLimitsConfig",
+          "type": "object",
+          "properties": {
+            "startupTimeoutMs": {
+              "description": "Maximum milliseconds for plugin runtime startup",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "toolInvocationTimeoutMs": {
+              "description": "Maximum milliseconds for a plugin tool invocation",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "hostServiceRequestTimeoutMs": {
+              "description": "Maximum milliseconds for one plugin Host Service request",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "taskRunTimeoutMs": {
+              "description": "Default maximum milliseconds for plugin delegated task runs",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "shutdownGraceMs": {
+              "description": "Graceful shutdown window before force kill",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "heartbeatIntervalMs": {
+              "description": "Heartbeat interval in milliseconds",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          "additionalProperties": false
         }
       },
-      "required": [
-        "thirdPartyDefaultMode",
-        "highRiskRequiresProcess",
-        "allowThirdPartyInProcess",
-        "allowWorkerMode",
-        "allowLocalInProcess"
-      ],
+      "required": ["limits"],
       "additionalProperties": false
     },
     "pluginMarketplace": {
@@ -243,7 +300,7 @@
         },
         "cacheTtlMs": {
           "description": "Remote marketplace cache TTL in milliseconds",
-          "default": 300000,
+          "default": 3600000,
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
@@ -252,25 +309,43 @@
           "description": "Use stale marketplace cache for browsing when the remote registry cannot be reached",
           "default": true,
           "type": "boolean"
+        },
+        "requestTimeoutMs": {
+          "description": "Timeout in milliseconds for registry and entry metadata requests",
+          "default": 10000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "artifactDownloadTimeoutMs": {
+          "description": "Timeout in milliseconds for plugin artifact and signature downloads",
+          "default": 60000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cliRequestTimeoutMs": {
+          "description": "Timeout in milliseconds for Synergy CLI plugin commands waiting on the local server",
+          "default": 120000,
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
-      "required": ["enabled", "registryUrl", "includeLocalRegistry", "cacheTtlMs", "offlineCache"],
+      "required": [
+        "enabled",
+        "registryUrl",
+        "includeLocalRegistry",
+        "cacheTtlMs",
+        "offlineCache",
+        "requestTimeoutMs",
+        "artifactDownloadTimeoutMs",
+        "cliRequestTimeoutMs"
+      ],
       "additionalProperties": false
     },
     "snapshot": {
       "type": "boolean"
-    },
-    "autoupdate": {
-      "description": "Automatically update to the latest version. Set to true to auto-update, false to disable, or 'notify' to show update notifications",
-      "anyOf": [
-        {
-          "type": "boolean"
-        },
-        {
-          "type": "string",
-          "const": "notify"
-        }
-      ]
     },
     "disabled_providers": {
       "description": "Disable providers that are loaded automatically",
@@ -285,6 +360,37 @@
       "items": {
         "type": "string"
       }
+    },
+    "providerCatalog": {
+      "description": "Signed remote provider catalog configuration",
+      "ref": "ProviderCatalogConfig",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable signed remote provider catalog updates",
+          "type": "boolean"
+        },
+        "registryUrl": {
+          "description": "Signed provider catalog URL. The signature is fetched from the same URL plus .sig.",
+          "type": "string",
+          "format": "uri"
+        },
+        "publicKey": {
+          "description": "Base64 Ed25519 public key used to verify provider catalog signatures",
+          "type": "string"
+        },
+        "cacheTtlMs": {
+          "description": "Provider catalog cache TTL in milliseconds",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "offlineCache": {
+          "description": "Use the last verified provider catalog when offline",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
     },
     "model": {
       "description": "Default model in the format of provider/model, eg anthropic/claude-sonnet-4-5",
@@ -315,8 +421,51 @@
       "type": "string"
     },
     "vision_model": {
-      "description": "Model for image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled.",
+      "description": "Model for separate image analysis via the look_at tool, in the format of provider/model. If not set, look_at is disabled. Direct current-model image context uses view_image based on the active model capability.",
       "type": "string"
+    },
+    "role_variant": {
+      "description": "Default variant (e.g. low, medium, high, xhigh) applied per model role. Requires the resolved model to support the named variant.",
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "quick_switcher": {
+      "description": "Quick switcher model visibility preferences",
+      "ref": "QuickSwitcherConfig",
+      "type": "object",
+      "properties": {
+        "models": {
+          "description": "Per-model quick switcher visibility preferences",
+          "type": "array",
+          "items": {
+            "ref": "QuickSwitcherModelConfig",
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "description": "Provider id for the quick switcher model preference",
+                "type": "string"
+              },
+              "modelID": {
+                "description": "Model id for the quick switcher model preference",
+                "type": "string"
+              },
+              "state": {
+                "description": "Whether to force-add or force-remove the model from the quick switcher",
+                "type": "string",
+                "enum": ["add", "remove"]
+              }
+            },
+            "required": ["providerID", "modelID", "state"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     },
     "default_agent": {
       "description": "Default agent to use when none is specified. Must be a primary agent. Falls back to 'synergy' if not set or if the specified agent is invalid.",
@@ -405,6 +554,54 @@
           "name": {
             "type": "string"
           },
+          "description": {
+            "type": "string"
+          },
+          "signupUrl": {
+            "type": "string"
+          },
+          "recommendation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["featured", "recommended", "standard"]
+              },
+              "rank": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "headline": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "cta": {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "external"
+                  },
+                  "label": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "label", "url"],
+                "additionalProperties": false
+              },
+              "defaultModel": {
+                "type": "string"
+              }
+            },
+            "required": ["level"],
+            "additionalProperties": false
+          },
           "env": {
             "type": "array",
             "items": {
@@ -442,6 +639,23 @@
                 },
                 "reasoning": {
                   "type": "boolean"
+                },
+                "reasoning_options": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "type": "string"
+                      },
+                      "values": {
+                        "type": "array",
+                        "items": {}
+                      }
+                    },
+                    "required": ["type"],
+                    "additionalProperties": false
+                  }
                 },
                 "temperature": {
                   "type": "boolean"
@@ -543,6 +757,12 @@
                   "required": ["input", "output"],
                   "additionalProperties": false
                 },
+                "supported_image_media_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
@@ -624,10 +844,10 @@
                 "type": "boolean"
               },
               "timeout": {
-                "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                 "anyOf": [
                   {
-                    "description": "Timeout in milliseconds for requests to this provider. Default is 900000 (15 minutes). Set to false to disable timeout.",
+                    "description": "Idle timeout in milliseconds for requests to this provider. Set to false to disable timeout.",
                     "type": "integer",
                     "exclusiveMinimum": 0,
                     "maximum": 9007199254740991
@@ -873,6 +1093,36 @@
                 },
                 "encoderRetries": {
                   "description": "LLM retry count for intent/script/reward generation (default: 3)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "encoderTimeoutMs": {
+                  "description": "Wall-clock deadline for a single encoder LLM call in milliseconds (default: 60000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "encoderMaxOutputChars": {
+                  "description": "Maximum characters collected from one encoder model stream before abort (default: 16000)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "reencodeConcurrency": {
+                  "description": "Maximum concurrent experience reencode workers (default: 5)",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 32
+                },
+                "reencodeRetries": {
+                  "description": "Retry count for transient reencode stages, including model, embedding, session, network, and database operations (default: 3)",
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 10
+                },
+                "reencodeRetryBackoffMs": {
+                  "description": "Initial backoff for transient reencode stage retries in milliseconds (default: 1000)",
                   "type": "integer",
                   "minimum": 0,
                   "maximum": 9007199254740991
@@ -1541,6 +1791,10 @@
                       "minimum": 0,
                       "maximum": 9007199254740991
                     },
+                    "model": {
+                      "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
+                      "type": "string"
+                    },
                     "resolveSenderNames": {
                       "description": "Resolve sender display names via Feishu contact API",
                       "default": true,
@@ -1683,31 +1937,171 @@
       "additionalProperties": false
     },
     "observability": {
-      "description": "Local logs, traces, and diagnostics settings",
+      "description": "Local logs, indexed telemetry, and diagnostics settings",
       "ref": "ObservabilityConfig",
       "type": "object",
       "properties": {
         "enabled": {
-          "description": "Enable local observability trace JSONL events (default: true)",
+          "description": "Enable local indexed observability events, spans, metrics, issues, and diagnostics (default: true)",
           "type": "boolean"
         },
         "retentionDays": {
-          "description": "Days to retain local trace files (default: 7)",
+          "description": "Days to retain optional observability mirror files (default: 7)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "maxBytes": {
-          "description": "Maximum total trace storage in bytes (default: 250MB)",
+          "description": "Maximum total local observability storage in bytes (default: 250MB)",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
         "stalledToolMs": {
-          "description": "Milliseconds without tool activity before emitting a stalled-tool trace event",
+          "description": "Milliseconds without tool activity before emitting a stalled-tool observability event",
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
+        },
+        "performance": {
+          "description": "Structured local performance observability settings",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable structured local performance metrics and traces",
+              "type": "boolean"
+            },
+            "samplingRate": {
+              "description": "Default performance metric sampling rate",
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "metricRetentionMs": {
+              "description": "Milliseconds to retain raw performance metrics",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "traceRetentionMs": {
+              "description": "Milliseconds to retain performance spans and trace details",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "resourceSampleIntervalMs": {
+              "description": "Runtime resource sampling interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "slowTraceThresholdMs": {
+              "description": "Default slow trace issue threshold",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceEvents": {
+              "description": "Maximum related events returned for a trace detail",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTimelineBuckets": {
+              "description": "Maximum timeline buckets returned to the dashboard",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxTraceListLimit": {
+              "description": "Maximum trace list rows returned",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "maxAttributeStringLength": {
+              "description": "Maximum redacted attribute string length",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "dashboardRefreshMs": {
+              "description": "Performance dashboard polling refresh interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseHeartbeatMs": {
+              "description": "Performance SSE heartbeat interval",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "sseBufferSize": {
+              "description": "Performance event stream replay buffer size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "perClientSseQueueSize": {
+              "description": "Per-client performance SSE queue size",
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "redactAttributeKeys": {
+              "description": "Additional performance telemetry attribute keys to redact",
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "rateLimits": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "storage": {
+              "type": "object",
+              "properties": {
+                "sqliteEnabled": {
+                  "type": "boolean"
+                },
+                "jsonlMirrorEnabled": {
+                  "description": "Enable optional JSONL mirror files for debugging exports",
+                  "type": "boolean"
+                },
+                "maxSqliteBytes": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "walCheckpointIntervalMs": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "additionalProperties": false
+            },
+            "thresholds": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              }
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false
@@ -1946,6 +2340,25 @@
         }
       ]
     },
+    "lspWriteDiagnostics": {
+      "description": "Include LSP diagnostics after file-writing tools complete (default: true)",
+      "type": "boolean"
+    },
+    "lspDiagnostics": {
+      "description": "Severity and scope policy for diagnostics returned after file-writing tools",
+      "type": "object",
+      "properties": {
+        "severity": {
+          "type": "string",
+          "enum": ["error", "warning"]
+        },
+        "scope": {
+          "type": "string",
+          "enum": ["delta", "file", "project"]
+        }
+      },
+      "additionalProperties": false
+    },
     "instructions": {
       "description": "Additional instruction files or patterns to include",
       "type": "array",
@@ -1976,7 +2389,7 @@
       "ref": "PermissionConfig"
     },
     "smartAllow": {
-      "description": "Use the Smart allow internal agent to auto-allow safe asks and soft denies",
+      "description": "Use the SmartAllow internal agent to auto-allow high-confidence safe asks in guarded mode and eligible false-positive denies in autonomous mode using metadata or redacted evidence only; full_access does not need SmartAllow",
       "type": "boolean"
     },
     "tools": {
@@ -2002,7 +2415,7 @@
       "type": "object",
       "properties": {
         "timeout": {
-          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 1800 = 30min)",
+          "description": "Seconds before unanswered questions auto-expire (0 = no timeout, default 3600 = 1h)",
           "type": "number",
           "minimum": 0
         }

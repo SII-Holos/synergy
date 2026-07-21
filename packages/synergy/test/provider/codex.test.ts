@@ -256,6 +256,114 @@ test("codexFetch rewrites authorization, Codex headers, session headers, and req
   expect(body.max_output_tokens).toBeUndefined()
 })
 
+test("codexFetch rewrites Request input bodies", async () => {
+  const token = accessToken({ accountID: "acct_request" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-request",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  let captured: { input: RequestInfo | URL; init?: RequestInit } | undefined
+  globalThis.fetch = asFetch(async (input, init) => {
+    captured = { input, init }
+    return jsonResponse({ ok: true })
+  })
+
+  const request = new Request("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer stale",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-5.6-sol",
+      input: "hello",
+      prompt_cache_key: "session-request",
+      max_output_tokens: 123,
+    }),
+  })
+
+  await CodexProvider.codexFetch(request)
+
+  expect(captured?.input).toBe(request)
+  const headers = new Headers(captured?.init?.headers)
+  expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+  expect(headers.get("chatgpt-account-id")).toBe("acct_request")
+  expect(headers.get("session_id")).toBe("session-request")
+  expect(headers.get("x-client-request-id")).toBe("session-request")
+
+  const body = JSON.parse(String(captured?.init?.body))
+  expect(body.prompt_cache_key).toBe("session-request")
+  expect(body.max_output_tokens).toBeUndefined()
+})
+
+test("codexFetch refreshes an invalidated access token and retries once", async () => {
+  const oldToken = accessToken({ accountID: "acct_old" })
+  const newToken = accessToken({ accountID: "acct_new" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: oldToken,
+    refresh: "refresh-old",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  const calls: string[] = []
+  globalThis.fetch = asFetch(async (input, init) => {
+    const url = String(input)
+    calls.push(url)
+    if (url === CodexProvider.OAUTH_TOKEN_URL) {
+      return jsonResponse({ access_token: newToken, refresh_token: "refresh-new", expires_in: 3600 })
+    }
+    const authorization = new Headers(init?.headers).get("authorization")
+    if (authorization === `Bearer ${oldToken}`) {
+      return jsonResponse({ error: { code: "token_invalidated", message: "token invalidated" } }, { status: 401 })
+    }
+    expect(authorization).toBe(`Bearer ${newToken}`)
+    return jsonResponse({ ok: true })
+  })
+
+  const response = await CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+    method: "POST",
+    body: JSON.stringify({ model: "gpt-5.6-sol", input: "hello" }),
+  })
+
+  expect(response.status).toBe(200)
+  expect(calls.filter((url) => url === CodexProvider.OAUTH_TOKEN_URL)).toHaveLength(1)
+  expect(calls.filter((url) => url.endsWith("/responses"))).toHaveLength(2)
+  const stored = await Auth.get(CodexProvider.PROVIDER_ID)
+  expect(stored?.type === "oauth" ? stored.refresh : undefined).toBe("refresh-new")
+})
+
+test("codexFetch marks credentials dead when invalidated access cannot refresh", async () => {
+  const token = accessToken({ accountID: "acct_dead" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-dead",
+    expires: nowSeconds() + 60 * 60,
+  })
+
+  globalThis.fetch = asFetch(async (input) => {
+    if (String(input) === CodexProvider.OAUTH_TOKEN_URL) {
+      return jsonResponse({ error: "invalid_grant", error_description: "refresh token revoked" }, { status: 400 })
+    }
+    return jsonResponse({ error: { code: "token_invalidated" } }, { status: 401 })
+  })
+
+  await expect(
+    CodexProvider.codexFetch("https://chatgpt.com/backend-api/codex/responses", {
+      method: "POST",
+      body: JSON.stringify({ model: "gpt-5.5", input: "hello" }),
+    }),
+  ).rejects.toMatchObject({
+    name: "ProviderAuthenticationRequiredError",
+    data: { providerID: CodexProvider.PROVIDER_ID, actionRequired: true },
+  })
+  expect(await Auth.get(CodexProvider.PROVIDER_ID)).toBeUndefined()
+})
+
 test("fetchModelIDs sorts visible Codex models and sends Codex headers", async () => {
   const token = accessToken({ accountID: "acct_models" })
   const ids = await CodexProvider.fetchModelIDs(token, async (input, init) => {
@@ -267,7 +375,7 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
     return jsonResponse({
       models: [
         { slug: "gpt-5.5", priority: 20 },
-        { slug: "gpt-5.4-mini", priority: 10 },
+        { slug: "gpt-5.4-mini", priority: 10, supported_in_api: false },
         { slug: "hidden-model", visibility: "hidden", priority: 1 },
       ],
     })
@@ -276,14 +384,155 @@ test("fetchModelIDs sorts visible Codex models and sends Codex headers", async (
   expect(ids).toEqual(["gpt-5.4-mini", "gpt-5.5"])
 })
 
+test("fetchModelIDs preserves future account-visible model slugs", async () => {
+  const token = accessToken({ accountID: "acct_future" })
+  const ids = await CodexProvider.fetchModelIDs(token, async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.6-sol", priority: 1 },
+        { slug: "future-codex-model", priority: 2 },
+      ],
+    }),
+  )
+
+  expect(ids).toEqual(["gpt-5.6-sol", "future-codex-model"])
+})
+
+test("fetchModelCatalog parses Codex context windows without filtering supported_in_api false", async () => {
+  const token = accessToken({ accountID: "acct_catalog" })
+  const catalog = await CodexProvider.fetchModelCatalog(token, async (input, init) => {
+    expect(String(input)).toBe("https://chatgpt.com/backend-api/codex/models?client_version=1.0.0")
+    const headers = new Headers(init?.headers)
+    expect(headers.get("authorization")).toBe(`Bearer ${token}`)
+    expect(headers.get("chatgpt-account-id")).toBe("acct_catalog")
+    return jsonResponse({
+      models: [
+        { slug: "gpt-5.5", priority: 20, context_window: 272_000, supported_in_api: false },
+        { slug: "gpt-5.3-codex-spark", priority: 10, context_window: 128_000 },
+        { slug: "hidden-model", visibility: "hidden", priority: 1, context_window: 64_000 },
+      ],
+    })
+  })
+
+  expect(catalog).toEqual([
+    {
+      id: "gpt-5.3-codex-spark",
+      rank: 10,
+      model: {
+        limit: { context: 128_000, input: 128_000, output: 32_000 },
+      },
+    },
+    {
+      id: "gpt-5.5",
+      rank: 20,
+      model: {
+        limit: { context: 272_000, input: 272_000, output: 128_000 },
+      },
+    },
+  ])
+})
+
+test("Codex metadata overrides source context without mutating OpenAI model metadata", () => {
+  const source: ModelsDev.Model = {
+    id: "gpt-5.5",
+    name: "GPT-5.5",
+    family: "gpt-5",
+    release_date: "2026-06-25",
+    attachment: true,
+    reasoning: true,
+    temperature: true,
+    tool_call: true,
+    cost: { input: 0, output: 0 },
+    limit: { context: 1_050_000, input: 1_050_000, output: 128_000 },
+    modalities: {
+      input: ["text", "image"],
+      output: ["text"],
+    },
+    options: {},
+    provider: {
+      npm: "@ai-sdk/openai",
+    },
+  }
+  const catalog = CodexProvider.modelsDevProvider(["gpt-5.5"], { "gpt-5.5": source })
+
+  expect(catalog.models["gpt-5.5"].limit.context).toBe(CodexProvider.DEFAULT_CODEX_CONTEXT_WINDOW)
+  expect(catalog.models["gpt-5.5"].limit.input).toBe(CodexProvider.DEFAULT_CODEX_CONTEXT_WINDOW)
+  expect(source.limit.context).toBe(1_050_000)
+  expect(source.limit.input).toBe(1_050_000)
+})
+
 test("provider catalog includes OpenAI Codex before login", async () => {
-  const catalog = await ProviderCatalog.resolve({ forceRefresh: true })
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
   const codex = catalog[CodexProvider.PROVIDER_ID]
 
   expect(codex).toBeDefined()
   expect(codex.name).toBe("OpenAI Codex")
   expect(codex.models["gpt-5.4-mini"]).toBeDefined()
   expect(codex.models["gpt-5.4-mini"].provider?.npm).toBe("@ai-sdk/openai")
+  expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
+  expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
+})
+
+test("logged-in Codex provider applies fallback context when live metadata omits context_window", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.5", priority: 1 },
+        { slug: "gpt-5.3-codex-spark", priority: 2 },
+      ],
+    }),
+  )
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const codex = catalog[CodexProvider.PROVIDER_ID]
+
+  expect(Object.keys(codex.models)).toEqual(["gpt-5.5", "gpt-5.3-codex-spark"])
+  expect(codex.models["gpt-5.5"].limit.context).toBe(272_000)
+  expect(codex.models["gpt-5.5"].limit.input).toBe(272_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.context).toBe(128_000)
+  expect(codex.models["gpt-5.3-codex-spark"].limit.input).toBe(128_000)
+})
+
+test("provider catalog caches static and live Codex models independently", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-provider-cache",
+    expires: nowSeconds() + 60 * 60,
+  })
+  let discoveryCalls = 0
+  globalThis.fetch = asFetch(async () => {
+    discoveryCalls += 1
+    return jsonResponse({
+      models: [{ slug: "account-live-only-model", priority: 1 }],
+    })
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+
+  const staticCatalog = await ProviderCatalog.resolve({ config, includeLive: false })
+  const liveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+  const cachedLiveCatalog = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  expect(staticCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeUndefined()
+  expect(liveCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeDefined()
+  expect(cachedLiveCatalog[CodexProvider.PROVIDER_ID].models["account-live-only-model"]).toBeDefined()
+  expect(discoveryCalls).toBe(1)
 })
 
 test("provider auth registry exposes built-in Codex OAuth method", async () => {
@@ -351,7 +600,7 @@ test("logged-in Codex provider loads account-visible models and respects provide
   })
   globalThis.fetch = asFetch(async () =>
     jsonResponse({
-      models: [{ slug: "gpt-5.4-mini", priority: 1 }],
+      models: [{ slug: "gpt-5.4-mini", priority: 1, context_window: 272_000 }],
     }),
   )
 
@@ -363,6 +612,8 @@ test("logged-in Codex provider loads account-visible models and respects provide
       const providers = await Provider.list()
       expect(providers[CodexProvider.PROVIDER_ID]).toBeDefined()
       expect(Object.keys(providers[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.4-mini"])
+      expect(providers[CodexProvider.PROVIDER_ID].models["gpt-5.4-mini"].limit.context).toBe(272_000)
+      expect(providers[CodexProvider.PROVIDER_ID].models["gpt-5.4-mini"].limit.input).toBe(272_000)
     },
   })
 
@@ -379,4 +630,171 @@ test("logged-in Codex provider loads account-visible models and respects provide
       expect(providers[CodexProvider.PROVIDER_ID]).toBeUndefined()
     },
   })
+})
+
+test("live discovery preserves image modalities from upstream OpenAI source", async () => {
+  const token = accessToken({ exp: nowSeconds() + 60 * 60 })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-live-modalities",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      models: [
+        { slug: "gpt-5.1-codex", priority: 1 },
+        { slug: "gpt-5.3-codex-spark", priority: 2 },
+      ],
+    }),
+  )
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const codex = catalog[CodexProvider.PROVIDER_ID]
+
+  // gpt-5.1-codex is live-only for Codex but has image metadata in the upstream OpenAI catalog.
+  const liveOnly = codex.models["gpt-5.1-codex"]
+  expect(liveOnly).toBeDefined()
+  expect(liveOnly.modalities?.input ?? []).toContain("text")
+  expect(liveOnly.modalities?.input ?? []).toContain("image")
+  expect(liveOnly.provider?.npm).toBe("@ai-sdk/openai")
+
+  // gpt-5.3-codex-spark must remain text-only per Codex policy
+  const spark = codex.models["gpt-5.3-codex-spark"]
+  expect(spark).toBeDefined()
+  expect(spark.modalities?.input ?? []).toEqual(["text"])
+})
+
+test("live catalog keeps the last verified Codex models during a transient refresh failure", async () => {
+  const token = accessToken({ accountID: "acct_lkg" })
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: token,
+    refresh: "refresh-lkg",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  globalThis.fetch = asFetch(async () =>
+    jsonResponse({
+      models: [{ slug: "gpt-5.6-lkg", priority: 1 }],
+    }),
+  )
+
+  const verified = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+  expect(Object.keys(verified[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-lkg"])
+
+  globalThis.fetch = asFetch(async () => {
+    throw new TypeError("temporary network failure")
+  })
+  const stale = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+
+  expect(Object.keys(stale[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-lkg"])
+})
+
+test("live catalog cache isolates Codex accounts without exposing credential secrets", async () => {
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  let discoveryCalls = 0
+  globalThis.fetch = asFetch(async (_input, init) => {
+    discoveryCalls++
+    const accountID = new Headers(init?.headers).get("chatgpt-account-id")
+    return jsonResponse({
+      models: [{ slug: `model-for-${accountID}`, priority: 1 }],
+    })
+  })
+
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ accountID: "acct_a" }),
+    refresh: "refresh-a",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const accountA = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ accountID: "acct_b" }),
+    refresh: "refresh-b",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const accountB = await ProviderCatalog.resolve({ config, includeLive: true })
+
+  expect(Object.keys(accountA[CodexProvider.PROVIDER_ID].models)).toEqual(["model-for-acct_a"])
+  expect(Object.keys(accountB[CodexProvider.PROVIDER_ID].models)).toEqual(["model-for-acct_b"])
+  expect(discoveryCalls).toBe(2)
+})
+
+test("live catalog bounds account-isolated last-known-good entries", async () => {
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  globalThis.fetch = asFetch(async (_input, init) => {
+    const accountID = new Headers(init?.headers).get("chatgpt-account-id")
+    return jsonResponse({ models: [{ slug: `model-for-${accountID}`, priority: 1 }] })
+  })
+
+  for (let index = 0; index <= ProviderCatalog.MAX_LAST_KNOWN_GOOD_ENTRIES; index++) {
+    const accountID = `acct_lkg_${index}`
+    await Auth.set(CodexProvider.PROVIDER_ID, {
+      type: "oauth",
+      access: accessToken({ accountID }),
+      refresh: `refresh-${index}`,
+      expires: nowSeconds() + 60 * 60,
+    })
+    const catalog = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+    expect(catalog[CodexProvider.PROVIDER_ID].models[`model-for-${accountID}`]).toBeDefined()
+  }
+
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ accountID: "acct_lkg_0" }),
+    refresh: "refresh-oldest",
+    expires: nowSeconds() + 60 * 60,
+  })
+  globalThis.fetch = asFetch(async () => {
+    throw new TypeError("temporary network failure")
+  })
+
+  const fallback = await ProviderCatalog.resolve({ config, includeLive: true, forceRefresh: true })
+  expect(fallback[CodexProvider.PROVIDER_ID].models["model-for-acct_lkg_0"]).toBeUndefined()
+  expect(fallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
+})
+
+test("cold-start live discovery fallback retries after the short failure TTL", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken({ accountID: "acct_retry" }),
+    refresh: "refresh-retry",
+    expires: nowSeconds() + 60 * 60,
+  })
+  const config = { providerCatalog: { enabled: false, offlineCache: false } }
+  let currentTime = 1_000_000
+  const originalNow = Date.now
+  Date.now = () => currentTime
+  let discoveryCalls = 0
+  let available = false
+  globalThis.fetch = asFetch(async () => {
+    discoveryCalls++
+    if (!available) throw new TypeError("temporary network failure")
+    return jsonResponse({ models: [{ slug: "gpt-5.6-recovered", priority: 1 }] })
+  })
+
+  try {
+    const fallback = await ProviderCatalog.resolve({ config, includeLive: true })
+    expect(fallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
+
+    available = true
+    currentTime += ProviderCatalog.FALLBACK_CACHE_TTL_MS - 1
+    const cachedFallback = await ProviderCatalog.resolve({ config, includeLive: true })
+    expect(cachedFallback[CodexProvider.PROVIDER_ID].models["gpt-5.5"]).toBeDefined()
+    expect(discoveryCalls).toBe(1)
+
+    currentTime += 2
+    const recovered = await ProviderCatalog.resolve({ config, includeLive: true })
+    expect(Object.keys(recovered[CodexProvider.PROVIDER_ID].models)).toEqual(["gpt-5.6-recovered"])
+    expect(discoveryCalls).toBe(2)
+  } finally {
+    Date.now = originalNow
+  }
 })

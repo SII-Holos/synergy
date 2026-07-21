@@ -1,8 +1,10 @@
 import { Auth } from "./api-key"
 import { AccountUsage } from "./usage"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import type { ProviderProfile } from "./profile"
 
 export namespace AnthropicOAuthProvider {
   export const PROVIDER_ID = "anthropic"
@@ -170,8 +172,9 @@ export namespace AnthropicOAuthProvider {
   }
 
   export async function resolveToken(options?: { allowMissing?: boolean; fetch?: FetchLike }) {
-    const auth = await Auth.get(PROVIDER_ID)
-    if (!auth || auth.type !== "oauth") {
+    const selected = await Auth.select(PROVIDER_ID)
+    const auth = selected?.auth
+    if (!selected || !auth || auth.type !== "oauth") {
       if (options?.allowMissing) return undefined
       throw new AuthError({
         providerID: PROVIDER_ID,
@@ -183,10 +186,11 @@ export namespace AnthropicOAuthProvider {
     if (auth.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return auth.access
     try {
       return await Auth.withLock(`${PROVIDER_ID}:oauth-refresh`, async () => {
-        const latest = await Auth.get(PROVIDER_ID)
+        const latestSelected = await Auth.select(PROVIDER_ID)
+        const latest = latestSelected?.auth
         if (latest?.type === "oauth" && latest.expires > nowSeconds() + AUTH_REFRESH_SKEW_SECONDS) return latest.access
         const refreshed = await refreshOAuth(latest?.type === "oauth" ? latest : auth, options?.fetch)
-        await Auth.set(
+        await Auth.replaceSelectedCredential(
           PROVIDER_ID,
           {
             type: "oauth",
@@ -194,7 +198,7 @@ export namespace AnthropicOAuthProvider {
             refresh: refreshed.refresh,
             expires: refreshed.expires,
           },
-          { source: "api" },
+          { credentialID: latestSelected?.credentialID ?? selected.credentialID },
         )
         return refreshed.access
       })
@@ -218,14 +222,19 @@ export namespace AnthropicOAuthProvider {
   }
 
   export async function anthropicFetch(input: RequestInfo | URL, init?: RequestInit) {
-    const token = await resolveToken()
-    const headers = new Headers(init?.headers)
-    headers.delete("x-api-key")
-    headers.delete("X-Api-Key")
-    for (const [key, value] of Object.entries(requestHeaders(token!))) {
-      headers.set(key, value)
-    }
-    return fetch(input, { ...init, headers })
+    return ProviderAuthRecovery.execute({
+      providerID: PROVIDER_ID,
+      request: async () => {
+        const token = await resolveToken()
+        const headers = new Headers(init?.headers)
+        headers.delete("x-api-key")
+        headers.delete("X-Api-Key")
+        for (const [key, value] of Object.entries(requestHeaders(token!))) headers.set(key, value)
+        return fetch(input, { ...init, headers })
+      },
+      refresh: refreshAuth,
+      classify: classifyError,
+    })
   }
 
   export async function fetchUsage(fetchFn: FetchLike = fetch): Promise<AccountUsage.Snapshot> {
@@ -236,14 +245,31 @@ export namespace AnthropicOAuthProvider {
         "Anthropic account limits are only available for OAuth-backed Claude accounts.",
       )
     }
-    const response = await fetchFn("https://api.anthropic.com/api/oauth/usage", {
-      headers: requestHeaders(token),
-      signal: AbortSignal.timeout(15_000),
+    const response = await ProviderAuthRecovery.execute({
+      providerID: PROVIDER_ID,
+      request: async () => {
+        const current = await resolveToken({ allowMissing: true, fetch: fetchFn })
+        if (!current) return new Response(null, { status: 401 })
+        return fetchFn("https://api.anthropic.com/api/oauth/usage", {
+          headers: requestHeaders(current),
+          signal: AbortSignal.timeout(15_000),
+        })
+      },
+      refresh: (auth) => refreshAuth(auth, fetchFn),
+      classify: classifyError,
+      throwOnActionRequired: false,
     })
     if (!response.ok) {
-      return AccountUsage.error(PROVIDER_ID, `Anthropic usage request failed with status ${response.status}.`, {
-        reloginRequired: response.status === 401 || response.status === 403,
-      })
+      const failure = classifyError({ status: response.status, body: await safeJson(response.clone()) })
+      if (failure?.reloginRequired) {
+        return AccountUsage.error(PROVIDER_ID, "Anthropic rejected these credentials. Reconnect to restore usage.", {
+          reloginRequired: true,
+        })
+      }
+      if (failure?.exhausted) {
+        return AccountUsage.unavailable(PROVIDER_ID, "Anthropic usage is temporarily rate limited.")
+      }
+      return AccountUsage.error(PROVIDER_ID, "Anthropic usage is temporarily unavailable.")
     }
     const payload = await safeJson(response)
     const windows = [
@@ -273,5 +299,29 @@ export namespace AnthropicOAuthProvider {
       windows,
       details,
     }
+  }
+
+  export async function refreshAuth(auth: Auth.Info, fetchFn: FetchLike = fetch): Promise<Auth.Info | undefined> {
+    if (auth.type !== "oauth") return undefined
+    const refreshed = await refreshOAuth(auth, fetchFn)
+    return {
+      type: "oauth",
+      access: refreshed.access,
+      refresh: refreshed.refresh,
+      expires: refreshed.expires,
+    }
+  }
+
+  export function classifyError(input: {
+    status?: number
+    body?: unknown
+  }): ProviderProfile.ClassifiedError | undefined {
+    const payload = input.body && typeof input.body === "object" ? (input.body as Record<string, any>) : {}
+    const type = String(payload.type ?? payload.error?.type ?? payload.error ?? "")
+    if (input.status === 429) return { code: type || "rate_limited", retryable: true, exhausted: true }
+    if (input.status === 401 || ["authentication_error", "invalid_token"].includes(type)) {
+      return { code: type || "credential_rejected", retryable: false, reloginRequired: true }
+    }
+    return undefined
   }
 }

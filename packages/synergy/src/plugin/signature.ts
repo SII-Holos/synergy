@@ -1,9 +1,9 @@
-import type { PluginLockEntry } from "./lockfile-schema"
 import { sha256File } from "../util/crypto"
 import { subtle } from "node:crypto"
 import { Log } from "../util/log"
 import fs from "fs"
 import path from "path"
+import { PluginPaths } from "./paths"
 
 const log = Log.create({ service: "plugin.signature" })
 
@@ -36,8 +36,7 @@ export interface SignatureMetadata {
  */
 function readPublicKey(signerHex: string): string | null {
   // Check if this matches the local signing key
-  const KEYS_DIR = path.join(process.env.HOME ?? "~", ".synergy", "keys")
-  const KEY_FILE = path.join(KEYS_DIR, "signing-key.json")
+  const KEY_FILE = PluginPaths.signingKeyFile()
   try {
     const raw = fs.readFileSync(KEY_FILE, "utf-8")
     const key = JSON.parse(raw) as { publicKey: string; privateKey: string }
@@ -47,7 +46,7 @@ function readPublicKey(signerHex: string): string | null {
   }
 
   // Check well-known keys directory
-  const wellKnownDir = path.join(KEYS_DIR, "trusted")
+  const wellKnownDir = PluginPaths.trustedSigningKeysDir()
   try {
     const entries = fs.readdirSync(wellKnownDir)
     for (const entry of entries) {
@@ -201,17 +200,6 @@ export async function verifySignatureFromHashes(
   } catch (err) {
     log.error("signature verification error", { err })
     return false
-  }
-}
-
-/**
- * Extract the lockfile-compatible signature entry from verified metadata.
- */
-export function toLockfileSignature(meta: SignatureMetadata): NonNullable<PluginLockEntry["signature"]> {
-  return {
-    algorithm: meta.algorithm,
-    signature: meta.signature,
-    signer: meta.signer,
   }
 }
 

@@ -2,13 +2,11 @@ import path from "path"
 import z from "zod"
 import { Identifier } from "../id/id"
 import { MessageV2 } from "./message-v2"
-import { BusyError } from "./error"
 import { Session } from "."
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { ulid } from "ulid"
 import { spawn } from "child_process"
-import { defer } from "../util/defer"
 import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
@@ -16,8 +14,8 @@ import { lastModel } from "./input"
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
     if (reason.name === "TimeoutError") return "The command was interrupted: tool execution timed out."
-    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
-      return "The command was interrupted: session turn timed out."
+    if (typeof reason.message === "string" && reason.message.includes("Assistant step timed out")) {
+      return "The command was interrupted: assistant step timed out."
     }
     return "The command was interrupted: " + (reason.message || reason.name)
   }
@@ -39,25 +37,18 @@ export const ShellInput = z.object({
 export type ShellInput = z.infer<typeof ShellInput>
 
 export async function shell(input: ShellInput) {
-  return SessionManager.run(input.sessionID, async () => shellInSession(input))
+  return SessionManager.run(input.sessionID, (lease) => shellInSession(input, lease))
 }
 
-async function shellInSession(input: ShellInput) {
+async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease) {
   const directory = ScopeContext.current.directory
-
-  SessionManager.registerRuntime(input.sessionID)
-  const abort = SessionManager.acquire(input.sessionID)
-  if (!abort) {
-    throw new BusyError(input.sessionID)
-  }
-  using _ = defer(() => {
-    SessionManager.release(input.sessionID).catch(() => {})
-  })
+  const abort = lease.signal
 
   const agent = await Agent.get(input.agent)
   const model = input.model ?? (await Agent.getAvailableModel(agent)) ?? (await lastModel(input.sessionID))
+  const userMsgID = Identifier.ascending("message")
   const userMsg: MessageV2.User = {
-    id: Identifier.ascending("message"),
+    id: userMsgID,
     sessionID: input.sessionID,
     time: {
       created: Date.now(),
@@ -68,6 +59,10 @@ async function shellInSession(input: ShellInput) {
       providerID: model.providerID,
       modelID: model.modelID,
     },
+    origin: { type: "user" },
+    isRoot: true,
+    rootID: userMsgID,
+    visible: true,
   }
   await Session.updateMessage(userMsg)
   const userPart: MessageV2.Part = {
@@ -77,6 +72,7 @@ async function shellInSession(input: ShellInput) {
     sessionID: input.sessionID,
     text: "The following tool was executed by the user",
     synthetic: true,
+    origin: "system",
   }
   await Session.updatePart(userPart)
 
@@ -84,6 +80,8 @@ async function shellInSession(input: ShellInput) {
     id: Identifier.ascending("message"),
     sessionID: input.sessionID,
     parentID: userMsg.id,
+    rootID: userMsg.id,
+    visible: true,
     mode: input.agent,
     agent: input.agent,
     cost: 0,

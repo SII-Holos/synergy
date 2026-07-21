@@ -1,7 +1,7 @@
 @layer theme, base, components, utilities;
 
-@import "./colors.css" layer(theme);
 @import "./theme.css" layer(theme);
+@import "./theme.generated.css" layer(theme);
 
 @import "./base.css" layer(base);
 @import "katex/dist/katex.min.css" layer(base);
@@ -39,6 +39,7 @@
 @import "../components/switch.css" layer(components);
 @import "../components/session-review.css" layer(components);
 @import "../components/session-turn.css" layer(components);
+@import "../components/turn-change-summary-panel.css" layer(components);
 @import "../components/mailbox-message.css" layer(components);
 @import "../components/command-result-output.css" layer(components);
 @import "../components/sticky-accordion-header.css" layer(components);

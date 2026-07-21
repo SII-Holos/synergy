@@ -1,55 +1,8 @@
-import { assetHttpUrl } from "@/utils/asset-url"
-
-const TARGET_IMAGE_BYTES = 4.5 * 1024 * 1024
-const IMAGE_SCALE_STEPS = [1, 0.85, 0.7, 0.6, 0.5, 0.4]
-const IMAGE_QUALITY_STEPS = [0.9, 0.82, 0.74, 0.66, 0.58, 0.5]
-
-const TEXT_FILE_EXTENSIONS = new Set([
-  "c",
-  "cc",
-  "cpp",
-  "cs",
-  "css",
-  "csv",
-  "go",
-  "graphql",
-  "h",
-  "hpp",
-  "html",
-  "ini",
-  "java",
-  "js",
-  "json",
-  "jsx",
-  "kt",
-  "less",
-  "log",
-  "lua",
-  "m",
-  "md",
-  "mjs",
-  "patch",
-  "php",
-  "pl",
-  "py",
-  "rb",
-  "rs",
-  "scss",
-  "sh",
-  "sql",
-  "svg",
-  "svelte",
-  "swift",
-  "tex",
-  "toml",
-  "ts",
-  "tsx",
-  "txt",
-  "vue",
-  "xml",
-  "yaml",
-  "yml",
-])
+const THUMBNAIL_MAX_DIMENSION = 128
+const THUMBNAIL_MIME = "image/webp"
+const THUMBNAIL_QUALITY = 0.78
+const BITMAP_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/gif", "image/webp"])
+let imagePipelineWarmup: Promise<void> | undefined
 
 export class PromptAttachmentError extends Error {
   constructor(
@@ -61,50 +14,46 @@ export class PromptAttachmentError extends Error {
   }
 }
 
-export interface PreparedPromptAttachment {
+export interface UploadedPromptAttachment {
   mime: string
-  dataUrl: string
+  url: string
+  size?: number
+  metadata?: Record<string, unknown>
+  presentation?: {
+    renderer?: "thumbnail"
+    size?: "small"
+    crop?: boolean
+  }
 }
 
-export function isTextAttachmentFile(file: File): boolean {
-  if (file.type.startsWith("text/")) return true
-  if (["application/json", "application/xml", "application/yaml", "application/x-yaml"].includes(file.type)) {
-    return true
+type AssetUploadClient = {
+  asset: {
+    upload: (params?: {
+      file?: unknown
+    }) => Promise<{ data?: { id?: string; url?: string; mime?: string; size?: number } }>
   }
-  const normalizedMime = file.type.toLowerCase()
-  if (
-    normalizedMime.endsWith("+json") ||
-    normalizedMime.endsWith("+xml") ||
-    normalizedMime.endsWith("+yaml") ||
-    normalizedMime.endsWith("+yml")
-  ) {
-    return true
-  }
-  if (normalizedMime && normalizedMime !== "application/octet-stream") return false
-  const extension = file.name.split(".").pop()?.toLowerCase()
-  if (!extension) return false
-  return TEXT_FILE_EXTENSIONS.has(extension)
 }
 
-export async function uploadPromptAttachment(
-  client: {
-    asset: { upload: (params?: { file?: unknown }) => Promise<{ data?: { id?: string; url?: string; mime?: string } }> }
-  },
-  baseUrl: string,
-  file: File,
-): Promise<{ url: string; mime: string }> {
+function assetUrl(data: { id?: string; url?: string } | undefined) {
+  if (!data) return ""
+  if (data.url) return data.url
+  return data.id ? `asset://${data.id}` : ""
+}
+
+async function uploadAsset(client: AssetUploadClient, file: File): Promise<UploadedPromptAttachment> {
   const res = await client.asset.upload({ file })
-  const data = res.data as { id?: string; url?: string; mime?: string } | undefined
-  return { url: assetHttpUrl(baseUrl, data), mime: data?.mime ?? file.type ?? "text/plain" }
+  const data = res.data
+  const url = assetUrl(data)
+  if (!url) throw new PromptAttachmentError("Couldn't attach file", "The server did not return an asset URL.")
+  return {
+    url,
+    mime: data?.mime ?? file.type ?? "application/octet-stream",
+    size: data?.size ?? file.size,
+  }
 }
 
-function readAsDataUrl(file: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onload = () => resolve(reader.result as string)
-    reader.onerror = () => reject(new Error("Failed to read attachment"))
-    reader.readAsDataURL(file)
-  })
+function isBitmapImage(file: File) {
+  return BITMAP_IMAGE_TYPES.has(file.type.toLowerCase())
 }
 
 function loadImage(file: File) {
@@ -137,17 +86,12 @@ function loadImage(file: File) {
  * iCCP chunks. Chromium's compositor can reject this combination when loaded
  * via URL.createObjectURL() + new Image(). Removing the ancillary cICP chunk
  * lets the decoder fall through to the standard iCCP path.
- *
- * This is a zero-dependency byte walker — no pixel decode, no decompression.
- * Cost: ~microseconds for typical PNGs.
  */
 async function stripCicpFromPng(file: File): Promise<File> {
   const buffer = await file.arrayBuffer()
-  if (buffer.byteLength < 20) return file // PNG sig (8) + min chunk (12)
+  if (buffer.byteLength < 20) return file
 
   const bytes = new Uint8Array(buffer)
-
-  // PNG signature: \x89 P N G \r \n \x1a \n
   if (
     bytes[0] !== 0x89 ||
     bytes[1] !== 0x50 ||
@@ -163,19 +107,16 @@ async function stripCicpFromPng(file: File): Promise<File> {
 
   let offset = 8
   while (offset + 12 <= bytes.length) {
-    // Chunk length: big-endian uint32
     const length = (bytes[offset] << 24) | (bytes[offset + 1] << 16) | (bytes[offset + 2] << 8) | bytes[offset + 3]
     const chunkEnd = offset + 12 + length
-    if (chunkEnd > bytes.length) return file // truncated chunk → bail
+    if (chunkEnd > bytes.length) return file
 
-    // cICP chunk type bytes: 'c' 'I' 'C' 'P'
     if (
       bytes[offset + 4] === 0x63 &&
       bytes[offset + 5] === 0x49 &&
       bytes[offset + 6] === 0x43 &&
       bytes[offset + 7] === 0x50
     ) {
-      // Rebuild buffer without this chunk
       const before = new Uint8Array(buffer, 0, offset)
       const after = new Uint8Array(buffer, chunkEnd)
       const result = new Uint8Array(before.length + after.length)
@@ -187,87 +128,114 @@ async function stripCicpFromPng(file: File): Promise<File> {
     offset = chunkEnd
   }
 
-  return file // cICP not found, pass through
+  return file
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement, mime: string, quality?: number) {
   return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, mime, quality))
 }
+export function warmPromptAttachmentImagePipeline() {
+  if (imagePipelineWarmup) return imagePipelineWarmup
+  if (typeof document === "undefined" || typeof Image === "undefined") return Promise.resolve()
 
-function createCanvas(image: HTMLImageElement, scale: number) {
-  const canvas = document.createElement("canvas")
-  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
-  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
+  imagePipelineWarmup = (async () => {
+    const seedCanvas = document.createElement("canvas")
+    seedCanvas.width = 1
+    seedCanvas.height = 1
+    seedCanvas.getContext("2d")?.clearRect(0, 0, 1, 1)
 
-  const context = canvas.getContext("2d")
-  if (!context) throw new Error("Failed to create image canvas")
+    const seedBlob = await canvasToBlob(seedCanvas, "image/png")
+    const thumbnailCanvas = document.createElement("canvas")
+    thumbnailCanvas.width = 1
+    thumbnailCanvas.height = 1
 
-  context.imageSmoothingEnabled = true
-  context.imageSmoothingQuality = "high"
-  context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  return canvas
-}
+    const thumbnailContext = thumbnailCanvas.getContext("2d")
+    if (!thumbnailContext) return
 
-function outputMimes(inputMime: string) {
-  if (inputMime === "image/jpeg") return ["image/jpeg", "image/webp"]
-  return ["image/webp", "image/jpeg"]
-}
-
-export async function preparePromptAttachment(file: File): Promise<PreparedPromptAttachment> {
-  if (!file.type.startsWith("image/")) {
-    return {
-      mime: file.type,
-      dataUrl: await readAsDataUrl(file),
-    }
-  }
-
-  if (file.type === "image/gif") {
-    if (file.size > TARGET_IMAGE_BYTES) {
-      throw new PromptAttachmentError(
-        "GIF too large",
-        "Animated GIFs must already be small enough to attach. Use a smaller GIF or attach a still image instead.",
+    if (seedBlob && typeof File !== "undefined") {
+      const image = await loadImage(new File([seedBlob], "prompt-attachment-warmup.png", { type: "image/png" })).catch(
+        () => undefined,
       )
+      if (image) thumbnailContext.drawImage(image, 0, 0, 1, 1)
     }
-    return {
-      mime: file.type,
-      dataUrl: await readAsDataUrl(file),
-    }
+
+    await canvasToBlob(thumbnailCanvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY)
+  })().catch(() => undefined)
+
+  return imagePipelineWarmup
+}
+
+export function schedulePromptAttachmentImagePipelineWarmup() {
+  if (typeof window === "undefined") return
+
+  const warm = () => void warmPromptAttachmentImagePipeline()
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(warm, { timeout: 1500 })
+    return
   }
 
-  // Strip cICP chunk from PNGs before decode — Chromium's compositor
-  // rejects Display P3 PNGs when both cICP and iCCP chunks are present.
-  // Removing the ancillary cICP chunk lets the decoder fall through to
-  // the iCCP profile path, which handles P3 correctly.
-  if (file.type === "image/png") {
-    file = await stripCicpFromPng(file)
-  }
+  window.setTimeout(warm, 250)
+}
+
+async function createThumbnailFile(file: File): Promise<File | undefined> {
+  if (!isBitmapImage(file)) return undefined
 
   let image: HTMLImageElement
   try {
     image = await loadImage(file)
   } catch (error) {
     throw new PromptAttachmentError(
-      "Couldn’t attach image",
-      error instanceof Error ? error.message : "This image couldn’t be processed.",
+      "Couldn't attach image",
+      error instanceof Error ? error.message : "This image couldn't be processed.",
     )
   }
 
-  for (const mime of outputMimes(file.type)) {
-    for (const scale of IMAGE_SCALE_STEPS) {
-      const canvas = createCanvas(image, scale)
-      for (const quality of IMAGE_QUALITY_STEPS) {
-        const blob = await canvasToBlob(canvas, mime, quality)
-        if (!blob || blob.size > TARGET_IMAGE_BYTES) continue
-        return {
-          mime,
-          dataUrl: await readAsDataUrl(blob),
-        }
-      }
-    }
-  }
+  const longest = Math.max(image.naturalWidth, image.naturalHeight)
+  const scale = longest > 0 ? Math.min(1, THUMBNAIL_MAX_DIMENSION / longest) : 1
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
+  canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
 
-  throw new PromptAttachmentError(
-    "Image too large",
-    "This image couldn’t be shrunk enough to attach safely. Try a smaller image.",
-  )
+  const context = canvas.getContext("2d")
+  if (!context) throw new PromptAttachmentError("Couldn't attach image", "Failed to create an image thumbnail.")
+
+  context.imageSmoothingEnabled = true
+  context.imageSmoothingQuality = "high"
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+
+  const blob = await canvasToBlob(canvas, THUMBNAIL_MIME, THUMBNAIL_QUALITY)
+  if (!blob) throw new PromptAttachmentError("Couldn't attach image", "Failed to create an image thumbnail.")
+
+  return new File([blob], `${file.name}.thumb.webp`, { type: THUMBNAIL_MIME })
+}
+
+async function normalizeFileForUpload(file: File) {
+  if (file.type === "image/png") return stripCicpFromPng(file)
+  return file
+}
+
+export async function uploadPromptAttachment(client: AssetUploadClient, file: File): Promise<UploadedPromptAttachment> {
+  const uploadFile = await normalizeFileForUpload(file)
+  const uploaded = await uploadAsset(client, uploadFile)
+  if (!isBitmapImage(uploadFile)) return uploaded
+
+  const thumbnailFile = await createThumbnailFile(uploadFile)
+  if (!thumbnailFile) return uploaded
+
+  const thumbnail = await uploadAsset(client, thumbnailFile)
+  return {
+    ...uploaded,
+    metadata: {
+      thumbnail: {
+        url: thumbnail.url,
+        mime: thumbnail.mime,
+        size: thumbnail.size,
+      },
+    },
+    presentation: {
+      renderer: "thumbnail",
+      size: "small",
+      crop: true,
+    },
+  }
 }

@@ -26,6 +26,7 @@ export type SubagentPermissionProfile =
   | "externalResearch"
   | "research"
   | "supervisor"
+  | "lightLoopReviewer"
 
 export interface SubagentDefinition {
   name: string
@@ -34,6 +35,8 @@ export interface SubagentDefinition {
   model?: Provider.ModelRole
   permission: SubagentPermissionProfile
   visibleTo?: string[]
+  delegationGroups?: string[]
+  hidden?: boolean
   steps?: number
   temperature?: number
   topP?: number
@@ -89,6 +92,8 @@ function anchoredWriteTools(): PermissionNext.Ruleset {
 function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext.Ruleset {
   const common = PermissionNext.fromConfig({
     "*": "deny",
+    expand_tools: "allow",
+    search_tools: "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",
@@ -110,16 +115,12 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     list: "allow",
     arxiv_search: "allow",
     arxiv_download: "ask",
-    memory_search: "allow",
-    memory_get: "allow",
     note_list: "allow",
     note_read: "allow",
     note_search: "allow",
-    note_write: "allow",
-    note_edit: "allow",
-    session_list: "allow",
-    session_read: "allow",
-    session_search: "allow",
+    blueprint_loop_stop: "allow",
+    blueprint_loop_approve: "allow",
+    blueprint_loop_reject: "allow",
     agenda_list: "allow",
     agenda_logs: "allow",
     external_directory: {
@@ -167,6 +168,8 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_search: "allow",
         note_write: "allow",
         note_edit: "allow",
+        note_archive: "allow",
+        note_delete: "allow",
       }),
     )
   }
@@ -177,10 +180,21 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
       classicReadTools(),
       PermissionNext.fromConfig({
         session_list: "allow",
+        scope_list: "allow",
         session_read: "allow",
         session_search: "allow",
         session_send: "deny",
         session_control: "deny",
+      }),
+    )
+  }
+
+  if (profile === "externalResearch" || profile === "research") {
+    return PermissionNext.merge(
+      common,
+      classicReadTools(),
+      PermissionNext.fromConfig({
+        "mcp__*": "allow",
       }),
     )
   }
@@ -197,6 +211,10 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         task_list: "allow",
         task_output: "allow",
         task_cancel: "allow",
+        session_list: "allow",
+        scope_list: "allow",
+        session_read: "allow",
+        session_search: "allow",
         session_send: "deny",
         session_control: "deny",
         note_list: "allow",
@@ -204,8 +222,37 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
         note_search: "allow",
         note_write: "deny",
         note_edit: "deny",
-        blueprint_loop_restart: "allow",
-        blueprint_loop_finish: "allow",
+      }),
+    )
+  }
+
+  if (profile === "lightLoopReviewer") {
+    return PermissionNext.merge(
+      common,
+      anchoredReadTools(),
+      PermissionNext.fromConfig({
+        dagwrite: "allow",
+        dagread: "allow",
+        dagpatch: "allow",
+        task: "allow",
+        task_list: "allow",
+        task_output: "allow",
+        task_cancel: "allow",
+        session_list: "allow",
+        scope_list: "allow",
+        session_read: "allow",
+        session_search: "allow",
+        session_send: "deny",
+        session_control: "deny",
+        note_list: "allow",
+        note_read: "allow",
+        note_search: "allow",
+        note_write: "deny",
+        note_edit: "deny",
+        memory_write: "deny",
+        memory_edit: "deny",
+        light_loop_approve: "allow",
+        light_loop_reject: "allow",
       }),
     )
   }
@@ -223,6 +270,8 @@ export function createSubagent(ctx: BuiltinAgentContext, definition: SubagentDef
     mode: "subagent",
     native: true,
     visibleTo: definition.visibleTo ?? ["synergy-max", "supervisor"],
+    delegationGroups: definition.delegationGroups,
+    hidden: definition.hidden,
     ...resolveAgentModelRole(ctx, definition.model ?? "mid"),
     steps: definition.steps,
     temperature: definition.temperature,

@@ -1,27 +1,38 @@
 import { ScopeContext } from "@/scope/context"
 import { ScopedState } from "@/scope/scoped-state"
 import { Plugin } from "../plugin"
-import { map, filter, pipe, fromEntries, mapValues } from "remeda"
+import { mapValues } from "remeda"
 import z from "zod"
 import { fn } from "@/util/fn"
-import type { AuthHook, AuthImportResult, AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthHook, AuthImportResult, AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Auth } from "@/provider/api-key"
 import { CodexProvider } from "./codex"
 import { AnthropicOAuthProvider } from "./anthropic-oauth"
 import { CopilotProvider } from "./copilot"
 import { MiniMaxProvider } from "./minimax"
+import { GitHubProvider } from "./github"
 import { registerBuiltinProviderProfiles } from "./builtin"
 import { Provider } from "./provider"
+import { RuntimeReload } from "@/runtime/reload"
+import { authHook } from "@/plugin/auth-provider"
 
 export namespace ProviderAuth {
+  async function reloadProvider(reason: string) {
+    if (ScopeContext.tryScope()) {
+      await RuntimeReload.reload({ targets: ["provider"], reason })
+      return
+    }
+    await Provider.reload()
+  }
+
   const state = ScopedState.create(async () => {
     registerBuiltinProviderProfiles()
-    const pluginMethods = pipe(
-      await Plugin.allHooks(),
-      filter((x) => x.auth?.provider !== undefined),
-      map((x) => [x.auth!.provider, x.auth!] as const),
-      fromEntries(),
+    const pluginMethods = Object.fromEntries(
+      (await Plugin.authProviderEntries()).map(({ plugin, contribution }) => [
+        contribution.id,
+        authHook(plugin, contribution),
+      ]),
     ) as Record<string, AuthHook>
     const builtinMethods: Record<string, AuthHook> = {
       [CodexProvider.PROVIDER_ID]: {
@@ -96,6 +107,20 @@ export namespace ProviderAuth {
           },
         ],
       },
+      [GitHubProvider.PROVIDER_ID]: {
+        provider: GitHubProvider.PROVIDER_ID,
+        methods: [
+          {
+            type: "api" as const,
+            label: "GitHub token",
+          },
+          {
+            type: "oauth" as const,
+            label: "Sign in with GitHub",
+            authorize: () => GitHubProvider.authorizeDeviceCode(),
+          },
+        ],
+      },
       [MiniMaxProvider.PROVIDER_ID]: {
         provider: MiniMaxProvider.PROVIDER_ID,
         methods: [
@@ -149,11 +174,16 @@ export namespace ProviderAuth {
       providerID: z.string(),
       method: z.number(),
     }),
-    async (input): Promise<Authorization | undefined> => {
+    async (input) => {
       const auth = await state().then((s) => s.methods[input.providerID])
       const method = auth.methods[input.method]
       if (method.type === "oauth") {
-        const result = await method.authorize()
+        const result = await method.authorize().catch((original) => {
+          throw new OauthNotConfigured({
+            providerID: input.providerID,
+            message: original instanceof Error ? original.message : String(original),
+          })
+        })
         await state().then((s) => (s.pending[input.providerID] = result))
         return {
           url: result.url,
@@ -176,7 +206,7 @@ export namespace ProviderAuth {
         },
         { source },
       )
-      await Provider.reload()
+      await reloadProvider(`provider credentials connected: ${saveProvider}`)
       return true
     }
     await Auth.set(
@@ -189,7 +219,7 @@ export namespace ProviderAuth {
       },
       { source },
     )
-    await Provider.reload()
+    await reloadProvider(`provider credentials connected: ${saveProvider}`)
     return true
   }
 
@@ -254,7 +284,7 @@ export namespace ProviderAuth {
         },
         { source: "web" },
       )
-      await Provider.reload()
+      await reloadProvider(`provider credentials connected: ${input.providerID}`)
     },
   )
 
@@ -272,6 +302,14 @@ export namespace ProviderAuth {
   )
 
   export const OauthCallbackFailed = NamedError.create("ProviderAuthOauthCallbackFailed", z.object({}))
+
+  export const OauthNotConfigured = NamedError.create(
+    "ProviderAuthOauthNotConfigured",
+    z.object({
+      providerID: z.string(),
+      message: z.string().optional(),
+    }),
+  )
 
   export const ImportUnavailable = NamedError.create(
     "ProviderAuthImportUnavailable",

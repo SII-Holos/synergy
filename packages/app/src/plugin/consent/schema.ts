@@ -1,15 +1,7 @@
-/**
- * Consent component types — mirrors packages/synergy/src/plugin/consent/schema.ts
- * but self-contained for the app layer.
- */
-
-export type PermissionItemCategory = "tools" | "files" | "network" | "data" | "ui" | "runtime" | "hooks"
-
 export type PermissionSeverity = "low" | "medium" | "high"
-
 export interface PermissionItem {
   key: string
-  category: PermissionItemCategory
+  category: string
   severity: PermissionSeverity
   title: string
   description: string
@@ -35,5 +27,3 @@ export interface PluginPermissionDiff {
   requiresApproval: boolean
   reason?: string
 }
-
-export type TrustTier = "declarative" | "trusted-import" | "sandbox"

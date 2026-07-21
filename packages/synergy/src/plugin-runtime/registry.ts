@@ -1,177 +1,60 @@
-import { createRuntimeHealth } from "./health.js"
-import type { Worker } from "node:worker_threads"
-import type { ConcurrencyLimiter, LogRateLimiter } from "./resource-limits.js"
-import type { HostToPlugin, RuntimeRequestMessage, RuntimeToolDescriptor } from "./protocol.js"
+import type { PluginDefinition } from "@ericsanchezok/synergy-plugin"
+import type { PluginProcessHost } from "./process-host.js"
 
-// === Types ===
+export type PluginRuntimeState = "starting" | "ready" | "draining" | "crashed" | "stopped"
 
-export type RuntimeMode = "in-process" | "worker" | "process"
-
-export type RuntimeState = "starting" | "ready" | "unhealthy" | "stopped" | "crashed"
-
-export type RuntimeWarningType =
-  | "capability_denied"
-  | "memory_limit_exceeded"
-  | "log_rate_limited"
-  | "heartbeat_missed"
-  | "startup_timeout"
-  | "worker_error"
-  | "spawn_failed"
-  | "signature_mismatch"
-
-export interface RuntimeWarning {
-  type: RuntimeWarningType
-  message: string
-  at: number
-}
-
-export interface RuntimeEntry {
+export interface PluginRuntimeEntry {
+  key: string
   pluginId: string
-  mode: RuntimeMode
-  runtimeDecision?: string
-  entryPath?: string
-  pluginDir?: string
-  source?: string
-  serverUrl?: string
-  pid?: number
-  state: RuntimeState
-  restarts: number
-  lastHeartbeatAt?: number
-  memoryMb?: number
-  startedAt?: number
-  lastError?: string
-  warnings: RuntimeWarning[]
-  tools?: RuntimeToolDescriptor[]
-  hooks?: string[]
-  send?: (message: HostToPlugin) => void
-  request?: (message: RuntimeRequestMessage) => Promise<unknown>
-  process?: Bun.Subprocess
-  worker?: Worker
-  concurrencyLimiter?: ConcurrencyLimiter
-  memoryMonitor?: { stop: () => void }
-  logRateLimiter?: LogRateLimiter
-}
-
-export interface RuntimeHealth {
-  pluginId: string
-  state: string
-  mode: string
-  startedAt?: number
-  pid?: number
-  memoryMb?: number
-  restarts: number
+  version: string
+  generation: string
+  mode: "process" | "inProcess"
+  state: PluginRuntimeState
+  handlerIds: string[]
+  process?: PluginProcessHost
+  definition?: PluginDefinition
+  inFlight: number
+  startedAt: number
   lastHeartbeatAt?: number
   lastError?: string
-  runtimeDecision?: string
-  warnings: RuntimeWarning[]
 }
 
-export interface PersistedRuntimeEntry {
-  pluginId: string
-  mode: string
-  entryPath?: string
-  pluginDir?: string
-  source?: string
-  serverUrl?: string
-  pid?: number
-  state: RuntimeState
-  restarts: number
-  lastHeartbeatAt?: number
-  startedAt?: number
-  lastError?: string
+export function pluginRuntimeKey(pluginId: string, version: string, generation: string): string {
+  return `${pluginId}@${version}#${generation}`
 }
 
-// === RuntimeRegistry ===
+export class PluginRuntimeRegistry {
+  #entries = new Map<string, PluginRuntimeEntry>()
+  #active = new Map<string, string>()
 
-export class RuntimeRegistry {
-  private entries = new Map<string, RuntimeEntry>()
-
-  get(pluginId: string): RuntimeEntry | undefined {
-    return this.entries.get(pluginId)
+  set(entry: PluginRuntimeEntry) {
+    this.#entries.set(entry.key, entry)
   }
 
-  has(pluginId: string): boolean {
-    return this.entries.has(pluginId)
+  get(key: string) {
+    return this.#entries.get(key)
   }
 
-  list(): RuntimeEntry[] {
-    return Array.from(this.entries.values())
+  active(pluginId: string) {
+    const key = this.#active.get(pluginId)
+    return key ? this.#entries.get(key) : undefined
   }
 
-  set(entry: RuntimeEntry): void {
-    this.entries.set(entry.pluginId, entry)
+  activate(key: string): PluginRuntimeEntry | undefined {
+    const entry = this.#entries.get(key)
+    if (!entry) throw new Error(`Unknown plugin runtime generation: ${key}`)
+    const previous = this.active(entry.pluginId)
+    this.#active.set(entry.pluginId, key)
+    return previous?.key === key ? undefined : previous
   }
 
-  update(pluginId: string, updater: (entry: RuntimeEntry) => void): RuntimeEntry | undefined {
-    const entry = this.entries.get(pluginId)
-    if (!entry) return undefined
-    updater(entry)
-    return entry
+  delete(key: string) {
+    const entry = this.#entries.get(key)
+    this.#entries.delete(key)
+    if (entry && this.#active.get(entry.pluginId) === key) this.#active.delete(entry.pluginId)
   }
 
-  delete(pluginId: string): void {
-    this.entries.delete(pluginId)
-  }
-
-  clear(): void {
-    this.entries.clear()
-  }
-
-  pushWarning(pluginId: string, type: RuntimeWarningType, message: string, at?: number): void {
-    const entry = this.entries.get(pluginId)
-    if (!entry) return
-    entry.warnings.push({ type, message, at: at ?? Date.now() })
-  }
-
-  getHealth(pluginId: string): RuntimeHealth | null {
-    const entry = this.entries.get(pluginId)
-    if (!entry) return null
-    return createRuntimeHealth(entry)
-  }
-
-  snapshot(): PersistedRuntimeEntry[] {
-    const result: PersistedRuntimeEntry[] = []
-    for (const entry of this.entries.values()) {
-      result.push({
-        pluginId: entry.pluginId,
-        mode: entry.mode,
-        entryPath: entry.entryPath,
-        pluginDir: entry.pluginDir,
-        source: entry.source,
-        serverUrl: entry.serverUrl,
-        pid: entry.pid,
-        state: entry.state,
-        restarts: entry.restarts,
-        lastHeartbeatAt: entry.lastHeartbeatAt,
-        startedAt: entry.startedAt,
-        lastError: entry.lastError,
-      })
-    }
-    return result
-  }
-
-  restore(entries: PersistedRuntimeEntry[]): void {
-    for (const persisted of entries) {
-      const entry: RuntimeEntry = {
-        pluginId: persisted.pluginId,
-        mode: persisted.mode as RuntimeMode,
-        entryPath: persisted.entryPath,
-        pluginDir: persisted.pluginDir,
-        source: persisted.source,
-        serverUrl: persisted.serverUrl,
-        pid: persisted.pid,
-        state: persisted.state,
-        restarts: persisted.restarts,
-        lastHeartbeatAt: persisted.lastHeartbeatAt,
-        startedAt: persisted.startedAt,
-        lastError: persisted.lastError,
-        warnings: [],
-        tools: [],
-        hooks: [],
-      }
-      this.entries.set(persisted.pluginId, entry)
-    }
+  list() {
+    return [...this.#entries.values()]
   }
 }
-
-export const defaultRuntimeRegistry = new RuntimeRegistry()

@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, test } from "bun:test"
 import path from "path"
 import { BashTool } from "../../src/tool/bash"
 import { ScopeContext } from "../../src/scope/context"
@@ -7,6 +7,8 @@ import { tmpdir } from "../fixture/fixture"
 import type { PermissionNext } from "../../src/permission/next"
 import { Truncate } from "../../src/tool/truncation"
 import { ProcessRegistry } from "../../src/process/registry"
+import { detectDetachedDaemonRisk, LocalBashBackend, withLinuxChildOomPreference } from "../../src/tool/bash/local"
+import { Shell } from "../../src/util/shell"
 
 const ctx = {
   sessionID: "test",
@@ -16,7 +18,8 @@ const ctx = {
   abort: AbortSignal.any([]),
   metadata: () => {},
   ask: async () => {},
-}
+  extra: {} as Record<string, unknown>,
+} as any
 
 function metadataTracker() {
   const calls: Array<{ metadata: any }> = []
@@ -32,6 +35,38 @@ function metadataTracker() {
 }
 
 const projectRoot = path.join(__dirname, "../..")
+const originalShell = process.env.SHELL
+
+beforeEach(() => {
+  delete process.env.SHELL
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
+})
+
+afterEach(() => {
+  if (originalShell === undefined) delete process.env.SHELL
+  else process.env.SHELL = originalShell
+  Shell.preferred.reset()
+  Shell.acceptable.reset()
+})
+
+function bunEval(script: string) {
+  const executable = process.execPath.replace(/\\/g, "/")
+  const encoded = Buffer.from(script).toString("base64")
+  const evalScript = `eval(Buffer.from('${encoded}', 'base64').toString())`
+  return `"${executable}" -e ${JSON.stringify(evalScript)}`
+}
+
+function sleepCommand(ms: number) {
+  return bunEval(`setTimeout(() => console.log("done"), ${ms})`)
+}
+
+async function withProjectScope<T>(fn: () => Promise<T>) {
+  return ScopeContext.provide({
+    scope: (await Scope.fromDirectory(projectRoot)).scope,
+    fn,
+  })
+}
 
 describe("tool.bash", () => {
   test("basic", async () => {
@@ -52,6 +87,171 @@ describe("tool.bash", () => {
     })
   })
 
+  test("leaves local commands unchanged outside Linux", () => {
+    expect(withLinuxChildOomPreference("echo unchanged", "darwin")).toBe("echo unchanged")
+  })
+
+  test("wraps Linux commands with a best-effort OOM preference without breaking output or exit", async () => {
+    const command = withLinuxChildOomPreference("printf original-command", "linux")
+    expect(command).toContain("/proc/self/oom_score_adj")
+    expect(command).toEndWith("printf original-command")
+
+    const proc = Bun.spawn(["/bin/sh", "-c", command], {
+      env: { PATH: process.env.PATH ?? "/usr/bin:/bin" },
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+    expect(exitCode).toBe(0)
+    expect(stdout).toBe("original-command")
+  })
+  test.skipIf(process.platform !== "linux")("applies the OOM victim preference to the local Bash child", async () => {
+    const command = withLinuxChildOomPreference("cat /proc/self/oom_score_adj")
+    const proc = Bun.spawn(["/bin/sh", "-c", command], {
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited])
+
+    expect(exitCode).toBe(0)
+    expect(stdout.trim()).toBe("1000")
+  })
+
+  test("accepts positive timing controls and rejects invalid timing values", async () => {
+    const bash = await BashTool.init()
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok" }).success).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        background: true,
+        yieldSeconds: 1,
+      }).success,
+    ).toBe(true)
+    expect(
+      bash.parameters.safeParse({
+        command: "echo ok",
+        description: "Echo ok",
+        yieldSeconds: 0,
+      }).success,
+    ).toBe(false)
+    expect(bash.parameters.safeParse({ command: "echo ok", description: "Echo ok", yieldSeconds: -1 }).success).toBe(
+      false,
+    )
+  })
+
+  test("auto-backgrounds long commands after yieldSeconds", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: sleepCommand(2000),
+          description: "Sleep briefly",
+          yieldSeconds: 0.05,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBe(true)
+      expect(result.metadata.processId).toBeString()
+      expect(result.output).toContain("Command auto-backgrounded after 0.05s")
+      if (result.metadata.processId) ProcessRegistry.remove(result.metadata.processId)
+    })
+  })
+
+  test("commands that finish before auto-backgrounding return foreground results", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const result = await bash.execute(
+        {
+          command: "echo foreground",
+          description: "Echo foreground",
+          yieldSeconds: 1,
+        },
+        ctx,
+      )
+      expect(result.metadata.background).toBeUndefined()
+      expect(result.metadata.exit).toBe(0)
+      expect(result.output).toContain("foreground")
+    })
+  })
+
+  test("parallel bash calls return independent inline outputs", async () => {
+    await withProjectScope(async () => {
+      const bash = await BashTool.init()
+      const [left, right] = await Promise.all([
+        bash.execute({ command: "echo left", description: "Echo left" }, ctx),
+        bash.execute({ command: "echo right", description: "Echo right" }, ctx),
+      ])
+      expect(left.metadata.exit).toBe(0)
+      expect(right.metadata.exit).toBe(0)
+      expect(left.output).toContain("left")
+      expect(right.output).toContain("right")
+    })
+  })
+
+  test("detects detached daemon launch patterns without flagging normal command chaining", () => {
+    expect(detectDetachedDaemonRisk("tmux new-session -d -s app 'npm run dev'")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("tmux new -d -s app")?.kind).toBe("tmux_detached")
+    expect(detectDetachedDaemonRisk("screen -dmS app python server.py")?.kind).toBe("screen_detached")
+    expect(detectDetachedDaemonRisk("nohup npm run dev > server.log 2>&1 &")?.kind).toBe("nohup")
+    expect(detectDetachedDaemonRisk("setsid python worker.py")?.kind).toBe("setsid")
+    expect(detectDetachedDaemonRisk("sleep 100 & disown")?.kind).toBe("disown")
+    expect(detectDetachedDaemonRisk("python worker.py &")?.kind).toBe("shell_background")
+    expect(detectDetachedDaemonRisk("sleep 100 & echo done")?.kind).toBe("shell_background")
+    expect(detectDetachedDaemonRisk("echo first && echo second")).toBeUndefined()
+    expect(detectDetachedDaemonRisk("cd ..")).toBeUndefined()
+  })
+
+  test("blocks detached daemon launch patterns before spawning locally", async () => {
+    await withProjectScope(async () => {
+      await expect(
+        LocalBashBackend.execute(
+          {
+            command: "nohup echo hi > daemon.log 2>&1 &",
+            description: "Launch detached daemon",
+          },
+          ctx,
+        ),
+      ).rejects.toThrow("Blocked detached daemon launch pattern")
+    })
+  })
+
+  test("allows detached daemons with shellAllowDetachedDaemons context flag", async () => {
+    await withProjectScope(async () => {
+      const allowedCtx = {
+        ...ctx,
+        extra: { ...ctx.extra, shellAllowDetachedDaemons: true },
+      }
+      // no rejection expected; command may fail at runtime but should not be blocked
+      const result = await LocalBashBackend.execute(
+        {
+          command: "echo allowed",
+          description: "Allowed daemon",
+        },
+        allowedCtx,
+      )
+      expect(result.metadata.exit).toBe(0)
+    })
+  })
+
+  test("allows detached daemons with full_access control profile", async () => {
+    await withProjectScope(async () => {
+      const fullAccessCtx = {
+        ...ctx,
+        extra: { ...ctx.extra, controlProfile: "full_access" },
+      }
+      const result = await LocalBashBackend.execute(
+        {
+          command: "echo allowed",
+          description: "full_access daemon",
+        },
+        fullAccessCtx,
+      )
+      expect(result.metadata.exit).toBe(0)
+    })
+  })
+
   test("promotes printed local artifacts as attachments", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -60,7 +260,11 @@ describe("tool.bash", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: "printf 'fake image' > contact-sheet.png; printf '%s\\n' \"$PWD/contact-sheet.png\"",
+            command: bunEval(
+              `Bun.write("contact-sheet.png", "fake image").then(() => {
+  console.log(process.cwd().replace(/\\\\/g, "/") + "/contact-sheet.png")
+})`,
+            ),
             description: "Create contact sheet",
           },
           {
@@ -79,7 +283,7 @@ describe("tool.bash", () => {
     })
   })
 
-  test("rejects placeholder env IDs with semantic guidance", async () => {
+  test("fails closed for placeholder link IDs", async () => {
     await ScopeContext.provide({
       scope: (await Scope.fromDirectory(projectRoot)).scope,
       fn: async () => {
@@ -87,13 +291,13 @@ describe("tool.bash", () => {
         await expect(
           bash.execute(
             {
-              envID: "undefined",
-              command: "echo 'bad env'",
-              description: "Echo bad env",
+              linkID: "undefined",
+              command: "echo 'bad link'",
+              description: "Echo bad link",
             },
             ctx,
           ),
-        ).rejects.toThrow("do NOT include the envID parameter at all")
+        ).rejects.toThrow("Invalid linkID")
       },
     })
   })
@@ -317,7 +521,7 @@ describe("tool.bash permissions", () => {
     })
   })
 
-  test("uses direct execution after profile approval instead of an existing sandbox wrapper", async () => {
+  test("uses direct execution after profile approval without preparing a sandbox", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -327,10 +531,8 @@ describe("tool.bash permissions", () => {
           ...ctx,
           extra: {
             shellBypassSandbox: true,
-            sandboxWrapper: {
-              command: "false",
-              args: [],
-              sandboxed: true,
+            sandboxPrepare: async () => {
+              throw new Error("sandbox should not be prepared")
             },
           },
         }
@@ -357,7 +559,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 500
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
             description: "Generate lines exceeding limit",
           },
           ctx,
@@ -377,7 +579,7 @@ describe("tool.bash truncation", () => {
         const byteCount = Truncate.MAX_BYTES + 10000
         const result = await bash.execute(
           {
-            command: `head -c ${byteCount} /dev/zero | tr '\\0' 'a'`,
+            command: bunEval(`process.stdout.write("a".repeat(${byteCount}))`),
             description: "Generate bytes exceeding limit",
           },
           ctx,
@@ -396,13 +598,13 @@ describe("tool.bash truncation", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: "echo hello",
+            command: bunEval(`console.log("hello")`),
             description: "Echo hello",
           },
           ctx,
         )
         expect((result.metadata as any).truncated).toBe(false)
-        expect(result.output).toBe("hello\n")
+        expect(result.output.replace(/\r\n/g, "\n")).toBe("hello\n")
       },
     })
   })
@@ -415,7 +617,7 @@ describe("tool.bash truncation", () => {
         const lineCount = Truncate.MAX_LINES + 100
         const result = await bash.execute(
           {
-            command: `seq 1 ${lineCount}`,
+            command: bunEval(`for (let i = 1; i <= ${lineCount}; i++) console.log(i)`),
             description: "Generate lines for file check",
           },
           ctx,
@@ -426,7 +628,7 @@ describe("tool.bash truncation", () => {
         expect(filepath).toBeTruthy()
 
         const saved = await Bun.file(filepath).text()
-        const lines = saved.trim().split("\n")
+        const lines = saved.trim().split(/\r?\n/)
         expect(lines.length).toBe(lineCount)
         expect(lines[0]).toBe("1")
         expect(lines[lineCount - 1]).toBe(String(lineCount))
@@ -443,7 +645,7 @@ describe("tool.bash output cap", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
+            command: bunEval(`process.stdout.write("x".repeat(300000))`),
             description: "Generate 300KB output",
           },
           ctx,
@@ -462,30 +664,43 @@ describe("tool.bash output cap", () => {
         const bash = await BashTool.init()
         const result = await bash.execute(
           {
-            command: `head -c 300000 /dev/zero | tr '\\0' 'x'`,
-            background: true,
-            description: "Generate 300KB output in background",
+            command: bunEval(`process.stdout.write("x".repeat(300000))`),
+            yieldSeconds: 0.05,
+            description: "Generate 300KB output with auto-background",
           },
           ctx,
         )
-        expect(result.metadata.background).toBe(true)
-        const processId = result.metadata.processId as string
-        expect(processId).toBeTruthy()
-
-        // Wait for process to finish
-        const proc = ProcessRegistry.get(processId)
-        if (proc) {
-          // Wait up to 10s for exit
+        // On a fast machine 300K of "x" may complete before auto-background
+        // fires, returning via the foreground path without processId. Verify the
+        // output cap through whichever path was taken.
+        const processId = result.metadata.processId as string | undefined
+        if (processId) {
+          let output: string | undefined
+          let tail: string | undefined
           for (let i = 0; i < 50; i++) {
-            if (proc.exited) break
+            const done = ProcessRegistry.getFinished(processId)
+            if (done) {
+              output = done.output
+              tail = done.tail
+              break
+            }
+            const running = ProcessRegistry.get(processId)
+            if (running?.exited) {
+              output = running.output
+              tail = running.tail
+              break
+            }
             await Bun.sleep(200)
           }
-          expect(proc.output.length).toBeLessThanOrEqual(200_000)
-          expect(proc.tail.length).toBeLessThanOrEqual(2_000)
+          expect(output).toBeDefined()
+          expect(output!.length).toBe(200_000)
+          expect(tail!.length).toBeLessThanOrEqual(2_000)
+          ProcessRegistry.remove(processId)
+        } else {
+          // Foreground path: the output field is already capped via appendOutput.
+          expect(result.metadata.output).toBeDefined()
+          expect(result.metadata.output!.length).toBeLessThanOrEqual(200_000)
         }
-
-        // Clean up
-        ProcessRegistry.remove(processId)
       },
     })
     ProcessRegistry.reset()

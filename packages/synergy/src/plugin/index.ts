@@ -1,4 +1,4 @@
-import type { PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 
 // Re-export the PluginManifest type for convenience
 export type { PluginManifestType }
@@ -15,21 +15,27 @@ import * as status from "./status"
 export namespace Plugin {
   // Re-export LoadedPlugin type from loader
   export type LoadedPlugin = loader.LoadedPlugin
+  export type DisabledPlugin = loader.DisabledPlugin
 
   // Loader accessors
   export const getLoaded = loader.getLoadedPlugins
+  export const getDisabled = loader.getDisabledPlugins
   export const get = loader.getPlugin
-  export const perPluginHooks = loader.getHooks
-  export const allHooks = loader.getHooksList
-  export const cliEntries = loader.getCliEntries
+  export const getDisabledPlugin = loader.getDisabledPlugin
   export const skillEntries = loader.getSkillEntries
   export const agentEntries = loader.getAgentEntries
+  export const authProviderEntries = loader.getAuthProviderEntries
+  export const contributions = loader.contributions
   export const lookupSpec = loader.lookupSpec
 
   // Lifecycle
   export const trigger = lifecycle.trigger
+  export const triggerForPlugin = lifecycle.triggerForPlugin
+  export const deliverHookForPlugin = lifecycle.deliverHookForPlugin
   export const init = lifecycle.init
+  export const notifyConfigHooks = lifecycle.notifyConfigHooks
   export const reload = lifecycle.reload
+  export const reloadMcpContributions = lifecycle.reloadMcpContributions
   export const manifest = lifecycle.manifest
 
   // Install

@@ -1,4 +1,6 @@
 import { createSignal, onMount } from "solid-js"
+import { useLingui } from "@lingui/solid"
+import { browser as B } from "@/locales/messages"
 
 interface Props {
   x: number
@@ -8,6 +10,7 @@ interface Props {
 }
 
 export function AnnotationInput(props: Props) {
+  const lingui = useLingui()
   const [comment, setComment] = createSignal("")
   const [showStyle, setShowStyle] = createSignal(false)
   const [fontSize, setFontSize] = createSignal("")
@@ -107,7 +110,7 @@ export function AnnotationInput(props: Props) {
             ref={textareaRef}
             class="w-full resize-none bg-transparent text-sm text-text-base outline-none placeholder:text-text-weaker"
             rows={2}
-            placeholder="Add a comment about this element..."
+            placeholder={lingui._(B.annotationPlaceholder.id)}
             value={comment()}
             onInput={(e) => {
               setComment((e.target as HTMLTextAreaElement).value)
@@ -125,7 +128,7 @@ export function AnnotationInput(props: Props) {
               computePosition()
             }}
           >
-            {showStyle() ? "Hide style" : "Style feedback"}
+            {showStyle() ? lingui._(B.hideStyle.id) : lingui._(B.styleFeedback.id)}
           </button>
           <div class="flex gap-2">
             <button
@@ -133,7 +136,7 @@ export function AnnotationInput(props: Props) {
               class="rounded-md bg-surface-inset-base px-3 py-1 text-xs text-text-base transition-colors hover:bg-surface-inset-base"
               onClick={props.onCancel}
             >
-              Cancel
+              {lingui._(B.cancel.id)}
             </button>
             <button
               type="button"
@@ -141,7 +144,7 @@ export function AnnotationInput(props: Props) {
               disabled={!comment().trim()}
               onClick={handleSubmit}
             >
-              Send
+              {lingui._(B.annotationSend.id)}
             </button>
           </div>
         </div>
@@ -149,7 +152,7 @@ export function AnnotationInput(props: Props) {
         {showStyle() && (
           <div class="flex gap-3 border-t border-border-base/40 px-3 pb-3 pt-2">
             <label class="flex items-center gap-1 text-xs text-text-weak">
-              Size
+              {lingui._(B.size.id)}
               <input
                 type="text"
                 class="w-16 rounded border border-border-base/40 bg-input-base px-1.5 py-0.5 text-xs text-text-base"
@@ -159,7 +162,7 @@ export function AnnotationInput(props: Props) {
               />
             </label>
             <label class="flex items-center gap-1 text-xs text-text-weak">
-              Color
+              {lingui._(B.color.id)}
               <input
                 type="text"
                 class="w-20 rounded border border-border-base/40 bg-input-base px-1.5 py-0.5 text-xs text-text-base"

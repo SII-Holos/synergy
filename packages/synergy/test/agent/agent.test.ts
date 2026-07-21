@@ -4,7 +4,6 @@ import { tmpdir } from "../fixture/fixture"
 import { ScopeContext } from "../../src/scope/context"
 import { Agent } from "../../src/agent/agent"
 import { PermissionNext } from "../../src/permission/next"
-import { Config } from "../../src/config/config"
 import { RuntimeReload } from "../../src/runtime/reload"
 import { Plugin } from "../../src/plugin"
 
@@ -46,22 +45,41 @@ test("developer agent has correct default properties", async () => {
       expect(developer?.native).toBe(true)
       expect(evalPerm(developer, "edit")).toBe("ask")
       expect(evalPerm(developer, "bash")).toBe("allow")
+      expect(evalPerm(developer, "mcp__any_server__any_tool")).toBe("deny")
     },
   })
 })
 
-test("built-in agents expose model role metadata", async () => {
-  await using tmp = await tmpdir()
+test("classic built-in agents resolve the intended model roles", async () => {
+  await using tmp = await tmpdir({
+    config: {
+      model: "openai/default-test",
+      mid_model: "openai/mid-test",
+      thinking_model: "openai/thinking-test",
+      creative_model: "openai/creative-test",
+    },
+  })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      const developer = await Agent.get("developer")
-      const advisor = await Agent.get("advisor")
-      const looker = await Agent.get("multimodal-looker")
+      const expected = {
+        developer: { role: "thinking", model: "thinking-test" },
+        explore: { role: "mid", model: "mid-test" },
+        scout: { role: "mid", model: "mid-test" },
+        advisor: { role: "thinking", model: "thinking-test" },
+        inspector: { role: "mid", model: "mid-test" },
+        scribe: { role: "creative", model: "creative-test" },
+        scholar: { role: "thinking", model: "thinking-test" },
+      } as const
 
-      expect(developer?.modelRole).toBe("mid")
-      expect(developer?.modelSource).toBe("role")
-      expect(advisor?.modelRole).toBe("thinking")
+      for (const [name, contract] of Object.entries(expected)) {
+        const agent = await Agent.get(name)
+        expect(agent?.modelRole, name).toBe(contract.role)
+        expect(agent?.modelSource, name).toBe("role")
+        expect(agent?.model?.modelID, name).toBe(contract.model)
+      }
+
+      const looker = await Agent.get("multimodal-looker")
       expect(looker?.modelRole).toBe("vision")
       expect(looker?.model).toBeUndefined()
     },
@@ -76,11 +94,15 @@ test("model role summaries group built-in subagents", async () => {
       const summaries = await Agent.modelRoleSummaries()
       const mid = summaries.find((summary) => summary.id === "mid")
       const thinking = summaries.find((summary) => summary.id === "thinking")
+      const creative = summaries.find((summary) => summary.id === "creative")
       const vision = summaries.find((summary) => summary.id === "vision")
 
-      expect(mid?.usedBy.map((agent) => agent.name)).toContain("developer")
-      expect(mid?.usedBy.map((agent) => agent.name)).toContain("explore")
-      expect(thinking?.usedBy.map((agent) => agent.name)).toContain("advisor")
+      expect(mid?.usedBy.map((agent) => agent.name)).toEqual(expect.arrayContaining(["explore", "scout", "inspector"]))
+      expect(mid?.usedBy.map((agent) => agent.name)).not.toContain("developer")
+      expect(thinking?.usedBy.map((agent) => agent.name)).toEqual(
+        expect.arrayContaining(["developer", "advisor", "scholar"]),
+      )
+      expect(creative?.usedBy.map((agent) => agent.name)).toContain("scribe")
       expect(vision?.fallbackChain).toEqual(["vision_model"])
       expect(vision?.resolvedModel).toBeUndefined()
       expect(vision?.disabledReason).toContain("Image analysis is disabled")
@@ -120,7 +142,7 @@ test("scholar agent has correct permissions", async () => {
   })
 })
 
-test("compaction agent denies all permissions", async () => {
+test("compaction built-in permission layer denies all tools", async () => {
   await using tmp = await tmpdir()
   await ScopeContext.provide({
     scope: await tmp.scope(),
@@ -131,6 +153,23 @@ test("compaction agent denies all permissions", async () => {
       expect(evalPerm(compaction, "bash")).toBe("deny")
       expect(evalPerm(compaction, "edit")).toBe("deny")
       expect(evalPerm(compaction, "read")).toBe("deny")
+      expect(evalPerm(compaction, "session_list")).toBe("deny")
+      expect(evalPerm(compaction, "session_read")).toBe("deny")
+      expect(evalPerm(compaction, "session_send")).toBe("deny")
+    },
+  })
+})
+
+test("model-only internal agents do not inherit subagent discovery tools", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      for (const name of ["compaction", "title", "summary", "intent", "script", "reward"]) {
+        const agent = await Agent.get(name)
+        expect(evalPerm(agent, "search_tools"), `${name}:search_tools`).toBe("deny")
+        expect(evalPerm(agent, "expand_tools"), `${name}:expand_tools`).toBe("deny")
+      }
     },
   })
 })
@@ -254,6 +293,8 @@ test("plugin agent model role appears in role summaries", async () => {
   const originalAgentEntries = Plugin.agentEntries
   ;(Plugin as any).agentEntries = async () => ({
     plugin_visual_reviewer: {
+      pluginId: "visual-plugin",
+      pluginGeneration: "generation-one",
       name: "plugin_visual_reviewer",
       description: "Reviews visual output from a plugin",
       prompt: "Review visual output.",
@@ -276,6 +317,11 @@ test("plugin agent model role appears in role summaries", async () => {
 
         const agent = await Agent.get("plugin_visual_reviewer")
         expect(agent?.source).toBe("plugin")
+        expect(agent && "pluginOwner" in agent).toBe(false)
+        expect(agent && Agent.pluginOwner(agent)).toEqual({
+          pluginId: "visual-plugin",
+          pluginGeneration: "generation-one",
+        })
         expect(agent?.modelRole).toBe("creative")
         expect(agent?.model).toEqual({ providerID: "openai", modelID: "gpt-5-creative" })
 

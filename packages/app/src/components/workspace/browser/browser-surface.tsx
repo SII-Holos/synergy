@@ -2,13 +2,18 @@ import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, onCleanup, onMount, Show } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
 import { usePlatform } from "@/context/platform"
 import { useBrowser } from "./browser-store"
+import { browser as B } from "@/locales/messages"
 import { NativeBrowserSurface } from "./native-browser-surface"
 import { RemoteBrowserSurface } from "./remote-browser-surface"
 
 const MIN_FIT_VIEWPORT_WIDTH = 320
 const MIN_FIT_VIEWPORT_HEIGHT = 240
+const MAX_UPLOAD_FILE_BYTES = 25 * 1024 * 1024
+const MAX_UPLOAD_REQUEST_BYTES = 50 * 1024 * 1024
+const MAX_UPLOAD_FILES = 20
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer)
@@ -20,7 +25,7 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
   return btoa(binary)
 }
 
-export function BrowserSurface(props: { sessionID: string; routeDirectory?: string }) {
+export function BrowserSurface(props: { sessionID: string; routeDirectory?: string; ownerKey: string }) {
   let wrapperRef: HTMLDivElement | undefined
   let fileInputRef: HTMLInputElement | undefined
   let pendingFitFrame: number | undefined
@@ -28,6 +33,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
 
   const browser = useBrowser()
   const platform = usePlatform()
+  const lingui = useLingui()
 
   const container = () => wrapperRef
   const nativePresentation = () => browser.presentation()?.kind === "native" && platform.browserNative
@@ -90,11 +96,25 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
       browser.setFileChooserRequest(null)
       return
     }
+    const selected = Array.from(files)
+    const totalBytes = selected.reduce((total, file) => total + file.size, 0)
+    if (
+      selected.length > MAX_UPLOAD_FILES ||
+      selected.some((file) => file.size > MAX_UPLOAD_FILE_BYTES) ||
+      totalBytes > MAX_UPLOAD_REQUEST_BYTES
+    ) {
+      browser.setBrowserError({
+        severity: "error",
+        code: "browser_upload_too_large",
+        message: lingui._(B.uploadTooLarge.id),
+      })
+      return
+    }
     const payload = await Promise.all(
-      Array.from(files).map(async (file) => ({
+      selected.map(async (file) => ({
         name: file.name,
         mimeType: file.type,
-        data: arrayBufferToBase64(await file.arrayBuffer()),
+        dataBase64: arrayBufferToBase64(await file.arrayBuffer()),
       })),
     )
     browser.send({ type: "filechooser.select", pageId: request.pageId, requestId: request.requestId, files: payload })
@@ -109,32 +129,34 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
   }
 
   function hasInteractiveSurface() {
-    return nativePresentation() || webrtcPresentation()
+    return browser.hostStatus() === "ready" && (nativePresentation() || webrtcPresentation())
   }
 
   return (
     <div
       ref={wrapperRef}
       data-prevent-autofocus
-      class="relative w-full h-full overflow-hidden bg-background-strong flex items-center justify-center"
+      class="browser-surface relative flex h-full w-full items-center justify-center overflow-hidden"
     >
       <Show
         when={hasInteractiveSurface()}
         fallback={
-          <div class="flex flex-col items-center gap-3 text-text-weak text-13 select-none">
-            <Icon name={getSemanticIcon("browser.main")} class="size-14 text-icon-weaker" />
-            <span class="text-14-medium text-text-base">Start browsing</span>
-            <span class="text-12 text-text-weak">Enter a URL to open a page</span>
-            <span class="text-11 text-text-weaker">{browser.session.connectionStatus}</span>
+          <div class="browser-empty-state">
+            <div class="browser-empty-mark">
+              <Icon name={getSemanticIcon("browser.main")} class="size-4" />
+            </div>
+            <div class="browser-empty-title">
+              <Trans id={B.ready.id} message={B.ready.message} />
+            </div>
+            <div class="browser-empty-text">
+              <Trans id={B.waitingForSurface.id} message={B.waitingForSurface.message} />
+            </div>
+            <div class="browser-status-pill">{browser.session.connectionStatus}</div>
           </div>
         }
       >
         <Show when={nativePresentation()}>
-          <NativeBrowserSurface
-            sessionID={props.sessionID}
-            routeDirectory={props.routeDirectory}
-            container={container}
-          />
+          <NativeBrowserSurface container={container} ownerKey={props.ownerKey} />
         </Show>
         <Show when={webrtcPresentation()}>
           <RemoteBrowserSurface
@@ -150,7 +172,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
           <div class="absolute left-3 right-3 top-3 z-40 rounded-md border border-border-weak-base bg-surface-raised-stronger-non-alpha px-3 py-2 text-12 text-text-strong shadow-sm">
             <div class="flex items-center gap-2">
               <span class="font-medium">
-                {error().severity === "critical" ? "Browser unavailable" : "Browser issue"}
+                {error().severity === "critical" ? lingui._(B.unavailable.id) : lingui._(B.issue.id)}
               </span>
               <span class="min-w-0 flex-1 truncate text-text-weak">{error().message}</span>
               <button
@@ -158,7 +180,7 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
                 class="text-text-weaker hover:text-text-base"
                 onClick={() => browser.setBrowserError(null)}
               >
-                Dismiss
+                <Trans id={B.dismiss.id} message={B.dismiss.message} />
               </button>
             </div>
           </div>
@@ -167,11 +189,23 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
 
       <Show when={browser.fileChooserRequest()}>
         {(request) => (
-          <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/45">
+          <div class="absolute inset-0 z-50 flex items-center justify-center bg-surface-overlay">
             <div class="w-[320px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
-              <div class="text-13 font-medium text-text-strong">Choose file for upload</div>
+              <div class="text-13 font-medium text-text-strong">
+                <Trans id={B.chooseFile.id} message={B.chooseFile.message} />
+              </div>
               <div class="mt-1 text-12 text-text-weak">
-                The page requested {request().multiple ? "one or more files" : "a file"}.
+                {request().multiple
+                  ? lingui._({
+                      id: B.chooseFilesDescription.id,
+                      message: B.chooseFilesDescription.message,
+                      values: { count: 2 },
+                    })
+                  : lingui._({
+                      id: B.chooseFilesDescription.id,
+                      message: B.chooseFilesDescription.message,
+                      values: { count: 1 },
+                    })}
               </div>
               <input
                 ref={fileInputRef}
@@ -189,10 +223,10 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
                     void chooseFiles(null)
                   }}
                 >
-                  Cancel
+                  <Trans id={B.cancel.id} message={B.cancel.message} />
                 </Button>
                 <Button size="small" variant="primary" onClick={() => fileInputRef?.click()}>
-                  Choose
+                  <Trans id={B.choose.id} message={B.choose.message} />
                 </Button>
               </div>
             </div>
@@ -202,16 +236,16 @@ export function BrowserSurface(props: { sessionID: string; routeDirectory?: stri
 
       <Show when={browser.dialogRequest()}>
         {(request) => (
-          <div class="absolute inset-0 z-50 flex items-center justify-center bg-black/45">
+          <div class="absolute inset-0 z-50 flex items-center justify-center bg-surface-overlay">
             <div class="w-[360px] rounded-lg border border-border-weak-base bg-surface-raised-base p-4 shadow-sm">
               <div class="text-13 font-medium text-text-strong">{request().type}</div>
               <div class="mt-2 text-12 text-text-weak whitespace-pre-wrap">{request().message}</div>
               <div class="mt-4 flex justify-end gap-2">
                 <Button size="small" variant="ghost" onClick={() => respondDialog(false)}>
-                  Cancel
+                  <Trans id={B.cancel.id} message={B.cancel.message} />
                 </Button>
                 <Button size="small" variant="primary" onClick={() => respondDialog(true)}>
-                  OK
+                  <Trans id={B.ok.id} message={B.ok.message} />
                 </Button>
               </div>
             </div>

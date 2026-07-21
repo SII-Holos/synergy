@@ -1,5 +1,5 @@
 export interface ToolTimeoutMetadata {
-  executionBudgetMs?: number
+  toolTimeoutMs?: number
   operationTimeoutMs?: number
   displayMs?: number
   source?: string

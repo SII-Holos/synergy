@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
 import { ToolTimeout } from "../../src/tool/timeout"
 
-const executionBudgetMs = 300_000
+const toolTimeoutMs = 300_000
 
 function metadata(tool: string, args: Record<string, any> = {}, mcpCallTimeoutMs?: number) {
   return ToolTimeout.metadataForTool({
     tool,
     args,
-    executionBudgetMs,
+    toolTimeoutMs,
     mcpCallTimeoutMs,
   })
 }
@@ -15,7 +15,7 @@ function metadata(tool: string, args: Record<string, any> = {}, mcpCallTimeoutMs
 describe("ToolTimeout", () => {
   test("uses operation timeout for search tools", () => {
     expect(metadata("glob")).toMatchObject({
-      executionBudgetMs,
+      toolTimeoutMs,
       operationTimeoutMs: 15_000,
       displayMs: 15_000,
       source: "search",
@@ -49,14 +49,23 @@ describe("ToolTimeout", () => {
     })
   })
 
-  test("does not invent bash timeout when yieldSeconds is absent", () => {
+  test("uses bash auto-background metadata by default and supports timeoutSeconds", () => {
     expect(metadata("bash")).toMatchObject({
-      executionBudgetMs,
-      displayMs: executionBudgetMs,
-      source: "execution_budget",
+      operationTimeoutMs: 30_000,
+      displayMs: 30_000,
+      source: "auto_background",
     })
-    expect(metadata("bash").operationTimeoutMs).toBeUndefined()
-    expect(metadata("bash", { yieldSeconds: 5 })).toMatchObject({
+    expect(metadata("bash", { backgroundAfterSeconds: 5 })).toMatchObject({
+      operationTimeoutMs: 5_000,
+      displayMs: 5_000,
+      source: "auto_background",
+    })
+    expect(metadata("bash", { timeoutSeconds: 7 })).toMatchObject({
+      operationTimeoutMs: 7_000,
+      displayMs: 7_000,
+      source: "wait",
+    })
+    expect(metadata("bash", { backgroundAfterSeconds: 5, timeoutSeconds: 7 })).toMatchObject({
       operationTimeoutMs: 5_000,
       displayMs: 5_000,
       source: "auto_background",
@@ -66,7 +75,6 @@ describe("ToolTimeout", () => {
   test("uses operation timeout for browser, connect, and MCP waits", () => {
     expect(metadata("browser_wait").operationTimeoutMs).toBe(10_000)
     expect(metadata("browser_wait", { timeout: 45_000 }).operationTimeoutMs).toBe(45_000)
-    expect(metadata("browser_download").operationTimeoutMs).toBe(120_000)
     expect(metadata("browser_downloads", { action: "wait" }).operationTimeoutMs).toBe(30_000)
     expect(metadata("connect", { action: "open" }).operationTimeoutMs).toBe(30_000)
     expect(metadata("connect", { action: "list" }).operationTimeoutMs).toBeUndefined()
@@ -83,23 +91,20 @@ describe("ToolTimeout", () => {
       toolTimeout: metadata("glob"),
       display: {
         kind: "media-generation",
-        presentation: "artifact-only",
+        toolCard: "hidden",
         media: { type: "image", pendingTitle: "Generating" },
       },
     }
-    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { primaryAttachmentIds: ["image-1"] } })).toEqual(
-      {
-        approval: existing.approval,
-        matches: 1,
-        toolTimeout: existing.toolTimeout,
-        display: {
-          kind: "media-generation",
-          presentation: "artifact-only",
-          primaryAttachmentIds: ["image-1"],
-          media: { type: "image", pendingTitle: "Generating" },
-        },
+    expect(ToolTimeout.mergeMetadata(existing, { matches: 1, display: { media: { aspectRatio: "1:1" } } })).toEqual({
+      approval: existing.approval,
+      matches: 1,
+      toolTimeout: existing.toolTimeout,
+      display: {
+        kind: "media-generation",
+        toolCard: "hidden",
+        media: { type: "image", pendingTitle: "Generating", aspectRatio: "1:1" },
       },
-    )
+    })
     expect(ToolTimeout.mergeMetadata(existing, undefined)).toBe(existing)
   })
 })

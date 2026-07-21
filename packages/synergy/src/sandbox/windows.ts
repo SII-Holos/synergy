@@ -110,8 +110,12 @@ function installTarballHelper(): boolean {
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_WINDOWS_HELPER_HASHES: Record<string, string> = {
-  [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
-    "038835d500dd0e2c1fac4dcf829e0bb13ebadd69373d77f19b575758b3437b5b",
+  ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
+    ? {
+        [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-windows.exe")]:
+          SYNERGY_SANDBOX_HELPER_SHA256,
+      }
+    : {}),
 }
 
 /**

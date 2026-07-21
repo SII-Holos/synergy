@@ -1,158 +1,76 @@
 import { describe, expect, test } from "bun:test"
-import {
-  isActiveMediaGenerationToolPart,
-  isArtifactOnlyToolPart,
-  isPromotedToolResultPart,
-  primaryToolAttachments,
-  shouldHideToolPart,
-  toolResultPresentation,
-} from "./tool-result-presentation"
+import { isActiveMediaGenerationToolPart, isToolCardHidden, toolDisplayMetadata } from "./tool-result-presentation"
 
-const image = {
-  id: "part-image",
-  sessionID: "session",
-  messageID: "message",
-  type: "file" as const,
-  mime: "image/svg+xml",
-  filename: "meme.svg",
-  url: "asset://meme",
-}
-
-const text = {
-  id: "part-text",
-  sessionID: "session",
-  messageID: "message",
-  type: "file" as const,
-  mime: "text/plain",
-  filename: "notes.txt",
-  url: "asset://notes",
-}
-
-describe("tool result presentation", () => {
-  test("detects completed artifact-only tools with attachments", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "completed",
-        metadata: { display: { presentation: "artifact-only" } },
-        attachments: [image],
-      },
+describe("tool result display metadata", () => {
+  test("reads declarative display metadata from tool state", () => {
+    const display = {
+      kind: "media-generation" as const,
+      toolCard: "hidden" as const,
+      media: { type: "image" as const, aspectRatio: "1:1" as const, size: "small" as const },
     }
 
-    expect(toolResultPresentation(part)).toBe("artifact-only")
-    expect(isArtifactOnlyToolPart(part)).toBe(true)
-  })
-
-  test("does not hide running or empty artifact-only tools", () => {
     expect(
-      isArtifactOnlyToolPart({
-        type: "tool",
-        state: {
-          status: "running",
-          metadata: { display: { presentation: "artifact-only" } },
-          attachments: [image],
-        },
-      }),
-    ).toBe(false)
-
-    expect(
-      isArtifactOnlyToolPart({
+      toolDisplayMetadata({
         type: "tool",
         state: {
           status: "completed",
-          metadata: { display: { presentation: "artifact-only" } },
-          attachments: [],
+          metadata: { display },
         },
       }),
-    ).toBe(false)
+    ).toEqual(display)
   })
 
-  test("selects primary attachments when ids are present", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "completed",
-        metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["part-image"] } },
-        attachments: [text, image],
-      },
-    }
-
-    expect(primaryToolAttachments(part)).toEqual([image])
-  })
-
-  test("falls back to all attachments when primary ids do not match", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "completed",
-        metadata: { display: { presentation: "artifact-only", primaryAttachmentIds: ["missing"] } },
-        attachments: [text, image],
-      },
-    }
-
-    expect(primaryToolAttachments(part)).toEqual([text, image])
-  })
-
-  test("hides active media-generation tools for the dedicated media surface", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "running",
-        input: { prompt: "make a meme" },
-        metadata: {
-          display: {
-            kind: "media-generation",
-            visibility: "media",
-            media: { type: "image", promptField: "prompt" },
-          },
-        },
-      },
-    }
-
-    expect(isActiveMediaGenerationToolPart(part)).toBe(true)
-    expect(shouldHideToolPart(part)).toBe(true)
-  })
-
-  test("promotes completed media-generation attachments", () => {
-    const part = {
-      type: "tool",
-      state: {
-        status: "completed",
-        metadata: {
-          display: {
-            kind: "media-generation",
-            visibility: "media",
-            presentation: "artifact-only",
-          },
-        },
-        attachments: [image],
-      },
-    }
-
-    expect(isPromotedToolResultPart(part)).toBe(true)
-    expect(shouldHideToolPart(part)).toBe(true)
-    expect(primaryToolAttachments(part)).toEqual([image])
-  })
-
-  test("does not hide media-generation errors or completed media without attachments", () => {
-    expect(
-      shouldHideToolPart({
+  test("detects active media-generation tools for pending placeholders", () => {
+    for (const status of ["pending", "generating", "running"]) {
+      const part = {
         type: "tool",
         state: {
-          status: "error",
-          metadata: { display: { kind: "media-generation", visibility: "media" } },
-          error: "failed",
+          status,
+          input: { prompt: "make a meme" },
+          metadata: {
+            display: {
+              kind: "media-generation",
+              media: { type: "image" },
+            },
+          },
         },
-      }),
-    ).toBe(false)
+      }
 
+      expect(isActiveMediaGenerationToolPart(part)).toBe(true)
+    }
+  })
+
+  test("does not treat completed or error media tools as active placeholders", () => {
+    for (const status of ["completed", "error"]) {
+      expect(
+        isActiveMediaGenerationToolPart({
+          type: "tool",
+          state: {
+            status,
+            metadata: { display: { kind: "media-generation" } },
+          },
+        }),
+      ).toBe(false)
+    }
+  })
+
+  test("detects explicit hidden tool cards only", () => {
     expect(
-      shouldHideToolPart({
+      isToolCardHidden({
         type: "tool",
         state: {
           status: "completed",
-          metadata: { display: { kind: "media-generation", visibility: "media" } },
-          attachments: [],
+          metadata: { display: { kind: "media-generation", toolCard: "hidden" } },
+        },
+      }),
+    ).toBe(true)
+
+    expect(
+      isToolCardHidden({
+        type: "tool",
+        state: {
+          status: "completed",
+          metadata: { display: { kind: "media-generation" } },
         },
       }),
     ).toBe(false)

@@ -6,6 +6,7 @@ import { Flag } from "../flag/flag"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
 import { Filesystem } from "../util/filesystem"
+import { isPathContained } from "../util/path-contain"
 
 export namespace InstructionFiles {
   export const DEFAULT_PROJECT_DOC_MAX_BYTES = 32 * 1024
@@ -33,18 +34,13 @@ export namespace InstructionFiles {
     ])
   }
 
-  function containsPath(parent: string, child: string) {
-    const relative = path.relative(parent, child)
-    return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative))
-  }
-
   function searchDirsWithinScope() {
     const cwd = path.resolve(ScopeContext.current.directory)
     const scope = ScopeContext.current.scope
     if (scope.type !== "project") return [cwd]
 
     const root = path.resolve(scope.directory)
-    if (!containsPath(root, cwd)) return [cwd]
+    if (!isPathContained(root, cwd)) return [cwd]
 
     const dirs: string[] = []
     let current = cwd
@@ -65,7 +61,7 @@ export namespace InstructionFiles {
       .catch(() => false)
   }
 
-  async function readFilePart(filepath: string, maxBytes?: number) {
+  async function readInstructionFilePart(filepath: string, maxBytes?: number) {
     if (maxBytes !== undefined && maxBytes <= 0) return undefined
 
     const data = await fs.readFile(filepath).catch(() => undefined)
@@ -148,7 +144,7 @@ export namespace InstructionFiles {
       })
     }
 
-    const foundFiles = Array.from(paths).map((filepath) => readFilePart(filepath))
+    const foundFiles = Array.from(paths).map((filepath) => readInstructionFilePart(filepath))
     const foundUrls = urls.map((url) =>
       fetch(url, { signal: AbortSignal.timeout(5000) })
         .then((res) => (res.ok ? res.text() : ""))
@@ -163,9 +159,11 @@ export namespace InstructionFiles {
     const maxBytes = config.project_doc_max_bytes ?? DEFAULT_PROJECT_DOC_MAX_BYTES
     const projectPaths = maxBytes <= 0 ? [] : await discoverProjectPaths(config)
     const globalPath = maxBytes <= 0 ? undefined : await discoverGlobalPath()
-    const automaticPaths = globalPath ? [...projectPaths, globalPath] : projectPaths
+    const automaticPaths = globalPath ? [globalPath, ...projectPaths] : projectPaths
 
-    const automaticParts = await Promise.all(automaticPaths.map((filepath) => readFilePart(filepath, maxBytes)))
+    const automaticParts = await Promise.all(
+      automaticPaths.map((filepath) => readInstructionFilePart(filepath, maxBytes)),
+    )
     const explicitParts = await loadExplicitInstructions(config.instructions, new Set(automaticPaths))
     return [...automaticParts.filter((part): part is string => !!part), ...explicitParts]
   }

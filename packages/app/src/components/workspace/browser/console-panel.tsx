@@ -1,12 +1,14 @@
 import { For, Show, createEffect, on } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { useBrowser, type ConsoleEntry } from "./browser-store"
+import { consolePanel as P } from "@/locales/messages"
 
-const LEVEL_COLORS: Record<string, string> = {
+const LEVEL_CLASSES: Record<string, string> = {
   log: "text-text-subtle bg-surface-base",
-  info: "text-blue-400 bg-blue-500/10",
-  warn: "text-amber-400 bg-amber-500/10",
-  error: "text-red-400 bg-red-500/10",
-  debug: "text-purple-400 bg-purple-500/10",
+  info: "text-text-on-info-base bg-surface-info-weak",
+  warn: "text-text-on-warning-base bg-surface-warning-weak",
+  error: "text-text-on-critical-base bg-surface-critical-weak",
+  debug: "text-text-interactive-base bg-surface-interactive-weak",
 }
 
 function formatTime(ts: number): string {
@@ -18,8 +20,8 @@ function formatTime(ts: number): string {
 export function ConsolePanel() {
   let scrollEl: HTMLDivElement | undefined
   const { pageId: currentPageId, consoleEntries } = useBrowser()
+  const lingui = useLingui()
 
-  // Auto-scroll to bottom when entries change
   createEffect(
     on(
       () => {
@@ -47,19 +49,21 @@ export function ConsolePanel() {
       <Show
         when={entries().length > 0}
         fallback={
-          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">No console entries</div>
+          <div class="flex-1 flex items-center justify-center text-12-regular text-text-subtle">
+            {lingui._({ id: P.empty.id, message: P.empty.message })}
+          </div>
         }
       >
         <div ref={scrollEl} class="flex-1 overflow-y-auto font-mono">
           <For each={entries()}>
             {(entry) => {
               const level = entry.level
-              const colorClass = LEVEL_COLORS[level] ?? LEVEL_COLORS.log
+              const levelClasses = LEVEL_CLASSES[level] ?? LEVEL_CLASSES.log
 
               return (
                 <div class="flex gap-2 px-3 py-1 border-b border-border-weaker-base text-12-regular leading-relaxed hover:bg-surface-inset-base/40">
                   <span
-                    class={`shrink-0 inline-flex items-center justify-center h-5 px-1.5 rounded text-10-medium uppercase ${colorClass}`}
+                    class={`shrink-0 inline-flex items-center justify-center h-5 px-1.5 rounded text-10-medium uppercase ${levelClasses}`}
                   >
                     {level}
                   </span>

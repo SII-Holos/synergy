@@ -1,0 +1,114 @@
+import { describe, expect, test } from "bun:test"
+
+interface ElectronBuilderConfig {
+  mac?: {
+    target?: Array<{ target?: string; arch?: string[] }>
+  }
+  pkg?: {
+    scripts?: string
+    installLocation?: string
+  }
+  win?: {
+    executableName?: string
+  }
+  nsis?: {
+    include?: string
+    shortcutName?: string
+  }
+  linux?: {
+    executableName?: string
+    desktop?: { entry?: { Name?: string; StartupWMClass?: string } }
+  }
+  deb?: {
+    afterInstall?: string
+    afterRemove?: string
+    depends?: string[]
+  }
+  extraResources?: Array<{
+    from?: string
+    to?: string
+  }>
+}
+
+describe("desktop packaging", () => {
+  test("copies runtime and unread indicator icon resources", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.json", import.meta.url),
+    ).json()) as ElectronBuilderConfig
+
+    expect(config.extraResources).toContainEqual({
+      from: "build/icon.ico",
+      to: "icons/icon.ico",
+    })
+    expect(config.extraResources).toContainEqual({
+      from: "build/icon.png",
+      to: "icons/icon.png",
+    })
+    expect(config.extraResources).toContainEqual({
+      from: "build/unread-overlay.png",
+      to: "icons/unread-overlay.png",
+    })
+    expect(config.extraResources).toContainEqual({
+      from: "build/icon-unread.png",
+      to: "icons/icon-unread.png",
+    })
+    for (const resource of config.extraResources ?? []) {
+      expect(await Bun.file(new URL(`../${resource.from}`, import.meta.url)).exists()).toBe(true)
+    }
+  })
+
+  test("keeps desktop shell executables separate from the public runtime CLI", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.json", import.meta.url),
+    ).json()) as ElectronBuilderConfig
+
+    expect(config.win?.executableName).toBe("synergy-desktop")
+    expect(config.linux?.executableName).toBe("synergy-desktop")
+    expect(config.nsis?.shortcutName).toBe("Synergy")
+    expect(config.linux?.desktop?.entry?.Name).toBe("Synergy")
+    expect(config.linux?.desktop?.entry?.StartupWMClass).toBe("synergy")
+  })
+
+  test("configures installer hooks that expose the embedded runtime as synergy", async () => {
+    const config = (await Bun.file(
+      new URL("../electron-builder.json", import.meta.url),
+    ).json()) as ElectronBuilderConfig
+
+    expect(config.mac?.target?.map((target) => target.target)).toContain("pkg")
+    expect(config.pkg?.scripts).toBe("build/pkg-scripts")
+    expect(config.pkg?.installLocation).toBe("/Applications")
+    expect(config.nsis?.include).toBe("build/installer.nsh")
+    expect(config.deb?.afterInstall).toBe("build/linux/deb-after-install.sh")
+    expect(config.deb?.afterRemove).toBe("build/linux/deb-after-remove.sh")
+    expect(config.deb?.depends).toContain("bubblewrap")
+  })
+
+  test("Windows installer publishes only the launcher directory, not runtime internals", async () => {
+    const nsisScript = await Bun.file(new URL("../build/installer.nsh", import.meta.url)).text()
+
+    expect(nsisScript).toContain("$INSTDIR\\bin\\synergy.cmd")
+    expect(nsisScript).toContain("$INSTDIR\\resources\\synergy\\bin\\synergy.exe")
+    expect(nsisScript).toContain(String.raw`FileWrite $0 "$\"$INSTDIR\resources\synergy\bin\synergy.exe$\" %*$\r$\n"`)
+    expect(nsisScript).toContain("WriteRegExpandStr HKCU")
+    expect(nsisScript).toContain("$INSTDIR\\bin")
+    expect(nsisScript).not.toContain("WriteRegExpandStr HKLM")
+    expect(nsisScript).not.toContain("$INSTDIR\\resources\\synergy\\bin;")
+  })
+
+  test("Windows installer de-dupes PATH by exact entry rather than prefix substring", async () => {
+    const nsisScript = await Bun.file(new URL("../build/installer.nsh", import.meta.url)).text()
+
+    expect(nsisScript).toContain("Call PathHasEntry")
+    expect(nsisScript).toContain("StrCmp $R6 $R1 found")
+    expect(nsisScript).toContain("!ifndef BUILD_UNINSTALLER\nFunction PathHasEntry")
+    expect(nsisScript).toContain("!ifdef BUILD_UNINSTALLER\nFunction un.RemovePathEntry")
+    expect(nsisScript).not.toContain("Call StrStr")
+  })
+
+  test("writes Desktop package version metadata beside the embedded runtime", async () => {
+    const afterPackScript = await Bun.file(new URL("../script/after-pack.cjs", import.meta.url)).text()
+
+    expect(afterPackScript).toContain("desktop-package.json")
+    expect(afterPackScript).toContain("appInfo?.version")
+  })
+})

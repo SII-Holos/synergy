@@ -32,15 +32,15 @@ describe("ControlProfile identity", () => {
 })
 
 describe("guarded profile policy", () => {
-  test("auto-allows safe reads, workspace writes, and network while asking for riskier capabilities", async () => {
+  test("auto-allows low risk, workspace writes, and network while asking for riskier capabilities", async () => {
     const profile = await ControlProfileCompiler.resolve("guarded", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "ask", highRisk: "ask" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
+    expect(rule(profile, "file_external_read")?.action).toBe("allow")
     expect(rule(profile, "shell_read")?.action).toBe("allow")
     expect(rule(profile, "file_write")?.action).toBe("allow")
     expect(rule(profile, "network_request")?.action).toBe("allow")
     expect(rule(profile, "shell")?.action).toBe("ask")
-    expect(rule(profile, "file_external_read")?.action).toBe("ask")
     expect(rule(profile, "shell_hardline")?.action).toBe("deny")
     expect(rule(profile, "shell_destructive")?.nonBypassable).toBe(true)
   })
@@ -54,7 +54,7 @@ describe("guarded profile policy", () => {
 })
 
 describe("autonomous profile policy", () => {
-  test("auto-allows most capabilities, denies only shell_hardline", async () => {
+  test("extends guarded automatic approvals while denying destructive boundaries", async () => {
     const profile = await ControlProfileCompiler.resolve("autonomous", context)
     expect(profile.approval).toMatchObject({ lowRisk: "allow", mediumRisk: "allow", highRisk: "deny" })
     expect(rule(profile, "file_read")?.action).toBe("allow")
@@ -87,13 +87,10 @@ describe("full_access profile policy", () => {
     expect(rule(profile, "identity_act")?.action).toBe("allow")
   })
 
-  test("is forbidden in unattended interaction mode", async () => {
-    const result = await ControlProfileCompiler.resolve("full_access", {
-      ...context,
-      interactionMode: "unattended",
-    })
-    expect(result.valid).toBe(false)
-    expect(result.reason).toContain("unattended")
+  test("is valid in non-interactive channel contexts when explicitly selected", async () => {
+    const result = await ControlProfileCompiler.resolve("full_access", context)
+    expect(result.valid).toBe(true)
+    expect(result.summary?.approval.mode).toBe("full_access")
   })
 })
 

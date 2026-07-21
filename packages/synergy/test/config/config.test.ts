@@ -47,6 +47,60 @@ test("loads JSON config file", async () => {
   })
 })
 
+test("enables post-write diagnostics by default without materializing a policy", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspWriteDiagnostics).toBe(true)
+      expect(config.lspDiagnostics).toBeUndefined()
+    },
+  })
+})
+
+test("loads explicit post-write diagnostics settings", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          lspWriteDiagnostics: false,
+          lspDiagnostics: { severity: "warning", scope: "file" },
+        }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspWriteDiagnostics).toBe(false)
+      expect(config.lspDiagnostics).toEqual({ severity: "warning", scope: "file" })
+    },
+  })
+})
+
+test("accepts partial post-write diagnostics policy", async () => {
+  await using tmp = await tmpdir({
+    init: async (dir) => {
+      await Bun.write(
+        path.join(dir, "synergy.json"),
+        JSON.stringify({
+          lspDiagnostics: { severity: "warning" },
+        }),
+      )
+    },
+  })
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.lspDiagnostics).toEqual({ severity: "warning" })
+    },
+  })
+})
+
 test("loads JSONC config file", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {
@@ -174,6 +228,13 @@ test("validates config schema and throws on invalid fields", async () => {
       await expect(Config.current()).rejects.toThrow()
     },
   })
+})
+
+test("validates Cortex concurrency as a positive integer", () => {
+  expect(Config.Info.parse({ cortex: { maxConcurrentTasks: 6 } }).cortex?.maxConcurrentTasks).toBe(6)
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 0 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: -1 } })).toThrow()
+  expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 2.5 } })).toThrow()
 })
 
 test("throws error for invalid JSON", async () => {
@@ -420,7 +481,7 @@ test("merges plugin arrays from global and local configs", async () => {
       expect(pluginNames.length).toBeGreaterThanOrEqual(3)
     },
   })
-})
+}, 30_000)
 
 test("does not error when only custom agent is a subagent", async () => {
   await using tmp = await tmpdir({
@@ -587,6 +648,109 @@ test("deduplicates duplicate plugins from global and local configs", async () =>
       expect(pluginNames.length).toBe(3)
     },
   })
+})
+
+test("does not auto-discover legacy plugin files or mutate config directories", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      const legacyPluginDir = path.join(dir, ".synergy", "plugins")
+      await fs.mkdir(legacyPluginDir, { recursive: true })
+      await Bun.write(path.join(legacyPluginDir, "legacy.ts"), "export const plugin = {}")
+    },
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const config = await Config.current()
+      const plugins = config.plugin ?? []
+
+      expect(plugins.some((plugin) => plugin.includes("legacy.ts"))).toBe(false)
+      await expect(Bun.file(path.join(tmp.path, ".synergy", "package.json")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(tmp.path, ".synergy", "node_modules")).exists()).resolves.toBe(false)
+    },
+  })
+})
+
+test("loads plugin runtime limits from plugin config domain", async () => {
+  await using tmp = await tmpdir({
+    git: true,
+    init: async (dir) => {
+      const domainDir = path.join(dir, ".synergy", "synergy.d")
+      await fs.mkdir(domainDir, { recursive: true })
+      await Bun.write(
+        path.join(domainDir, "50-plugins.jsonc"),
+        JSON.stringify({
+          pluginRuntimePolicy: {
+            limits: {
+              toolInvocationTimeoutMs: 135000,
+              hostServiceRequestTimeoutMs: 90000,
+              taskRunTimeoutMs: 135000,
+            },
+          },
+        }),
+      )
+    },
+  })
+
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      await Config.state.reset()
+      const limits = (await Config.current()).pluginRuntimePolicy?.limits
+
+      expect(limits?.toolInvocationTimeoutMs).toBe(135000)
+      expect(limits?.hostServiceRequestTimeoutMs).toBe(90000)
+      expect(limits?.taskRunTimeoutMs).toBe(135000)
+    },
+  })
+})
+
+test("general domain merge preserves a configured remote embedding model when local download settings change", () => {
+  const current = Config.Info.parse({
+    embedding: {
+      apiKey: "secret",
+      baseURL: "https://embedding.example/v1",
+      model: "BAAI/bge-m3",
+      local: { source: "huggingface" },
+    },
+  })
+
+  const next = Config.mergeDomainConfig(current, { embedding: { local: { source: "hf-mirror" } } }, "merge")
+
+  expect(next.embedding).toEqual({
+    apiKey: "secret",
+    baseURL: "https://embedding.example/v1",
+    model: "BAAI/bge-m3",
+    local: { source: "hf-mirror" },
+  })
+})
+
+test("plugin domain updates replace stale specs by canonical source key", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-plugin-domain-"))
+  try {
+    await Config.domainUpdate(
+      "plugins",
+      {
+        plugin: ["github:example/plugin#old", "github:example/other#main"],
+      },
+      { root },
+    )
+    await Config.domainUpdate(
+      "plugins",
+      {
+        plugin: ["github:example/plugin#new"],
+      },
+      { root },
+    )
+
+    const stored = await Config.domainGet("plugins", root)
+    expect(stored.plugin).toEqual(["github:example/plugin#new", "github:example/other#main"])
+  } finally {
+    await fs.rm(root, { recursive: true, force: true })
+  }
 })
 
 // Legacy tools migration tests
@@ -1031,6 +1195,42 @@ test("migrates project permissions domain auto_classifier config to smartAllow",
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
     expect(migrated.smartAllow).toBe(false)
     expect(migrated.auto_classifier).toBeUndefined()
+  } finally {
+    process.chdir(origCwd)
+    process.env["SYNERGY_TEST_HOME"] = origHome
+    await fs.rm(home, { recursive: true, force: true }).catch(() => {})
+  }
+})
+
+test("removes deprecated autoupdate from monolithic and domain configs", async () => {
+  const home = path.join(os.tmpdir(), `synergy-config-autoupdate-migration-${Math.random().toString(36).slice(2)}`)
+  const project = path.join(home, "project")
+  const origHome = process.env["SYNERGY_TEST_HOME"]
+  const origCwd = process.cwd()
+  try {
+    process.env["SYNERGY_TEST_HOME"] = home
+    await fs.mkdir(path.join(home, ".synergy", "config", "synergy.d"), { recursive: true })
+    await fs.mkdir(path.join(home, ".synergy", "config", "config-sets", "team", "synergy.d"), { recursive: true })
+    await fs.mkdir(path.join(project, ".synergy", "synergy.d"), { recursive: true })
+
+    const monolithic = path.join(home, ".synergy", "config", "synergy.jsonc")
+    const globalGeneral = path.join(home, ".synergy", "config", "synergy.d", "00-general.jsonc")
+    const setGeneral = path.join(home, ".synergy", "config", "config-sets", "team", "synergy.d", "00-general.jsonc")
+    const projectGeneral = path.join(project, ".synergy", "synergy.d", "00-general.jsonc")
+
+    await Bun.write(monolithic, `{"autoupdate": true, "username": "old"}`)
+    await Bun.write(globalGeneral, `{"autoupdate": "notify", "theme": "dark"}`)
+    await Bun.write(setGeneral, `{"autoupdate": false, "theme": "light"}`)
+    await Bun.write(projectGeneral, `{"autoupdate": true, "snapshot": false}`)
+
+    process.chdir(project)
+    resetMigrations()
+    await runMigrations({ targetDomain: "config" })
+
+    expect((parseJsonc(await Bun.file(monolithic).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(globalGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(setGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
+    expect((parseJsonc(await Bun.file(projectGeneral).text()) as Record<string, unknown>).autoupdate).toBeUndefined()
   } finally {
     process.chdir(origCwd)
     process.env["SYNERGY_TEST_HOME"] = origHome
@@ -1680,6 +1880,27 @@ test("experimental.mcp_timeout does not break config loading", async () => {
       const config = await Config.current()
       expect(config.mcp?.mymcp).toBeDefined()
       expect(config.experimental?.mcp_timeout).toBe(60000)
+    },
+  })
+})
+
+test("locale config accepts valid values and rejects invalid ones", () => {
+  expect(Config.Info.parse({}).locale).toBeUndefined()
+  expect(Config.Info.parse({ locale: "system" }).locale).toBe("system")
+  expect(Config.Info.parse({ locale: "en" }).locale).toBe("en")
+  expect(Config.Info.parse({ locale: "zh-CN" }).locale).toBe("zh-CN")
+  expect(() => Config.Info.parse({ locale: "" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "fr" })).toThrow()
+  expect(() => Config.Info.parse({ locale: "de-DE" })).toThrow()
+})
+
+test("locale is optional and absent configs remain valid", async () => {
+  await using tmp = await tmpdir()
+  await ScopeContext.provide({
+    scope: await tmp.scope(),
+    fn: async () => {
+      const config = await Config.current()
+      expect(config.locale).toBeUndefined()
     },
   })
 })

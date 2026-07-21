@@ -1,5 +1,7 @@
 import { createMemo, createSignal, For, Show } from "solid-js"
 import type { StatsSnapshot } from "@ericsanchezok/synergy-sdk"
+import { useLocale } from "@/context/locale"
+import { S } from "./stats-i18n"
 
 const HEATMAP_STYLE = `
 @keyframes heatmapCellEnter {
@@ -14,24 +16,22 @@ const HEATMAP_STYLE = `
 }
 `
 
-const LEVEL_COLORS = ["rgba(128, 120, 108, 0.12)", "#214438", "#2b6a58", "#338472", "#4fa08a"] as const
+const LEVEL_COLORS = [
+  "var(--surface-inset-base)",
+  "color-mix(in srgb, var(--chart-series-3) 28%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 48%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 68%, transparent)",
+  "var(--chart-series-3)",
+] as const
 const LEVEL_BORDERS = [
-  "rgba(182,170,154,0.08)",
-  "rgba(78,145,121,0.18)",
-  "rgba(86,163,136,0.24)",
-  "rgba(96,181,152,0.30)",
-  "rgba(122,204,174,0.36)",
+  "var(--border-weaker-base)",
+  "color-mix(in srgb, var(--chart-series-3) 35%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 55%, transparent)",
+  "color-mix(in srgb, var(--chart-series-3) 75%, transparent)",
+  "var(--chart-series-3)",
 ] as const
-const RANGES = [
-  { label: "24h", value: "24h" },
-  { label: "7d", value: "7d" },
-  { label: "30d", value: "30d" },
-  { label: "90d", value: "90d" },
-  { label: "All", value: "all" },
-] as const
-const HOUR_LABELS = [0, 6, 12, 18, 23] as const
 
-type Range = (typeof RANGES)[number]["value"]
+type Range = "24h" | "7d" | "30d" | "90d" | "all"
 type DayCell = {
   key: string
   label: string
@@ -80,7 +80,7 @@ function formatHourTick(hour: number) {
 
 function DayView(props: { cells: DayCell[]; columns: number }) {
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
       <div class="grid gap-1.5" style={{ "grid-template-columns": `repeat(${props.columns}, minmax(0, 1fr))` }}>
         <For each={props.cells}>
           {(cell, index) => (
@@ -90,8 +90,6 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
                 "background-color": LEVEL_COLORS[cell.level],
                 "border-color": LEVEL_BORDERS[cell.level],
                 animation: `heatmapCellEnter 280ms cubic-bezier(0.22, 1, 0.36, 1) ${index() * 8}ms both`,
-                "box-shadow":
-                  cell.level > 0 ? "inset 0 1px 0 rgba(214,204,190,0.1)" : "inset 0 1px 0 rgba(214,204,190,0.05)",
               }}
               title={cell.label}
             />
@@ -103,8 +101,9 @@ function DayView(props: { cells: DayCell[]; columns: number }) {
 }
 
 function HourView(props: { rows: Array<{ label: string; cells: HourCell[] }> }) {
+  const HOUR_LABELS = [0, 6, 12, 18, 23] as const
   return (
-    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 shadow-[inset_0_1px_0_rgba(214,204,190,0.06)]">
+    <div class="mt-4 rounded-[1.4rem] bg-surface-base/34 p-3 ring-1 ring-inset ring-border-weaker-base">
       <div
         class="grid items-center gap-x-1.5 gap-y-2"
         style={{ "grid-template-columns": "auto repeat(24, minmax(0, 1fr))" }}
@@ -147,9 +146,18 @@ export function ActivityHeatmap(props: {
   days: StatsSnapshot["timeSeries"]["days"]
   hours?: Array<{ hour: string; turns: number }>
 }) {
+  const { i18n, fmt } = useLocale()
   const [range, setRange] = createSignal<Range>("7d")
   const legendLevels = createMemo(() => [0, 1, 2, 3, 4] as const)
   const availableHours = createMemo(() => props.hours ?? [])
+
+  const ranges = createMemo(() => [
+    { label: i18n._(S.heatmapRange24h.id), value: "24h" as const },
+    { label: i18n._(S.heatmapRange7d.id), value: "7d" as const },
+    { label: i18n._(S.heatmapRange30d.id), value: "30d" as const },
+    { label: i18n._(S.heatmapRange90d.id), value: "90d" as const },
+    { label: i18n._(S.heatmapRangeAll.id), value: "all" as const },
+  ])
 
   const requestedGranularity = createMemo(() => {
     const selectedRange = range()
@@ -177,7 +185,7 @@ export function ActivityHeatmap(props: {
       key: day.day,
       value: day.turns,
       level: clampLevel(day.turns, max),
-      label: `${day.day} · ${day.turns.toLocaleString()} turns`,
+      label: i18n._(S.heatmapCellLabel.id, { date: day.day, turns: fmt.number(day.turns) }),
     }))
   })
 
@@ -198,8 +206,12 @@ export function ActivityHeatmap(props: {
         key,
         value,
         level: 0,
-        dayLabel: date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }),
-        label: `${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })} ${formatHourTick(date.getHours())} · ${value.toLocaleString()} turns`,
+        dayLabel: fmt.date(date, { weekday: "short", month: "short", day: "numeric" }),
+        label: i18n._(S.heatmapCellLabelHour.id, {
+          date: fmt.date(date, { month: "short", day: "numeric" }),
+          time: formatHourTick(date.getHours()),
+          turns: fmt.number(value),
+        }),
       })
     }
 
@@ -210,7 +222,7 @@ export function ActivityHeatmap(props: {
     for (let rowIndex = 0; rowIndex < leveled.length; rowIndex += 24) {
       const rowCells = leveled.slice(rowIndex, rowIndex + 24)
       rows.push({
-        label: selectedRange === "24h" ? "Today" : (rowCells[0]?.dayLabel ?? ""),
+        label: selectedRange === "24h" ? i18n._(S.heatmapToday.id) : (rowCells[0]?.dayLabel ?? ""),
         cells: rowCells,
       })
     }
@@ -223,17 +235,25 @@ export function ActivityHeatmap(props: {
       const cells = hourRows().flatMap((row) => row.cells)
       const totalTurns = cells.reduce((sum, cell) => sum + cell.value, 0)
       const activeHours = cells.filter((cell) => cell.value > 0).length
-      return `${totalTurns.toLocaleString()} turns across ${activeHours.toLocaleString()} active hours`
+      return i18n._(S.heatmapTurnsSummary.id, {
+        turns: fmt.number(totalTurns),
+        active: fmt.number(activeHours),
+        unit: i18n._(S.heatmapUnitHours.id),
+      })
     }
 
     const days = filteredDays()
     const totalTurns = days.reduce((sum, day) => sum + day.turns, 0)
     const activeDays = days.filter((day) => day.turns > 0).length
-    return `${totalTurns.toLocaleString()} turns across ${activeDays.toLocaleString()} active days`
+    return i18n._(S.heatmapTurnsSummary.id, {
+      turns: fmt.number(totalTurns),
+      active: fmt.number(activeDays),
+      unit: i18n._(S.heatmapUnitDays.id),
+    })
   })
 
   const subtitle = createMemo(() =>
-    granularity() === "hour" ? "Hourly contribution rhythm" : "Daily contribution rhythm",
+    granularity() === "hour" ? i18n._(S.heatmapHourSubtitle.id) : i18n._(S.heatmapDaySubtitle.id),
   )
 
   const dayColumns = createMemo(() => {
@@ -264,7 +284,7 @@ export function ActivityHeatmap(props: {
             <p class="mt-1 text-11-regular text-text-weak">{subtitle()}</p>
           </div>
           <div class="flex flex-wrap items-center justify-end gap-1.5">
-            <For each={RANGES}>
+            <For each={ranges()}>
               {(item) => {
                 const active = () => range() === item.value
                 return (
@@ -289,7 +309,7 @@ export function ActivityHeatmap(props: {
           when={granularity() === "hour" ? hourRows().length > 0 : dayCells().length > 0}
           fallback={
             <div class="mt-4 flex h-32 items-center justify-center rounded-2xl bg-surface-inset-base/45 text-12-medium text-text-weak">
-              No contribution activity yet
+              {i18n._(S.heatmapEmpty.id)}
             </div>
           }
         >
@@ -299,12 +319,12 @@ export function ActivityHeatmap(props: {
 
           <div class="mt-4 flex flex-wrap items-center justify-between gap-3 text-[10px] font-medium text-text-weaker">
             <div class="flex items-center gap-2">
-              <span>{granularity() === "hour" ? "Hour view" : "Day view"}</span>
+              <span>{granularity() === "hour" ? i18n._(S.heatmapHourView.id) : i18n._(S.heatmapDayView.id)}</span>
               <span class="text-text-weaker/70">•</span>
               <span>
                 {granularity() === "hour"
-                  ? `${hourRows().length} row${hourRows().length === 1 ? "" : "s"}`
-                  : `${dayCells().length} cells`}
+                  ? i18n._(S.heatmapRows.id, { n: hourRows().length })
+                  : i18n._(S.heatmapCells.id, { n: dayCells().length })}
               </span>
             </div>
             <Show when={granularity() === "day" && dayCells().length > 1}>
@@ -315,7 +335,7 @@ export function ActivityHeatmap(props: {
               </div>
             </Show>
             <div class="flex items-center gap-2">
-              <span>Quiet</span>
+              <span>{i18n._(S.heatmapQuiet.id)}</span>
               <div class="flex items-center gap-1">
                 <For each={legendLevels()}>
                   {(level) => (
@@ -329,7 +349,7 @@ export function ActivityHeatmap(props: {
                   )}
                 </For>
               </div>
-              <span>Busy</span>
+              <span>{i18n._(S.heatmapBusy.id)}</span>
             </div>
           </div>
         </Show>

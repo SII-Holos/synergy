@@ -6,6 +6,81 @@
   align-items: flex-start;
   justify-content: flex-start;
 
+  /* ── Rewind button ────────────────────────────── */
+  [data-slot="session-turn-rewind-button"] {
+    all: unset;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: var(--font-size-x-small);
+    color: var(--text-subtle);
+    background: transparent;
+    /* Stay out of the way until the turn is hovered or the button is focused. */
+    opacity: 0;
+    transition:
+      opacity var(--motion-duration-fast) var(--motion-ease-standard),
+      background var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
+    white-space: nowrap;
+
+    &:hover {
+      background: var(--background-weak);
+      color: var(--text-interactive-base);
+    }
+
+    &:active {
+      background: var(--background-base);
+    }
+
+    &:focus-visible {
+      opacity: 1;
+      outline: 1px solid var(--border-interactive-base);
+      outline-offset: 1px;
+    }
+
+    & [data-component="icon"] {
+      width: 12px;
+      height: 12px;
+    }
+  }
+
+  [data-slot="session-turn-rewind-wrapper"]:hover [data-slot="session-turn-rewind-button"] {
+    opacity: 1;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"] {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+  }
+
+  /* Right-aligned user bubbles (root turns + user steer messages): the bubble
+     aligns to a shared right edge and the hover-revealed rewind button floats in
+     a reserved gutter just outside it — so a steer bubble (no button) and a root
+     bubble (with button) line up identically, and the button never pushes or
+     overlaps the bubble. */
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] {
+    display: block;
+    position: relative;
+    width: 100%;
+    padding-inline-end: 28px;
+  }
+
+  [data-slot="session-turn-rewind-wrapper"][data-align="right"] [data-slot="session-turn-rewind-button"] {
+    position: absolute;
+    inset-inline-end: 0;
+    top: 4px;
+    padding: 4px;
+
+    & span {
+      display: none;
+    }
+  }
+
   [data-slot="session-turn-content"] {
     flex-grow: 1;
     width: 100%;
@@ -33,45 +108,6 @@
     overflow-anchor: none;
   }
 
-  [data-slot="session-turn-title"] {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin-bottom: 6px;
-    align-items: flex-start;
-  }
-
-  [data-slot="session-turn-title"] h1 {
-    font-size: var(--font-size-large);
-    font-weight: var(--font-weight-semibold, 600);
-    color: var(--text-strong);
-    background: transparent !important;
-    border: 0 !important;
-    box-shadow: none;
-    padding: 0 !important;
-    border-radius: 0 !important;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    min-width: 0;
-    display: inline-block;
-    letter-spacing: -0.01em;
-  }
-
-  [data-slot="session-turn-title-timestamp"] {
-    font-size: var(--font-size-small);
-    color: var(--text-subtle);
-    padding-left: 0;
-    font-weight: var(--font-weight-regular);
-  }
-
-  [data-slot="session-turn-typewriter"] {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-    white-space: nowrap;
-  }
-
   [data-slot="session-turn-mailbox-source"] {
     display: flex;
     align-items: center;
@@ -93,258 +129,248 @@
     }
   }
 
-  [data-slot="session-turn-steps-row"] {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
+  [data-slot="session-turn-timeline"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    align-self: stretch;
   }
 
-  [data-slot="session-turn-chronicler-button"] {
-    display: inline-flex;
+  [data-slot="session-turn-timeline-item"] {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  [data-slot="session-turn-message-container"] > [data-component="user-message"][data-variant="turn-bubble"],
+  [data-slot="session-turn-chip"] {
+    display: flex;
     align-items: center;
-    justify-content: center;
-    padding: 3px;
-    border-radius: var(--radius-full);
-    background: var(--workbench-control-bg, var(--surface-base));
-    border: none;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: var(--background-weak);
     color: var(--text-weak);
-    cursor: pointer;
-    transition:
-      background var(--motion-duration-base) var(--motion-ease-standard),
-      color var(--motion-duration-base) var(--motion-ease-standard);
-
-    &:hover {
-      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
-      color: var(--text-base);
-    }
-  }
-
-  [data-slot="session-turn-steps-trigger"] {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 8px;
-    border-radius: var(--radius-full);
-    background: var(--workbench-control-bg, var(--surface-base));
     font-size: var(--font-size-small);
-    line-height: var(--line-height-large);
-    color: var(--text-weak);
-    cursor: default;
-    user-select: none;
-    -webkit-user-select: none;
-    transition:
-      background var(--motion-duration-base) var(--motion-ease-standard),
-      color var(--motion-duration-base) var(--motion-ease-standard);
+    line-height: 1;
+  }
 
-    &[data-expandable="true"] {
-      cursor: pointer;
-    }
+  /* Injected (non-root) message chip: a compact, origin-tinted pill so a
+     mid-run steer / notification reads distinctly from a real user turn. */
+  [data-slot="session-turn-chip"] {
+    align-self: flex-start;
+    padding: 3px 9px;
+    font-size: var(--font-size-x-small);
+    border: 1px solid var(--border-weak-base);
+    color: var(--text-subtle);
 
-    &[data-expandable="true"]:hover {
-      background: var(--workbench-control-bg-hover, var(--surface-hover-base));
-      color: var(--text-base);
-    }
-
-    [data-component="spinner"] {
+    & [data-component="icon"] {
       width: 12px;
       height: 12px;
+      color: var(--chip-accent, var(--text-subtle));
     }
   }
 
-  [data-slot="session-turn-step-count"] {
+  [data-slot="session-turn-chip"][data-origin="cortex"] {
+    --chip-accent: var(--text-interactive-base);
+  }
+  [data-slot="session-turn-chip"][data-origin="blueprint"] {
+    --chip-accent: var(--icon-success-base, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip"][data-origin="channel"] {
+    --chip-accent: var(--icon-warning-base, var(--text-interactive-base));
+  }
+  [data-slot="session-turn-chip-label"] {
     font-weight: var(--font-weight-medium);
-    color: var(--text-base);
+  }
+
+  [data-slot="session-turn-timeline-item"]:is(
+    [data-kind="text"],
+    [data-kind="reasoning"],
+    [data-kind="non-root-user"],
+    [data-kind="provider-prelude"]
+  ) {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+  }
+
+  /* A user's steer message is a right-aligned user bubble, not part of the
+     centered assistant reading column — it must span the full turn width so its
+     bubble flushes to the same right edge as the root turn's bubble. */
+  [data-slot="session-turn-timeline-item"][data-kind="guided-user"] {
+    max-width: 100%;
+    margin-inline: 0;
+  }
+
+  [data-slot="session-turn-timeline-item"] + [data-slot="session-turn-timeline-item"] {
+    margin-top: 10px;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"])
+    + [data-slot="session-turn-timeline-item"]:is([data-kind="text"], [data-kind="reasoning"]) {
+    margin-top: 8px;
+  }
+
+  [data-slot="session-turn-timeline-item"][data-kind="provider-prelude"] {
+    color: var(--text-weak);
+  }
+
+  [data-component="provider-prelude"] {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    min-height: 22px;
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-regular);
+    line-height: var(--line-height-large);
+    color: var(--text-weak);
+  }
+
+  [data-component="provider-prelude"]::before {
+    content: "";
+    align-self: center;
+    flex: 0 0 auto;
+    width: 2px;
+    height: 14px;
+    margin-right: 10px;
+    border-radius: 999px;
+    background: var(--border-base);
+  }
+
+  [data-component="provider-prelude"][data-variant="completed"]::before {
+    background: var(--text-subtle);
+  }
+
+  [data-slot="provider-prelude-separator"] {
+    margin-inline: 6px;
+    color: var(--text-subtle);
+  }
+
+  [data-slot="provider-prelude-time"],
+  [data-slot="provider-prelude-stat"] {
+    color: var(--text-subtle);
+    font-size: var(--font-size-x-small);
     font-variant-numeric: tabular-nums;
+    line-height: 1;
   }
 
-  [data-slot="session-turn-separator"] {
-    color: var(--border-base);
+  [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"])
+    + [data-slot="session-turn-timeline-item"]:is([data-kind="tool"], [data-kind="tool-attachments"]) {
+    margin-top: 6px;
   }
 
-  [data-slot="session-turn-duration"] {
-    font-variant-numeric: tabular-nums;
+  [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="tool"],
+      [data-kind="tool-attachments"]
+    )
+    + [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="text"]
+    ),
+  [data-slot="session-turn-timeline-item"]:is([data-kind="reasoning"], [data-kind="text"])
+    + [data-slot="session-turn-timeline-item"]:is(
+      [data-kind="attachment"],
+      [data-kind="media-pending"],
+      [data-kind="tool"],
+      [data-kind="tool-attachments"]
+    ) {
+    margin-top: 12px;
   }
 
-  [data-slot="session-turn-expand-icon"] {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-    transition: transform 200ms ease;
+  [data-slot="session-turn-timeline-item"] + [data-component="turn-change-summary-panel"] {
+    margin-top: 12px;
   }
 
-  [data-slot="session-turn-steps-trigger"][data-expanded="true"] [data-slot="session-turn-expand-icon"] {
-    transform: rotate(90deg);
+  [data-slot="session-turn-timeline-item"] [data-component="attachment-gallery"] {
+    padding: 0;
   }
 
-  [data-slot="session-turn-retry-group"] {
-    display: inline-flex;
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column-layout"] {
+    justify-content: flex-start;
+  }
+
+  [data-slot="session-turn-timeline-item"]:is([data-kind="attachment"], [data-kind="tool-attachments"])
+    [data-component="attachment-gallery"][data-columns="1"]
+    [data-slot="attachment-column"] {
+    flex: 0 1 auto;
+    align-items: flex-start;
+  }
+
+  [data-slot="session-turn-timeline-item"] > [data-component="text-part"] [data-component="markdown"],
+  [data-slot="session-turn-timeline-item"] > [data-component="reasoning-part"] [data-component="markdown"] {
+    margin-top: 0;
+  }
+
+  /* ── Assistant message footer (Copy Markdown + timestamp) ────── */
+  [data-slot="assistant-message-meta"] {
+    max-width: min(54rem, 100%);
+    margin-inline: auto;
+    display: flex;
     align-items: center;
-    gap: 6px;
-    min-width: 0;
-    max-width: min(100%, 72ch);
+    justify-content: flex-start;
+    gap: 4px;
+    min-height: 18px;
+    color: var(--text-weak);
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-x-small);
+    font-weight: var(--font-weight-regular);
+    line-height: 1.2;
+    opacity: 0.54;
+    pointer-events: none;
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
   }
 
-  [data-slot="session-turn-retry-message"] {
-    font-weight: 500;
-    color: var(--syntax-critical);
-    min-width: 0;
+  [data-slot="assistant-message-time"] {
+    color: var(--text-weak);
+    font-variant-numeric: tabular-nums;
   }
 
-  [data-slot="session-turn-retry-message"][data-expanded="false"] {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  [data-slot="session-turn-retry-message"][data-expanded="true"] {
-    white-space: normal;
-    overflow-wrap: anywhere;
-  }
-
-  [data-slot="session-turn-retry-toggle"] {
-    all: unset;
-    flex-shrink: 0;
+  [data-slot="assistant-message-copy"] {
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 0;
+    border-radius: var(--radius-sm);
+    color: var(--icon-weak-base);
+    background: transparent;
     cursor: pointer;
-    color: var(--text-base);
-    font-weight: var(--font-weight-medium);
-    border-radius: var(--radius-full);
-    padding: 0 2px;
+    transition:
+      background-color var(--motion-duration-fast) var(--motion-ease-standard),
+      color var(--motion-duration-fast) var(--motion-ease-standard);
 
     &:hover {
-      color: var(--text-strong);
+      color: var(--icon-base);
+      background: var(--surface-base-hover);
+    }
+
+    &[data-copy-state="copied"] {
+      color: var(--icon-success-base);
+    }
+
+    &[data-copy-state="failed"] {
+      color: var(--icon-critical-base);
     }
 
     &:focus-visible {
-      outline: 2px solid color-mix(in srgb, var(--border-base) 45%, var(--surface-brand-base) 55%);
-      outline-offset: 2px;
+      outline: none;
+      box-shadow: var(--shadow-xs-border-focus);
     }
   }
 
-  [data-slot="session-turn-retry-seconds"],
-  [data-slot="session-turn-retry-attempt"] {
-    color: var(--text-weak);
-  }
-
-  [data-slot="session-turn-collapsible-content-inner"] {
-    width: 100%;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-self: stretch;
-    gap: 12px;
-
-    > :first-child > [data-component="markdown"]:first-child {
-      margin-top: 0;
-    }
-  }
-
-  [data-slot="session-turn-response-section"] {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    align-items: flex-start;
-    align-self: stretch;
-  }
-
-  [data-slot="session-turn-response-body"] {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    width: 100%;
-    max-width: 100%;
-    gap: 4px;
-    align-self: stretch;
-    min-width: 0;
-
-    p {
-      font-size: var(--font-size-base);
-      line-height: var(--line-height-x-large);
-    }
-  }
-
-  [data-slot="session-turn-markdown"] {
-    -webkit-user-select: text;
-    user-select: text;
-  }
-
-  [data-slot="session-turn-accordion"] {
-    width: 100%;
-    min-width: 0;
-
-    [data-slot="accordion-content"] {
-      -webkit-user-select: text;
-      user-select: text;
-    }
-  }
-
-  [data-component="sticky-accordion-header"] {
-    top: 0;
-  }
-
-  [data-slot="session-turn-accordion-trigger-content"] {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    gap: 20px;
-
-    [data-expandable="false"] {
-      pointer-events: none;
-    }
-  }
-
-  [data-slot="session-turn-file-info"] {
-    flex-grow: 1;
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    min-width: 0;
-  }
-
-  [data-slot="session-turn-file-icon"] {
-    flex-shrink: 0;
-    width: 16px;
-    height: 16px;
-  }
-
-  [data-slot="session-turn-file-path"] {
-    display: flex;
-    flex-grow: 1;
-    min-width: 0;
-  }
-
-  [data-slot="session-turn-directory"] {
-    color: var(--text-base);
-    text-overflow: ellipsis;
-    overflow: hidden;
-    white-space: nowrap;
-    direction: rtl;
-    text-align: left;
-  }
-
-  [data-slot="session-turn-filename"] {
-    color: var(--text-strong);
-    flex-shrink: 0;
-  }
-
-  [data-slot="session-turn-accordion-actions"] {
-    flex-shrink: 0;
-    display: flex;
-    gap: 16px;
-    align-items: center;
-    justify-content: flex-end;
-  }
-
-  [data-slot="session-turn-accordion-content"] {
-    max-height: 240px;
-    overflow-y: auto;
-    scrollbar-width: none;
-
-    &::-webkit-scrollbar {
-      display: none;
-    }
+  /* Reveal the footer fully when any part of the turn is hovered */
+  [data-slot="session-turn-message-container"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="session-turn-content"]:hover [data-slot="assistant-message-meta"],
+  [data-slot="assistant-message-meta"]:hover {
+    opacity: 1;
+    pointer-events: auto;
   }
 }

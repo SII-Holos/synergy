@@ -6,16 +6,16 @@ import {
   SETTINGS_GROUP_ORDER,
   settingsGroupOrder,
 } from "./catalog"
+import { MODEL_ROLES } from "./types"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 const canonicalDomains = [
   "general",
   "models",
+  "agents",
   "providers",
   "library",
   "mcp",
-  "agents",
-  "commands",
   "permissions",
   "channels",
   "holos",
@@ -26,16 +26,7 @@ const canonicalDomains = [
 describe("settings catalog", () => {
   test("defines the built-in sections in the requested order", () => {
     expect(BUILTIN_SETTINGS_SECTIONS.map((section) => section.id)).toEqual([...BUILTIN_SETTINGS_IDS])
-    expect(SETTINGS_GROUP_ORDER).toEqual([
-      "Personal",
-      "Core",
-      "Library",
-      "Agents",
-      "Integrations",
-      "Safety",
-      "Runtime",
-      "System",
-    ])
+    expect(SETTINGS_GROUP_ORDER).toEqual(["personal", "core", "library", "integrations", "safety", "runtime", "system"])
   })
 
   test("visible built-in labels do not use ampersand pairing", () => {
@@ -52,12 +43,40 @@ describe("settings catalog", () => {
     }
   })
 
+  test("agents domain config is reachable yet not a standalone settings page", () => {
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("agents")
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("commands")
+    expect(BUILTIN_SETTINGS_IDS).not.toContain("instructions")
+    expect(BUILTIN_SETTINGS_SECTIONS.some((section) => section.domainIds.includes("commands"))).toBe(false)
+  })
+
   test("search metadata covers keywords and row labels", () => {
     const general = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "general")!
     expect(general.keywords).toContain("toast")
-    expect(general.rowLabels).toContain("Auto Update")
+    expect(general.rowLabels).toContain("Product Updates")
+    const timeouts = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "timeouts")!
+    expect(timeouts.keywords).toContain("agent")
+    expect(timeouts.keywords).toContain("concurrency")
+    expect(timeouts.rowLabels).toContain("Max Concurrent Subagents")
     const compaction = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "compaction")!
     expect(compaction.rowLabels).toContain("Overflow Threshold")
+    const codeChecks = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "code-checks")!
+    expect(codeChecks.keywords).toContain("diagnostics")
+    expect(codeChecks.rowLabels).toContain("Diagnostic Scope")
+    expect(codeChecks.domainIds).toEqual(["runtime"])
+    expect(codeChecks.visibility).not.toBe("developer")
+    expect(FIELD_SAVE_STRATEGY.lspWriteDiagnostics).toBe("background")
+    expect(FIELD_SAVE_STRATEGY.lspDiagnostics).toBe("background")
+  })
+  test("places Personalize in the Personal group with custom instruction search terms", () => {
+    const personalize = BUILTIN_SETTINGS_SECTIONS.find((section) => section.id === "personalize")
+    expect(personalize).toMatchObject({
+      label: "Personalize",
+      group: "Personal",
+      iconToken: "settings.personalize",
+    })
+    expect(personalize?.keywords).toContain("custom instructions")
+    expect(personalize?.rowLabels).toContain("Custom Instructions")
   })
 
   test("all built-in icon tokens resolve", () => {
@@ -68,12 +87,27 @@ describe("settings catalog", () => {
 
   test("field save strategies are metadata-only and cover editable fields", () => {
     expect(FIELD_SAVE_STRATEGY.snapshot).toBe("auto")
+    expect(FIELD_SAVE_STRATEGY.locale).toBe("background")
     expect(FIELD_SAVE_STRATEGY.controlProfile).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.experimental).toBe("background")
     expect(FIELD_SAVE_STRATEGY.email).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.default_agent).toBe("explicit")
+    expect(FIELD_SAVE_STRATEGY.cortex).toBe("background")
+    for (const role of MODEL_ROLES) {
+      expect(FIELD_SAVE_STRATEGY[role.key]).toBe("explicit")
+    }
   })
 
   test("unknown groups sort after built-ins for plugin compatibility", () => {
-    expect(settingsGroupOrder("Personal")).toBe(0)
-    expect(settingsGroupOrder("Plugin Group")).toBeGreaterThan(settingsGroupOrder("System"))
+    expect(settingsGroupOrder("personal")).toBe(0)
+    expect(settingsGroupOrder("plugin:Plugin Group")).toBeGreaterThan(settingsGroupOrder("system"))
   })
+})
+
+test("developer-only sections are locked to formatter, lsp, and observability", () => {
+  const devSections = BUILTIN_SETTINGS_SECTIONS.filter((s) => s.visibility === "developer")
+  expect(devSections.map((s) => s.id).sort()).toEqual(["formatter", "lsp", "observability"])
+
+  const standardSections = BUILTIN_SETTINGS_SECTIONS.filter((s) => !s.visibility || s.visibility === "standard")
+  expect(standardSections.length).toBe(BUILTIN_SETTINGS_SECTIONS.length - 3)
 })

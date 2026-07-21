@@ -7,16 +7,20 @@ import { Shell } from "@/util/shell"
 import { Log } from "@/util/log"
 import { ScopeContext } from "@/scope/context"
 import { ProcessRegistry } from "@/process/registry"
-import type { BashBackend } from "./shared"
 import { truncateMetadataOutput } from "./shared"
 import { SandboxBackend } from "@/sandbox/backend"
-import { EnforcementError } from "@/enforcement/errors"
 import { ShellSafety } from "@/enforcement/shell-safety"
-import { ArtifactPromotion } from "../artifact-promotion"
+import { AttachmentDiscovery } from "../attachment-discovery"
 import type { MessageV2 } from "@/session/message-v2"
+import type { BashParams } from "./shared"
+import type { BashContext } from "./shared"
 import type { BashResult } from "./shared"
 import { Observability } from "@/observability"
 import { ToolTimeout } from "../timeout"
+import { GitHubProvider } from "@/provider/github"
+import { BashVirtualFile } from "./virtual-file"
+import type { BashSandboxPrepare } from "./shared"
+import { ObservabilityRedaction } from "@/observability/redaction"
 
 /**
  * Derive a human-readable abort reason from an AbortSignal's .reason.
@@ -26,8 +30,8 @@ function deriveAbortReason(reason: unknown): string {
     if (reason.name === "TimeoutError") {
       return "The command was interrupted: tool execution timed out."
     }
-    if (typeof reason.message === "string" && reason.message.includes("Turn timed out")) {
-      return "The command was interrupted: session turn timed out."
+    if (typeof reason.message === "string" && reason.message.includes("Assistant step timed out")) {
+      return "The command was interrupted: assistant step timed out."
     }
     return "The command was interrupted: " + (reason.message || reason.name)
   }
@@ -67,8 +71,93 @@ const parser = lazy(async () => {
   return p
 })
 
-export const LocalBashBackend: BashBackend = {
-  async execute(params, ctx) {
+function isGitHubCliCommand(pattern: string) {
+  const [command] = pattern.trim().split(/\s+/)
+  if (!command) return false
+  const normalized = command.replace(/^["']|["']$/g, "")
+  return normalized === "gh" || normalized.endsWith("/gh") || normalized.endsWith("\\gh.exe")
+}
+
+function canInjectGitHubCliToken(patterns: Set<string>) {
+  if (patterns.size === 0) return false
+  return Array.from(patterns).every(isGitHubCliCommand)
+}
+
+const ALLOW_DETACHED_DAEMONS_ENV = "SYNERGY_BASH_ALLOW_DETACHED_DAEMONS"
+
+export type DetachedDaemonRisk = {
+  kind: "tmux_detached" | "nohup" | "setsid" | "disown" | "daemonize" | "screen_detached" | "shell_background"
+  pattern: string
+}
+
+export function detectDetachedDaemonRisk(command: string): DetachedDaemonRisk | undefined {
+  const checks: Array<{ kind: DetachedDaemonRisk["kind"]; pattern: string; regex: RegExp }> = [
+    {
+      kind: "tmux_detached",
+      pattern: "tmux new-session -d",
+      regex: /\btmux\s+(?:new-session|new)\b(?=[\s\S]*?(?:^|\s)-d(?:\s|$))/,
+    },
+    {
+      kind: "screen_detached",
+      pattern: "screen -dm",
+      regex: /\bscreen\s+-dm(?:\w|$)/,
+    },
+    {
+      kind: "nohup",
+      pattern: "nohup",
+      regex: /(?:^|[;&|]\s*)nohup(?:\s|$)/,
+    },
+    {
+      kind: "setsid",
+      pattern: "setsid",
+      regex: /(?:^|[;&|]\s*)setsid(?:\s|$)/,
+    },
+    {
+      kind: "disown",
+      pattern: "disown",
+      regex: /(?:^|[;&|]\s*)disown(?:\s|$)/,
+    },
+    {
+      kind: "daemonize",
+      pattern: "daemonize",
+      regex: /(?:^|[;&|]\s*)daemonize(?:\s|$)/,
+    },
+    {
+      kind: "shell_background",
+      pattern: "&",
+      regex: /\s&\s*(?:$|[;\n\r)]|\s+\w)/,
+    },
+  ]
+  for (const check of checks) {
+    if (check.regex.test(command)) return { kind: check.kind, pattern: check.pattern }
+  }
+}
+
+function allowsDetachedDaemons(ctx: BashContext) {
+  const extra = ctx.extra as Record<string, unknown> | undefined
+  if (extra?.shellAllowDetachedDaemons === true) return true
+  const controlProfile = extra?.controlProfile as string | undefined
+  if (controlProfile === "full_access") return true
+  const value = process.env[ALLOW_DETACHED_DAEMONS_ENV]?.toLowerCase()
+  return value === "1" || value === "true" || value === "yes"
+}
+
+function detachedDaemonBlockMessage(risk: DetachedDaemonRisk) {
+  return [
+    `Blocked detached daemon launch pattern: ${risk.pattern}`,
+    "Detached shell daemons stay inside the Synergy service cgroup and can keep consuming MemoryHigh/MemoryMax after the tool call appears settled.",
+    "Use the bash tool's background/yieldSeconds flow for tracked processes, or set SYNERGY_BASH_ALLOW_DETACHED_DAEMONS=1 only for an operator-managed runtime that intentionally permits detached daemons.",
+  ].join("\n")
+}
+const CHILD_OOM_SCORE_ADJ = 1000
+
+export function withLinuxChildOomPreference(command: string, platform = process.platform) {
+  if (platform !== "linux") return command
+  return `{ printf '%s\\n' ${CHILD_OOM_SCORE_ADJ} > /proc/self/oom_score_adj; } 2>/dev/null || :; ${command}`
+}
+
+export const LocalBashBackend = {
+  async execute(params: BashParams, ctx: BashContext): Promise<BashResult> {
     const shell = Shell.acceptable()
     log.info("bash tool using shell", { shell })
 
@@ -91,7 +180,7 @@ export const LocalBashBackend: BashBackend = {
       })
 
     await trace("bash.parser.start", {
-      command: params.command,
+      command: ObservabilityRedaction.commandSummary(params.command),
       shell,
     })
     const tree = await parser().then((p) => p.parse(params.command))
@@ -100,8 +189,10 @@ export const LocalBashBackend: BashBackend = {
       throw new Error("Failed to parse command")
     }
     const patterns = new Set<string>()
+    let virtualFileReferences: BashVirtualFile.Reference[] = []
 
     try {
+      virtualFileReferences = BashVirtualFile.references(tree.rootNode)
       for (const node of tree.rootNode.descendantsOfType("command")) {
         if (!node) continue
         const command = []
@@ -129,12 +220,24 @@ export const LocalBashBackend: BashBackend = {
     }
     await trace("bash.parser.end", {
       patternCount: patterns.size,
-      patterns: Array.from(patterns),
     })
+
+    const detachedRisk = detectDetachedDaemonRisk(params.command)
+    if (detachedRisk && !allowsDetachedDaemons(ctx)) {
+      await trace(
+        "bash.detached_daemon.blocked",
+        {
+          risk: detachedRisk,
+          allowEnv: ALLOW_DETACHED_DAEMONS_ENV,
+        },
+        "warn",
+      )
+      throw new Error(detachedDaemonBlockMessage(detachedRisk))
+    }
 
     if (patterns.size > 0 && (ctx.extra as any)?.shellBypassSandbox !== true) {
       await trace("bash.permission.ask", {
-        patterns: Array.from(patterns),
+        patternCount: patterns.size,
         capability: ShellSafety.capability(params.command),
       })
       await ctx.ask({
@@ -145,20 +248,19 @@ export const LocalBashBackend: BashBackend = {
         },
       })
       await trace("bash.permission.resolved", {
-        patterns: Array.from(patterns),
+        patternCount: patterns.size,
       })
     }
 
-    const sandboxWrapper =
-      (ctx.extra as any)?.shellBypassSandbox === true ? undefined : (ctx.extra as any)?.sandboxWrapper
     const sandboxFallback = (ctx.extra as any)?.sandboxFallback as "deny" | "warn" | "allow" | undefined
-    const sandboxWarning = (ctx.extra as any)?.sandboxWarning as string | undefined
+    let sandboxWarning: string | undefined
     const warnOutput = (base: string) => (sandboxWarning ? `[Sandbox unavailable: ${sandboxWarning}]\n\n${base}` : base)
-    const withArtifacts = async (result: BashResult): Promise<BashResult> => {
-      await trace("artifact.promotion.start", {
+    const withAttachments = async (result: BashResult): Promise<BashResult> => {
+      if (AttachmentDiscovery.shouldSkip(params.command)) return result
+      await trace("attachment.discovery.start", {
         outputChars: result.output.length,
       })
-      const attachments = await ArtifactPromotion.promote({
+      const attachments = await AttachmentDiscovery.discover({
         output: result.output,
         cwd,
         sessionID: ctx.sessionID,
@@ -166,25 +268,26 @@ export const LocalBashBackend: BashBackend = {
         tool: "bash",
       })
         .then(async (items) => {
-          await trace("artifact.promotion.end", {
+          await trace("attachment.discovery.end", {
             attachmentCount: items.length,
             attachments: items.map((item) => ({
               filename: item.filename,
               mime: item.mime,
-              size: (item.metadata as Record<string, unknown> | undefined)?.size,
+              size: (
+                (item.metadata as Record<string, unknown> | undefined)?.attachment as
+                  | Record<string, unknown>
+                  | undefined
+              )?.size,
               url: item.url,
             })),
           })
           return items
         })
-        .catch(async (error): Promise<MessageV2.FilePart[]> => {
+        .catch(async (error): Promise<MessageV2.AttachmentPart[]> => {
           await trace(
-            "artifact.promotion.error",
+            "attachment.discovery.error",
             {
-              error:
-                error instanceof Error
-                  ? { name: error.name, message: error.message, stack: error.stack }
-                  : String(error),
+              error: ObservabilityRedaction.errorInfo(error),
             },
             "error",
           )
@@ -205,22 +308,75 @@ export const LocalBashBackend: BashBackend = {
         sandboxEnv[key] = val
       }
     }
-    // ── ProcessRegistry setup (shared across both paths) ──────────
-    regProc = ProcessRegistry.create({
-      command: params.command,
-      description: params.description,
-      cwd,
-    })
-    await trace("bash.process.registered", {
-      processId: regProc.id,
-    })
+    if (canInjectGitHubCliToken(patterns) && !sandboxEnv.GH_TOKEN && !sandboxEnv.GITHUB_TOKEN) {
+      const github = await GitHubProvider.resolveToken()
+      if (github?.token) {
+        sandboxEnv.GH_TOKEN = github.token
+        await trace("bash.github.token.injected", {
+          source: github.source,
+          authKind: github.authKind,
+        })
+      }
+    }
 
-    ctx.metadata({
-      metadata: {
-        output: "",
-        description: params.description,
-      },
+    const materialized = await BashVirtualFile.materialize({
+      command: params.command,
+      references: virtualFileReferences,
+      scopeID: ScopeContext.current.scope.id,
     })
+    const executionCommand = withLinuxChildOomPreference(materialized.command)
+    const sandboxPrepare = (ctx.extra as { sandboxPrepare?: BashSandboxPrepare } | undefined)?.sandboxPrepare
+    let sandboxWrapper: Awaited<ReturnType<BashSandboxPrepare>> | undefined
+    let artifactsCleaned = false
+    const cleanupExecutionArtifacts = () => {
+      if (artifactsCleaned) return
+      artifactsCleaned = true
+      if (sandboxWrapper?.tempPath) {
+        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
+      }
+      materialized.cleanup()
+    }
+
+    try {
+      if ((ctx.extra as any)?.shellBypassSandbox !== true) {
+        sandboxWrapper = await sandboxPrepare?.({
+          command: executionCommand,
+          extraReadRoots: materialized.extraReadRoots,
+        })
+      }
+      sandboxWarning = sandboxWrapper?.skipReason
+    } catch (error) {
+      cleanupExecutionArtifacts()
+      throw error
+    }
+
+    // ── ProcessRegistry setup (shared across both paths) ──────────
+    try {
+      regProc = ProcessRegistry.create({
+        command: params.command,
+        description: params.description,
+        cwd,
+      })
+    } catch (error) {
+      cleanupExecutionArtifacts()
+      throw error
+    }
+    try {
+      await trace("bash.process.registered", {
+        processId: regProc.id,
+      })
+
+      ctx.metadata({
+        metadata: {
+          output: "",
+          description: params.description,
+        },
+      })
+    } catch (error) {
+      ProcessRegistry.remove(regProc.id)
+      cleanupExecutionArtifacts()
+      throw error
+    }
 
     const METADATA_THROTTLE_MS = 500
     let metadataTimer: ReturnType<typeof setTimeout> | null = null
@@ -259,78 +415,9 @@ export const LocalBashBackend: BashBackend = {
       scheduleMetadata()
     }
 
-    // ── Synchronous sandboxed execution via unified sandbox path ──
-    // executeAsync handles env allowlist, timeout, output cap, signal,
-    // sandbox denial detection, and temp cleanup — all in one call.
-    if (sandboxWrapper && !sandboxWrapper.skipReason && !params.background && !params.yieldSeconds) {
-      try {
-        await trace("bash.sandbox.execute.start", {
-          command: sandboxWrapper.command,
-          args: sandboxWrapper.args,
-        })
-        const result = await SandboxBackend.executeAsync(sandboxWrapper, {
-          fallbackPolicy: sandboxFallback ?? "warn",
-          env: sandboxEnv,
-          cwd,
-          signal: ctx.abort,
-          timeoutMs: ToolTimeout.DEFAULTS.bashHardCeilingMs, // 60-minute hard ceiling
-          maxOutputBytes: 1024 * 1024, // 1 MB
-          onStdout: append,
-          onStderr: append,
-        })
-        await trace("bash.sandbox.execute.end", {
-          exitCode: result.exitCode,
-          timedOut: result.timedOut,
-          outputChars: regProc.output.length,
-        })
-
-        if (metadataDirty) flushMetadata()
-
-        if (ctx.abort.aborted || result.timedOut) {
-          const abortReason = deriveAbortReason(ctx.abort.reason)
-          const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
-          ProcessRegistry.remove(regProc.id)
-          return {
-            title: params.description,
-            metadata: {
-              output: truncateMetadataOutput(regProc.output + abortTag),
-              exit: result.exitCode,
-              description: params.description,
-              backend: "local",
-            },
-            output: warnOutput(regProc.output + abortTag),
-          }
-        }
-
-        ProcessRegistry.remove(regProc.id)
-        return withArtifacts({
-          title: params.description,
-          metadata: {
-            output: truncateMetadataOutput(regProc.output),
-            exit: result.exitCode,
-            description: params.description,
-            backend: "local",
-          },
-          output: warnOutput(regProc.output),
-        })
-      } catch (e: unknown) {
-        ProcessRegistry.remove(regProc.id)
-        await trace(
-          "bash.sandbox.execute.error",
-          {
-            error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
-          },
-          "error",
-        )
-        if (e instanceof EnforcementError.SandboxBlocked) throw e
-        throw e
-      }
-    }
-
     let child: ReturnType<typeof spawn>
     try {
       if (sandboxWrapper && !sandboxWrapper.skipReason) {
-        // Sandboxed path: use allowlisted env
         child = spawn(sandboxWrapper.command, sandboxWrapper.args, {
           cwd,
           env: sandboxEnv,
@@ -338,7 +425,6 @@ export const LocalBashBackend: BashBackend = {
           detached: process.platform !== "win32",
         })
       } else {
-        // Unsandboxed path: check for deny policy on skip
         if (sandboxWrapper?.skipReason && sandboxFallback === "deny") {
           throw new Error(`Sandbox required but unavailable: ${sandboxWrapper.skipReason}`)
         }
@@ -348,7 +434,7 @@ export const LocalBashBackend: BashBackend = {
             fallback: sandboxFallback,
           })
         }
-        child = spawn(params.command, {
+        child = spawn(executionCommand, {
           shell,
           cwd,
           env: sandboxEnv,
@@ -358,43 +444,86 @@ export const LocalBashBackend: BashBackend = {
       }
     } catch (e: unknown) {
       ProcessRegistry.remove(regProc.id)
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       await trace(
         "bash.child.error",
         {
-          error: e instanceof Error ? { name: e.name, message: e.message, stack: e.stack } : String(e),
+          error: ObservabilityRedaction.errorInfo(e),
         },
         "error",
       )
       throw e
     }
+
     let aborted = false
+    let timedOut = false
+    let timeoutMarkerAdded = false
+    let hardCeilingReached = false
     let exited = false
-    let yielded = false
     let childError: Error | undefined
     let resolveChildFinished: (result: "exited" | "error") => void = () => {}
     const childFinished = new Promise<"exited" | "error">((resolve) => {
       resolveChildFinished = resolve
     })
+
+    const appendTimeoutMarker = (message: string) => {
+      if (timeoutMarkerAdded) return
+      timeoutMarkerAdded = true
+      ProcessRegistry.appendOutput(regProc, `\n\n<bash_metadata>\n${message}\n</bash_metadata>`)
+      scheduleMetadata()
+    }
+
+    const kill = () => Shell.killTree(child, { exited: () => exited })
+
+    let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
+    let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
+    let autoBackgroundTimer: ReturnType<typeof setTimeout> | undefined
+    let resolveTimeout: (() => void) | undefined
+    const commandTimeout = new Promise<"timeout">((resolve) => {
+      resolveTimeout = () => resolve("timeout")
+    })
+
+    const cleanupForegroundWait = () => {
+      if (autoBackgroundTimer) {
+        clearTimeout(autoBackgroundTimer)
+        autoBackgroundTimer = undefined
+      }
+      ctx.abort.removeEventListener("abort", abortHandler)
+    }
+
+    const cleanupAllTimers = () => {
+      cleanupForegroundWait()
+      if (hardCeilingTimer) {
+        clearTimeout(hardCeilingTimer)
+        hardCeilingTimer = undefined
+      }
+      if (commandTimeoutTimer) {
+        clearTimeout(commandTimeoutTimer)
+        commandTimeoutTimer = undefined
+      }
+    }
+
+    const timeoutMessage = () =>
+      hardCeilingReached
+        ? "The command was interrupted: bash hard ceiling timed out."
+        : `The command was interrupted: command timed out after ${params.timeoutSeconds}s.`
+
     child.once("error", (error) => {
       childError = error
       exited = true
+      cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       void trace(
         "bash.child.error",
         {
-          error: { name: error.name, message: error.message, stack: error.stack },
+          error: ObservabilityRedaction.errorInfo(error),
         },
         "error",
       )
       resolveChildFinished("error")
     })
-    // Wire the spawned child into the existing ProcessRegistry entry
+
     regProc.child = child
     regProc.stdin = child.stdin ?? undefined
     regProc.pid = child.pid
@@ -404,138 +533,145 @@ export const LocalBashBackend: BashBackend = {
 
     child.once("exit", (code, signal) => {
       exited = true
+      cleanupAllTimers()
       if (metadataDirty) flushMetadata()
-      if (params.background || regProc.backgrounded) {
-        ProcessRegistry.markExited(regProc, code, signal)
+      const exitSignal = timedOut ? "SIGTERM" : signal
+      if (regProc.backgrounded) {
+        ProcessRegistry.markExited(regProc, code, exitSignal)
+      } else if (backgroundAfterSeconds > 0) {
+        // Process finished before the auto-background timer fired; still
+        // persist through markExited so tests and callers can find it.
+        ProcessRegistry.markExited(regProc, code, exitSignal)
       } else {
         ProcessRegistry.remove(regProc.id)
       }
-      if (sandboxWrapper?.tempPath) {
-        SandboxBackend.cleanupTemp(sandboxWrapper.tempPath)
-      }
+      cleanupExecutionArtifacts()
       void trace("bash.child.exit", {
         exitCode: code,
         exitSignal: signal,
-        outputChars: regProc?.output.length ?? 0,
+        outputChars: ProcessRegistry.outputChars(regProc),
       })
       resolveChildFinished("exited")
     })
 
+    const backgroundAfterSeconds = params.backgroundAfterSeconds ?? 30
+
     await trace("process.spawn", {
       processId: regProc.id,
       pid: child.pid,
-      command: params.command,
+      command: ObservabilityRedaction.commandSummary(params.command),
       sandboxed: Boolean(sandboxWrapper && !sandboxWrapper.skipReason),
-      background: params.background === true,
-      yieldSeconds: params.yieldSeconds,
+      backgroundAfterSeconds,
+      timeoutSeconds: params.timeoutSeconds,
     })
     if (childError) throw childError
 
-    if (params.background) {
-      ProcessRegistry.markBackgrounded(regProc)
-      return {
-        title: `[Background] ${params.description}`,
-        metadata: {
-          output: "",
-          description: params.description,
-          processId: regProc.id,
-          background: true,
-          backend: "local",
-        },
-        output: warnOutput(
-          `Command started in background.\n\n` +
-            `Process ID: ${regProc.id}\n` +
-            `Command: ${params.command}\n` +
-            `Status: running\n\n` +
-            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
-        ),
-      }
+    hardCeilingTimer = setTimeout(() => {
+      if (exited) return
+      hardCeilingReached = true
+      timedOut = true
+      log.warn("bash hard ceiling reached, killing", { description: params.description })
+      appendTimeoutMarker(timeoutMessage())
+      void kill()
+      resolveTimeout?.()
+    }, ToolTimeout.DEFAULTS.bashHardCeilingMs)
+
+    if (params.timeoutSeconds !== undefined) {
+      commandTimeoutTimer = setTimeout(() => {
+        if (exited) return
+        timedOut = true
+        appendTimeoutMarker(timeoutMessage())
+        void trace("bash.command.timeout", {
+          timeoutSeconds: params.timeoutSeconds,
+        })
+        void kill()
+        resolveTimeout?.()
+      }, params.timeoutSeconds * 1000)
     }
-
-    const HARD_BASH_CEILING_MS = ToolTimeout.DEFAULTS.bashHardCeilingMs // 60 minutes absolute hard limit
-
-    const kill = () => Shell.killTree(child, { exited: () => exited })
-
-    const hardCeilingTimer = setTimeout(() => {
-      if (!exited && !yielded) {
-        log.warn("bash hard ceiling reached, killing", { description: params.description })
-        kill()
-      }
-    }, HARD_BASH_CEILING_MS)
 
     if (ctx.abort.aborted) {
       aborted = true
-      clearTimeout(hardCeilingTimer)
+      cleanupAllTimers()
       await kill()
     }
 
-    const abortHandler = () => {
+    function abortHandler() {
       aborted = true
-      clearTimeout(hardCeilingTimer)
+      cleanupAllTimers()
       void kill()
+      setTimeout(() => {
+        if (!exited && regProc) {
+          regProc.exited = true
+          ProcessRegistry.markExited(regProc, -1, "SIGKILL")
+        }
+      }, 30_000)
     }
 
     ctx.abort.addEventListener("abort", abortHandler, { once: true })
 
-    const yieldS = params.yieldSeconds
-    const yieldResult = await new Promise<"exited" | "yielded" | "error">((resolve, reject) => {
-      const yieldTimer = yieldS
-        ? setTimeout(() => {
-            yielded = true
-            resolve("yielded")
-          }, yieldS * 1000)
-        : undefined
-
-      const cleanup = () => {
-        clearTimeout(hardCeilingTimer)
-        if (yieldTimer) clearTimeout(yieldTimer)
-        ctx.abort.removeEventListener("abort", abortHandler)
-      }
-
-      if (childError) {
-        cleanup()
-        reject(childError)
-        return
-      }
-      childFinished.then((result) => {
-        cleanup()
-        if (result === "error") {
-          reject(childError ?? new Error("Bash child process failed"))
-          return
-        }
-        resolve("exited")
-      })
+    const autoBackground = new Promise<"background">((resolve) => {
+      if (backgroundAfterSeconds <= 0) return
+      autoBackgroundTimer = setTimeout(() => {
+        if (!exited) resolve("background")
+      }, backgroundAfterSeconds * 1000)
     })
 
-    if (yieldResult === "yielded") {
-      ProcessRegistry.markBackgrounded(regProc)
-      return {
-        title: `[Auto-Background] ${params.description}`,
-        metadata: {
-          output: truncateMetadataOutput(regProc.output),
-          description: params.description,
-          processId: regProc.id,
-          background: true,
-          backend: "local",
-        },
-        output: warnOutput(
-          `Command auto-backgrounded after ${yieldS}s.\n\n` +
-            `Process ID: ${regProc.id}\n` +
-            `Command: ${params.command}\n` +
-            `Status: running\n\n` +
-            `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
-            `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
-            `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
-            `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
-        ),
+    const waitResult = await Promise.race([childFinished.then((result) => result), autoBackground, commandTimeout])
+
+    if (waitResult === "error") {
+      throw childError ?? new Error("Bash child process failed")
+    }
+
+    if (waitResult === "timeout") {
+      cleanupForegroundWait()
+      await childFinished
+    }
+
+    if (waitResult === "background") {
+      cleanupForegroundWait()
+      if (!exited) {
+        ProcessRegistry.markBackgrounded(regProc)
+        return {
+          title: `[Auto-Background] ${params.description}`,
+          metadata: {
+            output: truncateMetadataOutput(regProc.output),
+            description: params.description,
+            processId: regProc.id,
+            background: true,
+            backend: "local",
+          },
+          output: warnOutput(
+            `Command auto-backgrounded after ${backgroundAfterSeconds}s.\n\n` +
+              `Process ID: ${regProc.id}\n` +
+              `Command: ${params.command}\n` +
+              `Status: running\n\n` +
+              `Recent output:\n${regProc.tail || "(no output yet)"}\n\n` +
+              `Use \`process(action: "log", processId: "${regProc.id}")\` to get current output (non-blocking).\n` +
+              `Use \`process(action: "poll", processId: "${regProc.id}")\` to check status.\n` +
+              `Use \`process(action: "kill", processId: "${regProc.id}")\` to terminate.`,
+          ),
+        }
       }
     }
+
+    cleanupAllTimers()
 
     const output = regProc.output
     const abortReason = deriveAbortReason(ctx.abort.reason)
     const abortTag = `\n\n<bash_metadata>\n${abortReason}\n</bash_metadata>`
+    if (timedOut) {
+      return {
+        title: params.description,
+        metadata: {
+          output: truncateMetadataOutput(output),
+          exit: child.exitCode,
+          description: params.description,
+          backend: "local",
+        },
+        output: warnOutput(output),
+      }
+    }
+
     if (aborted) {
       return {
         title: params.description,
@@ -549,7 +685,7 @@ export const LocalBashBackend: BashBackend = {
       }
     }
 
-    return withArtifacts({
+    return withAttachments({
       title: params.description,
       metadata: {
         output: truncateMetadataOutput(output),

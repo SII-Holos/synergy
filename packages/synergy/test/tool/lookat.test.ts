@@ -18,6 +18,15 @@ const ctx = {
   ask: async () => {},
 }
 
+type InvokePart = {
+  type: string
+  filename?: string
+  mime?: string
+  model?: {
+    mode: string
+  }
+}
+
 // Custom error to signal that the test reached the AI call point
 class MockAICallError extends Error {
   constructor() {
@@ -178,7 +187,7 @@ describe("tool.look_at", () => {
       const originalAgentGet = Agent.get
       const originalGetAvailableModel = Agent.getAvailableModel
       const originalCancel = SessionInvoke.cancel
-      let invokeParts: Array<{ type: string; filename?: string }> = []
+      let invokeParts: InvokePart[] = []
 
       ;(Agent.get as any) = mock(async () => ({ name: "multimodal-looker" }))
       ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test", modelID: "model" }))
@@ -186,7 +195,7 @@ describe("tool.look_at", () => {
         sessionCreateCalls.push(input)
         return { id: "ses_batch" }
       })
-      ;(SessionInvoke.invoke as any) = mock(async (input: { parts?: Array<{ type: string; filename?: string }> }) => {
+      ;(SessionInvoke.invoke as any) = mock(async (input: { parts?: InvokePart[] }) => {
         invokeParts = input.parts ?? []
         return { parts: [{ type: "text", text: "## a.png\n...\n\n## b.png\n...\n\n## c.png\n..." }] }
       })
@@ -208,12 +217,18 @@ describe("tool.look_at", () => {
             // Exactly one session was created
             expect(sessionCreateCalls).toHaveLength(1)
 
-            // It contains one text part + three file parts
+            // It contains one text part + three provider-file attachment parts
             const textParts = invokeParts.filter((p) => p.type === "text")
-            const fileParts = invokeParts.filter((p) => p.type === "file")
+            const attachmentParts = invokeParts.filter((p) => p.type === "attachment")
             expect(textParts).toHaveLength(1)
-            expect(fileParts).toHaveLength(3)
-            expect(fileParts.map((p) => p.filename)).toEqual(["a.png", "b.png", "c.png"])
+            expect(attachmentParts).toHaveLength(3)
+            expect(attachmentParts.map((p) => p.filename)).toEqual(["a.png", "b.png", "c.png"])
+            expect(attachmentParts.map((p) => p.mime)).toEqual(["image/png", "image/png", "image/png"])
+            expect(attachmentParts.map((p) => p.model?.mode)).toEqual([
+              "provider-file",
+              "provider-file",
+              "provider-file",
+            ])
 
             expect(result.title).toBe("Analyzed 3 files")
             expect(result.output).toContain("## a.png")

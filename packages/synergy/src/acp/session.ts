@@ -1,9 +1,13 @@
 import { RequestError, type McpServer } from "@agentclientprotocol/sdk"
 import type { ACPSessionState } from "./types"
 import { Log } from "@/util/log"
-import type { SynergyClient } from "@ericsanchezok/synergy-sdk"
+import type { ControlProfileId, SynergyClient } from "@ericsanchezok/synergy-sdk"
 
 const log = Log.create({ service: "acp-session-manager" })
+
+function isControlProfileId(value: string | undefined): value is ControlProfileId {
+  return value === "guarded" || value === "autonomous" || value === "full_access"
+}
 
 export class ACPSessionManager {
   private sessions = new Map<string, ACPSessionState>()
@@ -13,12 +17,25 @@ export class ACPSessionManager {
     this.sdk = sdk
   }
 
+  private async effectiveControlProfile(directory: string): Promise<ControlProfileId | undefined> {
+    return this.sdk.controlProfile
+      .effective({ directory })
+      .then((result) => {
+        const profile = result.data?.profileId
+        return isControlProfileId(profile) ? profile : undefined
+      })
+      .catch(() => undefined)
+  }
+
   async create(cwd: string, mcpServers: McpServer[], model?: ACPSessionState["model"]): Promise<ACPSessionState> {
+    const controlProfile = await this.effectiveControlProfile(cwd)
     const session = await this.sdk.session
       .create(
         {
           title: `ACP Session ${crypto.randomUUID()}`,
           directory: cwd,
+          workspace: { mode: "current" },
+          ...(controlProfile ? { controlProfile } : {}),
         },
         { throwOnError: true },
       )

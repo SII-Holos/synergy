@@ -16,9 +16,10 @@ import { Plugin } from "../plugin"
 import MAX_STEPS from "./prompt/max-steps.txt"
 import CORTEX_REMINDER from "./prompt/cortex-reminder.txt"
 import PLANNING_REMINDER from "./prompt/planning-reminder.txt"
-import PLAN_MODE from "./prompt/plan-mode.txt"
-import PLAN_MODE_SYNERGY from "./prompt/plan-mode-synergy.txt"
-import PLAN_MODE_SYNERGY_MAX from "./prompt/plan-mode-synergy-max.txt"
+import PLAN from "./prompt/plan.txt"
+import PLAN_SYNERGY from "./prompt/plan-synergy.txt"
+import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
+import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
 import { $ } from "bun"
@@ -27,20 +28,30 @@ import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
+import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionMemoryIncident } from "./memory-incident"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
+import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
+import { SessionMessageCache } from "./message-cache"
+import { LLMTurnMemory } from "./llm-memory"
 import { SessionInbox } from "./inbox"
+import { SessionHistory } from "./history"
 import { TimeoutConfig } from "@/util/timeout-config"
 import { ToolResolver } from "./tool-resolver"
 import { PromptBudgeter } from "./prompt-budgeter"
+import { ContextUsage } from "./context-usage"
 import { PermissionNext } from "@/permission/next"
 import { ControlProfileCompiler } from "@/control-profile/compiler"
 import { buildPermissionContext } from "./permission-context"
 import { Config } from "@/config/config"
+import { pluginTaskSnapshotFromSession } from "@/cortex/plugin-task"
+import { Observability } from "@/observability"
 import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
+import * as SessionWorking from "./working"
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
@@ -57,13 +68,20 @@ import { ScopeContext } from "../scope/context"
 import { Scope } from "@/scope"
 import { LoopJob } from "./loop-job"
 import "./loop-signals"
-import { BlueprintContinuation } from "./blueprint-continuation"
+import { ContinuationKernel } from "./continuation-kernel"
+import { LatticeBridge } from "../lattice/bridge"
+import { LatticeStore } from "../lattice/store"
+import { LatticePrompt } from "../lattice/prompt"
+import { LatticeModelCalls } from "../lattice/model-calls"
 import "../library/chronicler"
 import { ExperienceEncoder } from "../library/experience-encoder"
 import { GitHealth } from "../project/git-health"
 import { BlueprintLoopStore } from "../blueprint/loop-store"
-import { PlanModeUserWrapper } from "./plan-mode-user-wrapper"
+import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import { ObservabilitySpans } from "@/observability/spans"
+import { ObservabilityContext } from "@/observability/context"
+import { SkillPaths } from "@/skill/paths"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -73,40 +91,53 @@ globalThis.AI_SDK_LOG_WARNINGS = false
 export namespace SessionInvoke {
   const log = Log.create({ service: "session.invoke" })
   const ephemeralToolsByMessage = new Map<string, ToolResolver.EphemeralTool[]>()
+  const maxOutputTokensByMessage = new Map<string, number>()
 
   async function commandRuntime() {
     return (await import("../command/command")).Command
   }
 
-  SessionManager.onMailboxReady(async (sessionID) => {
-    await processMailbox(sessionID)
-  })
-
-  export const assertIdle = SessionManager.assertIdle
+  export function assertIdle(sessionID: string) {
+    return SessionManager.assertIdle(sessionID)
+  }
   export function cancel(sessionID: string) {
     log.info("cancel", { sessionID })
     evictRecallCache(sessionID)
-
-    // Clean up all pending PermissionNext entries for this session before
-    // releasing the runtime. Otherwise the promises block forever and the
-    // entries remain in the pending map as orphans.
     PermissionNext.clearForSession(sessionID).catch((err) => {
       log.error("permission cleanup failed", { sessionID, error: err })
     })
-
     SessionManager.signalAbort(sessionID)
+  }
+
+  /**
+   * Repair persisted abort state and synchronize status when no live loop owns
+   * the session. Lifecycle idle remains owned by SessionManager.release().
+   *
+   * @returns Whether an incomplete assistant message was repaired.
+   */
+  export async function repairAfterAbort(sessionID: string): Promise<boolean> {
+    const repaired = await repairIncompleteAssistant(sessionID).catch((err) => {
+      log.error("assistant repair after abort failed", { sessionID, error: err })
+      return false
+    })
+    if (!repaired || SessionManager.isRunning(sessionID)) return repaired
+    if (await SessionWorking.resolve(sessionID)) return repaired
+    await SessionManager.publishStatusOnly(sessionID, { type: "idle" })
+    return repaired
   }
 
   type InternalInvokeInput = InvokeInput & {
     ephemeralTools?: ToolResolver.EphemeralTool[]
+    maxOutputTokens?: number
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
-    return SessionManager.run(input.sessionID, async () => {
+    return SessionManager.run(input.sessionID, async (lease) => {
       const message = await createUserMessage(input)
       if (input.ephemeralTools?.length) {
         ephemeralToolsByMessage.set(message.info.id, input.ephemeralTools)
       }
+      if (input.maxOutputTokens) maxOutputTokensByMessage.set(message.info.id, input.maxOutputTokens)
 
       await Session.update(input.sessionID, (draft) => {
         draft.pendingReply = input.noReply !== true || undefined
@@ -114,13 +145,20 @@ export namespace SessionInvoke {
 
       if (input.noReply === true) {
         ephemeralToolsByMessage.delete(message.info.id)
+        maxOutputTokensByMessage.delete(message.info.id)
         return message
       }
 
       try {
-        return await loop(input.sessionID)
+        return await loopBodyWithIncident(input.sessionID, lease)
+      } catch (error) {
+        await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
+          log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
+        })
+        throw error
       } finally {
         ephemeralToolsByMessage.delete(message.info.id)
+        maxOutputTokensByMessage.delete(message.info.id)
       }
     })
   }
@@ -129,122 +167,6 @@ export namespace SessionInvoke {
 
   export async function invokeInternal(input: InternalInvokeInput) {
     return invokeWithInternalTools(input)
-  }
-
-  async function processMailbox(sessionID: string): Promise<void> {
-    const runtimeMails = SessionManager.drainAllMails(sessionID)
-    const inboxItems = await SessionInbox.drainReady(sessionID)
-    const inboxIDs = new Set(inboxItems.map((item) => item.id))
-    const legacyMails = runtimeMails.filter((mail) => !mail.inboxItemID || !inboxIDs.has(mail.inboxItemID))
-
-    const inboxResult = await materializeInboxItems(sessionID, inboxItems)
-    const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-    const needsReply = inboxResult.needsReply || legacyResult.needsReply
-
-    await Session.update(sessionID, (draft) => {
-      draft.pendingReply = needsReply || undefined
-    })
-
-    if (needsReply) {
-      await loop(sessionID)
-    }
-  }
-
-  async function materializeInboxItems(
-    sessionID: string,
-    items: SessionInbox.StoredItem[],
-    options?: { guiding?: boolean },
-  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
-    if (items.length === 0) return { needsReply: false, userMessages: [] }
-    SessionManager.discardMails(
-      sessionID,
-      items.map((item) => item.id),
-    )
-
-    let needsReply = false
-    const userMessages: MessageV2.WithParts[] = []
-    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
-
-    for (const item of items) {
-      if (item.input) {
-        const noReply = options?.guiding ? true : item.input.noReply
-        const created = await createUserMessage({
-          ...item.input,
-          sessionID,
-          noReply,
-          metadata: {
-            ...(noReply === true ? { guided: item.kind === "guiding" } : {}),
-            ...item.input.metadata,
-          },
-        })
-        userMessages.push(created)
-        if (noReply !== true) needsReply = true
-        continue
-      }
-
-      const mail = item.mail
-      if (!mail) continue
-      if (mail.type === "assistant") {
-        await writeAssistantMail(sessionID, mail)
-        continue
-      }
-
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeInboxItems: no model for mail, skipping", { sessionID, inboxItemID: item.id })
-        continue
-      }
-      const noReply = options?.guiding ? true : mail.noReply
-      const created = await createUserMessage({
-        sessionID,
-        agent: mail.agent,
-        model,
-        parts: partsFromMail(mail),
-        noReply,
-        summary: mail.summary,
-        metadata: mail.metadata,
-      })
-      userMessages.push(created)
-      if (noReply !== true) needsReply = true
-    }
-
-    return { needsReply, userMessages }
-  }
-
-  async function materializeLegacyMails(
-    sessionID: string,
-    mails: SessionManager.SessionMail[],
-  ): Promise<{ needsReply: boolean; userMessages: MessageV2.WithParts[] }> {
-    if (mails.length === 0) return { needsReply: false, userMessages: [] }
-
-    let needsReply = false
-    const userMessages: MessageV2.WithParts[] = []
-    const fallbackModel = await lastModel(sessionID).catch(() => undefined)
-
-    for (const mail of mails) {
-      if (mail.type === "assistant") {
-        await writeAssistantMail(sessionID, mail)
-        continue
-      }
-      const model = mail.model ?? fallbackModel
-      if (!model) {
-        log.warn("materializeLegacyMails: no model for mail, skipping", { sessionID })
-        continue
-      }
-      const created = await createUserMessage({
-        sessionID,
-        agent: mail.agent,
-        model,
-        parts: partsFromMail(mail),
-        noReply: mail.noReply,
-        summary: mail.summary,
-        metadata: mail.metadata,
-      })
-      userMessages.push(created)
-      if (mail.noReply !== true) needsReply = true
-    }
-
-    return { needsReply, userMessages }
   }
 
   async function recallMemory(
@@ -264,10 +186,10 @@ export namespace SessionInvoke {
         },
       )
     }
-    // Keep the recalled memory/experience in the system prompt for every step
-    // so the prefix stays stable (maximizing cache hits) and the agent retains
-    // its knowledge context across the entire trajectory, including after
-    // compaction boundaries.
+    // Keep recalled memory/experience available for every step so the agent
+    // retains its knowledge context across the entire trajectory, including
+    // after compaction boundaries. Provider layout decides whether this
+    // advisory context stays in system or moves late for cacheability.
     if (step > 1 && isTopSession) {
       return getCachedResult(sessionID)
     }
@@ -281,49 +203,85 @@ export namespace SessionInvoke {
     return undefined
   }
 
-  export const loop = fn(Identifier.schema("session"), async (sessionID) => {
-    BlueprintContinuation.init()
-    SessionManager.registerRuntime(sessionID)
-    const abort = SessionManager.acquire(sessionID)
-    if (!abort) {
+  export const loop = fn(Identifier.schema("session"), (sessionID) => {
+    const lease = SessionManager.acquire(sessionID)
+    if (!lease) {
       const runtime = SessionManager.registerRuntime(sessionID)
       return new Promise<MessageV2.WithParts>((onComplete, onCancel) => {
         runtime.waiters.push({ onComplete, onCancel })
       })
     }
+    return SessionManager.run(sessionID, (runLease) => loopBodyWithIncident(sessionID, runLease), {
+      lease,
+      requestNextWorkOnFailure: false,
+    })
+  })
 
+  async function loopBodyWithIncident(sessionID: string, lease: SessionManager.LoopLease) {
+    try {
+      return await loopBody(sessionID, lease)
+    } catch (error) {
+      if (SessionMemoryIncident.isOutOfMemory(error) && !(error instanceof MessageV2.SessionTerminalError)) {
+        await SessionMemoryIncident.capture({ error, sessionID }).catch((incidentError) => {
+          log.warn("failed to capture OOM incident", { error: incidentError })
+        })
+      }
+      throw error
+    }
+  }
+
+  async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
+    ContinuationKernel.init()
+    LatticeBridge.init()
+    const abort = lease.signal
+
+    // Open the loop-scoped message cache window (#350 D2): while this loop owns
+    // the session it is the sole writer (I1), so the assembled history can be
+    // held in memory and maintained by the loop's own writes. Dropped on exit.
+    SessionMessageCache.enable(sessionID)
     await using _ = defer(async () => {
+      SessionMessageCache.disable(sessionID)
       evictRecallCache(sessionID)
-      await SessionManager.release(sessionID)
+      if (LatticeModelCalls.peek(sessionID) > 0) {
+        await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
+      }
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)
     let step = 0
     let emergencyCompactionTriggered = false
     let session = await Session.get(sessionID)
+    SessionManager.assertExecutionContext(session, "session loop")
     let scopeID = (session.scope as Scope).id
 
     outer: while (true) {
+      let processedRootID: string | undefined
+      let previousTerminalReplyID: string | undefined
       while (true) {
         SessionManager.setStatus(sessionID, { type: "busy" })
         log.info("loop", { step, sessionID })
         if (abort.aborted) break
         session = await Session.get(sessionID)
+        SessionManager.assertExecutionContext(session, "session loop refresh")
         scopeID = (session.scope as Scope).id
         let msgs = await effectiveCompactedMessages(sessionID)
 
-        let lastUser: MessageV2.User | undefined
-        let lastUserParts: MessageV2.Part[] | undefined
+        // Find R: the latest root user message. R is the anchor for the entire
+        // loop: rootID, model, agent, system, and compaction anchor all derive
+        // from R, not from a heuristic "lastUser".
+        let R: MessageV2.User | undefined
+        let RParts: MessageV2.Part[] | undefined
         let lastFinished: MessageV2.Assistant | undefined
         let lastFinishedParts: MessageV2.Part[] | undefined
+        let lastFinishedIndex = -1
         let lastAssistant: MessageV2.Assistant | undefined
         for (let i = msgs.length - 1; i >= 0; i--) {
           const msg = msgs[i]
-          if (!lastUser && msg.info.role === "user" && MessageV2.isPromptVisible(msg)) {
+          if (msg.info.role === "user") {
             const user = msg.info as MessageV2.User
-            if (SessionProgress.isReplyRequiredUser(user)) {
-              lastUser = user
-              lastUserParts = msg.parts
+            if (user.isRoot === true && !R) {
+              R = user
+              RParts = msg.parts
             }
           }
           if (msg.info.role === "assistant") {
@@ -333,27 +291,47 @@ export namespace SessionInvoke {
             if (!lastFinished && SessionProgress.isTerminalAssistant(msg.info as MessageV2.Assistant)) {
               lastFinished = msg.info as MessageV2.Assistant
               lastFinishedParts = msg.parts
+              lastFinishedIndex = i
             }
           }
-          if (lastUser && lastFinished) break
+          if (R && lastFinished) break
         }
 
-        if (!lastUser) {
-          break
-        }
-        if (lastFinished && lastUser.id < lastFinished.id) {
+        if (!R) {
           break
         }
 
         step++
+
+        const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+
+        // Mode-based drain ①: steer items must be materialized BEFORE needsModelCall
+        // so they can trigger a model call in this iteration. Context items follow
+        // in ② after the predicate confirms a call is needed (piggyback).
+        if (!rollbackActive) {
+          const steerItems = await SessionInbox.drainSteer(sessionID)
+          if (steerItems.length > 0) {
+            log.info("drained steer items into session", { sessionID, count: steerItems.length })
+            for (const item of steerItems) {
+              const materialized = await SessionInbox.materializeItem(item, R.id, { guiding: true })
+              if (materialized) msgs.push(materialized)
+            }
+          }
+        }
+
+        if (!SessionProgress.needsModelCall(msgs, R.id)) {
+          break
+        }
+        processedRootID = R.id
+        previousTerminalReplyID = SessionProgress.findTerminalReply(msgs, R.id)?.info.id
 
         const jobCtx: LoopJob.Context = {
           session,
           sessionID,
           step,
           messages: msgs,
-          lastUser,
-          lastUserParts: lastUserParts!,
+          lastUser: R,
+          lastUserParts: RParts!,
           lastFinished,
           lastFinishedParts,
           lastAssistant,
@@ -361,12 +339,12 @@ export namespace SessionInvoke {
           compactionAutoDisabled: (await Config.current()).compaction?.auto === false,
           compactionOverflowThreshold: (await Config.current()).compaction?.overflowThreshold,
           compactionMaxHistoryImages: (await Config.current()).compaction?.maxHistoryImages ?? 8,
-          modelID: lastUser.model.modelID,
+          modelID: R.model.modelID,
           modelLimits: await Promise.all([
-            Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
+            Provider.getModel(R.model.providerID, R.model.modelID)
               .then((m) => m.limit)
               .catch(() => undefined),
-            Token.warmup(lastUser.model.modelID),
+            Token.warmup(R.model.modelID),
           ]).then(([limits]) => limits),
         }
         const firedSignals = await LoopJob.detectSignals(jobCtx)
@@ -375,31 +353,46 @@ export namespace SessionInvoke {
         if (preJobs.length > 0) {
           const result = await LoopJob.execute(preJobs, jobCtx)
           if (result === "stop") break
-          if (result === "continue") continue
+          if (result === "continue") {
+            // A processed compaction re-arms the emergency-compaction fallback so
+            // that a later overflow — from history accumulated after this
+            // compaction — can trigger it again on the same root (issue #321).
+            if (firedSignals.includes("compact")) emergencyCompactionTriggered = false
+            continue
+          }
         }
 
-        // Guiding items are user-authored steering context for the current run.
-        // They enter the next model request, but are marked noReply so they do
-        // not schedule a second assistant turn after the current response.
-        const guidingItems = await SessionInbox.drainGuiding(sessionID)
-        if (guidingItems.length > 0) {
-          const guided = await materializeInboxItems(sessionID, guidingItems, { guiding: true })
-          msgs.push(...guided.userMessages)
-          log.info("drained guiding inbox items into session", { sessionID, count: guidingItems.length })
+        // Mode-based drain ②: context items piggyback on confirmed model call.
+        // Materialized after needsModelCall is true; do NOT wake idle sessions.
+        if (!rollbackActive) {
+          const contextItems = await SessionInbox.drainContext(sessionID)
+          if (contextItems.length > 0) {
+            log.info("drained context items (piggyback)", { sessionID, count: contextItems.length })
+            for (const item of contextItems) {
+              const materialized = await SessionInbox.materializeItem(item, R.id)
+              if (materialized) msgs.push(materialized)
+            }
+          }
         }
 
-        const legacyUserMails = SessionManager.drainMails(sessionID, "user").filter((mail) => !mail.inboxItemID)
-        if (legacyUserMails.length > 0) {
-          const legacy = await materializeLegacyMails(sessionID, legacyUserMails)
-          msgs.push(...legacy.userMessages)
-          log.info("drained legacy user mails into session", { sessionID, count: legacy.userMessages.length })
-        }
-
-        const model = await Provider.getModel(lastUser.model.providerID, lastUser.model.modelID)
-
-        let agentName = lastUser.agent
+        const userModel = R.model
+        let agentName = R.agent
 
         const agent = await Agent.get(agentName)
+
+        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch(async () => {
+          log.warn("model not found, falling back to agent model", {
+            agent: agentName,
+            requested: `${userModel.providerID}/${userModel.modelID}`,
+          })
+          const agentModel = agent?.model
+          if (agentModel) {
+            return Provider.getModel(agentModel.providerID, agentModel.modelID)
+          }
+          throw new Error(
+            `Model ${userModel.providerID}/${userModel.modelID} not found and no agent fallback available`,
+          )
+        })
 
         log.info("resolved agent", {
           name: agentName,
@@ -408,11 +401,10 @@ export namespace SessionInvoke {
         })
 
         if (agent.external) {
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const adapter = ExternalAgent.getAdapter(agent.external.adapter, sessionID)
           if (!adapter) {
             log.error("external adapter not found", { adapter: agent.external.adapter, sessionID })
@@ -420,7 +412,8 @@ export namespace SessionInvoke {
           }
 
           const runConfig = applyExternalPermissionMode({ ...agent.external.config }, adapter.name, profileId)
-          const override = await resolveExternalModelOverride(lastUser.model, adapter.name)
+          const codexNativeAuth = adapter.name === "codex" && runConfig.nativeAuth === true
+          const override = codexNativeAuth ? undefined : await resolveExternalModelOverride(R.model, adapter.name)
           if (override && adapter.capabilities.modelSwitch) {
             applyModelOverride(runConfig, adapter.name, override)
           }
@@ -450,10 +443,12 @@ export namespace SessionInvoke {
             buildCortexExecutionContext(sessionID),
           ])
 
+          const instructions = [agent.prompt?.trim(), ...instructionParts].filter(Boolean).join("\n\n")
+
           const context: ExternalAgent.TurnContext = {
             sessionID,
-            prompt: MessageV2.extractText(lastUserParts!),
-            instructions: instructionParts.length > 0 ? instructionParts.join("\n\n") : undefined,
+            prompt: MessageV2.extractText(RParts!),
+            instructions: instructions ? withPreambleSection(instructions) : withPreambleSection(),
             taskContext: taskContext ?? undefined,
           }
 
@@ -463,8 +458,8 @@ export namespace SessionInvoke {
             sessionID,
             agent: agent.name,
             adapter,
-            parentID: lastUser.id,
-            model: lastUser.model,
+            parentID: R.id,
+            model: R.model,
             context,
             approvalDelegate,
             abort,
@@ -475,13 +470,15 @@ export namespace SessionInvoke {
         const maxSteps = agent.steps ?? Infinity
         const isLastStep = step >= maxSteps
 
-        const userMetadata = (lastUser.metadata ?? undefined) as Record<string, unknown> | undefined
+        const userMetadata = (R.metadata ?? undefined) as Record<string, unknown> | undefined
         const channelPush = !!(userMetadata?.mailbox || userMetadata?.channelPush)
         const toolDisplayByName = new Map<string, ToolDisplay>()
         const processor = SessionProcessor.create({
           assistantMessage: (await Session.updateMessage({
             id: Identifier.ascending("message"),
-            parentID: lastUser.id,
+            parentID: R.id,
+            rootID: R.id,
+            visible: true,
             role: "assistant",
             mode: agent.name,
             agent: agent.name,
@@ -516,12 +513,21 @@ export namespace SessionInvoke {
         // downstream mutations (reminder wrapping, plugin transforms).
         const sessionMessages = msgs.map((m) => ({ ...m, parts: [...m.parts] }))
 
-        // Ephemerally wrap queued user messages with a reminder to stay on track
+        // Ephemerally wrap non-root user-origin steer messages with a reminder.
+        // Only user-origin steer (mid-run interruptions) get wrapped; cortex/agenda
+        // steer messages carry their own structured text and should not be wrapped.
         if (step > 1 && lastFinished) {
-          for (const msg of sessionMessages) {
-            if (msg.info.role !== "user" || msg.info.id <= lastFinished.id) continue
+          for (let index = lastFinishedIndex + 1; index < sessionMessages.length; index++) {
+            const msg = sessionMessages[index]
+            if (msg.info.role !== "user") continue
+            const user = msg.info as MessageV2.User
+            const isRoot = user.isRoot === true
+            const originType = user.origin?.type
+            // Only wrap non-root user-origin messages (steer interruptions)
+            if (isRoot || (originType && originType !== "user")) continue
             msg.parts = msg.parts.map((part) => {
-              if (part.type !== "text" || part.ignored || part.synthetic) return part
+              if (part.type !== "text") return part
+              if (MessageV2.isSystemPart(part)) return part
               if (!part.text.trim()) return part
               return {
                 ...part,
@@ -538,28 +544,26 @@ export namespace SessionInvoke {
           }
         }
 
-        await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+        try {
+          await Plugin.trigger("experimental.chat.messages.transform", {}, { messages: sessionMessages })
+        } catch (error) {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          break
+        }
 
         // Launch independent async work in parallel: tool resolution, system
         // prompt assembly, cortex context, and memory recall (flashback) all
         // run concurrently to minimise time-to-first-token.
         const isTopSession = !session.parentID
 
-        const [
-          toolDefinitions,
-          [envParts, customParts],
-          cortexExecutionContext,
-          cortexReminder,
-          agendaReminder,
-          memoryResult,
-        ] = await Promise.all([
+        const turnPreparation = await Promise.all([
           ToolResolver.definitions({
             agent,
             model,
             sessionID,
             session,
-            userTools: lastUser.tools,
-            ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
+            userTools: R.tools,
+            ephemeralTools: ephemeralToolsByMessage.get(R.id),
             includeMCP: true,
           }),
           Promise.all([
@@ -570,7 +574,20 @@ export namespace SessionInvoke {
           buildCortexReminder(sessionID),
           buildAgendaReminder(sessionID, scopeID),
           recallMemory(step, sessionID, scopeID, sessionMessages, isTopSession),
-        ])
+        ]).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
+        })
+        if (!turnPreparation) break
+
+        let [
+          toolDefinitions,
+          [envParts, customParts],
+          cortexExecutionContext,
+          cortexReminder,
+          agendaReminder,
+          memoryResult,
+        ] = turnPreparation
 
         for (const def of toolDefinitions) {
           if (def.display) toolDisplayByName.set(def.id, def.display)
@@ -578,8 +595,9 @@ export namespace SessionInvoke {
 
         // Layered system prompt assembly: stable → semi-stable → dynamic
         // This ordering maximizes prompt caching by keeping static content first.
-        const systemParts: string[] = []
+        let systemParts: string[] = []
         let systemCacheBreakpoint: number | undefined
+        let lateSystemParts: string[] = []
 
         // Layer 1: Static — AGENTS.md instructions (stable within session)
         systemParts.push(...customParts)
@@ -589,17 +607,14 @@ export namespace SessionInvoke {
         try {
           const workspace = ScopeContext.current.directory
           const workspaceInfo = ScopeContext.current.workspace
-          const interaction = session?.interaction
-          const interactionMode = interaction?.mode === "unattended" ? "unattended" : "attended"
-          const topLevelProfile = await Config.current()
-            .then((c) => c.controlProfile)
-            .catch(() => undefined)
-          const sessionProfile = session?.id ? await Session.resolveControlProfile(session.id) : undefined
-          const profileId = ControlProfileCompiler.normalize(sessionProfile ?? agent.controlProfile ?? topLevelProfile)
+          const profileId = await Session.resolveEffectiveControlProfile({
+            sessionID: session?.id,
+            agentControlProfile: agent.controlProfile,
+          })
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            interactionMode,
+            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -613,22 +628,54 @@ export namespace SessionInvoke {
         // Layer 2: Semi-static — cortex context (stable during execution)
         if (cortexExecutionContext) systemParts.push(cortexExecutionContext)
 
-        // Layer 2.5: Semi-static — Plan Mode / BlueprintLoop context
+        // Layer 2.5: Semi-static workflow / BlueprintLoop context
         const sessionBlueprint = session?.blueprint
-        if (sessionBlueprint?.planMode) {
-          systemParts.push(PLAN_MODE.trim())
-          if (agent.name === "synergy") systemParts.push(PLAN_MODE_SYNERGY.trim())
-          if (agent.name === "synergy-max") systemParts.push(PLAN_MODE_SYNERGY_MAX.trim())
+        switch (session?.workflow?.kind) {
+          case "plan":
+            systemParts.push(PLAN.trim())
+            if (agent.name === "synergy") systemParts.push(PLAN_SYNERGY.trim())
+            if (agent.name === "synergy-max") systemParts.push(PLAN_SYNERGY_MAX.trim())
+            break
+          case "lattice": {
+            const latticeRun = await LatticeStore.getOrUndefined(scopeID, sessionID).catch(() => undefined)
+            if (latticeRun && latticeRun.status === "active") {
+              systemParts.push(LatticePrompt.build(session, latticeRun))
+            }
+            break
+          }
+          case "lightloop":
+            systemParts.push(`<light-loop-context>
+You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
+
+Task: ${session.workflow.instructions}
+
+Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
+- Have you produced all requested deliverables, artifacts, or changes?
+- Have you verified correctness with appropriate evidence (tests, manual checks, tool output)?
+- Are there any remaining gaps, edge cases, or follow-up work implied by the task?
+
+If the task is NOT fully complete, continue working now.
+If the task IS fully complete and verified, call loop_stop() to request a completion review.
+Do not stop early, do not pretend the task is complete, and do not hide missing verification from the user.
+loop_stop() does not end the Light Loop directly — a reviewer will audit your work first.
+</light-loop-context>`)
+            break
         }
         if (sessionBlueprint?.loopID) {
           const loop = await BlueprintLoopStore.get(scopeID, sessionBlueprint.loopID).catch(() => undefined)
           if (loop) {
             const isAuditSession = sessionBlueprint.loopRole === "audit" || session?.id === loop.auditSessionID
             const loopInstruction = isAuditSession
-              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"], inspect the execution evidence, and decide whether the Blueprint outcome is complete. If changes are required, call blueprint_loop_restart({ loopID: "${loop.id}", reason: "...", completed: "...", remaining: "...", instructions: "..." }). If complete, call blueprint_loop_finish({ loopID: "${loop.id}", status: "completed", summary: "..." }).`
+              ? `You are auditing this BlueprintLoop. Read the Blueprint note with note_read ids=["${loop.noteID}"] and audit the start user instruction when present. Inspect the execution evidence and decide whether the Blueprint outcome is complete. If changes are required, call blueprint_loop_reject with sessionID "${loop.sessionID}" and structured reason, completed, remaining, and instructions fields. If complete, call blueprint_loop_approve with sessionID "${loop.sessionID}" and a verdict summary.`
               : agent.name === "synergy-max"
-                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
-                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_finish({ loopID: "${loop.id}", status: "auditing", summary: "..." }).`
+                ? `You are executing this coding BlueprintLoop. Before editing code, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. Continue until the Blueprint is fully implemented and verified. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence.`
+                : `You are executing this BlueprintLoop. Before carrying out the Blueprint, call note_read with ids=["${loop.noteID}"] and read the full Blueprint content. Satisfy both the Blueprint note and any start user instruction before requesting audit. Continue until the requested outcome is fully delivered. When ready for audit, call blueprint_loop_stop with a summary and concrete completion evidence.`
+            const startUserInstruction = loop.userPrompt
+              ? [
+                  `Start user instruction: ${loop.userPrompt}`,
+                  `This start user instruction is run-specific contract for execution and audit.`,
+                ]
+              : []
             systemParts.push(
               [
                 "<blueprint-loop-context>",
@@ -638,6 +685,7 @@ export namespace SessionInvoke {
                 `Title: ${loop.title}`,
                 `Description: ${loop.description ?? "N/A"}`,
                 `Status: ${loop.status}`,
+                ...startUserInstruction,
                 "",
                 loopInstruction,
                 "</blueprint-loop-context>",
@@ -646,53 +694,71 @@ export namespace SessionInvoke {
           }
         }
 
-        // Layer 3: Dynamic — memory/experience context (varies per step)
+        // Layer 3: Dynamic advisory context — loop-stable memory/experience, volatile across turns
         if (memoryResult) {
-          systemParts.push(memoryResult.context)
+          lateSystemParts.push(memoryResult.context)
           if (step === 1) cacheResult(sessionID, memoryResult)
           const { injection } = memoryResult
-          if ((injection.memory || injection.experience) && !lastUser.metadata?.injectedContext) {
+          if ((injection.memory || injection.experience) && !R.metadata?.injectedContext) {
             const updated = await Session.mergeMessageMetadata({
               sessionID,
-              messageID: lastUser.id,
+              messageID: R.id,
               metadata: { injectedContext: injection },
             })
-            if (updated?.role === "user") lastUser = updated
+            if (updated?.role === "user") R = updated
           }
         }
 
-        // Layer 4: Dynamic — environment block (contains timestamp, changes per invoke)
-        systemParts.push(...envParts)
+        // Layer 4: Dynamic advisory context — environment block (contains timestamp, changes per invoke)
+        lateSystemParts.push(...envParts)
 
-        // Layer 4.5: Dynamic — git health diagnostics (warns about uncommitted changes, large files, etc.)
+        // Layer 4.5: Dynamic advisory context — git health diagnostics (warns about uncommitted changes, large files, etc.)
         const gitHealthBlock = GitHealth.injectCached(ScopeContext.current.directory)
-        if (gitHealthBlock) systemParts.push(gitHealthBlock)
+        if (gitHealthBlock) lateSystemParts.push(gitHealthBlock)
 
-        // Layer 5: Dynamic — upcoming agenda wake-ups (always at the end)
-        if (agendaReminder) systemParts.push(agendaReminder)
+        // Layer 4.55: Configurable advisory context — git commit coauthor footer reminder
+        if ((await Config.current()).experimental?.coauthor_reminder !== false) {
+          lateSystemParts.push(`<coauthor-reminder>\n${COAUTHOR_REMINDER.trim()}\n</coauthor-reminder>`)
+        }
 
-        // Layer 6: Dynamic — cortex reminders and time context (always at the end)
-        if (cortexReminder) systemParts.push(cortexReminder)
+        // Layer 5: Dynamic advisory context — upcoming agenda wake-ups
+        if (agendaReminder) lateSystemParts.push(agendaReminder)
 
-        // Layer 7: Dynamic — planning reminder when agent self-executes without a DAG
+        // Layer 6: Dynamic advisory context — cortex reminders and time context
+        if (cortexReminder) lateSystemParts.push(cortexReminder)
+
+        // Layer 7: Dynamic advisory context — planning reminder when agent self-executes without a DAG
         const planningReminder = await buildPlanningReminder(sessionID, agent, sessionMessages)
-        if (planningReminder) systemParts.push(planningReminder)
+        if (planningReminder) lateSystemParts.push(planningReminder)
 
         if (step === 1 && lastFinished?.time.completed) {
-          const elapsed = lastUser.time.created - lastFinished.time.completed
+          const elapsed = R.time.created - lastFinished.time.completed
           if (elapsed > 0) {
-            systemParts.push(
+            lateSystemParts.push(
               `<time-context>\nTime since your last response: ${formatElapsed(elapsed)}\n</time-context>`,
             )
           }
         }
-        const modelSessionMessages = PlanModeUserWrapper.projectMessages({
+        using memoryTurn = LLMTurnMemory.begin({
+          sessionID,
+          messageID: processor.message.id,
+          providerID: model.providerID,
+          modelID: model.id,
+          historyBeforeBytes: LLMTurnMemory.estimateBytes(sessionMessages),
+          baseline: SessionMemoryPressure.currentSnapshot(),
+        })
+        await memoryTurn.stabilizeBeforeProjection()
+        let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
           agent,
         })
-        const preparedMessages = [
-          ...MessageV2.toModelMessage(modelSessionMessages, { maxHistoryImages: jobCtx.compactionMaxHistoryImages }),
+        const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
+          maxHistoryImages: jobCtx.compactionMaxHistoryImages,
+        })
+        memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
+        let preparedMessages = [
+          ...modelProjection.messages,
           ...(isLastStep
             ? [
                 {
@@ -704,26 +770,38 @@ export namespace SessionInvoke {
         ]
 
         const promptPlanTimer = log.time("promptBudgeter.buildPlan")
-        const promptPlan = await PromptBudgeter.buildPlan({
+        let promptPlan = await PromptBudgeter.buildPlan({
+          sessionID,
+          agent: agent.name,
+          messageID: R.id,
           model,
           system: systemParts,
           systemCacheBreakpoint,
           messages: preparedMessages,
+          lateSystem: lateSystemParts,
           toolDefinitions,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         promptPlanTimer.stop()
+        if (!promptPlan) break
 
         const calibration = buildCalibration(msgs)
         const promptDecideTimer = log.time("promptBudgeter.decide")
-        const promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
+        let promptDecision = await PromptBudgeter.decide(promptPlan, model.limit, model.id, {
           overflowThreshold: jobCtx.compactionOverflowThreshold,
           calibration,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         promptDecideTimer.stop()
+        if (!promptDecision) break
 
         if (
           !jobCtx.compactionAutoDisabled &&
-          !jobCtx.lastUserParts.some((part) => part.type === "compaction") &&
+          !SessionCompaction.hasPendingCompaction(RParts!, msgs, R.id) &&
           promptDecision.shouldCompact
         ) {
           log.info("prompt budget exceeded, injecting compaction", {
@@ -734,70 +812,242 @@ export namespace SessionInvoke {
           })
           await Session.updatePart({
             id: Identifier.ascending("part"),
-            messageID: lastUser.id,
+            messageID: R.id,
             sessionID,
             type: "compaction",
             auto: true,
           })
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptPlan = undefined
+          promptDecision = undefined
           continue
         }
 
         const toolResolveTimer = log.time("toolResolver.resolve")
-        const resolvedTools = await ToolResolver.resolveWithAvailability({
+        let resolvedTools = await ToolResolver.resolveWithAvailability({
           agent,
           model,
           sessionID,
           processor,
           session,
-          userTools: lastUser.tools,
-          ephemeralTools: ephemeralToolsByMessage.get(lastUser.id),
+          userTools: R.tools,
+          ephemeralTools: ephemeralToolsByMessage.get(R.id),
           includeMCP: true,
+        }).catch(async (error) => {
+          await completeAssistantWithError({ sessionID, processor, model, error })
+          return undefined
         })
         toolResolveTimer.stop()
+        if (!resolvedTools) break
 
-        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response..." })
+        const plannedHistoryProvenance = ContextUsage.remapProvenance(
+          promptPlan.messages,
+          ContextUsage.buildProvenance({
+            history: modelProjection.provenance,
+            toolDefinitions: [],
+            instructions: isLastStep ? [MAX_STEPS] : [],
+          }),
+        )
+        const activeToolIDs = new Set(resolvedTools.activeToolIDs)
+        const activeToolDefinitions = promptPlan.toolDefinitions.filter((definition) =>
+          activeToolIDs.has(definition.id),
+        )
+        const contextUsageProvenance = ContextUsage.buildProvenance({
+          history: plannedHistoryProvenance,
+          toolDefinitions: activeToolDefinitions,
+        })
+        const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
+        memoryTurn.prepared({
+          toolSchemaBytes,
+          requestBytes: LLMTurnMemory.estimateBytes({
+            system: promptPlan.system,
+            lateSystem: promptPlan.lateSystem,
+            messages: promptPlan.messages,
+            tools: activeToolDefinitions,
+          }),
+        })
+
+        let streamInput: LLM.StreamInput | undefined
+        function releaseTurnReferences(mutateStreamInput: boolean) {
+          if (mutateStreamInput) {
+            toolDefinitions.length = 0
+            systemParts.length = 0
+            lateSystemParts.length = 0
+            modelSessionMessages.length = 0
+            modelProjection.messages.length = 0
+            for (const contributions of Object.values(modelProjection.provenance.categories)) {
+              contributions.length = 0
+            }
+            preparedMessages.length = 0
+            promptPlan?.system.splice(0)
+            promptPlan?.lateSystem?.splice(0)
+            promptPlan?.messages.splice(0)
+            promptPlan?.toolDefinitions.splice(0)
+            resolvedTools?.activeToolIDs.splice(0)
+            if (resolvedTools) {
+              for (const id of Object.keys(resolvedTools.tools)) delete resolvedTools.tools[id]
+            }
+            activeToolIDs.clear()
+            for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
+              for (const contributions of Object.values(provenance.categories)) contributions.length = 0
+            }
+            if (streamInput) {
+              streamInput.system.splice(0)
+              streamInput.lateSystem?.splice(0)
+              streamInput.messages.splice(0)
+              for (const id of Object.keys(streamInput.tools)) delete streamInput.tools[id]
+              streamInput.activeToolIDs?.splice(0)
+            }
+          }
+          toolDefinitions = []
+          systemParts = []
+          lateSystemParts = []
+          modelSessionMessages = []
+          preparedMessages = []
+          promptDecision = undefined
+          promptPlan = undefined
+          resolvedTools = undefined
+          streamInput = undefined
+        }
+
+        SessionManager.setStatus(sessionID, { type: "busy", description: "Awaiting response…" })
+        // Count LLM calls for an active Lattice run in memory; flushed to the
+        // run at turn boundaries / policy entry (never written per call).
+        if (session?.workflow?.kind === "lattice") LatticeModelCalls.record(sessionID)
         const processTimer = log.time("processor.process")
         const timeoutCfg = await TimeoutConfig.resolve()
         const turnDeadline = new AbortController()
+        const deadlineError = new DOMException(
+          "Assistant step timed out after " + timeoutCfg.invokeMs + "ms",
+          "AbortError",
+        )
+        let rejectDeadline: (error: Error) => void
+        const deadlinePromise = new Promise<never>((_, reject) => {
+          rejectDeadline = reject
+        })
+        deadlinePromise.catch(() => {})
         const turnTimer = setTimeout(() => {
-          turnDeadline.abort(new DOMException("Turn timed out after " + timeoutCfg.invokeMs + "ms", "AbortError"))
+          turnDeadline.abort(deadlineError)
+          rejectDeadline(deadlineError)
         }, timeoutCfg.invokeMs)
-        abort.addEventListener("abort", () => clearTimeout(turnTimer), { once: true })
+        const onSessionAbort = () => clearTimeout(turnTimer)
+        abort.addEventListener("abort", onSessionAbort, { once: true })
         const combinedAbort = AbortSignal.any([abort, turnDeadline.signal])
 
-        const result = await processor.process({
-          user: lastUser,
+        // Race against the deadline instead of relying on abort propagation:
+        // the processor can be stuck in an await that never observes signals
+        // (e.g. a wedged subprocess), and a signal alone cannot interrupt it.
+        const turnSpan = ObservabilitySpans.start({
+          name: "session.turn",
+          module: "session",
+          scopeID,
+          sessionID,
+          messageID: R.id,
+          attributes: { agent: agent.name, model: model.id, provider: model.providerID },
+        })
+        let turnSpanEnded = false
+        let result: Awaited<ReturnType<typeof processor.process>> = "stop"
+        streamInput = {
+          user: R,
           agent,
           abort: combinedAbort,
           sessionID,
           system: promptPlan.system,
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
+          lateSystem: promptPlan.lateSystem,
           messages: promptPlan.messages,
           tools: resolvedTools.tools,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
-        })
-        clearTimeout(turnTimer)
-        processTimer.stop()
+          contextUsageProvenance,
+          maxOutputTokens: maxOutputTokensByMessage.get(R.id),
+          memoryTurn,
+        }
+        try {
+          const currentStreamInput = streamInput
+          const process = () => Promise.race([processor.process(currentStreamInput), deadlinePromise])
+          result = turnSpan
+            ? await ObservabilityContext.withContextAsync(
+                {
+                  correlationId: turnSpan.correlationId,
+                  traceId: turnSpan.traceId,
+                  spanId: turnSpan.spanId,
+                  parentSpanId: turnSpan.parentSpanId,
+                  scopeID: turnSpan.scopeID,
+                  sessionID: turnSpan.sessionID,
+                  messageID: turnSpan.messageID,
+                  module: turnSpan.module,
+                  source: turnSpan.source,
+                },
+                process,
+              )
+            : await process()
+        } catch (error) {
+          if (error !== deadlineError) {
+            ObservabilitySpans.end(turnSpan, { status: "error", error })
+            turnSpanEnded = true
+            await completeAssistantWithError({ sessionID, processor, model, error })
+            result = "stop"
+          } else {
+            log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
+            processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+            processor.message.finish = "error"
+            processor.message.time.completed = Date.now()
+            await Session.updateMessage(processor.message)
+            Bus.publish(SessionEvent.Error, { sessionID, error: processor.message.error })
+            result = "stop"
+            ObservabilitySpans.end(turnSpan, { status: "timeout", error: deadlineError })
+            turnSpanEnded = true
+          }
+        } finally {
+          const turnTimedOut = turnDeadline.signal.aborted
+          clearTimeout(turnTimer)
+          abort.removeEventListener("abort", onSessionAbort)
+          turnDeadline.abort()
+          processTimer.stop()
+          releaseTurnReferences(!turnTimedOut)
+          if (!turnSpanEnded) {
+            ObservabilitySpans.end(turnSpan, {
+              attributes: {
+                result,
+                assistantMessageID: processor.message.id,
+                finish: processor.message.finish,
+              },
+            })
+          }
+        }
 
-        // post-LLM jobs
-        const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
-        const postCtx: LoopJob.Context = {
-          ...jobCtx,
-          messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
-          lastAssistant: processor.message,
-          lastFinished: SessionProgress.isTerminalAssistant(processor.message)
-            ? processor.message
-            : jobCtx.lastFinished,
-          lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
-            ? postParts
-            : jobCtx.lastFinishedParts,
+        let postRequestedStop = false
+        {
+          // post-LLM jobs
+          const postParts = await MessageV2.parts({ scopeID, sessionID, messageID: processor.message.id })
+          const postCtx: LoopJob.Context = {
+            ...jobCtx,
+            messages: [...jobCtx.messages, { info: processor.message, parts: postParts }],
+            lastAssistant: processor.message,
+            lastFinished: SessionProgress.isTerminalAssistant(processor.message)
+              ? processor.message
+              : jobCtx.lastFinished,
+            lastFinishedParts: SessionProgress.isTerminalAssistant(processor.message)
+              ? postParts
+              : jobCtx.lastFinishedParts,
+          }
+          const postJobs = LoopJob.collect("post", postCtx)
+          if (postJobs.length > 0) {
+            const postResult = await LoopJob.execute(postJobs, postCtx)
+            postRequestedStop = postResult === "stop"
+          }
         }
-        const postJobs = LoopJob.collect("post", postCtx)
-        if (postJobs.length > 0) {
-          const postResult = await LoopJob.execute(postJobs, postCtx)
-          if (postResult === "stop") break
-        }
+        await SessionMemoryPressure.maybeCollect({
+          sessionID,
+          messageID: processor.message.id,
+          phase: "session.turn.after_post_jobs",
+        })
+        if (postRequestedStop) break
 
         if (result === "stop") {
           // If the failure was caused by exceeding context limits, inject a
@@ -811,18 +1061,12 @@ export namespace SessionInvoke {
           ) {
             log.warn("context exceeded, injecting emergency compaction", { sessionID })
             emergencyCompactionTriggered = true
-            const emergencyUser = await Session.updateMessage({
-              id: Identifier.ascending("message"),
-              role: "user",
-              sessionID,
-              time: { created: Date.now() },
-              agent: lastUser.agent,
-              model: lastUser.model,
-              summary: { title: "Emergency compaction", diffs: [] },
-            })
+            // Attach the compaction part to R so the next iteration detects it
+            // via lastUserParts (same path as the prompt-budget trigger above)
+            // and anchors compaction on the task root.
             await Session.updatePart({
               id: Identifier.ascending("part"),
-              messageID: emergencyUser.id,
+              messageID: R.id,
               sessionID,
               type: "compaction" as const,
               auto: true,
@@ -834,34 +1078,48 @@ export namespace SessionInvoke {
         continue
       }
 
-      // Inner loop finished — drain queued user input and agent updates in the
-      // same visible Inbox order. If any item requires a reply, re-enter the loop.
-      const readyItems = await SessionInbox.drainReady(sessionID)
-      const readyResult = await materializeInboxItems(sessionID, readyItems)
-      if (readyResult.needsReply) continue outer
+      // Inner loop finished — post-turn drain.
+      // Use peek-then-commit pattern so items are never deleted before
+      // they are successfully materialized and the reply cycle completes.
+      if (abort.aborted) {
+        // Abort: discard steer/context, keep task items (no auto-start).
+        await SessionInbox.removeByMode(sessionID, ["steer", "context"])
+        break
+      }
 
-      const legacyMails = SessionManager.drainAllMails(sessionID).filter((mail) => !mail.inboxItemID)
-      const legacyResult = await materializeLegacyMails(sessionID, legacyMails)
-      if (legacyResult.needsReply) continue outer
+      if (processedRootID) {
+        const messages = await SessionHistory.modelMessages({ sessionID })
+        const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
+        if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
+          await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })
+        }
+      }
+
+      // First: try mode-based next task (drains and materializes)
+      const taskItem = await SessionInbox.nextTask(sessionID)
+      if (taskItem) {
+        log.info("next task found, materializing", { sessionID, itemID: taskItem.id })
+        await SessionInbox.materializeItem(taskItem)
+        continue outer
+      }
+
+      const rollbackActive = (await SessionHistory.storedInfo(sessionID))?.rollback?.canUnrollback === true
+      if (await SessionInbox.hasRunnableItem(sessionID, { allowSteer: !rollbackActive })) {
+        log.info("runnable inbox items detected, re-entering loop", { sessionID })
+        continue outer
+      }
       break
-    }
-
-    // Drain legacy assistant mails and write them as messages.
-    const assistantMails = SessionManager.drainMails(sessionID, "assistant").filter((mail) => !mail.inboxItemID)
-    for (const mail of assistantMails) {
-      await writeAssistantMail(sessionID, mail)
     }
 
     evictRecallCache(sessionID)
 
-    // Clear pendingReply — the loop has fully completed and the assistant has
-    // replied. Without this, a crashed/restarted server would see pendingReply=true
-    // on already-finished sessions and incorrectly mark them as pending resume.
+    // Clear pendingReply only after the loop has fully drained. Completion
+    // notices are recorded once per processed root task above.
     await Session.update(sessionID, (draft) => {
       draft.pendingReply = undefined
     })
 
-    let resultMessage = selectResultMessage(await Session.messages({ sessionID }))
+    let resultMessage = selectResultMessage(await SessionHistory.modelMessages({ sessionID }))
     if (!resultMessage) {
       resultMessage = await writeAbortedAssistantMessage(sessionID, scopeID)
     }
@@ -877,11 +1135,9 @@ export namespace SessionInvoke {
           err.data && typeof err.data === "object" && "message" in err.data ? String(err.data.message) : err.name,
       })
     }
-    for (const q of runtime.waiters) {
-      q.onComplete(resultMessage)
-    }
+    SessionManager.completeWaiters(lease, resultMessage)
     return resultMessage
-  })
+  }
 
   export function selectResultMessage(messages: MessageV2.WithParts[]): MessageV2.WithParts | undefined {
     let lastReplyRequiredUser: MessageV2.User | undefined
@@ -895,14 +1151,8 @@ export namespace SessionInvoke {
     }
 
     if (lastReplyRequiredUser) {
-      for (let index = messages.length - 1; index >= 0; index--) {
-        const msg = messages[index]
-        if (msg.info.role !== "assistant") continue
-        const assistant = msg.info as MessageV2.Assistant
-        if (assistant.parentID === lastReplyRequiredUser.id) {
-          return msg
-        }
-      }
+      const reply = SessionProgress.findTerminalReply(messages, lastReplyRequiredUser.id)
+      if (reply) return reply
     }
 
     for (let index = messages.length - 1; index >= 0; index--) {
@@ -913,10 +1163,157 @@ export namespace SessionInvoke {
 
   // --- Helpers ---
 
+  /**
+   * Repair an incomplete assistant message when abort was requested but the
+   * processor never reached the normal completion path. Marks the last assistant
+   * with time.completed, finish: "error", and an AbortedError, then clears
+   * pendingReply so working.ts no longer reports "recovering".
+   */
+  async function repairIncompleteAssistant(sessionID: string): Promise<boolean> {
+    const session = await SessionManager.getSession(sessionID)
+    if (!session) return false
+
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    let latestAssistant: MessageV2.Assistant | undefined
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].info.role === "assistant") {
+        latestAssistant = messages[i].info as MessageV2.Assistant
+        break
+      }
+    }
+    if (!latestAssistant || latestAssistant.time.completed != null) return false
+
+    log.info("repairing incomplete assistant after abort", {
+      sessionID,
+      messageID: latestAssistant.id,
+    })
+
+    const repaired: MessageV2.Assistant = {
+      ...latestAssistant,
+      time: { ...latestAssistant.time, completed: Date.now() },
+      finish: "error",
+      error: new MessageV2.AbortedError({
+        message: "Session aborted during turn — assistant response was not completed",
+      }).toObject(),
+    }
+    await Session.updateMessage(repaired)
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+    return true
+  }
+
+  async function completeAssistantWithError(input: {
+    sessionID: string
+    processor: SessionProcessor.Info
+    model: Provider.Model
+    error: unknown
+  }): Promise<void> {
+    const message = input.processor.message
+    if (message.time.completed != null) return
+
+    if (SessionMemoryIncident.isOutOfMemory(input.error)) {
+      await SessionMemoryIncident.capture({
+        error: input.error,
+        sessionID: input.sessionID,
+        messageID: message.id,
+      }).catch((incidentError) => {
+        log.warn("failed to capture OOM incident", { error: incidentError })
+      })
+    }
+
+    message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
+    message.finish = "error"
+    message.time.completed = Date.now()
+    await Session.updateMessage(message)
+    Bus.publish(SessionEvent.Error, { sessionID: input.sessionID, error: message.error })
+    Session.updateLastExchange(input.sessionID).catch((error) =>
+      log.warn("failed to update lastExchange", { sessionID: input.sessionID, error }),
+    )
+    ExperienceEncoder.onComplete(message)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID: input.sessionID,
+        userMessageID: message.parentID,
+        assistantMessageID: message.id,
+        assistant: message,
+        finish: message.finish,
+        error: message.error,
+      },
+      {},
+    ).catch((error) => {
+      log.warn("session.turn.after hook failed after turn error", { sessionID: input.sessionID, error })
+    })
+  }
+
+  async function writeErrorAssistantIfMissing(sessionID: string, user: MessageV2.User, error: unknown): Promise<void> {
+    const messages = await SessionHistory.modelMessages({ sessionID })
+    if (SessionProgress.findTerminalReply(messages, user.id)) return
+
+    const assistant = (await Session.updateMessage({
+      id: Identifier.ascending("message"),
+      parentID: user.id,
+      rootID: user.rootID ?? user.id,
+      visible: true,
+      role: "assistant",
+      mode: user.agent,
+      agent: user.agent,
+      path: {
+        cwd: ScopeContext.current.directory,
+        root: ScopeContext.current.directory,
+      },
+      cost: 0,
+      tokens: {
+        input: 0,
+        output: 0,
+        reasoning: 0,
+        cache: { read: 0, write: 0 },
+      },
+      modelID: user.model.modelID,
+      providerID: user.model.providerID,
+      time: {
+        created: Date.now(),
+        completed: Date.now(),
+      },
+      finish: "error",
+      error: MessageV2.fromError(error, { providerID: user.model.providerID }),
+      sessionID,
+    })) as MessageV2.Assistant
+
+    await Session.update(sessionID, (draft) => {
+      draft.pendingReply = undefined
+    })
+    await Session.recordCompletionNotice(sessionID, { publishEvent: false })
+    Bus.publish(SessionEvent.Error, { sessionID, error: assistant.error })
+    Session.updateLastExchange(sessionID).catch((err) =>
+      log.warn("failed to update lastExchange", { sessionID, error: err }),
+    )
+    ExperienceEncoder.onComplete(assistant)
+    await Plugin.trigger(
+      "session.turn.after",
+      {
+        sessionID,
+        userMessageID: assistant.parentID,
+        assistantMessageID: assistant.id,
+        assistant,
+        finish: assistant.finish,
+        error: assistant.error,
+      },
+      {},
+    ).catch((err) => {
+      log.warn("session.turn.after hook failed after invoke error", { sessionID, error: err })
+    })
+  }
+
   async function writeAbortedAssistantMessage(sessionID: string, scopeID: string): Promise<MessageV2.WithParts> {
+    const abortedParentID = Identifier.ascending("message")
     const assistantMessage = (await Session.updateMessage({
       id: Identifier.ascending("message"),
-      parentID: Identifier.ascending("message"),
+      parentID: abortedParentID,
+      rootID: abortedParentID,
+      visible: true,
       role: "assistant",
       mode: "unknown",
       agent: "unknown",
@@ -958,79 +1355,6 @@ export namespace SessionInvoke {
       info: assistantMessage,
       parts: await MessageV2.parts({ scopeID, sessionID, messageID: assistantMessage.id }),
     }
-  }
-
-  async function writeAssistantMail(sessionID: string, mail: SessionManager.SessionMail.Assistant): Promise<void> {
-    // Use an orphan parentID so the message is not grouped into any existing turn
-    const parentID = Identifier.ascending("message")
-
-    const assistantMessage: MessageV2.Assistant = {
-      id: Identifier.ascending("message"),
-      role: "assistant",
-      sessionID,
-      parentID,
-      agent: mail.agentID ?? "unknown",
-      mode: mail.agentID ?? "unknown",
-      path: {
-        cwd: ScopeContext.current.directory,
-        root: ScopeContext.current.directory,
-      },
-      cost: 0,
-      tokens: {
-        input: 0,
-        output: 0,
-        reasoning: 0,
-        cache: { read: 0, write: 0 },
-      },
-      modelID: mail.model?.modelID ?? "unknown",
-      providerID: mail.model?.providerID ?? "unknown",
-      time: {
-        created: Date.now(),
-        completed: Date.now(),
-      },
-      finish: "stop",
-      metadata: mail.metadata,
-    }
-    for (const part of mail.parts) {
-      await Session.updatePart({
-        ...part,
-        messageID: assistantMessage.id,
-        sessionID,
-      })
-    }
-
-    await Session.updateMessage(assistantMessage)
-    ExperienceEncoder.onComplete(assistantMessage)
-    await Plugin.trigger(
-      "session.turn.after",
-      {
-        sessionID,
-        userMessageID: assistantMessage.parentID,
-        assistantMessageID: assistantMessage.id,
-        assistant: assistantMessage,
-        finish: assistantMessage.finish,
-        error: assistantMessage.error,
-      },
-      {},
-    )
-
-    log.info("assistant mail written", {
-      sessionID,
-      messageID: assistantMessage.id,
-      metadata: JSON.stringify(assistantMessage.metadata ?? {}).slice(0, 200),
-    })
-  }
-
-  function partsFromMail(mail: SessionManager.SessionMail.User): InvokeInput["parts"] {
-    const textParts = mail.parts.filter((part): part is MessageV2.TextPart => part.type === "text")
-    if (textParts.length > 0) {
-      return textParts.map((part) => ({
-        type: "text" as const,
-        text: part.text ?? "",
-        synthetic: part.synthetic,
-      }))
-    }
-    return [{ type: "text" as const, text: "" }]
   }
 
   async function buildDagUpstreamContext(
@@ -1263,9 +1587,9 @@ export namespace SessionInvoke {
   function applyModelOverride(config: Record<string, unknown>, adapterName: string, override: ExternalModelInfo): void {
     switch (adapterName) {
       case "codex":
-        config.model = override.model
-        if (override.providerID) config.providerID = override.providerID
-        if (override.baseURL) config.baseURL = override.baseURL
+        // Codex external agent uses the native Codex/ChatGPT authentication path.
+        // It should only be exposed after the openai-codex provider is authenticated,
+        // and must not receive OpenAI-compatible baseURL/API-key overrides.
         break
       case "claude-code":
         config.model = override.model
@@ -1332,7 +1656,7 @@ export namespace SessionInvoke {
     parts: z
       .array(
         z.discriminatedUnion("type", [
-          MessageV2.FilePart.omit({
+          MessageV2.AttachmentPart.omit({
             messageID: true,
             sessionID: true,
           }).partial({
@@ -1380,6 +1704,14 @@ export namespace SessionInvoke {
       time: { created: Date.now() },
       agent: agentName,
       model: parsedModel,
+      origin: { type: "user" },
+      isRoot: true,
+      rootID: userID,
+      visible: true,
+      // Canonical context switch: action commands (promptVisible === false) are
+      // kept out of the model context. metadata.command.promptVisible is retained
+      // only as a frontend hint for action-command rendering.
+      includeInContext: command.promptVisible !== false,
       metadata,
     })
     await Session.updatePart({
@@ -1387,6 +1719,7 @@ export namespace SessionInvoke {
       messageID: user.id,
       sessionID: input.sessionID,
       type: "text",
+      origin: "user",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
     })
 
@@ -1394,6 +1727,8 @@ export namespace SessionInvoke {
       id: Identifier.ascending("message"),
       sessionID: input.sessionID,
       parentID: user.id,
+      rootID: user.id,
+      visible: true,
       role: "assistant",
       mode: agentName,
       agent: agentName,
@@ -1559,8 +1894,14 @@ export namespace SessionInvoke {
     },
   )
 
-  export async function resumePending(): Promise<void> {
-    const sessionIDs = await SessionManager.listPendingReply()
+  export async function resumePending(input?: { scopeID?: string }): Promise<void> {
+    await reconcileInterruptedCortexDelegations(input?.scopeID)
+    const { SessionRecovery } = await import("./recovery")
+    await SessionRecovery.resumePendingStopRequests(input?.scopeID)
+    const { Cortex } = await import("../cortex/manager")
+    await Cortex.reconcileParentNotifications(input?.scopeID)
+
+    const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
       const session = await SessionManager.getSession(sessionID)
       if (!session) continue
@@ -1577,17 +1918,80 @@ export namespace SessionInvoke {
 
       if (!pendingReply) continue
 
+      if (!SessionManager.isRunning(sessionID)) {
+        const repaired = await repairAfterAbort(sessionID)
+        if (repaired) {
+          log.info("repaired incomplete assistant during startup recovery", { sessionID })
+          continue
+        }
+      }
+
       log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
     }
   }
 
-  async function effectiveCompactedMessages(sessionID: string) {
-    const messages = await Session.messages({ sessionID })
-    return MessageV2.filterCompacted(newestFirst(messages))
+  async function reconcileInterruptedCortexDelegations(scopeID?: string): Promise<void> {
+    const sessionIDs = await SessionManager.listInterruptedCortexDelegations(scopeID)
+    for (const sessionID of sessionIDs) {
+      const session = await SessionManager.getSession(sessionID)
+      if (!session?.cortex) continue
+      if (session.cortex.status !== "queued" && session.cortex.status !== "running") continue
+      if (SessionManager.isRunning(sessionID)) continue
+
+      log.warn("reconciling interrupted Cortex delegation", { sessionID, status: session.cortex.status })
+      await repairAfterAbort(sessionID)
+      const completedAt = Date.now()
+      const interruption = "Server restarted before this delegated task completed."
+      await Session.update(sessionID, (draft) => {
+        if (!draft.cortex) return
+        if (draft.cortex.status !== "queued" && draft.cortex.status !== "running") return
+        draft.cortex.status = "interrupted"
+        draft.cortex.completedAt ??= completedAt
+        draft.cortex.error ??= interruption
+        draft.pendingReply = undefined
+      })
+      const updated = await Session.get(sessionID)
+      if (!updated?.cortex) continue
+      const snapshot = pluginTaskSnapshotFromSession(
+        { taskId: updated.cortex.taskID, sessionId: updated.id },
+        updated.cortex,
+      )
+      if (!snapshot) continue
+      void Observability.emit("plugin.task.interrupted", {
+        traceId: snapshot.owner.correlationId,
+        sessionID: snapshot.sessionId,
+        scopeID: snapshot.owner.scopeId,
+        level: "error",
+        data: {
+          pluginId: snapshot.owner.pluginId,
+          pluginGeneration: snapshot.owner.pluginGeneration,
+          correlationId: snapshot.owner.correlationId,
+          taskId: snapshot.taskId,
+          status: snapshot.status,
+          agent: snapshot.agent,
+          model: snapshot.model,
+          startedAt: snapshot.startedAt,
+          completedAt: snapshot.completedAt,
+          durationMs: snapshot.completedAt ? snapshot.completedAt - snapshot.startedAt : undefined,
+          usage: snapshot.usage,
+        },
+      })
+      await ScopeContext.provide({
+        scope: updated.scope,
+        fn: () =>
+          Plugin.triggerForPlugin(
+            snapshot.owner.pluginId,
+            snapshot.owner.pluginGeneration,
+            "cortex.task.after",
+            { task: snapshot },
+            {},
+          ),
+      })
+    }
   }
 
-  async function* newestFirst(messages: MessageV2.WithParts[]) {
-    for (let i = messages.length - 1; i >= 0; i--) yield messages[i]
+  async function effectiveCompactedMessages(sessionID: string) {
+    return SessionHistory.modelMessages({ sessionID })
   }
 
   /**
@@ -1604,7 +2008,10 @@ export namespace SessionInvoke {
       const info = msgs[i].info
       if (info.role !== "assistant") continue
       const assistant = info as MessageV2.Assistant
-      if (assistant.summary) continue
+      if (assistant.summary) {
+        if (assistant.finish) break
+        continue
+      }
       const tokens = assistant.tokens
       if (ModelLimit.actualInput(tokens) > 0) {
         calibrationIdx = i
@@ -1630,12 +2037,16 @@ export namespace SessionInvoke {
               deltaChars += JSON.stringify(part.state.input).length
             }
             break
-          case "file":
+          case "attachment":
             deltaChars += 200
             break
         }
       }
     }
+    // This deliberately uses the cheap four-chars-per-token heuristic instead
+    // of PromptBudgeter.measure's model-aware tokenizer path. Calibration runs
+    // between tool steps and starts from provider-reported actual input tokens,
+    // so only the small post-calibration delta is approximate.
     const deltaTokens = Math.ceil(deltaChars / 4)
 
     return { actualInput, outputTokens, deltaTokens }

@@ -3,7 +3,8 @@ import { unique } from "remeda"
 import type { JSONSchema } from "zod/v4/core"
 import type { Provider } from "./provider"
 import type { ModelsDev } from "./models"
-import { iife } from "@/util/iife"
+import { PromptCachePolicy } from "./prompt-cache-policy"
+import { supportsImageMediaType } from "./image-capability"
 
 const BEDROCK_MAX_IMAGE_BYTES = 5 * 1024 * 1024
 
@@ -24,6 +25,8 @@ export namespace ProviderTransform {
 
   interface MessageOptions {
     systemCacheBreakpoint?: number
+    lookAtAvailable?: boolean
+    viewImageAvailable?: boolean
   }
 
   export function sanitizeSurrogates(content: string) {
@@ -230,10 +233,11 @@ export namespace ProviderTransform {
     return msgs
   }
 
-  function unsupportedParts(msgs: ModelMessage[], model: Provider.Model): ModelMessage[] {
+  function unsupportedParts(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions): ModelMessage[] {
     return msgs.map((msg) => {
       if (msg.role !== "user" || !Array.isArray(msg.content)) return msg
 
+      let hasSupportedImage = false
       const filtered = msg.content.map((part) => {
         if (part.type !== "file" && part.type !== "image") return part
 
@@ -248,22 +252,63 @@ export namespace ProviderTransform {
             model.api.npm === "@ai-sdk/amazon-bedrock" &&
             decodedByteLength(attachment.base64) > BEDROCK_MAX_IMAGE_BYTES
           ) {
-            const name = attachment.filename ? `\"${attachment.filename}\"` : "image"
+            const name = attachment.filename ? `"${attachment.filename}"` : "image"
+            const alternatives = [
+              options?.viewImageAvailable
+                ? "use view_image with a smaller local image when the active model supports image input"
+                : undefined,
+              options?.lookAtAvailable ? "use look_at for separate vision-model analysis" : undefined,
+              "attach a smaller image",
+            ].filter((item): item is string => !!item)
+            const guidance =
+              alternatives.length === 1
+                ? alternatives[0]
+                : `${alternatives.slice(0, -1).join(", ")}, or ${alternatives.at(-1)}`
             return {
               type: "text" as const,
-              text: `[${name} was attached but not sent to Bedrock because it exceeds the 5MB image limit. Use the look_at tool with the file's local path to analyze it or attach a smaller image.]`,
+              text: `[${name} was attached but not sent to Bedrock because it exceeds the 5MB image limit. ${guidance.charAt(0).toUpperCase()}${guidance.slice(1)}.]`,
             }
           }
         }
 
-        if (model.capabilities.input[attachment.modality]) return part
+        if (
+          attachment.modality === "image" &&
+          model.capabilities.input.image &&
+          !supportsImageMediaType(model, attachment.mime)
+        ) {
+          const name = attachment.filename ? `"${attachment.filename}"` : "image"
+          const supported = model.capabilities.input.supportedImageMediaTypes?.join(", ") ?? ""
+          const guidance = options?.lookAtAvailable
+            ? " Use the look_at tool with the file's local path to analyze it."
+            : ""
+          return {
+            type: "text" as const,
+            text: `[${name} was attached as ${attachment.mime}, but this model only supports these image formats: ${supported}.${guidance}]`,
+          }
+        }
+        if (model.capabilities.input[attachment.modality]) {
+          hasSupportedImage = true
+          return part
+        }
 
-        const name = attachment.filename ? `\"${attachment.filename}\"` : attachment.modality
+        const name = attachment.filename ? `"${attachment.filename}"` : attachment.modality
+        const guidance =
+          attachment.modality === "image" && options?.lookAtAvailable
+            ? " Use the look_at tool with the file's local path to analyze it."
+            : ""
         return {
           type: "text" as const,
-          text: `[${name} was attached but this model does not support ${attachment.modality} input. Use the look_at tool with the file's local path to analyze it.]`,
+          text: `[${name} was attached but this model does not support ${attachment.modality} input.${guidance}]`,
         }
       })
+
+      if (hasSupportedImage) {
+        const hint = {
+          type: "text" as const,
+          text: "[The image(s) in this message are already embedded in the conversation context. You can analyze them directly without calling view_image.]",
+        }
+        return { ...msg, content: [hint, ...filtered] }
+      }
 
       return { ...msg, content: filtered }
     })
@@ -325,7 +370,7 @@ export namespace ProviderTransform {
   }
 
   export function message(msgs: ModelMessage[], model: Provider.Model, options?: MessageOptions) {
-    msgs = unsupportedParts(msgs, model)
+    msgs = unsupportedParts(msgs, model, options)
     msgs = normalizeMessages(msgs, model)
     if (
       model.providerID === "anthropic" ||
@@ -378,22 +423,77 @@ export namespace ProviderTransform {
   }
 
   const WIDELY_SUPPORTED_EFFORTS = ["low", "medium", "high"]
-  const OPENAI_EFFORTS = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+  const ROUTED_MODEL_EFFORT_FALLBACK = ["none", "minimal", ...WIDELY_SUPPORTED_EFFORTS, "xhigh"]
+
+  function modelIdentityTokens(model: Provider.Model) {
+    return [model.id, model.api.id, model.family ?? ""].map((id) => id.toLowerCase())
+  }
+
+  function directProviderReasoningVariants(model: Provider.Model): Record<string, Record<string, unknown>> | undefined {
+    const ids = modelIdentityTokens(model)
+    const isMiniMax = ids.some((id) => id.includes("minimax"))
+    const isKimi = ids.some((id) => id.includes("kimi"))
+    const isKimiK3 = ids.some((id) => id === "k3" || id.includes("kimi-k3"))
+
+    if (model.api.npm === "@ai-sdk/anthropic") {
+      if (isKimi) {
+        if (!isKimiK3 || model.capabilities.reasoningEfforts === undefined) return {}
+        return effortVariants(model.capabilities.reasoningEfforts, (effort) => (effort === "max" ? {} : { effort }))
+      }
+      if (isMiniMax && ids.some((id) => id.includes("minimax-m3"))) {
+        return { max: { thinking: { type: "adaptive" } } }
+      }
+      if (isMiniMax) return {}
+    }
+
+    if (model.api.npm === "@ai-sdk/openai-compatible" && isMiniMax) return {}
+    return undefined
+  }
+
+  function effortVariants<T extends Record<string, unknown>>(
+    efforts: readonly string[],
+    options: (effort: string) => T,
+  ): Record<string, T> {
+    return Object.fromEntries(efforts.map((effort) => [effort, options(effort)]))
+  }
+
+  function azureEffortFallback(id: string) {
+    const efforts = [...WIDELY_SUPPORTED_EFFORTS]
+    if (id.includes("gpt-5-") || id === "gpt-5") efforts.unshift("minimal")
+    return efforts
+  }
+
+  function openAIEffortFallback(model: Provider.Model) {
+    const id = model.id.toLowerCase()
+    if (id.includes("codex")) return [...WIDELY_SUPPORTED_EFFORTS]
+    const efforts = [...WIDELY_SUPPORTED_EFFORTS]
+    if (id.includes("gpt-5-") || id === "gpt-5") efforts.unshift("minimal")
+    if (model.release_date >= "2025-11-13") efforts.unshift("none")
+    if (model.release_date >= "2025-12-04") efforts.push("xhigh")
+    return efforts
+  }
 
   export function variants(model: Provider.Model): Record<string, Record<string, any>> {
     if (!model.capabilities.reasoning) return {}
+    const directProviderVariants = directProviderReasoningVariants(model)
+    if (directProviderVariants) return directProviderVariants
 
     const id = model.id.toLowerCase()
-    if (id.includes("deepseek") || id.includes("minimax") || id.includes("glm") || id.includes("mistral")) return {}
+    const modelEfforts = model.capabilities.reasoningEfforts
+    if (modelEfforts === undefined && (id.includes("deepseek") || id.includes("glm") || id.includes("mistral")))
+      return {}
 
     switch (model.api.npm) {
       case "@openrouter/ai-sdk-provider":
-        if (!model.id.includes("gpt") && !model.id.includes("gemini-3") && !model.id.includes("grok-4")) return {}
-        return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoning: { effort } }]))
+        if (modelEfforts === undefined && !id.includes("gpt") && !id.includes("gemini-3") && !id.includes("grok-4"))
+          return {}
+        return effortVariants(modelEfforts ?? ROUTED_MODEL_EFFORT_FALLBACK, (effort) => ({ reasoning: { effort } }))
 
       // TODO: YOU CANNOT SET max_tokens if this is set!!!
       case "@ai-sdk/gateway":
-        return Object.fromEntries(OPENAI_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
+        return effortVariants(modelEfforts ?? ROUTED_MODEL_EFFORT_FALLBACK, (reasoningEffort) => ({
+          reasoningEffort,
+        }))
 
       case "@ai-sdk/cerebras":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/cerebras
@@ -404,68 +504,40 @@ export namespace ProviderTransform {
       case "@ai-sdk/deepinfra":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/deepinfra
       case "@ai-sdk/openai-compatible":
-        return Object.fromEntries(WIDELY_SUPPORTED_EFFORTS.map((effort) => [effort, { reasoningEffort: effort }]))
+        return effortVariants(modelEfforts ?? WIDELY_SUPPORTED_EFFORTS, (reasoningEffort) => ({ reasoningEffort }))
 
       case "@ai-sdk/azure":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/azure
-        if (id === "o1-mini") return {}
-        const azureEfforts = ["low", "medium", "high"]
-        if (id.includes("gpt-5-") || id === "gpt-5") {
-          azureEfforts.unshift("minimal")
-        }
-        return Object.fromEntries(
-          azureEfforts.map((effort) => [
-            effort,
-            {
-              reasoningEffort: effort,
-              reasoningSummary: "auto",
-              include: ["reasoning.encrypted_content"],
-            },
-          ]),
-        )
+        if (modelEfforts === undefined && id === "o1-mini") return {}
+        return effortVariants(modelEfforts ?? azureEffortFallback(id), (reasoningEffort) => ({
+          reasoningEffort,
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        }))
       case "@ai-sdk/openai":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/openai
-        if (id === "gpt-5-pro") return {}
-        const openaiEfforts = iife(() => {
-          if (id.includes("codex")) return WIDELY_SUPPORTED_EFFORTS
-          const arr = [...WIDELY_SUPPORTED_EFFORTS]
-          if (id.includes("gpt-5-") || id === "gpt-5") {
-            arr.unshift("minimal")
-          }
-          if (model.release_date >= "2025-11-13") {
-            arr.unshift("none")
-          }
-          if (model.release_date >= "2025-12-04") {
-            arr.push("xhigh")
-          }
-          return arr
-        })
-        return Object.fromEntries(
-          openaiEfforts.map((effort) => [
-            effort,
-            {
-              reasoningEffort: effort,
-              reasoningSummary: "auto",
-              include: ["reasoning.encrypted_content"],
-            },
-          ]),
-        )
+        if (modelEfforts === undefined && id === "gpt-5-pro") return {}
+        return effortVariants(modelEfforts ?? openAIEffortFallback(model), (reasoningEffort) => ({
+          reasoningEffort,
+          reasoningSummary: "auto",
+          include: ["reasoning.encrypted_content"],
+        }))
 
       case "@ai-sdk/anthropic":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/anthropic
         if (["opus-4-6", "opus-4.6", "sonnet-4-6", "sonnet-4.6"].some((v) => model.api.id.includes(v))) {
-          return Object.fromEntries(
-            ["low", "medium", "high", "max"].map((effort) => [effort, { thinking: { type: "adaptive" }, effort }]),
-          )
+          return effortVariants(modelEfforts ?? ["low", "medium", "high", "max"], (effort) => ({
+            thinking: { type: "adaptive" },
+            effort,
+          }))
         }
         if (["opus-4-7", "opus-4.7"].some((v) => model.api.id.includes(v))) {
-          return Object.fromEntries(
-            ["low", "medium", "high", "xhigh", "max"].map((effort) => [
-              effort,
-              { thinking: { type: "adaptive", display: "summarized" }, effort },
-            ]),
-          )
+          return effortVariants(modelEfforts ?? ["low", "medium", "high", "xhigh", "max"], (effort) => ({
+            thinking: { type: "adaptive", display: "summarized" },
+            effort,
+          }))
         }
+        if (modelEfforts !== undefined) return effortVariants(modelEfforts, (effort) => ({ effort }))
         return {
           high: {
             thinking: {
@@ -483,17 +555,12 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/amazon-bedrock":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/amazon-bedrock
-        return Object.fromEntries(
-          WIDELY_SUPPORTED_EFFORTS.map((effort) => [
-            effort,
-            {
-              reasoningConfig: {
-                type: "enabled",
-                maxReasoningEffort: effort,
-              },
-            },
-          ]),
-        )
+        return effortVariants(modelEfforts ?? WIDELY_SUPPORTED_EFFORTS, (maxReasoningEffort) => ({
+          reasoningConfig: {
+            type: "enabled",
+            maxReasoningEffort,
+          },
+        }))
 
       case "@ai-sdk/google-vertex":
       // https://v5.ai-sdk.dev/providers/ai-sdk-providers/google-vertex
@@ -516,18 +583,13 @@ export namespace ProviderTransform {
           }
         }
         {
-          const levels = id.includes("3.1") ? ["low", "medium", "high"] : ["low", "high"]
-          return Object.fromEntries(
-            levels.map((effort) => [
-              effort,
-              {
-                thinkingConfig: {
-                  includeThoughts: true,
-                  thinkingLevel: effort,
-                },
-              },
-            ]),
-          )
+          const levels = modelEfforts ?? (id.includes("3.1") ? ["low", "medium", "high"] : ["low", "high"])
+          return effortVariants(levels, (thinkingLevel) => ({
+            thinkingConfig: {
+              includeThoughts: true,
+              thinkingLevel,
+            },
+          }))
         }
 
       case "@ai-sdk/mistral":
@@ -540,16 +602,10 @@ export namespace ProviderTransform {
 
       case "@ai-sdk/groq":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/groq
-        const groqEffort = ["none", ...WIDELY_SUPPORTED_EFFORTS]
-        return Object.fromEntries(
-          groqEffort.map((effort) => [
-            effort,
-            {
-              includeThoughts: true,
-              thinkingLevel: effort,
-            },
-          ]),
-        )
+        return effortVariants(modelEfforts ?? ["none", ...WIDELY_SUPPORTED_EFFORTS], (thinkingLevel) => ({
+          includeThoughts: true,
+          thinkingLevel,
+        }))
 
       case "@ai-sdk/perplexity":
         // https://v5.ai-sdk.dev/providers/ai-sdk-providers/perplexity
@@ -578,7 +634,7 @@ export namespace ProviderTransform {
       result["chat_template_args"] = { enable_thinking: true }
     }
 
-    if (model.providerID === "openai" || model.providerID === "openai-codex" || providerOptions?.setCacheKey) {
+    if (PromptCachePolicy.usesSessionPromptCacheKey(model, providerOptions)) {
       result["promptCacheKey"] = sessionID
     }
 
@@ -590,7 +646,6 @@ export namespace ProviderTransform {
 
     if (model.api.npm === "@ai-sdk/azure") {
       result["store"] = false
-      result["promptCacheKey"] = sessionID
     }
 
     if (model.api.npm === "@ai-sdk/google" || model.api.npm === "@ai-sdk/google-vertex") {

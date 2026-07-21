@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser Tool 全面测试</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+        background: #0f0f0f;
+        color: #e0e0e0;
+        padding: 24px;
+        min-height: 200vh;
+      }
+      h1 {
+        font-size: 28px;
+        margin-bottom: 8px;
+        color: #ffffff;
+      }
+      .subtitle {
+        color: #888;
+        margin-bottom: 32px;
+        font-size: 14px;
+      }
+
+      section {
+        background: #1a1a1a;
+        border: 1px solid #2a2a2a;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 24px;
+      }
+      h2 {
+        font-size: 18px;
+        margin-bottom: 16px;
+        color: #60a5fa;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+        gap: 16px;
+      }
+
+      button {
+        background: #2563eb;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.2s;
+      }
+      button:hover {
+        background: #3b82f6;
+      }
+      button.danger {
+        background: #dc2626;
+      }
+      button.danger:hover {
+        background: #ef4444;
+      }
+      button.success {
+        background: #16a34a;
+      }
+      button.success:hover {
+        background: #22c55e;
+      }
+      button.warning {
+        background: #ca8a04;
+      }
+      button.warning:hover {
+        background: #eab308;
+      }
+
+      input,
+      textarea,
+      select {
+        background: #262626;
+        border: 1px solid #404040;
+        color: #e0e0e0;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 14px;
+        width: 100%;
+      }
+      textarea {
+        min-height: 80px;
+        resize: vertical;
+      }
+      label {
+        display: block;
+        font-size: 13px;
+        margin-bottom: 4px;
+        color: #aaa;
+      }
+      .field {
+        margin-bottom: 12px;
+      }
+
+      .output {
+        background: #0a0a0a;
+        border: 1px solid #333;
+        border-radius: 8px;
+        padding: 12px;
+        margin-top: 12px;
+        font-family: "SF Mono", "Fira Code", monospace;
+        font-size: 12px;
+        max-height: 200px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+
+      /* 各种交互元素 */
+      .badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 11px;
+      }
+      .badge-success {
+        background: #166534;
+        color: #4ade80;
+      }
+      .badge-error {
+        background: #7f1d1d;
+        color: #fca5a5;
+      }
+      .badge-info {
+        background: #1e3a5f;
+        color: #93c5fd;
+      }
+
+      .counter-display {
+        font-size: 32px;
+        font-weight: bold;
+        text-align: center;
+        margin: 16px 0;
+      }
+      .spacer {
+        margin-top: 16px;
+      }
+
+      #lazy-loaded {
+        background: #312e81;
+        padding: 16px;
+        border-radius: 8px;
+        margin-top: 16px;
+      }
+      #lazy-loaded h3 {
+        color: #a5b4fc;
+      }
+
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 100;
+        align-items: center;
+        justify-content: center;
+      }
+      .modal-overlay.show {
+        display: flex;
+      }
+      .modal {
+        background: #1a1a1a;
+        border: 1px solid #333;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 480px;
+        width: 90%;
+      }
+      .modal h3 {
+        margin-bottom: 12px;
+      }
+
+      .network-btn {
+        margin-bottom: 8px;
+      }
+
+      /* 底部大块空白用于滚动测试 */
+      .scroll-marker {
+        padding: 40px;
+        text-align: center;
+        color: #555;
+        border-top: 1px dashed #333;
+        margin-top: 32px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>🧪 Browser Tool 全面测试</h1>
+    <p class="subtitle">覆盖导航、截图、交互、调试、网络、DOM检测等全部 browser 能力</p>
+
+    <!-- 1. 导航和页面状态 -->
+    <section id="nav-section">
+      <h2>1. 导航 &amp; 页面状态</h2>
+      <div class="grid">
+        <button id="btn-reload" onclick="location.reload()">Reload 页面</button>
+        <button id="btn-navigate" onclick="history.pushState({}, '', '?page=2')">pushState ?page=2</button>
+        <button id="btn-back" onclick="history.back()">Go Back</button>
+        <button
+          id="btn-delayed"
+          onclick="setTimeout(() => document.getElementById('delayed-out').textContent = 'Done at ' + new Date().toLocaleTimeString(), 2000)"
+        >
+          Delayed Update (2s)
+        </button>
+      </div>
+      <div class="output" id="delayed-out">等待中...</div>
+    </section>
+
+    <!-- 2. 交互元素 -->
+    <section id="interact-section">
+      <h2>2. 交互元素</h2>
+      <div class="grid">
+        <div>
+          <div class="field">
+            <label>Text Input</label><input id="text-input" type="text" placeholder="输入文字..." />
+          </div>
+          <div class="field">
+            <label>Email Input</label><input id="email-input" type="email" placeholder="email@example.com" />
+          </div>
+          <div class="field"><label>Number Input</label><input id="num-input" type="number" value="42" /></div>
+        </div>
+        <div>
+          <div class="field">
+            <label>Select</label
+            ><select id="select-el">
+              <option value="a">Option A</option>
+              <option value="b" selected>Option B</option>
+              <option value="c">Option C</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Checkbox</label>
+            <label style="display: flex; align-items: center; gap: 8px"
+              ><input id="checkbox-el" type="checkbox" /> 勾选我</label
+            >
+          </div>
+          <div class="field">
+            <label>Textarea</label><textarea id="textarea-el" placeholder="多行文本..."></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="spacer">
+        <button
+          id="btn-counter"
+          onclick="let el=document.getElementById('counter');el.textContent=parseInt(el.textContent)+1"
+        >
+          计数器 +1 👆
+        </button>
+        <span class="counter-display" id="counter">0</span>
+      </div>
+    </section>
+
+    <!-- 3. 点击和拖拽 -->
+    <section id="click-section">
+      <h2>3. 点击 / 双击 / 拖拽</h2>
+      <div class="grid">
+        <button id="btn-click" onclick="document.getElementById('click-out').textContent='Clicked!'">单击按钮</button>
+        <button id="btn-dblclick" ondblclick="document.getElementById('click-out').textContent='Double Clicked!'">
+          双击按钮 (双击)
+        </button>
+        <button
+          id="btn-hover"
+          onmouseenter="document.getElementById('click-out').textContent='Hovered!'"
+          onmouseleave="document.getElementById('click-out').textContent='Left hover'"
+        >
+          悬停按钮
+        </button>
+        <button
+          id="btn-right"
+          oncontextmenu="document.getElementById('click-out').textContent='Right Clicked!';return false"
+        >
+          右键点击
+        </button>
+      </div>
+      <div class="output" id="click-out">尚未交互</div>
+    </section>
+
+    <!-- 4. 模态框 -->
+    <section>
+      <h2>4. 模态框 &amp; 动态 DOM</h2>
+      <button id="btn-open-modal" onclick="document.getElementById('modal').classList.add('show')">打开模态框</button>
+      <div class="modal-overlay" id="modal">
+        <div class="modal">
+          <h3>模态框标题</h3>
+          <p>这是一个模态对话框，用于测试 snapshot 和 inspect。</p>
+          <div class="field">
+            <label>Modal Input</label><input id="modal-input" type="text" placeholder="在模态框中输入..." />
+          </div>
+          <button onclick="document.getElementById('modal').classList.remove('show')">关闭</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. Console 和 JS 错误 -->
+    <section id="console-section">
+      <h2>5. Console 输出 &amp; JS 错误</h2>
+      <div class="grid">
+        <button onclick="console.log('Hello from console.log!')">console.log</button>
+        <button onclick="console.warn('This is a warning!')">console.warn</button>
+        <button onclick="console.error('This is an error!')">console.error</button>
+        <button onclick="console.table([{name:'Alice',age:30},{name:'Bob',age:25}])">console.table</button>
+        <button class="danger" onclick="throw new Error('Intentional JS Error for testing!')">Throw Error</button>
+        <button class="warning" onclick="fetch('/nonexistent')">Fetch 404 (网络错误)</button>
+      </div>
+      <div class="output" id="console-out">查看浏览器 Console 或使用 browser_console 工具检查</div>
+    </section>
+
+    <!-- 6. 网络请求 -->
+    <section id="network-section">
+      <h2>6. 网络请求</h2>
+      <div class="grid">
+        <button
+          class="network-btn success"
+          onclick="fetch('https://httpbin.org/json').then(r=>r.json()).then(d=>{document.getElementById('net-out').textContent=JSON.stringify(d,null,2)}).catch(e=>{document.getElementById('net-out').textContent='Error: '+e.message})"
+        >
+          GET https://httpbin.org/json
+        </button>
+        <button
+          class="network-btn"
+          onclick="fetch('https://httpbin.org/post',{method:'POST',body:JSON.stringify({test:true}),headers:{'Content-Type':'application/json'}}).then(r=>r.json()).then(d=>{document.getElementById('net-out').textContent=JSON.stringify(d,null,2)})"
+        >
+          POST https://httpbin.org/post
+        </button>
+        <button
+          class="network-btn warning"
+          onclick="fetch('https://httpbin.org/status/500').then(r=>{document.getElementById('net-out').textContent='Status: '+r.status})"
+        >
+          GET /status/500
+        </button>
+        <!-- 懒加载资源 -->
+        <button
+          class="network-btn"
+          onclick="fetch('https://httpbin.org/image/png').then(r=>r.blob()).then(b=>{const img=document.createElement('img');img.src=URL.createObjectURL(b);img.style.maxWidth='200px';document.getElementById('net-out').appendChild(img)})"
+        >
+          加载图片 (PNG)
+        </button>
+      </div>
+      <div class="output" id="net-out">点击按钮发起网络请求</div>
+    </section>
+
+    <!-- 7. 懒加载和动态注入 -->
+    <section id="lazy-section">
+      <h2>7. 懒加载 &amp; 动态 DOM 注入</h2>
+      <button
+        id="btn-lazy"
+        onclick="
+      if (!document.getElementById('lazy-loaded')) {
+        const div = document.createElement('div');
+        div.id = 'lazy-loaded';
+        div.innerHTML = '<h3>🔥 动态注入的区块</h3><p>这个 DOM 是点击按钮后动态创建的，用于测试 browser_snapshot 能否检测新元素。</p><button onclick=&quot;this.textContent=\'子按钮被点击了!\'&quot;>点我</button>';
+        document.getElementById('lazy-section').appendChild(div);
+      }"
+      >
+        触发懒加载区块
+      </button>
+    </section>
+
+    <!-- 8. 大页面滚动区域 -->
+    <section>
+      <h2>8. 滚动测试区域</h2>
+      <p style="color: #888; margin-bottom: 12px">此区域下方有大量空白，用于测试 browser_action 滚动</p>
+      <button id="btn-scroll-to-bottom" onclick="window.scrollTo({top: document.body.scrollHeight, behavior:'smooth'})">
+        滚动到底部
+      </button>
+      <button id="btn-scroll-to-top" onclick="window.scrollTo({top: 0, behavior:'smooth'})">滚动到顶部</button>
+      <button
+        id="btn-scroll-to-section"
+        onclick="document.getElementById('nav-section').scrollIntoView({behavior:'smooth'})"
+      >
+        滚动到导航区
+      </button>
+      <div class="scroll-marker">▼ 滚动测试标记 — 下方有空白 ▼</div>
+      <div style="height: 80vh; display: flex; align-items: center; justify-content: center; color: #444">
+        <div style="text-align: center">
+          <p style="font-size: 48px">📜</p>
+          <p style="margin-top: 16px">滚动目标区域</p>
+          <p style="font-size: 14px; color: #666">(用于验证 browser_action 滚动和 emulation)</p>
+        </div>
+      </div>
+      <div class="scroll-marker">▲ 底部标记 ▲</div>
+    </section>
+
+    <!-- 初始 Console 输出 -->
+    <script>
+      console.log("=== Browser Tool 测试页面已加载 ===")
+      console.log("页面 URL:", window.location.href)
+      console.log("User Agent:", navigator.userAgent)
+
+      // 模拟一个 JS 警告
+      console.warn("This is an initial page-load warning for browser_console testing")
+
+      // 暴露一些全局变量给 browser_eval 测试
+      window.__testData = {
+        version: "1.0",
+        features: [
+          "navigate",
+          "screenshot",
+          "snapshot",
+          "click",
+          "type",
+          "scroll",
+          "console",
+          "network",
+          "eval",
+          "assets",
+        ],
+        counter: 0,
+        increment() {
+          this.counter++
+          return this.counter
+        },
+      }
+    </script>
+  </body>
+</html>

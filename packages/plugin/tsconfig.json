@@ -6,7 +6,10 @@
     "module": "preserve",
     "declaration": true,
     "moduleResolution": "bundler",
-    "lib": ["es2022", "dom", "dom.iterable"]
+    "lib": ["es2022", "dom", "dom.iterable"],
+    "paths": {
+      "@ericsanchezok/synergy-util/*": ["../util/src/*.ts"]
+    }
   },
   "include": ["src"]
 }

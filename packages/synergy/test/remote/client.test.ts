@@ -1,12 +1,15 @@
 import { describe, expect, test } from "bun:test"
-import { HolosRemoteExecutionClient, RemoteExecutionError } from "../../src/remote/client"
+import { HolosSynergyLinkClient, SynergyLinkRemoteError } from "../../src/remote/client"
 
-describe("remote execution client", () => {
-  test("returns bash result on successful response", async () => {
-    const client = new HolosRemoteExecutionClient({
+describe("Synergy Link remote client", () => {
+  test("serializes bash requests with linkID and protocol version 2", async () => {
+    const client = new HolosSynergyLinkClient({
       async request(input) {
+        expect(input).not.toHaveProperty("envID")
+        expect(input.version).toBe(2)
+        expect(input.linkID).toBe("link_test")
         return {
-          version: 1,
+          version: 2,
           requestID: input.requestID,
           ok: true,
           tool: "bash",
@@ -17,7 +20,7 @@ describe("remote execution client", () => {
               description: "ok",
               exit: 0,
               backend: "remote",
-              envID: input.envID,
+              linkID: input.linkID,
             },
             output: "done",
           },
@@ -26,7 +29,7 @@ describe("remote execution client", () => {
     })
 
     const result = await client.executeBash(
-      "env_test",
+      "link_test",
       {
         command: "echo ok",
         description: "ok",
@@ -35,20 +38,20 @@ describe("remote execution client", () => {
     )
 
     expect(result.output).toBe("done")
-    expect(result.metadata.exit).toBe(0)
+    expect(result.metadata.linkID).toBe("link_test")
   })
 
   test("throws protocol error on error envelope", async () => {
-    const client = new HolosRemoteExecutionClient({
+    const client = new HolosSynergyLinkClient({
       async request(input) {
         return {
-          version: 1,
+          version: 2,
           requestID: input.requestID,
           ok: false,
           tool: "process",
           action: "list",
           error: {
-            code: "device_offline",
+            code: "transport_error",
             message: "offline",
           },
         }
@@ -57,20 +60,20 @@ describe("remote execution client", () => {
 
     await expect(
       client.executeProcess(
-        "env_test",
+        "link_test",
         {
           action: "list",
         },
         { sessionID: "session_test" },
       ),
-    ).rejects.toBeInstanceOf(RemoteExecutionError)
+    ).rejects.toBeInstanceOf(SynergyLinkRemoteError)
   })
 
   test("does not misclassify session results as bash results", async () => {
-    const client = new HolosRemoteExecutionClient({
+    const client = new HolosSynergyLinkClient({
       async request(input) {
         return {
-          version: 1,
+          version: 2,
           requestID: input.requestID,
           ok: true,
           tool: "session",
@@ -83,7 +86,7 @@ describe("remote execution client", () => {
               sessionID: "session_remote",
               remoteAgentID: "agent_remote",
               backend: "remote",
-              envID: input.envID,
+              linkID: input.linkID,
             },
             output: "ready",
           },
@@ -92,7 +95,7 @@ describe("remote execution client", () => {
     })
 
     const result = await client.executeSession(
-      "env_test",
+      "link_test",
       { action: "open", label: "collab" },
       { targetAgentID: "agent_remote" },
     )
@@ -100,5 +103,21 @@ describe("remote execution client", () => {
     expect(result.metadata.action).toBe("open")
     expect(result.metadata.status).toBe("opened")
     expect(result.metadata.sessionID).toBe("session_remote")
+  })
+
+  test("disposes the underlying transport", () => {
+    let disposed = 0
+    const client = new HolosSynergyLinkClient({
+      async request() {
+        throw new Error("unexpected request")
+      },
+      dispose() {
+        disposed++
+      },
+    })
+
+    client.dispose()
+
+    expect(disposed).toBe(1)
   })
 })

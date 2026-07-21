@@ -602,20 +602,26 @@ test("ask - allows all patterns when all match allow rules", async () => {
   })
 })
 
-test("ask - unattended metadata auto-approves ask actions", async () => {
+test("ask - unattended metadata does not auto-approve ask actions", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      await expect(
-        PermissionNext.ask({
-          sessionID: "session_test",
-          permission: "bash",
-          patterns: ["ls"],
-          metadata: { sessionInteractionMode: "unattended" },
-          ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
-        }),
-      ).resolves.toBeUndefined()
+      const promise = PermissionNext.ask({
+        id: "permission_unattended_ask",
+        sessionID: "session_test",
+        permission: "bash",
+        patterns: ["ls"],
+        metadata: { sessionInteractionMode: "unattended" },
+        ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
+      })
+
+      const pending = await PermissionNext.list()
+      const request = pending.find((r) => r.id === "permission_unattended_ask")
+      expect(request).toBeDefined()
+
+      await PermissionNext.reply({ requestID: "permission_unattended_ask", reply: "once" })
+      await expect(promise).resolves.toBeUndefined()
     },
   })
 })
@@ -690,14 +696,13 @@ test("ask - nonBypassable metadata stays pending for ask rules", async () => {
   })
 })
 
-test("ask - workspaceBoundary metadata prevents unattended auto-approve", async () => {
+test("ask - workspaceBoundary metadata stays pending for unattended ask rules", async () => {
   await using tmp = await tmpdir({ git: true })
   await ScopeContext.provide({
     scope: await tmp.scope(),
     fn: async () => {
-      // Request with workspaceBoundary metadata and unattended mode
-      // should NOT be auto-approved
       const promise = PermissionNext.ask({
+        id: "permission_workspace_boundary_unattended",
         sessionID: "session_test_workspace_boundary",
         permission: "bash",
         patterns: ["rm /outside/file"],
@@ -709,16 +714,11 @@ test("ask - workspaceBoundary metadata prevents unattended auto-approve", async 
         ruleset: [{ permission: "bash", pattern: "*", action: "ask" }],
       })
 
-      // Should still be pending (not resolved by unattended auto-approve)
-      expect(promise).toBeInstanceOf(Promise)
+      const pending = await PermissionNext.list()
+      const request = pending.find((r) => r.id === "permission_workspace_boundary_unattended")
+      expect(request).toBeDefined()
 
-      // Resolve to clean up without leaking an unhandled rejection into the next test.
-      const request = await PermissionNext.list()
-      const pendingId = request.find((r) => r.sessionID === "session_test_workspace_boundary")
-      expect(pendingId).toBeDefined()
-      if (pendingId) {
-        await PermissionNext.reply({ requestID: pendingId.id, reply: "once" })
-      }
+      await PermissionNext.reply({ requestID: "permission_workspace_boundary_unattended", reply: "once" })
       await expect(promise).resolves.toBeUndefined()
     },
   })

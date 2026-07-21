@@ -21,7 +21,7 @@ For feature ideas or design discussions, open a [GitHub Issue](https://github.co
 
 ## Development Setup
 
-You'll need [Bun](https://bun.sh) ≥ 1.3 installed. Then:
+Use the Bun version pinned by the root `packageManager` field. Then:
 
 ```bash
 git clone https://github.com/SII-Holos/synergy.git
@@ -49,31 +49,49 @@ bun dev build app       # rebuild the web app
 bun dev build desktop   # rebuild Electron main/preload
 ```
 
-See the [Development section in README](README.md#development) for the full workflow — production builds, test commands, SDK generation, and more.
+See the [development reference](docs/reference/development.md) for source modes, isolated-runtime testing, builds, tests, SDK generation, and quality checks.
 
 ## Pull Request Process
 
-1. **Fork and branch.** Create your branch from `dev` — that's where active development happens. `main` is for releases only.
-
-2. **Keep changes focused.** One logical change per PR. If you find an unrelated issue while working, open a separate PR for it.
-
-3. **Test your changes.** Run the test suite from the synergy package directory:
+1. **Keep changes focused.** One logical change per PR. If you find an unrelated issue while working, open a separate PR for it.
+2. **Run the quality preflight.** Before opening your PR, run at minimum:
 
    ```bash
-   cd packages/synergy
-   bun test
+   bun run quality:quick
    ```
 
-   Also run type checking and formatting before submitting:
+   This checks formatting, linting, type-checking, monorepo dependency consistency, localization and package-guide contracts, and package publishing validation. For a full check including all tests:
 
    ```bash
-   bun run typecheck
-   ./script/format.ts
+   bun run quality
    ```
 
-4. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
+   Core-runtime CI isolation can be reproduced from `packages/synergy` with `bun run test:ci`, which runs the complete suite as sequential fresh-process shards.
 
-5. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.
+   CI runs the full matrix — see [docs/operations/open-source-quality.md](docs/operations/open-source-quality.md) for the complete model.
+
+   Frontend copy, accessibility text, and locale-sensitive formatting must also keep the localization catalogs and source contract current:
+
+   ```bash
+   bun run --cwd packages/app i18n:extract
+   bun run localization:check
+   ```
+
+3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
+
+4. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.
+
+### Pre-push vs CI layering
+
+The pre-push hook (`.husky/pre-push`) runs a fast subset: bun version check, formatting, lint, typecheck, and monorepo dependency validation. It does not run tests, secret scans, or workflow validation — those run in CI as separate parallel jobs. All CI jobs must pass for a PR to merge.
+
+### Commit guidelines
+
+Keep commits focused on a single logical change. Write commit messages that explain _what_ changed and _why_ — not just "fix bug" or "update code." If a commit relates to an issue, reference it in the message.
+
+There is no enforced commit message format. Clear and descriptive is all we ask.
+
+Do not commit secrets, local state files, placeholder credentials, or redundant wrapper scripts. If your change adds a feature or behavior that can be verified, include a test.
 
 ## Code Style
 
@@ -87,14 +105,6 @@ Match the patterns you find in the surrounding code. A few specifics worth knowi
 - **Bun APIs** for file operations (`Bun.file()`, `Bun.write()`), not Node.js equivalents.
 
 When in doubt, look at a nearby file doing something similar and follow its lead.
-
-## Commit Guidelines
-
-- Keep commits focused on a single logical change.
-- Write commit messages that explain _what_ changed and _why_ — not just "fix bug" or "update code."
-- If a commit relates to an issue, reference it in the message.
-
-There's no enforced commit message format. Clear and descriptive is all we ask.
 
 ## Monorepo Structure
 

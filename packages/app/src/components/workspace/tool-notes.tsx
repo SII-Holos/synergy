@@ -1,20 +1,6 @@
-import { NotePanel } from "@/components/note-panel"
-import { useWorkspace } from "@/context/workspace"
-import { onMount, onCleanup } from "solid-js"
+import { NotePanel } from "@/components/note"
+import type { WorkbenchPanelContentProps } from "@/plugin/registries/workbench-panel-registry"
 
-export function WorkspaceNotesTool() {
-  const workspace = useWorkspace()
-
-  onMount(() => {
-    workspace.register({
-      id: "notes",
-      label: "Notes",
-      icon: "notebook-pen",
-      component: () => <NotePanel />,
-    })
-  })
-
-  onCleanup(() => workspace.unregister("notes"))
-
-  return null
+export function NotesWorkbenchContent(props: WorkbenchPanelContentProps) {
+  return <NotePanel tab={props.tab} />
 }

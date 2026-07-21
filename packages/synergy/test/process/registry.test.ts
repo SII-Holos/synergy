@@ -60,6 +60,38 @@ describe("ProcessRegistry.appendOutput", () => {
     expect(proc.output).toContain(newData)
     expect(proc.truncated).toBe(true)
   })
+
+  test("coalesces micro-chunks into a bounded number of output segments", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    for (let index = 0; index < 50_000; index++) ProcessRegistry.appendOutput(proc, "x")
+
+    expect(proc.output).toBe("x".repeat(50_000))
+    expect(ProcessRegistry.outputBufferStats(proc).segments).toBeLessThan(32)
+  })
+
+  test("releases fully consumed output segments", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    proc.maxOutputChars = 0
+
+    ProcessRegistry.appendOutput(proc, "x".repeat(4096))
+
+    expect(ProcessRegistry.outputBufferStats(proc).allocatedSegments).toBe(0)
+  })
+
+  test("maintains the exact retained window and tail after micro-chunks exceed capacity", () => {
+    const proc = ProcessRegistry.create({ command: "test" })
+    const chunks: string[] = []
+    for (let index = 0; index < 2_500; index++) {
+      const chunk = `line_${String(index).padStart(6, "0")}_${"x".repeat(84)}\n`
+      chunks.push(chunk)
+      ProcessRegistry.appendOutput(proc, chunk)
+    }
+    const expected = chunks.join("").slice(-200_000)
+
+    expect(proc.output).toBe(expected)
+    expect(proc.tail).toBe(expected.slice(-2_000))
+    expect(proc.truncated).toBe(true)
+  })
 })
 
 describe("ProcessRegistry lifecycle", () => {
@@ -80,12 +112,14 @@ describe("ProcessRegistry lifecycle", () => {
     expect(finished!.status).toBe("completed")
   })
 
-  test("markExited removes non-backgrounded process", () => {
+  test("markExited always persists into the finished registry", () => {
     const proc = ProcessRegistry.create({ command: "echo hi" })
-    // Don't call markBackgrounded
+    // Don't call markBackgrounded — a fast-exiting process may finish before
+    // the auto-background timer fires. It should still be findable via
+    // getFinished so callers don't race the exit.
     ProcessRegistry.markExited(proc, 0, null)
     expect(ProcessRegistry.get(proc.id)).toBeUndefined()
-    expect(ProcessRegistry.getFinished(proc.id)).toBeUndefined()
+    expect(ProcessRegistry.getFinished(proc.id)!.status).toBe("completed")
   })
 
   test("failed exit code produces failed status", () => {
@@ -102,5 +136,39 @@ describe("ProcessRegistry lifecycle", () => {
     ProcessRegistry.markExited(proc, null, "SIGKILL")
     const finished = ProcessRegistry.getFinished(proc.id)
     expect(finished!.status).toBe("killed")
+  })
+
+  test("resource snapshot reports inspected child process RSS", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
+    const proc = ProcessRegistry.create({ command: "node server.js" })
+    proc.pid = 1234
+    ProcessRegistry.markBackgrounded(proc)
+
+    const snapshot = ProcessRegistry.resourceSnapshot({ now: proc.startedAt + 1000 })
+
+    restore()
+    expect(snapshot).toHaveLength(1)
+    expect(snapshot[0]).toMatchObject({
+      id: proc.id,
+      pid: 1234,
+      command: "node server.js",
+      backgrounded: true,
+      ageMs: 1000,
+      alive: true,
+      rssBytes: 4096,
+    })
+  })
+
+  test("settleStaleProcesses moves missing child processes to finished", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: false }))
+    const proc = ProcessRegistry.create({ command: "missing child" })
+    proc.pid = 999999
+    ProcessRegistry.markBackgrounded(proc)
+
+    ProcessRegistry.settleStaleProcesses()
+
+    restore()
+    expect(ProcessRegistry.get(proc.id)).toBeUndefined()
+    expect(ProcessRegistry.getFinished(proc.id)?.status).toBe("failed")
   })
 })

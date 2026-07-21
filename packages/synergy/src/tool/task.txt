@@ -19,7 +19,7 @@ Do NOT use this when:
 ## Blocking vs Background
 
 ### `background: true` (non-blocking, recommended)
-Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. The system will notify you when it completes.
+Launches the task and **returns immediately** with `task_id`. You continue working while the subagent runs in the background. When the task completes, the system will send a lightweight notification that wakes you.
 
 ### `background: false` / omitted (blocking, default)
 Launches the task and **waits up to 300 seconds** for it to complete. If the subagent finishes within that time, returns the full result. Otherwise, the task is **auto-backgrounded** — you get a `task_id` and continue.
@@ -28,17 +28,27 @@ Launches the task and **waits up to 300 seconds** for it to complete. If the sub
 
 ## Checking on background tasks
 
-Use the **`task_output`** tool to check on running background tasks:
+When a background task completes, the system sends a **lightweight notification** that wakes you — it tells you which task finished and instructs you to retrieve the result. The notification does NOT contain the final result.
+
+**To retrieve the final result**, call `task_output` with `mode="full"` once:
+- `task_output(task_id="...", mode="full")` — returns the complete result, progress summary, and structured output as rendered JSON
+- `task_output(task_id="...", mode="full", block: true)` — wait once (up to 300s) for completion, then return the full result
+
+Reading the full result with `mode="full"` (or default mode) **acknowledges the completion** — the notification is cleared and will not reappear. Diagnostic modes (`progress`, `tail`, `summary`) do **not** acknowledge completion; the notification persists until you retrieve the full result.
+
+**Diagnostic modes** are one-shot checks for live status — do not use them as a polling loop:
 
 - `mode="summary"` — Compact one-liner: status, health, elapsed time
 - `mode="progress"` — Detailed progress: tool call list, health, duration
 - `mode="tail"` — Recent session activity from the subagent's conversation
-- `mode="full"` (default) — Full result with progress summary
-- `block: true` — Wait (up to 300s) for the task to finish, then return full result
 
-Use **`task_list()`** to list all visible background tasks at once.
+**`block=true` is only valid with `mode="full"` or the default mode.** Diagnostic modes + `block=true` are rejected.
 
-**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** When a background task finishes, the system delivers its result and wakes you automatically — no watch, schedule, or manual polling is needed. Setting one would be redundant.
+> **Do not poll.** Continue independent work while tasks run. Use diagnostic modes only as a one-shot check when you need specific status information. A later diagnostic is still allowed when new evidence, a stale health signal, or a cancellation decision warrants it — but do not loop. The system wakes you automatically when a task completes.
+
+Use **`task_list()`** once when you need an overview of all visible background tasks.
+
+**Do NOT use `agenda_watch` or `agenda_schedule` to wait for subagent completion.** No watch, schedule, or manual polling is needed.
 
 ## Usage notes
 
@@ -51,7 +61,8 @@ Use **`task_list()`** to list all visible background tasks at once.
      need to restate all context — focus your prompt on what's new or different this time.
    - **Busy sessions**: If the session is busy, the tool will error — wait for it to finish
      or use a different session.
-4. Clearly tell the agent whether to write code or just research
+4. Pass `output` when the caller needs a specific completion contract: `{ mode: "summary" }`, `{ mode: "final_response" }`, or `{ mode: "structured", schema, maxRepairTurns }`. Structured schemas can describe top-level objects, arrays, primitives, `anyOf`, or `oneOf`; the result is rendered as JSON for tool text and also exposed in metadata.
+5. Clearly tell the agent whether to write code or just research
 
 ## Writing effective prompts
 

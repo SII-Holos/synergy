@@ -1,5 +1,6 @@
 import { test, expect, describe } from "bun:test"
 import path from "path"
+import fs from "fs/promises"
 import { Filesystem } from "../../src/util/filesystem"
 import { File } from "../../src/file"
 import { ScopeContext } from "../../src/scope/context"
@@ -27,6 +28,33 @@ describe("Filesystem.contains", () => {
   test("handles prefix collision edge cases", () => {
     expect(Filesystem.contains("/project", "/project-other/file")).toBe(false)
     expect(Filesystem.contains("/project", "/projectfile")).toBe(false)
+  })
+
+  test("rejects Windows cross-drive paths", () => {
+    if (process.platform !== "win32") return
+    expect(Filesystem.contains("C:\\project", "D:\\project\\file.txt")).toBe(false)
+  })
+})
+
+describe("plugin asset realpath containment", () => {
+  test("rejects symlink targets that escape the plugin directory", async () => {
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await fs.mkdir(path.join(dir, "plugin", "dist"), { recursive: true })
+        await Bun.write(path.join(dir, "outside.txt"), "outside")
+      },
+    })
+
+    const pluginDir = path.join(tmp.path, "plugin")
+    const linkPath = path.join(pluginDir, "dist", "escape.txt")
+    try {
+      await fs.symlink(path.join(tmp.path, "outside.txt"), linkPath)
+    } catch {
+      return
+    }
+
+    const real = await fs.realpath(linkPath)
+    expect(Filesystem.contains(pluginDir, real)).toBe(false)
   })
 })
 

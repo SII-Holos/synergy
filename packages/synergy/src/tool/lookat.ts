@@ -47,7 +47,7 @@ interface LookAtMetadata {
 async function toVisibleAttachment(
   file: { filepath: string; mimeType: string; filename: string },
   ctx: { sessionID: string; messageID: string },
-): Promise<MessageV2.FilePart> {
+): Promise<MessageV2.AttachmentPart> {
   const source = Bun.file(file.filepath)
   const buffer = Buffer.from(await source.arrayBuffer())
   const assetId = await Asset.write(buffer, file.mimeType)
@@ -55,10 +55,15 @@ async function toVisibleAttachment(
     id: Identifier.ascending("part"),
     sessionID: ctx.sessionID,
     messageID: ctx.messageID,
-    type: "file",
+    type: "attachment",
     mime: file.mimeType,
     filename: file.filename,
     url: `asset://${assetId}`,
+    localPath: file.filepath,
+    model: {
+      mode: "summary",
+      summary: `${file.filename} (${file.mimeType}) analyzed by look_at`,
+    },
   }
 }
 
@@ -172,6 +177,7 @@ export const LookAtTool = Tool.define<typeof parameters, LookAtMetadata>("look_a
           { permission: "edit", pattern: "*", action: "deny" },
           { permission: "bash", pattern: "*", action: "deny" },
         ],
+        completionNotice: { silent: true },
       })
 
       const prompt =
@@ -207,10 +213,15 @@ If the requested information is not found, clearly state what is missing.`
           parts: [
             { type: "text", text: prompt },
             ...files.map((file) => ({
-              type: "file" as const,
+              type: "attachment" as const,
               mime: file.mimeType,
               url: pathToFileURL(file.filepath).href,
               filename: file.filename,
+              localPath: file.filepath,
+              model: {
+                mode: "provider-file" as const,
+                summary: `${file.filename} (${file.mimeType})`,
+              },
             })),
           ],
         })

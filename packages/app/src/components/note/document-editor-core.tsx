@@ -1,4 +1,4 @@
-import { createEffect, createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup, onMount, Show, untrack } from "solid-js"
 import { Editor } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
@@ -13,10 +13,15 @@ import TaskItem from "@tiptap/extension-task-item"
 import CodeBlockShiki from "tiptap-extension-code-block-shiki"
 import MathExtension from "@aarkue/tiptap-math-extension"
 
+import { useLingui } from "@lingui/solid"
+import { docEditor as D } from "@/locales/messages"
 import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/components/note/extensions"
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { registerSynergyShikiThemes, SYNERGY_SHIKI_DARK, SYNERGY_SHIKI_LIGHT } from "./shiki-theme"
+
+registerSynergyShikiThemes()
 
 // ---------------------------------------------------------------------------
 // Shared Tiptap styles — used by NoteEditor and future BlueprintEditor
@@ -78,7 +83,7 @@ export const TIPTAP_STYLES = `
     padding: 0.9em 1.05em;
     font-style: italic;
     color: var(--text-weak);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+    box-shadow: inset 0 1px 0 var(--border-weak-base);
   }
   .tiptap pre {
     background: var(--surface-inset-base);
@@ -87,7 +92,7 @@ export const TIPTAP_STYLES = `
     padding: 1em 1.05em;
     overflow-x: auto;
     margin-bottom: 0.95em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
+    box-shadow: inset 0 1px 0 var(--border-weak-base), 0 14px 34px -28px var(--surface-overlay);
   }
   .tiptap pre.shiki,
   .tiptap pre.shiki code,
@@ -113,7 +118,7 @@ export const TIPTAP_STYLES = `
     padding: 0;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.875rem;
-    color: color-mix(in srgb, var(--text-strong) 82%, white 18%);
+    color: var(--text-strong);
   }
   .tiptap code {
     background: color-mix(in srgb, var(--surface-inset-base) 78%, transparent);
@@ -123,7 +128,7 @@ export const TIPTAP_STYLES = `
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85em;
     color: var(--text-strong);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+    box-shadow: inset 0 1px 0 var(--border-weak-base);
   }
   .tiptap table {
     border-collapse: collapse;
@@ -409,6 +414,8 @@ export interface DocumentEditorExtensionsConfig {
   onUploadFile: (file: File) => Promise<string>
   /** Ref to the bubble menu container element. */
   bubbleRef: HTMLDivElement
+  /** Lingui i18n context for localized command titles. */
+  lingui: ReturnType<typeof useLingui>
 }
 
 export function createDocumentEditorExtensions(config: DocumentEditorExtensionsConfig) {
@@ -418,7 +425,7 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       link: false,
     }),
     Placeholder.configure({
-      placeholder: "Type / for commands...",
+      placeholder: config.lingui._({ id: D.slashHint.id, message: D.slashHint.message }),
     }),
     Link.configure({
       openOnClick: false,
@@ -437,17 +444,17 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       nested: true,
     }),
     CodeBlockShiki.configure({
-      defaultTheme: "github-light",
+      defaultTheme: SYNERGY_SHIKI_LIGHT,
       themes: {
-        light: "github-light",
-        dark: "github-dark",
+        light: SYNERGY_SHIKI_LIGHT,
+        dark: SYNERGY_SHIKI_DARK,
       },
     }),
     MathExtension,
     Video,
     Mermaid,
     createFileUpload(config.sdkClient, config.sdkUrl),
-    createSlashCommands({ onUploadFile: config.onUploadFile }),
+    createSlashCommands({ onUploadFile: config.onUploadFile, lingui: config.lingui }),
     createBubbleMenu(config.bubbleRef),
   ]
 }
@@ -485,11 +492,12 @@ export interface DocumentEditorCoreProps {
  * autosave/conflict, toolbar, tags, and metadata logic.
  */
 export function DocumentEditorCore(props: DocumentEditorCoreProps) {
+  const lingui = useLingui()
   let editorRef!: HTMLDivElement
   let bubbleRef!: HTMLDivElement
   const [editorInstance, setEditorInstance] = createSignal<Editor>()
 
-  createEffect(() => {
+  onMount(() => {
     const instance = new Editor({
       element: editorRef,
       extensions: createDocumentEditorExtensions({
@@ -497,8 +505,9 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
         sdkUrl: props.sdkUrl,
         onUploadFile: props.uploadFile,
         bubbleRef,
+        lingui,
       }),
-      content: props.content as any,
+      content: untrack(() => props.content) as any,
       onUpdate: ({ editor }) => {
         if (editor.isDestroyed) return
         props.onUpdate()
@@ -541,11 +550,13 @@ export function DocumentEditorCore(props: DocumentEditorCoreProps) {
         />
       </div>
       <div ref={bubbleRef} class="note-bubble-menu">
-        <Show when={editorInstance()}>{(getEditor) => <BubbleMenuContent editor={getEditor()} />}</Show>
+        <Show when={editorInstance()} keyed>
+          {(editor) => <BubbleMenuContent editor={editor} />}
+        </Show>
       </div>
       <div class="pointer-events-none absolute bottom-4 right-4 inline-flex items-center rounded-full bg-background-base/72 px-3 py-1.5 text-11-medium text-text-weak ring-1 ring-inset ring-border-weak-base backdrop-blur-sm">
         <Show when={props.saving} fallback="Saved">
-          Saving...
+          {lingui._({ id: D.saving.id, message: D.saving.message })}
         </Show>
       </div>
     </div>

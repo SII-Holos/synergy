@@ -23,7 +23,7 @@ Use `AGENTS.override.md` for local-only overrides. Configure fallback filenames 
 
 ## Quick start — create a custom agent
 
-1. **Decide scope** — project (`.synergy/agent/`) or global (`~/.synergy/config/agent/`). Project overrides global.
+1. **Decide scope** — project (`.synergy/agent/` or `.synergy/agents/`) or global (`~/.synergy/config/agent/` or `~/.synergy/config/agents/`). Project overrides global. Both `agent/` and `agents/` work at either scope.
 2. **Create the agent file** — for most agents, a markdown file is the cleanest approach.
 3. **Reload** — `runtime_reload(target: "agent")`. Markdown agent files in watched directories are auto-detected, but an explicit reload is more reliable.
 4. **Verify** — check that the agent appears in the `@` menu (primary mode) or is available to the `task` tool (subagent mode).
@@ -231,15 +231,16 @@ Synergy ships with these agents. You can override any of them via config.
 
 **Classic subagents visible to `synergy`:** `developer` (implementation), `scholar` (academic research), `scribe` (writing), `explore` (codebase search), `scout` (external docs), `advisor` (architecture review), `inspector` (code quality review)
 
-**Coding-harness and knowledge subagents visible to `synergy-max`:** `intent-analyst`, `requirements-engineer`, `code-cartographer`, `dependency-tracer`, `solution-architect`, `api-contract-designer`, `migration-architect`, `test-strategist`, `regression-reproducer`, `fixture-builder`, `property-test-engineer`, `type-test-engineer`, `implementation-engineer`, `refactoring-engineer`, `integration-engineer`, `documentation-engineer`, `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`, `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`, `docs-researcher`, `research-methodologist`, `session-historian`
+**Coding-harness and knowledge subagents visible to `synergy-max`:** `requirements-engineer`, `code-cartographer`, `dependency-tracer`, `solution-architect`, `api-contract-designer`, `migration-architect`, `test-strategist`, `fixture-builder`, `property-test-engineer`, `type-test-engineer`, `implementation-engineer`, `refactoring-engineer`, `integration-engineer`, `documentation-engineer`, `quality-gatekeeper`, `python-quality-engineer`, `rust-quality-engineer`, `typescript-quality-engineer`, `maintainability-reviewer`, `security-reviewer`, `performance-reviewer`, `api-compatibility-reviewer`, `documentation-reviewer`, `docs-researcher`, `research-methodologist`, `session-historian`
 
-**Internal:** `title` (title generation), `summary` (session summaries), `compaction` (context compaction), `chronicler`, `intent`, `script`, `reward`, `genesis`, `anima`
+**Internal:** `title` (title generation), `summary` (session summaries), `compaction` (context compaction), `chronicler`, `intent`, `script`, `reward`, `anima`, `multimodal-looker`, `smart-allow`, `agent-generator`
 
 ## Agent fields reference
 
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `model` | string | scope default | `provider/model` format |
+| `modelRole` | enum | — | Resolve the agent model through the `vision`, `nano`, `mini`, `mid`, `thinking`, `long`, or `creative` role. An explicit `model` wins. |
 | `description` | string | — | When to use this agent. Required for selection UI and routing. |
 | `mode` | enum | `"all"` | `"primary"`, `"subagent"`, or `"all"` |
 | `prompt` | string | — | System prompt. For markdown agents, this is the body. |
@@ -247,10 +248,37 @@ Synergy ships with these agents. You can override any of them via config.
 | `top_p` | number | — | Top-p sampling (0-1) |
 | `color` | string | — | Hex color (e.g., `"#FF5733"`). Must be `#` + 6 hex digits. |
 | `steps` | int | — | Max agentic iterations before forcing text-only response |
+| `maxSteps` | int | — | Deprecated. Use `steps`; legacy values are still converted when config is loaded. |
 | `hidden` | bool | `false` | Hide from autocomplete (subagent mode only) |
+| `visibleTo` | string[] | all callers | Agent names or delegation-group identities allowed to delegate to this subagent. Missing or empty means unrestricted visibility. |
+| `delegationGroups` | string[] | `[]` | Additional identities this agent receives when resolving which subagents it may delegate to. |
 | `disable` | bool | `false` | Disable the agent entirely |
 | `permission` | object | top-level | Permission overrides. Merges with and overrides top-level permission. |
+| `tools` | object | — | Deprecated. Use `permission`; legacy boolean tool entries are converted to permission rules. |
+| `controlProfile` | enum | inherited | Agent-level `guarded`, `autonomous`, or `full_access` profile. An explicit session or parent-session profile takes precedence. |
+| `defaultVariant` | string | role default | Default model variant for this agent. A per-request variant wins; otherwise this overrides `role_variant`. |
 | `options` | object | `{}` | Additional key-value options passed through to the agent |
+
+Example with role-based model selection, delegation visibility, and agent-level execution defaults:
+
+```jsonc
+{
+  "agent": {
+    "review-coordinator": {
+      "modelRole": "thinking",
+      "defaultVariant": "high",
+      "controlProfile": "autonomous",
+      "delegationGroups": ["reviewers"]
+    },
+    "security-reviewer": {
+      "mode": "subagent",
+      "visibleTo": ["review-coordinator", "reviewers"]
+    }
+  }
+}
+```
+
+Here `review-coordinator` can see agents whose `visibleTo` includes either its own name or `reviewers`.
 
 ## Options passthrough
 
@@ -290,7 +318,7 @@ Unknown fields in agent config are extracted into `options`:
 - The orchestrator selects agents based on description match; a vague description means it loses to built-in agents
 
 **Markdown agent not loading:**
-- Verify the file is in the correct directory: `.synergy/agent/` or `~/.synergy/config/agent/`
+- Verify the file is in one of: `.synergy/agent/`, `.synergy/agents/`, `~/.synergy/config/agent/`, or `~/.synergy/config/agents/`
 - Verify YAML frontmatter syntax — `---` on its own line before and after, valid YAML inside
 - Check for validation errors in server logs at startup
 - Try `runtime_reload(target: "agent")`

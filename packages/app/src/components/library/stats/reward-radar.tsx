@@ -11,16 +11,9 @@ import {
   Filler,
   Tooltip,
 } from "chart.js"
-
-ChartJS.register(RadialLinearScale, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Filler, Tooltip)
-
-const DIMENSION_LABELS: Record<string, string> = {
-  outcome: "Outcome",
-  intent: "Intent",
-  execution: "Execution",
-  orchestration: "Orchestration",
-  expression: "Expression",
-}
+import { useLingui } from "@lingui/solid"
+import { getDimensionFullLabel } from "../shared"
+import { useChartTheme } from "../../visualization/use-chart-theme"
 
 function formatR(v: number) {
   return v >= 0 ? `+${v.toFixed(2)}` : v.toFixed(2)
@@ -34,24 +27,25 @@ type DimStats = {
 }
 
 export function RewardRadar(props: { dimensions: DimStats[] }) {
+  const { _ } = useLingui()
+  const theme = useChartTheme()
   const dims = () => props.dimensions
 
-  // Radar chart: uses avg per dimension
   const radarData = createMemo(() => {
     const d = dims()
     if (d.length === 0) return null
     return {
-      labels: d.map((dim) => DIMENSION_LABELS[dim.dimension] ?? dim.dimension),
+      labels: d.map((dim) => getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension),
       datasets: [
         {
-          label: "Average",
+          label: _({ id: "app.library.stats.reward.average", message: "Average" }),
           data: d.map((dim) => dim.avg),
-          borderColor: "rgba(56, 88, 182, 0.9)",
-          backgroundColor: "rgba(56, 88, 182, 0.12)",
+          borderColor: theme().series[0],
+          backgroundColor: theme().alpha("chart-series-1", 0.12),
           borderWidth: 2.5,
           pointRadius: 4,
-          pointBackgroundColor: "rgba(56, 88, 182, 0.9)",
-          pointBorderColor: "rgba(247, 243, 235, 0.9)",
+          pointBackgroundColor: theme().series[0],
+          pointBorderColor: theme().background,
           pointBorderWidth: 1.5,
           fill: true,
         },
@@ -66,21 +60,22 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
       r: {
         min: -1,
         max: 1,
+        border: { color: theme().grid },
         ticks: {
           stepSize: 0.5,
           font: { size: 9 },
-          color: "rgba(128,128,128,0.5)",
-          backdropColor: "transparent",
+          color: theme().axis,
+          backdropColor: theme().background,
           callback: (v: number | string) => {
             const n = typeof v === "string" ? parseFloat(v) : v
             return n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`
           },
         },
-        grid: { color: "rgba(128,128,128,0.1)" },
-        angleLines: { color: "rgba(128,128,128,0.1)" },
+        grid: { color: theme().grid },
+        angleLines: { color: theme().grid },
         pointLabels: {
           font: { size: 12, weight: "bold" as const },
-          color: "rgba(160,155,148,0.85)",
+          color: theme().axisStrong,
           padding: 14,
         },
       },
@@ -88,6 +83,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { raw: number }) => `avg: ${formatR(ctx.raw as number)}`,
         },
@@ -96,14 +92,12 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     animation: { duration: 600, easing: "easeOutQuart" as const },
   }))
 
-  // Stacked bar chart: shows distribution of -1/0/1 per dimension
   const barData = createMemo(() => {
     const d = dims()
     if (d.length === 0) return null
 
-    const labels = d.map((dim) => DIMENSION_LABELS[dim.dimension] ?? dim.dimension)
+    const labels = d.map((dim) => getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension)
 
-    // For each dimension, get counts for -1, 0, 1
     const getCount = (dim: DimStats, val: number) => dim.distribution.find((v) => v.value === val)?.count ?? 0
 
     const totals = d.map((dim) => dim.distribution.reduce((s, v) => s + v.count, 0))
@@ -112,30 +106,33 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
       labels,
       datasets: [
         {
-          label: "Positive (+1)",
+          label: _({ id: "app.library.stats.reward.positiveLabel", message: "Positive (+1)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 1) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(39, 143, 116, 0.72)",
+          backgroundColor: theme().alpha("text-on-success-base", 0.72),
+          hoverBackgroundColor: theme().states.success,
           borderRadius: 2,
         },
         {
-          label: "Neutral (0)",
+          label: _({ id: "app.library.stats.reward.neutralLabel", message: "Neutral (0)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, 0) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(148, 148, 148, 0.45)",
+          backgroundColor: theme().alpha("text-weak", 0.45),
+          hoverBackgroundColor: theme().axis,
           borderRadius: 2,
         },
         {
-          label: "Negative (−1)",
+          label: _({ id: "app.library.stats.reward.negativeLabel", message: "Negative (−1)" }),
           data: d.map((dim, i) => {
             const t = totals[i]!
             return t > 0 ? (getCount(dim, -1) / t) * 100 : 0
           }),
-          backgroundColor: "rgba(196, 92, 68, 0.65)",
+          backgroundColor: theme().alpha("text-on-critical-base", 0.65),
+          hoverBackgroundColor: theme().states.critical,
           borderRadius: 2,
         },
       ],
@@ -148,27 +145,30 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     indexAxis: "y" as const,
     scales: {
       x: {
+        border: { display: false },
         stacked: true,
         max: 100,
-        grid: { color: "rgba(128,128,128,0.08)" },
+        grid: { color: theme().grid },
         ticks: {
           font: { size: 9 },
-          color: "rgba(128,128,128,0.55)",
+          color: theme().axis,
           callback: (v: number | string) => `${v}%`,
         },
       },
       y: {
+        border: { display: false },
         stacked: true,
         grid: { display: false },
         ticks: {
           font: { size: 10, weight: "bold" as const },
-          color: "rgba(160,155,148,0.85)",
+          color: theme().axisStrong,
         },
       },
     },
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { dataset: { label?: string }; raw: number }) =>
             `${ctx.dataset.label}: ${(ctx.raw as number).toFixed(1)}%`,
@@ -181,21 +181,30 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
   return (
     <div class="library-chart-surface mt-4">
       <div class="pb-2">
-        <h3 class="text-13-medium text-text-strong">Reward dimensions</h3>
+        <h3 class="text-13-medium text-text-strong">
+          {_({ id: "app.library.stats.reward.dimensions", message: "Reward dimensions" })}
+        </h3>
       </div>
 
-      <Show when={dims().length > 0} fallback={<div class="library-empty-row">No evaluated experiences yet</div>}>
+      <Show
+        when={dims().length > 0}
+        fallback={
+          <div class="library-empty-row">
+            {_({ id: "app.library.stats.reward.noData", message: "No evaluated experiences yet" })}
+          </div>
+        }
+      >
         <div class="flex gap-4">
-          {/* Radar chart — left */}
           <div class="shrink-0" style={{ width: "280px" }}>
-            <Show when={radarData()}>{(data) => <Radar data={data()} options={radarOptions()} />}</Show>
+            <Show keyed when={radarData()}>
+              {(data) => <Radar data={data} options={radarOptions()} />}
+            </Show>
           </div>
 
-          {/* Stats column — right */}
           <div class="flex-1 min-w-0 flex flex-col gap-1.5 justify-center">
             <For each={dims()}>
               {(dim) => {
-                const label = DIMENSION_LABELS[dim.dimension] ?? dim.dimension
+                const label = getDimensionFullLabel(_, dim.dimension as any) ?? dim.dimension
                 const total = dim.distribution.reduce((s, v) => s + v.count, 0)
                 const pos = dim.distribution.find((v) => v.value === 1)?.count ?? 0
                 const neg = dim.distribution.find((v) => v.value === -1)?.count ?? 0
@@ -207,51 +216,55 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
                       {formatR(dim.avg)}
                     </span>
                     <div class="flex-1 flex items-center gap-1 text-9-regular tabular-nums text-text-weak">
-                      <span class="text-emerald-600 dark:text-emerald-400">
+                      <span class="text-text-on-success-base">
                         {total > 0 ? `${((pos / total) * 100).toFixed(0)}%` : "—"}
                       </span>
                       <span class="text-text-weaker">/</span>
                       <span>{total > 0 ? `${((neu / total) * 100).toFixed(0)}%` : "—"}</span>
                       <span class="text-text-weaker">/</span>
-                      <span class="text-rose-600 dark:text-rose-400">
+                      <span class="text-text-on-critical-base">
                         {total > 0 ? `${((neg / total) * 100).toFixed(0)}%` : "—"}
                       </span>
                     </div>
-                    <span class="shrink-0 text-9-regular text-text-weaker tabular-nums">σ {dim.std.toFixed(2)}</span>
+                    <span class="shrink-0 text-9-regular text-text-weaker tabular-nums">
+                      {_({ id: "app.library.stats.reward.sigma", message: "σ" })} {dim.std.toFixed(2)}
+                    </span>
                   </div>
                 )
               }}
             </For>
-            {/* Legend for percentages */}
             <div class="flex items-center gap-3 px-2.5 pt-1 text-8-regular text-text-weaker">
-              <span class="text-emerald-600/70 dark:text-emerald-400/70">■ +1</span>
+              <span class="text-text-on-success-base/70">■ +1</span>
               <span>■ 0</span>
-              <span class="text-rose-600/70 dark:text-rose-400/70">■ −1</span>
+              <span class="text-text-on-critical-base/70">■ −1</span>
             </div>
           </div>
         </div>
 
-        {/* Stacked bar chart below */}
         <div class="library-chart-inner mt-3">
           <div class="text-[8px] font-medium uppercase tracking-[0.12em] text-text-weak mb-2">
-            Reward Distribution by Dimension
+            {_({
+              id: "app.library.stats.reward.distributionByDimension",
+              message: "Reward Distribution by Dimension",
+            })}
           </div>
           <div class="h-36">
-            <Show when={barData()}>{(data) => <Bar data={data()} options={barOptions()} />}</Show>
+            <Show keyed when={barData()}>
+              {(data) => <Bar data={data} options={barOptions()} />}
+            </Show>
           </div>
-          {/* Legend */}
           <div class="flex items-center gap-4 mt-2 text-9-regular text-text-weaker">
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(39,143,116,0.72)]" />
-              <span>Positive (+1)</span>
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-success-base" />
+              <span>{_({ id: "app.library.stats.reward.positiveLabel", message: "Positive (+1)" })}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(148,148,148,0.45)]" />
-              <span>Neutral (0)</span>
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-weak-base" />
+              <span>{_({ id: "app.library.stats.reward.neutralLabel", message: "Neutral (0)" })}</span>
             </div>
             <div class="flex items-center gap-1.5">
-              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-[rgba(196,92,68,0.65)]" />
-              <span>Negative (−1)</span>
+              <span class="inline-block h-2.5 w-2.5 rounded-sm bg-icon-critical-base" />
+              <span>{_({ id: "app.library.stats.reward.negativeLabel", message: "Negative (−1)" })}</span>
             </div>
           </div>
         </div>

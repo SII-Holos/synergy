@@ -55,29 +55,6 @@ export const ReadTool = Tool.define("read", {
     }
 
     const filePolicy = Attachment.policy({ filepath, mime: file.type })
-    if (filePolicy.kind === "image" && file.type !== "image/svg+xml") {
-      const mime = file.type
-      const msg = "Image read successfully"
-      return {
-        title,
-        output: msg,
-        metadata: {
-          preview: msg,
-          truncated: false,
-          offset: undefined as number | undefined,
-          limit: undefined as number | undefined,
-        },
-        attachments: [
-          await Attachment.toFilePart({
-            filepath,
-            mime,
-            sessionID: ctx.sessionID,
-            messageID: ctx.messageID,
-          }),
-        ],
-      }
-    }
-
     if (filePolicy.extractText) {
       const text = await Attachment.extractTextFromFile(filepath)
       const lines = text.split("\n")
@@ -121,7 +98,7 @@ export const ReadTool = Tool.define("read", {
 
       const attachments = filePolicy.keepBinary
         ? [
-            await Attachment.toFilePart({
+            await Attachment.toPart({
               filepath,
               mime: "application/pdf",
               sessionID: ctx.sessionID,

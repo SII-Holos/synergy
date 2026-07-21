@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@ericsanchezok/synergy-plugin",
-  "version": "1.1.26",
+  "version": "1.2.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -13,8 +13,9 @@
     "access": "public"
   },
   "scripts": {
+    "test": "bun test",
     "typecheck": "tsgo --noEmit",
-    "build": "tsc"
+    "build": "bun run --cwd ../util build && rm -rf dist && tsc -p tsconfig.build.json"
   },
   "exports": {
     ".": {
@@ -32,10 +33,35 @@
       "types": "./src/display.ts",
       "import": "./dist/display.js"
     },
-    "./hooks": {
-      "bun": "./src/hooks.ts",
-      "types": "./src/hooks.ts",
-      "import": "./dist/hooks.js"
+    "./ids": {
+      "bun": "./src/ids.ts",
+      "types": "./src/ids.ts",
+      "import": "./dist/ids.js"
+    },
+    "./paths": {
+      "bun": "./src/paths.ts",
+      "types": "./src/paths.ts",
+      "import": "./dist/paths.js"
+    },
+    "./artifact": {
+      "bun": "./src/artifact.ts",
+      "types": "./src/artifact.ts",
+      "import": "./dist/artifact.js"
+    },
+    "./market": {
+      "bun": "./src/market.ts",
+      "types": "./src/market.ts",
+      "import": "./dist/market.js"
+    },
+    "./version": {
+      "bun": "./src/version.ts",
+      "types": "./src/version.ts",
+      "import": "./dist/version.js"
+    },
+    "./loader": {
+      "bun": "./src/loader.ts",
+      "types": "./src/loader.ts",
+      "import": "./dist/loader.js"
     },
     "./shell": {
       "bun": "./src/shell.ts",
@@ -46,22 +72,32 @@
       "bun": "./src/ui.ts",
       "types": "./src/ui.ts",
       "import": "./dist/ui.js"
+    },
+    "./theme": {
+      "bun": "./src/theme/index.ts",
+      "types": "./src/theme/index.ts",
+      "import": "./dist/theme/index.js"
+    },
+    "./auth": {
+      "bun": "./src/auth-types.ts",
+      "types": "./src/auth-types.ts",
+      "import": "./dist/auth-types.js"
     }
   },
   "files": [
     "dist"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*"
+  },
   "peerDependencies": {
     "zod": ">=4.0.0"
   },
   "devDependencies": {
-    "@ericsanchezok/synergy-sdk": "workspace:*",
     "@tsconfig/node22": "catalog:",
     "@types/node": "catalog:",
-    "solid-js": "catalog:",
-    "typescript": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:",
     "zod": "catalog:"
   }
 }

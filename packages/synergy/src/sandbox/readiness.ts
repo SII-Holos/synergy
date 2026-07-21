@@ -193,7 +193,7 @@ export async function getSandboxReadiness(sandboxCfg?: SandboxReadinessConfig): 
         label: "bwrap (bubblewrap)",
         status: bwrapAvailable ? "pass" : "fail",
         detail: bwrapAvailable
-          ? "bwrap found on PATH"
+          ? "A verified bundled bwrap or system bwrap is available"
           : "bubblewrap is not installed. Run: sudo apt install bubblewrap (Debian/Ubuntu) or sudo dnf install bubblewrap (Fedora)",
         recovery: bwrapAvailable
           ? undefined
@@ -277,21 +277,11 @@ export async function getSandboxReadiness(sandboxCfg?: SandboxReadinessConfig): 
       if (!bundledBwrapInfo) {
         checks.push({
           id: "linux_bundled_bwrap",
-          label: "Bundled bwrap",
-          status: "fail",
-          detail:
-            "Bundled bwrap not found in ~/.synergy/sandbox-helper/bwrap/. Run: bun run packages/synergy/scripts/download-bwrap.sh",
-          recovery: {
-            action: "install_bundled_bwrap",
-            label: "Download and build bundled bwrap",
-            command: "bun run packages/synergy/scripts/download-bwrap.sh",
-          },
-        })
-        checks.push({
-          id: "linux_bundled_bwrap_hash",
-          label: "Bundled bwrap hash verification",
-          status: "fail",
-          detail: "Cannot verify hash — bundled bwrap binary not found.",
+          label: "Optional bundled bwrap",
+          status: bwrapAvailable ? "pass" : "warn",
+          detail: bwrapAvailable
+            ? "Bundled bwrap is not installed; using the system bubblewrap package."
+            : "Bundled bwrap is not installed. Install the system bubblewrap package before using the Linux sandbox.",
         })
       } else if (!bundledBwrapInfo.verified) {
         checks.push({

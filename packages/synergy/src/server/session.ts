@@ -4,8 +4,10 @@ import { stream } from "hono/streaming"
 import z from "zod"
 import { Command } from "../command/command"
 import { Session } from "../session"
+import { Worktree } from "../project/worktree"
 import { SessionManager } from "../session/manager"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
+import { SessionAbort } from "../session/abort"
 import { SessionInbox } from "../session/inbox"
 import { shell as invokeShell, ShellInput } from "../session/shell"
 import { SessionHistory } from "../session/history"
@@ -18,19 +20,38 @@ import { SnapshotSchema } from "../session/snapshot-schema"
 import { Agent } from "../agent/agent"
 import { ScopeContext } from "../scope/context"
 import { Log } from "../util/log"
+import { ObservabilityRedaction } from "@/observability/redaction"
+import { BusyError } from "../session/error"
 import { AgendaStore, AgendaTypes } from "../agenda"
-import { errors } from "./error"
+import { BadRequestError, errors } from "./error"
 
 const log = Log.create({ service: "session" })
 const ControlProfileId = z.enum(["guarded", "autonomous", "full_access"])
+const booleanQuery = z.preprocess((value) => {
+  if (value === "true" || value === true) return true
+  if (value === "false" || value === false) return false
+  return value
+}, z.boolean())
+const SessionMessagePageBadRequestError = z.union([
+  BadRequestError,
+  SessionHistory.MessagePageCursorInvalidError.Schema,
+  SessionHistory.MessagePageCursorStaleError.Schema,
+])
+
+async function assertSessionWorkspaceAvailable(sessionID: string) {
+  const session = await Session.get(sessionID)
+  if (session.workspace?.type !== "git_worktree") return
+  await Worktree.assertAvailable(session.workspace.path)
+}
 
 async function submitInput(input: InvokeInput): Promise<SessionInbox.InputResult> {
-  const messageID = input.messageID ?? Identifier.ascending("message")
-  const next = { ...input, messageID }
   if (SessionManager.isRunning(input.sessionID)) {
-    const item = await SessionInbox.enqueueUser(next)
+    const { messageID: _queuedMessageID, ...queuedInput } = input
+    const item = await SessionInbox.enqueueUser(queuedInput)
     return { status: "queued", item }
   }
+  const messageID = input.messageID ?? Identifier.ascending("message")
+  const next = { ...input, messageID }
   SessionInvoke.invoke(next).catch((error) => {
     log.error("failed to execute async input", { sessionID: input.sessionID, error })
   })
@@ -76,9 +97,8 @@ export const SessionRoute = new Hono()
           .number()
           .optional()
           .meta({ description: "Filter sessions updated before this timestamp (milliseconds since epoch)" }),
-        pinned: z.coerce.boolean().optional().meta({ description: "Only include pinned sessions" }),
-        parentOnly: z.coerce
-          .boolean()
+        pinned: booleanQuery.optional().meta({ description: "Only include pinned sessions" }),
+        parentOnly: booleanQuery
           .default(true)
           .meta({ description: "Only include top-level sessions (exclude subsessions). Default: true" }),
       }),
@@ -152,7 +172,7 @@ export const SessionRoute = new Hono()
     ),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      log.info("SEARCH", { url: c.req.url })
+      log.info("SEARCH", { route: ObservabilityRedaction.routePath(c.req.url) })
       const session = await Session.get(sessionID)
       return c.json(session)
     },
@@ -166,10 +186,10 @@ export const SessionRoute = new Hono()
       operationId: "session.children",
       responses: {
         200: {
-          description: "List of children",
+          description: "Paginated child sessions",
           content: {
             "application/json": {
-              schema: resolver(Session.Info.array()),
+              schema: resolver(Session.ChildrenPage),
             },
           },
         },
@@ -179,13 +199,37 @@ export const SessionRoute = new Hono()
     validator(
       "param",
       z.object({
-        sessionID: Session.children.schema,
+        sessionID: Identifier.schema("session"),
       }),
+    ),
+    validator(
+      "query",
+      z
+        .object({
+          limit: z.coerce.number().int().min(1).max(50).default(8),
+          cursorLastActivityAt: z.coerce.number().optional(),
+          cursorId: z.string().optional(),
+          search: z.string().optional(),
+          includeArchived: booleanQuery.optional().default(false),
+        })
+        .refine((query) => (query.cursorLastActivityAt === undefined) === (query.cursorId === undefined), {
+          message: "cursorLastActivityAt and cursorId must be provided together",
+        }),
     ),
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
-      const session = await Session.children(sessionID)
-      return c.json(session)
+      const query = c.req.valid("query")
+      const result = await Session.childPage({
+        parentID: sessionID,
+        limit: query.limit,
+        cursor:
+          query.cursorLastActivityAt !== undefined && query.cursorId !== undefined
+            ? { lastActivityAt: query.cursorLastActivityAt, id: query.cursorId }
+            : undefined,
+        search: query.search,
+        includeArchived: query.includeArchived,
+      })
+      return c.json(result)
     },
   )
   .get(
@@ -318,12 +362,25 @@ export const SessionRoute = new Hono()
           title: z.string().optional(),
           id: z.string().optional(),
           controlProfile: ControlProfileId.optional(),
+          workspace: Session.WorkspaceSelection.optional(),
+          completionNotice: z
+            .object({
+              silent: z.boolean().optional(),
+            })
+            .strict()
+            .optional(),
         })
         .optional(),
     ),
     async (c) => {
-      const body = c.req.valid("json") ?? {}
-      const session = await Session.create(body)
+      const { workspace, ...body } = c.req.valid("json") ?? {}
+      let session = await Session.create(body)
+      try {
+        session = await Session.applyWorkspaceSelection(session.id, workspace)
+      } catch (error) {
+        await Session.remove(session.id)
+        throw error
+      }
       return c.json(session)
     },
   )
@@ -387,10 +444,25 @@ export const SessionRoute = new Hono()
         title: z.string().optional(),
         pinned: z.number().optional(),
         controlProfile: ControlProfileId.optional(),
+        completionNotice: z
+          .object({
+            unread: z.literal(false),
+          })
+          .strict()
+          .optional(),
         time: z
           .object({
             archived: z.number().optional(),
           })
+          .optional(),
+        // Per-session model preference set from the composer's model selector.
+        // Pass null to clear it and fall back to history/agent/provider default.
+        modelOverride: z
+          .object({
+            providerID: z.string(),
+            modelID: z.string(),
+          })
+          .nullable()
           .optional(),
       }),
     ),
@@ -398,10 +470,26 @@ export const SessionRoute = new Hono()
       const sessionID = c.req.valid("param").sessionID
       const updates = c.req.valid("json")
 
+      const hasOtherUpdates =
+        updates.title !== undefined ||
+        updates.pinned !== undefined ||
+        updates.controlProfile !== undefined ||
+        updates.time?.archived !== undefined ||
+        updates.modelOverride !== undefined
+
+      if (!hasOtherUpdates && updates.completionNotice?.unread === false) {
+        return c.json(await Session.clearCompletionNotice(sessionID))
+      }
+
       const applyOtherUpdates = (session: Session.Info) => {
         if (updates.title !== undefined) session.title = updates.title
         if (updates.pinned !== undefined) session.pinned = updates.pinned
         if (updates.time?.archived !== undefined) session.time.archived = updates.time.archived
+        if (updates.completionNotice?.unread === false) {
+          session.completionNotice.unread = false
+          session.completionNotice.unreadCount = 0
+        }
+        if (updates.modelOverride !== undefined) session.modelOverride = updates.modelOverride ?? undefined
       }
 
       const updatedSession =
@@ -501,10 +589,7 @@ export const SessionRoute = new Hono()
       }),
     ),
     async (c) => {
-      const sessionID = c.req.valid("param").sessionID
-      SessionInvoke.cancel(sessionID)
-      const { Cortex } = await import("../cortex")
-      await Cortex.cancelAll(sessionID)
+      await SessionAbort.abort(c.req.valid("param").sessionID)
       return c.json(true)
     },
   )
@@ -555,6 +640,14 @@ export const SessionRoute = new Hono()
           },
         },
         ...errors(400, 404),
+        409: {
+          description: "Session worktree unavailable",
+          content: {
+            "application/json": {
+              schema: resolver(Worktree.UnavailableError.Schema),
+            },
+          },
+        },
       },
     }),
     validator(
@@ -567,6 +660,7 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
+      await assertSessionWorkspaceAvailable(sessionID)
       return c.json(await submitInput({ ...body, sessionID }))
     },
   )
@@ -671,8 +765,9 @@ export const SessionRoute = new Hono()
           break
         }
       }
+      const messageID = Identifier.ascending("message")
       const msg = await Session.updateMessage({
-        id: Identifier.ascending("message"),
+        id: messageID,
         role: "user",
         model: {
           providerID: body.providerID,
@@ -680,6 +775,15 @@ export const SessionRoute = new Hono()
         },
         sessionID,
         agent: currentAgent,
+        isRoot: true,
+        rootID: messageID,
+        visible: true,
+        // Mark this as a compaction boundary so the frontend suppresses the
+        // user chrome (the "What did we do so far?" prompt is internal) and
+        // renders only the compaction card for the turn (issue #326).
+        metadata: {
+          compactionBoundary: true,
+        },
         time: {
           created: Date.now(),
         },
@@ -730,7 +834,7 @@ export const SessionRoute = new Hono()
       "query",
       z.object({
         limit: z.coerce.number().optional(),
-        raw: z.coerce.boolean().optional(),
+        raw: booleanQuery.optional(),
       }),
     ),
     async (c) => {
@@ -741,6 +845,61 @@ export const SessionRoute = new Hono()
         raw: query.raw,
       })
       return c.json(messages)
+    },
+  )
+  .get(
+    "/:sessionID/message/page",
+    describeRoute({
+      summary: "Get a page of session messages",
+      description: "Retrieve a bounded session message window and an opaque cursor for loading older history.",
+      operationId: "session.messagePage",
+      responses: {
+        200: {
+          description: "Cursor-paged session messages",
+          content: {
+            "application/json": {
+              schema: resolver(SessionHistory.MessagePage),
+            },
+          },
+        },
+        400: {
+          description: "Invalid or stale message cursor",
+          content: {
+            "application/json": {
+              schema: resolver(SessionMessagePageBadRequestError),
+            },
+          },
+        },
+        ...errors(404),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        sessionID: Session.messagePage.schema.shape.sessionID,
+      }),
+    ),
+    validator(
+      "query",
+      z.object({
+        cursor: Session.messagePage.schema.shape.cursor,
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+      }),
+    ),
+    async (c) => {
+      const sessionID = c.req.valid("param").sessionID
+      const query = c.req.valid("query")
+      try {
+        return c.json(await Session.messagePage({ sessionID, ...query }))
+      } catch (error) {
+        if (
+          error instanceof SessionHistory.MessagePageCursorInvalidError ||
+          error instanceof SessionHistory.MessagePageCursorStaleError
+        ) {
+          return c.json(error.toObject(), 400)
+        }
+        throw error
+      }
     },
   )
   .get(
@@ -1054,7 +1213,7 @@ export const SessionRoute = new Hono()
     async (c) => {
       const sessionID = c.req.valid("param").sessionID
       const body = c.req.valid("json")
-      log.info("session.rollback", { sessionID, numTurns: body.numTurns })
+      log.info("session.rollback", { sessionID, numTurns: body.numTurns, cutMessageID: body.cutMessageID })
       const event = await Session.rollback({ sessionID, ...body })
       return c.json(event)
     },
@@ -1100,8 +1259,14 @@ export const SessionRoute = new Hono()
         const event = await Session.unrollback({ sessionID, ...parsed })
         return c.json(event)
       } catch (error) {
+        log.warn("session.unrollback failed", {
+          sessionID,
+          error: error instanceof Error ? error.message : String(error),
+        })
         if (error instanceof SessionHistory.UnrollbackConflictError) return c.json(error.toObject(), 409)
-        throw error
+        if (error instanceof BusyError || (error instanceof Error && error.name === "BusyError"))
+          return c.json({ message: error instanceof Error ? error.message : String(error) }, 409)
+        return c.json({ message: error instanceof Error ? error.message : "Internal server error" }, 500)
       }
     },
   )

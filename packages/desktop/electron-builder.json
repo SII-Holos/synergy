@@ -10,6 +10,24 @@
     "buildResources": "build",
     "output": "release"
   },
+  "extraResources": [
+    {
+      "from": "build/icon.ico",
+      "to": "icons/icon.ico"
+    },
+    {
+      "from": "build/icon.png",
+      "to": "icons/icon.png"
+    },
+    {
+      "from": "build/unread-overlay.png",
+      "to": "icons/unread-overlay.png"
+    },
+    {
+      "from": "build/icon-unread.png",
+      "to": "icons/icon-unread.png"
+    }
+  ],
   "files": ["dist/**", "package.json"],
   "protocols": [
     {
@@ -34,6 +52,10 @@
     "hardenedRuntime": true,
     "icon": "build/icon.icns",
     "target": [
+      {
+        "target": "pkg",
+        "arch": ["x64", "arm64"]
+      },
       {
         "target": "dmg",
         "arch": ["x64", "arm64"]
@@ -72,9 +94,14 @@
       }
     ]
   },
+  "pkg": {
+    "scripts": "build/pkg-scripts",
+    "installLocation": "/Applications",
+    "mustClose": ["io.holosai.synergy"]
+  },
   "win": {
     "artifactName": "Synergy-win32-${arch}-${version}.${ext}",
-    "executableName": "synergy",
+    "executableName": "synergy-desktop",
     "icon": "build/icon.ico",
     "target": [
       {
@@ -94,7 +121,8 @@
     "createStartMenuShortcut": true,
     "oneClick": false,
     "perMachine": false,
-    "shortcutName": "Synergy"
+    "shortcutName": "Synergy",
+    "include": "build/installer.nsh"
   },
   "linux": {
     "artifactName": "Synergy-linux-${arch}-${version}.${ext}",
@@ -106,7 +134,7 @@
         "StartupWMClass": "synergy"
       }
     },
-    "executableName": "synergy",
+    "executableName": "synergy-desktop",
     "icon": "build/icons",
     "target": [
       {
@@ -121,6 +149,22 @@
         "target": "tar.gz",
         "arch": ["x64", "arm64"]
       }
+    ]
+  },
+  "deb": {
+    "afterInstall": "build/linux/deb-after-install.sh",
+    "afterRemove": "build/linux/deb-after-remove.sh",
+    "depends": [
+      "libgtk-3-0",
+      "libnotify4",
+      "libnss3",
+      "libxss1",
+      "libxtst6",
+      "xdg-utils",
+      "libatspi2.0-0",
+      "libuuid1",
+      "libsecret-1-0",
+      "bubblewrap"
     ]
   },
   "electronFuses": {

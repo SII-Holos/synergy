@@ -1,5 +1,8 @@
 import { For, Show } from "solid-js"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 interface PaginationBarProps {
   total: number
@@ -45,19 +48,19 @@ export function getPageNumbers(current: number, total: number): Array<number | "
 }
 
 export function PaginationBar(props: PaginationBarProps) {
+  const { i18n } = useLocale()
   return (
     <div class="sticky bottom-0 bg-background-base/90 backdrop-blur-sm border-t border-border-weaker-base/60 px-6 py-2 flex items-center justify-between">
       <span class="text-11-regular text-text-weak">
-        {props.total} session{props.total !== 1 ? "s" : ""}
+        {i18n._(AP.scopesPaginationSessions.id, { count: props.total })}
       </span>
-
       <div class="flex items-center gap-1">
         <button
           class="px-2 py-1 text-11-medium text-text-weak hover:text-text-base hover:bg-surface-raised-base-hover rounded-md transition-colors disabled:opacity-40 disabled:cursor-default"
           disabled={props.currentPage <= 1 || props.loading}
           onClick={() => props.onPageChange(props.currentPage - 1)}
         >
-          <Icon name="arrow-left" size="small" />
+          <Icon name={getSemanticIcon("navigation.back")} size="small" />
         </button>
 
         <For each={getPageNumbers(props.currentPage, props.totalPages)}>
@@ -83,7 +86,7 @@ export function PaginationBar(props: PaginationBarProps) {
           disabled={props.currentPage >= props.totalPages || props.loading}
           onClick={() => props.onPageChange(props.currentPage + 1)}
         >
-          <Icon name="arrow-right" size="small" />
+          <Icon name={getSemanticIcon("navigation.forward")} size="small" />
         </button>
       </div>
     </div>

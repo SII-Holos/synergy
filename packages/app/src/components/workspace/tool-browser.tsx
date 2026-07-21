@@ -1,26 +1,7 @@
-import { onMount, onCleanup } from "solid-js"
-import { useWorkspace } from "@/context/workspace"
-import { BrowserPanel } from "./browser/browser-panel"
+import { lazy } from "solid-js"
 
-/**
- * Registers the Browser workspace tool in the right-side workspace panel.
- * Pattern matches WorkspaceNotesTool.
- */
-export function WorkspaceBrowserTool() {
-  const workspace = useWorkspace()
+const BrowserPanel = lazy(() => import("./browser/browser-panel").then((module) => ({ default: module.BrowserPanel })))
 
-  onMount(() => {
-    workspace.register({
-      id: "browser",
-      label: "Browser",
-      icon: "globe",
-      component: () => <BrowserPanel />,
-    })
-  })
-
-  onCleanup(() => {
-    workspace.unregister("browser")
-  })
-
-  return null
+export function BrowserWorkbenchContent() {
+  return <BrowserPanel />
 }

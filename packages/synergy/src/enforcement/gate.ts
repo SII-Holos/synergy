@@ -29,7 +29,7 @@ import { buildPermissionProfile, type SynergySandboxPermissionProfile } from "..
 import { Filesystem } from "../util/filesystem"
 
 import { PathClassifier, checkProtectedPath } from "./classify"
-import { ShellSafety } from "./shell-safety"
+import { ShellSafety, PROTECTED_PUSH_TARGETS } from "./shell-safety"
 import { ControlProfileCompiler } from "../control-profile/compiler"
 import {
   type PrefixRule,
@@ -42,6 +42,9 @@ import {
 import type { ProfileIdInput, ProfileRule, ProfileSandbox } from "../control-profile/types"
 import { PluginToolId } from "../plugin/ids.js"
 import type { PluginApprovalRecord } from "../plugin/consent/approval-store.js"
+import { capabilityNonBypassable } from "@ericsanchezok/synergy-util/capability"
+import { ObservabilityMetrics } from "@/observability/metrics"
+import { BashVirtualPath } from "@/tool/bash/virtual-path"
 
 export interface Capability {
   class: string
@@ -60,7 +63,7 @@ export interface ClassifyResult {
 }
 
 export interface PluginToolCapabilityMap {
-  /** Capability strings from the plugin manifest (e.g. "filesystem:read", "shell", "network") */
+  /** Synergy capability classes resolved from the plugin manifest (e.g. "file_read", "shell", "network_request") */
   capabilities: string[]
   /** Risk level from manifest */
   risk: "low" | "medium" | "high"
@@ -93,7 +96,6 @@ export interface GateOptions {
   activeWorkspace: string
   workspaceType: string
   profileId?: ProfileIdInput
-  interactionMode?: "attended" | "unattended"
   registeredMcpTools?: Set<string>
   registeredPluginTools?: Set<string>
   /** Map from plugin tool full ID (e.g. plugin__x__y) to resolved capabilities */
@@ -104,7 +106,10 @@ export interface GateOptions {
   /** Additional directories where read-only access is treated as inside-workspace.
    *  Write operations are never allowed through readRoots. */
   readRoots?: string[]
+  /** User-trusted local code roots treated like the active workspace for reads and writes. */
+  trustedRoots?: string[]
   execPolicy?: { rules: PrefixRule[] }
+  synergyRoot?: string
 }
 
 const DESTRUCTIVE_PATTERNS = [
@@ -124,7 +129,7 @@ const DESTRUCTIVE_PATTERNS = [
   "vgremove ",
   // Privilege escalation
   "sudo ",
-  // Git destructive operations (subcommand-aware)
+  // Git destructive operations (force/delete/hard-reset only — ordinary feature-branch push is shell_remote_publish)
   "git reset --hard",
   "git clean -f",
   "git clean -x",
@@ -140,8 +145,7 @@ const DESTRUCTIVE_PATTERNS = [
   "git filter-branch",
   "git reflog expire",
   "git reflog delete",
-  // Git refined classifications — defense-in-depth
-  "git push ",
+  // Git refined classifications — defense-in-depth (only truly destructive variants)
   "git pull --rebase",
   "git pull -r",
   "git revert ",
@@ -282,18 +286,26 @@ const AGENT_ORCHESTRATION_TOOLS = new Set([
   "agenda_trigger",
 ])
 
-/** Maps gate.ts capability class names to plugin manifest capability strings. */
-const GATE_TO_MANIFEST_CAP: Record<string, string> = {
-  plugin_file_read: "filesystem:read",
-  plugin_file_write: "filesystem:write",
-  plugin_shell: "shell",
-  plugin_network: "network",
-  plugin_session_read: "session_data",
-  plugin_workspace_read: "workspace_data",
-  plugin_config_read: "config:read",
-  plugin_config_write: "config:write",
-  plugin_secret_read: "secrets",
-  task: "task",
+function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approved" | "reason">) {
+  if (caps.some((existing) => existing.class === cap.class)) return
+  caps.push({ ...cap })
+}
+function firstPathArg(args: Record<string, any>): string {
+  return (
+    (args.path as string) ??
+    (args.file_path as string) ??
+    (args.filePath as string) ??
+    (args.output_path as string) ??
+    (args.outputPath as string) ??
+    ""
+  )
+}
+function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
+  const read = Array.isArray(args.input_paths)
+    ? args.input_paths.filter((item: unknown): item is string => typeof item === "string" && item.length > 0)
+    : []
+  const outputPath = firstPathArg(args)
+  return { read, write: outputPath ? [outputPath] : [] }
 }
 
 function isDestructive(command: string): string | null {
@@ -352,23 +364,33 @@ function uniqueCapability(caps: Capability[], cap: Capability) {
   caps.push(cap)
 }
 
+function isTrustedPath(pathInput: string, roots: string[] | undefined): boolean {
+  return roots?.some((root) => Filesystem.contains(root, pathInput)) ?? false
+}
+
 function classifyPathCapability(
   caps: Capability[],
   pathInput: string,
-  options: { activeWorkspace: string; originalCheckout?: string; write?: boolean; readRoots?: string[] },
+  options: {
+    activeWorkspace: string
+    originalCheckout?: string
+    write?: boolean
+    readRoots?: string[]
+    trustedRoots?: string[]
+  },
 ) {
   const classification = PathClassifier.classifyPath(pathInput, {
     workspace: options.activeWorkspace,
     originalCheckout: options.originalCheckout,
   })
 
-  if (classification.boundary === "inside") {
+  if (classification.boundary === "inside" || isTrustedPath(pathInput, options.trustedRoots)) {
     uniqueCapability(caps, {
       class: options.write ? "file_write" : "file_read",
       nonBypassable: false,
       paths: [pathInput],
     })
-  } else if (!options.write && options.readRoots?.some((r) => Filesystem.contains(r, pathInput))) {
+  } else if (!options.write && isTrustedPath(pathInput, options.readRoots)) {
     uniqueCapability(caps, {
       class: "file_read",
       nonBypassable: false,
@@ -377,21 +399,37 @@ function classifyPathCapability(
   } else {
     uniqueCapability(caps, {
       class: options.write ? "file_external_write" : "file_external_read",
-      nonBypassable: true,
+      nonBypassable: options.write === true,
       paths: [pathInput],
     })
   }
 }
 
-function classifyProtectedPathCapability(caps: Capability[], pathInput: string, mode: "read" | "write") {
-  const protectedMatch = checkProtectedPath(pathInput, mode)
+function classifyProtectedPathCapability(
+  caps: Capability[],
+  pathInput: string,
+  mode: "read" | "write",
+  options: { activeWorkspace?: string; originalCheckout?: string; synergyRoot?: string } = {},
+) {
+  const protectedMatch = checkProtectedPath(pathInput, mode, {
+    workspaceRoot: options.activeWorkspace,
+    originalCheckout: options.originalCheckout,
+    synergyRoot: options.synergyRoot,
+  })
   if (!protectedMatch.matched) return
+  const capabilityClass =
+    protectedMatch.category === "secrets" || protectedMatch.exactSecretRoot ? "secrets" : "protected_op"
   uniqueCapability(caps, {
-    class: "protected_op",
-    nonBypassable: true,
-    opaque: true,
+    class: capabilityClass,
+    nonBypassable: protectedMatch.smartAllowEligible !== true,
+    opaque: protectedMatch.exactSecretRoot === true,
     reason: protectedMatch.reason,
-    metadata: { protectedCategory: protectedMatch.category },
+    metadata: {
+      protectedCategory: protectedMatch.category,
+      smartAllowEligible: protectedMatch.smartAllowEligible === true,
+      exactSecretRoot: protectedMatch.exactSecretRoot === true,
+      redactedEvidenceRequired: protectedMatch.category === "secrets",
+    },
   })
 }
 
@@ -414,15 +452,19 @@ function extractShellPathArguments(command: string, cwd: string): string[] {
         continue
       }
       if (name === "chmod" && (raw.startsWith("+") || /^\d+$/.test(raw))) continue
-      paths.push(raw.startsWith("/") ? raw : `${cwd}/${raw}`)
+      const arg = raw.replace(/^["']/, "").replace(/["']$/, "")
+      paths.push(arg.startsWith("/") || arg.startsWith("~") || /^\$(\{?HOME\}?)/.test(arg) ? arg : `${cwd}/${arg}`)
     }
   }
   return paths
 }
-
 function hasNetworkActivity(command: string): boolean {
   const lower = command.toLowerCase()
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
+}
+
+function requestsSynergyLink(args: Record<string, any>): boolean {
+  return [args.targetID, args.linkID, args.envID].some((value) => typeof value === "string" && value.trim().length > 0)
 }
 
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
@@ -438,21 +480,23 @@ export namespace EnforcementGate {
       activeWorkspace,
       workspaceType,
       profileId: rawProfileId = "guarded",
-      interactionMode = "attended",
       registeredMcpTools = new Set<string>(),
       registeredPluginTools = new Set<string>(),
       pluginToolCapabilities = {},
       pluginApprovals,
       originalCheckout,
       readRoots,
+      trustedRoots,
       execPolicy,
+      synergyRoot,
     } = options
     const profileId = ControlProfileCompiler.normalize(rawProfileId)
+    const trustedRootList = trustedRoots ?? []
 
     const resolved = await ControlProfileCompiler.resolve(profileId, {
       workspace: activeWorkspace,
       workspaceType,
-      interactionMode,
+      trustedRoots: trustedRootList,
     })
 
     if (!resolved.valid) {
@@ -461,25 +505,27 @@ export namespace EnforcementGate {
     const auditRecords: AuditRecord[] = []
     const pendingCapabilities = new Set<string>()
     // Accumulated sandbox-approved paths across all evaluate() calls
-    const approvedReadPaths = new Set<string>()
-    const approvedWritePaths = new Set<string>()
+    const approvedReadPaths = new Set<string>(trustedRootList)
+    const approvedWritePaths = new Set<string>(trustedRootList)
+    const pathOptions = { activeWorkspace, originalCheckout, readRoots, trustedRoots }
     let approvedNetwork = false
     const approvalCache = new ApprovalCache()
 
     function classify(toolName: string, args: Record<string, any>): ClassifyResult {
       const caps: Capability[] = []
 
-      // Protected path hard boundary — checked first so it applies to every
-      // path-bearing tool regardless of profile/mode. A match forces an ask
-      // even in full_access because the capability is nonBypassable+opaque
-      // and profiles.ts hard-codes protected_op → "ask".
-      const pathArg = (args.path as string) ?? (args.file_path as string) ?? (args.filePath as string)
-      if (pathArg) {
-        const mode =
-          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
-            ? "write"
-            : "read"
-        classifyProtectedPathCapability(caps, pathArg, mode)
+      // Sensitive path candidates are classified before generic path ownership
+      // so secret roots/candidates get profile-aware handling instead of a
+      // blanket .synergy/.env hard boundary.
+      if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
+        const pathArg = firstPathArg(args)
+        if (pathArg) {
+          const mode =
+            toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+              ? "write"
+              : "read"
+          classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
+        }
       }
 
       // MCP tools: mcp__server__tool
@@ -491,7 +537,12 @@ export namespace EnforcementGate {
 
       // Local tools: local__fileName__exportName
       if (toolName.startsWith("local__")) {
-        caps.push({ class: "local_tool_invoke", nonBypassable: false })
+        caps.push({
+          class: "protected_op",
+          nonBypassable: true,
+          opaque: true,
+          reason: "local custom tool",
+        })
         return { capabilities: caps }
       }
 
@@ -509,40 +560,13 @@ export namespace EnforcementGate {
           return { capabilities: caps }
         }
 
-        // If we have resolved capabilities from the plugin manifest, decompose them
+        // Plugin capabilities are already Synergy capability classes.
         if (entry) {
-          const manifestCaps = entry.capabilities
-          const hasCap = (c: string) => manifestCaps.includes(c)
-
-          if (hasCap("filesystem:read")) {
-            caps.push({ class: "plugin_file_read", nonBypassable: false })
-          }
-          if (hasCap("filesystem:write")) {
-            caps.push({ class: "plugin_file_write", nonBypassable: false })
-          }
-          if (hasCap("shell")) {
-            caps.push({ class: "plugin_shell", nonBypassable: false })
-          }
-          if (hasCap("network")) {
-            caps.push({ class: "plugin_network", nonBypassable: false })
-          }
-          if (hasCap("session_data")) {
-            caps.push({ class: "plugin_session_read", nonBypassable: false })
-          }
-          if (hasCap("workspace_data")) {
-            caps.push({ class: "plugin_workspace_read", nonBypassable: false })
-          }
-          if (hasCap("config:read")) {
-            caps.push({ class: "plugin_config_read", nonBypassable: false })
-          }
-          if (hasCap("config:write")) {
-            caps.push({ class: "plugin_config_write", nonBypassable: false })
-          }
-          if (hasCap("secrets")) {
-            caps.push({ class: "plugin_secret_read", nonBypassable: true })
-          }
-          if (hasCap("task")) {
-            caps.push({ class: "task", nonBypassable: false })
+          for (const capabilityClass of entry.capabilities) {
+            pushUniqueCapability(caps, {
+              class: capabilityClass,
+              nonBypassable: capabilityNonBypassable(capabilityClass),
+            })
           }
         }
 
@@ -554,8 +578,7 @@ export namespace EnforcementGate {
             const approvedSet = new Set(approval?.approvedCapabilities ?? [])
             for (let i = 0; i < caps.length; i++) {
               const cap = caps[i]
-              const manifestCap = GATE_TO_MANIFEST_CAP[cap.class]
-              if (manifestCap && !approvedSet.has(manifestCap)) {
+              if (!approvedSet.has(cap.class)) {
                 cap.opaque = true
                 cap.approved = false
                 cap.reason = "unapproved"
@@ -581,7 +604,7 @@ export namespace EnforcementGate {
       ) {
         const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }
       }
@@ -593,25 +616,30 @@ export namespace EnforcementGate {
           const paths =
             multiPaths.length > 0 ? multiPaths : ([pathFromHashlinePatch(args.input)].filter(Boolean) as string[])
           for (const p of paths) {
-            classifyProtectedPathCapability(caps, p, "write")
-            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, write: true })
+            classifyProtectedPathCapability(caps, p, "write", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, p, { ...pathOptions, write: true })
           }
         } else {
-          const filePath = args.filePath ?? args.path ?? ""
+          const filePath = firstPathArg(args)
           if (filePath) {
-            classifyProtectedPathCapability(caps, filePath, "write")
-            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, write: true })
+            classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
+            classifyPathCapability(caps, filePath, { ...pathOptions, write: true })
           }
         }
         return { capabilities: caps }
       }
 
       // Document / attachment tools
-      if (toolName === "scan_document" || toolName === "look_at" || toolName === "attach") {
+      if (
+        toolName === "scan_document" ||
+        toolName === "look_at" ||
+        toolName === "view_image" ||
+        toolName === "attach"
+      ) {
         const raw = args.filePath ?? args.file_path ?? ""
         const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
         if (filePath) {
-          classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }
       }
@@ -636,7 +664,35 @@ export namespace EnforcementGate {
       // Shell operations
       if (toolName === "bash") {
         const command: string = args.command ?? ""
-        const risk = ShellSafety.classifyBashRisk(command)
+        let risk = ShellSafety.classifyBashRisk(command)
+
+        // Runtime reclassification: bare git push on a protected branch.
+        // classifyBashRisk is pure string analysis — it cannot see the current
+        // branch. Bare push uses push.default to select the destination at
+        // runtime, so a bare push from "main" effectively pushes to origin/main.
+        if (risk === "shell_remote_publish" && ShellSafety.isBarePush(command)) {
+          try {
+            const proc = Bun.spawnSync(["git", "branch", "--show-current"], {
+              cwd: activeWorkspace,
+              stdout: "pipe",
+              stderr: "pipe",
+            })
+            const branch = new TextDecoder().decode(proc.stdout).trim()
+            if (branch && PROTECTED_PUSH_TARGETS.has(branch)) {
+              risk = "shell_remote_write"
+            }
+          } catch {
+            // If we can't determine the branch, trust the static classification.
+          }
+        }
+
+        // ── Worktree-aware reclassifications ──────────────────
+        // git checkout / git switch on the main checkout corrupts every
+        // concurrent session. Downgrade to plain shell inside worktrees
+        // where each has its own index and working directory.
+        if (risk === "shell_branch_mutation" && workspaceType === "worktree") {
+          risk = "shell"
+        }
 
         if (risk === "shell_hardline") {
           caps.push({
@@ -646,11 +702,21 @@ export namespace EnforcementGate {
           })
           return { capabilities: caps }
         }
-
         // shell_destructive is high-risk by definition; it must always be a hard
         // boundary so Smart allow can never bypass a profile deny on it.
+        // shell_remote_publish covers ordinary branch push and PR creation.
+        // shell_remote_write is broader remote mutation and stays Smart allow eligible.
+        // shell_remote_execute applies when linkID targets a remote Synergy Link host.
         caps.push({ class: risk, nonBypassable: risk === "shell_destructive" })
+        // not the local machine. Add a separate remote-execute capability so
+        // profiles can distinguish local vs remote shell execution. Deprecated
+        // envID is accepted by the tool layer as a linkID alias, so it must be
+        // classified through the same remote-execute boundary.
+        if (requestsSynergyLink(args)) {
+          caps.push({ class: "shell_remote_execute", nonBypassable: true })
+        }
 
+        // Defense-in-depth: secondary destructive pattern checks.
         if (risk !== "shell_destructive") {
           const resilient = analyzeDestructiveCommand(command)
           if (resilient.matched) {
@@ -681,23 +747,22 @@ export namespace EnforcementGate {
 
         const cwd = args.workdir ?? activeWorkspace
         if (args.workdir) {
-          classifyPathCapability(caps, args.workdir, { activeWorkspace, originalCheckout, readRoots })
+          classifyPathCapability(caps, args.workdir, pathOptions)
         }
 
-        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)]
+        const pathCandidates = [...extractAbsolutePaths(command), ...extractShellPathArguments(command, cwd)].filter(
+          (candidate) => !BashVirtualPath.isShellCandidate(candidate),
+        )
         // shell_read → known read-only (cat, ls, grep, git log, etc.)
         // shell / shell_destructive → write-capable (builds, scripts, destructive ops)
         const writeCapable = risk !== "shell_read"
         for (const candidate of pathCandidates) {
-          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read")
-          const result = PathClassifier.classifyPath(candidate, { workspace: activeWorkspace, originalCheckout })
-          if (result.boundary === "outside") {
-            uniqueCapability(caps, {
-              class: writeCapable ? "file_external_write" : "file_external_read",
-              nonBypassable: true,
-              paths: [candidate],
-            })
-          }
+          classifyProtectedPathCapability(caps, candidate, writeCapable ? "write" : "read", {
+            activeWorkspace,
+            originalCheckout,
+            synergyRoot,
+          })
+          classifyPathCapability(caps, candidate, { ...pathOptions, write: writeCapable })
         }
 
         // Check for network activity
@@ -731,14 +796,11 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
-      // session_send: user role can trigger another agent as the user; assistant
-      // role is still an outbound channel operation and remains profile-gated.
+      // session_send only supports actionable user delivery. Unsupported roles
+      // are left to schema validation so they fail before an approval request.
       if (toolName === "session_send") {
-        const role = args.role ?? ""
-        if (role === "user") {
+        if (args.role === undefined || args.role === "user") {
           caps.push({ class: "identity_act", nonBypassable: true })
-        } else {
-          caps.push({ class: "channel_outbound", nonBypassable: true })
         }
         return { capabilities: caps }
       }
@@ -756,7 +818,12 @@ export namespace EnforcementGate {
       }
 
       // Note write tools
-      if (toolName === "note_write" || toolName === "note_edit") {
+      if (
+        toolName === "note_write" ||
+        toolName === "note_edit" ||
+        toolName === "note_archive" ||
+        toolName === "note_delete"
+      ) {
         caps.push({ class: "file_write", nonBypassable: false })
         return { capabilities: caps }
       }
@@ -819,7 +886,7 @@ export namespace EnforcementGate {
         if (toolName === "ast_grep") {
           const paths: string[] = Array.isArray(args.paths) ? args.paths : []
           for (const p of paths) {
-            classifyPathCapability(caps, p, { activeWorkspace, originalCheckout, readRoots })
+            classifyPathCapability(caps, p, pathOptions)
           }
           if (paths.length === 0) {
             caps.push({ class: "file_read", nonBypassable: false })
@@ -827,7 +894,7 @@ export namespace EnforcementGate {
         } else {
           const filePath = args.filePath ?? args.path ?? args.pattern ?? ""
           if (filePath) {
-            classifyPathCapability(caps, filePath, { activeWorkspace, originalCheckout, readRoots })
+            classifyPathCapability(caps, filePath, pathOptions)
           } else {
             caps.push({ class: "file_read", nonBypassable: false })
           }
@@ -849,6 +916,9 @@ export namespace EnforcementGate {
         } else {
           caps.push({ class: "file_read", nonBypassable: false })
         }
+        if (requestsSynergyLink(args)) {
+          caps.push({ class: "shell_remote_execute", nonBypassable: true })
+        }
         return { capabilities: caps }
       }
 
@@ -863,43 +933,40 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       // Browser tools
-      if (toolName === "browser_navigate") {
-        caps.push({ class: "network_request", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (
-        toolName === "browser_click" ||
-        toolName === "browser_clipboard" ||
-        toolName === "browser_type" ||
-        toolName === "browser_scroll" ||
-        toolName === "browser_action"
-      ) {
+      if (toolName === "browser_action") {
         caps.push({ class: "browser_interact", nonBypassable: false })
+        const action = typeof args.action === "object" && args.action !== null ? args.action : {}
+        const targets = [action.target, action.from, action.to]
+        if (targets.some((target) => typeof target === "object" && target !== null && target.kind === "point")) {
+          caps.push({ class: "browser_coordinate", nonBypassable: false })
+        }
         return { capabilities: caps }
       }
-      if (toolName === "browser_viewport") {
-        caps.push({ class: "browser_viewport", nonBypassable: false })
+      if (toolName === "browser_emulate") {
+        caps.push({ class: "browser_emulation", nonBypassable: false })
         return { capabilities: caps }
       }
       if (
         toolName === "browser_snapshot" ||
         toolName === "browser_screenshot" ||
         toolName === "browser_inspect" ||
-        toolName === "browser_wait"
+        toolName === "browser_wait" ||
+        toolName === "browser_read" ||
+        toolName === "browser_console" ||
+        toolName === "browser_network" ||
+        toolName === "browser_audit"
       ) {
         caps.push({ class: "browser_inspect", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_console" || toolName === "browser_network") {
-        caps.push({ class: "browser_inspect", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_download") {
-        caps.push({ class: "network_request", nonBypassable: false })
+        if (toolName === "browser_network" && args.includeSensitive === true) {
+          caps.push({ class: "secrets", nonBypassable: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_downloads") {
         caps.push({ class: "browser_download", nonBypassable: false })
+        if (args.action === "export" && typeof args.path === "string") {
+          classifyPathCapability(caps, args.path, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_annotate") {
@@ -907,23 +974,47 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
       if (toolName === "browser_navigation") {
-        caps.push({ class: "browser_interact", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_list") {
-        caps.push({ class: "session_state", nonBypassable: false })
-        return { capabilities: caps }
-      }
-      if (toolName === "browser_read") {
-        caps.push({ class: "browser_inspect", nonBypassable: false })
+        caps.push({ class: args.action === "current" ? "browser_inspect" : "browser_interact", nonBypassable: false })
+        if (args.action === "goto") {
+          caps.push({ class: "network_request", nonBypassable: false })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_assets") {
         caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "export" && typeof args.outputDir === "string") {
+          caps.push({ class: "browser_download", nonBypassable: false })
+          classifyPathCapability(caps, args.outputDir, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_eval") {
-        caps.push({ class: "browser_eval_readonly", nonBypassable: false })
+        caps.push({
+          class: args.mode === "trusted" ? "browser_eval_trusted" : "browser_eval_readonly",
+          nonBypassable: args.mode === "trusted",
+        })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_clipboard") {
+        caps.push({ class: "browser_clipboard", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_upload") {
+        caps.push({ class: "browser_upload", nonBypassable: true })
+        for (const filePath of Array.isArray(args.paths) ? args.paths : []) {
+          if (typeof filePath === "string") classifyPathCapability(caps, filePath, pathOptions)
+        }
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_dialog") {
+        caps.push({ class: "browser_interact", nonBypassable: false })
+        return { capabilities: caps }
+      }
+      if (toolName === "browser_performance") {
+        caps.push({ class: "browser_inspect", nonBypassable: false })
+        if (args.action === "stopTrace" && typeof args.exportPath === "string") {
+          classifyPathCapability(caps, args.exportPath, { ...pathOptions, write: true })
+        }
         return { capabilities: caps }
       }
       if (toolName === "browser_view") {
@@ -931,8 +1022,32 @@ export namespace EnforcementGate {
         return { capabilities: caps }
       }
 
+      if (toolName === "openai_image_gen" || toolName === "openai_image_edit") {
+        const imagePaths = imagePathArgs(args)
+        for (const inputPath of imagePaths.read) {
+          classifyProtectedPathCapability(caps, inputPath, "read", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, inputPath, pathOptions)
+        }
+        for (const outputPath of imagePaths.write) {
+          classifyProtectedPathCapability(caps, outputPath, "write", { activeWorkspace, originalCheckout, synergyRoot })
+          classifyPathCapability(caps, outputPath, { ...pathOptions, write: true })
+        }
+        caps.push({ class: "network_request", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
       // Blueprint loop management tools — session state coordination
-      if (toolName === "blueprint_loop_finish" || toolName === "blueprint_loop_restart") {
+      if (
+        toolName === "blueprint_loop_stop" ||
+        toolName === "blueprint_loop_approve" ||
+        toolName === "blueprint_loop_reject"
+      ) {
+        caps.push({ class: "session_state", nonBypassable: false })
+        return { capabilities: caps }
+      }
+
+      // LightLoop review tools — session state coordination
+      if (toolName === "loop_stop" || toolName === "light_loop_approve" || toolName === "light_loop_reject") {
         caps.push({ class: "session_state", nonBypassable: false })
         return { capabilities: caps }
       }
@@ -946,6 +1061,7 @@ export namespace EnforcementGate {
     }
 
     function evaluate(toolName: string, args: Record<string, any>): Envelope {
+      const perfStart = performance.now()
       // ── ExecPolicy: bash command routing ──────────────────────────────
       let execPolicyMatch: RuleMatch | undefined
       let amendment: ExecPolicyAmendment | undefined
@@ -973,6 +1089,15 @@ export namespace EnforcementGate {
         // "deny" → hardline forbid
         if (execPolicyMatch.action === "deny") {
           const caps: Capability[] = [{ class: "shell_hardline", nonBypassable: true }]
+          if (profileId === "full_access") {
+            return {
+              decision: "allow",
+              profileId,
+              opaque: false,
+              capabilities: caps,
+              amendment,
+            }
+          }
           auditRecords.push({ tool: toolName, capabilities: caps, timestamp: Date.now() })
           return {
             decision: "deny",
@@ -1023,6 +1148,16 @@ export namespace EnforcementGate {
       // When execPolicy says "ask", override profile decision to "ask"
       if (execPolicyMatch?.action === "ask") {
         decision = "ask"
+      }
+
+      if (profileId === "full_access") {
+        decision = "allow"
+        deniedCapClass = undefined
+      }
+
+      if (profileId === "autonomous" && decision === "ask") {
+        decision = "deny"
+        deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
       }
 
       // Approval cache: if the profile says "ask" but the capability was
@@ -1084,7 +1219,7 @@ export namespace EnforcementGate {
         timestamp: Date.now(),
       })
 
-      return {
+      const envelope = {
         decision,
         profileId,
         opaque,
@@ -1092,6 +1227,19 @@ export namespace EnforcementGate {
         refusal,
         amendment,
       }
+      ObservabilityMetrics.record({
+        name: "enforcement.gate.duration",
+        value: performance.now() - perfStart,
+        unit: "ms",
+        module: "enforcement",
+        labels: {
+          tool: toolName,
+          decision,
+          capabilityCount: capabilities.length,
+          opaque,
+        },
+      })
+      return envelope
     }
 
     return {

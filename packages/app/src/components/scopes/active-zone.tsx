@@ -1,8 +1,11 @@
 import { createMemo, For, Show } from "solid-js"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session, SessionStatus, PermissionRequest, QuestionRequest } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 type ChildStore = {
   session_status: { [sessionID: string]: SessionStatus }
@@ -28,7 +31,7 @@ function getActiveReason(
   notification: ActiveZoneProps["notification"],
 ): ActiveReason | null {
   const status = childStore.session_status[session.id]
-  if (status?.type === "busy" || status?.type === "retry") return "working"
+  if (status?.type === "busy" || status?.type === "retry" || status?.type === "recovering") return "working"
 
   const permissions = childStore.permission[session.id] ?? []
   if (permissions.length > 0) return "permission"
@@ -46,8 +49,8 @@ const REASON_ORDER: Record<ActiveReason, number> = {
   error: 2,
   notification: 3,
 }
-
 export function ActiveZone(props: ActiveZoneProps) {
+  const { i18n } = useLocale()
   const activeSessions = createMemo(() => {
     const result: { session: Session; reason: ActiveReason }[] = []
 
@@ -76,7 +79,9 @@ export function ActiveZone(props: ActiveZoneProps) {
         <div class="flex items-center justify-between mb-2">
           <div class="flex items-center gap-1.5">
             <div class="size-1.5 rounded-full bg-icon-success-base animate-pulse" />
-            <span class="text-11-medium text-text-weak uppercase tracking-wider">Active</span>
+            <span class="text-11-medium text-text-weak uppercase tracking-wider">
+              {i18n._(AP.scopesActiveZoneActive.id)}
+            </span>
           </div>
           <span class="text-10-medium bg-surface-raised-base px-1.5 py-0.5 rounded-md">{activeSessions().length}</span>
         </div>
@@ -108,16 +113,17 @@ function ActiveCard(props: {
   index: () => number
   onSelect: (session: Session) => void
 }) {
+  const { i18n, fmt } = useLocale()
   const statusText = createMemo(() => {
     if (props.reason === "working") {
       const status = props.childStore.session_status[props.session.id]
-      if (status?.type === "retry") return status.message ?? "Retrying…"
-      if (status?.type === "busy") return status.description ?? "Working…"
-      return "Working…"
+      if (status?.type === "retry") return status.message ?? i18n._(AP.scopesActiveZoneRetrying.id)
+      if (status?.type === "busy") return status.description ?? i18n._(AP.scopesActiveZoneWorking.id)
+      return i18n._(AP.scopesActiveZoneWorking.id)
     }
-    if (props.reason === "permission") return "Permission request"
-    if (props.reason === "error") return "Error"
-    return "New activity"
+    if (props.reason === "permission") return i18n._(AP.scopesActiveZonePermission.id)
+    if (props.reason === "error") return i18n._(AP.scopesActiveZoneError.id)
+    return i18n._(AP.scopesActiveZoneNewActivity.id)
   })
 
   const updatedAt = () => props.session.time.updated ?? props.session.time.created
@@ -125,7 +131,7 @@ function ActiveCard(props: {
 
   function handleDragStart(e: DragEvent) {
     if (!e.dataTransfer) return
-    const title = props.session.title || "New session"
+    const title = props.session.title || i18n._(AP.scopesSessionNewSession.id)
     const payload = JSON.stringify({
       id: props.session.id,
       directory: props.session.scope.directory,
@@ -173,20 +179,25 @@ function ActiveCard(props: {
         <span class="text-11-regular text-text-weak truncate">{statusText()}</span>
       </div>
 
-      <span class="text-12-medium text-text-base line-clamp-2">{props.session.title || "New session"}</span>
+      <span class="text-12-medium text-text-base line-clamp-2">
+        {props.session.title || i18n._(AP.scopesSessionNewSession.id)}
+      </span>
 
       <Show when={props.childStatus && props.childStatus.count > 0}>
         <span class="text-10-regular text-text-weaker mt-1">
           {props.childStatus!.running > 0
-            ? `${props.childStatus!.running}/${props.childStatus!.count} tasks running`
-            : `${props.childStatus!.count} tasks`}
+            ? i18n._(AP.scopesActiveZoneTasksRunning.id, {
+                running: String(props.childStatus!.running),
+                count: String(props.childStatus!.count),
+              })
+            : i18n._(AP.scopesActiveZoneTasks.id, { count: props.childStatus!.count })}
         </span>
       </Show>
 
       <div class="flex items-center justify-between mt-auto pt-2">
-        <span class="text-10-regular text-text-weak">{relativeTime(updatedAt())}</span>
+        <span class="text-10-regular text-text-weak">{relativeTime(fmt, updatedAt())}</span>
         <Show when={isPinned()}>
-          <Icon name="pin" size="small" class="text-text-weaker size-3" />
+          <Icon name={getSemanticIcon("action.pin")} size="small" class="text-text-weaker size-3" />
         </Show>
       </div>
     </div>

@@ -1,41 +1,40 @@
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { computeRisk } from "./risk"
+import { riskForCapabilities } from "../capability"
 import { generatePermissionItems } from "./summary"
 import type { PermissionChange, PermissionItem, PluginPermissionDiff } from "./schema"
 
+export interface DiffPermissionsState {
+  oldVersion?: string
+  newVersion: string
+  oldCapabilities: string[]
+  newCapabilities: string[]
+}
+
 /**
- * Diff permissions between two versions of a plugin manifest.
+ * Diff permissions between two states.
  *
- * - `oldManifest === null` means a new plugin installation; all items go into "added".
+ * - `oldVersion === undefined` means a new plugin installation; all items go into "added".
  * - Compares resolved capabilities as sets: added, removed, unchanged.
  * - For unchanged capabilities, checks whether severity changed between versions.
  * - `requiresApproval` is true when there are additions, severity changes, or risk changes.
  */
-export function diffPermissions(
-  pluginId: string,
-  oldManifest: PluginManifest | null,
-  newManifest: PluginManifest,
-  oldCapabilities: string[],
-  newCapabilities: string[],
-): PluginPermissionDiff {
-  const fromVersion = oldManifest?.version
-  const toVersion = newManifest.version
+export function diffPermissions(pluginId: string, state: DiffPermissionsState): PluginPermissionDiff {
+  const { oldVersion, newVersion, oldCapabilities, newCapabilities } = state
 
   // New plugin install: everything is added
-  if (oldManifest === null) {
-    const items = generatePermissionItems(newManifest, newCapabilities)
+  if (oldVersion === undefined) {
+    const items = generatePermissionItems(newCapabilities)
     return {
       pluginId,
       fromVersion: undefined,
-      toVersion,
+      toVersion: newVersion,
       riskBefore: undefined,
-      riskAfter: computeRisk(newCapabilities, newManifest),
+      riskAfter: riskForCapabilities(newCapabilities),
       added: items,
       removed: [],
       unchanged: [],
       changed: [],
       requiresApproval: items.length > 0,
-      reason: "New plugin installation — all permissions require approval.",
+      reason: items.length > 0 ? "New plugin installation — all permissions require approval." : undefined,
     }
   }
 
@@ -47,9 +46,9 @@ export function diffPermissions(
   const removedCaps = [...oldSet].filter((c) => !newSet.has(c))
   const unchangedCaps = [...newSet].filter((c) => oldSet.has(c))
 
-  // Generate items from both manifests
-  const oldItems = generatePermissionItems(oldManifest, oldCapabilities)
-  const newItems = generatePermissionItems(newManifest, newCapabilities)
+  // Generate items from both capability sets
+  const oldItems = generatePermissionItems(oldCapabilities)
+  const newItems = generatePermissionItems(newCapabilities)
 
   const oldByKey = new Map(oldItems.map((i) => [i.key, i]))
   const newByKey = new Map(newItems.map((i) => [i.key, i]))
@@ -72,37 +71,14 @@ export function diffPermissions(
     }
   }
 
-  // Diff non-capability items (UI, hooks, data) between old and new manifests.
-  // These have keys starting with "ui.", "data.", or "hooks." and are not in
-  // the capability sets.
-  const nonCapKeys = new Set([
-    ...oldItems.filter((i) => !oldSet.has(i.key)).map((i) => i.key),
-    ...newItems.filter((i) => !newSet.has(i.key)).map((i) => i.key),
-  ])
-  for (const key of nonCapKeys) {
-    const oldItem = oldByKey.get(key)
-    const newItem = newByKey.get(key)
-    if (oldItem && !newItem) {
-      removed.push(oldItem)
-    } else if (!oldItem && newItem) {
-      added.push(newItem)
-    } else if (oldItem && newItem && oldItem.severity !== newItem.severity) {
-      changed.push({
-        key,
-        before: oldItem.severity,
-        after: newItem.severity,
-      })
-    }
-  }
-
-  const riskBefore = computeRisk(oldCapabilities, oldManifest)
-  const riskAfter = computeRisk(newCapabilities, newManifest)
+  const riskBefore = riskForCapabilities(oldCapabilities)
+  const riskAfter = riskForCapabilities(newCapabilities)
   const requiresApproval = added.length > 0 || removed.length > 0 || changed.length > 0 || riskBefore !== riskAfter
 
   return {
     pluginId,
-    fromVersion,
-    toVersion,
+    fromVersion: oldVersion,
+    toVersion: newVersion,
     riskBefore,
     riskAfter,
     added,

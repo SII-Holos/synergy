@@ -1,4 +1,10 @@
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginArtifact,
+  PluginManifest,
+  normalizePluginArchiveEntry,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
+import { SYNERGY_CAPABILITY_DETAILS, permissionCategoryForKey } from "@ericsanchezok/synergy-util/capability"
 import fs from "fs/promises"
 import fsSync from "fs"
 import os from "os"
@@ -7,11 +13,12 @@ import z from "zod"
 import { Config } from "../config/config"
 import { PLUGIN_MARKETPLACE_DEFAULTS, PluginMarketplace as PluginMarketplaceConfig } from "../config/schema"
 import { Global } from "../global"
-import { sha256File } from "../util/crypto"
+import { sha256Content, sha256File } from "../util/crypto"
 import { baseCapabilities } from "./capability"
+import { riskForCapabilities } from "./capability"
 import { computeManifestHash, computePermissionsHash } from "./consent/approval-store"
-import { computeRisk } from "./consent/risk"
 import { readSignatureFile, verifySignatureWithPublicKey, type SignatureMetadata } from "./signature"
+import { defaultPluginTrustDecision } from "./trust"
 
 export namespace PluginMarketplaceRegistry {
   export const Source = z.enum(["official", "local"])
@@ -20,12 +27,17 @@ export namespace PluginMarketplaceRegistry {
   export const DEFAULT_REGISTRY_URL: string = PLUGIN_MARKETPLACE_DEFAULTS.registryUrl
 
   const Risk = z.enum(["low", "medium", "high"])
-  const RuntimeMode = z.enum(["in-process", "worker", "process"])
+  const RuntimeMode = z.literal("process")
   const Author = z.object({
     name: z.string(),
     email: z.string().optional(),
     url: z.string().optional(),
   })
+  const Compatibility = z
+    .object({
+      synergy: z.string().min(1),
+    })
+    .strict()
   const RemotePermission = z.object({
     key: z.string(),
     description: z.string(),
@@ -40,38 +52,42 @@ export namespace PluginMarketplaceRegistry {
     z.object({ type: z.literal("lucide"), name: z.string().min(1) }),
     z.object({ type: z.literal("registry-svg"), path: z.string().min(1) }),
   ])
-  const RemoteVersion = z.object({
-    version: z.string(),
-    downloadUrl: z.string().url(),
-    signatureUrl: z.string().url(),
-    signature: RemoteSignature,
-    integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
-    manifestHash: z.string(),
-    permissionsHash: z.string(),
-    risk: Risk,
-    runtimeMode: RuntimeMode,
-    permissionsSummary: z.array(RemotePermission),
-    tools: z.array(z.string()),
-    uiSurfaces: z.array(z.string()),
-    publishedAt: z.string(),
-    changelog: z.string().optional(),
-  })
-  const RemoteEntry = z.object({
-    schemaVersion: z.literal(1),
-    id: z.string(),
-    name: z.string(),
-    description: z.string(),
-    repo: z.string().url(),
-    homepage: z.string().url().optional(),
-    author: Author,
-    icon: RemoteIcon.optional(),
-    verified: z.boolean(),
-    official: z.boolean(),
-    keywords: z.array(z.string()),
-    compatibility: z.object({ synergy: z.string() }),
-    versions: z.array(RemoteVersion),
-    yankedVersions: z.array(z.string()).optional().default([]),
-  })
+  const RemoteVersion = z
+    .object({
+      version: z.string(),
+      downloadUrl: z.string().url(),
+      signatureUrl: z.string().url(),
+      signature: RemoteSignature,
+      integrity: z.string().regex(/^sha256-[a-f0-9]{64}$/),
+      manifestHash: z.string(),
+      permissionsHash: z.string(),
+      risk: Risk,
+      runtimeMode: RuntimeMode,
+      permissionsSummary: z.array(RemotePermission),
+      tools: z.array(z.string()),
+      uiSurfaces: z.array(z.string()),
+      publishedAt: z.string(),
+      changelog: z.string().optional(),
+    })
+    .strict()
+  const RemoteEntry = z
+    .object({
+      schemaVersion: z.literal(1),
+      id: z.string(),
+      name: z.string(),
+      description: z.string(),
+      repo: z.string().url(),
+      homepage: z.string().url().optional(),
+      author: Author,
+      icon: RemoteIcon.optional(),
+      verified: z.boolean(),
+      official: z.boolean(),
+      keywords: z.array(z.string()),
+      compatibility: Compatibility.optional(),
+      versions: z.array(RemoteVersion),
+      yankedVersions: z.array(z.string()).optional().default([]),
+    })
+    .strict()
   const RemoteSummary = z.object({
     id: z.string(),
     name: z.string(),
@@ -111,7 +127,7 @@ export namespace PluginMarketplaceRegistry {
     downloadUrl?: string
     integrity: string
     risk: "low" | "medium" | "high"
-    runtimeMode?: "in-process" | "worker" | "process"
+    runtimeMode?: "process"
     permissionsSummary: Array<{ key: string; description: string; risk: "low" | "medium" | "high"; granted?: boolean }>
     tools?: string[]
     uiSurfaces?: string[]
@@ -131,13 +147,13 @@ export namespace PluginMarketplaceRegistry {
     verified: boolean
     official: boolean
     keywords: string[]
-    compatibility: { synergy: string }
+    compatibility?: { synergy: string }
     versions: NormalizedVersion[]
     createdAt: number
     updatedAt: number
     risk: "low" | "medium" | "high"
-    trustTier: "declarative" | "trusted-import" | "sandbox"
-    runtimeMode: "in-process" | "worker" | "process"
+    trustTier: "declarative" | "trusted-import"
+    runtimeMode: "process"
     permissionsSummary: Array<{ key: string; category: string; severity: string; title: string; description: string }>
     uiSurfaces: string[]
     tools: string[]
@@ -163,8 +179,8 @@ export namespace PluginMarketplaceRegistry {
     latestVersion?: string
     updatedAt: number
     risk: "low" | "medium" | "high"
-    trustTier: "declarative" | "trusted-import" | "sandbox"
-    runtimeMode: "in-process" | "worker" | "process"
+    trustTier: "declarative" | "trusted-import"
+    runtimeMode: "process"
     uiSurfaces: string[]
     tools: string[]
     downloads: number
@@ -184,20 +200,42 @@ export namespace PluginMarketplaceRegistry {
     signature: SignatureMetadata
   }
 
+  export interface RegistryCachePaths {
+    root: string
+    registry: string
+    entries: string
+    artifacts: string
+  }
+
+  export function cacheNamespace(registryUrl: string): string {
+    return sha256Content(registryUrl).slice(0, 16)
+  }
+
+  export function cachePaths(registryUrl: string): RegistryCachePaths {
+    const root = path.join(cacheRoot(), "registries", cacheNamespace(registryUrl))
+    return {
+      root,
+      registry: path.join(root, "registry.json"),
+      entries: path.join(root, "entries"),
+      artifacts: path.join(root, "artifacts"),
+    }
+  }
+
   function cacheRoot() {
     return path.join(Global.Path.cache, "plugin-market")
   }
 
-  function registryCachePath() {
-    return path.join(cacheRoot(), "registry.json")
+  function registryCachePath(registryUrl: string) {
+    return cachePaths(registryUrl).registry
   }
 
-  function entryCachePath(id: string) {
-    return path.join(cacheRoot(), "entries", `${id}.json`)
+  function entryCachePath(registryUrl: string, id: string) {
+    return path.join(cachePaths(registryUrl).entries, `${id}.json`)
   }
 
-  function artifactDir(id: string, version: string) {
-    return path.join(cacheRoot(), "artifacts", id, version)
+  function artifactDir(registryUrl: string, id: string, version: string, integrity: string) {
+    const integrityKey = integrity.replace(/^sha256-/, "").slice(0, 16)
+    return path.join(cachePaths(registryUrl).artifacts, id, version, integrityKey)
   }
 
   function timestamp(input: string | number | undefined): number {
@@ -207,25 +245,16 @@ export namespace PluginMarketplaceRegistry {
     return Number.isFinite(value) ? value : 0
   }
 
-  function trustTier(input: { official: boolean; verified: boolean }): "trusted-import" | "sandbox" {
-    return input.official || input.verified ? "trusted-import" : "sandbox"
-  }
-
-  function permissionCategory(key: string): string {
-    if (key.includes("network") || key.includes("http") || key.includes("fetch")) return "network"
-    if (key.includes("file") || key.includes("filesystem") || key.includes("read") || key.includes("write"))
-      return "files"
-    if (key.includes("ui") || key.includes("panel") || key.includes("view")) return "ui"
-    if (key.includes("hook") || key.includes("runtime") || key.includes("process")) return "runtime"
-    return "tools"
+  function trustTier(source: Source): NormalizedEntry["trustTier"] {
+    return defaultPluginTrustDecision({ source }).tier
   }
 
   function normalizePermissionSummary(items: NormalizedVersion["permissionsSummary"]) {
     return items.map((item) => ({
       key: item.key,
-      category: permissionCategory(item.key),
+      category: permissionCategoryForKey(item.key),
       severity: item.risk,
-      title: item.key,
+      title: SYNERGY_CAPABILITY_DETAILS[item.key]?.title ?? item.key,
       description: item.description,
     }))
   }
@@ -278,12 +307,12 @@ export namespace PluginMarketplaceRegistry {
       verified: entry.verified,
       official: entry.official,
       keywords: entry.keywords,
-      compatibility: entry.compatibility,
+      ...(entry.compatibility ? { compatibility: entry.compatibility } : {}),
       versions,
       createdAt: versions.length ? Math.min(...versions.map((version) => version.publishedAt)) : 0,
       updatedAt: latest?.publishedAt ?? 0,
       risk: latest?.risk ?? "low",
-      trustTier: trustTier(entry),
+      trustTier: trustTier(source),
       runtimeMode: latest?.runtimeMode ?? "process",
       permissionsSummary: normalizePermissionSummary(latest?.permissionsSummary ?? []),
       uiSurfaces: latest?.uiSurfaces ?? [],
@@ -310,7 +339,7 @@ export namespace PluginMarketplaceRegistry {
       latestVersion: summary.latestVersion,
       updatedAt: timestamp(summary.updatedAt),
       risk: summary.risk,
-      trustTier: trustTier(summary),
+      trustTier: trustTier("official"),
       runtimeMode: summary.runtimeMode,
       uiSurfaces: summary.uiSurfaces,
       tools: summary.tools,
@@ -325,7 +354,13 @@ export namespace PluginMarketplaceRegistry {
       ...PLUGIN_MARKETPLACE_DEFAULTS,
       ...(current.pluginMarketplace ?? {}),
     })
-    if (process.env.SYNERGY_TEST_HOME && process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1") {
+    const hasExplicitEnabled =
+      current.pluginMarketplace && Object.prototype.hasOwnProperty.call(current.pluginMarketplace, "enabled")
+    if (
+      process.env.SYNERGY_TEST_HOME &&
+      process.env.SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET !== "1" &&
+      !hasExplicitEnabled
+    ) {
       return { ...config, enabled: false }
     }
     return config
@@ -356,8 +391,8 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  async function fetchJson<T>(url: string, schema: z.ZodType<T>): Promise<T> {
-    const response = await fetch(url, { signal: AbortSignal.timeout(10000) })
+  async function fetchJson<T>(url: string, schema: z.ZodType<T>, timeoutMs: number): Promise<T> {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!response.ok) throw new Error(`Failed to fetch ${url}: HTTP ${response.status}`)
     return schema.parse(await response.json())
   }
@@ -366,26 +401,58 @@ export namespace PluginMarketplaceRegistry {
     return new URL(entry, registryUrl).href
   }
 
+  const pendingRefreshes = new Map<string, Promise<z.infer<typeof RemoteRegistry>>>()
+
+  async function backgroundRefreshRegistry(config: Awaited<ReturnType<typeof currentConfig>>) {
+    const cachedPath = registryCachePath(config.registryUrl)
+    const key = cachedPath
+    const existing = pendingRefreshes.get(key)
+    if (existing) return existing
+    const promise = (async () => {
+      try {
+        const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
+        await writeJsonFile(cachedPath, registry)
+        return registry
+      } catch {
+        return null as unknown as z.infer<typeof RemoteRegistry>
+      } finally {
+        pendingRefreshes.delete(key)
+      }
+    })()
+    pendingRefreshes.set(key, promise)
+    return promise
+  }
+
   async function remoteRegistry(inputConfig?: Awaited<ReturnType<typeof currentConfig>>) {
     const config = inputConfig ?? (await currentConfig())
     if (!config.enabled) return { schemaVersion: 1 as const, updatedAt: new Date(0).toISOString(), plugins: [] }
-    const cachedPath = registryCachePath()
-    if (await isFresh(cachedPath, config.cacheTtlMs)) {
-      const cached = await readJsonFile(cachedPath, RemoteRegistry)
-      if (cached) return cached
+    const cachedPath = registryCachePath(config.registryUrl)
+    const cached = await readJsonFile(cachedPath, RemoteRegistry)
+    if (cached) {
+      if (await isFresh(cachedPath, config.cacheTtlMs)) return cached
+      backgroundRefreshRegistry(config)
+      return cached
     }
 
     try {
-      const registry = await fetchJson(config.registryUrl, RemoteRegistry)
+      const registry = await fetchJson(config.registryUrl, RemoteRegistry, config.requestTimeoutMs)
       await writeJsonFile(cachedPath, registry)
       return registry
     } catch (err) {
       if (config.offlineCache) {
-        const cached = await readJsonFile(cachedPath, RemoteRegistry)
-        if (cached) return cached
+        const stale = await readJsonFile(cachedPath, RemoteRegistry)
+        if (stale) return stale
       }
       throw err
     }
+  }
+
+  export async function prefetchRegistry() {
+    const config = await currentConfig()
+    if (!config.enabled) return
+    const cachedPath = registryCachePath(config.registryUrl)
+    if (await isFresh(cachedPath, config.cacheTtlMs)) return
+    await backgroundRefreshRegistry(config)
   }
 
   export async function searchOfficial(input: { q?: string; offset?: number; limit?: number } = {}) {
@@ -419,18 +486,18 @@ export namespace PluginMarketplaceRegistry {
       entryUrl = resolveEntryUrl(config.registryUrl, summary.entry)
     } catch (err) {
       if (!config.offlineCache) throw err
-      const cached = await readJsonFile(entryCachePath(id), RemoteEntry)
+      const cached = await readJsonFile(entryCachePath(config.registryUrl, id), RemoteEntry)
       return cached ? normalizeEntry(cached, "official", undefined, config.registryUrl) : null
     }
 
-    const cachedPath = entryCachePath(id)
+    const cachedPath = entryCachePath(config.registryUrl, id)
     if (await isFresh(cachedPath, config.cacheTtlMs)) {
       const cached = await readJsonFile(cachedPath, RemoteEntry)
       if (cached) return normalizeEntry(cached, "official", entryUrl, config.registryUrl)
     }
 
     try {
-      const entry = await fetchJson(entryUrl, RemoteEntry)
+      const entry = await fetchJson(entryUrl, RemoteEntry, config.requestTimeoutMs)
       if (entry.id !== id || entry.name !== id) {
         throw new Error(`Official plugin entry identity mismatch for ${id}`)
       }
@@ -445,25 +512,35 @@ export namespace PluginMarketplaceRegistry {
     }
   }
 
-  function checkRequiredTarballFiles(tarballPath: string) {
+  function inspectTarballEntries(tarballPath: string): Set<string> {
     const result = Bun.spawnSync(["tar", "-tzf", tarballPath], { stdout: "pipe", stderr: "pipe" })
     if (result.exitCode !== 0) {
       const stderr = new TextDecoder().decode(result.stderr)
       throw new Error(`Failed to inspect plugin archive${stderr ? `: ${stderr}` : ""}`)
     }
-    const files = new Set(
-      new TextDecoder()
-        .decode(result.stdout)
-        .split("\n")
-        .map((line) => line.replace(/^\.\//, "").replace(/\/$/, ""))
-        .filter(Boolean),
-    )
-    for (const required of ["plugin.json", "runtime/index.js", "integrity.json", "permissions.summary.json"]) {
+    const files = new Set<string>()
+    for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+      let entry: string | undefined
+      try {
+        entry = normalizePluginArchiveEntry(line)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        throw new Error(`Remote plugin artifact contains unsafe path: ${message}`)
+      }
+      if (entry) files.add(entry)
+    }
+    return files
+  }
+
+  function checkRequiredTarballFiles(tarballPath: string) {
+    const files = inspectTarballEntries(tarballPath)
+    for (const required of PluginArtifact.requiredFiles) {
       if (!files.has(required)) throw new Error(`Remote plugin artifact is missing ${required}`)
     }
   }
 
   async function extractArchive(tarballPath: string) {
+    inspectTarballEntries(tarballPath)
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-market-plugin-"))
     const result = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", dir], { stdout: "pipe", stderr: "pipe" })
     if (result.exitCode !== 0) {
@@ -473,8 +550,8 @@ export namespace PluginMarketplaceRegistry {
     return dir
   }
 
-  async function downloadTo(url: string, filepath: string) {
-    const response = await fetch(url, { signal: AbortSignal.timeout(60000) })
+  async function downloadTo(url: string, filepath: string, timeoutMs: number) {
+    const response = await fetch(url, { signal: AbortSignal.timeout(timeoutMs) })
     if (!response.ok) throw new Error(`Failed to download ${url}: HTTP ${response.status}`)
     await fs.mkdir(path.dirname(filepath), { recursive: true })
     await Bun.write(filepath, new Uint8Array(await response.arrayBuffer()))
@@ -487,23 +564,49 @@ export namespace PluginMarketplaceRegistry {
     return actual
   }
 
-  async function ensureDownloaded(version: NormalizedVersion, id: string) {
+  async function removeArtifactCache(tarballPath: string) {
+    await fs.rm(tarballPath, { force: true }).catch(() => {})
+    await fs.rm(`${tarballPath}.sig`, { force: true }).catch(() => {})
+  }
+
+  async function ensureDownloaded(version: NormalizedVersion, id: string, registryUrl: string, timeoutMs: number) {
     if (!version.downloadUrl) throw new Error(`Official registry entry ${id}@${version.version} has no downloadUrl`)
     if (!version.signatureUrl) throw new Error(`Official registry entry ${id}@${version.version} has no signatureUrl`)
-    const dir = artifactDir(id, version.version)
+    const dir = artifactDir(registryUrl, id, version.version, version.integrity)
     const tarballPath = path.join(dir, `${id}-${version.version}.synergy-plugin.tgz`)
     const signaturePath = `${tarballPath}.sig`
     if (fsSync.existsSync(tarballPath) && fsSync.existsSync(signaturePath)) {
-      assertIntegrity(tarballPath, version.integrity)
-      return { tarballPath, signaturePath }
+      try {
+        assertIntegrity(tarballPath, version.integrity)
+        return { tarballPath, signaturePath }
+      } catch {
+        await removeArtifactCache(tarballPath)
+      }
     }
-    await downloadTo(version.downloadUrl, tarballPath)
-    assertIntegrity(tarballPath, version.integrity)
-    await downloadTo(version.signatureUrl, signaturePath)
-    return { tarballPath, signaturePath }
+
+    const stagingRoot = path.join(Global.Path.state, "plugin-install", "staging")
+    await fs.mkdir(stagingRoot, { recursive: true })
+    const stagingDir = await fs.mkdtemp(path.join(stagingRoot, `${id}-${version.version}-`))
+    const stagedTarballPath = path.join(stagingDir, path.basename(tarballPath))
+    const stagedSignaturePath = `${stagedTarballPath}.sig`
+    try {
+      await downloadTo(version.downloadUrl, stagedTarballPath, timeoutMs)
+      assertIntegrity(stagedTarballPath, version.integrity)
+      await downloadTo(version.signatureUrl, stagedSignaturePath, timeoutMs)
+      await fs.mkdir(dir, { recursive: true })
+      await fs.rename(stagedTarballPath, tarballPath)
+      await fs.rename(stagedSignaturePath, signaturePath)
+      return { tarballPath, signaturePath }
+    } catch (err) {
+      await removeArtifactCache(tarballPath)
+      throw err
+    } finally {
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => {})
+    }
   }
 
   export async function verifyOfficialArtifact(id: string, version: string): Promise<VerifiedArtifact> {
+    const config = await currentConfig()
     const entry = await getOfficialEntry(id)
     if (!entry) throw new Error(`Official registry plugin not found: ${id}`)
     if (entry.yankedVersions?.includes(version))
@@ -511,57 +614,71 @@ export namespace PluginMarketplaceRegistry {
     const target = entry.versions.find((candidate) => candidate.version === version)
     if (!target) throw new Error(`Official registry version not found: ${id}@${version}`)
 
-    const { tarballPath, signaturePath } = await ensureDownloaded(target, id)
-    const tarballHash = assertIntegrity(tarballPath, target.integrity)
-    checkRequiredTarballFiles(tarballPath)
+    const { tarballPath, signaturePath } = await ensureDownloaded(
+      target,
+      id,
+      config.registryUrl,
+      config.artifactDownloadTimeoutMs,
+    )
+    let extractedDir: string | null = null
+    try {
+      const tarballHash = assertIntegrity(tarballPath, target.integrity)
+      checkRequiredTarballFiles(tarballPath)
 
-    const signature = readSignatureFile(tarballPath)
-    if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
-    const trustedSignature = target.signature
-    if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
-    if (trustedSignature.algorithm !== signature.algorithm) {
-      throw new Error(`Remote plugin artifact signature algorithm mismatch`)
-    }
-    if (trustedSignature.signer !== signature.signer) {
-      throw new Error(`Remote plugin artifact signature signer mismatch`)
-    }
-    if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
-    if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
-    if (signature.payload.tarballHash !== tarballHash) {
-      throw new Error(`Remote plugin artifact signature tarball hash mismatch`)
-    }
-    if (signature.payload.manifestHash !== target.manifestHash) {
-      throw new Error(`Remote plugin artifact signature manifest hash mismatch`)
-    }
-    if (signature.payload.permissionsHash !== target.permissionsHash) {
-      throw new Error(`Remote plugin artifact signature permissions hash mismatch`)
-    }
+      const signature = readSignatureFile(tarballPath)
+      if (!signature) throw new Error(`Remote plugin artifact signature is missing or invalid`)
+      const trustedSignature = target.signature
+      if (!trustedSignature) throw new Error(`Official registry version is missing reviewed signature metadata`)
+      if (trustedSignature.algorithm !== signature.algorithm) {
+        throw new Error(`Remote plugin artifact signature algorithm mismatch`)
+      }
+      if (trustedSignature.signer !== signature.signer) {
+        throw new Error(`Remote plugin artifact signature signer mismatch`)
+      }
+      if (signature.pluginId !== id) throw new Error(`Remote plugin artifact signature plugin id mismatch`)
+      if (signature.version !== version) throw new Error(`Remote plugin artifact signature version mismatch`)
+      if (signature.payload.tarballHash !== tarballHash) {
+        throw new Error(`Remote plugin artifact signature tarball hash mismatch`)
+      }
+      if (signature.payload.manifestHash !== target.manifestHash) {
+        throw new Error(`Remote plugin artifact signature manifest hash mismatch`)
+      }
+      if (signature.payload.permissionsHash !== target.permissionsHash) {
+        throw new Error(`Remote plugin artifact signature permissions hash mismatch`)
+      }
 
-    const extractedDir = await extractArchive(tarballPath)
-    const manifestPath = path.join(extractedDir, "plugin.json")
-    const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
-    if (manifest.name !== id) throw new Error(`Remote plugin artifact manifest name mismatch`)
-    if (manifest.version !== version) throw new Error(`Remote plugin artifact manifest version mismatch`)
+      extractedDir = await extractArchive(tarballPath)
+      const manifestPath = path.join(extractedDir, "plugin.json")
+      const manifest = PluginManifest.parse(JSON.parse(await Bun.file(manifestPath).text())) as PluginManifestType
+      if (manifest.name !== id) throw new Error(`Remote plugin artifact manifest name mismatch`)
+      if (manifest.version !== version) throw new Error(`Remote plugin artifact manifest version mismatch`)
 
-    const capabilities = baseCapabilities(manifest)
-    const manifestHash = computeManifestHash(manifest)
-    const permissionsHash = computePermissionsHash(manifest, capabilities)
-    if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
-    if (permissionsHash !== target.permissionsHash) throw new Error(`Remote plugin artifact permissions hash mismatch`)
+      const capabilities = baseCapabilities(manifest)
+      const manifestHash = computeManifestHash(manifest)
+      const permissionsHash = computePermissionsHash(manifest, capabilities)
+      if (manifestHash !== target.manifestHash) throw new Error(`Remote plugin artifact manifest hash mismatch`)
+      if (permissionsHash !== target.permissionsHash)
+        throw new Error(`Remote plugin artifact permissions hash mismatch`)
 
-    const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
-    if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
+      const signatureValid = await verifySignatureWithPublicKey(tarballPath, signature, trustedSignature.signer)
+      if (!signatureValid) throw new Error(`Remote plugin artifact signature verification failed`)
 
-    return {
-      entry,
-      version: target,
-      tarballPath,
-      signaturePath,
-      cacheKey: `official:${id}@${version}:${tarballHash}`,
-      manifest,
-      capabilities,
-      risk: computeRisk(capabilities, manifest),
-      signature,
+      return {
+        entry,
+        version: target,
+        tarballPath,
+        signaturePath,
+        cacheKey: `official:${id}@${version}:${tarballHash}`,
+        manifest,
+        capabilities,
+        risk: riskForCapabilities(capabilities),
+        signature,
+      }
+    } catch (err) {
+      await removeArtifactCache(tarballPath)
+      throw err
+    } finally {
+      if (extractedDir) await fs.rm(extractedDir, { recursive: true, force: true }).catch(() => {})
     }
   }
 }

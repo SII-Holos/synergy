@@ -3,6 +3,8 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { List } from "@ericsanchezok/synergy-ui/list"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 
 const IS_MAC = typeof navigator === "object" && /(Mac|iPod|iPhone|iPad)/.test(navigator.platform)
 
@@ -139,11 +141,13 @@ function DialogCommand(props: { options: CommandOption[] }) {
     }
   })
 
+  const { i18n } = useLocale()
+
   return (
-    <Dialog title="Commands">
+    <Dialog title={i18n._(AP.commandTitle.id)} size="command" placement="top">
       <List
-        search={{ placeholder: "Search commands", autofocus: true }}
-        emptyMessage="No commands found"
+        search={{ placeholder: i18n._(AP.commandSearchPlaceholder.id), autofocus: true }}
+        emptyMessage={i18n._(AP.commandEmpty.id)}
         items={() => props.options.filter((x) => !x.id.startsWith("suggested.") || !x.disabled)}
         key={(x) => x?.id}
         filterKeys={["title", "description", "category"]}

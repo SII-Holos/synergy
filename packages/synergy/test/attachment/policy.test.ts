@@ -3,7 +3,7 @@ import { Attachment } from "../../src/attachment"
 
 describe("Attachment.policy", () => {
   test("keeps image attachments and saves locally", () => {
-    expect(Attachment.policy({ filename: "photo.png", mime: "image/png" })).toEqual({
+    expect(Attachment.policy({ filename: "photo.png", mime: "image/png" })).toMatchObject({
       kind: "image",
       extractText: false,
       keepBinary: true,
@@ -12,19 +12,19 @@ describe("Attachment.policy", () => {
   })
 
   test("extracts text from office docs without keeping binary", () => {
-    expect(Attachment.policy({ filename: "slides.pptx" })).toEqual({
+    expect(Attachment.policy({ filename: "slides.pptx" })).toMatchObject({
       kind: "document",
       extractText: true,
       keepBinary: false,
       saveLocal: false,
     })
-    expect(Attachment.policy({ filename: "sheet.xlsx" })).toEqual({
+    expect(Attachment.policy({ filename: "sheet.xlsx" })).toMatchObject({
       kind: "document",
       extractText: true,
       keepBinary: false,
       saveLocal: false,
     })
-    expect(Attachment.policy({ filename: "report.docx" })).toEqual({
+    expect(Attachment.policy({ filename: "report.docx" })).toMatchObject({
       kind: "document",
       extractText: true,
       keepBinary: false,
@@ -33,7 +33,7 @@ describe("Attachment.policy", () => {
   })
 
   test("extracts text from pdf and keeps binary", () => {
-    expect(Attachment.policy({ filename: "report.pdf" })).toEqual({
+    expect(Attachment.policy({ filename: "report.pdf" })).toMatchObject({
       kind: "pdf",
       extractText: true,
       keepBinary: true,

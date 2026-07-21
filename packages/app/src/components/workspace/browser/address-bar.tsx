@@ -1,8 +1,12 @@
 import { For, Show, createEffect, createMemo, createSignal } from "solid-js"
+import { Trans, useLingui } from "@lingui/solid"
+import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useBrowser, type DevPanel } from "./browser-store"
 import { browserDebug } from "./browser-debug"
+import { browser as B } from "@/locales/messages"
+import type { I18n } from "@lingui/core"
 
 export type AddressBarProps = {
   activeUrl: () => string
@@ -12,20 +16,55 @@ export type AddressBarProps = {
   onHistory: (direction: "back" | "forward") => void
   onReload: () => void
   onStop: () => void
+  onRequestDiagnostics: (action: "console" | "network" | "elements" | "assets" | "downloads" | "clear") => void
 }
 
-const VIEWPORT_PRESETS = [
-  { label: "Desktop", width: 1280, height: 720 },
-  { label: "Tablet", width: 768, height: 1024 },
-  { label: "Mobile", width: 375, height: 667 },
-] as const
+type ViewportPresetID = "desktop" | "tablet" | "mobile"
 
-const DEV_PANELS: { id: DevPanel; label: string }[] = [
-  { id: "console", label: "Console" },
-  { id: "network", label: "Network" },
-  { id: "elements", label: "Elements" },
-  { id: "assets", label: "Assets" },
-  { id: "downloads", label: "Downloads" },
+const VIEWPORT_PRESETS: ReadonlyArray<{ id: ViewportPresetID; width: number; height: number }> = [
+  { id: "desktop", width: 1280, height: 720 },
+  { id: "tablet", width: 768, height: 1024 },
+  { id: "mobile", width: 375, height: 667 },
+]
+
+function viewportPresetLabel(id: ViewportPresetID, _: I18n["_"]): string {
+  if (id === "desktop") return _(B.presetDesktop)
+  if (id === "tablet") return _(B.presetTablet)
+  return _(B.presetMobile)
+}
+
+type DiagnosticPanel = Exclude<DevPanel, "closed">
+
+const DEV_PANELS: {
+  id: DiagnosticPanel
+  label: { id: string; message: string }
+  description: { id: string; message: string }
+}[] = [
+  {
+    id: "console",
+    label: B.devConsole,
+    description: B.devConsoleDesc,
+  },
+  {
+    id: "network",
+    label: B.devNetwork,
+    description: B.devNetworkDesc,
+  },
+  {
+    id: "elements",
+    label: B.devElements,
+    description: B.devElementsDesc,
+  },
+  {
+    id: "assets",
+    label: B.devAssets,
+    description: B.devAssetsDesc,
+  },
+  {
+    id: "downloads",
+    label: B.devDownloads,
+    description: B.devDownloadsDesc,
+  },
 ]
 
 const DEV_SERVER_URLS = [
@@ -41,6 +80,7 @@ function displayUrl(url: string) {
 export function AddressBar(props: AddressBarProps) {
   let inputEl: HTMLInputElement | undefined
   const browser = useBrowser()
+  const lingui = useLingui()
   const [menuOpen, setMenuOpen] = createSignal(false)
   const [draft, setDraft] = createSignal(displayUrl(props.activeUrl()))
   const [editing, setEditing] = createSignal(false)
@@ -55,11 +95,12 @@ export function AddressBar(props: AddressBarProps) {
   })
 
   const selectedViewport = createMemo(() => {
-    if (browser.viewportMode() === "fit") return "Fit"
+    if (browser.viewportMode() === "fit") return lingui._(B.fit.id)
     const current = VIEWPORT_PRESETS.find(
       (preset) => preset.width === browser.viewportWidth() && preset.height === browser.viewportHeight(),
     )
-    return current?.label ?? `${browser.viewportWidth()}x${browser.viewportHeight()}`
+    if (current) return viewportPresetLabel(current.id, lingui._)
+    return `${browser.viewportWidth()}x${browser.viewportHeight()}`
   })
 
   function handleNavigate() {
@@ -88,48 +129,54 @@ export function AddressBar(props: AddressBarProps) {
     }
   }
 
-  function requestPanel(panel: DevPanel) {
+  function requestPanel(panel: DiagnosticPanel) {
     browser.toggleDevPanel(panel)
     const pageId = browser.pageId()
     if (!pageId) return
-    if (panel === "console") browser.send({ type: "requestConsole", pageId, maxEntries: 100 })
-    if (panel === "network") browser.send({ type: "requestNetwork", pageId, maxEntries: 200 })
-    if (panel === "elements") browser.send({ type: "requestSnapshot", pageId })
-    if (panel === "assets") browser.send({ type: "requestAssets", pageId, maxEntries: 200 })
+    props.onRequestDiagnostics(panel)
+  }
+
+  function toggleFollowAgent() {
+    if (browser.followAgent()) browser.setFollowAgent(false)
+    else browser.followAgentNow()
   }
 
   return (
-    <div class="flex h-10 shrink-0 items-center gap-1.5 border-b border-border-weak-base bg-surface-raised-base px-2">
-      <IconButton
-        icon={getSemanticIcon("browser.back")}
-        variant="ghost"
-        title="Back"
-        disabled={!props.hasPage()}
-        onClick={() => props.onHistory("back")}
-      />
-      <IconButton
-        icon={getSemanticIcon("browser.forward")}
-        variant="ghost"
-        title="Forward"
-        disabled={!props.hasPage()}
-        onClick={() => props.onHistory("forward")}
-      />
-      <IconButton
-        icon={props.isLoading() ? getSemanticIcon("browser.stop") : getSemanticIcon("browser.refresh")}
-        variant="ghost"
-        title={props.isLoading() ? "Stop" : "Reload"}
-        disabled={!props.hasPage()}
-        classList={{ "animate-spin": props.isLoading() }}
-        onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
-      />
+    <div class="browser-address-bar flex h-10 shrink-0 items-center gap-2 border-b px-2">
+      <div class="browser-nav-group flex shrink-0 items-center gap-0.5">
+        <IconButton
+          icon={getSemanticIcon("navigation.back")}
+          variant="ghost"
+          title={lingui._(B.navBack.id)}
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => props.onHistory("back")}
+        />
+        <IconButton
+          icon={getSemanticIcon("navigation.forward")}
+          variant="ghost"
+          title={lingui._(B.navForward.id)}
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => props.onHistory("forward")}
+        />
+        <IconButton
+          icon={props.isLoading() ? getSemanticIcon("action.stop") : getSemanticIcon("action.refresh")}
+          variant="ghost"
+          title={props.isLoading() ? lingui._(B.stop.id) : lingui._(B.reload.id)}
+          class="browser-nav-button"
+          disabled={!props.hasPage()}
+          onClick={() => (props.isLoading() ? props.onStop() : props.onReload())}
+        />
+      </div>
 
       <div class="min-w-0 flex-1">
         <input
           ref={inputEl}
           type="text"
-          class="h-7 w-full rounded-md border border-border-weak-base/60 bg-surface-inset-base px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak focus:border-border-strong-base"
+          class="browser-address-input h-7 w-full rounded-md px-2.5 text-12 text-text-base outline-none transition-colors placeholder:text-text-weak"
           value={draft()}
-          placeholder="Enter URL or search"
+          placeholder={lingui._(B.enterUrl.id)}
           onFocus={() => setEditing(true)}
           onBlur={() => {
             setEditing(false)
@@ -148,11 +195,12 @@ export function AddressBar(props: AddressBarProps) {
       </Show>
 
       <span
-        class="size-2 shrink-0 rounded-full"
+        class="browser-connection-dot size-2 shrink-0 rounded-full"
         classList={{
-          "bg-green-500": browser.session.connectionStatus === "connected",
-          "bg-amber-500": browser.session.connectionStatus === "connecting",
-          "bg-red-500": browser.session.connectionStatus === "failed" || browser.session.connectionStatus === "error",
+          "bg-icon-success-base": browser.session.connectionStatus === "connected",
+          "bg-icon-warning-base": browser.session.connectionStatus === "connecting",
+          "bg-icon-critical-base":
+            browser.session.connectionStatus === "failed" || browser.session.connectionStatus === "error",
           "bg-text-weaker": browser.session.connectionStatus === "disconnected",
         }}
         title={browser.session.connectionStatus}
@@ -162,108 +210,139 @@ export function AddressBar(props: AddressBarProps) {
         <IconButton
           icon={getSemanticIcon("action.more")}
           variant="ghost"
-          title="Browser options"
+          title={lingui._(B.options.id)}
+          class="browser-nav-button"
           onClick={() => setMenuOpen((v) => !v)}
         />
         <Show when={menuOpen()}>
           <div
-            class="absolute right-0 top-full z-50 mt-1 w-[240px] rounded-lg border border-border-weak-base bg-surface-raised-stronger-non-alpha py-1 text-12 shadow-lg"
+            class="browser-options-menu absolute right-0 top-full z-50 mt-1 w-[280px] max-w-[calc(100vw-16px)] rounded-lg border text-12"
+            aria-label={lingui._(B.controls.id)}
             onClick={() => setMenuOpen(false)}
           >
-            <div class="border-b border-border-weak-base/60 px-3 py-2">
-              <div class="flex items-center justify-between gap-3">
-                <span class="text-text-weak">Follow agent</span>
-                <button
-                  type="button"
-                  class="h-6 rounded px-2 text-11 transition-colors"
-                  classList={{
-                    "workbench-selected-surface text-text-strong": browser.followAgent(),
-                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base": !browser.followAgent(),
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (browser.followAgent()) browser.setFollowAgent(false)
-                    else browser.followAgentNow()
-                  }}
-                >
-                  {browser.followAgent() ? "On" : "Off"}
-                </button>
-              </div>
+            <div class="browser-menu-section">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={browser.followAgent()}
+                class="browser-menu-row browser-switch-row"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  toggleFollowAgent()
+                }}
+              >
+                <span class="browser-menu-row-copy">
+                  <span class="browser-menu-row-title">
+                    <Trans id={B.followAgent.id} message={B.followAgent.message} />
+                  </span>
+                  <span class="browser-menu-row-description">
+                    <Trans id={B.agentNavigation.id} message={B.agentNavigation.message} />
+                  </span>
+                </span>
+                <span class="browser-toggle" data-checked={browser.followAgent()}>
+                  <span class="browser-toggle-thumb" />
+                </span>
+              </button>
             </div>
 
-            <div class="border-b border-border-weak-base/60 px-2 py-1">
-              <div class="px-1 py-1 text-11 text-text-weakest">Viewport · {selectedViewport()}</div>
-              <div class="flex gap-1 px-1 pb-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>
+                  <Trans id={B.viewport.id} message={B.viewport.message} />
+                </span>
+                <span>{selectedViewport()}</span>
+              </div>
+              <div class="browser-segment" aria-label={lingui._(B.viewport.id)}>
                 <button
                   type="button"
-                  class="h-6 rounded px-2 text-11 transition-colors"
+                  class="browser-segment-button"
                   classList={{
-                    "workbench-selected-surface text-text-strong": browser.viewportMode() === "fit",
-                    "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                      browser.viewportMode() !== "fit",
+                    "is-active text-text-strong": browser.viewportMode() === "fit",
+                    "text-text-weak": browser.viewportMode() !== "fit",
                   }}
                   onClick={(e) => {
                     e.stopPropagation()
                     browser.setViewport(browser.viewportWidth(), browser.viewportHeight(), { mode: "fit" })
                   }}
                 >
-                  Fit
+                  <Trans id={B.fit.id} message={B.fit.message} />
                 </button>
                 <For each={VIEWPORT_PRESETS}>
                   {(preset) => (
                     <button
                       type="button"
-                      class="h-6 rounded px-2 text-11 transition-colors"
+                      class="browser-segment-button"
                       classList={{
-                        "workbench-selected-surface text-text-strong": selectedViewport() === preset.label,
-                        "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
-                          selectedViewport() !== preset.label,
+                        "is-active text-text-strong": selectedViewport() === viewportPresetLabel(preset.id, lingui._),
+                        "text-text-weak": selectedViewport() !== viewportPresetLabel(preset.id, lingui._),
                       }}
                       onClick={(e) => {
                         e.stopPropagation()
                         browser.setViewport(preset.width, preset.height)
                       }}
                     >
-                      {preset.label}
+                      {viewportPresetLabel(preset.id, lingui._)}
                     </button>
                   )}
                 </For>
               </div>
             </div>
 
-            <div class="border-b border-border-weak-base/60 py-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>
+                  <Trans id={B.panels.id} message={B.panels.message} />
+                </span>
+              </div>
               <For each={DEV_PANELS}>
                 {(panel) => (
                   <button
                     type="button"
-                    class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+                    class="browser-menu-row browser-panel-row"
                     classList={{
-                      "bg-surface-raised-base-hover text-text-strong": browser.devPanel() === panel.id,
+                      "is-active text-text-strong": browser.devPanel() === panel.id,
                     }}
                     onClick={() => requestPanel(panel.id)}
                   >
-                    {panel.label}
+                    <span class="browser-menu-row-copy">
+                      <span class="browser-menu-row-title">{lingui._(panel.label)}</span>
+                      <span class="browser-menu-row-description">{lingui._(panel.description)}</span>
+                    </span>
+                    <Show when={browser.devPanel() === panel.id}>
+                      <Icon name={getSemanticIcon("state.success")} size="small" class="browser-menu-check" />
+                    </Show>
                   </button>
                 )}
               </For>
-              <button
-                type="button"
-                class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
-                onClick={() => browser.send({ type: "clearLogs", pageId: browser.pageId() })}
-              >
-                Clear diagnostics
+              <button type="button" class="browser-menu-row" onClick={() => props.onRequestDiagnostics("clear")}>
+                <span class="browser-menu-row-copy">
+                  <span class="browser-menu-row-title">
+                    <Trans id={B.clearDiagnostics.id} message={B.clearDiagnostics.message} />
+                  </span>
+                  <span class="browser-menu-row-description">
+                    <Trans id={B.capturedLogs.id} message={B.capturedLogs.message} />
+                  </span>
+                </span>
               </button>
             </div>
 
-            <div class="py-1">
+            <div class="browser-menu-section">
+              <div class="browser-menu-heading">
+                <span>
+                  <Trans id={B.openLocal.id} message={B.openLocal.message} />
+                </span>
+              </div>
               <For each={DEV_SERVER_URLS}>
                 {(entry) => (
                   <button
                     type="button"
-                    class="w-full px-3 py-1.5 text-left text-text-weak transition-colors hover:bg-surface-raised-base-hover hover:text-text-base"
+                    class="browser-menu-row browser-local-row"
                     onClick={() => props.onNavigate(entry.url)}
                   >
-                    {entry.label}
+                    <span class="browser-menu-row-title">{entry.label}</span>
+                    <span class="browser-menu-row-description">
+                      <Trans id={B.open.id} message={B.open.message} />
+                    </span>
                   </button>
                 )}
               </For>

@@ -1,205 +1,207 @@
-import path from "path"
 import fs from "fs"
-import { EOL } from "os"
+import path from "path"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { sha256File, sha256JSON } from "../lib/crypto"
 import {
-  collectPackagedAssets,
-  copyPackagedAsset,
-  hashPackagedFiles,
-  rewritePackagedManifestPaths,
-} from "../lib/artifact-assets"
+  PluginArtifact,
+  PluginManifest,
+  compilePluginManifest,
+  hasBundledSolidRuntime,
+  hasUnlinkedSolidRuntimeImport,
+  hasUnsupportedSolidRuntimeImport,
+  rewritePluginSolidImports,
+  type CompiledPluginArtifacts,
+  type PluginContribution,
+  type PluginDefinition,
+} from "@ericsanchezok/synergy-plugin"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { sha256File, sha256JSON } from "../lib/crypto.js"
+import { hashPackagedFiles, normalizeManifestPath, resolveUnder } from "../lib/artifact-assets.js"
+import { loadPluginDefinition } from "../lib/definition.js"
+import { solidCompilerPlugin } from "../lib/solid-compiler.js"
+import { validateThemeAssets } from "../lib/theme-assets.js"
 
-function ensureDir(dirPath: string) {
-  fs.mkdirSync(dirPath, { recursive: true })
+function ensureDir(directory: string) {
+  fs.mkdirSync(directory, { recursive: true })
 }
 
-function copyDir(src: string, dest: string) {
-  ensureDir(dest)
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name)
-    const destPath = path.join(dest, entry.name)
-    if (entry.isDirectory()) copyDir(srcPath, destPath)
-    else fs.copyFileSync(srcPath, destPath)
-  }
+function copyPath(pluginDir: string, distDir: string, source: string, target = source) {
+  const sourceRelative = normalizeManifestPath(source)
+  const targetRelative = normalizeManifestPath(target)
+  const from = resolveUnder(pluginDir, sourceRelative)
+  const to = resolveUnder(distDir, targetRelative)
+  if (!fs.existsSync(from)) throw new Error(`Declared plugin asset not found: ${source}`)
+  ensureDir(path.dirname(to))
+  const stat = fs.statSync(from)
+  if (stat.isDirectory()) fs.cpSync(from, to, { recursive: true })
+  else if (stat.isFile()) fs.copyFileSync(from, to)
+  else throw new Error(`Unsupported plugin asset: ${source}`)
 }
 
-function findUiSource(pluginDir: string): string | undefined {
-  const candidates = ["src/ui.tsx", "src/ui/index.tsx", "src/ui.ts", "src/ui/index.ts"]
-  return candidates.map((candidate) => path.join(pluginDir, candidate)).find((candidate) => fs.existsSync(candidate))
+function assetPaths(definition: PluginDefinition): Array<{ source: string; target: string }> {
+  const result = new Map<string, { source: string; target: string }>()
+  const add = (source: string, target = source) => {
+    const normalizedTarget = normalizeManifestPath(target)
+    if (result.has(normalizedTarget)) throw new Error(`Duplicate packaged plugin asset target: ${normalizedTarget}`)
+    result.set(normalizedTarget, { source, target: normalizedTarget })
+  }
+  for (const asset of definition.assets) add(asset.source, asset.target)
+  if (definition.icon && !/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(definition.icon)) add(definition.icon)
+  for (const contribution of definition.contributions) {
+    if (contribution.kind === "skill" && contribution.skill.dir) add(contribution.skill.dir)
+    if (contribution.kind === "ui.theme" || contribution.kind === "ui.icon") add(contribution.path)
+  }
+  return [...result.values()]
 }
 
-function packagedManifest(manifest: PluginManifestType): PluginManifestType {
-  return rewritePackagedManifestPaths(manifest) as PluginManifestType
+function trustedComponents(contributions: PluginContribution[]) {
+  return contributions.flatMap((contribution) => {
+    if (!contribution.kind.startsWith("ui.") || !("component" in contribution) || !contribution.component) return []
+    return [{ key: `${contribution.kind}:${contribution.id}`, component: contribution.component }]
+  })
 }
 
-function permissionSummary(manifest: PluginManifestType): Record<string, unknown> {
-  const perms = manifest.permissions ?? {}
-  const result: Record<string, unknown> = {}
-
-  if (perms.tools) result.tools = perms.tools
-  if (perms.data) result.data = perms.data
-  if (perms.network) result.network = perms.network
-  if (perms.ui) result.ui = perms.ui
-  if (perms.hooks) result.hooks = perms.hooks
-
-  const tools = manifest.contributes?.tools ?? []
-  if (tools.length > 0) {
-    const toolPerms: Record<string, unknown> = {}
-    for (const tool of tools) {
-      if (tool.capabilities) toolPerms[tool.name] = tool.capabilities
-    }
-    if (Object.keys(toolPerms).length > 0) result.contributedTools = toolPerms
-  }
-
-  return result
-}
-
-export async function buildPluginProject(pluginDir: string): Promise<boolean> {
-  const manifestPath = path.join(pluginDir, "plugin.json")
-  if (!fs.existsSync(manifestPath)) {
-    UI.error(`No plugin.json found at ${manifestPath}`)
-    return false
-  }
-
-  let manifest: PluginManifestType
-  const raw = JSON.parse(fs.readFileSync(manifestPath, "utf-8"))
-  const parsed = PluginManifest.safeParse(raw)
-  if (!parsed.success) {
-    UI.error("Invalid plugin manifest:")
-    for (const issue of parsed.error.issues) {
-      UI.println(`  ${UI.Style.TEXT_DIM}${issue.path.join(".")}:${UI.Style.TEXT_NORMAL} ${issue.message}`)
-    }
-    return false
-  }
-  manifest = parsed.data as PluginManifestType
-
-  const spinner = (message: string) => {
-    process.stderr.write(`${UI.Style.TEXT_DIM}  ${message}...${UI.Style.TEXT_NORMAL}${EOL}`)
-  }
-
-  UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Building${UI.Style.TEXT_NORMAL} ${manifest.name} v${manifest.version}`)
-  UI.println(`  ${UI.Style.TEXT_DIM}Source:${UI.Style.TEXT_NORMAL} ${pluginDir}`)
-
-  const distDir = path.join(pluginDir, "dist")
-  fs.rmSync(distDir, { recursive: true, force: true })
-  ensureDir(distDir)
-
-  const entryFile = manifest.main ?? "./src/index.ts"
-  const entryPath = path.resolve(pluginDir, entryFile)
-  const runtimeOutdir = path.join(distDir, "runtime")
-  spinner("Building backend")
-  const backendResult = await Bun.build({
-    entrypoints: [entryPath],
-    outdir: runtimeOutdir,
+async function buildRuntime(entry: string, distDir: string, required: boolean) {
+  if (!required) return undefined
+  const outputDirectory = path.join(distDir, path.dirname(PluginArtifact.runtimeEntry))
+  const result = await Bun.build({
+    entrypoints: [entry],
+    outdir: outputDirectory,
     target: "bun",
     naming: "index.js",
-    external: ["@ericsanchezok/synergy-plugin", "@ericsanchezok/synergy-sdk", "@ericsanchezok/synergy-util"],
+    define: { "process.env.SYNERGY_PLUGIN_BUNDLE_TARGET": JSON.stringify("runtime") },
   })
-  if (!backendResult.success) {
-    for (const log of backendResult.logs) {
-      UI.println(`  ${UI.Style.TEXT_WARNING}${log.message}${UI.Style.TEXT_NORMAL}`)
-    }
-    UI.error("Backend build failed")
-    return false
-  }
+  if (!result.success) throw new AggregateError(result.logs, "Plugin runtime build failed")
+  const output = path.join(distDir, PluginArtifact.runtimeEntry)
+  return { entry: PluginArtifact.runtimeEntry, sha256: sha256File(output) }
+}
 
-  const uiEntry = manifest.contributes?.ui?.entry
-  if (uiEntry) {
-    const uiSourcePath = findUiSource(pluginDir)
-    const uiOutputPath = path.resolve(pluginDir, uiEntry)
-    if (uiSourcePath) {
-      const uiOutdir = path.dirname(uiOutputPath)
-      spinner("Building frontend")
-      const frontendResult = await Bun.build({
-        entrypoints: [uiSourcePath],
-        outdir: uiOutdir,
-        target: "browser",
-        naming: path.basename(uiOutputPath),
-      })
-      if (!frontendResult.success) {
-        for (const log of frontendResult.logs) {
-          UI.println(`  ${UI.Style.TEXT_WARNING}${log.message}${UI.Style.TEXT_NORMAL}`)
-        }
-        UI.error("Frontend build failed")
-        return false
-      }
-    } else if (!fs.existsSync(uiOutputPath)) {
-      UI.error(`UI source not found. Expected one of src/ui.tsx or src/ui/index.tsx for ${uiEntry}`)
-      return false
-    }
-  }
+async function buildUI(pluginDir: string, distDir: string, definition: PluginDefinition) {
+  const components = trustedComponents(definition.contributions)
+  if (components.length === 0) return undefined
 
-  spinner("Copying declared assets")
+  const tempDirectory = fs.mkdtempSync(path.join(pluginDir, ".synergy-plugin-ui-"))
+  const entry = path.join(tempDirectory, "index.tsx")
+  const exports: Record<string, string> = {}
+  const lines: string[] = []
   try {
-    for (const asset of collectPackagedAssets(manifest)) {
-      copyPackagedAsset(pluginDir, distDir, asset)
+    components.forEach((item, index) => {
+      const source = path.resolve(pluginDir, item.component.source)
+      if (!fs.existsSync(source)) throw new Error(`Trusted UI component source not found: ${item.component.source}`)
+      const bundledName = `plugin_component_${index}`
+      const importedName = item.component.exportName ?? "default"
+      const relative = path.relative(tempDirectory, source).split(path.sep).join("/")
+      const specifier = relative.startsWith(".") ? relative : `./${relative}`
+      lines.push(
+        importedName === "default"
+          ? `export { default as ${bundledName} } from ${JSON.stringify(specifier)}`
+          : `export { ${importedName} as ${bundledName} } from ${JSON.stringify(specifier)}`,
+      )
+      exports[item.key] = bundledName
+    })
+    fs.writeFileSync(entry, `${lines.join("\n")}\n`)
+    const outputDirectory = path.join(distDir, "ui")
+    const result = await Bun.build({
+      entrypoints: [entry],
+      outdir: outputDirectory,
+      target: "browser",
+      naming: "index.js",
+      external: ["solid-js", "solid-js/web", "solid-js/store"],
+      plugins: [solidCompilerPlugin()],
+    })
+    if (!result.success) {
+      const details = result.logs.map((log) => log.message).join("\n")
+      throw new Error(details ? `Plugin UI build failed:\n${details}` : "Plugin UI build failed")
     }
+    const output = path.join(outputDirectory, "index.js")
+    const source = fs.readFileSync(output, "utf8")
+    if (hasBundledSolidRuntime(source)) throw new Error("Plugin UI bundle contains a private Solid runtime")
+    if (hasUnsupportedSolidRuntimeImport(source))
+      throw new Error("Plugin UI bundle imports an unsupported Solid module")
+    const linked = rewritePluginSolidImports(source)
+    if (hasUnlinkedSolidRuntimeImport(linked))
+      throw new Error("Plugin UI bundle is not bound to the host Solid runtime")
+    fs.writeFileSync(output, linked)
+    return { entry: "ui/index.js", sha256: sha256File(output), exports }
+  } finally {
+    fs.rmSync(tempDirectory, { recursive: true, force: true })
+  }
+}
+
+export async function buildPluginProject(pluginDir: string, options: { outputDir?: string } = {}): Promise<boolean> {
+  try {
+    const { entry, definition } = await loadPluginDefinition(pluginDir)
+    validateThemeAssets(pluginDir, definition.contributions)
+    const declaredAssets = assetPaths(definition)
+    const distDir = options.outputDir ?? path.join(pluginDir, "dist")
+    fs.rmSync(distDir, { recursive: true, force: true })
+    ensureDir(distDir)
+
+    UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Building${UI.Style.TEXT_NORMAL} ${definition.id} v${definition.version}`)
+    const runtime = await buildRuntime(
+      entry,
+      distDir,
+      definition.handlerIds.length > 0 || Boolean(definition.activate) || Boolean(definition.deactivate),
+    )
+    const ui = await buildUI(pluginDir, distDir, definition)
+    for (const asset of declaredAssets) copyPath(pluginDir, distDir, asset.source, asset.target)
+    validateThemeAssets(distDir, definition.contributions)
+
+    const generation = sha256JSON({
+      id: definition.id,
+      version: definition.version,
+      handlers: definition.handlerIds,
+      files: hashPackagedFiles(distDir),
+    })
+    const artifacts: CompiledPluginArtifacts = { generation, ...(runtime ? { runtime } : {}), ...(ui ? { ui } : {}) }
+    const manifest = compilePluginManifest(definition, artifacts)
+    PluginManifest.parse(manifest)
+    const manifestPath = path.join(distDir, PluginArtifact.manifestFile)
+    fs.writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`)
+    fs.writeFileSync(
+      path.join(distDir, PluginArtifact.permissionsSummaryFile),
+      `${JSON.stringify(manifest.capabilities, null, 2)}\n`,
+    )
+
+    const packagePath = path.join(pluginDir, "package.json")
+    if (fs.existsSync(packagePath)) {
+      const pkg = JSON.parse(fs.readFileSync(packagePath, "utf-8")) as Record<string, unknown>
+      delete pkg.source
+      if (runtime) {
+        pkg.main = `./${PluginArtifact.runtimeEntry}`
+        pkg.exports = { ".": `./${PluginArtifact.runtimeEntry}` }
+      } else {
+        delete pkg.main
+        delete pkg.exports
+      }
+      fs.writeFileSync(path.join(distDir, "package.json"), `${JSON.stringify(pkg, null, 2)}\n`)
+    }
+
+    fs.writeFileSync(
+      path.join(distDir, PluginArtifact.integrityFile),
+      `${JSON.stringify({ manifest: sha256File(manifestPath), files: hashPackagedFiles(distDir) }, null, 2)}\n`,
+    )
+    UI.println(`${UI.Style.TEXT_SUCCESS}Built${UI.Style.TEXT_NORMAL} ${definition.id} -> ${distDir}`)
+    return true
   } catch (error) {
-    UI.error(error instanceof Error ? error.message : String(error))
+    UI.error(buildErrorMessage(error))
     return false
   }
+}
 
-  spinner("Normalizing manifest")
-  const distManifest = packagedManifest(manifest)
-  const distManifestPath = path.join(distDir, "plugin.json")
-  fs.writeFileSync(distManifestPath, JSON.stringify(distManifest, null, 2))
-  const normalizedPath = path.join(distDir, "plugin.normalized.json")
-  fs.writeFileSync(normalizedPath, JSON.stringify(distManifest, null, 2))
-
-  const packageJsonPath = path.join(pluginDir, "package.json")
-  if (fs.existsSync(packageJsonPath)) {
-    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf-8"))
-    pkg.main = "./runtime/index.js"
-    pkg.exports = { ".": "./runtime/index.js" }
-    fs.writeFileSync(path.join(distDir, "package.json"), JSON.stringify(pkg, null, 2))
+function buildErrorMessage(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const details = error.errors.map((item) => (item instanceof Error ? item.message : String(item))).join("\n")
+    return details || error.message
   }
-
-  spinner("Generating permission summary")
-  const summary = permissionSummary(manifest)
-  fs.writeFileSync(path.join(distDir, "permissions.summary.json"), JSON.stringify(summary, null, 2))
-
-  const publicAssetsPath = path.join(pluginDir, "public", "assets")
-  if (fs.existsSync(publicAssetsPath)) {
-    spinner("Copying assets")
-    copyDir(publicAssetsPath, path.join(distDir, "assets"))
-  }
-
-  spinner("Computing integrity hashes")
-  const integrity: Record<string, string> = {
-    manifest: sha256File(distManifestPath),
-    permissions: sha256JSON(summary),
-  }
-  const runtimeIndex = path.join(runtimeOutdir, "index.js")
-  if (fs.existsSync(runtimeIndex)) integrity.runtime = sha256File(runtimeIndex)
-  if (uiEntry) {
-    const uiIndex = path.resolve(pluginDir, uiEntry)
-    if (fs.existsSync(uiIndex)) integrity.ui = sha256File(uiIndex)
-  }
-  const integrityPayload = {
-    ...integrity,
-    files: hashPackagedFiles(distDir),
-  }
-  fs.writeFileSync(path.join(distDir, "integrity.json"), JSON.stringify(integrityPayload, null, 2))
-
-  UI.println(
-    `${UI.Style.TEXT_SUCCESS}✔${UI.Style.TEXT_NORMAL} Built ${manifest.name} v${manifest.version} -> ${distDir}`,
-  )
-  UI.println(`  ${UI.Style.TEXT_DIM}Output:${UI.Style.TEXT_NORMAL} ${distDir}`)
-  return true
+  return error instanceof Error ? error.message : String(error)
 }
 
 export const PluginBuildCommand = cmd({
   command: "build [path]",
-  describe: "build a plugin for distribution",
+  describe: "build a plugin definition into an installable package",
   builder: (yargs: Argv) =>
-    yargs.positional("path", {
-      type: "string",
-      describe: "path to plugin directory (defaults to cwd)",
-    }),
+    yargs.positional("path", { type: "string", describe: "plugin directory (defaults to cwd)" }),
   async handler(args) {
     const ok = await buildPluginProject(path.resolve((args.path as string) ?? process.cwd()))
     if (!ok) process.exitCode = 1

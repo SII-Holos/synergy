@@ -16,51 +16,63 @@ import fs from "fs/promises"
 const APP_SRC = path.join(__dirname, "../../app/src")
 
 describe("Workspace context contract", () => {
-  const workspacePath = path.join(APP_SRC, "context/workspace.tsx")
+  const legacyFiles = [
+    "context/workspace.tsx",
+    "components/session/workspace-panel.tsx",
+    "components/session/workspace-drawer.tsx",
+    "components/session/workspace-rail.tsx",
+    "components/session/terminal-panel.tsx",
+  ]
 
-  test("workspace.tsx must not import usePanel", async () => {
-    const src = await fs.readFile(workspacePath, "utf-8")
-
-    // Must not import usePanel from ./panel
-    expect(src).not.toContain('import { usePanel } from "./panel"')
-    expect(src).not.toMatch(/usePanel/)
-  })
-
-  test("workspace.tsx must not intercept panel note toggle", async () => {
-    const src = await fs.readFile(workspacePath, "utf-8")
-
-    // Must not have the old intercept effect
-    expect(src).not.toContain("panel.active()")
-    expect(src).not.toContain("panel.close()")
-    expect(src).not.toContain('ws().setActive("notes")')
+  test("legacy workspace components must be removed", async () => {
+    for (const relative of legacyFiles) {
+      const file = Bun.file(path.join(APP_SRC, relative))
+      expect(await file.exists()).toBe(false)
+    }
   })
 })
 
 describe("SessionTopBar contract", () => {
   const topbarPath = path.join(APP_SRC, "components/top-bar/session-top-bar.tsx")
 
-  test("session-top-bar.tsx must not use generic Toggle workspace button", async () => {
+  test("session-top-bar.tsx exposes separate side and bottom toggles", async () => {
     const src = await fs.readFile(topbarPath, "utf-8")
 
-    // Must not contain the old generic Toggle workspace tooltip/button
     expect(src).not.toContain("Toggle workspace")
-    expect(src).not.toContain("panel-right")
+    expect(src).toContain("topBar.openSideWorkspace")
+    expect(src).toContain("topBar.openBottomSpace")
+    expect(src).toContain("sideSurface().toggle()")
+    expect(src).toContain("bottomSurface().toggle()")
   })
 })
 
-describe("WorkspacePanel contract", () => {
-  const panelPath = path.join(APP_SRC, "components/session/workspace-panel.tsx")
+describe("Workbench surface contract", () => {
+  const layoutPath = path.join(APP_SRC, "pages/directory-layout.tsx")
+  const sessionPath = path.join(APP_SRC, "pages/session.tsx")
+  const surfacePath = path.join(APP_SRC, "components/workspace/workbench-surface.tsx")
 
-  test("workspace-panel.tsx header label must be dynamic", async () => {
-    const src = await fs.readFile(panelPath, "utf-8")
+  test("session uses the unified workbench provider and surface", async () => {
+    const sessionSrc = await fs.readFile(sessionPath, "utf-8")
+    const layoutSrc = await fs.readFile(layoutPath, "utf-8")
 
-    // The label in the header should come from the active tool, not hardcoded
-    expect(src).toContain("tool()?.label")
+    expect(layoutSrc).not.toContain("WorkbenchPanelsProvider")
+    expect(sessionSrc).toContain("BuiltinWorkbenchPanelsProvider")
+    expect(sessionSrc).toContain('<WorkbenchSurface surface="side" />')
+    expect(sessionSrc).toContain('<WorkbenchSurface surface="bottom" />')
+    expect(sessionSrc).not.toContain("WorkspaceRail")
+    expect(sessionSrc).not.toContain("TerminalPanel")
+  })
+
+  test("surface content labels come from panel registrations", async () => {
+    const src = await fs.readFile(surfacePath, "utf-8")
+
+    expect(src).toContain("panel.label")
+    expect(src).toContain("workbench.panelTitle(tab)")
   })
 })
 
 describe("NotePanel contract", () => {
-  const notePanelPath = path.join(APP_SRC, "components/note-panel.tsx")
+  const notePanelPath = path.join(APP_SRC, "components/note/panel.tsx")
 
   test("NotePanel must not call sdk.client.note.listAll in list fetch path", async () => {
     const src = await fs.readFile(notePanelPath, "utf-8")

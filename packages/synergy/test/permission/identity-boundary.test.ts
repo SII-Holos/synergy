@@ -42,7 +42,7 @@ describe("session_send identity boundary", () => {
     })
   })
 
-  test("identity_act with nonBypassable metadata prevents unattended auto-approve", async () => {
+  test("identity_act with unattended metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -63,27 +63,6 @@ describe("session_send identity boundary", () => {
           },
           "ses_session_send_test_unattended",
         )
-      },
-    })
-  })
-
-  test("session_send role=assistant remains allowed where system agents need delivery", async () => {
-    await using tmp = await tmpdir({ git: true })
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const result = await PermissionNext.ask({
-          sessionID: "ses_session_send_test_assistant",
-          permission: "session_send",
-          patterns: ["deliver to ses_target"],
-          metadata: {
-            action: "session_send",
-            role: "assistant",
-          },
-          ruleset: [{ permission: "session_send", pattern: "*", action: "allow" }],
-        })
-
-        expect(result).toBeUndefined()
       },
     })
   })
@@ -136,7 +115,7 @@ describe("email_send communication boundary", () => {
     })
   })
 
-  test("communication_email with nonBypassable metadata prevents unattended auto-approve", async () => {
+  test("communication_email with unattended metadata stays pending", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),

@@ -19,6 +19,7 @@ export namespace ConfigDomain {
     "holos",
     "email",
     "runtime",
+    "github",
   ])
   export type Id = z.infer<typeof Id>
 
@@ -46,8 +47,8 @@ export namespace ConfigDomain {
       "toast",
       "logLevel",
       "snapshot",
-      "autoupdate",
       "username",
+      "locale",
       "layout",
       "embedding",
       "rerank",
@@ -61,6 +62,8 @@ export namespace ConfigDomain {
       "long_context_model",
       "creative_model",
       "vision_model",
+      "role_variant",
+      "quick_switcher",
     ]),
     def("providers", "20-providers.jsonc", "Providers", [
       "provider",
@@ -70,13 +73,13 @@ export namespace ConfigDomain {
     ]),
     def("library", "30-library.jsonc", "Library", ["library"]),
     def("mcp", "40-mcp.jsonc", "MCP", ["mcp", "mcpDefaults"]),
-    def(
-      "plugins",
-      "50-plugins.jsonc",
-      "Plugins",
-      ["plugin", "pluginConfig", "pluginApprovalPolicy", "pluginRuntimePolicy", "pluginMarketplace"],
-      "append",
-    ),
+    def("plugins", "50-plugins.jsonc", "Plugins", [
+      "plugin",
+      "pluginConfig",
+      "pluginApprovalPolicy",
+      "pluginRuntimePolicy",
+      "pluginMarketplace",
+    ]),
     def("agents", "60-agents.jsonc", "Agents", [
       "default_agent",
       "agent",
@@ -100,14 +103,18 @@ export namespace ConfigDomain {
     def("runtime", "120-runtime.jsonc", "Runtime", [
       "server",
       "timeout",
+      "cortex",
       "watcher",
       "formatter",
       "lsp",
+      "lspWriteDiagnostics",
+      "lspDiagnostics",
       "question",
       "compaction",
       "experimental",
       "observability",
     ]),
+    def("github", "130-github.jsonc", "GitHub", ["github"]),
   ] as const satisfies Definition[]
 
   function def(

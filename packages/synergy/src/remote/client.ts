@@ -1,107 +1,118 @@
 import {
-  MetaProtocolBash,
-  MetaProtocolEnvelope,
-  MetaProtocolEnv,
-  MetaProtocolError,
-  MetaProtocolProcess,
-  MetaProtocolSession,
-} from "@ericsanchezok/meta-protocol"
-import type { MetaProtocolClient } from "@ericsanchezok/meta-protocol"
+  SynergyLinkBash,
+  SynergyLinkEnvelope,
+  SynergyLinkIdentity,
+  SynergyLinkError,
+  SynergyLinkProcess,
+  SynergyLinkSession,
+} from "@ericsanchezok/synergy-link-protocol"
+import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
 
-export type RemoteExecutionRequest =
-  | (MetaProtocolBash.ExecuteRequest & { targetAgentID?: string })
-  | (MetaProtocolProcess.ExecuteRequest & { targetAgentID?: string })
-  | (MetaProtocolSession.ExecuteRequest & { targetAgentID?: string })
-export type RemoteExecutionResponse =
-  | MetaProtocolBash.ExecuteResult
-  | MetaProtocolProcess.ExecuteResult
-  | MetaProtocolSession.ExecuteResult
-  | MetaProtocolEnvelope.ErrorResult
+export type SynergyLinkRequest =
+  | (SynergyLinkBash.ExecuteRequest & { targetAgentID?: string })
+  | (SynergyLinkProcess.ExecuteRequest & { targetAgentID?: string })
+  | (SynergyLinkSession.ExecuteRequest & { targetAgentID?: string })
+export type SynergyLinkResponse =
+  | SynergyLinkBash.ExecuteResult
+  | SynergyLinkProcess.ExecuteResult
+  | SynergyLinkSession.ExecuteResult
+  | SynergyLinkEnvelope.ErrorResult
 
-export interface RemoteExecutionTransport {
-  request(input: RemoteExecutionRequest): Promise<unknown>
+export interface SynergyLinkTransport {
+  request(input: SynergyLinkRequest): Promise<unknown>
+  dispose?(): void
 }
 
-export class RemoteExecutionError extends Error {
+export class SynergyLinkRemoteError extends Error {
   constructor(
-    readonly code: MetaProtocolError.Code,
+    readonly code: SynergyLinkError.Code,
     message: string,
     readonly details?: unknown,
   ) {
     super(message)
-    this.name = "RemoteExecutionError"
+    this.name = "SynergyLinkRemoteError"
   }
 }
 
-export class HolosRemoteExecutionClient implements MetaProtocolClient.ExecutionClient {
-  constructor(private readonly transport: RemoteExecutionTransport) {}
+export class HolosSynergyLinkClient implements SynergyLinkClient.ExecutionClient {
+  constructor(private readonly transport: SynergyLinkTransport) {}
 
   async executeBash(
-    envID: MetaProtocolEnv.EnvID,
-    input: MetaProtocolBash.ExecutePayload,
-    options?: MetaProtocolClient.RemoteExecutionOptions,
-  ): Promise<MetaProtocolBash.Result> {
+    linkID: SynergyLinkIdentity.LinkID,
+    input: SynergyLinkBash.ExecutePayload,
+    options?: SynergyLinkClient.LinkExecutionOptions,
+  ): Promise<SynergyLinkBash.Result> {
     if (!options?.sessionID) {
-      throw new RemoteExecutionError("session_required", `Remote bash requires an active session for env ${envID}.`)
+      throw new SynergyLinkRemoteError(
+        "session_not_found",
+        `Remote bash requires an active session for link ${linkID}.`,
+      )
     }
     const request = {
-      version: 1,
+      version: SynergyLinkEnvelope.VERSION,
       requestID: crypto.randomUUID(),
-      envID,
+      linkID,
       tool: "bash",
       action: "execute",
       sessionID: options.sessionID,
       targetAgentID: options.targetAgentID,
       payload: input,
-    } satisfies MetaProtocolBash.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkBash.ExecuteRequest & { targetAgentID?: string }
 
     const response = await this.#request(request)
     return response.result
   }
 
   async executeProcess(
-    envID: MetaProtocolEnv.EnvID,
-    input: MetaProtocolProcess.ExecutePayload,
-    options?: MetaProtocolClient.RemoteExecutionOptions,
-  ): Promise<MetaProtocolProcess.Result> {
+    linkID: SynergyLinkIdentity.LinkID,
+    input: SynergyLinkProcess.ExecutePayload,
+    options?: SynergyLinkClient.LinkExecutionOptions,
+  ): Promise<SynergyLinkProcess.Result> {
     if (!options?.sessionID) {
-      throw new RemoteExecutionError("session_required", `Remote process requires an active session for env ${envID}.`)
+      throw new SynergyLinkRemoteError(
+        "session_not_found",
+        `Remote process requires an active session for link ${linkID}.`,
+      )
     }
     const request = {
-      version: 1,
+      version: SynergyLinkEnvelope.VERSION,
       requestID: crypto.randomUUID(),
-      envID,
+      linkID,
       tool: "process",
       action: input.action,
       sessionID: options.sessionID,
       targetAgentID: options.targetAgentID,
       payload: input,
-    } satisfies MetaProtocolProcess.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkProcess.ExecuteRequest & { targetAgentID?: string }
 
     const response = await this.#request(request)
     return response.result
   }
 
   async executeSession(
-    envID: MetaProtocolEnv.EnvID,
-    input: MetaProtocolSession.ExecutePayload,
-    options?: MetaProtocolClient.RemoteExecutionOptions,
-  ): Promise<MetaProtocolSession.Result> {
+    linkID: SynergyLinkIdentity.LinkID,
+    input: SynergyLinkSession.ExecutePayload,
+    options?: SynergyLinkClient.LinkExecutionOptions,
+  ): Promise<SynergyLinkSession.Result> {
     const request = {
-      version: 1,
+      version: SynergyLinkEnvelope.VERSION,
       requestID: crypto.randomUUID(),
-      envID,
+      linkID,
       tool: "session",
       action: input.action,
       targetAgentID: options?.targetAgentID,
       payload: input,
-    } satisfies MetaProtocolSession.ExecuteRequest & { targetAgentID?: string }
+    } satisfies SynergyLinkSession.ExecuteRequest & { targetAgentID?: string }
 
     const response = await this.#request(request)
     return response.result
   }
 
-  async #request<TRequest extends RemoteExecutionRequest>(input: TRequest): Promise<ResponseForRequest<TRequest>> {
+  dispose() {
+    this.transport.dispose?.()
+  }
+
+  async #request<TRequest extends SynergyLinkRequest>(input: TRequest): Promise<ResponseForRequest<TRequest>> {
     let raw: unknown
     try {
       raw = await this.transport.request(input)
@@ -111,48 +122,48 @@ export class HolosRemoteExecutionClient implements MetaProtocolClient.ExecutionC
 
     const parsed = parseResponse(input, raw)
     if (!parsed.ok) {
-      throw new RemoteExecutionError(parsed.error.code, parsed.error.message, parsed.error.details)
+      throw new SynergyLinkRemoteError(parsed.error.code, parsed.error.message, parsed.error.details)
     }
 
     return parsed as ResponseForRequest<TRequest>
   }
 }
 
-type ResponseForRequest<TRequest extends RemoteExecutionRequest> = TRequest extends MetaProtocolBash.ExecuteRequest
-  ? MetaProtocolBash.ExecuteResult
-  : TRequest extends MetaProtocolProcess.ExecuteRequest
-    ? MetaProtocolProcess.ExecuteResult
-    : TRequest extends MetaProtocolSession.ExecuteRequest
-      ? MetaProtocolSession.ExecuteResult
+type ResponseForRequest<TRequest extends SynergyLinkRequest> = TRequest extends SynergyLinkBash.ExecuteRequest
+  ? SynergyLinkBash.ExecuteResult
+  : TRequest extends SynergyLinkProcess.ExecuteRequest
+    ? SynergyLinkProcess.ExecuteResult
+    : TRequest extends SynergyLinkSession.ExecuteRequest
+      ? SynergyLinkSession.ExecuteResult
       : never
 
-function parseResponse(input: RemoteExecutionRequest, raw: unknown): RemoteExecutionResponse {
-  const error = MetaProtocolEnvelope.ErrorResult.safeParse(raw)
+function parseResponse(input: SynergyLinkRequest, raw: unknown): SynergyLinkResponse {
+  const error = SynergyLinkEnvelope.ErrorResult.safeParse(raw)
   if (error.success) return error.data
 
   const typed = getResponseSchema(input).safeParse(raw)
   if (typed.success) return typed.data
 
-  throw new RemoteExecutionError("remote_execution_error", "Invalid remote execution response", {
+  throw new SynergyLinkRemoteError("transport_error", "Invalid Synergy Link response", {
     expected: { tool: input.tool, action: input.action, requestID: input.requestID },
     issues: typed.error.issues,
     raw,
   })
 }
 
-function getResponseSchema(input: RemoteExecutionRequest) {
+function getResponseSchema(input: SynergyLinkRequest) {
   switch (input.tool) {
     case "bash":
-      return MetaProtocolBash.ExecuteResult
+      return SynergyLinkBash.ExecuteResult
     case "process":
-      return MetaProtocolProcess.ExecuteResult
+      return SynergyLinkProcess.ExecuteResult
     case "session":
-      return MetaProtocolSession.ExecuteResult
+      return SynergyLinkSession.ExecuteResult
   }
 }
 
-function normalizeTransportError(error: unknown): RemoteExecutionError {
-  if (error instanceof RemoteExecutionError) {
+function normalizeTransportError(error: unknown): SynergyLinkRemoteError {
+  if (error instanceof SynergyLinkRemoteError) {
     return error
   }
 
@@ -164,16 +175,12 @@ function normalizeTransportError(error: unknown): RemoteExecutionError {
     "message" in error &&
     typeof (error as { message?: unknown }).message === "string"
   ) {
-    return new RemoteExecutionError(
-      (error as { code: MetaProtocolError.Code }).code,
+    return new SynergyLinkRemoteError(
+      (error as { code: SynergyLinkError.Code }).code,
       (error as { message: string }).message,
       (error as { details?: unknown }).details,
     )
   }
 
-  return new RemoteExecutionError(
-    "remote_execution_error",
-    error instanceof Error ? error.message : String(error),
-    error,
-  )
+  return new SynergyLinkRemoteError("transport_error", error instanceof Error ? error.message : String(error), error)
 }

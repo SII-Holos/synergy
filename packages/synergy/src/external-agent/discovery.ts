@@ -4,7 +4,9 @@ import { ExternalAgent } from "./bridge"
 export namespace ExternalAgentDiscovery {
   const log = Log.create({ service: "external-agent.discovery" })
 
-  export async function discover(): Promise<Map<string, ExternalAgent.Info>> {
+  export async function discover(
+    config?: Record<string, Record<string, unknown> | undefined>,
+  ): Promise<Map<string, ExternalAgent.Info>> {
     const results = new Map<string, ExternalAgent.Info>()
     const names = ExternalAgent.listAdapters()
 
@@ -12,7 +14,7 @@ export namespace ExternalAgentDiscovery {
       names.map(async (name) => {
         const adapter = ExternalAgent.getAdapter(name)
         if (!adapter) return { name, available: false }
-        const result = await adapter.discover()
+        const result = await adapter.discover(config?.[name])
         return { name, ...result }
       }),
     )
@@ -38,7 +40,10 @@ export namespace ExternalAgentDiscovery {
     return results
   }
 
-  export async function discoverOne(name: string): Promise<ExternalAgent.Info | undefined> {
+  export async function discoverOne(
+    name: string,
+    config?: Record<string, unknown>,
+  ): Promise<ExternalAgent.Info | undefined> {
     const adapter = ExternalAgent.getAdapter(name)
     if (!adapter) {
       log.warn("adapter not registered", { adapter: name })
@@ -46,7 +51,7 @@ export namespace ExternalAgentDiscovery {
     }
 
     try {
-      const result = await adapter.discover()
+      const result = await adapter.discover(config)
       if (!result.available) {
         log.debug("adapter not available", { adapter: name })
         return undefined

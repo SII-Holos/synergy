@@ -1,38 +1,65 @@
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
-import { List } from "@ericsanchezok/synergy-ui/list"
-import { Switch } from "@ericsanchezok/synergy-ui/switch"
-import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { IconButton } from "@ericsanchezok/synergy-ui/icon-button"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
-import { getDirectory, getFilename, resolvePathInput } from "@ericsanchezok/synergy-util/path"
-import { createMemo, createResource, createSignal, Show } from "solid-js"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
+import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { TextField } from "@ericsanchezok/synergy-ui/text-field"
+import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
+import { createMemo, For, Show } from "solid-js"
+import { createStore } from "solid-js/store"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useGlobalSync } from "@/context/global-sync"
+import {
+  createInitialDirectoryBrowserState,
+  directoryBrowserCanSubmit,
+  directoryBrowserClearDraft,
+  directoryBrowserSetDraft,
+  directoryBrowserSubmitError,
+  directoryBrowserSubmitStart,
+  directoryBrowserSubmitSuccess,
+} from "./project-directory-browser-model"
+import "./dialog-select-directory.css"
 
 export interface DialogSelectDirectoryResult {
   directory: string | string[]
-  initGit: boolean
 }
 
 interface DialogSelectDirectoryProps {
   title?: string
   multiple?: boolean
-  showInitGit?: boolean
   onSelect: (result: DialogSelectDirectoryResult | null) => void
 }
 
 export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
   const sync = useGlobalSync()
   const sdk = useGlobalSDK()
-  const dialog = useDialog()
-
-  const [initGit, setInitGit] = createSignal(false)
-  const [filter, setFilter] = createSignal("")
+  const dialogContext = useDialog()
+  const { _ } = useLingui()
 
   const home = createMemo(() => sync.data.paths.home)
+  const [state, setState] = createStore(createInitialDirectoryBrowserState(home() ?? "/"))
+  const canSubmit = createMemo(() => directoryBrowserCanSubmit(state, home()))
+  const stateTitle = createMemo(() => {
+    if (state.status === "loading") return _(dialog.searching)
+    if (state.status === "empty") return _(dialog.noMatchingFolders)
+    if (state.status === "error") return _(dialog.searchFailed)
+    return _(dialog.searchToChoose)
+  })
+  const stateDescription = createMemo(() => {
+    if (state.status === "empty") return _(dialog.tryFullerPath)
+    if (state.status === "error") return state.error ?? _(dialog.checkPath)
+    return undefined
+  })
+  const stateIcon = createMemo(() => {
+    if (state.status === "error") return "state.error"
+    if (state.status === "empty") return "state.empty"
+    return "action.search"
+  })
 
   function display(abs: string) {
     const h = home()
@@ -44,93 +71,154 @@ export function DialogSelectDirectory(props: DialogSelectDirectoryProps) {
     return abs
   }
 
-  function resolveInput(input: string): { path: string; query: string } {
-    return resolvePathInput(input, home() ?? "/")
+  async function submitSearch(event?: SubmitEvent) {
+    event?.preventDefault()
+    if (!canSubmit()) return
+    const next = directoryBrowserSubmitStart(state, home())
+    if (next === state) return
+    const requestID = next.requestID
+    setState(next)
+    try {
+      const response: { data?: string[] | null } = await sdk.client.global.filesystem.browse({
+        path: next.resolved.path,
+        query: next.resolved.query,
+        limit: 50,
+      })
+      const data = response.data ?? []
+      const current = { ...state }
+      setState(directoryBrowserSubmitSuccess(current, requestID, data))
+    } catch (error) {
+      const current = { ...state }
+      setState(directoryBrowserSubmitError(current, requestID, error))
+    }
   }
 
-  const [results] = createResource(
-    () => filter(),
-    async (f) => {
-      const { path, query } = resolveInput(f)
-      const data = await sdk.client.global.filesystem
-        .browse({ path, query, limit: 50 })
-        .then((x) => x.data ?? [])
-        .catch(() => [])
-      return data
-    },
-    { initialValue: [] },
-  )
+  function clearDraft() {
+    setState(directoryBrowserClearDraft({ ...state }, home() ?? "/"))
+  }
+
+  function retry() {
+    void submitSearch()
+  }
 
   function resolve(abs: string) {
     props.onSelect({
       directory: props.multiple ? [abs] : abs,
-      initGit: initGit(),
     })
-    dialog.close()
+    dialogContext.close()
   }
 
   return (
-    <Dialog title={props.title ?? "Open project"}>
-      <div class="flex flex-col flex-1 min-h-0">
-        <div class="px-3 py-2 text-12-regular text-text-weak border-b border-border-weak-base/40">
-          Browsing server directory
+    <Dialog
+      class="project-directory-dialog"
+      size="list"
+      title={
+        <div class="project-directory-title">
+          <span class="project-directory-title-icon" aria-hidden="true">
+            <Icon name={getSemanticIcon("settings.configFiles")} size="small" />
+          </span>
+          <span>{props.title ?? _(dialog.openProject)}</span>
         </div>
-        <div class="flex items-center gap-2 px-3 py-2 border-b border-border-weak-base/40">
-          <Icon name="search" class="text-icon-dim-base shrink-0" />
-          <TextField
-            autofocus
-            variant="ghost"
-            type="text"
-            value={filter()}
-            onChange={setFilter}
-            placeholder="Search folders (e.g. ~/projects, /opt/data)"
-            spellcheck={false}
-            autocorrect="off"
-            autocomplete="off"
-            autocapitalize="off"
-            class="flex-1"
-          />
-          <Show when={filter()}>
-            <IconButton icon="circle-x" variant="ghost" onClick={() => setFilter("")} />
+      }
+      description={_(dialog.openProjectDesc)}
+    >
+      <div class="project-directory-body">
+        <form class="project-directory-search-card" onSubmit={submitSearch}>
+          <div class="project-directory-search-field">
+            <Icon name={getSemanticIcon("action.search")} size="small" class="project-directory-search-icon" />
+            <TextField
+              autofocus
+              variant="ghost"
+              type="text"
+              label={_(dialog.projectFolder)}
+              hideLabel
+              value={state.draft}
+              onChange={(value: string) => setState(directoryBrowserSetDraft({ ...state }, value))}
+              onKeyDown={(event: KeyboardEvent) => {
+                if (event.key === "Enter") void submitSearch(event as unknown as SubmitEvent)
+              }}
+              placeholder={_(dialog.searchFolders)}
+              spellcheck={false}
+              autocorrect="off"
+              autocomplete="off"
+              autocapitalize="off"
+              class="project-directory-input"
+            />
+          </div>
+          <Show when={state.draft || state.status !== "idle"}>
+            <IconButton
+              type="button"
+              icon={getSemanticIcon("action.clear")}
+              variant="ghost"
+              aria-label={_(dialog.clearSearch)}
+              onClick={clearDraft}
+            />
           </Show>
-          <Show when={props.showInitGit}>
-            <div class="border-l border-border-weak-base/40 pl-2 ml-1">
-              <Tooltip value="Initialize git repository if not present">
-                <div class="flex items-center gap-2">
-                  <Icon name="git-branch" class={initGit() ? "text-icon-success-base" : "text-icon-dim-base"} />
-                  <Switch checked={initGit()} onChange={setInitGit} />
+          <Button
+            type="submit"
+            variant="primary"
+            size="normal"
+            icon={getSemanticIcon("action.search")}
+            disabled={!canSubmit()}
+            class="project-directory-search-button"
+          >
+            {_(dialog.search)}
+          </Button>
+        </form>
+
+        <div class="project-directory-results" data-status={state.status}>
+          <Show
+            when={state.status === "ready"}
+            fallback={
+              <div class="project-directory-state">
+                <div class="project-directory-state-icon" data-status={state.status}>
+                  <Show
+                    when={state.status === "loading"}
+                    fallback={<Icon name={getSemanticIcon(stateIcon())} size="normal" />}
+                  >
+                    <Spinner class="project-directory-spinner" />
+                  </Show>
                 </div>
-              </Tooltip>
+                <div class="project-directory-state-copy">
+                  <h3>{stateTitle()}</h3>
+                  <Show when={stateDescription()}>
+                    <p>{stateDescription()}</p>
+                  </Show>
+                  <Show when={state.status === "error"}>
+                    <Button type="button" variant="secondary" size="small" onClick={retry} disabled={!canSubmit()}>
+                      {_(dialog.retry)}
+                    </Button>
+                  </Show>
+                </div>
+              </div>
+            }
+          >
+            <div class="project-directory-result-list" role="listbox" aria-label={_(dialog.serverFolders)}>
+              <For each={state.results}>
+                {(abs, index) => {
+                  const shown = display(abs)
+                  return (
+                    <button
+                      type="button"
+                      class="project-directory-row"
+                      role="option"
+                      aria-label={_(dialog.selectFolderAria.id, { path: shown })}
+                      title={abs}
+                      style={{ "--row-index": index() }}
+                      onClick={() => resolve(abs)}
+                    >
+                      <FileIcon node={{ path: abs, type: "directory" }} class="project-directory-row-icon" />
+                      <span class="project-directory-row-path">
+                        <span class="project-directory-row-parent">{getDirectory(shown)}</span>
+                        <span class="project-directory-row-name">{getFilename(shown)}</span>
+                      </span>
+                    </button>
+                  )
+                }}
+              </For>
             </div>
           </Show>
         </div>
-        <List
-          class="flex-1 min-h-0"
-          emptyMessage={results.loading ? "Searching..." : "No folders found"}
-          items={results() ?? []}
-          key={(x) => x}
-          onSelect={(path) => {
-            if (!path) return
-            resolve(path)
-          }}
-        >
-          {(abs) => {
-            const path = display(abs)
-            return (
-              <div class="w-full flex items-center justify-between rounded-md">
-                <div class="flex items-center gap-x-3 grow min-w-0">
-                  <FileIcon node={{ path: abs, type: "directory" }} class="shrink-0 size-4 text-icon-weak-base" />
-                  <div class="flex items-center text-14-regular min-w-0">
-                    <span class="text-text-weak whitespace-nowrap overflow-hidden overflow-ellipsis truncate min-w-0">
-                      {getDirectory(path)}
-                    </span>
-                    <span class="text-text-strong whitespace-nowrap">{getFilename(path)}</span>
-                  </div>
-                </div>
-              </div>
-            )
-          }}
-        </List>
       </div>
     </Dialog>
   )

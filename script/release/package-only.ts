@@ -4,29 +4,33 @@ import { $ } from "bun"
 import { snapshotFiles, restoreFiles } from "./shared/files"
 import { VERSION_MANAGED_PACKAGE_PATHS, NPM_REGISTRY } from "./shared/packages"
 import { configureNpmAuth, npmTagMatches, npmVersionExists } from "./shared/runtime"
-import type { DependencyVersionMap } from "./shared/publish-generic"
+import type { DependencyVersionMap } from "./shared/package-manifest"
 import { bunInstall } from "./nodes/bun-install"
 import { generateSdk } from "./nodes/generate-sdk"
-import { buildMetaProtocol } from "./nodes/build-meta-protocol"
+import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
+import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
-import { publishMetaProtocolCandidate } from "./nodes/publish-meta-protocol-candidate"
+import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
+import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
 
-type PackageAlias = "sdk" | "meta-protocol" | "plugin" | "plugin-kit"
+type PackageAlias = "sdk" | "util" | "synergy-link-protocol" | "plugin" | "plugin-kit"
 
 const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "@ericsanchezok/synergy-sdk",
-  "meta-protocol": "@ericsanchezok/meta-protocol",
+  util: "@ericsanchezok/synergy-util",
+  "synergy-link-protocol": "@ericsanchezok/synergy-link-protocol",
   plugin: "@ericsanchezok/synergy-plugin",
   "plugin-kit": "@ericsanchezok/synergy-plugin-kit",
 }
 
 const TAG_PREFIX_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "synergy-sdk",
-  "meta-protocol": "meta-protocol",
+  util: "synergy-util",
+  "synergy-link-protocol": "synergy-link-protocol",
   plugin: "synergy-plugin",
   "plugin-kit": "synergy-plugin-kit",
 }
@@ -42,8 +46,9 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     .filter(Boolean)
   const result: PackageAlias[] = []
   for (const alias of aliases) {
+    // Backward compat alias for existing CI pipelines — remove once CI configs are updated
     if (alias === "meta") {
-      result.push("meta-protocol")
+      result.push("synergy-link-protocol")
       continue
     }
     if (!(alias in PACKAGE_BY_ALIAS)) {
@@ -52,6 +57,16 @@ function parsePackages(input: string | undefined): PackageAlias[] {
     result.push(alias as PackageAlias)
   }
   return [...new Set(result)]
+}
+
+function expandPackageDependencies(aliases: PackageAlias[]): PackageAlias[] {
+  const result: PackageAlias[] = []
+  const add = (alias: PackageAlias) => {
+    if (!result.includes(alias)) result.push(alias)
+  }
+  if (aliases.some((alias) => alias === "plugin" || alias === "plugin-kit")) add("util")
+  for (const alias of aliases) add(alias)
+  return result
 }
 
 async function latestVersion(packageName: string): Promise<string | null> {
@@ -93,7 +108,8 @@ async function rewriteSelectedVersions(versionByPackage: Record<string, string>)
 
 async function buildPackage(alias: PackageAlias) {
   if (alias === "sdk") await generateSdk()
-  if (alias === "meta-protocol") await buildMetaProtocol()
+  if (alias === "util") await buildUtil()
+  if (alias === "synergy-link-protocol") await buildSynergyLinkProtocol()
   if (alias === "plugin") await buildPlugin()
   if (alias === "plugin-kit") await buildPluginKit()
 }
@@ -105,7 +121,8 @@ async function publishPackage(
   dependencyVersions: DependencyVersionMap,
 ) {
   if (alias === "sdk") await publishSdkCandidate(version, channel)
-  if (alias === "meta-protocol") await publishMetaProtocolCandidate(version, channel)
+  if (alias === "util") await publishUtilCandidate(version, channel)
+  if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel)
   if (alias === "plugin") await publishPluginCandidate(version, channel)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
 }
@@ -123,7 +140,7 @@ if (!["patch", "minor", "major"].includes(bump)) {
   throw new Error("package-only release requires SYNERGY_BUMP=patch|minor|major")
 }
 const channel = process.env.SYNERGY_NPM_TAG?.trim() || "latest"
-const aliases = parsePackages(process.env.SYNERGY_RELEASE_PACKAGES)
+const aliases = expandPackageDependencies(parsePackages(process.env.SYNERGY_RELEASE_PACKAGES))
 
 const selectedVersionByPackage: Record<string, string> = {}
 for (const alias of aliases) {

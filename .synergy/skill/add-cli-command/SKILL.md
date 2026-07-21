@@ -1,54 +1,45 @@
 ---
 name: add-cli-command
-description: "Guide for adding a new CLI command to Synergy. Use when implementing a new CLI subcommand, modifying command options, or extending the CLI. Triggers: 'add command', 'new command', 'CLI command', 'add subcommand', 'cli/cmd'."
+description: Add or modify a Synergy CLI command, command group, positional, option, alias, help text, exit behavior, or root command registration under packages/synergy/src/cli. Use for installed synergy CLI work; do not use for the repository-only bun dev orchestrator.
 ---
 
-# Adding a New CLI Command
+# Add a CLI Command
 
-## Location
+## Discover the Contract
 
-CLI commands live in `packages/synergy/src/cli/cmd/`. Each command is a separate file exporting a yargs command module.
+1. Read [CLI reference](../../../docs/reference/cli.md) and inspect `packages/synergy/src/index.ts`.
+2. Locate the nearest command with the same shape: local operation, server-attached operation, nested command group, streaming output, or destructive confirmation.
+3. Decide whether the behavior belongs in the installed `synergy` CLI or the source-only `bun dev` orchestrator. Edit `script/dev.ts` only for the latter.
 
-## Pattern
+## Implement
 
-```ts
-import type { CommandModule } from "yargs"
+1. Write a failing behavior test first when adding behavior or fixing a bug.
+2. Add or update a named command in `packages/synergy/src/cli/cmd/` with `cmd()`. Match neighboring yargs builder, positional, alias, and output patterns rather than imposing a parallel style.
+3. Keep domain logic in its owning module. Let the command parse input, establish Scope or server attachment, call the domain API, format output, and set an appropriate exit status.
+4. Give every command, positional, and option useful help text. Support structured output when the adjacent command family already does.
+5. Register a root command in `packages/synergy/src/index.ts`; register a nested command in its owning command-group builder.
+6. Use generated SDK/server helpers for attached commands where the family already does. Preserve auth, directory/Scope, timeout, and error semantics.
+7. Regenerate the SDK with `./script/generate.ts` only if an API route or OpenAPI-visible schema changed.
 
-export default {
-  command: ["$0", "my-command"],
-  aliases: ["mc"],
-  describe: "what this command does",
-  builder: (yargs) =>
-    yargs.option("flag", {
-      type: "string",
-      describe: "flag description",
-    }),
-  handler: async (args) => {
-    // Implementation
-  },
-} satisfies CommandModule
+## Verify
+
+```bash
+bun run packages/synergy/src/index.ts <command> --help
 ```
 
-## Steps
+Then run the narrow CLI/domain test from `packages/synergy`, followed by:
 
-1. **Create the command file** in `packages/synergy/src/cli/cmd/<name>.ts`
-2. **Study existing commands** — look at `server.ts`, `send.ts`, `status.ts` for patterns
-3. **Register the command** — add it to the CLI router in `packages/synergy/src/cli/index.ts` or the appropriate parent command
-4. **Handle errors gracefully** — use try/catch, provide helpful error messages
-5. **Add `--help` text** — use `describe` and option descriptions for self-documenting CLI
-6. **Test manually** — run via `bun run packages/synergy/src/cli/index.ts <command>`
-7. **Update docs** — add to README.md Common Commands section if user-facing
+```bash
+bun run typecheck
+bun run quality:quick
+```
 
-## Conventions
+For startup, daemon, port, Web, Desktop, auth, or data movement changes, test through an isolated `SYNERGY_HOME`; use the `develop-synergy` skill and never disrupt the active instance.
 
-- Use kebab-case for command names: `my-command` not `myCommand`
-- Provide short aliases when practical
-- Print minimal output by default, verbose with `--verbose` flag
-- Use `process.exit(1)` for error exits
-- Import UI helpers from `packages/synergy/src/cli/ui.ts` for consistent formatting
+## Synchronize Documentation
 
-## Key files
+Update [CLI reference](../../../docs/reference/cli.md) for user-visible syntax or behavior. Also review `README.md`, configuration/storage references, affected help text, and `.synergy/command/` workflows. Keep migration history outside the current CLI reference.
 
-- `packages/synergy/src/cli/index.ts` — CLI entry point and routing
-- `packages/synergy/src/cli/cmd/` — all command implementations
-- `packages/synergy/src/cli/ui.ts` — shared UI helpers (colors, formatting)
+## Handoff
+
+Report the registered command path, domain API called, failure/exit behavior, manual invocation, tests, SDK generation status, and documentation updated.

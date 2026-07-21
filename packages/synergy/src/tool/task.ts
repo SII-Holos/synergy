@@ -5,12 +5,15 @@ import { Session } from "../session"
 import { Bus } from "../bus"
 import { MessageV2 } from "../session/message-v2"
 import { Agent } from "../agent/agent"
+import { AgentDelegation } from "../agent/delegation"
 import { defer } from "@/util/defer"
 import { PermissionNext } from "@/permission/next"
 import { Category } from "../cortex/category"
 import { Provider } from "../provider/provider"
 import { ScopeContext } from "../scope/context"
 import { Dag } from "../session/dag"
+import { CortexOutput } from "../cortex/output"
+import { CortexTypes } from "../cortex/types"
 import { ToolTimeout } from "./timeout"
 
 const parameters = z.object({
@@ -48,6 +51,9 @@ const parameters = z.object({
         Category.descriptions() +
         "\nDefault: none (uses subagent's original model and prompt)",
     ),
+  output: CortexTypes.OutputConfig.optional().describe(
+    "Optional output contract for the delegated task. Use structured mode with a JSON Schema when the caller needs machine-readable output.",
+  ),
   worktree: z
     .object({
       create: z.literal(true),
@@ -62,6 +68,7 @@ interface TaskMetadata {
   sessionId: string
   taskId?: string
   background?: boolean
+  output?: CortexTypes.TaskOutput
 }
 
 const SYNC_TIMEOUT_S = ToolTimeout.DEFAULTS.taskAutoBackgroundMs / 1_000
@@ -80,12 +87,7 @@ async function bindDagNode(sessionID: string, nodeID: string | undefined, task: 
 export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", async (ctx) => {
   const caller = ctx?.agent
   const agents = await Agent.list().then((items) =>
-    items.filter(
-      (agent) =>
-        agent.mode !== "primary" &&
-        !agent.hidden &&
-        (!caller || !agent.visibleTo || agent.visibleTo.includes(caller.name)),
-    ),
+    items.filter((agent) => AgentDelegation.canDelegateTo(agent, caller)),
   )
 
   const accessibleAgents = caller
@@ -113,7 +115,8 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
 
       const agent = await Agent.get(params.subagent_type)
       if (!agent) throw new Error(`Unknown agent type: ${params.subagent_type} is not a valid agent type`)
-      if (ctx.agent && agent.visibleTo && !agent.visibleTo.includes(ctx.agent)) {
+      const callerInfo = caller ?? (ctx.agent ? await Agent.get(ctx.agent) : undefined)
+      if (!AgentDelegation.canDelegateTo(agent, callerInfo ?? ctx.agent)) {
         throw new Error(`Agent type ${params.subagent_type} is not visible to ${ctx.agent}`)
       }
 
@@ -160,7 +163,8 @@ export const TaskTool = Tool.define<typeof parameters, TaskMetadata>("task", asy
         parentMessageID: ctx.messageID,
         sessionID,
         model,
-        worktree: params.worktree,
+        worktree: params.worktree ? { ...params.worktree, failOnError: false } : undefined,
+        output: params.output,
       })
 
       await bindDagNode(ctx.sessionID, params.dag_node_id, task)
@@ -192,10 +196,13 @@ Description: ${task.description}
 Agent: ${task.agent}${params.category ? ` (category: ${params.category})` : ""}
 Status: running
 
-You will be notified when the task completes.
-Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
-Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
+If you have other independent work to do, continue with it now.
+
+Otherwise, you are done for this turn — deliver your final response and stop.
+When the task completes, the system will send a lightweight notification that wakes you.
+The notification does NOT contain the final result; retrieve it once with \`task_output(task_id="${task.id}", mode="full")\`.
+Do not repeatedly call task_output while the task is running.
+Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.`,
         }
       }
 
@@ -252,10 +259,13 @@ Description: ${task.description}
 Agent: ${task.agent}
 Status: still running
 
-You will be notified when the task completes.
-Use \`task_list()\` to inspect visible background tasks.
-Use \`task_output(task_id="${task.id}", mode="progress")\` to inspect live progress.
-Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activity.`,
+If you have other independent work to do, continue with it now.
+
+Otherwise, you are done for this turn — deliver your final response and stop.
+When the task completes, the system will send a lightweight notification that wakes you.
+The notification does NOT contain the final result; retrieve it once with \`task_output(task_id="${task.id}", mode="full")\`.
+Do not repeatedly call task_output while the task is running.
+Use diagnostic modes (progress, tail, summary) only for a one-shot check; if the task is still running, continue independent work or wait for the automatic completion notification.`,
         }
       }
 
@@ -271,7 +281,7 @@ Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activit
             title: part.state.status === "completed" ? part.state.title : undefined,
           },
         }))
-      const text = completed.result ?? ""
+      const text = CortexOutput.renderTaskOutput(completed.output)
       const output = text + "\n\n" + ["<task_metadata>", `session_id: ${task.sessionID}`, "</task_metadata>"].join("\n")
 
       return {
@@ -281,6 +291,7 @@ Use \`task_output(task_id="${task.id}", mode="tail")\` to inspect recent activit
           sessionId: task.sessionID,
           taskId: undefined,
           background: false,
+          output: completed.output,
         },
         output,
       }

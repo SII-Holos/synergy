@@ -1,7 +1,8 @@
+import { TOOL_TITLE_DESC, TOOL_LABEL_DESC } from "../../tool-title-descriptors"
+import { useLingui } from "@lingui/solid"
 import { createMemo, Show } from "solid-js"
 import { Dynamic } from "solid-js/web"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
-import { useDiffComponent } from "../../../context/diff"
 import { useCodeComponent } from "../../../context/code"
 import { BasicTool } from "../../basic-tool"
 import {
@@ -12,6 +13,8 @@ import {
   AnchoredViewTool,
 } from "../../anchored-tool-card"
 import { ToolRegistry, getDiagnostics, DiagnosticsDisplay } from "../../message-part"
+import { ToolTextOutput } from "../../tool-output-text"
+import { ToolDiffPreview } from "../diff-preview"
 
 ToolRegistry.register({ name: "view_file", render: AnchoredViewTool })
 ToolRegistry.register({ name: "scan_files", render: AnchoredScanFilesTool })
@@ -22,15 +25,27 @@ ToolRegistry.register({ name: "save_file", render: AnchoredSaveTool })
 ToolRegistry.register({
   name: "file_search",
   render(props) {
+    const { _ } = useLingui()
+    const count = () => props.metadata?.count as number | undefined
     return (
       <BasicTool
         {...props}
         trigger={{
           icon: "scan-document",
-          title: "File Search",
+          title: TOOL_TITLE_DESC["file_search"],
           subtitle: props.input.query as string | undefined,
+          tags:
+            count() != null ? [{ label: _({ ...TOOL_LABEL_DESC.results, values: { count: count()! } }) }] : undefined,
         }}
-      />
+      >
+        <Show when={props.output}>
+          {(output) => (
+            <div data-component="tool-output" data-scrollable>
+              <ToolTextOutput text={output()} />
+            </div>
+          )}
+        </Show>
+      </BasicTool>
     )
   },
 })
@@ -38,7 +53,6 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "edit",
   render(props) {
-    const diffComponent = useDiffComponent()
     const diagnostics = createMemo(() =>
       props.status === "completed" ? getDiagnostics(props.metadata.diagnostics, props.input.filePath) : [],
     )
@@ -47,25 +61,13 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Edit",
+          title: TOOL_TITLE_DESC["edit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
           changes: props.metadata.filediff as { additions: number; deletions: number } | undefined,
         }}
       >
-        <Show when={props.status !== "generating" && (props.metadata.filediff?.path || props.input.filePath)}>
-          <div data-component="edit-content">
-            <Dynamic
-              component={diffComponent}
-              before={{
-                name: props.metadata?.filediff?.file || props.input.filePath || "file",
-                contents: props.metadata?.filediff?.before || props.input.oldString,
-              }}
-              after={{
-                name: props.metadata?.filediff?.file || props.input.filePath || "file",
-                contents: props.metadata?.filediff?.after || props.input.newString,
-              }}
-            />
-          </div>
+        <Show when={props.status !== "generating" && props.metadata.filediff}>
+          <ToolDiffPreview diff={props.metadata.filediff} />
         </Show>
         <DiagnosticsDisplay diagnostics={diagnostics()} />
       </BasicTool>
@@ -85,7 +87,7 @@ ToolRegistry.register({
         {...props}
         trigger={{
           icon: "text-select",
-          title: "Write",
+          title: TOOL_TITLE_DESC["write"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
@@ -111,40 +113,22 @@ ToolRegistry.register({
 ToolRegistry.register({
   name: "multiedit",
   render(props) {
-    const diffComponent = useDiffComponent()
     return (
       <BasicTool
         {...props}
         trigger={{
           icon: "pen-line",
-          title: "Multi Edit",
+          title: TOOL_TITLE_DESC["multiedit"],
           subtitlePath: (props.input.filePath as string | undefined) ?? undefined,
         }}
       >
-        <Show when={props.status !== "generating" && props.metadata.results}>
+        <Show keyed when={props.status !== "generating" ? props.metadata.results : undefined}>
           {(results) => {
-            const lastResult = () => {
-              const r = results()
-              if (!Array.isArray(r) || r.length === 0) return undefined
-              return r[r.length - 1]
-            }
+            if (!Array.isArray(results) || results.length === 0) return null
+            const lastResult = results[results.length - 1]
             return (
-              <Show when={lastResult()?.filediff}>
-                {(filediff) => (
-                  <div data-component="edit-content">
-                    <Dynamic
-                      component={diffComponent}
-                      before={{
-                        name: filediff().file || props.input.filePath || "file",
-                        contents: filediff().before,
-                      }}
-                      after={{
-                        name: filediff().file || props.input.filePath || "file",
-                        contents: filediff().after,
-                      }}
-                    />
-                  </div>
-                )}
+              <Show keyed when={lastResult?.filediff}>
+                {(filediff) => <ToolDiffPreview diff={filediff} />}
               </Show>
             )
           }}

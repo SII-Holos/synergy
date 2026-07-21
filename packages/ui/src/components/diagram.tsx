@@ -1,5 +1,7 @@
+import { useLingui } from "@lingui/solid"
 import { For, Show, createMemo, createSignal, onMount, onCleanup } from "solid-js"
 import "./diagram.css"
+import { DIAGRAM_DESC } from "./tool-title-descriptors"
 
 interface NormalizedNode {
   label: string
@@ -1250,14 +1252,15 @@ export function DiagramTree(props: { document: TreeDocument }) {
 // ── Chart ──
 
 const CHART_COLORS = [
-  "var(--surface-brand-base)",
-  "var(--text-on-success-base)",
-  "#f59e0b",
-  "var(--text-on-critical-base)",
-  "#8b5cf6",
-  "#ec4899",
-  "#06b6d4",
-  "#64748b",
+  "var(--chart-series-1)",
+  "var(--chart-series-2)",
+  "var(--chart-series-3)",
+  "var(--chart-series-4)",
+  "var(--chart-series-5)",
+  "var(--chart-series-6)",
+  "var(--chart-series-7)",
+  "var(--chart-series-8)",
+  "var(--chart-series-9)",
 ]
 
 const CHART_PAD = { top: 16, right: 16, bottom: 32, left: 48 }
@@ -1499,6 +1502,7 @@ function ChartLine(props: { labels: string[]; series: ChartSeries[] }) {
 }
 
 function ChartPie(props: { segments: ChartSegment[] }) {
+  const { _ } = useLingui()
   const total = () => props.segments.reduce((sum, s) => sum + s.value, 0)
   const R = 80
   const IR = 48
@@ -1549,7 +1553,7 @@ function ChartPie(props: { segments: ChartSegment[] }) {
           {formatTickValue(total())}
         </text>
         <text x={CX} y={CY + 10} data-slot="chart-pie-total-label">
-          Total
+          {_(DIAGRAM_DESC.totalLabel)}
         </text>
       </svg>
       <div data-slot="chart-pie-labels">

@@ -1,9 +1,15 @@
-import type { ProviderAuthResponse } from "@ericsanchezok/synergy-sdk/client"
+import { useLingui } from "@lingui/solid"
+import type {
+  ProviderAuthHealth,
+  ProviderAuthResponse,
+  ProviderRuntimeAvailability,
+} from "@ericsanchezok/synergy-sdk/client"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { ProviderConnectionFlow } from "@/components/provider/ProviderConnectionFlow"
+import { translateDescriptor } from "@/locales/translate"
 import {
   compareProviderIDs,
   providerConnectCopy,
@@ -11,6 +17,14 @@ import {
   type ProviderRecommendationMetadata,
 } from "@/components/provider/provider-recommendation"
 import { SettingsPage } from "../components/SettingsPrimitives"
+import {
+  providerNeedsAction,
+  providerAuthTone,
+  providerRecoveryActionLabel,
+  providerRecoveryCopy,
+  providerStatusLabel,
+} from "@/components/provider/provider-auth-presentation"
+import { groupProviderConnections } from "./provider-groups"
 
 const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
   "deepseek",
@@ -24,18 +38,53 @@ const SETTINGS_RECOMMENDED_PROVIDER_RANK = new Map<string, number>(
   SETTINGS_RECOMMENDED_PROVIDER_IDS.map((id, index) => [id, index]),
 )
 
+const pageTitle = { id: "settings.providers.page.title", message: "Providers" }
+const pageDescription = {
+  id: "settings.providers.page.description",
+  message: "Connect model providers and manage runtime availability.",
+}
+const searchPlaceholder = { id: "settings.providers.search.placeholder", message: "Search providers..." }
+const noMatch = { id: "settings.providers.noMatch", message: "No providers match this search." }
+const needsAttentionTitle = { id: "settings.providers.needsAttention", message: "Needs attention" }
+const recommendedTitle = { id: "settings.providers.recommended", message: "Recommended" }
+const connectedTitle = { id: "settings.providers.connected", message: "Connected" }
+const otherTitle = { id: "settings.providers.other", message: "Other" }
+const selectHint = { id: "settings.providers.selectHint", message: "Select a provider to connect it." }
+const accountTab = { id: "settings.providers.account", message: "Account" }
+const connectTab = { id: "settings.providers.connect", message: "Connect" }
+const accountConnectedDesc = {
+  id: "settings.providers.accountConnected",
+  message: "Credentials are connected. Use Usage for quota and billing details.",
+}
+const connectDesc = {
+  id: "settings.providers.connectDesc",
+  message: "Choose a sign-in method. Synergy will make available models selectable after connection.",
+}
+const recoveryDesc = {
+  id: "settings.providers.recoveryDesc",
+  message: "Choose a recovery method. Existing backup credentials remain available.",
+}
+const envRecoveryFallbackDesc = {
+  id: "settings.providers.updateEnvRecovery",
+  message:
+    "Update the server environment, restart Synergy, then refresh this page. Environment values are never overwritten by Settings.",
+}
+
+function modelCount(count: number) {
+  return {
+    id: "settings.providers.modelCount",
+    message: "{count, plural, one {# model} other {# models}}",
+    values: { count },
+  }
+}
+
 export type ProviderConnectionSummary = {
   id: string
   name: string
   connected: boolean
-  available: boolean
   modelCount: number
-  authStatus?: string
-  availabilityReason?: string
-  reloginRequired?: boolean
-  cooldownUntil?: number
-  resetAt?: number
-  failureCode?: string
+  health?: ProviderAuthHealth
+  availability?: ProviderRuntimeAvailability
   profile?: ProviderRecommendationMetadata
 }
 
@@ -44,6 +93,7 @@ export function ProvidersPanel(props: {
   authMethods: ProviderAuthResponse
   providerFocusID?: string
 }) {
+  const { _, i18n } = useLingui()
   const [query, setQuery] = createSignal("")
   const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
 
@@ -64,21 +114,18 @@ export function ProvidersPanel(props: {
     if (!q) return summaries()
     return summaries().filter((provider) => `${provider.name} ${provider.id}`.toLowerCase().includes(q))
   })
+  const groups = createMemo(() => groupProviderConnections(filtered(), SETTINGS_RECOMMENDED_PROVIDER_RANK))
   const recommended = createMemo(() =>
-    filtered()
-      .filter((provider) => SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id))
-      .sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
+    groups().recommended.sort((a, b) => settingsRecommendedRank(a.id) - settingsRecommendedRank(b.id)),
   )
-  const connected = createMemo(() =>
-    filtered().filter((provider) => provider.connected && !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id)),
-  )
-  const other = createMemo(() =>
-    filtered().filter((provider) => !SETTINGS_RECOMMENDED_PROVIDER_RANK.has(provider.id) && !provider.connected),
-  )
+  const needsAttention = () => groups().needsAttention
+  const connected = () => groups().connected
+  const other = () => groups().other
   const selected = createMemo(() => {
     const current = selectedID()
     return (
       summaries().find((provider) => provider.id === current) ??
+      needsAttention()[0] ??
       recommended()[0] ??
       connected()[0] ??
       other()[0] ??
@@ -86,48 +133,47 @@ export function ProvidersPanel(props: {
     )
   })
 
-  function statusLabel(provider: ProviderConnectionSummary) {
-    if (provider.authStatus === "dead") return "Relogin"
-    if (provider.authStatus === "exhausted") return "Exhausted"
-    if (provider.authStatus === "expired") return "Expired"
-    if (provider.connected) return provider.available ? "Connected" : "Unavailable"
-    return "Not connected"
-  }
+  const statusLabel = (provider: ProviderConnectionSummary) =>
+    translateDescriptor(providerStatusLabel(provider.health, provider.availability), i18n())
 
   return (
-    <SettingsPage title="Providers" description="Connect model providers and manage runtime availability.">
+    <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
       <div class="providers-workspace">
         <div class="providers-directory">
           <div class="providers-search">
             <Icon name={getSemanticIcon("action.search")} size="small" />
             <input
               value={query()}
-              placeholder="Search providers..."
+              placeholder={_(searchPlaceholder)}
               onInput={(event) => setQuery(event.currentTarget.value)}
             />
           </div>
 
           <div class="providers-directory-scroll">
-            <Show
-              when={filtered().length > 0}
-              fallback={<div class="providers-list-empty">No providers match this search.</div>}
-            >
+            <Show when={filtered().length > 0} fallback={<div class="providers-list-empty">{_(noMatch)}</div>}>
               <ProviderGroup
-                title="Recommended"
+                title={_(needsAttentionTitle)}
+                providers={needsAttention()}
+                selectedID={selected()?.id}
+                onSelect={setSelectedID}
+                statusLabel={statusLabel}
+              />
+              <ProviderGroup
+                title={_(recommendedTitle)}
                 providers={recommended()}
                 selectedID={selected()?.id}
                 onSelect={setSelectedID}
                 statusLabel={statusLabel}
               />
               <ProviderGroup
-                title="Connected"
+                title={_(connectedTitle)}
                 providers={connected()}
                 selectedID={selected()?.id}
                 onSelect={setSelectedID}
                 statusLabel={statusLabel}
               />
               <ProviderGroup
-                title="Other"
+                title={_(otherTitle)}
                 providers={other()}
                 selectedID={selected()?.id}
                 onSelect={setSelectedID}
@@ -142,8 +188,8 @@ export function ProvidersPanel(props: {
             when={selected()}
             fallback={
               <div class="providers-empty-detail">
-                <Icon name={getSemanticIcon("settings.providers")} size="large" />
-                <span>Select a provider to connect it.</span>
+                <Icon name={getSemanticIcon("providers.main")} size="large" />
+                <span>{_(selectHint)}</span>
               </div>
             }
           >
@@ -162,7 +208,8 @@ export function ProvidersPanel(props: {
                   </div>
                   <span
                     class="ds-inline-badge"
-                    classList={{ "ds-inline-badge-muted": !provider().connected || !provider().available }}
+                    classList={{ "ds-inline-badge-muted": providerAuthTone(provider().health) === "muted" }}
+                    data-auth-tone={providerAuthTone(provider().health)}
                   >
                     {statusLabel(provider())}
                   </span>
@@ -170,28 +217,54 @@ export function ProvidersPanel(props: {
 
                 <div class="providers-detail-meta">
                   <span>{provider().id}</span>
-                  <span>{provider().modelCount} models</span>
+                  <span>{_(modelCount(provider().modelCount))}</span>
                   <Show when={props.authMethods[provider().id]?.length}>
                     <span>{props.authMethods[provider().id].map((method) => method.label).join(", ")}</span>
                   </Show>
-                  <Show when={provider().failureCode}>
-                    <span>{provider().failureCode}</span>
-                  </Show>
-                  <Show when={provider().availabilityReason && provider().availabilityReason !== "connected"}>
-                    <span>{provider().availabilityReason?.replace(/_/g, " ")}</span>
+                  <Show when={provider().availability?.reason && provider().availability?.reason !== "connected"}>
+                    <span>{provider().availability?.reason?.replace(/_/g, " ")}</span>
                   </Show>
                 </div>
 
+                <Show when={providerNeedsAction(provider().health)}>
+                  <div class="providers-auth-warning" role="status">
+                    <Icon name={getSemanticIcon("providers.reconnect")} size="small" />
+                    <span>
+                      {translateDescriptor(
+                        providerRecoveryCopy(provider().name, provider().health, provider().profile?.environment),
+                        i18n(),
+                      )}
+                    </span>
+                  </div>
+                </Show>
+
                 <div class="providers-connect-section">
                   <div>
-                    <div class="providers-connect-title">{provider().connected ? "Account" : "Connect"}</div>
+                    <div class="providers-connect-title">
+                      {providerNeedsAction(provider().health)
+                        ? translateDescriptor(providerRecoveryActionLabel(provider().health), i18n())
+                        : provider().connected
+                          ? _(accountTab)
+                          : _(connectTab)}
+                    </div>
                     <p class="providers-connect-copy">
-                      {provider().connected
-                        ? "Credentials are connected. Use Usage for quota and billing details."
-                        : "Choose a sign-in method. Synergy will make available models selectable after connection."}
+                      {providerNeedsAction(provider().health)
+                        ? _(recoveryDesc)
+                        : provider().connected
+                          ? _(accountConnectedDesc)
+                          : _(connectDesc)}
                     </p>
                   </div>
-                  <ProviderConnectionFlow providerID={provider().id} compact />
+                  <Show
+                    when={provider().health?.recovery !== "update_environment"}
+                    fallback={<p class="providers-connect-copy">{_(envRecoveryFallbackDesc)}</p>}
+                  >
+                    <ProviderConnectionFlow
+                      providerID={provider().id}
+                      intent={providerNeedsAction(provider().health) ? "recover" : "connect"}
+                      compact
+                    />
+                  </Show>
                 </div>
               </div>
             )}
@@ -234,7 +307,8 @@ function ProviderGroup(props: {
               </div>
               <span
                 class="ds-inline-badge"
-                classList={{ "ds-inline-badge-muted": !provider.connected || !provider.available }}
+                classList={{ "ds-inline-badge-muted": providerAuthTone(provider.health) === "muted" }}
+                data-auth-tone={providerAuthTone(provider.health)}
               >
                 {props.statusLabel(provider)}
               </span>

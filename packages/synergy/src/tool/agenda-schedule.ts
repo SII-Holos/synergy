@@ -24,6 +24,9 @@ const parameters = z.object({
   silent: z.boolean().optional().describe("If true, suppress result delivery entirely. Default: false"),
   agent: z.string().optional().describe("Agent to use, defaults to configured default"),
   model: z.object({ providerID: z.string(), modelID: z.string() }).optional().describe("Model override"),
+  controlProfile: AgendaTypes.ControlProfile.optional().describe(
+    "Control profile for sessions created by this agenda item: guarded, autonomous, or full_access",
+  ),
   timeout: z.number().optional().describe("Execution timeout in milliseconds"),
   sessionMode: z
     .enum(["ephemeral", "persistent"])
@@ -73,6 +76,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
       silent: params.silent,
       agent: params.agent,
       model: params.model,
+      controlProfile: params.controlProfile,
       sessionMode: params.sessionMode,
       sessionRefs: params.sessionRefs,
       timeout: params.timeout,
@@ -95,6 +99,7 @@ export const AgendaScheduleTool = Tool.define("agenda_schedule", {
     if (item.silent) lines.push(`Silent: true`)
     if (item.agent) lines.push(`Agent: ${item.agent}`)
     if (item.model) lines.push(`Model: ${item.model.providerID}/${item.model.modelID}`)
+    if (item.controlProfile) lines.push(`Control profile: ${item.controlProfile}`)
     if (item.timeout) lines.push(`Timeout: ${item.timeout}ms`)
     if (item.sessionMode) lines.push(`Session mode: ${item.sessionMode}`)
 

@@ -7,6 +7,8 @@ import { Locale } from "../../util/locale"
 import { Flag } from "../../flag/flag"
 import { EOL } from "os"
 import path from "path"
+import { ScopeContext } from "../../scope/context"
+import { SessionRecovery } from "../../session/recovery"
 
 function pagerCmd(): string[] {
   const lessOptions = ["-R", "-S"]
@@ -38,7 +40,13 @@ function pagerCmd(): string[] {
 export const SessionCommand = cmd({
   command: "session",
   describe: "manage sessions",
-  builder: (yargs: Argv) => yargs.command(SessionListCommand).demandCommand(),
+  builder: (yargs: Argv) =>
+    yargs
+      .command(SessionListCommand)
+      .command(SessionInspectCommand)
+      .command(SessionDeleteCommand)
+      .command(SessionRepairCommand)
+      .demandCommand(),
   async handler() {},
 })
 
@@ -58,9 +66,22 @@ export const SessionListCommand = cmd({
         choices: ["table", "json"],
         default: "table",
       })
+      .option("with-health", {
+        describe: "include recovery-safe health data",
+        type: "boolean",
+        default: false,
+      })
   },
   handler: async (args) => {
     await withScopeContext(process.cwd(), async () => {
+      if (args.withHealth) {
+        const scopeID = ScopeContext.current.scope.id
+        const health = await SessionRecovery.listHealth(scopeID)
+        if (args.format === "json") console.log(JSON.stringify(health, null, 2))
+        else console.log(formatHealthTable(health))
+        return
+      }
+
       const sessions = []
       for await (const session of Session.listAll()) {
         if (!session.parentID) {
@@ -103,6 +124,59 @@ export const SessionListCommand = cmd({
   },
 })
 
+export const SessionInspectCommand = cmd({
+  command: "inspect <sessionID>",
+  describe: "inspect a session without hydrating its messages",
+  builder: (yargs: Argv) =>
+    yargs
+      .positional("sessionID", { type: "string", demandOption: true })
+      .option("scope", { type: "string", describe: "scope id when the session index is missing" })
+      .option("json", { type: "boolean", default: false }),
+  handler: async (args) => {
+    const result = await SessionRecovery.inspect({
+      sessionID: args.sessionID as string,
+      scopeID: args.scope as string | undefined,
+    })
+    if (args.json) console.log(JSON.stringify(result, null, 2))
+    else console.log(formatHealthTable([result]))
+  },
+})
+
+export const SessionDeleteCommand = cmd({
+  command: "delete <sessionID>",
+  describe: "delete a session using recovery-safe filesystem/index cleanup",
+  builder: (yargs: Argv) =>
+    yargs
+      .positional("sessionID", { type: "string", demandOption: true })
+      .option("scope", { type: "string", describe: "scope id when the session index is missing" })
+      .option("yes", { type: "boolean", default: false, describe: "confirm deletion" })
+      .option("json", { type: "boolean", default: false }),
+  handler: async (args) => {
+    if (!args.yes) throw new Error("Refusing to delete without --yes.")
+    const result = await SessionRecovery.remove({
+      sessionID: args.sessionID as string,
+      scopeID: args.scope as string | undefined,
+    })
+    if (args.json) console.log(JSON.stringify(result, null, 2))
+    else console.log(formatDeleteReport(result))
+  },
+})
+
+export const SessionRepairCommand = cmd({
+  command: "repair",
+  describe: "repair broken session indexes without deleting readable message data",
+  builder: (yargs: Argv) =>
+    yargs
+      .option("dry-run", { type: "boolean", default: true, describe: "show planned repairs without applying them" })
+      .option("apply", { type: "boolean", default: false, describe: "apply repairs" })
+      .option("json", { type: "boolean", default: false }),
+  handler: async (args) => {
+    const result = await SessionRecovery.repair({ apply: !!args.apply })
+    if (args.json) console.log(JSON.stringify(result, null, 2))
+    else console.log(formatRepairReport(result, !!args.apply))
+  },
+})
+
 function formatSessionTable(sessions: Session.Info[]): string {
   const lines: string[] = []
 
@@ -135,4 +209,42 @@ function formatSessionJSON(sessions: Session.Info[]): string {
     }
   })
   return JSON.stringify(jsonData, null, 2)
+}
+
+function formatHealthTable(items: SessionRecovery.Health[]): string {
+  if (items.length === 0) return ""
+  const lines = ["Session ID                      Scope       Info  Messages  Parts  JSON bytes  Corrupt"]
+  for (const item of items) {
+    lines.push(
+      [
+        item.sessionID.padEnd(30),
+        item.scopeID.padEnd(10),
+        (item.infoReadable ? "ok" : "bad").padEnd(5),
+        String(item.messageCount).padStart(8),
+        String(item.partCount).padStart(6),
+        String(item.totalBytes).padStart(10),
+        String(item.corruptJsonCount).padStart(7),
+      ].join("  "),
+    )
+  }
+  return lines.join(EOL)
+}
+
+function formatDeleteReport(report: SessionRecovery.DeleteReport): string {
+  return [
+    `Deleted sessions: ${report.sessionIDs.join(", ")}`,
+    `Removed targets: ${report.removed.length}`,
+    report.errors.length ? `Errors:\n${report.errors.map((e) => `  ${e.target}: ${e.message}`).join(EOL)}` : undefined,
+  ]
+    .filter(Boolean)
+    .join(EOL)
+}
+
+function formatRepairReport(report: SessionRecovery.RepairReport, applied: boolean): string {
+  const lines = [
+    `Scanned sessions: ${report.scanned}`,
+    `${applied ? "Repaired" : "Repair candidates"}: ${report.entries.length}`,
+  ]
+  for (const entry of report.entries) lines.push(`  ${entry.scopeID}/${entry.sessionID}: ${entry.action}`)
+  return lines.join(EOL)
 }

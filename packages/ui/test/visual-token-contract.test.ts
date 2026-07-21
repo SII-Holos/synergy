@@ -5,7 +5,11 @@ import { synergyTheme } from "../src/theme/default-themes"
 // ── Helpers ──────────────────────────────────────────────────
 
 async function readThemeCss(): Promise<string> {
-  return Bun.file("src/styles/theme.css").text()
+  const [foundation, generated] = await Promise.all([
+    Bun.file("src/styles/theme.css").text(),
+    Bun.file("src/styles/theme.generated.css").text(),
+  ])
+  return `${foundation}\n${generated}`
 }
 
 async function readFileSafe(path: string): Promise<string> {
@@ -28,6 +32,25 @@ function extractVarRefs(css: string): string[] {
   let m: RegExpExecArray | null
   while ((m = re.exec(css)) !== null) refs.push(m[1])
   return refs
+}
+
+function extractRuleBlock(css: string, selector: string): string {
+  const selectorStart = css.indexOf(selector)
+  if (selectorStart === -1) return ""
+
+  const blockStart = css.indexOf("{", selectorStart)
+  if (blockStart === -1) return ""
+
+  let depth = 0
+  for (let index = blockStart; index < css.length; index++) {
+    const char = css[index]
+    if (char === "{") depth++
+    if (char !== "}") continue
+    depth--
+    if (depth === 0) return css.slice(selectorStart, index + 1)
+  }
+
+  return ""
 }
 
 function extractCustomPropValue(css: string, token: string): string | undefined {
@@ -70,6 +93,21 @@ const P0_REQUIRED_TOKENS = [
   "motion-ease-emphasized",
 ]
 
+const SEMANTIC_UI_TYPE_TOKENS = [
+  ["type-ui-page-title-size", "1.5rem"],
+  ["type-ui-page-title-line-height", "1.875rem"],
+  ["type-ui-section-title-size", "1rem"],
+  ["type-ui-section-title-line-height", "1.375rem"],
+  ["type-ui-row-title-size", "0.875rem"],
+  ["type-ui-row-title-line-height", "1.25rem"],
+  ["type-ui-body-size", "0.875rem"],
+  ["type-ui-body-line-height", "1.375rem"],
+  ["type-ui-control-size", "0.8125rem"],
+  ["type-ui-control-line-height", "1.125rem"],
+  ["type-ui-caption-size", "0.75rem"],
+  ["type-ui-caption-line-height", "1rem"],
+] as const
+
 /** Tokens that MUST NOT appear in P0 CSS files (forbidden / deprecated) */
 const P0_FORBIDDEN_TOKENS = ["font-size-xs", "font-size-2xs", "font-size-3xs", "font-size-medium", "radius-12"]
 
@@ -85,7 +123,7 @@ const P0_UI_FILES = [
 ]
 
 /** P0 app-side CSS files covered by the visual token contract */
-const P0_APP_FILES = ["../app/src/components/quick-actions.css"]
+const P0_APP_FILES = ["../app/src/components/prompt-input/quick-actions.css"]
 
 // ── Valid reference set (post-implementation target) ─────────
 
@@ -98,6 +136,7 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // All P0 required tokens (to be added in this phase)
   for (const t of P0_REQUIRED_TOKENS) valid.add(t)
+  for (const [t] of SEMANTIC_UI_TYPE_TOKENS) valid.add(t)
 
   // Existing design tokens already in theme.css
   const existingDesigns = [
@@ -111,6 +150,7 @@ function buildP0ValidTokenSet(): Set<string> {
     "font-size-x-large",
     "font-weight-regular",
     "font-weight-medium",
+    "line-height-base",
     "line-height-large",
     "line-height-x-large",
     "line-height-2x-large",
@@ -167,10 +207,6 @@ function buildP0ValidTokenSet(): Set<string> {
 
   // Local component-scoped tokens
   const localTokens = [
-    "session-turn-title-bg",
-    "session-turn-title-border",
-    "session-turn-title-highlight",
-    "session-turn-title-glow",
     "workbench-canvas-bg",
     "workbench-panel-bg",
     "workbench-panel-bg-hover",
@@ -255,10 +291,25 @@ describe("Visual Token Contract", () => {
     })
   })
 
+  describe("1a. Semantic UI typography tokens declared in theme.css", () => {
+    for (const [token, value] of SEMANTIC_UI_TYPE_TOKENS) {
+      test(`--${token}`, async () => {
+        const css = await readThemeCss()
+        const props = extractCustomProps(css)
+        expect(props.has(token), `theme.css 中未定义 --${token}`).toBe(true)
+        expectCustomPropValue(css, token, value)
+      })
+    }
+  })
+
   describe("1b. Modal material stays grounded", () => {
     test("dialog overlay uses a subtle blur rather than strong glass", async () => {
       const css = await readFileSafe("src/components/dialog.css")
-      expect(css).toContain("backdrop-filter: blur(4px);")
+      const blurValues = [...css.matchAll(/(?:-webkit-)?backdrop-filter:\s*blur\(([\d.]+)px\)/g)].map((match) =>
+        Number(match[1]),
+      )
+      expect(blurValues.length).toBeGreaterThan(0)
+      expect(Math.max(...blurValues)).toBeLessThanOrEqual(4)
       expect(css).not.toMatch(/backdrop-filter:\s*blur\((?:[5-9]|[1-9]\d)px\)/)
     })
 
@@ -320,8 +371,9 @@ describe("Visual Token Contract", () => {
         const content = await readFileSafe(fp)
         if (!content) return
         const refs = extractVarRefs(content)
+        const local = extractCustomProps(content)
         const unique = [...new Set(refs)]
-        const broken = unique.filter((r) => !valid.has(r))
+        const broken = unique.filter((r) => !valid.has(r) && !local.has(r))
         if (broken.length > 0) {
           throw new Error(
             `${fp} 引用了未定义的 token:\n` +
@@ -355,15 +407,13 @@ describe("Visual Token Contract", () => {
   })
 
   describe("5. Pill / chip elements use --radius-full", () => {
-    test("session-turn.css pill 元素使用 --radius-full", async () => {
+    test("session-turn.css 不硬编码 pill 圆角", async () => {
       const css = await readFileSafe("src/components/session-turn.css")
-      // chronicler-button, steps-trigger, retry-toggle all use 9999px
-      const radiusFullRefs = (css.match(/var\(--radius-full\)/g) || []).length
-      expect(radiusFullRefs, "session-turn.css 应将硬编码 9999px 替换为 var(--radius-full)").toBeGreaterThan(0)
+      expect(css, "session-turn.css 不应硬编码 9999px 圆角").not.toContain("9999px")
     })
 
     test("quick-actions.css pill 元素使用 --radius-full", async () => {
-      const css = await readFileSafe("../app/src/components/quick-actions.css")
+      const css = await readFileSafe("../app/src/components/prompt-input/quick-actions.css")
       const radiusFullRefs = (css.match(/var\(--radius-full\)/g) || []).length
       expect(radiusFullRefs, "quick-actions.css 的 pill 元素应使用 var(--radius-full)").toBeGreaterThan(0)
     })
@@ -404,6 +454,27 @@ describe("Visual Token Contract", () => {
       expect(outputBlock, "message-part.css 应定义 tool-output 样式块").not.toBe("")
       expect(outputBlock).toContain("var(--workbench-control-bg")
       expect(outputBlock).toContain("var(--workbench-border")
+    })
+
+    test("question tool results preserve header, prompt, and answer hierarchy", async () => {
+      const css = await readFileSafe("src/components/message-part.css")
+      const item = extractRuleBlock(css, '[data-slot="question-item"]')
+      const header = extractRuleBlock(css, '[data-slot="question-header"]')
+      const prompt = extractRuleBlock(css, '[data-slot="question-text"]')
+      const answer = extractRuleBlock(css, '[data-slot="question-answer"]')
+
+      expect(item).toContain("display: flex")
+      expect(item).toContain("flex-direction: column")
+      expect(item).toContain("gap: 4px")
+      expect(header).toContain("color: var(--text-weaker)")
+      expect(header).toContain("font-size: var(--font-size-small)")
+      expect(header).toContain("font-weight: var(--font-weight-medium)")
+      expect(prompt).toContain("color: var(--text-base)")
+      expect(prompt).toContain("font-size: var(--font-size-base)")
+      expect(prompt).toContain("line-height: var(--line-height-large)")
+      expect(answer).toContain("color: var(--text-weak)")
+      expect(answer).toContain("font-size: var(--font-size-small)")
+      expect(answer).toContain("font-weight: var(--font-weight-medium)")
     })
   })
 

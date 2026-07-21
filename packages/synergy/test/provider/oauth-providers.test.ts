@@ -2,10 +2,13 @@ import { afterEach, beforeEach, expect, test } from "bun:test"
 import { Auth } from "../../src/provider/api-key"
 import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { CopilotProvider } from "../../src/provider/copilot"
+import { ProviderCatalog } from "../../src/provider/catalog"
 import { MiniMaxProvider } from "../../src/provider/minimax"
+import { GitHubProvider } from "../../src/provider/github"
 
 const originalFetch = globalThis.fetch
-const originalSleep = Bun.sleep
+const originalGHToken = process.env.GH_TOKEN
+const originalGITHUBToken = process.env.GITHUB_TOKEN
 
 function nowSeconds() {
   return Math.floor(Date.now() / 1000)
@@ -26,7 +29,6 @@ function asFetch(fn: (input: RequestInfo | URL, init?: RequestInit) => Promise<R
 
 async function reset() {
   globalThis.fetch = originalFetch
-  ;(Bun as any).sleep = originalSleep
   for (const provider of [
     AnthropicOAuthProvider.PROVIDER_ID,
     CopilotProvider.PROVIDER_ID,
@@ -35,12 +37,14 @@ async function reset() {
   ]) {
     await Auth.remove(provider).catch(() => {})
   }
+  if (originalGHToken === undefined) delete process.env.GH_TOKEN
+  else process.env.GH_TOKEN = originalGHToken
+  if (originalGITHUBToken === undefined) delete process.env.GITHUB_TOKEN
+  else process.env.GITHUB_TOKEN = originalGITHUBToken
 }
 
 beforeEach(async () => {
-  ;(Bun as any).sleep = async () => {}
   await reset()
-  ;(Bun as any).sleep = async () => {}
 })
 afterEach(reset)
 
@@ -128,6 +132,33 @@ test("anthropic oauth refresh rotates tokens and marks invalid grants dead", asy
   expect(await Auth.get(AnthropicOAuthProvider.PROVIDER_ID)).toBeUndefined()
 })
 
+test("anthropic request rejection refreshes once and retries with the rotated token", async () => {
+  await Auth.set(AnthropicOAuthProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "anthropic-old",
+    refresh: "anthropic-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  let refreshes = 0
+  let requests = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (AnthropicOAuthProvider.OAUTH_TOKEN_URLS.some((url) => url === String(input))) {
+      refreshes++
+      return jsonResponse({ access_token: "anthropic-new", refresh_token: "anthropic-refresh-2", expires_in: 3600 })
+    }
+    requests++
+    const token = new Headers(init?.headers).get("authorization")
+    return token === "Bearer anthropic-new"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ type: "authentication_error" }, { status: 401 })
+  })
+
+  const response = await AnthropicOAuthProvider.anthropicFetch("https://api.anthropic.com/v1/messages")
+  expect(response.status).toBe(200)
+  expect(refreshes).toBe(1)
+  expect(requests).toBe(2)
+})
+
 test("github copilot device login exchanges a GitHub token for Copilot models", async () => {
   const authorize = await CopilotProvider.authorizeDeviceCode(
     CopilotProvider.PROVIDER_ID,
@@ -181,6 +212,171 @@ test("github copilot device login exchanges a GitHub token for Copilot models", 
   )
 
   expect(models).toEqual(["gpt-5.4-mini", "claude-sonnet-4.6"])
+})
+
+test("github copilot model catalog preserves API vision capabilities", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  const catalog = await CopilotProvider.fetchModelCatalog(
+    CopilotProvider.PROVIDER_ID,
+    asFetch(async (input) => {
+      const url = String(input)
+      if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+        return jsonResponse({ token: "copilot-api-token", expires_at: nowSeconds() + 3600 })
+      }
+      if (url === `${CopilotProvider.BASE_URL}/models`) {
+        return jsonResponse({
+          data: [
+            {
+              id: "vision-model",
+              capabilities: {
+                supports: { vision: true },
+                limits: { vision: { supported_media_types: ["image/png", "image/jpeg"] } },
+              },
+            },
+            { id: "text-model", capabilities: { supports: { vision: false } } },
+            {
+              id: "unrestricted-vision-model",
+              capabilities: {
+                supports: { vision: true },
+                limits: { vision: { supported_media_types: [] } },
+              },
+            },
+          ],
+        })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+
+  expect(catalog).toEqual([
+    {
+      id: "vision-model",
+      inputImage: true,
+      supportedImageMediaTypes: ["image/png", "image/jpeg"],
+    },
+    {
+      id: "text-model",
+      inputImage: false,
+    },
+    {
+      id: "unrestricted-vision-model",
+      inputImage: true,
+      supportedImageMediaTypes: [],
+    },
+  ])
+})
+
+test("github copilot live catalog changes only image capability and preserves other modalities", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  ProviderCatalog.reset()
+  globalThis.fetch = asFetch(async (input) => {
+    const url = String(input)
+    if (url === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      return jsonResponse({ token: "copilot-api-token", expires_at: nowSeconds() + 3600 })
+    }
+    if (url === `${CopilotProvider.BASE_URL}/models`) {
+      return jsonResponse({
+        data: [
+          {
+            id: "gemini-2.5-pro",
+            capabilities: {
+              supports: { vision: true },
+              limits: { vision: { supported_media_types: ["image/png", "image/jpeg"] } },
+            },
+          },
+          {
+            id: "gemini-2.0-flash-001",
+            capabilities: { supports: { vision: false } },
+          },
+        ],
+      })
+    }
+    throw new Error(`unexpected URL ${url}`)
+  })
+
+  const catalog = await ProviderCatalog.resolve({
+    forceRefresh: true,
+    includeLive: true,
+    config: { providerCatalog: { enabled: false, offlineCache: false } },
+  })
+  const models = catalog[CopilotProvider.PROVIDER_ID].models
+
+  expect(models["gemini-2.5-pro"].modalities?.input).toEqual(["text", "image", "audio", "video"])
+  expect(models["gemini-2.5-pro"].supported_image_media_types).toEqual(["image/png", "image/jpeg"])
+  expect(models["gemini-2.0-flash-001"].modalities?.input).toEqual(["text", "audio", "video"])
+})
+
+test("github provider device login resolves managed token and reports account status", async () => {
+  const authorize = await GitHubProvider.authorizeDeviceCode(
+    asFetch(async (input, init) => {
+      const url = String(input)
+      if (url.endsWith("/login/device/code")) {
+        const body = init?.body as URLSearchParams
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
+        expect(body.get("scope")).toBe(GitHubProvider.DEVICE_SCOPE)
+        return jsonResponse({
+          device_code: "device-github",
+          user_code: "GH-CODE",
+          verification_uri: "https://github.com/login/device",
+          interval: 1,
+          expires_in: 300,
+        })
+      }
+      if (url.endsWith("/login/oauth/access_token")) {
+        const body = init?.body as URLSearchParams
+        expect(body.get("client_id")).toBe(GitHubProvider.OAUTH_CLIENT_ID)
+        expect(body.get("device_code")).toBe("device-github")
+        return jsonResponse({ access_token: "github-managed-token" })
+      }
+      if (url === "https://api.github.com/user") {
+        const headers = new Headers(init?.headers)
+        expect(headers.get("authorization")).toBe("Bearer github-managed-token")
+        return jsonResponse({ login: "octocat", id: 1, html_url: "https://github.com/octocat" })
+      }
+      throw new Error(`unexpected URL ${url}`)
+    }),
+  )
+  expect(authorize.method).toBe("auto")
+  if (authorize.method !== "auto") throw new Error("expected auto device flow")
+  expect(authorize.instructions).toBe("GH-CODE")
+  const login = await authorize.callback()
+  expect(login.type).toBe("success")
+  if (login.type !== "success" || !("key" in login)) throw new Error("expected api success")
+  expect(login.key).toBe("github-managed-token")
+  expect((login as any).metadata).toEqual({ account: { id: 1, login: "octocat", url: "https://github.com/octocat" } })
+
+  await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "github-managed-token" })
+  const resolved = await GitHubProvider.resolveToken()
+  expect(resolved).toMatchObject({
+    token: "github-managed-token",
+    source: "store",
+    authKind: "api_key",
+  })
+
+  const status = await GitHubProvider.status(
+    asFetch(async (_input, init) => {
+      const headers = new Headers(init?.headers)
+      expect(headers.get("authorization")).toBe("Bearer github-managed-token")
+      return jsonResponse({ login: "octocat", id: 1, html_url: "https://github.com/octocat" })
+    }),
+  )
+  expect(status).toMatchObject({
+    providerID: GitHubProvider.PROVIDER_ID,
+    status: "connected",
+    source: "store",
+    account: { login: "octocat" },
+  })
+})
+
+test("github provider resolves GH_TOKEN before stored credentials", async () => {
+  process.env.GH_TOKEN = "env-github-token"
+  await Auth.set(GitHubProvider.PROVIDER_ID, { type: "api", key: "stored-github-token" })
+  const resolved = await GitHubProvider.resolveToken()
+  expect(resolved).toMatchObject({
+    token: "env-github-token",
+    source: "env",
+  })
+  delete process.env.GH_TOKEN
 })
 
 test("minimax user-code oauth refreshes short tokens and injects bearer auth", async () => {
@@ -247,4 +443,61 @@ test("minimax user-code oauth refreshes short tokens and injects bearer auth", a
     return jsonResponse({ ok: true })
   })
   await MiniMaxProvider.minimaxFetch("https://api.minimax.io/anthropic/v1/messages")
+})
+
+test("minimax request rejection recovers once and invalid refresh requires reconnect", async () => {
+  await Auth.set(MiniMaxProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "minimax-old",
+    refresh: "minimax-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  let refreshes = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (String(input) === `${MiniMaxProvider.GLOBAL_BASE}/oauth/token`) {
+      refreshes++
+      return jsonResponse({ access_token: "minimax-new", refresh_token: "minimax-refresh-2", expired_in: 3600 })
+    }
+    return new Headers(init?.headers).get("authorization") === "Bearer minimax-new"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 })
+  })
+  expect((await MiniMaxProvider.minimaxFetch(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)).status).toBe(200)
+  expect(refreshes).toBe(1)
+
+  await Auth.set(MiniMaxProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: "minimax-rejected",
+    refresh: "minimax-invalid-refresh",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = asFetch(async (input) =>
+    String(input) === `${MiniMaxProvider.GLOBAL_BASE}/oauth/token`
+      ? jsonResponse({ error: "invalid_grant" }, { status: 401 })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 }),
+  )
+  await expect(MiniMaxProvider.minimaxFetch(`${MiniMaxProvider.GLOBAL_INFERENCE}/v1/messages`)).rejects.toMatchObject({
+    name: "ProviderAuthenticationRequiredError",
+  })
+})
+
+test("copilot clears a rejected API token, exchanges once, and retries", async () => {
+  await Auth.set(CopilotProvider.PROVIDER_ID, { type: "api", key: "github-device-token" })
+  let exchanges = 0
+  let requests = 0
+  globalThis.fetch = asFetch(async (input, init) => {
+    if (String(input) === CopilotProvider.TOKEN_EXCHANGE_URL) {
+      exchanges++
+      return jsonResponse({ token: `copilot-${exchanges}`, expires_at: nowSeconds() + 3600 })
+    }
+    requests++
+    return new Headers(init?.headers).get("authorization") === "Bearer copilot-2"
+      ? jsonResponse({ ok: true })
+      : jsonResponse({ error: "invalid_token" }, { status: 401 })
+  })
+
+  const response = await CopilotProvider.copilotFetch("https://api.githubcopilot.com/chat/completions")
+  expect(response.status).toBe(200)
+  expect(exchanges).toBe(2)
+  expect(requests).toBe(2)
 })

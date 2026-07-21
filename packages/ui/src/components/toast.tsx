@@ -1,9 +1,14 @@
 import { Toast as Kobalte, toaster } from "@kobalte/core/toast"
 import type { ToastRootProps, ToastCloseButtonProps, ToastTitleProps, ToastDescriptionProps } from "@kobalte/core/toast"
 import type { ComponentProps, JSX } from "solid-js"
-import { createSignal, onCleanup, Show } from "solid-js"
+import { createSignal, onCleanup, Show, splitProps } from "solid-js"
 import { Portal } from "solid-js/web"
+import { useLingui } from "@lingui/solid"
+import { createCopyController, type CopyState } from "./clipboard"
 import { Icon, type IconName } from "./icon"
+
+const toastCopyLabelDescriptor = { id: "ui.toast.copyLabel", message: "Copy toast" }
+const toastCopyFailureDescriptor = { id: "ui.toast.copyFailure", message: "Unable to copy the toast." }
 
 export interface ToastRegionProps extends ComponentProps<typeof Kobalte.Region> {}
 
@@ -72,10 +77,17 @@ function ToastCloseButton(props: ToastCloseButtonProps & ComponentProps<"button"
   )
 }
 
-function ToastCopyButton(props: ComponentProps<"button"> & { copied?: boolean }) {
+function ToastCopyButton(props: ComponentProps<"button"> & { copyState?: CopyState; icon?: IconName }) {
+  const [local, rest] = splitProps(props, ["copyState", "icon"])
   return (
-    <button data-slot="toast-copy-button" data-component="icon-button" data-variant="ghost" {...props}>
-      <Icon name={props.copied ? "clipboard-check" : "copy"} size="small" />
+    <button
+      data-slot="toast-copy-button"
+      data-component="icon-button"
+      data-variant="ghost"
+      data-copy-state={local.copyState}
+      {...rest}
+    >
+      <Icon name={local.icon ?? "copy"} size="small" />
     </button>
   )
 }
@@ -121,6 +133,10 @@ export function setToastConfig(config: ToastConfig | undefined) {
   toastConfig = config
 }
 
+export function getToastConfig(): ToastConfig | undefined {
+  return toastConfig
+}
+
 export interface ToastOptions {
   type?: ToastType
   title?: string
@@ -152,6 +168,7 @@ export function showToast(options: ToastOptions): number {
   const resolvedDuration = options.duration ?? toastConfig?.durationOverrides?.[type]
   const iconName = options.icon ?? defaultIconForType(type)
   return toaster.show((props) => {
+    const { _ } = useLingui()
     const [countdown, setCountdown] = createSignal("")
     const duration = resolvedDuration ?? DEFAULT_TOAST_DURATION_MS
     const hasCountdown = !options.persistent && duration !== 0
@@ -160,14 +177,16 @@ export function showToast(options: ToastOptions): number {
     let intervalId: ReturnType<typeof setInterval> | undefined
     let elapsedBeforePause = 0
     let segmentStartTime = 0
-    const [copied, setCopied] = createSignal(false)
     const copyText = () => {
       const parts = [options.title, options.description].filter(Boolean)
-      if (parts.length === 0) return
-      navigator.clipboard.writeText(parts.join("\n"))
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1500)
+      return parts.join("\n")
     }
+    const copy = createCopyController({
+      text: copyText,
+      copyLabel: _(toastCopyLabelDescriptor),
+      copiedIcon: "clipboard-check",
+      failureDescription: _(toastCopyFailureDescriptor),
+    })
     let isPaused = false
 
     const updateCountdown = () => {
@@ -255,7 +274,14 @@ export function showToast(options: ToastOptions): number {
             <Toast.ProgressFill />
           </Toast.ProgressTrack>
         </Toast.Content>
-        <Toast.CopyButton copied={copied()} onClick={copyText} />
+        <Toast.CopyButton
+          copyState={copy.state()}
+          icon={copy.icon()}
+          title={copy.tooltip()}
+          aria-label={copy.tooltip()}
+          disabled={copy.disabled()}
+          onClick={() => void copy.copy()}
+        />
         <Toast.CloseButton />
       </Toast>
     )

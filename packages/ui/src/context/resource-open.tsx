@@ -1,10 +1,10 @@
 import { createContext, useContext, type ParentProps } from "solid-js"
-import type { ArtifactFile } from "../components/artifact-card-utils"
+import type { AttachmentFile } from "../components/attachment-card-utils"
 
 export type OpenableResource =
   | {
-      kind: "artifact"
-      file: ArtifactFile
+      kind: "attachment"
+      file: AttachmentFile
       serverUrl?: string
     }
   | {
@@ -26,7 +26,7 @@ export interface ResourceOpenOptions {
 
 export interface ResourceOpenController {
   open(resource: OpenableResource, options?: ResourceOpenOptions): boolean
-  openArtifact(file: ArtifactFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean
+  openAttachment(file: AttachmentFile, options?: ResourceOpenOptions & { serverUrl?: string }): boolean
 }
 
 const ResourceOpenContext = createContext<ResourceOpenController>()

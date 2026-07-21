@@ -1,29 +1,16 @@
 import path from "path"
 import { Filesystem } from "../util/filesystem"
+import { isPathContained } from "../util/path-contain"
+import { SensitivePathPolicy } from "./sensitive-path"
 /**
- * Paths that are ALWAYS protected regardless of permission profile/mode.
- * Touching these triggers an ask even in full_access mode. This is a hard
- * security boundary that cannot be overridden by profile, Smart allow, or
- * session-level memory.
+ * Backward-compatible protected path facade. New callers should prefer
+ * SensitivePathPolicy when workspace/global Synergy root context is available.
  */
-export const PROTECTED_WRITE_PATHS = [
-  ".git/",
-  ".env",
-  ".env.local",
-  ".env.production",
-  ".env.development",
-  ".vscode/",
-  ".idea/",
-  ".claude/",
-  ".synergy/",
-  ".husky/",
-  ".devcontainer/",
-]
+export const PROTECTED_WRITE_PATHS = [".git/"]
 
 export const PROTECTED_READ_PATHS = [".ssh/", ".aws/", ".config/git/", ".gnupg/"]
 
 export const PROTECTED_FILE_PATTERNS = [
-  /(^|\/)\.env(\.|$)/i,
   /\.pem$/i,
   /\.key$/i,
   /\.p12$/i,
@@ -37,54 +24,24 @@ export interface ProtectedMatch {
   matched: boolean
   reason?: string
   category?: "vcs" | "config" | "credentials" | "secrets"
+  smartAllowEligible?: boolean
+  exactSecretRoot?: boolean
 }
 
-export function checkProtectedPath(path: string, mode: "read" | "write"): ProtectedMatch {
-  if (!path) return { matched: false }
-  const normalized = path.replace(/^~\//, "").replace(/^\.\//, "")
-  const lower = normalized.toLowerCase()
-
-  for (const pattern of PROTECTED_FILE_PATTERNS) {
-    if (pattern.test(lower)) {
-      return {
-        matched: true,
-        reason: `Path matches protected pattern (credentials/secrets)`,
-        category: lower.includes(".env") ? "secrets" : "credentials",
-      }
-    }
+export function checkProtectedPath(
+  path: string,
+  mode: "read" | "write",
+  options: { workspaceRoot?: string; originalCheckout?: string; synergyRoot?: string } = {},
+): ProtectedMatch {
+  const match = SensitivePathPolicy.classify(path, { mode, ...options })
+  if (!match.matched) return { matched: false }
+  return {
+    matched: true,
+    reason: match.reason,
+    category: match.category,
+    smartAllowEligible: match.smartAllowEligible,
+    exactSecretRoot: match.exactSecretRoot,
   }
-
-  if (mode === "read") {
-    for (const prefix of PROTECTED_READ_PATHS) {
-      if (lower.startsWith(prefix) || lower.includes("/" + prefix)) {
-        return {
-          matched: true,
-          reason: `Reading from protected directory (${prefix})`,
-          category: "credentials",
-        }
-      }
-    }
-  }
-
-  if (mode === "write") {
-    for (const prefix of PROTECTED_WRITE_PATHS) {
-      const trimmed = prefix.endsWith("/") ? prefix : prefix + "/"
-      if (lower === prefix || lower.startsWith(trimmed) || lower.includes("/" + trimmed)) {
-        const category: ProtectedMatch["category"] = prefix.startsWith(".git")
-          ? "vcs"
-          : prefix.startsWith(".env")
-            ? "secrets"
-            : "config"
-        return {
-          matched: true,
-          reason: `Writing to protected path (${prefix})`,
-          category,
-        }
-      }
-    }
-  }
-
-  return { matched: false }
 }
 
 export namespace PathClassifier {
@@ -187,7 +144,7 @@ export namespace PathClassifier {
     // Check if the candidate falls within the original checkout.
     // This catches paths that are outside the active worktree but inside the
     // original main checkout, and enriches the reason accordingly.
-    if (!path.relative(oc, candidate).startsWith("..")) {
+    if (isPathContained(oc, candidate)) {
       return outside("path is in the original checkout, outside the active workspace")
     }
 
@@ -195,11 +152,7 @@ export namespace PathClassifier {
     // from original checkout).
     const workspaceParent = path.dirname(workspace)
     const candidateParent = path.dirname(candidate)
-    if (
-      workspaceParent === candidateParent &&
-      workspace !== candidate &&
-      !path.relative(oc, workspaceParent).startsWith("..")
-    ) {
+    if (workspaceParent === candidateParent && workspace !== candidate && isPathContained(oc, workspaceParent)) {
       return outside("path is in a sibling worktree, outside the active workspace")
     }
 

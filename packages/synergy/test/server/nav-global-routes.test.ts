@@ -1,7 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Session } from "../../src/session"
-import { SessionNav } from "../../src/session/nav"
 import { Log } from "../../src/util/log"
 import { ScopeContext } from "../../src/scope/context"
 import { Scope } from "../../src/scope"
@@ -10,7 +9,7 @@ import { Server } from "../../src/server/server"
 Log.init({ print: false })
 
 describe("GET /global/recent", () => {
-  test("returns 200 with expected response shape (items, nextCursor, total)", async () => {
+  test("returns 200 with expected response shape (items, nextCursor, total, unreadCompletionCount)", async () => {
     await ScopeContext.provide({
       scope: Scope.home(),
       fn: async () => {
@@ -21,8 +20,54 @@ describe("GET /global/recent", () => {
         expect(body).toHaveProperty("items")
         expect(body).toHaveProperty("total")
         expect(body).toHaveProperty("nextCursor")
+        expect(body).toHaveProperty("unreadCompletionCount")
         expect(Array.isArray(body.items)).toBe(true)
         expect(typeof body.total).toBe("number")
+        expect(typeof body.unreadCompletionCount).toBe("number")
+      },
+    })
+  })
+
+  test("counts unread completions before pagination and excludes children and archived sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const marker = `Unread Count ${scope.id}`
+        const unread = await Session.create({ title: `${marker} Unread Outside Page` })
+        await Session.recordCompletionNotice(unread.id)
+        await Session.recordCompletionNotice(unread.id)
+
+        const parent = await Session.create({ title: `${marker} Parent` })
+        const child = await Session.create({ title: `${marker} Unread Child`, parentID: parent.id })
+        await Session.recordCompletionNotice(child.id)
+
+        const archived = await Session.create({ title: `${marker} Archived Unread` })
+        await Session.recordCompletionNotice(archived.id)
+        await Session.update(archived.id, (draft) => {
+          draft.time.archived = Date.now()
+        })
+
+        await Bun.sleep(50)
+        const newest = await Session.create({ title: `${marker} Newest Read Session` })
+
+        const app = Server.App()
+        const res = await app.request(`/global/recent?limit=1&search=${encodeURIComponent(marker)}`)
+        expect(res.status).toBe(200)
+        const body = await res.json()
+
+        expect(body.items).toHaveLength(1)
+        expect(body.items[0]?.id).toBe(newest.id)
+        expect(body.items[0]?.id).not.toBe(unread.id)
+        expect(body.unreadCompletionCount).toBe(2)
+
+        await Session.remove(child.id)
+        await Session.remove(parent.id)
+        await Session.remove(archived.id)
+        await Session.remove(newest.id)
+        await Session.remove(unread.id)
       },
     })
   })
@@ -101,6 +146,39 @@ describe("GET /global/recent", () => {
 
         await Session.remove(homeSession.id)
         // The project session was created in different scope context, skip cleanup
+      },
+    })
+  })
+
+  test("filters GitHub sessions across scopes and includes child sessions when requested", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+    const marker = `GitHub Global Route ${crypto.randomUUID()}`
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const parent = await Session.create({ title: `${marker} Parent`, provenance: "github" })
+        const child = await Session.create({
+          title: `${marker} Child`,
+          parentID: parent.id,
+          provenance: "github",
+        })
+        const regular = await Session.create({ title: `${marker} Regular` })
+
+        const app = Server.App()
+        const res = await app.request(
+          `/global/recent?category=github&parentOnly=false&search=${encodeURIComponent(marker)}`,
+        )
+        expect(res.status).toBe(200)
+        const body = await res.json()
+
+        expect(body.total).toBe(2)
+        expect(body.items.map((entry: { id: string }) => entry.id).sort()).toEqual([child.id, parent.id].sort())
+
+        await Session.remove(regular.id)
+        await Session.remove(child.id)
+        await Session.remove(parent.id)
       },
     })
   })
@@ -240,7 +318,7 @@ describe("GET /global/pinned", () => {
         expect(item).toBeDefined()
         expect(item.id).toBeTypeOf("string")
         expect(item.title).toBeTypeOf("string")
-        expect(item.category).toBeOneOf(["project", "home", "channel", "background"])
+        expect(item.category).toBeOneOf(["project", "home", "channel", "background", "github"])
         expect(item.scopeID).toBeTypeOf("string")
         expect(item.pinned).toBeGreaterThan(0)
 

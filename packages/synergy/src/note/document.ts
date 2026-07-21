@@ -130,6 +130,19 @@ export namespace NoteDocument {
     return typeof node.attrs?.synergyId === "string" ? node.attrs.synergyId : undefined
   }
 
+  function childTextSeparator(node: Node): string {
+    switch (node.type) {
+      case "paragraph":
+      case "heading":
+      case "codeBlock":
+        return ""
+      case "tableRow":
+        return " | "
+      default:
+        return "\n"
+    }
+  }
+
   function nodeText(node: Node): string {
     switch (node.type) {
       case "text":
@@ -147,7 +160,7 @@ export namespace NoteDocument {
       case "mermaidDiagram":
         return node.attrs?.content ?? ""
       default:
-        return (node.content ?? []).map(nodeText).join(node.type === "tableRow" ? " | " : "\n")
+        return (node.content ?? []).map(nodeText).join(childTextSeparator(node))
     }
   }
 
@@ -417,15 +430,33 @@ export namespace NoteDocument {
         offset += text.length
         return
       }
-      if (current.type === "hardBreak") {
-        offset += 1
+      if (
+        current.type === "hardBreak" ||
+        current.type === "inlineMath" ||
+        current.type === "mathInline" ||
+        current.type === "image" ||
+        current.type === "video" ||
+        current.type === "mermaid" ||
+        current.type === "mermaidDiagram"
+      ) {
+        offset += nodeText(current).length
         return
       }
-      for (const child of current.content ?? []) visit(child)
+
+      const children = current.content ?? []
+      const separator = childTextSeparator(current)
+      children.forEach((child, index) => {
+        if (index > 0) offset += separator.length
+        visit(child)
+      })
     }
 
     visit(node)
     return refs
+  }
+
+  function editableLength(refs: TextRef[], from: number, to: number): number {
+    return refs.reduce((sum, ref) => sum + Math.max(0, Math.min(to, ref.end) - Math.max(from, ref.start)), 0)
   }
 
   function pruneEmptyText(node: Node): Node {
@@ -436,15 +467,15 @@ export namespace NoteDocument {
     return node
   }
 
-  export function replaceText(
+  export function replaceTextDetailed(
     doc: Node,
     block: BlockInfo,
     input: { find?: string; range?: { from: number; to: number }; replacement: string; occurrence?: number },
-  ): Node {
+  ): { doc: Node; from: number; to: number; matchedText: string; beforeText: string; afterText: string } {
     const next = normalize(doc)
     const target = parentContent(next, block.path)
     const node = target.content[target.index]
-    const text = nodeText(node)
+    const beforeText = nodeText(node)
     let from: number
     let to: number
 
@@ -452,11 +483,12 @@ export namespace NoteDocument {
       from = input.range.from
       to = input.range.to
     } else if (input.find !== undefined) {
+      if (input.find.length === 0) throw new Error("replaceText find must not be empty; use range for insertion.")
       const matches: number[] = []
-      let at = text.indexOf(input.find)
+      let at = beforeText.indexOf(input.find)
       while (at >= 0) {
         matches.push(at)
-        at = text.indexOf(input.find, at + input.find.length)
+        at = beforeText.indexOf(input.find, at + input.find.length)
       }
       if (matches.length === 0) throw new Error(`Text "${input.find}" was not found in block ${block.id}.`)
       if (matches.length > 1 && input.occurrence === undefined) {
@@ -471,12 +503,34 @@ export namespace NoteDocument {
       throw new Error("replaceText requires find or range.")
     }
 
-    if (from < 0 || to < from || to > text.length) throw new Error(`Invalid text range ${from}-${to}.`)
-    const refs = textRefs(node).filter((ref) => ref.end > from && ref.start < to)
-    if (refs.length === 0 && from !== to) throw new Error("Text range does not overlap editable text nodes.")
-    if (refs.length === 0) {
-      node.content = [...(node.content ?? []), { type: "text", text: input.replacement }]
-      return normalize(next)
+    if (from < 0 || to < from || to > beforeText.length) throw new Error(`Invalid text range ${from}-${to}.`)
+    const matchedText = beforeText.slice(from, to)
+    const allRefs = textRefs(node)
+    const refs = allRefs.filter((ref) => ref.end > from && ref.start < to)
+    if (from === to) {
+      const insertionRef = allRefs.find((ref) => ref.start <= from && from <= ref.end)
+      if (!insertionRef) {
+        if (beforeText.length === 0) {
+          node.content = [...(node.content ?? []), { type: "text", text: input.replacement }]
+          const updatedDoc = normalize(next)
+          const updated = parentContent(updatedDoc, block.path).content[target.index]
+          return { doc: updatedDoc, from, to, matchedText, beforeText, afterText: nodeText(updated) }
+        }
+        throw new Error("Text insertion point does not overlap editable text nodes.")
+      }
+
+      const current = insertionRef.node.text ?? ""
+      const local = from - insertionRef.start
+      insertionRef.node.text = current.slice(0, local) + input.replacement + current.slice(local)
+      target.content[target.index] = pruneEmptyText(node)
+      const updatedDoc = normalize(next)
+      const updated = parentContent(updatedDoc, block.path).content[target.index]
+      return { doc: updatedDoc, from, to, matchedText, beforeText, afterText: nodeText(updated) }
+    }
+
+    if (refs.length === 0) throw new Error("Text range does not overlap editable text nodes.")
+    if (editableLength(refs, from, to) !== to - from) {
+      throw new Error("Text range includes non-editable content; replace a narrower text span or replace the block.")
     }
 
     const first = refs[0]
@@ -489,7 +543,17 @@ export namespace NoteDocument {
     for (const ref of refs.slice(1, -1)) ref.node.text = ""
     if (last !== first) last.node.text = suffix
     target.content[target.index] = pruneEmptyText(node)
-    return normalize(next)
+    const updatedDoc = normalize(next)
+    const updated = parentContent(updatedDoc, block.path).content[target.index]
+    return { doc: updatedDoc, from, to, matchedText, beforeText, afterText: nodeText(updated) }
+  }
+
+  export function replaceText(
+    doc: Node,
+    block: BlockInfo,
+    input: { find?: string; range?: { from: number; to: number }; replacement: string; occurrence?: number },
+  ): Node {
+    return replaceTextDetailed(doc, block, input).doc
   }
 
   export function updateTableCell(

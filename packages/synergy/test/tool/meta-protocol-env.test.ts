@@ -1,57 +1,84 @@
 import { describe, expect, test } from "bun:test"
-import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
+import {
+  SynergyLinkBash,
+  SynergyLinkProcess,
+  SynergyLinkSession,
+  SynergyLinkIdentity,
+} from "@ericsanchezok/synergy-link-protocol"
 
-describe("meta protocol env", () => {
-  test("treats local aliases as local", () => {
-    const aliases = [
-      undefined,
-      "",
-      "   ",
-      "local",
-      ":local",
-      "localhost",
-      "127.0.0.1",
-      "::1",
-      "loopback",
-      "self",
-      ":self",
-      "current",
-      ":current",
-      "host",
-      ":host",
-      "this",
-      ":this",
-    ]
-
-    for (const value of aliases) {
-      expect(MetaProtocolEnv.resolve(value)).toEqual({ kind: "local" })
-    }
+describe("Synergy Link identity", () => {
+  test("resolves omitted and blank input as local", () => {
+    expect(SynergyLinkIdentity.resolve(undefined)).toEqual({ kind: "local", reason: "omitted" })
+    expect(SynergyLinkIdentity.resolve("   ")).toEqual({ kind: "local", reason: "blank" })
   })
 
-  test("normalizes remote env IDs by trimming whitespace", () => {
-    expect(MetaProtocolEnv.normalize("  env_test  ")).toBe("env_test")
-    expect(MetaProtocolEnv.resolve("  env_test  ")).toEqual({ kind: "remote", envID: "env_test" })
+  test("resolves valid link IDs by trimming whitespace", () => {
+    expect(SynergyLinkIdentity.resolve("  link_test  ")).toEqual({ kind: "remote", linkID: "link_test" })
+    expect(SynergyLinkIdentity.requireLinkID("link_abc123")).toBe("link_abc123")
   })
 
-  test("rejects placeholder env IDs with a guided error", () => {
-    expect(() => MetaProtocolEnv.resolve("undefined")).toThrow(
-      'Invalid envID "undefined". This looks like a placeholder value, not a real remote environment ID.',
-    )
-    expect(() => MetaProtocolEnv.normalize("null")).toThrow("do NOT include the envID parameter at all")
+  test("marks old env IDs and placeholders invalid without throwing from resolve", () => {
+    expect(SynergyLinkIdentity.resolve("env_test")).toEqual({
+      kind: "invalid",
+      input: "env_test",
+      reason: "placeholder_alias",
+    })
+    expect(SynergyLinkIdentity.resolve("undefined")).toEqual({
+      kind: "invalid",
+      input: "undefined",
+      reason: "placeholder_alias",
+    })
   })
 
-  test("rejects env IDs that do not start with env_ prefix", () => {
-    const invalidValues = ["/omit", ":bad", ":(", ":REMOVE", "env_fake".slice(0, 3), "random_string", "/willfail"]
+  test("requireLinkID rejects local aliases and invalid formats", () => {
+    expect(() => SynergyLinkIdentity.requireLinkID(":local")).toThrow(SynergyLinkIdentity.InvalidLinkIDError)
+    expect(() => SynergyLinkIdentity.requireLinkID("random_string")).toThrow('must start with "link_"')
+  })
+})
 
-    for (const value of invalidValues) {
-      expect(() => MetaProtocolEnv.normalize(value)).toThrow(MetaProtocolEnv.InvalidEnvIDError)
-      expect(() => MetaProtocolEnv.normalize(value)).toThrow('must start with "env_"')
-    }
+describe("Synergy Link protocol strict payloads", () => {
+  test("rejects unknown fields inside bash payloads", () => {
+    const result = SynergyLinkBash.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "bash",
+      action: "execute",
+      sessionID: "session_test",
+      payload: {
+        command: "echo ok",
+        description: "Echo ok",
+        envID: "env_legacy",
+      },
+    })
+
+    expect(result.success).toBe(false)
   })
 
-  test("accepts valid env_ prefixed IDs", () => {
-    expect(MetaProtocolEnv.normalize("env_abc123")).toBe("env_abc123")
-    expect(MetaProtocolEnv.normalize("env_test")).toBe("env_test")
-    expect(MetaProtocolEnv.resolve("env_test")).toEqual({ kind: "remote", envID: "env_test" })
+  test("rejects unknown fields inside process payloads", () => {
+    const result = SynergyLinkProcess.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "process",
+      action: "list",
+      sessionID: "session_test",
+      payload: { action: "list", envID: "env_legacy" },
+    })
+
+    expect(result.success).toBe(false)
+  })
+
+  test("rejects unknown fields inside session payloads", () => {
+    const result = SynergyLinkSession.ExecuteRequest.safeParse({
+      version: 2,
+      requestID: "req_test",
+      linkID: "link_test",
+      tool: "session",
+      action: "open",
+      payload: { action: "open", envID: "env_legacy" },
+    })
+
+    expect(result.success).toBe(false)
   })
 })

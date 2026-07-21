@@ -1,10 +1,9 @@
 import { Bus } from "@/bus"
 import { BusEvent } from "@/bus/bus-event"
 import { Config } from "@/config/config"
-import { Identifier } from "@/id/id"
 import { isNonBypassableMetadata } from "@/enforcement/capability"
+import { Identifier } from "@/id/id"
 import { PermissionRules } from "@/permission/rules"
-import { ScopeContext } from "@/scope/context"
 import { ScopedState } from "@/scope/scoped-state"
 import { SessionInteraction } from "@/session/interaction"
 import { fn } from "@/util/fn"
@@ -102,7 +101,6 @@ export namespace PermissionNext {
       }),
     ),
   }
-
   function isNonBypassable(request: { metadata?: Record<string, any> }): boolean {
     return isNonBypassableMetadata(request.metadata)
   }
@@ -176,16 +174,6 @@ export namespace PermissionNext {
           })
           s.pending[id] = { info, resolve: resolvePending!, reject: rejectPending!, cleanup }
 
-          if (request.metadata?.sessionInteractionMode === "unattended" && !isNonBypassable(request)) {
-            log.info("unattended auto-approve", {
-              sessionID: request.sessionID,
-              permission: request.permission,
-              pattern,
-            })
-            delete s.pending[id]
-            resolvePending!()
-            continue
-          }
           Bus.publish(Event.Asked, info)
           return pendingPromise
         }
@@ -253,7 +241,7 @@ export namespace PermissionNext {
 
   export function evaluate(permission: string, pattern: string, ...rulesets: Ruleset[]): Rule {
     const merged = merge(...rulesets)
-    log.info("evaluate", { permission, pattern, ruleset: merged })
+    log.info("evaluate", { permission, patternLength: pattern.length, rulesetCount: merged.length })
     const match = merged.findLast(
       (rule) => Wildcard.match(permission, rule.permission) && Wildcard.match(pattern, rule.pattern),
     )
@@ -314,14 +302,6 @@ export namespace PermissionNext {
         })
         pending.reject(new DOMException("Session was cancelled", "AbortError"))
       }
-    }
-  }
-
-  export function requestMetadata(input?: { interaction?: SessionInteraction.Info }) {
-    if (!input?.interaction) return {}
-    return {
-      sessionInteractionMode: input.interaction.mode,
-      sessionInteractionSource: input.interaction.source,
     }
   }
 

@@ -10,11 +10,16 @@ import { fn } from "@/util/fn"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { ProviderTransform } from "@/provider/transform"
+import { ProviderAuthRecoveryError } from "@/provider/auth-recovery-error"
 import { STATUS_CODES } from "http"
 import { iife } from "@/util/iife"
 import { type SystemError } from "bun"
 import type { Scope } from "@/scope"
 import { Attachment } from "@/attachment"
+import { Asset } from "@/asset/asset"
+import { Log } from "@/util/log"
+import { SessionBounds } from "./bounds"
+import { ContextUsageSchema } from "./context-usage-schema"
 
 function isTLSError(message: string) {
   return /certificate|SSL|TLS|ERR_SSL|UNABLE_TO_VERIFY|CERT_HAS_EXPIRED|DEPTH_ZERO|self[- ]signed/i.test(message)
@@ -63,6 +68,8 @@ function networkErrorMetadata(error: Error) {
   return metadata
 }
 export namespace MessageV2 {
+  const log = Log.create({ service: "message-v2" })
+
   type SessionLookup = {
     scope: Scope
   }
@@ -82,6 +89,8 @@ export namespace MessageV2 {
     z.object({
       providerID: z.string(),
       message: z.string(),
+      failureCode: z.string().optional(),
+      actionRequired: z.boolean().optional(),
     }),
   )
   export const APIError = NamedError.create(
@@ -131,8 +140,9 @@ export namespace MessageV2 {
   export const TextPart = PartBase.extend({
     type: z.literal("text"),
     text: z.string(),
+    /** @deprecated Superseded by `origin`; read only as a fallback by isSystemPart. No writes. */
     synthetic: z.boolean().optional(),
-    ignored: z.boolean().optional(),
+    origin: z.enum(["user", "system"]).optional(),
     time: z
       .object({
         start: z.number(),
@@ -158,7 +168,7 @@ export namespace MessageV2 {
   })
   export type ReasoningPart = z.infer<typeof ReasoningPart>
 
-  const FilePartSourceBase = z.object({
+  const AttachmentSourceBase = z.object({
     text: z
       .object({
         value: z.string(),
@@ -166,18 +176,18 @@ export namespace MessageV2 {
         end: z.number().int(),
       })
       .meta({
-        ref: "FilePartSourceText",
+        ref: "AttachmentSourceText",
       }),
   })
 
-  export const FileSource = FilePartSourceBase.extend({
+  export const FileSource = AttachmentSourceBase.extend({
     type: z.literal("file"),
     path: z.string(),
   }).meta({
     ref: "FileSource",
   })
 
-  export const SymbolSource = FilePartSourceBase.extend({
+  export const SymbolSource = AttachmentSourceBase.extend({
     type: z.literal("symbol"),
     path: z.string(),
     range: LSPSchema.Range,
@@ -187,7 +197,7 @@ export namespace MessageV2 {
     ref: "SymbolSource",
   })
 
-  export const ResourceSource = FilePartSourceBase.extend({
+  export const ResourceSource = AttachmentSourceBase.extend({
     type: z.literal("resource"),
     clientName: z.string(),
     uri: z.string(),
@@ -195,22 +205,59 @@ export namespace MessageV2 {
     ref: "ResourceSource",
   })
 
-  export const FilePartSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
-    ref: "FilePartSource",
+  export const AttachmentSource = z.discriminatedUnion("type", [FileSource, SymbolSource, ResourceSource]).meta({
+    ref: "AttachmentSource",
   })
 
-  export const FilePart = PartBase.extend({
-    type: z.literal("file"),
+  export const AttachmentPresentation = z
+    .object({
+      hidden: z.boolean().optional(),
+      renderer: z.enum(["image", "video", "audio", "thumbnail", "file"]).optional(),
+      size: z.enum(["original", "small", "medium", "large"]).optional(),
+      crop: z.boolean().optional(),
+    })
+    .meta({
+      ref: "AttachmentPresentation",
+    })
+  export type AttachmentPresentation = z.infer<typeof AttachmentPresentation>
+
+  export const AttachmentModelPolicy = z
+    .discriminatedUnion("mode", [
+      z.object({
+        mode: z.literal("summary"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("content"),
+        text: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("provider-file"),
+        summary: z.string().optional(),
+      }),
+      z.object({
+        mode: z.literal("none"),
+      }),
+    ])
+    .meta({
+      ref: "AttachmentModelPolicy",
+    })
+  export type AttachmentModelPolicy = z.infer<typeof AttachmentModelPolicy>
+
+  export const AttachmentPart = PartBase.extend({
+    type: z.literal("attachment"),
     mime: z.string(),
     filename: z.string().optional(),
     url: z.string(),
     localPath: z.string().optional(),
-    source: FilePartSource.optional(),
+    source: AttachmentSource.optional(),
+    presentation: AttachmentPresentation.optional(),
+    model: AttachmentModelPolicy.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
-    ref: "FilePart",
+    ref: "AttachmentPart",
   })
-  export type FilePart = z.infer<typeof FilePart>
+  export type AttachmentPart = z.infer<typeof AttachmentPart>
 
   export const CompactionPart = PartBase.extend({
     type: z.literal("compaction"),
@@ -220,6 +267,16 @@ export namespace MessageV2 {
   })
   export type CompactionPart = z.infer<typeof CompactionPart>
 
+  export const CompactionRecoveryPart = PartBase.extend({
+    type: z.literal("compaction_recovery"),
+    summary: z.string(),
+    mechanical: z.boolean(),
+    recoverySessionIDs: z.string().array().optional(),
+    validated: z.boolean(),
+  }).meta({
+    ref: "CompactionRecoveryPart",
+  })
+  export type CompactionRecoveryPart = z.infer<typeof CompactionRecoveryPart>
   export const RetryPart = PartBase.extend({
     type: z.literal("retry"),
     attempt: z.number(),
@@ -264,6 +321,7 @@ export namespace MessageV2 {
       status: z.literal("pending"),
       input: z.record(z.string(), z.any()),
       raw: z.string(),
+      metadata: z.record(z.string(), z.any()).optional(),
     })
     .meta({
       ref: "ToolStatePending",
@@ -280,6 +338,7 @@ export namespace MessageV2 {
       input: z.record(z.string(), z.any()),
       raw: z.string(),
       charsReceived: z.number(),
+      metadata: z.record(z.string(), z.any()).optional(),
     })
     .meta({
       ref: "ToolStateGenerating",
@@ -307,6 +366,8 @@ export namespace MessageV2 {
       status: z.literal("completed"),
       input: z.record(z.string(), z.any()),
       output: z.string(),
+      outputBytes: z.number().int().nonnegative().optional(),
+      outputTruncated: z.boolean().optional(),
       title: z.string(),
       metadata: z.record(z.string(), z.any()),
       time: z.object({
@@ -314,7 +375,7 @@ export namespace MessageV2 {
         end: z.number(),
         compacted: z.number().optional(),
       }),
-      attachments: FilePart.array().optional(),
+      attachments: AttachmentPart.array().optional(),
     })
     .meta({
       ref: "ToolStateCompleted",
@@ -360,13 +421,57 @@ export namespace MessageV2 {
   })
   export type ToolPart = z.infer<typeof ToolPart>
 
+  /**
+   * Closed set of message origin types (issue #281 §4.2). Second-level
+   * variation (e.g. blueprint loop_start vs loop_rejected) goes in `detail`,
+   * never as a new top-level type. Unknown/legacy values decode to "system"
+   * via `.catch` so stored data from older schemas still parses.
+   */
+  export const ORIGIN_TYPES = [
+    "user", // direct user input (TUI / desktop / HTTP)
+    "cortex", // background task / subagent completion
+    "agenda", // scheduled or event-driven wake-up
+    "blueprint", // BlueprintLoop control message
+    "channel", // external channel (Feishu, etc.)
+    "compaction", // compaction-injected continuation
+    "agent", // cross-session delivery (session_send)
+    "plugin", // plugin-delivered
+    "system", // other internal mechanisms / fallback
+  ] as const
+  export type OriginType = (typeof ORIGIN_TYPES)[number]
+
+  /** Origin types that render as a visible chip inside a turn. */
+  export const RENDERED_ORIGIN_TYPES = new Set<OriginType>([
+    "cortex",
+    "agenda",
+    "blueprint",
+    "channel",
+    "agent",
+    "plugin",
+  ])
+
+  export const OriginUser = z
+    .object({
+      type: z.enum(ORIGIN_TYPES).catch("system"),
+      sessionID: z.string().optional(),
+      pluginID: z.string().optional(),
+      label: z.string().optional(),
+      detail: z.string().optional(),
+    })
+    .meta({ ref: "OriginUser" })
+  export type OriginUser = z.infer<typeof OriginUser>
+
   const Base = z.object({
     id: z.string(),
     sessionID: z.string(),
+    visible: z.boolean().optional(),
+    includeInContext: z.boolean().optional(),
+    rootID: z.string().optional(),
   })
 
   export const User = Base.extend({
     role: z.literal("user"),
+    isRoot: z.boolean().optional(),
     time: z.object({
       created: z.number(),
     }),
@@ -375,6 +480,16 @@ export namespace MessageV2 {
         title: z.string().optional(),
         body: z.string().optional(),
         diffs: SnapshotSchema.FileDiff.array(),
+        diffState: z
+          .discriminatedUnion("status", [
+            z.object({ status: z.literal("pending"), deadlineAt: z.number() }),
+            z.object({ status: z.literal("ready") }),
+            z.object({
+              status: z.literal("error"),
+              code: z.enum(["timeout", "git_failure", "unknown"]),
+            }),
+          ])
+          .optional(),
       })
       .optional(),
     agent: z.string(),
@@ -385,6 +500,7 @@ export namespace MessageV2 {
     system: z.string().optional(),
     tools: z.record(z.string(), z.boolean()).optional(),
     variant: z.string().optional(),
+    origin: OriginUser.optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
     ref: "UserMessage",
@@ -395,7 +511,7 @@ export namespace MessageV2 {
     .discriminatedUnion("type", [
       TextPart,
       ReasoningPart,
-      FilePart,
+      AttachmentPart,
       ToolPart,
       StepStartPart,
       StepFinishPart,
@@ -403,11 +519,84 @@ export namespace MessageV2 {
       PatchPart,
       RetryPart,
       CompactionPart,
+      CompactionRecoveryPart,
     ])
     .meta({
       ref: "Part",
     })
   export type Part = z.infer<typeof Part>
+
+  export function canonicalPart<T extends Part>(part: T): T {
+    if (part.type !== "tool") return part
+    if (part.state.status !== "completed") return part
+    const bounded =
+      part.state.outputTruncated && typeof part.state.outputBytes === "number"
+        ? {
+            output: part.state.output,
+            outputBytes: part.state.outputBytes,
+            outputTruncated: true,
+          }
+        : SessionBounds.toolOutput(part.state.output)
+    return {
+      ...part,
+      state: {
+        ...part.state,
+        output: bounded.output,
+        outputBytes: bounded.outputBytes,
+        outputTruncated: bounded.outputTruncated || undefined,
+        metadata: canonicalMetadata(part.state.metadata),
+      },
+      metadata: part.metadata ? canonicalMetadata(part.metadata) : part.metadata,
+    } as T
+  }
+
+  export function canonicalMessage<T extends Info>(info: T): T {
+    if (info.role !== "user" || !info.summary) return info
+    const diffState = info.summary.diffState
+    const expiredPending = diffState?.status === "pending" && diffState.deadlineAt <= Date.now()
+    return {
+      ...info,
+      summary: {
+        ...info.summary,
+        diffs: SnapshotSchema.normalizeArray(info.summary.diffs) ?? [],
+        ...(expiredPending ? { diffState: { status: "error" as const, code: "timeout" as const } } : {}),
+      },
+    } as T
+  }
+
+  function canonicalMetadata(metadata: Record<string, any>): Record<string, any> {
+    const next = { ...metadata }
+    const filediff = SnapshotSchema.normalize(next.filediff)
+    if (filediff) next.filediff = filediff
+    const results = Array.isArray(next.results)
+      ? next.results.map((item) => {
+          if (!item || typeof item !== "object" || Array.isArray(item)) return item
+          const result = { ...(item as Record<string, any>) }
+          const resultDiff = SnapshotSchema.normalize(result.filediff)
+          if (resultDiff) result.filediff = resultDiff
+          return result
+        })
+      : undefined
+    if (results) next.results = results
+    return next
+  }
+
+  function modelProviderMetadata(metadata: Record<string, any> | undefined): Record<string, any> | undefined {
+    if (!metadata) return undefined
+    const openai = metadata.openai
+    if (!openai || typeof openai !== "object" || Array.isArray(openai)) return metadata
+    if (!("itemId" in openai) && !("reasoningEncryptedContent" in openai)) return metadata
+
+    const nextOpenAI = { ...openai }
+    delete nextOpenAI.itemId
+    delete nextOpenAI.reasoningEncryptedContent
+
+    const next = { ...metadata }
+    if (Object.keys(nextOpenAI).length > 0) next.openai = nextOpenAI
+    else delete next.openai
+
+    return Object.keys(next).length > 0 ? next : undefined
+  }
 
   export const Assistant = Base.extend({
     role: z.literal("assistant"),
@@ -447,6 +636,7 @@ export namespace MessageV2 {
         write: z.number(),
       }),
     }),
+    contextUsage: ContextUsageSchema.optional(),
     finish: z.string().optional(),
     metadata: z.record(z.string(), z.any()).optional(),
   }).meta({
@@ -479,6 +669,7 @@ export namespace MessageV2 {
         part: Part,
         delta: z.string().optional(),
       }),
+      { streaming: true },
     ),
     PartRemoved: BusEvent.define(
       "message.part.removed",
@@ -496,15 +687,11 @@ export namespace MessageV2 {
   })
   export type WithParts = z.infer<typeof WithParts>
 
-  export function extractText(
-    parts: Part[],
-    options?: { includeSynthetic?: boolean; includeIgnored?: boolean; maxLength?: number },
-  ): string {
+  export function extractText(parts: Part[], options?: { includeSynthetic?: boolean; maxLength?: number }): string {
     const texts: string[] = []
     for (const part of parts) {
       if (part.type !== "text") continue
-      if (!options?.includeIgnored && part.ignored) continue
-      if (!options?.includeSynthetic && part.synthetic) continue
+      if (!options?.includeSynthetic && isSystemPart(part)) continue
       texts.push(part.text)
     }
     const joined = texts.join("\n").trim()
@@ -512,7 +699,11 @@ export namespace MessageV2 {
   }
 
   export function isPromptVisible(msg: WithParts) {
-    const metadata = msg.info.metadata
+    if (msg.info.includeInContext !== undefined) return msg.info.includeInContext
+    return includeInContextFromMetadata(msg.info.metadata)
+  }
+
+  function includeInContextFromMetadata(metadata: Record<string, any> | undefined): boolean {
     if (metadata?.promptVisible === false) return false
     const command = metadata?.command
     if (command && typeof command === "object" && "promptVisible" in command && command.promptVisible === false)
@@ -520,16 +711,340 @@ export namespace MessageV2 {
     return true
   }
 
-  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+  // ── Read-time semantics derivation (issue #281 §12.2) ───────────────────
+  //
+  // The single place legacy metadata (synthetic / noReply / guided / source)
+  // is interpreted. Applied once over the ordered message list at the read
+  // boundary so every consumer — loop, compaction, frontend — reads only the
+  // canonical fields (rootID / isRoot / visible / includeInContext / origin
+  // and part.origin) and never the legacy heuristics.
+
+  /**
+   * Whether a part is system-injected rather than user-authored. Prefers the
+   * canonical part.origin, falling back to the legacy `synthetic` flag for parts
+   * that predate it. The single predicate all consumers should use instead of
+   * reading `part.synthetic` directly.
+   */
+  export function isSystemPart(part: Part): boolean {
+    if (part.type === "compaction") return true
+    if (part.type !== "text") return false
+    if (part.origin !== undefined) return part.origin === "system"
+    return part.synthetic === true
+  }
+
+  function partIsSystem(part: Part): boolean {
+    return isSystemPart(part)
+  }
+
+  function allPartsSystem(parts: Part[]): boolean {
+    if (parts.length === 0) return true
+    return parts.every(partIsSystem)
+  }
+
+  /**
+   * Map legacy delivery metadata (source / sourceSessionID / channelPush …) to a
+   * canonical origin. Shared by write-time (createUserMessage) and read-time
+   * derivation so there is a single source of truth for the mapping (§4.2).
+   */
+  export function originFromMetadata(metadata: Record<string, any> | undefined): OriginUser {
+    if (!metadata) return { type: "user" }
+    const source = metadata.source
+    const sessionID = typeof metadata.sourceSessionID === "string" ? metadata.sourceSessionID : undefined
+    if (source === "cortex") return { type: "cortex", sessionID }
+    if (source === "mailbox" || source === "agenda") return { type: "agenda", sessionID }
+    if (typeof source === "string" && source.startsWith("blueprint_loop_"))
+      return { type: "blueprint", detail: source.replace(/^blueprint_loop_/, "") }
+    if (metadata.channelPush || metadata.mailbox) return { type: "channel" }
+    if (sessionID?.trim()) return { type: "agent", sessionID }
+    return { type: "user" }
+  }
+
+  /** Whether an origin renders as a visible chip when its message is non-root. */
+  export function originRenders(origin: OriginUser): boolean {
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  // Origins that never own a loop: their messages are always injected into an
+  // existing task, never a task root.
+  const NON_ROOT_ORIGIN_TYPES = new Set<OriginType>(["cortex", "compaction", "system"])
+
+  function deriveIsRoot(user: User, origin: OriginUser, parts: Part[]): boolean {
+    const metadata = user.metadata
+    if (metadata?.noReply === true) return false
+    if (metadata?.guided === true) return false
+    if (NON_ROOT_ORIGIN_TYPES.has(origin.type)) return false
+    if (!includeInContextFromMetadata(metadata)) return false
+    return !allPartsSystem(parts)
+  }
+
+  function deriveVisible(user: User, origin: OriginUser, parts: Part[]): boolean {
+    const synthetic = user.metadata?.synthetic === true || allPartsSystem(parts)
+    if (!synthetic) return true
+    return RENDERED_ORIGIN_TYPES.has(origin.type)
+  }
+
+  function deriveParts(parts: Part[]): Part[] {
+    let changed = false
+    const next = parts.map((part) => {
+      if (part.type !== "text" || part.origin !== undefined) return part
+      changed = true
+      return { ...part, origin: part.synthetic ? ("system" as const) : ("user" as const) }
+    })
+    return changed ? next : parts
+  }
+
+  /**
+   * Populate canonical semantic fields for any message that predates them.
+   * Idempotent: messages already carrying the fields pass through untouched
+   * (only their running rootID is tracked so later assistants inherit it).
+   */
+  export function deriveSemantics(messages: WithParts[]): WithParts[] {
+    let rootID: string | undefined
+    return messages.map((msg) => {
+      const parts = deriveParts(msg.parts)
+      if (msg.info.role === "user") {
+        const user = msg.info as User
+        const origin = user.origin ?? originFromMetadata(user.metadata)
+        const isRoot = user.isRoot ?? deriveIsRoot(user, origin, parts)
+        const resolvedRoot = user.rootID ?? (isRoot ? user.id : (rootID ?? user.id))
+        if (isRoot) rootID = resolvedRoot
+        else if (rootID === undefined) rootID = resolvedRoot
+        const info: User = {
+          ...user,
+          isRoot,
+          rootID: resolvedRoot,
+          origin,
+          visible: user.visible ?? deriveVisible(user, origin, parts),
+          includeInContext: user.includeInContext ?? includeInContextFromMetadata(user.metadata),
+        }
+        return parts === msg.parts && info === msg.info ? msg : { info, parts }
+      }
+      const assistant = msg.info as Assistant
+      const resolvedRoot = assistant.rootID ?? rootID ?? assistant.parentID
+      const info: Assistant = { ...assistant, rootID: resolvedRoot }
+      return { info, parts }
+    })
+  }
+
+  function attachmentName(part: AttachmentPart): string {
+    if (part.filename) return part.filename
+    if (part.localPath) return path.basename(part.localPath)
+    return "unnamed attachment"
+  }
+
+  function attachmentSummary(part: AttachmentPart): string {
+    const model = part.model
+    if (model?.mode === "summary" || model?.mode === "provider-file") {
+      if (model.summary?.trim()) return model.summary.trim()
+    }
+    if (part.localPath) return `${attachmentName(part)} (${part.mime}) at ${part.localPath}`
+    return `${attachmentName(part)} (${part.mime})`
+  }
+
+  function attachmentModelMode(part: AttachmentPart): AttachmentModelPolicy["mode"] {
+    return part.model?.mode ?? "summary"
+  }
+
+  function shouldSendAttachmentFile(part: AttachmentPart): boolean {
+    if (attachmentModelMode(part) !== "provider-file") return false
+    if (part.url.startsWith("asset://")) return false
+    return part.mime !== "application/x-directory"
+  }
+
+  function shouldExternalizeAttachment(part: AttachmentPart): boolean {
+    if (!part.url.startsWith("data:")) return false
+    if (attachmentModelMode(part) === "provider-file") return false
+    return true
+  }
+
+  async function externalizeAttachment(part: AttachmentPart): Promise<AttachmentPart> {
+    if (!shouldExternalizeAttachment(part)) return part
+    const decoded = Attachment.decodeDataUrl(part.url)
+    const assetID = await Asset.write(decoded.buffer, part.mime, part.filename)
+    const attachmentMetadata =
+      part.metadata?.attachment &&
+      typeof part.metadata.attachment === "object" &&
+      !Array.isArray(part.metadata.attachment)
+        ? part.metadata.attachment
+        : {}
+    return {
+      ...part,
+      url: `asset://${assetID}`,
+      metadata: {
+        ...part.metadata,
+        attachment: {
+          ...attachmentMetadata,
+          size: decoded.buffer.length,
+        },
+      },
+    }
+  }
+
+  async function externalizePart(part: Part): Promise<{ part: Part; changed: boolean }> {
+    if (part.type === "attachment") {
+      const next = await externalizeAttachment(part)
+      return { part: next, changed: next !== part }
+    }
+    if (part.type !== "tool" || part.state.status !== "completed" || !part.state.attachments?.length) {
+      return { part, changed: false }
+    }
+    let changed = false
+    const attachments = await Promise.all(
+      part.state.attachments.map(async (attachment) => {
+        const next = await externalizeAttachment(attachment)
+        if (next !== attachment) changed = true
+        return next
+      }),
+    )
+    if (!changed) return { part, changed: false }
+    return {
+      part: {
+        ...part,
+        state: {
+          ...part.state,
+          attachments,
+        },
+      },
+      changed: true,
+    }
+  }
+
+  function attachmentHash(part: AttachmentPart): string {
+    return new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+  }
+
+  export interface ModelMessageContribution {
+    text: string
+  }
+
+  export interface ModelMessageProvenance {
+    categories: {
+      conversation: ModelMessageContribution[]
+      toolActivity: ModelMessageContribution[]
+      filesReferences: ModelMessageContribution[]
+      instructions: ModelMessageContribution[]
+    }
+    items: {
+      conversation: number
+      toolActivity: number
+      filesReferences: number
+      instructions: number
+    }
+  }
+
+  function createModelMessageProvenance(): ModelMessageProvenance {
+    return {
+      categories: {
+        conversation: [],
+        toolActivity: [],
+        filesReferences: [],
+        instructions: [],
+      },
+      items: {
+        conversation: 0,
+        toolActivity: 0,
+        filesReferences: 0,
+        instructions: 0,
+      },
+    }
+  }
+
+  function addModelMessageContribution(
+    provenance: ModelMessageProvenance,
+    category: keyof ModelMessageProvenance["categories"],
+    text: string | undefined,
+  ) {
+    if (!text) return
+    provenance.categories[category].push({ text })
+    provenance.items[category]++
+  }
+
+  function appendAttachmentModelParts(
+    parts: UIMessage["parts"],
+    part: AttachmentPart,
+    provenance: ModelMessageProvenance,
+    options: { keptHashes?: Set<string>; includeLocalPath?: boolean } = {},
+  ) {
+    const mode = attachmentModelMode(part)
+    if (mode === "none") return
+    provenance.items.filesReferences++
+
+    if (mode === "content") {
+      const content = part.model?.mode === "content" ? part.model.text : undefined
+      const text = content?.trim() ? content : `[Attachment content: ${attachmentSummary(part)}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
+      return
+    }
+
+    if (!shouldSendAttachmentFile(part)) {
+      const text = `[Attachment: ${attachmentSummary(part)}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
+      return
+    }
+
+    if (options.includeLocalPath && part.localPath) {
+      const text = `[The user attached a file: ${attachmentName(part)} (${part.mime}). Local path: ${part.localPath}]`
+      parts.push({ type: "text", text })
+      provenance.categories.filesReferences.push({ text })
+    }
+
+    const keptHashes = options.keptHashes
+    if (keptHashes && !Attachment.isText(part.mime)) {
+      const hash = attachmentHash(part)
+      if (!keptHashes.has(hash)) {
+        const text = `[Image: ${attachmentName(part)} — previously shared]`
+        parts.push({ type: "text", text })
+        provenance.categories.filesReferences.push({ text })
+        return
+      }
+    }
+
+    parts.push({
+      type: "file",
+      url: part.url,
+      mediaType: part.mime,
+      filename: part.filename,
+    })
+  }
+
+  function isTerminalToolPart(part: Part): part is ToolPart {
+    return part.type === "tool" && (part.state.status === "completed" || part.state.status === "error")
+  }
+
+  function isAISDKToolError(part: ToolPart) {
+    return (
+      part.state.status === "error" && part.state.metadata?.toolDiagnostic?.metadata?.source === "ai_sdk_tool_error"
+    )
+  }
+
+  function canonicalTerminalToolParts(parts: Part[]) {
+    const canonical = new Map<string, ToolPart>()
+    for (const part of parts) {
+      if (!isTerminalToolPart(part)) continue
+      const existing = canonical.get(part.callID)
+      if (!existing || (isAISDKToolError(existing) && !isAISDKToolError(part))) {
+        canonical.set(part.callID, part)
+      }
+    }
+    return new Set(canonical.values())
+  }
+
+  export function projectModelMessages(
+    input: WithParts[],
+    opts?: { maxHistoryImages?: number },
+  ): { messages: ModelMessage[]; provenance: ModelMessageProvenance } {
     // Pass 1: collect unique image hashes in order of first appearance
     const imageHashSet = new Set<string>()
     const orderedHashes: string[] = []
     for (const msg of input) {
       if (msg.info.role !== "user" || !isPromptVisible(msg)) continue
       for (const part of msg.parts) {
-        if (part.type !== "file") continue
+        if (part.type !== "attachment") continue
+        if (!shouldSendAttachmentFile(part)) continue
         if (Attachment.isText(part.mime) || part.mime === "application/x-directory") continue
-        const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
+        const hash = attachmentHash(part)
         if (!imageHashSet.has(hash)) {
           imageHashSet.add(hash)
           orderedHashes.push(hash)
@@ -551,6 +1066,7 @@ export namespace MessageV2 {
     }
 
     const result: UIMessage[] = []
+    const provenance = createModelMessageProvenance()
 
     for (const msg of input) {
       if (msg.parts.length === 0 || !isPromptVisible(msg)) continue
@@ -563,41 +1079,17 @@ export namespace MessageV2 {
         }
         result.push(userMessage)
         for (const part of msg.parts) {
-          if (part.type === "text" && !part.ignored)
+          // part.origin has no effect on model visibility (spec §4.4):
+          // system-injected text is meant for the model too.
+          if (part.type === "text") {
             userMessage.parts.push({
               type: "text",
               text: part.text,
             })
-          if (part.type === "file" && Attachment.isText(part.mime) && !part.url.startsWith("data:")) {
-            userMessage.parts.push({
-              type: "file",
-              url: part.url,
-              mediaType: part.mime,
-              filename: part.filename,
-            })
+            addModelMessageContribution(provenance, isSystemPart(part) ? "instructions" : "conversation", part.text)
           }
-          if (part.type === "file" && !Attachment.isText(part.mime) && part.mime !== "application/x-directory") {
-            if (part.localPath) {
-              userMessage.parts.push({
-                type: "text",
-                text: `[The user attached a file: ${part.filename || path.basename(part.localPath)} (${part.mime}). Local path: ${part.localPath}]`,
-              })
-            }
-            const hash = new Bun.CryptoHasher("sha256").update(part.url).digest("hex").slice(0, 16)
-            if (keptHashes.has(hash)) {
-              userMessage.parts.push({
-                type: "file",
-                url: part.url,
-                mediaType: part.mime,
-                filename: part.filename,
-              })
-            } else {
-              const displayName = part.filename || "unnamed"
-              userMessage.parts.push({
-                type: "text",
-                text: `[Image: ${displayName} — previously shared]`,
-              })
-            }
+          if (part.type === "attachment") {
+            appendAttachmentModelParts(userMessage.parts, part, provenance, { keptHashes, includeLocalPath: true })
           }
         }
       }
@@ -617,65 +1109,75 @@ export namespace MessageV2 {
           role: "assistant",
           parts: [],
         }
+        const canonicalToolParts = canonicalTerminalToolParts(msg.parts)
         for (const part of msg.parts) {
-          if (part.type === "text")
+          if (part.type === "text") {
             assistantMessage.parts.push({
               type: "text",
               text: part.text,
-              providerMetadata: part.metadata,
+              providerMetadata: modelProviderMetadata(part.metadata),
             })
+            addModelMessageContribution(provenance, "conversation", part.text)
+          }
           if (part.type === "step-start")
             assistantMessage.parts.push({
               type: "step-start",
             })
           if (part.type === "tool") {
+            if (isTerminalToolPart(part) && !canonicalToolParts.has(part)) continue
             if (part.state.status === "completed") {
               if (part.state.attachments?.length) {
-                const modelAttachments = part.state.attachments.filter((a) => !a.url.startsWith("asset://"))
-                if (modelAttachments.length) {
+                const attachmentIntroduction = `Tool ${part.tool} returned attachment results:`
+                const attachmentParts: UIMessage["parts"] = [
+                  {
+                    type: "text",
+                    text: attachmentIntroduction,
+                  },
+                ]
+                for (const attachment of part.state.attachments) {
+                  appendAttachmentModelParts(attachmentParts, attachment, provenance)
+                }
+                if (attachmentParts.length > 1) {
                   result.push({
                     id: Identifier.ascending("message"),
                     role: "user",
-                    parts: [
-                      {
-                        type: "text",
-                        text: `Tool ${part.tool} returned an attachment:`,
-                      },
-                      ...modelAttachments.map((attachment) => ({
-                        type: "file" as const,
-                        url: attachment.url,
-                        mediaType: attachment.mime,
-                        filename: attachment.filename,
-                      })),
-                    ],
+                    parts: attachmentParts,
                   })
+                  addModelMessageContribution(provenance, "toolActivity", attachmentIntroduction)
                 }
               }
+              const output = part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-available",
                 toolCallId: part.callID,
                 input: part.state.input,
-                output: part.state.time.compacted ? "[Old tool result content cleared]" : part.state.output,
-                callProviderMetadata: part.metadata,
+                output,
+                callProviderMetadata: modelProviderMetadata(part.metadata),
               })
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", output)
             }
-            if (part.state.status === "error")
+            if (part.state.status === "error") {
               assistantMessage.parts.push({
                 type: ("tool-" + part.tool) as `tool-${string}`,
                 state: "output-error",
                 toolCallId: part.callID,
                 input: part.state.input,
                 errorText: part.state.error,
-                callProviderMetadata: part.metadata,
+                callProviderMetadata: modelProviderMetadata(part.metadata),
               })
+              addModelMessageContribution(provenance, "toolActivity", JSON.stringify(part.state.input))
+              addModelMessageContribution(provenance, "toolActivity", part.state.error)
+            }
           }
           if (part.type === "reasoning") {
             assistantMessage.parts.push({
               type: "reasoning",
               text: part.text,
-              providerMetadata: part.metadata,
+              providerMetadata: modelProviderMetadata(part.metadata),
             })
+            addModelMessageContribution(provenance, "conversation", part.text)
           }
         }
         if (assistantMessage.parts.length > 0) {
@@ -684,7 +1186,26 @@ export namespace MessageV2 {
       }
     }
 
-    return convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start")))
+    return {
+      messages: convertToModelMessages(result.filter((msg) => msg.parts.some((part) => part.type !== "step-start"))),
+      provenance,
+    }
+  }
+
+  export function toModelMessage(input: WithParts[], opts?: { maxHistoryImages?: number }): ModelMessage[] {
+    return projectModelMessages(input, opts).messages
+  }
+
+  function isLegacyStableDeliveryMessageID(id: string): boolean {
+    return /^msg_[0-9a-f]{26}$/.test(id)
+  }
+
+  export function compareStorageOrder(a: Info, b: Info): number {
+    if (isLegacyStableDeliveryMessageID(a.id) || isLegacyStableDeliveryMessageID(b.id)) {
+      const created = a.time.created - b.time.created
+      if (created !== 0) return created
+    }
+    return a.id.localeCompare(b.id)
   }
 
   export const stream = fn(
@@ -697,12 +1218,46 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
-      for (let i = messageIDs.length - 1; i >= 0; i--) {
-        yield await get({
-          scopeID: scopeID,
+      const readMessage = (messageID: string) =>
+        get({
+          scopeID,
           sessionID: input.sessionID,
-          messageID: messageIDs[i],
+          messageID,
         })
+
+      if (!messageIDs.some(isLegacyStableDeliveryMessageID)) {
+        for (let index = messageIDs.length - 1; index >= 0; index--) {
+          const messageID = messageIDs[index]
+          try {
+            yield await readMessage(messageID)
+          } catch (error) {
+            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+          }
+        }
+        return
+      }
+
+      const infos = await Storage.readMany<MessageV2.Info>(
+        messageIDs.map((messageID) => StoragePath.messageInfo(scopeID, sessionID, messageID as Identifier.MessageID)),
+      )
+      const ordered = infos
+        .filter((info): info is MessageV2.Info => info !== undefined)
+        .map(canonicalMessage)
+        .sort((a, b) => compareStorageOrder(b, a))
+
+      for (const info of ordered) {
+        try {
+          yield {
+            info,
+            parts: await parts({ scopeID, sessionID: input.sessionID, messageID: info.id }),
+          }
+        } catch (error) {
+          log.warn("skipping unreadable message", {
+            sessionID: input.sessionID,
+            messageID: info.id,
+            error: String(error),
+          })
+        }
       }
     },
   )
@@ -721,14 +1276,33 @@ export namespace MessageV2 {
       const partIDs = await Storage.scan(StoragePath.messageParts(scopeID, sessionID, messageID))
       const keys = partIDs.map((id) => StoragePath.messagePart(scopeID, sessionID, messageID, id as Identifier.PartID))
       const results = await Storage.readMany<MessageV2.Part>(keys)
-      const parts = results.filter((p): p is MessageV2.Part => p !== undefined)
+      const parts = await Promise.all(
+        results
+          .filter((p): p is MessageV2.Part => p !== undefined)
+          .map(async (part) => {
+            const externalized = await externalizePart(part)
+            if (externalized.changed) {
+              await Storage.write(
+                StoragePath.messagePart(scopeID, sessionID, messageID, externalized.part.id as Identifier.PartID),
+                externalized.part,
+              )
+            }
+            return externalized.part
+          }),
+      )
       parts.sort((a, b) => (a.id > b.id ? 1 : -1))
-      for (const part of parts) {
+      return parts.map((part) => {
         if (part.type === "tool" && part.state.status === "completed" && part.state.time.compacted) {
-          part.state.output = ""
+          return {
+            ...part,
+            state: {
+              ...part.state,
+              output: "",
+            },
+          }
         }
-      }
-      return parts
+        return part
+      })
     },
   )
 
@@ -743,8 +1317,11 @@ export namespace MessageV2 {
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
       const messageID = input.messageID as Identifier.MessageID
+      const info = canonicalMessage(
+        await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+      )
       return {
-        info: await Storage.read<MessageV2.Info>(StoragePath.messageInfo(scopeID, sessionID, messageID)),
+        info,
         parts: await parts({ scopeID, sessionID: input.sessionID, messageID: input.messageID }),
       }
     },
@@ -752,19 +1329,44 @@ export namespace MessageV2 {
 
   export async function filterCompacted(stream: AsyncIterable<MessageV2.WithParts>) {
     const result = [] as MessageV2.WithParts[]
-    const completed = new Set<string>()
+    const skipped = [] as MessageV2.WithParts[]
+    let boundaryUserID: string | undefined
+    let foundBoundary = false
     for await (const msg of stream) {
-      result.push(msg)
+      if (!boundaryUserID) {
+        result.push(msg)
+        if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) boundaryUserID = msg.info.parentID
+        continue
+      }
+
       if (
-        msg.info.role === "user" &&
-        completed.has(msg.info.id) &&
-        msg.parts.some((part) => part.type === "compaction")
+        msg.info.role !== "user" ||
+        msg.info.id !== boundaryUserID ||
+        !msg.parts.some((part) => part.type === "compaction")
+      ) {
+        skipped.push(msg)
+        continue
+      }
+
+      const boundaryID = boundaryUserID
+      result.push(
+        ...skipped
+          .filter((item) => isFulfilledCompactionSummary(item, boundaryID))
+          .map((item) => ({ ...item, info: { ...item.info, includeInContext: false } })),
       )
-        break
-      if (msg.info.role === "assistant" && msg.info.summary && msg.info.finish) completed.add(msg.info.parentID)
+      result.push(msg)
+      foundBoundary = true
+      break
     }
+    if (boundaryUserID && !foundBoundary) result.push(...skipped)
     result.reverse()
     return result
+  }
+
+  function isFulfilledCompactionSummary(msg: MessageV2.WithParts, parentID: string): boolean {
+    if (msg.info.role !== "assistant") return false
+    const assistant = msg.info as MessageV2.Assistant
+    return assistant.parentID === parentID && assistant.summary === true && !!assistant.finish
   }
 
   export function fromError(e: unknown, ctx: { providerID: string }) {
@@ -791,6 +1393,16 @@ export namespace MessageV2 {
           {
             providerID: ctx.providerID,
             message: e.message,
+          },
+          { cause: e },
+        ).toObject()
+      case ProviderAuthRecoveryError.isInstance(e):
+        return new MessageV2.AuthError(
+          {
+            providerID: e.data.providerID,
+            message: e.data.message,
+            failureCode: e.data.failureCode,
+            actionRequired: e.data.actionRequired,
           },
           { cause: e },
         ).toObject()

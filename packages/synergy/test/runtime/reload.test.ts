@@ -7,12 +7,26 @@ import { RuntimeReload } from "../../src/runtime/reload"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
 import { GlobalBus } from "../../src/bus/global"
+import { Plugin } from "../../src/plugin"
+import { CortexConcurrency } from "../../src/cortex/concurrency"
+import { GitHubDelivery, GitHubIntegrationConfig } from "../../src/github/types"
+import { GitHubRuntime } from "../../src/github/runtime"
+import { GitHubStore } from "../../src/github/store"
 
 const originalConfigReload = Config.reload
+const originalNotifyConfigHooks = Plugin.notifyConfigHooks
 
 afterEach(() => {
   Config.reload = originalConfigReload
+  ;(Plugin as any).notifyConfigHooks = originalNotifyConfigHooks
   GlobalBus.removeAllListeners("event")
+  CortexConcurrency.reset()
+})
+
+test("post-write diagnostics settings are live-applied without restarting LSP", () => {
+  expect(RuntimeReload.CONFIG_LIVE_APPLIED.has("lspWriteDiagnostics")).toBe(true)
+  expect(RuntimeReload.CONFIG_LIVE_APPLIED.has("lspDiagnostics")).toBe(true)
+  expect(RuntimeReload.inferConfigCascades(["lspWriteDiagnostics", "lspDiagnostics"])).not.toContain("lsp")
 })
 
 describe("runtime.reload", () => {
@@ -37,13 +51,16 @@ describe("runtime.reload", () => {
     })
   })
 
-  test("detects plugin targets by file path", async () => {
+  test("ignores retired plugin source directories", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
         const pluginTarget = RuntimeReload.detectTargetsForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
-        expect(pluginTarget).toEqual(["config", "plugin", "tool_registry"])
+        const pluginScope = RuntimeReload.detectScopeForFile(path.join(tmp.path, ".synergy", "plugin", "demo.ts"))
+
+        expect(pluginTarget).toEqual([])
+        expect(pluginScope).toBeUndefined()
       },
     })
   })
@@ -144,6 +161,69 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("applies global Cortex concurrency changes without restart", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        Config.reload = mock(async () => ({
+          config: { cortex: { maxConcurrentTasks: 3 } },
+          changedFields: ["cortex"],
+          oldConfig: {},
+        })) as typeof Config.reload
+
+        const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+        expect(result.liveApplied).toContain("cortex")
+        expect(result.restartRequired).not.toContain("cortex")
+        expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
+      },
+    })
+  })
+
+  test("applies global GitHub config changes and wakes the delivery worker", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const guid = `reload-github-${crypto.randomUUID()}`
+    await GitHubRuntime.reset()
+    await GitHubStore.accept(
+      GitHubDelivery.parse({
+        deliveryGuid: guid,
+        eventType: "pull_request",
+        repositoryFullName: "owner/repo",
+        senderLogin: "alice",
+        receivedAt: Date.now(),
+        rawPayload: {},
+        rawHeaders: {},
+        status: "received",
+      }),
+    )
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          Config.reload = mock(async () => ({
+            config: { github: GitHubIntegrationConfig.parse({ enabled: true, polling: { enabled: false } }) },
+            changedFields: ["github"],
+            oldConfig: {},
+          })) as typeof Config.reload
+
+          const result = await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "test" })
+
+          expect(result.liveApplied).toContain("github")
+          let stored = await GitHubStore.get(guid)
+          for (let attempt = 0; attempt < 100 && stored?.status !== "ignored"; attempt++) {
+            await Bun.sleep(10)
+            stored = await GitHubStore.get(guid)
+          }
+          expect(stored?.status).toBe("ignored")
+        },
+      })
+    } finally {
+      await GitHubRuntime.reset()
+      await GitHubStore.remove(guid)
+    }
+  })
   test("all expands into concrete targets", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -205,6 +285,27 @@ describe("runtime.reload", () => {
         const reloadedEvent = events.find((e) => e.payload?.type === RuntimeReload.Event.Reloaded.type)
         expect(reloadedEvent).toBeDefined()
         expect(reloadedEvent!.payload.properties.executed).toContain("config")
+      },
+    })
+  })
+
+  test("config reload notifies plugin config hooks with changed fields", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const config = { model: "openai/gpt-4.1" } as Config.Info
+        Config.reload = mock(async () => ({
+          config,
+          changedFields: ["toast"],
+          oldConfig: {},
+        })) as typeof Config.reload
+        const notify = mock(async () => {})
+        ;(Plugin as any).notifyConfigHooks = notify
+
+        await RuntimeReload.reload({ targets: ["config"], scope: "global", reason: "hook-notify" })
+
+        expect(notify).toHaveBeenCalledWith({ source: "reload", config, changedFields: ["toast"] })
       },
     })
   })
@@ -299,6 +400,9 @@ describe("runtime.reload", () => {
     })
   })
 
+  test("locale is classified as client-side and not reloaded by the server runtime", async () => {
+    expect(RuntimeReload.CONFIG_CLIENT_SIDE.has("locale")).toBe(true)
+  })
   test("error isolation: reload continues after subsystem failure", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

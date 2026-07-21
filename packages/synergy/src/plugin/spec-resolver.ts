@@ -4,26 +4,31 @@ import { fileURLToPath, pathToFileURL } from "url"
 import { Global } from "../global"
 import { BunProc } from "../util/bun"
 import { PluginSpec } from "../util/plugin-spec"
-import { PluginId } from "./ids"
-import { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import type { PluginDescriptor, PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import { PluginManifest, normalizePluginArchiveEntry } from "@ericsanchezok/synergy-plugin"
+import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
 import type { PluginSource } from "./trust"
+import { sourceFromSpec } from "./source"
+import { sha256File } from "../util/crypto"
+import { isPathContained } from "../util/path-contain"
 
 export interface ResolvedPluginSpec {
   spec: string
   pkg: string
   version: string
   source: PluginSource
-  entryPath: string
+  entryPath?: string
   pluginDir: string
-  manifest: PluginManifestType | null
+  manifest: PluginManifestType
   cached?: boolean
+  stagingDir?: string
+  finalPluginDir?: string
 }
 
 export interface ResolvePluginSpecOptions {
   cwd?: string
   install?: boolean
   refresh?: boolean
+  stageLocalArchive?: boolean
 }
 
 const ARCHIVE_RE = /\.(?:synergy-plugin\.)?t(?:ar\.)?gz$|\.tgz$/i
@@ -36,15 +41,35 @@ function pathFromFileSpec(spec: string): string {
   }
 }
 
-function isArchive(filePath: string): boolean {
+export function isArchivePath(filePath: string): boolean {
   return ARCHIVE_RE.test(filePath)
 }
 
-function safeArchiveName(filePath: string): string {
+export function safeArchiveName(filePath: string): string {
   return path
     .basename(filePath)
     .replace(/[^a-zA-Z0-9_.-]/g, "-")
     .replace(/^-+/, "")
+}
+
+export function archiveCacheDir(archivePath: string): string {
+  return path.join(Global.Path.cache, "plugin-archives", safeArchiveName(archivePath).replace(/\.tgz$/i, ""))
+}
+
+function validateArchiveEntries(archivePath: string) {
+  const result = Bun.spawnSync(["tar", "-tzf", archivePath], { stdout: "pipe", stderr: "pipe" })
+  if (result.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(result.stderr)
+    throw new Error(`Failed to inspect plugin archive ${archivePath}${stderr ? `: ${stderr}` : ""}`)
+  }
+  for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+    try {
+      normalizePluginArchiveEntry(line)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Plugin archive contains unsafe path: ${message}`)
+    }
+  }
 }
 
 /** Walk up from a file path to find the nearest directory containing package.json or plugin.json. */
@@ -60,44 +85,66 @@ export function findPackageRoot(entryPath: string): string {
   return stat?.isDirectory() ? entryPath : path.dirname(entryPath)
 }
 
-export async function readPluginManifest(pluginDir: string): Promise<PluginManifestType | null> {
+export async function readPluginManifest(pluginDir: string): Promise<PluginManifestType> {
   const manifestPath = path.join(pluginDir, "plugin.json")
   const file = Bun.file(manifestPath)
-  if (!(await file.exists().catch(() => false))) return null
-  const parsed = PluginManifest.parse(JSON.parse(await file.text()))
-  return parsed as PluginManifestType
+  if (!(await file.exists().catch(() => false))) {
+    throw new Error(`Plugin manifest not found at ${manifestPath}. Synergy plugins must include plugin.json.`)
+  }
+  const text = await file.text()
+  if (!text.trim()) {
+    throw new Error(`Plugin manifest is empty at ${manifestPath}. Synergy plugins must include a valid plugin.json.`)
+  }
+  const manifest = PluginManifest.parse(JSON.parse(text))
+  for (const [kind, artifact] of Object.entries({ runtime: manifest.artifacts.runtime, ui: manifest.artifacts.ui })) {
+    if (!artifact) continue
+    const artifactPath = path.resolve(pluginDir, artifact.entry)
+    if (!isPathContained(pluginDir, artifactPath))
+      throw new Error(`Plugin ${kind} artifact escapes its package: ${artifact.entry}`)
+    if (!fs.existsSync(artifactPath) || !fs.statSync(artifactPath).isFile()) {
+      throw new Error(`Plugin ${kind} artifact not found: ${artifact.entry}`)
+    }
+    const actual = sha256File(artifactPath)
+    if (actual !== artifact.sha256) throw new Error(`Plugin ${kind} artifact integrity mismatch: ${artifact.entry}`)
+  }
+  return manifest
 }
 
-function resolvePackageEntry(pluginDir: string): string {
-  const pkgPath = path.join(pluginDir, "package.json")
-  if (!fs.existsSync(pkgPath)) return path.join(pluginDir, "index.ts")
-  try {
-    const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8"))
-    const exported =
-      typeof pkg.exports === "string" ? pkg.exports : (pkg.exports?.["."]?.bun ?? pkg.exports?.["."]?.import)
-    const entry = exported ?? pkg.main ?? "index.ts"
-    return path.resolve(pluginDir, entry)
-  } catch {
-    return path.join(pluginDir, "index.ts")
+function runtimeEntry(pluginDir: string, manifest: PluginManifestType): string | undefined {
+  return manifest.artifacts.runtime ? path.resolve(pluginDir, manifest.artifacts.runtime.entry) : undefined
+}
+
+async function validateExtractedArchiveDir(pluginDir: string): Promise<void> {
+  const manifest = await readPluginManifest(pluginDir)
+  const entryPath = runtimeEntry(pluginDir, manifest)
+  if (entryPath && !fs.existsSync(entryPath)) {
+    throw new Error(`Plugin entry not found at ${entryPath}. Synergy plugins must include a valid runtime entry.`)
   }
 }
 
-export function resolveEntryFromPluginDir(pluginDir: string, manifest: PluginManifestType | null): string {
-  const candidates = [
-    manifest?.main ? path.resolve(pluginDir, manifest.main) : undefined,
-    path.join(pluginDir, "dist", "runtime", "index.js"),
-    path.join(pluginDir, "runtime", "index.js"),
-    resolvePackageEntry(pluginDir),
-    path.join(pluginDir, "src", "index.ts"),
-    path.join(pluginDir, "index.ts"),
-    path.join(pluginDir, "index.js"),
-  ].filter(Boolean) as string[]
-
-  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0]
+async function archiveCacheUsable(pluginDir: string): Promise<boolean> {
+  if (!fs.existsSync(pluginDir)) return false
+  try {
+    await validateExtractedArchiveDir(pluginDir)
+    return true
+  } catch {
+    return false
+  }
 }
 
-async function extractArchive(archivePath: string): Promise<string> {
-  const targetDir = path.join(Global.Path.cache, "plugin-archives", safeArchiveName(archivePath).replace(/\.tgz$/i, ""))
+async function extractArchive(archivePath: string, options: { stage?: boolean } = {}): Promise<string> {
+  if (!options.stage) {
+    const finalDir = archiveCacheDir(archivePath)
+    if (await archiveCacheUsable(finalDir)) return finalDir
+  }
+  validateArchiveEntries(archivePath)
+  const archiveName = safeArchiveName(archivePath).replace(/\.tgz$/i, "")
+  const targetDir = path.join(
+    Global.Path.state,
+    "plugin-install",
+    "staging",
+    `${archiveName}-${process.pid}-${Date.now()}`,
+  )
   fs.rmSync(targetDir, { recursive: true, force: true })
   fs.mkdirSync(targetDir, { recursive: true })
   const result = Bun.spawnSync(["tar", "-xzf", archivePath, "-C", targetDir], {
@@ -106,29 +153,74 @@ async function extractArchive(archivePath: string): Promise<string> {
   })
   if (result.exitCode !== 0) {
     const stderr = new TextDecoder().decode(result.stderr)
+    fs.rmSync(targetDir, { recursive: true, force: true })
     throw new Error(`Failed to extract plugin archive ${archivePath}${stderr ? `: ${stderr}` : ""}`)
   }
-  return targetDir
+  try {
+    await validateExtractedArchiveDir(targetDir)
+  } catch (err) {
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    throw err
+  }
+  if (options.stage) return targetDir
+
+  const finalDir = archiveCacheDir(archivePath)
+
+  const backupDir = path.join(
+    Global.Path.state,
+    "plugin-install",
+    "rollback",
+    `${path.basename(finalDir)}-${process.pid}-${Date.now()}`,
+  )
+  fs.mkdirSync(path.dirname(finalDir), { recursive: true })
+  fs.mkdirSync(path.dirname(backupDir), { recursive: true })
+  const hadExisting = fs.existsSync(finalDir)
+  if (hadExisting) {
+    fs.rmSync(backupDir, { recursive: true, force: true })
+    fs.renameSync(finalDir, backupDir)
+  }
+  try {
+    fs.renameSync(targetDir, finalDir)
+    if (hadExisting) fs.rmSync(backupDir, { recursive: true, force: true })
+    return finalDir
+  } catch (err) {
+    fs.rmSync(finalDir, { recursive: true, force: true })
+    if (hadExisting) {
+      try {
+        fs.renameSync(backupDir, finalDir)
+      } catch {
+        fs.rmSync(backupDir, { recursive: true, force: true })
+      }
+    }
+    fs.rmSync(targetDir, { recursive: true, force: true })
+    throw err
+  }
 }
 
 async function resolveLocalSpec(spec: string, options: ResolvePluginSpecOptions): Promise<ResolvedPluginSpec> {
   const rawPath = pathFromFileSpec(spec)
   const absolute = path.isAbsolute(rawPath) ? rawPath : path.resolve(options.cwd ?? process.cwd(), rawPath)
-  const pluginDir = isArchive(absolute) ? await extractArchive(absolute) : findPackageRoot(absolute)
+  const archive = isArchivePath(absolute)
+  let pluginDir = archive
+    ? await extractArchive(absolute, { stage: options.stageLocalArchive })
+    : findPackageRoot(absolute)
+  const builtDir = path.join(pluginDir, "dist")
+  if (!archive && fs.existsSync(path.join(builtDir, "plugin.json"))) pluginDir = builtDir
   const manifest = await readPluginManifest(pluginDir)
   const entryPath =
-    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !isArchive(absolute)
-      ? absolute
-      : resolveEntryFromPluginDir(pluginDir, manifest)
-  const pkg = manifest?.name ?? path.basename(pluginDir)
+    fs.existsSync(absolute) && fs.statSync(absolute).isFile() && !archive ? absolute : runtimeEntry(pluginDir, manifest)
+  const pkg = manifest.id
   return {
     spec,
     pkg,
-    version: manifest?.version ?? "0.0.0",
+    version: manifest.version,
     source: "local",
     entryPath,
     pluginDir,
     manifest,
+    ...(archive && options.stageLocalArchive
+      ? { stagingDir: pluginDir, finalPluginDir: archiveCacheDir(absolute) }
+      : {}),
   }
 }
 
@@ -141,7 +233,7 @@ export async function resolvePluginSpec(
   }
 
   const { pkg, version } = PluginSpec.parse(spec)
-  const source: PluginSource = PluginSpec.isNonRegistry(spec) ? (spec.startsWith("http") ? "url" : "git") : "npm"
+  const source: PluginSource = sourceFromSpec(spec)
 
   if (!options.install) {
     const resolvedDir = path.join(
@@ -150,13 +242,13 @@ export async function resolvePluginSpec(
       source === "npm" ? pkg : BunProc.resolvePkgName(pkg),
     )
     const pluginDir = findPackageRoot(resolvedDir)
-    const manifest = await readPluginManifest(pluginDir).catch(() => null)
+    const manifest = await readPluginManifest(pluginDir)
     return {
       spec,
       pkg,
       version,
       source,
-      entryPath: resolveEntryFromPluginDir(pluginDir, manifest),
+      entryPath: runtimeEntry(pluginDir, manifest),
       pluginDir,
       manifest,
     }
@@ -167,13 +259,13 @@ export async function resolvePluginSpec(
   }
   const installed = await BunProc.install(pkg, version)
   const pluginDir = findPackageRoot(installed.entryPath)
-  const manifest = await readPluginManifest(pluginDir).catch(() => null)
+  const manifest = await readPluginManifest(pluginDir)
   return {
     spec,
     pkg,
     version,
     source,
-    entryPath: installed.entryPath,
+    entryPath: runtimeEntry(pluginDir, manifest),
     pluginDir,
     manifest,
     cached: installed.cached,
@@ -183,21 +275,4 @@ export async function resolvePluginSpec(
 export function importUrlForEntry(entryPath: string, reloadVersion?: number): string {
   const url = pathToFileURL(entryPath).href
   return reloadVersion == null ? url : `${url}?t=${reloadVersion}`
-}
-
-export function assertCanonicalPluginIdentity(input: {
-  spec?: string
-  manifest: PluginManifestType | null
-  descriptor: PluginDescriptor
-}) {
-  const { manifest, descriptor, spec } = input
-  if (!PluginId.isValid(descriptor.id)) {
-    throw new Error(`Plugin descriptor id "${descriptor.id}" is invalid`)
-  }
-  if (manifest && manifest.name !== descriptor.id) {
-    const suffix = spec ? ` for ${spec}` : ""
-    throw new Error(
-      `Plugin identity mismatch${suffix}: plugin.json name "${manifest.name}" must match PluginDescriptor.id "${descriptor.id}"`,
-    )
-  }
 }

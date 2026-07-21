@@ -74,24 +74,27 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("filters out messages with only ignored parts", () => {
-    const messageID = "m-user"
-
+  test("excludes messages marked includeInContext: false", () => {
+    // Part-level model exclusion was removed (issue #281 §4.4); the only
+    // model-context switch is the message-level includeInContext flag.
     const input: MessageV2.WithParts[] = [
       {
-        info: userInfo(messageID),
+        info: { ...userInfo("m-user"), includeInContext: false },
         parts: [
           {
-            ...basePart(messageID, "p1"),
+            ...basePart("m-user", "p1"),
             type: "text",
-            text: "ignored",
-            ignored: true,
+            text: "hidden from model",
           },
         ] as MessageV2.Part[],
       },
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.messages).toStrictEqual([])
+    expect(projection.provenance.categories.conversation).toStrictEqual([])
+    expect(projection.provenance.items.conversation).toBe(0)
   })
 
   test("includes synthetic text parts", () => {
@@ -134,7 +137,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("converts user text/file parts and filters ignored/special parts", () => {
+  test("converts user text/attachment parts and filters special parts", () => {
     const messageID = "m-user"
 
     const input: MessageV2.WithParts[] = [
@@ -147,31 +150,28 @@ describe("session.message-v2.toModelMessage", () => {
             text: "hello",
           },
           {
-            ...basePart(messageID, "p2"),
-            type: "text",
-            text: "ignored",
-            ignored: true,
-          },
-          {
             ...basePart(messageID, "p3"),
-            type: "file",
+            type: "attachment",
             mime: "image/png",
             filename: "img.png",
             url: "https://example.com/img.png",
+            model: { mode: "provider-file", summary: "img.png (image/png)" },
           },
           {
             ...basePart(messageID, "p4"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.txt",
             url: "https://example.com/note.txt",
+            model: { mode: "provider-file", summary: "note.txt (text/plain)" },
           },
           {
             ...basePart(messageID, "p5"),
-            type: "file",
+            type: "attachment",
             mime: "application/x-directory",
             filename: "dir",
             url: "https://example.com/dir",
+            model: { mode: "summary", summary: "dir (application/x-directory)" },
           },
           {
             ...basePart(messageID, "p6"),
@@ -199,11 +199,15 @@ describe("session.message-v2.toModelMessage", () => {
             filename: "note.txt",
             data: "https://example.com/note.txt",
           },
+          {
+            type: "text",
+            text: "[Attachment: dir (application/x-directory)]",
+          },
         ],
       },
     ])
   })
-  test("skips text-mime FileParts with data: URLs", () => {
+  test("uses explicit content instead of sending data text attachments", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -217,10 +221,11 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p2"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.xml",
             url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+            model: { mode: "none" },
           },
         ] as MessageV2.Part[],
       },
@@ -234,7 +239,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("passes through text-mime FileParts with https: URLs", () => {
+  test("passes through provider-file text attachments with https URLs", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -242,10 +247,11 @@ describe("session.message-v2.toModelMessage", () => {
         parts: [
           {
             ...basePart(messageID, "p1"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "doc.txt",
             url: "https://example.com/doc.txt",
+            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
           },
         ] as MessageV2.Part[],
       },
@@ -266,7 +272,7 @@ describe("session.message-v2.toModelMessage", () => {
     ])
   })
 
-  test("passes through text-mime FileParts with asset: URLs", () => {
+  test("summarizes asset attachments instead of passing asset URLs to the provider", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -274,10 +280,11 @@ describe("session.message-v2.toModelMessage", () => {
         parts: [
           {
             ...basePart(messageID, "p1"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "file.ts",
             url: "asset://abc123/file.ts",
+            model: { mode: "provider-file", summary: "file.ts (text/plain)" },
           },
         ] as MessageV2.Part[],
       },
@@ -286,19 +293,17 @@ describe("session.message-v2.toModelMessage", () => {
     expect(MessageV2.toModelMessage(input)).toStrictEqual([
       {
         role: "user",
-        content: [
-          {
-            type: "file",
-            mediaType: "text/plain",
-            filename: "file.ts",
-            data: "asset://abc123/file.ts",
-          },
-        ],
+        content: [{ type: "text", text: "[Attachment: file.ts (text/plain)]" }],
       },
     ])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.provenance.categories.filesReferences).toStrictEqual([
+      { text: "[Attachment: file.ts (text/plain)]" },
+    ])
+    expect(projection.provenance.items.filesReferences).toBe(1)
   })
 
-  test("skips data: text FileParts but keeps https: text, image, and other FileParts", () => {
+  test("uses attachment model policy for data text, https text, and images", () => {
     const messageID = "m-user"
     const input: MessageV2.WithParts[] = [
       {
@@ -311,24 +316,27 @@ describe("session.message-v2.toModelMessage", () => {
           },
           {
             ...basePart(messageID, "p2"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "note.xml",
             url: "data:text/plain;base64,PHhtbD5ub3RlIGNvbnRlbnQ8L3htbD4=",
+            model: { mode: "none" },
           },
           {
             ...basePart(messageID, "p3"),
-            type: "file",
+            type: "attachment",
             mime: "text/plain",
             filename: "doc.txt",
             url: "https://example.com/doc.txt",
+            model: { mode: "provider-file", summary: "doc.txt (text/plain)" },
           },
           {
             ...basePart(messageID, "p4"),
-            type: "file",
+            type: "attachment",
             mime: "image/png",
             filename: "photo.png",
             url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+            model: { mode: "provider-file", summary: "photo.png (image/png)" },
           },
         ] as MessageV2.Part[],
       },
@@ -395,10 +403,11 @@ describe("session.message-v2.toModelMessage", () => {
               attachments: [
                 {
                   ...basePart(assistantID, "file-1"),
-                  type: "file",
+                  type: "attachment",
                   mime: "image/png",
                   filename: "attachment.png",
                   url: "https://example.com/attachment.png",
+                  model: { mode: "summary", summary: "attachment.png (image/png)" },
                 },
               ],
             },
@@ -416,13 +425,8 @@ describe("session.message-v2.toModelMessage", () => {
       {
         role: "user",
         content: [
-          { type: "text", text: "Tool bash returned an attachment:" },
-          {
-            type: "file",
-            mediaType: "image/png",
-            filename: "attachment.png",
-            data: "https://example.com/attachment.png",
-          },
+          { type: "text", text: "Tool bash returned attachment results:" },
+          { type: "text", text: "[Attachment: attachment.png (image/png)]" },
         ],
       },
       {
@@ -447,6 +451,7 @@ describe("session.message-v2.toModelMessage", () => {
             toolCallId: "call-1",
             toolName: "bash",
             output: { type: "text", value: "ok" },
+            providerOptions: { openai: { tool: "meta" } },
           },
         ],
       },
@@ -582,6 +587,214 @@ describe("session.message-v2.toModelMessage", () => {
             toolCallId: "call-1",
             toolName: "bash",
             output: { type: "error-text", value: "nope" },
+            providerOptions: { openai: { tool: "meta" } },
+          },
+        ],
+      },
+    ])
+  })
+
+  test("deduplicates terminal tool parts by call ID and prefers the execution outcome", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "read file",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "tool",
+            callID: "call-1",
+            tool: "view_file",
+            state: {
+              status: "error",
+              input: { path: "missing.txt" },
+              error: "AI SDK tool error",
+              time: { start: 1, end: 2 },
+              metadata: {
+                toolDiagnostic: {
+                  code: "invalid_arguments",
+                  toolName: "view_file",
+                  message: "AI SDK tool error",
+                  metadata: { source: "ai_sdk_tool_error" },
+                },
+              },
+            },
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "tool",
+            callID: "call-1",
+            tool: "view_file",
+            state: {
+              status: "error",
+              input: { path: "missing.txt" },
+              error: "file not found",
+              time: { start: 0, end: 1 },
+              metadata: { source: "execution" },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "read file" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "view_file",
+            input: { path: "missing.txt" },
+            providerExecuted: undefined,
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "view_file",
+            output: { type: "error-text", value: "file not found" },
+          },
+        ],
+      },
+    ])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.provenance.categories.toolActivity).toStrictEqual([
+      { text: JSON.stringify({ path: "missing.txt" }) },
+      { text: "file not found" },
+    ])
+    expect(projection.provenance.items.toolActivity).toBe(2)
+  })
+
+  test("removes OpenAI response item references from model provider metadata", () => {
+    const userID = "m-user"
+    const assistantID = "m-assistant"
+
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo(userID),
+        parts: [
+          {
+            ...basePart(userID, "u1"),
+            type: "text",
+            text: "continue",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo(assistantID, userID),
+        parts: [
+          {
+            ...basePart(assistantID, "a1"),
+            type: "text",
+            text: "answer",
+            metadata: {
+              openai: {
+                itemId: "rs_05cc53d0d93cbe50016a46668417b4819186ef05beefb099a1",
+                reasoningEncryptedContent: "encrypted",
+                retained: "ok",
+              },
+              custom: { keep: true },
+            },
+          },
+          {
+            ...basePart(assistantID, "a2"),
+            type: "reasoning",
+            text: "summary",
+            time: { start: 0 },
+            metadata: {
+              openai: {
+                itemId: "rs_reasoning",
+                reasoningEncryptedContent: "encrypted",
+              },
+            },
+          },
+          {
+            ...basePart(assistantID, "a3"),
+            type: "tool",
+            callID: "call-1",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { cmd: "pwd" },
+              output: "ok",
+              title: "Bash",
+              metadata: {},
+              time: { start: 0, end: 1 },
+            },
+            metadata: {
+              openai: {
+                itemId: "rs_tool",
+                retained: "tool",
+              },
+            },
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual([
+      {
+        role: "user",
+        content: [{ type: "text", text: "continue" }],
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "text",
+            text: "answer",
+            providerOptions: {
+              openai: { retained: "ok" },
+              custom: { keep: true },
+            },
+          },
+          {
+            type: "reasoning",
+            text: "summary",
+            providerOptions: undefined,
+          },
+          {
+            type: "tool-call",
+            toolCallId: "call-1",
+            toolName: "bash",
+            input: { cmd: "pwd" },
+            providerExecuted: undefined,
+            providerOptions: {
+              openai: { retained: "tool" },
+            },
+          },
+        ],
+      },
+      {
+        role: "tool",
+        content: [
+          {
+            type: "tool-result",
+            toolCallId: "call-1",
+            toolName: "bash",
+            output: { type: "text", value: "ok" },
+            providerOptions: { openai: { retained: "tool" } },
           },
         ],
       },
@@ -609,6 +822,10 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+    const projection = MessageV2.projectModelMessages(input)
+    expect(projection.messages).toStrictEqual([])
+    expect(projection.provenance.categories.conversation).toStrictEqual([])
+    expect(projection.provenance.items.conversation).toBe(0)
   })
 
   test("includes aborted assistant messages only when they have non-step-start/reasoning content", () => {
@@ -715,5 +932,69 @@ describe("session.message-v2.toModelMessage", () => {
     ]
 
     expect(MessageV2.toModelMessage(input)).toStrictEqual([])
+  })
+
+  test("keeps the compatibility wrapper equivalent to canonical projection", () => {
+    const input: MessageV2.WithParts[] = [
+      {
+        info: userInfo("m-user"),
+        parts: [
+          {
+            ...basePart("m-user", "p1"),
+            type: "text",
+            text: "hello",
+          },
+        ] as MessageV2.Part[],
+      },
+      {
+        info: assistantInfo("m-assistant", "m-user"),
+        parts: [
+          {
+            ...basePart("m-assistant", "p2"),
+            type: "text",
+            text: "world",
+          },
+        ] as MessageV2.Part[],
+      },
+    ]
+
+    expect(MessageV2.toModelMessage(input)).toStrictEqual(MessageV2.projectModelMessages(input).messages)
+  })
+})
+
+describe("session.message-v2 context usage schema", () => {
+  const contextUsage = {
+    version: 1 as const,
+    modelID: "model",
+    providerID: "provider",
+    totalInput: 15,
+    contextLimit: 100,
+    usableInputLimit: 90,
+    categories: {
+      conversation: { estimatedTokens: 4, attributedTokens: 4, items: 1 },
+      toolActivity: { estimatedTokens: 3, attributedTokens: 3, items: 1 },
+      filesReferences: { estimatedTokens: 2, attributedTokens: 2, items: 1 },
+      instructions: { estimatedTokens: 1, attributedTokens: 1, items: 1 },
+    },
+    overhead: { attributedTokens: 5 },
+    estimator: { kind: "model-tokenizer" as const, encoding: "o200k_base" },
+    reconciliation: { mode: "residual" as const, factor: 1 },
+    capturedAt: 123,
+  }
+
+  test("round-trips optional assistant context usage", () => {
+    const assistant = { ...assistantInfo("m-assistant", "m-parent"), contextUsage }
+    expect(MessageV2.Assistant.parse(assistant)).toEqual(assistant)
+  })
+
+  test("continues to parse legacy assistants without context usage", () => {
+    const assistant = assistantInfo("m-assistant", "m-parent")
+    expect(MessageV2.Assistant.parse(assistant)).not.toHaveProperty("contextUsage")
+  })
+
+  test("older assistant schemas ignore the additive field on rollback", () => {
+    const legacyAssistant = MessageV2.Assistant.omit({ contextUsage: true })
+    const parsed = legacyAssistant.parse({ ...assistantInfo("m-assistant", "m-parent"), contextUsage })
+    expect(parsed).not.toHaveProperty("contextUsage")
   })
 })

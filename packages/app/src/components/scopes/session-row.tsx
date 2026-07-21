@@ -1,8 +1,11 @@
 import { createSignal, For, Show, onCleanup } from "solid-js"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { relativeTime } from "@/utils/time"
 import type { Session } from "@ericsanchezok/synergy-sdk/client"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 
 export interface SessionRowProps {
   session: Session
@@ -48,7 +51,7 @@ function StatusDot(props: SessionRowProps) {
         <div class="size-1.5 rounded-full bg-text-interactive-base" />
       </Show>
       <Show when={!props.isWorking && !props.hasPermission && !props.hasError && !props.hasNotification && isPinned()}>
-        <Icon name="pin" size="small" class="text-icon-weak" />
+        <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak-base" />
       </Show>
     </div>
   )
@@ -60,6 +63,7 @@ function ActionMenu(props: {
   onRename: () => void
   onArchive: () => void
 }) {
+  const { i18n } = useLocale()
   const [open, setOpen] = createSignal(false)
 
   function handleItemClick(action: () => void) {
@@ -71,10 +75,10 @@ function ActionMenu(props: {
     <div class="relative" onClick={(e) => e.stopPropagation()}>
       <button
         type="button"
-        class="flex items-center justify-center size-6 rounded-md text-icon-weak hover:text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
+        class="flex items-center justify-center size-6 rounded-md text-icon-weak-base hover:text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer"
         onClick={() => setOpen(!open())}
       >
-        <Icon name="ellipsis" size="small" />
+        <Icon name={getSemanticIcon("action.more")} size="small" />
       </button>
       <Show when={open()}>
         <div
@@ -86,32 +90,32 @@ function ActionMenu(props: {
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onTogglePin)}
           >
-            <Icon name="pin" size="small" class="text-icon-weak" />
-            {props.isPinned ? "Unpin" : "Pin"}
+            <Icon name={getSemanticIcon("action.pin")} size="small" class="text-icon-weak-base" />
+            {props.isPinned ? i18n._(AP.scopesSessionUnpin.id) : i18n._(AP.scopesSessionPin.id)}
           </button>
           <button
             type="button"
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-base hover:bg-surface-raised-base-hover transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onRename)}
           >
-            <Icon name="pencil" size="small" class="text-icon-weak" />
-            Rename
+            <Icon name={getSemanticIcon("action.rename")} size="small" class="text-icon-weak-base" />
+            {i18n._(AP.scopesSessionRename.id)}
           </button>
           <button
             type="button"
             class="w-full flex items-center gap-2 px-3 py-1.5 text-12-medium text-text-diff-delete-base hover:bg-text-diff-delete-base/10 transition-colors cursor-pointer text-left"
             onClick={() => handleItemClick(props.onArchive)}
           >
-            <Icon name="archive" size="small" />
-            Archive
+            <Icon name={getSemanticIcon("action.archive")} size="small" />
+            {i18n._(AP.scopesSessionArchive.id)}
           </button>
         </div>
       </Show>
     </div>
   )
 }
-
 function ChildSessionBadge(props: { count: number; sessions: Session[]; onSelect?: (session: Session) => void }) {
+  const { i18n, fmt } = useLocale()
   const [open, setOpen] = createSignal(false)
 
   function toggle(e: MouseEvent) {
@@ -133,14 +137,14 @@ function ChildSessionBadge(props: { count: number; sessions: Session[]; onSelect
         type="button"
         class="text-10-medium text-text-weaker bg-surface-inset-base/80 hover:bg-surface-raised-base-hover hover:text-text-weak px-1.5 py-0.5 rounded-md transition-colors cursor-pointer"
         onClick={toggle}
-        title={`${props.count} subsession${props.count !== 1 ? "s" : ""}`}
+        title={i18n._(AP.scopesSessionSubsessionCount.id, { count: props.count })}
       >
         {props.count}
       </button>
       <Show when={open()}>
         <div class="absolute right-0 top-full mt-1 z-50 w-[280px] max-h-[320px] overflow-y-auto rounded-lg border border-border-base/60 bg-surface-raised-base shadow-lg py-1">
           <div class="px-3 py-1.5 text-10-medium text-text-weaker uppercase tracking-wider border-b border-border-weaker-base/40">
-            {props.count} subsession{props.count !== 1 ? "s" : ""}
+            {i18n._(AP.scopesSessionSubsessionCount.id, { count: props.count })}
           </div>
           <For each={props.sessions}>
             {(session) => (
@@ -154,10 +158,12 @@ function ChildSessionBadge(props: { count: number; sessions: Session[]; onSelect
                 }}
               >
                 <div class="flex-1 min-w-0">
-                  <div class="text-12-medium text-text-base line-clamp-1">{session.title || "Untitled"}</div>
+                  <div class="text-12-medium text-text-base line-clamp-1">
+                    {session.title || i18n._(AP.scopesSessionUntitled.id)}
+                  </div>
                 </div>
                 <span class="text-10-regular text-text-weaker shrink-0">
-                  {relativeTime(session.time.updated ?? session.time.created)}
+                  {relativeTime(fmt, session.time.updated ?? session.time.created)}
                 </span>
               </button>
             )}
@@ -167,8 +173,8 @@ function ChildSessionBadge(props: { count: number; sessions: Session[]; onSelect
     </div>
   )
 }
-
 export function SessionRow(props: SessionRowProps) {
+  const { i18n, fmt } = useLocale()
   const isPinned = () => props.session.pinned && props.session.pinned > 0
   const updatedAt = () => props.session.time.updated ?? props.session.time.created
   const lastExchangePreview = () => props.session.lastExchange?.assistant ?? props.session.lastExchange?.user
@@ -195,7 +201,7 @@ export function SessionRow(props: SessionRowProps) {
 
   function handleDragStart(e: DragEvent) {
     if (!e.dataTransfer) return
-    const title = props.session.title || "New session"
+    const title = props.session.title || i18n._(AP.scopesSessionNewSession.id)
     const payload = JSON.stringify({
       id: props.session.id,
       directory: props.session.scope.directory,
@@ -261,7 +267,7 @@ export function SessionRow(props: SessionRowProps) {
                 "text-text-base": !props.isActive,
               }}
             >
-              {props.session.title || "New session"}
+              {props.session.title || i18n._(AP.scopesSessionNewSession.id)}
             </div>
             <Show when={lastExchangePreview()}>
               <div class="text-11-regular text-text-weak line-clamp-1 mt-0.5">{lastExchangePreview()}</div>
@@ -279,7 +285,7 @@ export function SessionRow(props: SessionRowProps) {
         </Show>
 
         {/* Time */}
-        <span class="text-11-regular text-text-weak shrink-0">{relativeTime(updatedAt())}</span>
+        <span class="text-11-regular text-text-weak shrink-0">{relativeTime(fmt, updatedAt())}</span>
 
         {/* Action menu (hover-reveal) */}
         <div class="shrink-0 opacity-0 group-hover/row:opacity-100 transition-opacity">

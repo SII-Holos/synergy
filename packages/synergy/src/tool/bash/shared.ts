@@ -1,25 +1,33 @@
-import { MetaProtocolBash, MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
+import { SynergyLinkBash } from "@ericsanchezok/synergy-link-protocol"
 import type { Tool } from "../tool"
 import type { MessageV2 } from "@/session/message-v2"
+import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 
-export type BashParams = MetaProtocolBash.ExecutePayload & {
-  envID?: MetaProtocolEnv.EnvID
+export type BashParams = SynergyLinkBash.ExecutePayload & {
+  targetID?: string
+  linkID?: string
+  envID?: string
+  backgroundAfterSeconds?: number
+  timeoutSeconds?: number
 }
 
-export type BashMetadata = MetaProtocolBash.ResultMetadata
+export type BashMetadata = SynergyLinkBash.ResultMetadata
 
 export interface BashResult {
   title: string
   metadata: BashMetadata
   output: string
-  attachments?: MessageV2.FilePart[]
+  attachments?: MessageV2.AttachmentPart[]
 }
 
 export type BashContext = Tool.Context<BashMetadata>
 
-export interface BashBackend {
-  execute(params: BashParams, ctx: BashContext): Promise<BashResult>
+export interface BashSandboxPrepareInput {
+  command: string
+  extraReadRoots: string[]
 }
+
+export type BashSandboxPrepare = (input: BashSandboxPrepareInput) => Promise<SandboxExecutionWrapper>
 
 export const MAX_METADATA_LENGTH = 30_000
 

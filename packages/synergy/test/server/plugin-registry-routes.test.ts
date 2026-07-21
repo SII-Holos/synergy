@@ -6,6 +6,10 @@ import { Log } from "../../src/util/log"
 import path from "path"
 import fs from "fs"
 import { Global } from "../../src/global"
+import { PluginMarketplaceRegistry } from "../../src/plugin/marketplace-registry"
+import { Config } from "../../src/config/config"
+import { PLUGIN_MARKETPLACE_DEFAULTS } from "../../src/config/schema"
+import { Scope } from "../../src/scope"
 
 Log.init({ print: false })
 
@@ -38,18 +42,18 @@ function buildEntry(overrides: Record<string, any> = {}): Record<string, any> {
         permissionsHash: "def456",
         integrity: "sha256-xxx",
         risk: "low",
-        permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
+        permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
         publishedAt: 1700000000000,
       },
     ],
     risk: "low",
     trustTier: "declarative",
-    runtimeMode: "in-process",
+    runtimeMode: "process",
     permissionsSummary: [
       {
-        key: "filesystem:read",
+        key: "file_read",
         category: "files",
-        severity: "medium",
+        severity: "low",
         title: "Read workspace files",
         description: "Can read files and directories in your workspace.",
       },
@@ -79,13 +83,13 @@ function cleanRegistry(): void {
   } catch {}
 }
 
-async function writeOfficialRegistryCache(): Promise<void> {
-  const marketRoot = path.join(Global.Path.cache, "plugin-market")
-  const entriesRoot = path.join(marketRoot, "entries")
+async function writeOfficialRegistryCache(registryUrl = PluginMarketplaceRegistry.DEFAULT_REGISTRY_URL): Promise<void> {
+  const marketRoot = PluginMarketplaceRegistry.cachePaths(registryUrl)
+  const entriesRoot = marketRoot.entries
   fs.mkdirSync(entriesRoot, { recursive: true })
   const publishedAt = new Date("2026-06-25T00:00:00.000Z").toISOString()
   await Bun.write(
-    path.join(marketRoot, "registry.json"),
+    marketRoot.registry,
     JSON.stringify(
       {
         schemaVersion: 1,
@@ -127,7 +131,7 @@ async function writeOfficialRegistryCache(): Promise<void> {
         verified: true,
         official: true,
         keywords: ["synergy-plugin", "official"],
-        compatibility: { synergy: ">=1.0.0" },
+        compatibility: { synergy: ">=2.4.3" },
         versions: [
           {
             version: "1.0.0",
@@ -144,7 +148,7 @@ async function writeOfficialRegistryCache(): Promise<void> {
             permissionsHash: "permissions-hash",
             risk: "low",
             runtimeMode: "process",
-            permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
+            permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
             tools: ["greet"],
             uiSurfaces: ["toolRenderers"],
             publishedAt,
@@ -163,6 +167,15 @@ async function writeOfficialRegistryCache(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 describe("plugin registry routes v2", () => {
+  test("official registry cache is namespaced by registry URL", () => {
+    const first = PluginMarketplaceRegistry.cachePaths("https://registry.example/one/registry.json")
+    const second = PluginMarketplaceRegistry.cachePaths("https://registry.example/two/registry.json")
+    expect(first.registry).not.toBe(second.registry)
+    expect(first.entries).not.toBe(second.entries)
+    expect(first.artifacts).not.toBe(second.artifacts)
+    expect(first.registry).toContain(path.join("plugin-market", "registries"))
+  })
+
   test("publish creates a new entry with v2 metadata", async () => {
     await using tmp = await tmpdir({ git: true })
     cleanRegistry()
@@ -183,15 +196,15 @@ describe("plugin registry routes v2", () => {
         expect(body.id).toBe("test-plugin")
         expect(body.risk).toBe("low")
         expect(body.trustTier).toBe("declarative")
-        expect(body.runtimeMode).toBe("in-process")
+        expect(body.runtimeMode).toBe("process")
         expect(body.uiSurfaces).toEqual(["toolRenderers"])
         expect(body.tools).toEqual(["myTool"])
         expect(body.downloads).toBe(0)
         expect(body.permissionsSummary).toEqual([
           {
-            key: "filesystem:read",
+            key: "file_read",
             category: "files",
-            severity: "medium",
+            severity: "low",
             title: "Read workspace files",
             description: "Can read files and directories in your workspace.",
           },
@@ -221,6 +234,28 @@ describe("plugin registry routes v2", () => {
           body: JSON.stringify(entry),
         })
         expect(res.status).toBe(403)
+      },
+    })
+  })
+
+  test("publish preserves compatibility metadata", async () => {
+    await using tmp = await tmpdir({ git: true })
+    cleanRegistry()
+
+    const entry = buildEntry({ compatibility: { synergy: ">=2.4.3" } })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const app = Server.App()
+        const res = await app.request("/api/registry/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(entry),
+        })
+        expect(res.status).toBe(200)
+        const body = await res.json()
+        expect(body.compatibility).toEqual({ synergy: ">=2.4.3" })
       },
     })
   })
@@ -293,12 +328,12 @@ describe("plugin registry routes v2", () => {
         expect(body.id).toBe("test-plugin")
         expect(body.risk).toBe("low")
         expect(body.trustTier).toBe("declarative")
-        expect(body.runtimeMode).toBe("in-process")
+        expect(body.runtimeMode).toBe("process")
         expect(body.permissionsSummary).toEqual([
           {
-            key: "filesystem:read",
+            key: "file_read",
             category: "files",
-            severity: "medium",
+            severity: "low",
             title: "Read workspace files",
             description: "Can read files and directories in your workspace.",
           },
@@ -338,7 +373,7 @@ describe("plugin registry routes v2", () => {
         expect(summary.name).toBe("SearchablePlugin")
         expect(summary.risk).toBe("low")
         expect(summary.trustTier).toBe("declarative")
-        expect(summary.runtimeMode).toBe("in-process")
+        expect(summary.runtimeMode).toBe("process")
         expect(summary.uiSurfaces).toEqual(["toolRenderers"])
         expect(summary.tools).toEqual(["myTool"])
         expect(summary.downloads).toBe(0)
@@ -347,49 +382,111 @@ describe("plugin registry routes v2", () => {
   })
 
   test("search supports official and local source filters", async () => {
-    await using tmp = await tmpdir({ git: true })
+    const registryUrl = "https://registry.test/synergy/plugins/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
     cleanRegistry()
-    await writeOfficialRegistryCache()
-    const previous = process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
-    process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = "1"
+    await writeOfficialRegistryCache(registryUrl)
 
     const entry = buildEntry({ name: "LocalSearchablePlugin", description: "Local source plugin" })
 
     try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
       await ScopeContext.provide({
-        scope: await tmp.scope(),
+        scope: Scope.home(),
+        fn: async () => {
+          const config = await PluginMarketplaceRegistry.currentConfig()
+          expect(config.enabled).toBe(true)
+          expect(config.registryUrl).toBe(registryUrl)
+          expect(fs.existsSync(PluginMarketplaceRegistry.cachePaths(config.registryUrl).registry)).toBe(true)
+          const directOfficial = await PluginMarketplaceRegistry.searchOfficial()
+          expect(directOfficial.total).toBe(1)
+        },
+      })
+
+      const app = Server.App()
+      await app.request("/api/registry/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(entry),
+      })
+
+      const officialRes = await app.request("/api/registry/search?source=official")
+      expect(officialRes.status).toBe(200)
+      const official = await officialRes.json()
+      expect(official.total).toBe(1)
+      expect(official.plugins[0].id).toBe("official-test-plugin")
+      expect(official.plugins[0].source).toBe("official")
+
+      const localRes = await app.request("/api/registry/search?source=local")
+      expect(localRes.status).toBe(200)
+      const local = await localRes.json()
+      expect(local.total).toBe(1)
+      expect(local.plugins[0].id).toBe("test-plugin")
+      expect(local.plugins[0].source).toBe("local")
+
+      const aggregateRes = await app.request("/api/registry/search")
+      expect(aggregateRes.status).toBe(200)
+      const aggregate = await aggregateRes.json()
+      expect(aggregate.total).toBe(2)
+      expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
+    } finally {
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
+    }
+  })
+
+  test("official detail and versions accept compatibility metadata", async () => {
+    const registryUrl = "https://registry.test/synergy/plugins/registry.json"
+    const previousDomain = await Config.domainGet("plugins")
+    cleanRegistry()
+    await writeOfficialRegistryCache(registryUrl)
+
+    try {
+      await Config.domainUpdate(
+        "plugins",
+        {
+          ...previousDomain,
+          pluginMarketplace: {
+            ...PLUGIN_MARKETPLACE_DEFAULTS,
+            enabled: true,
+            registryUrl,
+          },
+        },
+        { mode: "replace-domain" },
+      )
+      await Config.reload("global")
+
+      await ScopeContext.provide({
+        scope: Scope.home(),
         fn: async () => {
           const app = Server.App()
-          await app.request("/api/registry/publish", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(entry),
-          })
+          const detailRes = await app.request("/api/registry/official-test-plugin?source=official")
+          expect(detailRes.status).toBe(200)
+          const detail = await detailRes.json()
+          expect(detail.compatibility).toEqual({ synergy: ">=2.4.3" })
 
-          const officialRes = await app.request("/api/registry/search?source=official")
-          expect(officialRes.status).toBe(200)
-          const official = await officialRes.json()
-          expect(official.total).toBe(1)
-          expect(official.plugins[0].id).toBe("official-test-plugin")
-          expect(official.plugins[0].source).toBe("official")
-
-          const localRes = await app.request("/api/registry/search?source=local")
-          expect(localRes.status).toBe(200)
-          const local = await localRes.json()
-          expect(local.total).toBe(1)
-          expect(local.plugins[0].id).toBe("test-plugin")
-          expect(local.plugins[0].source).toBe("local")
-
-          const aggregateRes = await app.request("/api/registry/search")
-          expect(aggregateRes.status).toBe(200)
-          const aggregate = await aggregateRes.json()
-          expect(aggregate.total).toBe(2)
-          expect(new Set(aggregate.plugins.map((plugin: any) => plugin.source))).toEqual(new Set(["official", "local"]))
+          const versionsRes = await app.request("/api/registry/official-test-plugin/versions?source=official")
+          expect(versionsRes.status).toBe(200)
+          const versions = await versionsRes.json()
+          expect(versions[0].version).toBe("1.0.0")
         },
       })
     } finally {
-      if (previous === undefined) delete process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"]
-      else process.env["SYNERGY_ENABLE_REMOTE_PLUGIN_MARKET"] = previous
+      await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+      await Config.reload("global")
     }
   })
 
@@ -441,7 +538,7 @@ describe("plugin registry routes v2", () => {
           permissionsHash: "def456",
           integrity: "sha256-xxx",
           risk: "low",
-          permissionsSummary: [{ key: "filesystem:read", description: "Read workspace files", risk: "medium" }],
+          permissionsSummary: [{ key: "file_read", description: "Read workspace files", risk: "low" }],
           publishedAt: 1700000000000,
           downloadUrl,
         },

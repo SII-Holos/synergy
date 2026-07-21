@@ -2,16 +2,18 @@ import { Accordion } from "./accordion"
 import { Button } from "./button"
 import { RadioGroup } from "./radio-group"
 import { DiffChanges } from "./diff-changes"
+import { DiffPreview } from "./tool/diff-preview"
 import { FileIcon } from "./file-icon"
 import { Icon } from "./icon"
 import { StickyAccordionHeader } from "./sticky-accordion-header"
-import { useDiffComponent } from "../context/diff"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { For, Match, Show, Switch, type JSX } from "solid-js"
 import { createStore } from "solid-js/store"
 import { type FileDiff } from "@ericsanchezok/synergy-sdk"
 import { PreloadMultiFileDiffResult } from "@pierre/diffs/ssr"
-import { Dynamic } from "solid-js/web"
+import { getSemanticIcon } from "./semantic-icon"
+import { useLingui } from "@lingui/solid"
+import { SESSION_REVIEW_DESC } from "./tool-title-descriptors"
 
 export type SessionReviewDiffStyle = "unified" | "split"
 
@@ -29,10 +31,11 @@ export interface SessionReviewProps {
   actions?: JSX.Element
   diffs: (FileDiff & { preloaded?: PreloadMultiFileDiffResult<any> })[]
   onViewFile?: (file: string) => void
+  selectedFile?: string
 }
 
 export const SessionReview = (props: SessionReviewProps) => {
-  const diffComponent = useDiffComponent()
+  const { _ } = useLingui()
   const [store, setStore] = createStore({
     open: props.diffs.length > 10 ? [] : props.diffs.map((d) => d.file),
   })
@@ -68,21 +71,21 @@ export const SessionReview = (props: SessionReviewProps) => {
           [props.classes?.header ?? ""]: !!props.classes?.header,
         }}
       >
-        <div data-slot="session-review-title">Session changes</div>
+        <div data-slot="session-review-title">{_(SESSION_REVIEW_DESC.title)}</div>
         <div data-slot="session-review-actions">
           <Show when={props.onDiffStyleChange}>
             <RadioGroup
               options={["unified", "split"] as const}
               current={diffStyle()}
               value={(style) => style}
-              label={(style) => (style === "unified" ? "Unified" : "Split")}
+              label={(style) => (style === "unified" ? _(SESSION_REVIEW_DESC.unified) : _(SESSION_REVIEW_DESC.split))}
               onSelect={(style) => style && props.onDiffStyleChange?.(style)}
             />
           </Show>
           <Button size="normal" icon="grip-vertical" onClick={handleExpandOrCollapseAll}>
             <Switch>
-              <Match when={open().length > 0}>Collapse all</Match>
-              <Match when={true}>Expand all</Match>
+              <Match when={open().length > 0}>{_(SESSION_REVIEW_DESC.collapseAll)}</Match>
+              <Match when={true}>{_(SESSION_REVIEW_DESC.expandAll)}</Match>
             </Switch>
           </Button>
           {props.actions}
@@ -97,7 +100,12 @@ export const SessionReview = (props: SessionReviewProps) => {
         <Accordion multiple value={open()} onChange={handleChange}>
           <For each={props.diffs}>
             {(diff) => (
-              <Accordion.Item value={diff.file} data-slot="session-review-accordion-item">
+              <Accordion.Item
+                value={diff.file}
+                data-slot="session-review-accordion-item"
+                data-file={diff.file}
+                data-selected={props.selectedFile === diff.file ? "true" : undefined}
+              >
                 <StickyAccordionHeader>
                   <Accordion.Trigger>
                     <div data-slot="session-review-trigger-content">
@@ -117,7 +125,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                                 props.onViewFile?.(diff.file)
                               }}
                             >
-                              <Icon name="eye" size="small" />
+                              <Icon name={getSemanticIcon("action.view")} size="small" />
                             </button>
                           </Show>
                         </div>
@@ -130,19 +138,7 @@ export const SessionReview = (props: SessionReviewProps) => {
                   </Accordion.Trigger>
                 </StickyAccordionHeader>
                 <Accordion.Content data-slot="session-review-accordion-content">
-                  <Dynamic
-                    component={diffComponent}
-                    preloadedDiff={diff.preloaded}
-                    diffStyle={diffStyle()}
-                    before={{
-                      name: diff.file!,
-                      contents: typeof diff.before === "string" ? diff.before : "",
-                    }}
-                    after={{
-                      name: diff.file!,
-                      contents: typeof diff.after === "string" ? diff.after : "",
-                    }}
-                  />
+                  <DiffPreview diff={diff} variant="review" />
                 </Accordion.Content>
               </Accordion.Item>
             )}

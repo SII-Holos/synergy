@@ -5,7 +5,18 @@ import { retry } from "@ericsanchezok/synergy-util/retry"
 import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSync } from "./global-sync"
 import { useSDK } from "./sdk"
-import type { Message, Part, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy-sdk/client"
+import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
+import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
+import { requestErrorMessage } from "@/utils/error"
+import { planSessionSyncReload } from "./session-sync-plan"
+import type { MessageWindowState } from "./session-message-window"
+import { planMessagePageApply } from "./session-message-page"
+import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
+import type { SyncResourceRequest } from "./sync-resource-freshness"
+
+type RefreshOptions = { force?: boolean }
+type SessionSyncOptions = { refreshVolatile?: boolean }
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -15,16 +26,21 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const [store, setStore] = globalSync.ensureScopeState(sdk.scopeKey)
     const absolute = (path: string) => (store.path.directory + "/" + path).replace("//", "/")
     const chunk = 200
-    const maxMessages = 500
     const inflight = new Map<string, Promise<void>>()
     const inflightDiff = new Map<string, Promise<void>>()
+    const inflightInbox = new Map<string, Promise<void>>()
     const inflightTodo = new Map<string, Promise<void>>()
     const inflightDag = new Map<string, Promise<void>>()
     const [meta, setMeta] = createStore({
-      limit: {} as Record<string, number>,
-      complete: {} as Record<string, boolean>,
-      loading: {} as Record<string, boolean>,
+      messageLoad: {} as Record<string, SessionMessageLoadState>,
     })
+    // Track the reconnectVersion at the time of each session's last successful
+    // message/part snapshot load. After reconnect, force both session metadata
+    // and durable message/part reloads: tool parts publish as unsequenced
+    // streaming events, so event replay alone cannot restore a missed tool card
+    // (issue #509). Session metadata still follows the same restart pattern as
+    // blueprint loop refetch (issue #331).
+    const sessionReconnectVersions = new Map<string, number>()
 
     const getSession = (sessionID: string) => {
       const match = Binary.search(store.session, sessionID, (s) => s.id)
@@ -37,105 +53,271 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     const reconcileCortexFromSession = (session: Session) => {
       const cortex = session.cortex
       if (!cortex || !terminalCortexStatuses.has(cortex.status)) return
+      const idx = store.cortex.findIndex((task) => task.sessionID === session.id)
+      if (idx === -1) return
       setStore(
         "cortex",
-        produce((draft) => {
-          const idx = draft.findIndex((task) => task.sessionID === session.id)
-          if (idx === -1) return
-          draft[idx] = {
-            ...draft[idx],
-            status: cortex.status,
-            completedAt: cortex.completedAt ?? draft[idx].completedAt,
-            result: cortex.result ?? draft[idx].result,
-            error: cortex.error ?? draft[idx].error,
-          }
+        idx,
+        reconcile({
+          ...store.cortex[idx],
+          status: cortex.status,
+          completedAt: cortex.completedAt ?? store.cortex[idx].completedAt,
+          output: cortex.output ?? store.cortex[idx].output,
+          error: cortex.error ?? store.cortex[idx].error,
         }),
       )
     }
 
-    const limitFor = (count: number) => {
-      if (count <= chunk) return chunk
-      return Math.ceil(count / chunk) * chunk
+    const upsertSession = (session: Session) => {
+      reconcileCortexFromSession(session)
+      const match = Binary.search(store.session, session.id, (s) => s.id)
+      if (match.found) {
+        // reconcile so a re-fetch of an already-present session preserves object
+        // identity and doesn't invalidate downstream memos (issue #319).
+        setStore("session", match.index, reconcile(session))
+        return
+      }
+      setStore(
+        "session",
+        produce((draft) => {
+          draft.splice(match.index, 0, session)
+        }),
+      )
     }
 
-    const hydrateMessages = (sessionID: string) => {
-      if (meta.limit[sessionID] !== undefined) return
+    const loadSession = async (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && getSession(sessionID) !== undefined) return
 
-      const messages = store.message[sessionID]
-      if (!messages) return
-
-      const limit = limitFor(messages.length)
-      setMeta("limit", sessionID, limit)
-      setMeta("complete", sessionID, messages.length < limit)
+      await retry(() => sdk.client.session.get({ sessionID })).then((session) => {
+        if (!session.data) return
+        upsertSession(session.data)
+      })
     }
 
-    const loadMessages = async (sessionID: string, limit: number) => {
-      if (meta.loading[sessionID]) return
+    const markSessionSynced = (sessionID: string) => {
+      sessionReconnectVersions.set(sessionID, globalSync.reconnectVersion())
+    }
 
-      setMeta("loading", sessionID, true)
-      await retry(() => sdk.client.session.messages({ sessionID, limit }))
-        .then((messages) => {
-          const items = (messages.data ?? []).filter((x) => !!x?.info?.id)
-          const all = items
-            .map((x) => x.info)
-            .filter((m) => !!m?.id)
-            .slice()
-            .sort((a, b) => a.id.localeCompare(b.id))
-
-          const keep = all.length > maxMessages ? all.slice(-maxMessages) : all
-
+    type SessionMessagePageResponse = Awaited<ReturnType<(typeof sdk.client.session)["messagePage"]>>
+    type SessionMessagePageLoadResult = {
+      response: SessionMessagePageResponse
+      request?: SyncResourceRequest
+      contextProjectionRevision?: number
+      partSnapshotRequest: ReturnType<typeof globalSync.capturePartSnapshotRequest>
+    }
+    type MessagePageLoadInput = {
+      mode: "latest" | "history"
+      cursor?: string
+      limit: number
+    }
+    const messageLoader = createSessionMessageLoader<SessionMessagePageLoadResult, MessagePageLoadInput>({
+      request: async (sessionID, signal, input) => {
+        const request =
+          input?.mode === "latest" ? globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "message") : undefined
+        const contextProjectionRevision =
+          input?.mode === "latest" ? globalSync.beginContextProjection(sdk.scopeKey, sessionID) : undefined
+        const partSnapshotRequest = globalSync.capturePartSnapshotRequest(sdk.scopeKey, sessionID)
+        const response = await retry(() =>
+          sdk.client.session.messagePage(
+            {
+              sessionID,
+              cursor: input?.cursor,
+              limit: input?.limit ?? chunk,
+            },
+            { signal, throwOnError: true },
+          ),
+        )
+        return { response, request, contextProjectionRevision, partSnapshotRequest }
+      },
+      apply: (sessionID, result, input) => {
+        const page = result.response.data
+        if (!page) return
+        const currentMetadata = store.messageWindow[sessionID]
+        const current: MessageWindowState<Message> = {
+          messages: store.message[sessionID] ?? [],
+          mode: currentMetadata?.mode ?? "latest",
+          pendingLatest: currentMetadata?.pendingLatest ?? false,
+          pendingLatestIds: currentMetadata?.pendingLatestIds ?? [],
+        }
+        const plan = planMessagePageApply({ page, current, mode: input?.mode })
+        const partActions = new Map(
+          Object.keys(plan.parts).map((messageID) => [
+            messageID,
+            globalSync.partSnapshotAction(sdk.scopeKey, sessionID, messageID, result.partSnapshotRequest),
+          ]),
+        )
+        if ([...partActions.values()].some((action) => action === "retry")) return "superseded"
+        const apply = () => {
           batch(() => {
-            setStore("message", sessionID, reconcile(keep, { key: "id" }))
-
-            const keepIds = new Set(keep.map((m) => m.id))
-            for (const item of items) {
-              if (!keepIds.has(item.info.id)) continue
-              setStore(
-                "part",
-                item.info.id,
-                reconcile(
-                  item.parts
-                    .filter((p) => !!p?.id)
-                    .slice()
-                    .sort((a, b) => a.id.localeCompare(b.id)),
-                  { key: "id" },
-                ),
+            setStore(
+              produce((draft) => {
+                for (const messageID of plan.droppedIds) delete draft.part[messageID]
+              }),
+            )
+            setStore("message", sessionID, reconcile(plan.window.messages, { key: "id" }))
+            setStore("messageWindow", sessionID, reconcile(plan.metadata))
+            if (plan.latestContextMessage !== undefined) {
+              globalSync.setLatestContextMessage(
+                sdk.scopeKey,
+                sessionID,
+                plan.latestContextMessage,
+                result.contextProjectionRevision,
               )
             }
+            for (const [messageID, parts] of Object.entries(plan.parts)) {
+              if (partActions.get(messageID) === "preserve") continue
+              setStore("part", messageID, reconcile(parts, { key: "id" }))
+            }
+          })
+          globalSync.touchMessageBucket(sdk.scopeKey, sessionID)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        }
 
-            setMeta("limit", sessionID, limit)
-            setMeta("complete", sessionID, all.length < limit)
+        if (input?.mode === "latest" && result.request) {
+          const accepted = globalSync.applyResourceResponse(
+            sdk.scopeKey,
+            sessionID,
+            "message",
+            result.request,
+            result.response.response?.headers,
+            apply,
+          )
+          return accepted ? "applied" : "superseded"
+        }
+        // A history prepend changes the window outside latest-page ordering;
+        // invalidate any concurrent latest request before applying it.
+        globalSync.invalidateResource(sdk.scopeKey, sessionID, "message")
+        apply()
+        return "applied"
+      },
+      errorMessage: (error) => requestErrorMessage(error, "Couldn’t load conversation"),
+      onState: (sessionID, state) => setMeta("messageLoad", sessionID, state),
+    })
+
+    const loadMessagePage = (sessionID: string, input: MessagePageLoadInput, options?: { force?: boolean }) =>
+      messageLoader
+        .load(sessionID, {
+          force: options?.force,
+          hasSnapshot: store.message[sessionID] !== undefined,
+          input,
+        })
+        .then(() => {
+          markSessionSynced(sessionID)
+        })
+
+    const loadLatestMessages = (sessionID: string, options?: { force?: boolean }) =>
+      loadMessagePage(sessionID, { mode: "latest", limit: chunk }, options)
+
+    const loadInbox = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.inbox[sessionID] !== undefined) return
+
+      const pending = inflightInbox.get(sessionID)
+      if (pending) return pending
+
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "inbox")
+      const promise = retry(() => sdk.client.session.inbox({ sessionID }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "inbox", request, result.response?.headers, () => {
+            setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
           })
         })
-        .finally(() => {
-          setMeta("loading", sessionID, false)
-        })
         .catch(() => {})
+        .finally(() => {
+          inflightInbox.delete(sessionID)
+        })
+
+      inflightInbox.set(sessionID, promise)
+      return promise
     }
 
-    const evictSession = (sessionID: string) => {
-      setStore(
-        produce((draft) => {
-          delete draft.session_diff[sessionID]
-          delete draft.todo[sessionID]
-          delete draft.dag[sessionID]
-          if (!draft.permission[sessionID]?.length) delete draft.permission[sessionID]
-          delete draft.question[sessionID]
-          delete draft.inbox[sessionID]
+    const loadTodo = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.todo[sessionID] !== undefined) return
+
+      const pending = inflightTodo.get(sessionID)
+      if (pending) return pending
+
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "todo")
+      const promise = retry(() => sdk.client.session.todo({ sessionID }))
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "todo", request, result.response?.headers, () => {
+            setStore("todo", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
+        })
+        .catch(() => {})
+        .finally(() => {
+          inflightTodo.delete(sessionID)
+        })
+
+      inflightTodo.set(sessionID, promise)
+      return promise
+    }
+
+    const loadDag = (sessionID: string, options?: RefreshOptions) => {
+      if (!options?.force && store.dag[sessionID] !== undefined) return
+
+      const pending = inflightDag.get(sessionID)
+      if (pending) return pending
+
+      const request = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
+      const promise = retry(() =>
+        sdk.client.session.dag({
+          sessionID,
+          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
         }),
       )
-      setMeta(
-        produce((draft) => {
-          delete draft.limit[sessionID]
-          delete draft.complete[sessionID]
-          delete draft.loading[sessionID]
+        .then((result) => {
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "dag", request, result.response?.headers, () => {
+            setStore("dag", sessionID, reconcile(result.data ?? [], { key: "id" }))
+          })
+        })
+        .catch(() => {})
+        .finally(() => {
+          inflightDag.delete(sessionID)
+        })
+
+      inflightDag.set(sessionID, promise)
+      return promise
+    }
+
+    const refreshVolatile = async (sessionID: string) => {
+      const inboxRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "inbox")
+      const todoRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "todo")
+      const dagRequest = globalSync.captureResourceRequest(sdk.scopeKey, sessionID, "dag")
+      await retry(() =>
+        sdk.client.session.volatileBatch({
+          ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
+          sessionVolatileBatchInput: { sessionIDs: [sessionID] },
         }),
       )
+        .then((result) => {
+          const state = result.data?.sessions[sessionID]
+          if (!state) return
+          globalSync.applyResourceResponse(
+            sdk.scopeKey,
+            sessionID,
+            "inbox",
+            inboxRequest,
+            result.response?.headers,
+            () => setStore("inbox", sessionID, reconcile(state.inbox, { key: "id" })),
+          )
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "todo", todoRequest, result.response?.headers, () =>
+            setStore("todo", sessionID, reconcile(state.todo, { key: "id" })),
+          )
+          globalSync.applyResourceResponse(sdk.scopeKey, sessionID, "dag", dagRequest, result.response?.headers, () =>
+            setStore("dag", sessionID, reconcile(state.dag, { key: "id" })),
+          )
+        })
+        .catch(() => {})
     }
 
     return {
       data: store,
       set: setStore,
+      // Protect a session's message/part buckets from LRU eviction while it is
+      // the actively-viewed session (pass undefined to clear).
+      markActiveSession(sessionID: string | undefined) {
+        globalSync.markActiveSession(sdk.scopeKey, sessionID)
+      },
       get status() {
         return store.status
       },
@@ -147,41 +329,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
         if (match.found) return globalSync.data.scope[match.index]
         return undefined
       },
-      evictSession,
+      planBlueprintOffer: {
+        dismiss(sessionID: string, key: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "dismissed", key })
+        },
+        mute(sessionID: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "muted" })
+        },
+        equip(sessionID: string, key: string) {
+          updatePlanBlueprintOfferState(store, setStore, sessionID, { type: "equipped", key })
+        },
+        refresh(sessionID: string) {
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        },
+      },
       session: {
         get: getSession,
-        addOptimisticMessage(input: {
-          sessionID: string
-          messageID: string
-          parts: Part[]
-          agent: string
-          model: { providerID: string; modelID: string }
-        }) {
-          const message: Message = {
-            id: input.messageID,
-            sessionID: input.sessionID,
-            role: "user",
-            time: { created: Date.now() },
-            agent: input.agent,
-            model: input.model,
-          }
-          setStore(
-            produce((draft) => {
-              const messages = draft.message[input.sessionID]
-              if (!messages) {
-                draft.message[input.sessionID] = [message]
-              } else {
-                const result = Binary.search(messages, input.messageID, (m) => m.id)
-                messages.splice(result.index, 0, message)
-              }
-              draft.part[input.messageID] = input.parts
-                .filter((p) => !!p?.id)
-                .slice()
-                .sort((a, b) => a.id.localeCompare(b.id))
-            }),
-          )
+        latestContextMessage(sessionID: string) {
+          return store.latestContextMessage[sessionID]
         },
-        async sync(sessionID: string) {
+        loadState(sessionID: string): SessionMessageLoadState {
+          const current = meta.messageLoad[sessionID]
+          if (current) return current
+          if (store.message[sessionID] !== undefined) {
+            return { phase: "ready", generation: 0, hasSnapshot: true }
+          }
+          return { phase: "idle", generation: 0, hasSnapshot: false }
+        },
+        async sync(sessionID: string, options?: SessionSyncOptions) {
           const syncPermissions = () =>
             retry(() => sdk.client.permission.list())
               .then((res) => {
@@ -192,55 +367,64 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
                 setStore("permission", sessionID, reconcile(entries, { key: "id" }))
               })
               .catch(() => {})
+          // Force session/message reloads after reconnect or backend restart.
+          // Session metadata alone is not enough: tool parts publish as
+          // unsequenced streaming events, so reconnect recovery must re-fetch
+          // durable message/part snapshots too (issue #509 / #331).
+          const currentReconnectVersion = globalSync.reconnectVersion()
+          const session = getSession(sessionID)
+          const plan = planSessionSyncReload({
+            hasSessionRecord: session !== undefined,
+            hasMessages: store.message[sessionID] !== undefined && store.messageWindow[sessionID] !== undefined,
+            reconnectVersion: currentReconnectVersion,
+            lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
+            canUnrollback: session?.history?.rollback?.canUnrollback === true,
+          })
+          const pending = plan.ready ? undefined : inflight.get(sessionID)
+          const baseReq =
+            pending ??
+            (plan.ready
+              ? Promise.resolve()
+              : (() => {
+                  const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
+                  const messagesReq = plan.forceMessages
+                    ? loadLatestMessages(sessionID, { force: true })
+                    : Promise.resolve()
+                  const promise = Promise.all([sessionReq, messagesReq])
+                    .then(() => {
+                      // Session-only reloads (no message fetch) still advance the
+                      // reconnect watermark so later sync() calls can short-circuit.
+                      if (!plan.forceMessages) markSessionSynced(sessionID)
+                    })
+                    .finally(() => {
+                      inflight.delete(sessionID)
+                    })
+                  inflight.set(sessionID, promise)
+                  return promise
+                })())
 
-          const hasSession = getSession(sessionID) !== undefined
-          hydrateMessages(sessionID)
+          const requests = [baseReq, syncPermissions()]
+          if (options?.refreshVolatile) {
+            requests.push(refreshVolatile(sessionID))
+          } else {
+            const inboxReq = loadInbox(sessionID)
+            if (inboxReq) requests.push(inboxReq)
+          }
 
-          const hasMessages = store.message[sessionID] !== undefined
-          const hasInbox = store.inbox[sessionID] !== undefined
-          if (hasSession && hasMessages && hasInbox) return syncPermissions()
-
-          const pending = inflight.get(sessionID)
-          if (pending) return pending
-
-          const limit = meta.limit[sessionID] ?? chunk
-
-          const sessionReq = hasSession
-            ? Promise.resolve()
-            : retry(() => sdk.client.session.get({ sessionID })).then((session) => {
-                if (!session.data) return
-                reconcileCortexFromSession(session.data)
-                setStore(
-                  "session",
-                  produce((draft) => {
-                    const match = Binary.search(draft, sessionID, (s) => s.id)
-                    if (match.found) {
-                      draft[match.index] = session.data
-                      return
-                    }
-                    draft.splice(match.index, 0, session.data)
-                  }),
-                )
-              })
-
-          const messagesReq = hasMessages ? Promise.resolve() : loadMessages(sessionID, limit)
-
-          const permissionReq = syncPermissions()
-          const inboxReq = hasInbox
-            ? Promise.resolve()
-            : retry(() => sdk.client.session.inbox({ sessionID }))
-                .then((result) => {
-                  setStore("inbox", sessionID, reconcile(result.data ?? [], { key: "id" }))
-                })
-                .catch(() => {})
-
-          const promise = Promise.all([sessionReq, messagesReq, permissionReq, inboxReq])
-            .then(() => {})
-            .finally(() => {
-              inflight.delete(sessionID)
-            })
-          inflight.set(sessionID, promise)
-          return promise
+          await Promise.all(requests)
+          refreshPlanBlueprintOfferFromLoadedParts(store, setStore, sessionID)
+        },
+        // Force a fresh re-fetch of a session's messages and volatile state,
+        // bypassing the "already loaded" short-circuit in sync(). Used by the
+        // empty-state Refresh button to recover if the initial load missed
+        // messages or session metadata such as derived rollback state (issue
+        // #328 / #316).
+        async refresh(sessionID: string) {
+          await Promise.all([
+            loadSession(sessionID, { force: true }).catch(() => {}),
+            loadLatestMessages(sessionID, { force: true }),
+            refreshVolatile(sessionID),
+          ])
         },
         async diff(sessionID: string) {
           if (store.session_diff[sessionID] !== undefined) return
@@ -259,63 +443,40 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           inflightDiff.set(sessionID, promise)
           return promise
         },
-        async todo(sessionID: string) {
-          if (store.todo[sessionID] !== undefined) return
-
-          const pending = inflightTodo.get(sessionID)
-          if (pending) return pending
-
-          const promise = retry(() => sdk.client.session.todo({ sessionID }))
-            .then((todo) => {
-              setStore("todo", sessionID, reconcile(todo.data ?? [], { key: "id" }))
-            })
-            .finally(() => {
-              inflightTodo.delete(sessionID)
-            })
-
-          inflightTodo.set(sessionID, promise)
-          return promise
-        },
-        async dag(sessionID: string) {
-          if (store.dag[sessionID] !== undefined) return
-
-          const pending = inflightDag.get(sessionID)
-          if (pending) return pending
-
-          const promise = retry(() =>
-            sdk.client.session
-              .dag({
-                sessionID,
-                ...(sdk.isHome ? { scopeID: sdk.scopeID } : { directory: sdk.directory }),
-              })
-              .then((r) => r.data as any),
-          )
-            .then((nodes) => {
-              setStore("dag", sessionID, reconcile(nodes ?? [], { key: "id" }))
-            })
-            .finally(() => {
-              inflightDag.delete(sessionID)
-            })
-
-          inflightDag.set(sessionID, promise)
-          return promise
-        },
+        inbox: loadInbox,
+        todo: loadTodo,
+        dag: loadDag,
+        refreshVolatile,
         history: {
           more(sessionID: string) {
-            if (store.message[sessionID] === undefined) return false
-            if (meta.limit[sessionID] === undefined) return false
-            if (meta.complete[sessionID]) return false
-            return true
+            return store.messageWindow[sessionID]?.hasMore ?? false
           },
           loading(sessionID: string) {
-            return meta.loading[sessionID] ?? false
+            const phase = meta.messageLoad[sessionID]?.phase
+            return phase === "loading" || phase === "refreshing"
+          },
+          mode(sessionID: string) {
+            return store.messageWindow[sessionID]?.mode ?? "latest"
+          },
+          pendingLatest(sessionID: string) {
+            return store.messageWindow[sessionID]?.pendingLatest ?? false
           },
           async loadMore(sessionID: string, count = chunk) {
-            if (meta.loading[sessionID]) return
-            if (meta.complete[sessionID]) return
-
-            const current = meta.limit[sessionID] ?? chunk
-            await loadMessages(sessionID, current + count)
+            if (this.loading(sessionID)) return
+            const metadata = store.messageWindow[sessionID]
+            if (!metadata?.hasMore || !metadata.nextCursor) return
+            return loadOlderOrRecoverLatest({
+              loadOlder: () =>
+                loadMessagePage(sessionID, {
+                  mode: "history",
+                  cursor: metadata.nextCursor!,
+                  limit: count,
+                }),
+              loadLatest: () => loadLatestMessages(sessionID, { force: true }),
+            })
+          },
+          async returnLatest(sessionID: string) {
+            await loadLatestMessages(sessionID, { force: true })
           },
         },
       },
@@ -326,6 +487,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     }
 
     onCleanup(() => {
+      messageLoader.dispose()
       globalSync.releaseScopeState(sdk.scopeKey)
     })
   },

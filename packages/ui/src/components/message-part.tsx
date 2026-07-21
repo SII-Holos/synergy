@@ -15,7 +15,7 @@ import { Dynamic } from "solid-js/web"
 import { createStore, reconcile } from "solid-js/store"
 import {
   AssistantMessage,
-  FilePart,
+  AttachmentPart,
   Message as MessageType,
   Part as PartType,
   ReasoningPart,
@@ -34,21 +34,33 @@ import { useCodeComponent } from "../context/code"
 import { BasicTool } from "./basic-tool"
 import { SmartTool } from "./basic-tool"
 import { Card } from "./card"
+import { createCopyController } from "./clipboard"
 import { Icon } from "./icon"
 import { Tooltip } from "./tooltip"
 import { Checkbox } from "./checkbox"
 import { DagGraph } from "./dag-graph"
 import { DiffChanges } from "./diff-changes"
 import { Markdown } from "./markdown"
-import { ArtifactGallery, type ArtifactFile } from "./attachment-card"
+import { AttachmentGallery, type AttachmentFile } from "./attachment-card"
 import { ErrorCard } from "./error-card"
 import { getDirectory as _getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
 import { checksum } from "@ericsanchezok/synergy-util/encode"
 import { parsePartialJson } from "@ericsanchezok/synergy-util/json"
-import { createAutoScroll, createTypewriter, createAnimatedNumber } from "../hooks"
+import { createAutoScroll, createAnimatedNumber } from "../hooks"
 import { getApprovalAudit } from "../utils/approval-audit"
 import { getSemanticIcon } from "./semantic-icon"
-import { shouldHideToolPart } from "./tool-result-presentation"
+import { isToolCardHidden } from "./tool-result-presentation"
+import { hasVisibleUserMessageContent, shouldCollapseUserMessage, visibleUserMessageText } from "./user-message-utils"
+import { CompactionCard } from "./compaction-card"
+import { getAnysearchToolInfo, isAnysearchToolName } from "./tool/anysearch-info"
+import { getTaskToolInfo } from "./tool/task-info"
+import type { MessageDescriptor } from "@lingui/core"
+import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
+import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
+import { useLingui } from "@lingui/solid"
+import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
+
+export type UserMessageVariant = "default" | "turn-bubble"
 
 interface Diagnostic {
   range: {
@@ -69,13 +81,14 @@ export function getDiagnostics(
 }
 
 export function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.Element {
+  const { _ } = useLingui()
   return (
     <Show when={props.diagnostics.length > 0}>
       <div data-component="diagnostics">
         <For each={props.diagnostics}>
           {(diagnostic) => (
             <div data-slot="diagnostic">
-              <span data-slot="diagnostic-label">Error</span>
+              <span data-slot="diagnostic-label">{_(MESSAGE_PART_DESC.diagnosticError)}</span>
               <span data-slot="diagnostic-location">
                 [{diagnostic.range.start.line + 1}:{diagnostic.range.start.character + 1}]
               </span>
@@ -91,6 +104,7 @@ export function DiagnosticsDisplay(props: { diagnostics: Diagnostic[] }): JSX.El
 export interface MessageProps {
   message: MessageType
   parts: PartType[]
+  userVariant?: UserMessageVariant
 }
 
 export interface MessagePartProps {
@@ -152,21 +166,6 @@ function relativizeProjectPaths(text: string, directory?: string) {
   return text.split(directory).join("")
 }
 
-function isRenderableTextPartCompleted(
-  messageParts: PartType[] | undefined,
-  message: AssistantMessage,
-  part: TextPart | ReasoningPart,
-  sessionStatus: { type: string } | undefined,
-) {
-  if (part.time?.end) return true
-  if (message.time.completed) return true
-  if (sessionStatus?.type !== "busy") return true
-  if (!messageParts?.length) return false
-
-  const index = messageParts.findIndex((item) => item?.id === part.id)
-  return index >= 0 && index < messageParts.length - 1
-}
-
 export function getDirectory(path: string | undefined) {
   const data = useData()
   return relativizeProjectPaths(_getDirectory(path), data.directory)
@@ -192,7 +191,7 @@ import type { IconName } from "./icon"
 
 export type ToolInfo = {
   icon: IconName
-  title: string
+  title: string | MessageDescriptor
   subtitle?: string
 }
 
@@ -223,32 +222,29 @@ function isBlueprintToolKind(input: any = {}, metadata: any = {}) {
   return Array.isArray(kinds) && kinds.length > 0 && kinds.every((kind) => kind === "blueprint")
 }
 
-const BLUEPRINT_ICON = getSemanticIcon("orchestration.blueprint")
+const BLUEPRINT_ICON = getSemanticIcon("blueprint.main")
 
-const browserToolLabels: Record<string, { icon: IconName; title: string }> = {
-  browser_navigate: { icon: "globe", title: "Navigate" },
-  browser_snapshot: { icon: "binoculars", title: "Snapshot" },
-  browser_screenshot: { icon: "image", title: "Screenshot" },
-  browser_click: { icon: "mouse-pointer-2", title: "Click" },
-  browser_type: { icon: "text-select", title: "Type" },
-  browser_scroll: { icon: "arrow-down", title: "Scroll" },
-  browser_wait: { icon: "hourglass", title: "Wait" },
-  browser_inspect: { icon: "scan-eye", title: "Inspect" },
-  browser_read: { icon: "glasses", title: "Read" },
-  browser_console: { icon: "file-terminal", title: "Console" },
-  browser_network: { icon: "cable", title: "Network" },
-  browser_download: { icon: "download", title: "Download" },
-  browser_downloads: { icon: "download", title: "Downloads" },
-  browser_tab: { icon: "panel-right", title: "Tab" },
-  browser_annotate: { icon: "square-pen", title: "Annotate" },
-  browser_action: { icon: "mouse-pointer-2", title: "Action" },
-  browser_clipboard: { icon: "copy", title: "Clipboard" },
-  browser_eval: { icon: "code", title: "Eval" },
-  browser_list: { icon: "list", title: "Browser Sessions" },
-  browser_assets: { icon: "package", title: "Assets" },
-  browser_view: { icon: "panel-right", title: "Browser View" },
-  browser_navigation: { icon: "repeat", title: "Navigation" },
-  browser_viewport: { icon: "maximize", title: "Viewport" },
+export const browserToolLabels: Record<string, { icon: IconName; title: MessageDescriptor }> = {
+  browser_navigation: { icon: "route", title: TOOL_TITLE_DESC["browser_navigation"] },
+  browser_snapshot: { icon: "binoculars", title: TOOL_TITLE_DESC["browser_snapshot"] },
+  browser_action: { icon: "mouse-pointer-click", title: TOOL_TITLE_DESC["browser_action"] },
+  browser_wait: { icon: "hourglass", title: TOOL_TITLE_DESC["browser_wait"] },
+  browser_read: { icon: "glasses", title: TOOL_TITLE_DESC["browser_read"] },
+  browser_inspect: { icon: "scan-eye", title: TOOL_TITLE_DESC["browser_inspect"] },
+  browser_screenshot: { icon: "image", title: TOOL_TITLE_DESC["browser_screenshot"] },
+  browser_eval: { icon: "braces", title: TOOL_TITLE_DESC["browser_eval"] },
+  browser_console: { icon: "file-terminal", title: TOOL_TITLE_DESC["browser_console"] },
+  browser_network: { icon: "network", title: TOOL_TITLE_DESC["browser_network"] },
+  browser_performance: { icon: "gauge", title: TOOL_TITLE_DESC["browser_performance"] },
+  browser_audit: { icon: "shield-check", title: TOOL_TITLE_DESC["browser_audit"] },
+  browser_emulate: { icon: "sliders-horizontal", title: TOOL_TITLE_DESC["browser_emulate"] },
+  browser_dialog: { icon: "message-square-more", title: TOOL_TITLE_DESC["browser_dialog"] },
+  browser_upload: { icon: "upload", title: TOOL_TITLE_DESC["browser_upload"] },
+  browser_downloads: { icon: "download-cloud", title: TOOL_TITLE_DESC["browser_downloads"] },
+  browser_clipboard: { icon: "clipboard-list", title: TOOL_TITLE_DESC["browser_clipboard"] },
+  browser_assets: { icon: "package", title: TOOL_TITLE_DESC["browser_assets"] },
+  browser_annotate: { icon: "square-pen", title: TOOL_TITLE_DESC["browser_annotate"] },
+  browser_view: { icon: "panel-right", title: TOOL_TITLE_DESC["browser_view"] },
 }
 
 function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): ToolTriggerInfo | undefined {
@@ -265,15 +261,7 @@ function getBrowserToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   return {
     icon: info.icon,
     title: info.title,
-    subtitle: firstString(
-      metadata?.url,
-      input?.url,
-      metadata?.title,
-      input?.tabId,
-      metadata?.tabId,
-      input?.action,
-      input?.type,
-    ),
+    subtitle: firstString(metadata?.url, input?.url, metadata?.title, input?.action, input?.type),
     args: args.length ? args : undefined,
   }
 }
@@ -364,7 +352,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
       return {
         icon: "key-round",
-        title: "QZ Login",
+        title: TOOL_TITLE_DESC["qz_login"],
         subtitle: input.username,
         args,
       }
@@ -375,7 +363,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
       return {
         icon: "fingerprint",
-        title: "Set Cookie",
+        title: TOOL_TITLE_DESC["qz_set_cookie"],
         subtitle: input.workspace_id || "Local auth",
         args,
       }
@@ -383,7 +371,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
     case "qzcli_qz_list_workspaces":
       return {
         icon: "building-2",
-        title: "Workspaces",
+        title: TOOL_TITLE_DESC["qz_workspaces"],
         subtitle: input.refresh === false ? "Cached" : "Refresh",
       }
     case "qzcli_qz_refresh_resources": {
@@ -391,7 +379,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.all_workspaces ? "all" : undefined)
       return {
         icon: "refresh-ccw",
-        title: "Refresh Resources",
+        title: TOOL_TITLE_DESC["qz_refresh_resources"],
         subtitle: qzScopeLabel(input) || "Default workspace",
         args,
       }
@@ -402,7 +390,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.include_low_priority ? "low priority" : undefined)
       return {
         icon: "signal",
-        title: "Availability",
+        title: TOOL_TITLE_DESC["qz_availability"],
         subtitle: input.group || qzScopeLabel(input) || "Default target",
         args,
       }
@@ -413,7 +401,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
         icon: "boxes",
-        title: "Jobs",
+        title: TOOL_TITLE_DESC["qz_jobs"],
         subtitle: qzScopeLabel(input) || "Default workspace",
         args,
       }
@@ -421,19 +409,19 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
     case "qzcli_qz_get_job_detail":
       return {
         icon: "scan",
-        title: "Job Detail",
+        title: TOOL_TITLE_DESC["qz_job_detail"],
         subtitle: shortToken(input.job_id, 20),
       }
     case "qzcli_qz_stop_job":
       return {
         icon: "circle-stop",
-        title: "Stop Job",
+        title: TOOL_TITLE_DESC["qz_stop_job"],
         subtitle: shortToken(input.job_id, 20),
       }
     case "qzcli_qz_get_usage":
       return {
         icon: "gauge",
-        title: "GPU Usage",
+        title: TOOL_TITLE_DESC["qz_gpu_usage"],
         subtitle: qzScopeLabel(input) || "All workspaces",
       }
     case "qzcli_qz_inspect_status_catalog": {
@@ -442,7 +430,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.sample_limit ? `sample ${input.sample_limit}` : undefined)
       return {
         icon: "table",
-        title: "Status Catalog",
+        title: TOOL_TITLE_DESC["qz_status_catalog"],
         subtitle: qzScopeLabel(input) || "Default workspace",
         args,
       }
@@ -453,7 +441,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.workspace_id ? `ws ${input.workspace_id}` : undefined)
       return {
         icon: "pin",
-        title: "Track Job",
+        title: TOOL_TITLE_DESC["qz_track_job"],
         subtitle: input.name || shortToken(input.job_id, 20),
         args,
       }
@@ -464,7 +452,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.refresh === false ? "cached" : "refresh")
       return {
         icon: "binoculars",
-        title: "Tracked Jobs",
+        title: TOOL_TITLE_DESC["qz_tracked_jobs"],
         subtitle: input.running_only ? "Running only" : "All tracked",
         args,
       }
@@ -476,7 +464,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.instances ? `${input.instances}x` : undefined)
       return {
         icon: "rocket",
-        title: "Submit Job",
+        title: TOOL_TITLE_DESC["qz_submit_job"],
         subtitle: input.name,
         args,
       }
@@ -489,7 +477,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
       return {
         icon: "cpu",
-        title: "Submit HPC Job",
+        title: TOOL_TITLE_DESC["qz_submit_hpc"],
         subtitle: input.name,
         args,
       }
@@ -500,7 +488,7 @@ export function getQzToolInfo(tool: string, input: any = {}, _metadata: any = {}
       pushArg(args, input.verbose ? `top ${input.top || 30}` : undefined)
       return {
         icon: "server",
-        title: "HPC Usage",
+        title: TOOL_TITLE_DESC["qz_hpc_usage"],
         subtitle: qzScopeLabel(input) || "All workspaces",
         args,
       }
@@ -516,146 +504,150 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
 
+  if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
+
   switch (tool) {
     case "read":
       return {
         icon: "glasses",
-        title: "Read",
+        title: TOOL_TITLE_DESC["read"],
+        subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
+      }
+    case "view_image":
+      return {
+        icon: "image",
+        title: TOOL_TITLE_DESC["view_image"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "view_file":
       return {
         icon: "scan-eye",
-        title: "View File",
+        title: TOOL_TITLE_DESC["view_file"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "list":
       return {
         icon: "folder",
-        title: "List",
+        title: TOOL_TITLE_DESC["list"],
         subtitle: input.path ? getFilename(input.path) : undefined,
       }
     case "glob":
       return {
         icon: "funnel",
-        title: "Glob",
+        title: TOOL_TITLE_DESC["glob"],
         subtitle: input.pattern,
       }
     case "grep":
       return {
         icon: "regex",
-        title: "Grep",
+        title: TOOL_TITLE_DESC["grep"],
         subtitle: input.pattern,
       }
     case "file_search":
       return {
         icon: "scan-document",
-        title: "File Search",
+        title: TOOL_TITLE_DESC["file_search"],
         subtitle: input.query,
       }
     case "scan_files":
       return {
         icon: "scan-search",
-        title: "Scan Files",
+        title: TOOL_TITLE_DESC["scan_files"],
         subtitle: input.pattern,
       }
     case "webfetch":
       return {
         icon: "mouse-pointer-2",
-        title: "Webfetch",
+        title: TOOL_TITLE_DESC["webfetch"],
         subtitle: input.url,
       }
     case "task":
-      return {
-        icon: "list-todo",
-        title: `${input.subagent_type || "task"} Agent`,
-        subtitle: input.description,
-      }
+      return getTaskToolInfo(input)
     case "bash":
       return {
         icon: "terminal",
-        title: "Shell",
+        title: TOOL_TITLE_DESC["bash"],
         subtitle: input.description,
       }
     case "edit":
       return {
         icon: "pen-line",
-        title: "Edit",
+        title: TOOL_TITLE_DESC["edit"],
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "revise_file": {
       const path = metadata.path || metadata.filepath || input.input?.match?.(/^\[([^#\]]+)/)?.[1]
       return {
         icon: "file-pen",
-        title: "Revise File",
+        title: TOOL_TITLE_DESC["revise_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
     }
     case "multiedit":
       return {
         icon: "pen-line",
-        title: "Multi Edit",
+        title: TOOL_TITLE_DESC["multiedit"],
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "patch":
       return {
         icon: "diff",
-        title: "Patch",
+        title: TOOL_TITLE_DESC["patch"],
       }
     case "write":
       return {
         icon: "file-pen",
-        title: "Write",
+        title: TOOL_TITLE_DESC["write"],
         subtitle: input.filePath ? getFilename(input.filePath) : undefined,
       }
     case "save_file": {
       const path = metadata.path || metadata.filepath || input.filePath
       return {
         icon: "file-pen",
-        title: metadata.exists === false ? "Create File" : "Save File",
+        title: metadata.exists === false ? TOOL_TITLE_DESC["create_file"] : TOOL_TITLE_DESC["save_file"],
         subtitle: path ? getDirectory(path) + getFilename(path) : undefined,
       }
     }
     case "todowrite":
       return {
         icon: "clipboard-check",
-        title: "To-dos",
+        title: TOOL_TITLE_DESC["todowrite"],
       }
     case "todoread":
       return {
         icon: "list-filter",
-        title: "Read to-dos",
+        title: TOOL_TITLE_DESC["todoread"],
       }
     case "dagwrite":
       return {
         icon: "route",
-        title: "DAG",
+        title: TOOL_TITLE_DESC["dagwrite"],
       }
     case "dagread":
       return {
         icon: "spline",
-        title: "Read DAG",
+        title: TOOL_TITLE_DESC["dagread"],
       }
     case "dagpatch":
       return {
         icon: "git-merge",
-        title: "DAG",
+        title: TOOL_TITLE_DESC["dagwrite"],
       }
     case "question":
       return {
         icon: "message-circle",
-        title: "Questions",
+        title: TOOL_TITLE_DESC["question"],
       }
     case "websearch":
       return {
         icon: "globe",
-        title: "Web Search",
+        title: TOOL_TITLE_DESC["websearch"],
         subtitle: input.query,
       }
     case "look_at":
       return {
         icon: "scan-eye",
-        title: "Look at",
+        title: TOOL_TITLE_DESC["look_at"],
         subtitle: input.file_path
           ? getFilename(Array.isArray(input.file_path) ? input.file_path[0] : input.file_path)
           : undefined,
@@ -663,99 +655,111 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "scan_document":
       return {
         icon: "scan-document",
-        title: "Read Document",
+        title: TOOL_TITLE_DESC["scan_document"],
         subtitle: input.filePath ? getDirectory(input.filePath) + getFilename(input.filePath) : undefined,
       }
     case "ast_grep":
       return {
         icon: "braces",
-        title: "AST Search",
+        title: TOOL_TITLE_DESC["ast_grep"],
         subtitle: input.pattern,
       }
     case "parse_code":
       return {
         icon: "braces",
-        title: "Parse Code",
+        title: TOOL_TITLE_DESC["parse_code"],
         subtitle: input.pattern,
       }
     case "lsp":
       return {
         icon: "circuit-board",
-        title: "LSP",
+        title: TOOL_TITLE_DESC["lsp"],
         subtitle: input.operation,
       }
     case "skill":
       return {
         icon: "sparkles",
-        title: "Skill",
+        title: TOOL_TITLE_DESC["skill"],
         subtitle: input.name + (input.reference ? ` (${input.reference})` : ""),
       }
     case "search_tools":
       return {
         icon: "tool-search",
-        title: "Search Tools",
+        title: TOOL_TITLE_DESC["search_tools"],
         subtitle: input.query,
       }
     case "expand_tools":
       return {
         icon: "tool-expand",
-        title: "Expand Tools",
+        title: TOOL_TITLE_DESC["expand_tools"],
         subtitle: [...(input.groups ?? []), ...(input.tools ?? [])].join(", ") || input.reason,
       }
     case "arxiv_search":
       return {
         icon: "book-open",
-        title: "arXiv Search",
+        title: TOOL_TITLE_DESC["arxiv_search"],
         subtitle: input.query,
       }
     case "arxiv_download":
       return {
         icon: "book-down",
-        title: "arXiv Download",
+        title: TOOL_TITLE_DESC["arxiv_download"],
         subtitle: input.arxivId,
       }
     case "process":
       return {
         icon: "activity",
-        title: "Process",
+        title: TOOL_TITLE_DESC["process"],
         subtitle: input.action,
       }
     case "attach":
       return {
         icon: "paperclip",
-        title: "Attach",
+        title: TOOL_TITLE_DESC["attach"],
         subtitle: input.filename || input.file_path,
+      }
+    case "openai_image_gen":
+      return {
+        icon: "image",
+        title: TOOL_TITLE_DESC["generate_image"],
+        subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
+      }
+    case "openai_image_edit":
+      return {
+        icon: "image",
+        title: TOOL_TITLE_DESC["edit_image"],
+        subtitle: input.output_path ? getDirectory(input.output_path) + getFilename(input.output_path) : input.prompt,
       }
     case "diagram":
       return {
         icon: "workflow",
-        title: "Diagram",
+        title: TOOL_TITLE_DESC["diagram"],
         subtitle: input.title,
       }
     case "render":
       return {
         icon: "code",
-        title: "Render",
+        title: TOOL_TITLE_DESC["render"],
         subtitle: input.title,
       }
     case "note_list":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
-          title: "Blueprints",
+          title: TOOL_TITLE_DESC["blueprints"],
           subtitle: input.scope,
         }
       }
       return {
         icon: "notebook-pen",
-        title: "Notes",
+        title: TOOL_TITLE_DESC["note_list"],
         subtitle: input.scope,
       }
     case "note_read":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
-          title: "Read Blueprint",
+          title: TOOL_TITLE_DESC["read_blueprint"],
           subtitle: Array.isArray(input.ids)
             ? input.ids.length === 1
               ? input.ids[0]
@@ -765,7 +769,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       }
       return {
         icon: "notebook-pen",
-        title: "Read Note",
+        title: TOOL_TITLE_DESC["note_read"],
         subtitle: Array.isArray(input.ids)
           ? input.ids.length === 1
             ? input.ids[0]
@@ -776,105 +780,153 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
-          title: "Blueprint Search",
+          title: TOOL_TITLE_DESC["blueprint_search"],
           subtitle: input.pattern,
         }
       }
       return {
         icon: "notebook-pen",
-        title: "Note Search",
+        title: TOOL_TITLE_DESC["note_search"],
         subtitle: input.pattern,
       }
     case "note_write":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
-          title: "Write Blueprint",
+          title: TOOL_TITLE_DESC["write_blueprint"],
           subtitle: input.title || input.mode,
         }
       }
       return {
         icon: "notebook-pen",
-        title: "Write Note",
+        title: TOOL_TITLE_DESC["note_write"],
         subtitle: input.title || input.mode,
       }
     case "note_edit":
       if (isBlueprintToolKind(input, metadata)) {
         return {
           icon: BLUEPRINT_ICON,
-          title: "Edit Blueprint",
+          title: TOOL_TITLE_DESC["edit_blueprint"],
           subtitle: input.title || input.id,
         }
       }
       return {
         icon: "notebook-pen",
-        title: "Edit Note",
+        title: TOOL_TITLE_DESC["note_edit"],
         subtitle: input.title || input.id,
       }
-    case "blueprint_loop_finish":
+    case "note_archive": {
+      const unarchive = input.unarchive as boolean | undefined
       return {
-        icon: BLUEPRINT_ICON,
-        title: "Finish BlueprintLoop",
-        subtitle: input.loopID,
+        icon: "archive",
+        title: unarchive ? TOOL_TITLE_DESC["note_unarchive"] : TOOL_TITLE_DESC["note_archive"],
+        subtitle: Array.isArray(input.ids)
+          ? input.ids.length === 1
+            ? input.ids[0]
+            : `${input.ids.length} notes`
+          : undefined,
       }
-    case "blueprint_loop_restart":
+    }
+    case "note_delete":
       return {
-        icon: BLUEPRINT_ICON,
-        title: "Restart BlueprintLoop",
-        subtitle: input.loopID,
+        icon: "trash-2",
+        title: TOOL_TITLE_DESC["note_delete"],
+        subtitle: input.id,
+      }
+    case "blueprint_loop_stop":
+      return {
+        icon: "circle-pause",
+        title: TOOL_TITLE_DESC["blueprint_loop_stop"],
+        subtitle: input.summary,
+      }
+    case "blueprint_loop_approve":
+      return {
+        icon: "file-check-2",
+        title: TOOL_TITLE_DESC["blueprint_loop_approve"],
+        subtitle: (input.summary as string) || (input.sessionID as string) || "",
+      }
+    case "blueprint_loop_reject":
+      return {
+        icon: "clipboard-x",
+        title: TOOL_TITLE_DESC["blueprint_loop_reject"],
+        subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "task_list":
       return {
         icon: "list-todo",
-        title: "Task List",
-        subtitle: "Visible background tasks",
+        title: TOOL_TITLE_DESC["task_list"],
+        subtitle: undefined,
       }
     case "task_output":
       return {
         icon: "list-todo",
-        title: "Task Output",
+        title: TOOL_TITLE_DESC["task_output"],
         subtitle: input.task_id,
       }
     case "task_cancel":
       return {
         icon: "circle-x",
-        title: "Task Cancel",
+        title: TOOL_TITLE_DESC["task_cancel"],
         subtitle: input.task_id,
+      }
+    case "loop_stop":
+      return {
+        icon: "flag",
+        title: TOOL_TITLE_DESC["loop_stop"],
+        subtitle: (input.summary as string) || "",
+      }
+    case "light_loop_approve":
+      return {
+        icon: "circle-check",
+        title: TOOL_TITLE_DESC["light_loop_approve"],
+        subtitle: (input.summary as string) || (input.sessionID as string) || "",
+      }
+    case "light_loop_reject":
+      return {
+        icon: "rotate-ccw",
+        title: TOOL_TITLE_DESC["light_loop_reject"],
+        subtitle: (input.reason as string) || (input.sessionID as string) || "",
       }
     case "context7_resolve-library-id":
       return {
         icon: "tag",
-        title: "Resolve Library",
+        title: TOOL_TITLE_DESC["context7_resolve_library"],
         subtitle: input.libraryName,
       }
     case "context7_query-docs":
       return {
         icon: "scroll-text",
-        title: "Query Docs",
+        title: TOOL_TITLE_DESC["context7_query_docs"],
         subtitle: input.query,
       }
     case "session_list":
       return {
         icon: "list",
-        title: "Sessions",
+        title: TOOL_TITLE_DESC["session_list"],
         subtitle: input.scope,
+      }
+    case "scope_list":
+      return {
+        icon: "folder-tree",
+        title: TOOL_TITLE_DESC["scope_list"],
+        subtitle: (input.query as string) || undefined,
       }
     case "session_read":
       return {
         icon: "message-square",
-        title: "Read Session",
+        title: TOOL_TITLE_DESC["session_read"],
         subtitle: input.target,
       }
     case "session_search":
       return {
         icon: "quote",
-        title: "Search Sessions",
+        title: TOOL_TITLE_DESC["session_search"],
         subtitle: input.pattern,
       }
     case "session_send":
       return {
         icon: "share",
-        title: "Send Message",
+        title: TOOL_TITLE_DESC["session_send"],
         subtitle: input.target,
       }
     case "session_control": {
@@ -883,43 +935,46 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         case "status":
           return {
             icon: "radar",
-            title: "Session Status",
+            title: TOOL_TITLE_DESC["session_status"],
             subtitle: input.target,
           }
         case "compact":
           return {
             icon: "layers",
-            title: "Compact Session",
+            title: TOOL_TITLE_DESC["session_compact"],
             subtitle: input.target,
           }
         case "abort":
           return {
             icon: "circle-stop",
-            title: "Abort Session",
+            title: TOOL_TITLE_DESC["session_abort"],
             subtitle: input.target,
           }
         case "question_reply":
           return {
             icon: "message-circle",
-            title: "Answer Question",
+            title: TOOL_TITLE_DESC["session_answer_question"],
             subtitle: input.target,
           }
         case "question_reject":
           return {
             icon: "circle-x",
-            title: "Dismiss Question",
+            title: TOOL_TITLE_DESC["session_dismiss_question"],
             subtitle: input.target,
           }
         case "permission_reply":
           return {
             icon: input.reply === "reject" ? "shield-alert" : "shield-check",
-            title: input.reply === "reject" ? "Deny Permission" : "Approve Permission",
+            title:
+              input.reply === "reject"
+                ? TOOL_TITLE_DESC["session_deny_permission"]
+                : TOOL_TITLE_DESC["session_approve_permission"],
             subtitle: input.target,
           }
         default:
           return {
             icon: "radar",
-            title: "Control Session",
+            title: TOOL_TITLE_DESC["session_control"],
             subtitle: input.target,
           }
       }
@@ -929,122 +984,172 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.venue)
       pushArg(args, input.participation_mode)
-      return { icon: "flask-conical", title: "Research Init", subtitle: input.project, args }
+      return { icon: "flask-conical", title: TOOL_TITLE_DESC["research_init"], subtitle: input.project, args }
     }
     case "research_state": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.target_phase)
       pushArg(args, input.participation_mode)
-      return { icon: "sigma", title: "Research State", subtitle: researchStateSubtitle(input, metadata), args }
+      return {
+        icon: "sigma",
+        title: TOOL_TITLE_DESC["research_state"],
+        subtitle: researchStateSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_idea": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.round ? `round ${input.round}` : undefined)
-      return { icon: "lightbulb", title: "Idea", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "lightbulb",
+        title: TOOL_TITLE_DESC["research_idea"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_plan": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.idea)
-      return { icon: "map", title: "Plan", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "map",
+        title: TOOL_TITLE_DESC["research_plan"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_experiment": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.group)
       pushArg(args, input.backend)
-      return { icon: "microscope", title: "Experiment", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "microscope",
+        title: TOOL_TITLE_DESC["research_experiment"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_claim": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.paper_section)
-      return { icon: "scale", title: "Claim", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "scale",
+        title: TOOL_TITLE_DESC["research_claim"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_exhibit": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.kind)
-      return { icon: "image", title: "Exhibit", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "image",
+        title: TOOL_TITLE_DESC["research_exhibit"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_paper": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.venue)
-      return { icon: "scroll-text", title: "Paper", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "scroll-text",
+        title: TOOL_TITLE_DESC["research_paper"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_submission": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.venue)
       pushArg(args, input.outcome)
-      return { icon: "send", title: "Submission", subtitle: researchObjectSubtitle(input, metadata), args }
+      return {
+        icon: "send",
+        title: TOOL_TITLE_DESC["research_submission"],
+        subtitle: researchObjectSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_wiki": {
       const args = researchWikiArgs(input, metadata)
-      return { icon: "telescope", title: "Wiki", subtitle: researchWikiSubtitle(input, metadata), args }
+      return {
+        icon: "telescope",
+        title: TOOL_TITLE_DESC["research_wiki"],
+        subtitle: researchWikiSubtitle(input, metadata),
+        args,
+      }
     }
     case "research_timeline": {
       const args: string[] = []
       pushArg(args, input.action)
       pushArg(args, input.last ? `last ${input.last}` : undefined)
       pushArg(args, input.event_type)
-      return { icon: "clock", title: "Timeline", subtitle: subtitleFromToolResult(metadata, input.summary), args }
+      return {
+        icon: "clock",
+        title: TOOL_TITLE_DESC["research_timeline"],
+        subtitle: subtitleFromToolResult(metadata, input.summary),
+        args,
+      }
     }
     case "profile_get":
       return {
         icon: "scan",
-        title: "Profile",
+        title: TOOL_TITLE_DESC["profile_get"],
         subtitle: input.name,
       }
     case "profile_update":
       return {
         icon: "user-round-pen",
-        title: "Update Profile",
+        title: TOOL_TITLE_DESC["profile_update"],
         subtitle: input.name,
       }
     case "agenda_schedule":
       return {
         icon: "calendar-days",
-        title: "Schedule Agenda",
+        title: TOOL_TITLE_DESC["agenda_schedule"],
         subtitle: input.title,
       }
     case "agenda_watch":
       return {
         icon: "eye",
-        title: "Watch",
+        title: TOOL_TITLE_DESC["agenda_watch"],
         subtitle: input.title,
       }
     case "agenda_list":
       return {
         icon: "clipboard-list",
-        title: "Agenda",
+        title: TOOL_TITLE_DESC["agenda_list"],
         subtitle: input.status,
       }
     case "agenda_update":
       return {
         icon: "pencil",
-        title: "Update Agenda",
+        title: TOOL_TITLE_DESC["agenda_update"],
         subtitle: input.id,
       }
     case "agenda_cancel":
       return {
         icon: "trash-2",
-        title: "Cancel Agenda",
+        title: TOOL_TITLE_DESC["agenda_cancel"],
         subtitle: input.id,
       }
     case "agenda_trigger":
       return {
         icon: "zap",
-        title: "Trigger Agenda",
+        title: TOOL_TITLE_DESC["agenda_trigger"],
         subtitle: input.id,
       }
     case "agenda_logs":
       return {
         icon: "clock",
-        title: "Agenda Logs",
+        title: TOOL_TITLE_DESC["agenda_logs"],
         subtitle: input.id,
       }
     //    case "agora_search":
@@ -1098,30 +1203,30 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "memory_search":
       return {
         icon: "brain",
-        title: "Memory Search",
+        title: TOOL_TITLE_DESC["memory_search"],
         subtitle: input.query,
       }
     case "memory_get":
       return {
         icon: "brain",
-        title: "Memory Get",
+        title: TOOL_TITLE_DESC["memory_get"],
       }
     case "memory_write":
       return {
         icon: "brain",
-        title: "Memory Write",
+        title: TOOL_TITLE_DESC["memory_write"],
         subtitle: input.title,
       }
     case "memory_edit":
       return {
         icon: "brain",
-        title: "Memory Edit",
+        title: TOOL_TITLE_DESC["memory_edit"],
         subtitle: input.title,
       }
     case "email_send":
       return {
         icon: "mail",
-        title: "Send Email",
+        title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
       }
     case "email_read": {
@@ -1132,12 +1237,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "mail-search",
         title:
           input.action === "search"
-            ? "Search Email"
+            ? TOOL_TITLE_DESC["email_search"]
             : input.action === "read"
-              ? "Read Email"
+              ? TOOL_TITLE_DESC["email_read"]
               : input.action === "markSeen"
-                ? "Mark Read"
-                : "Email Inbox",
+                ? TOOL_TITLE_DESC["email_mark_read"]
+                : TOOL_TITLE_DESC["email_inbox"],
         subtitle: input.search?.from || input.search?.subject || input.folder || "INBOX",
         args,
       }
@@ -1150,7 +1255,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         : input.target
       return {
         icon: "rotate-cw",
-        title: "Runtime Reload",
+        title: TOOL_TITLE_DESC["runtime_reload"],
         subtitle: target || input.reason,
       }
     }
@@ -1161,7 +1266,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input?.force ? "force" : undefined)
       return {
         icon: "worktree-enter",
-        title: "Enter Worktree",
+        title: TOOL_TITLE_DESC["worktree_enter"],
         subtitle: (input?.target as string) ?? "New worktree",
         args,
       }
@@ -1171,7 +1276,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input?.cleanup === "remove_if_clean" ? "remove if clean" : undefined)
       return {
         icon: "worktree-leave",
-        title: "Leave Worktree",
+        title: TOOL_TITLE_DESC["worktree_leave"],
         subtitle: metadata?.previous?.name ?? metadata?.previous?.path ?? "",
         args,
       }
@@ -1181,7 +1286,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, metadata?.worktrees ? `${metadata.worktrees.length} total` : undefined)
       return {
         icon: "worktree-list",
-        title: "Worktrees",
+        title: TOOL_TITLE_DESC["worktree_list"],
         subtitle: metadata?.active?.name ?? "",
         args,
       }
@@ -1189,95 +1294,95 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
     case "connect":
       return {
         icon: "cable",
-        title: "Connect",
-        subtitle: input.envID,
+        title: TOOL_TITLE_DESC["connect"],
+        subtitle: input.linkID,
       }
     // TODO: legacy qzcli — remove when replaced by native inspire tools
     case "qzcli_qz_auth_login":
       return {
         icon: "key-round",
-        title: "QZ Login",
+        title: TOOL_TITLE_DESC["qz_login"],
         subtitle: input.username,
       }
     case "qzcli_qz_set_cookie":
       return {
         icon: "fingerprint",
-        title: "Set Cookie",
+        title: TOOL_TITLE_DESC["qz_set_cookie"],
       }
     case "qzcli_qz_list_workspaces":
       return {
         icon: "building-2",
-        title: "Workspaces",
+        title: TOOL_TITLE_DESC["qz_workspaces"],
       }
     case "qzcli_qz_refresh_resources":
       return {
         icon: "refresh-ccw",
-        title: "Refresh Resources",
+        title: TOOL_TITLE_DESC["qz_refresh_resources"],
         subtitle: input.workspace || (input.all_workspaces ? "All" : undefined),
       }
     case "qzcli_qz_get_availability":
       return {
         icon: "signal",
-        title: "Availability",
+        title: TOOL_TITLE_DESC["qz_availability"],
         subtitle: input.group || input.workspace,
       }
     case "qzcli_qz_list_jobs":
       return {
         icon: "boxes",
-        title: "Jobs",
+        title: TOOL_TITLE_DESC["qz_jobs"],
         subtitle: input.workspace,
       }
     case "qzcli_qz_get_job_detail":
       return {
         icon: "scan",
-        title: "Job Detail",
+        title: TOOL_TITLE_DESC["qz_job_detail"],
         subtitle: input.job_id,
       }
     case "qzcli_qz_stop_job":
       return {
         icon: "circle-stop",
-        title: "Stop Job",
+        title: TOOL_TITLE_DESC["qz_stop_job"],
         subtitle: input.job_id,
       }
     case "qzcli_qz_get_usage":
       return {
         icon: "gauge",
-        title: "GPU Usage",
+        title: TOOL_TITLE_DESC["qz_gpu_usage"],
         subtitle: input.workspace,
       }
     case "qzcli_qz_inspect_status_catalog":
       return {
         icon: "stethoscope",
-        title: "Status Catalog",
+        title: TOOL_TITLE_DESC["qz_status_catalog"],
         subtitle: input.workspace,
       }
     case "qzcli_qz_track_job":
       return {
         icon: "crosshair",
-        title: "Track Job",
+        title: TOOL_TITLE_DESC["qz_track_job"],
         subtitle: input.name || input.job_id,
       }
     case "qzcli_qz_list_tracked_jobs":
       return {
         icon: "binoculars",
-        title: "Tracked Jobs",
+        title: TOOL_TITLE_DESC["qz_tracked_jobs"],
       }
     case "qzcli_qz_create_job":
       return {
         icon: "rocket",
-        title: "Submit Job",
+        title: TOOL_TITLE_DESC["qz_submit_job"],
         subtitle: input.name,
       }
     case "qzcli_qz_create_hpc_job":
       return {
         icon: "cpu",
-        title: "Submit HPC Job",
+        title: TOOL_TITLE_DESC["qz_submit_hpc"],
         subtitle: input.name,
       }
     case "qzcli_qz_get_hpc_usage":
       return {
         icon: "hard-drive",
-        title: "HPC Usage",
+        title: TOOL_TITLE_DESC["qz_hpc_usage"],
         subtitle: input.workspace,
       }
     // inspire — SII 启智平台 (native tools)
@@ -1287,7 +1392,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.refresh ? "refresh" : undefined)
       return {
         icon: "satellite",
-        title: "Platform Status",
+        title: TOOL_TITLE_DESC["inspire_platform_status"],
         subtitle: input.project || metadata?.project_names?.[0] || "All",
         args,
       }
@@ -1297,7 +1402,10 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.action === "set" && input.value !== undefined ? String(input.value) : undefined)
       return {
         icon: "sliders-horizontal",
-        title: input.action === "set" ? "Set Default" : "SII Defaults",
+        title:
+          input.action === "set"
+            ? TOOL_TITLE_DESC["inspire_config_set_default"]
+            : TOOL_TITLE_DESC["inspire_config_sii_defaults"],
         subtitle: input.key,
         args,
       }
@@ -1308,7 +1416,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.target === "harbor" ? input.registry : undefined)
       return {
         icon: "lock-keyhole",
-        title: input.target === "harbor" ? "Harbor Login" : "SII Login",
+        title:
+          input.target === "harbor" ? TOOL_TITLE_DESC["inspire_login_harbor"] : TOOL_TITLE_DESC["inspire_login_sii"],
         subtitle: input.username,
         args,
       }
@@ -1318,7 +1427,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
         icon: "disc",
-        title: input.repo ? "Image Detail" : "Search Images",
+        title: input.repo ? TOOL_TITLE_DESC["inspire_images_detail"] : TOOL_TITLE_DESC["inspire_images_search"],
         subtitle: input.repo || input.search || "Recent",
         args,
       }
@@ -1327,7 +1436,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       const args: string[] = []
       pushArg(args, input.name)
       pushArg(args, input.tag)
-      return { icon: "archive", title: "Push Image", subtitle: input.image, args }
+      return { icon: "archive", title: TOOL_TITLE_DESC["inspire_image_push"], subtitle: input.image, args }
     }
     case "inspire_submit": {
       const args: string[] = []
@@ -1335,13 +1444,13 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.compute_group)
       pushArg(args, input.image ? shortToken(input.image, 30) : undefined)
       pushArg(args, input.instances ? `${input.instances}× nodes` : undefined)
-      return { icon: "gpu", title: "Submit GPU Job", subtitle: input.name, args }
+      return { icon: "gpu", title: TOOL_TITLE_DESC["inspire_submit_gpu"], subtitle: input.name, args }
     }
     case "inspire_submit_hpc": {
       const args: string[] = []
       pushArg(args, input.workspace)
       pushArg(args, input.cpu && input.mem_gi ? `${input.cpu} CPU / ${input.mem_gi}Gi` : undefined)
-      return { icon: "cpu", title: "Submit HPC Job", subtitle: input.name, args }
+      return { icon: "cpu", title: TOOL_TITLE_DESC["qz_submit_hpc"], subtitle: input.name, args }
     }
     case "inspire_stop": {
       const args: string[] = []
@@ -1349,7 +1458,7 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.status && input.status !== "running" ? input.status : undefined)
       return {
         icon: "circle-stop",
-        title: input.job_id ? "Stop Job" : "Batch Stop",
+        title: input.job_id ? TOOL_TITLE_DESC["inspire_stop_job"] : TOOL_TITLE_DESC["inspire_stop_batch"],
         subtitle: input.job_id ? shortToken(input.job_id, 20) : input.workspace,
         args,
       }
@@ -1362,35 +1471,35 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
       pushArg(args, input.limit ? `limit ${input.limit}` : undefined)
       return {
         icon: "list-filter",
-        title: "Jobs",
+        title: TOOL_TITLE_DESC["qz_jobs"],
         subtitle: metadata?.total !== undefined ? `${metadata.total} tasks` : input.workspace || "All",
         args,
       }
     }
     case "inspire_job_detail":
-      return { icon: "scan-search", title: "Job Detail", subtitle: shortToken(input.job_id, 20) }
+      return { icon: "scan-search", title: TOOL_TITLE_DESC["qz_job_detail"], subtitle: shortToken(input.job_id, 20) }
     case "inspire_logs": {
       const args: string[] = []
       pushArg(args, input.keyword)
       pushArg(args, input.download ? "download" : undefined)
       return {
         icon: "file-terminal",
-        title: input.download ? "Download Logs" : "Job Logs",
+        title: input.download ? TOOL_TITLE_DESC["inspire_logs_download"] : TOOL_TITLE_DESC["inspire_logs_view"],
         subtitle: shortToken(input.job_id, 20),
         args,
       }
     }
     case "inspire_metrics":
-      return { icon: "heart-pulse", title: "Job Metrics", subtitle: shortToken(input.job_id, 20) }
+      return { icon: "heart-pulse", title: TOOL_TITLE_DESC["inspire_metrics"], subtitle: shortToken(input.job_id, 20) }
     case "inspire_inference":
       return {
         icon: "square-play",
         title:
           input.action === "create"
-            ? "Deploy Inference"
+            ? TOOL_TITLE_DESC["inspire_inference_deploy"]
             : input.action === "stop"
-              ? "Stop Inference"
-              : "Inference Detail",
+              ? TOOL_TITLE_DESC["inspire_inference_stop"]
+              : TOOL_TITLE_DESC["inspire_inference_detail"],
         subtitle: input.name || input.serving_id,
       }
     case "inspire_models": {
@@ -1401,12 +1510,12 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "boxes",
         title:
           input.action === "detail"
-            ? "Model Detail"
+            ? TOOL_TITLE_DESC["inspire_models_detail"]
             : input.action === "create"
-              ? "Register Model"
+              ? TOOL_TITLE_DESC["inspire_models_register"]
               : input.action === "delete"
-                ? "Delete Model"
-                : "Models",
+                ? TOOL_TITLE_DESC["inspire_models_delete"]
+                : TOOL_TITLE_DESC["inspire_models_list"],
         subtitle: input.keyword || input.name || input.model_id,
         args,
       }
@@ -1420,14 +1529,14 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "code",
         title:
           input.action === "start"
-            ? "Start Notebook"
+            ? TOOL_TITLE_DESC["inspire_notebook_start"]
             : input.action === "stop"
-              ? "Stop Notebook"
+              ? TOOL_TITLE_DESC["inspire_notebook_stop"]
               : input.action === "create"
-                ? "Create Notebook"
+                ? TOOL_TITLE_DESC["inspire_notebook_create"]
                 : input.action === "detail"
-                  ? "Notebook Detail"
-                  : "Notebooks",
+                  ? TOOL_TITLE_DESC["inspire_notebook_detail"]
+                  : TOOL_TITLE_DESC["inspire_notebook_list"],
         subtitle: input.name || input.notebook_id,
         args,
       }
@@ -1448,7 +1557,9 @@ export function Message(props: MessageProps) {
   return (
     <Switch>
       <Match when={props.message.role === "user" && props.message}>
-        {(userMessage) => <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} />}
+        {(userMessage) => (
+          <UserMessageDisplay message={userMessage() as UserMessage} parts={props.parts} variant={props.userVariant} />
+        )}
       </Match>
       <Match when={props.message.role === "assistant" && props.message}>
         {(assistantMessage) => (
@@ -1464,10 +1575,7 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   const filteredParts = createMemo(
     () =>
       props.parts.filter((x) => {
-        return (
-          x.type !== "tool" ||
-          ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread" && !shouldHideToolPart(x))
-        )
+        return x.type !== "tool" || ((x as ToolPart).tool !== "todoread" && (x as ToolPart).tool !== "dagread")
       }),
     emptyParts,
     { equals: same },
@@ -1475,19 +1583,82 @@ export function AssistantMessageDisplay(props: { message: AssistantMessage; part
   return <For each={filteredParts()}>{(part) => <Part part={part} message={props.message} />}</For>
 }
 
-export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[] }) {
-  const data = useData()
+const SEARCH_REFLECTION_MARKER = "[Search failure reflection]"
+const SEARCH_EARLY_STOP_MARKER = "[Search early stop]"
 
-  const textPart = createMemo(
-    () => props.parts?.find((p) => p.type === "text" && !(p as TextPart).synthetic) as TextPart | undefined,
+type SearchReflectionNoticeData = {
+  id: string
+  kind: "reflection" | "early-stop"
+  titleDescriptor: MessageDescriptor
+  text: string
+}
+
+function parseSearchReflectionNotice(part: TextPart): SearchReflectionNoticeData | undefined {
+  if (!part.synthetic) return undefined
+
+  const kind = part.text.includes(SEARCH_EARLY_STOP_MARKER)
+    ? "early-stop"
+    : part.text.includes(SEARCH_REFLECTION_MARKER)
+      ? "reflection"
+      : undefined
+  if (!kind) return undefined
+
+  return {
+    id: part.id,
+    kind,
+    titleDescriptor: kind === "early-stop" ? MESSAGE_PART_DESC.searchEarlyStop : MESSAGE_PART_DESC.searchReflection,
+    text: part.text,
+  }
+}
+
+function SearchReflectionNoticeView(props: { notice: SearchReflectionNoticeData }) {
+  const { _ } = useLingui()
+  const title = () =>
+    props.notice.kind === "early-stop" ? _(MESSAGE_PART_DESC.searchEarlyStop) : _(MESSAGE_PART_DESC.searchReflection)
+  return (
+    <div data-slot="user-message-search-reflection" data-kind={props.notice.kind}>
+      <div data-slot="user-message-search-reflection-header">
+        <Icon name="search" size="small" />
+        <span>{title()}</span>
+      </div>
+      <div data-slot="user-message-search-reflection-body">{props.notice.text}</div>
+    </div>
   )
+}
 
-  const text = createMemo(() => textPart()?.text || "")
+function formatMessageTimestamp(timestamp: number): string {
+  const date = new Date(timestamp)
+  const hours = date.getHours().toString().padStart(2, "0")
+  const minutes = date.getMinutes().toString().padStart(2, "0")
+  return `${hours}:${minutes}`
+}
 
-  const files = createMemo(() => (props.parts?.filter((p) => p.type === "file") as FilePart[]) ?? [])
+export function UserMessageDisplay(props: { message: UserMessage; parts: PartType[]; variant?: UserMessageVariant }) {
+  const { _ } = useLingui()
+  const data = useData()
+  const [expanded, setExpanded] = createSignal(false)
 
-  const isNoteAttachment = (file: FilePart) => file.metadata?.kind === "note"
-  const isSessionAttachment = (file: FilePart) => file.metadata?.kind === "session"
+  const text = createMemo(() => visibleUserMessageText(props.parts))
+  const isTurnBubble = createMemo(() => props.variant === "turn-bubble")
+  const canCollapse = createMemo(() => isTurnBubble() && shouldCollapseUserMessage(text()))
+  const collapsed = createMemo(() => canCollapse() && !expanded())
+  const timestamp = createMemo(() => {
+    const created = props.message.time?.created
+    return typeof created === "number" ? formatMessageTimestamp(created) : undefined
+  })
+
+  const searchReflections = createMemo(
+    () =>
+      ((props.parts?.filter((p) => p.type === "text") as TextPart[] | undefined) ?? [])
+        .map(parseSearchReflectionNotice)
+        .filter((notice): notice is SearchReflectionNoticeData => !!notice),
+    [] as SearchReflectionNoticeData[],
+    { equals: same },
+  )
+  const files = createMemo(() => (props.parts?.filter((p) => p.type === "attachment") as AttachmentPart[]) ?? [])
+
+  const isNoteAttachment = (file: AttachmentPart) => file.metadata?.kind === "note"
+  const isSessionAttachment = (file: AttachmentPart) => file.metadata?.kind === "session"
 
   const noteAttachments = createMemo(() => files().filter(isNoteAttachment))
   const sessionAttachments = createMemo(() => files().filter(isSessionAttachment))
@@ -1500,6 +1671,7 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
+  const hasVisibleContent = createMemo(() => hasVisibleUserMessageContent(props.parts))
   const inlineFiles = createMemo(() =>
     files().filter((f) => {
       if (isNoteAttachment(f) || isSessionAttachment(f)) return false
@@ -1507,27 +1679,78 @@ export function UserMessageDisplay(props: { message: UserMessage; parts: PartTyp
     }),
   )
 
+  const copy = createCopyController({
+    text,
+    copyLabel: _(MESSAGE_PART_DESC.copyMessage),
+    copiedLabel: _(MESSAGE_PART_DESC.messageCopied),
+    failureDescription: _(MESSAGE_PART_DESC.copyFailure),
+  })
+
   return (
-    <div data-component="user-message">
+    <div data-component="user-message" data-variant={props.variant ?? "default"}>
       <Show when={attachments().length > 0 || noteAttachments().length > 0 || sessionAttachments().length > 0}>
         <div data-slot="user-message-attachments">
-          <ArtifactGallery files={attachments()} serverUrl={data.serverUrl} />
+          <AttachmentGallery files={attachments()} serverUrl={data.serverUrl} align="end" />
           <For each={noteAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="note" />}</For>
           <For each={sessionAttachments()}>{(file) => <SpecialFileAttachment file={file} kind="session" />}</For>
         </div>
       </Show>
       <Show when={text()}>
-        <div data-slot="user-message-text">
+        <div
+          data-slot="user-message-text"
+          data-collapsed={collapsed() ? "" : undefined}
+          data-collapsible={canCollapse() ? "" : undefined}
+        >
           <HighlightedText text={text()} references={inlineFiles()} />
+          <Show when={collapsed()}>
+            <div data-slot="user-message-fade">
+              <button type="button" data-slot="user-message-expand" onClick={() => setExpanded(true)}>
+                {_(MESSAGE_PART_DESC.showMore)}
+              </button>
+            </div>
+          </Show>
+          <For each={searchReflections()}>{(notice) => <SearchReflectionNoticeView notice={notice} />}</For>
+          <Show when={canCollapse() && expanded()}>
+            <button
+              type="button"
+              data-slot="user-message-expand"
+              data-position="inline"
+              onClick={() => setExpanded(false)}
+            >
+              {_(MESSAGE_PART_DESC.showLess)}
+            </button>
+          </Show>
+        </div>
+      </Show>
+      <Show when={isTurnBubble() && hasVisibleContent()}>
+        <div data-slot="user-message-meta">
+          <Show keyed when={timestamp()}>
+            {(value) => <span data-slot="user-message-time">{value}</span>}
+          </Show>
+          <Show when={text()}>
+            <Tooltip value={copy.tooltip()} placement="top" gutter={4} class="user-message-copy-trigger">
+              <button
+                type="button"
+                data-slot="user-message-copy"
+                data-copy-state={copy.state()}
+                aria-label={copy.tooltip()}
+                disabled={copy.disabled()}
+                onClick={() => void copy.copy()}
+              >
+                <Icon name={copy.copied() ? getSemanticIcon("state.success") : copy.icon()} size="small" />
+              </button>
+            </Tooltip>
+          </Show>
         </div>
       </Show>
     </div>
   )
 }
 
-function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session" }) {
+function SpecialFileAttachment(props: { file: AttachmentPart; kind: "note" | "session" }) {
+  const { _ } = useLingui()
   const title = createMemo(
-    () => (props.file.metadata?.title as string | undefined) || props.file.filename || "Untitled",
+    () => (props.file.metadata?.title as string | undefined) || props.file.filename || _(MESSAGE_PART_DESC.untitled),
   )
   return (
     <div data-slot="user-message-attachment" data-type={props.kind}>
@@ -1535,26 +1758,28 @@ function SpecialFileAttachment(props: { file: FilePart; kind: "note" | "session"
         <Icon name={props.kind === "note" ? "notebook-pen" : "message-square"} data-slot="user-message-note-icon" />
         <div data-slot="user-message-note-copy">
           <span data-slot="user-message-note-title">{title()}</span>
-          <span data-slot="user-message-note-subtitle">{props.kind === "note" ? "Note" : "Session"}</span>
+          <span data-slot="user-message-note-subtitle">
+            {props.kind === "note" ? _(MESSAGE_PART_DESC.noteLabel) : _(MESSAGE_PART_DESC.sessionLabel)}
+          </span>
         </div>
       </div>
     </div>
   )
 }
 
-type HighlightSegment = { text: string; type?: "file"; file?: FilePart }
+type HighlightSegment = { text: string; type?: "file"; file?: AttachmentPart }
 
-function fileReferencePath(file: FilePart) {
+function fileReferencePath(file: AttachmentPart) {
   const source = file.source as { path?: unknown } | undefined
   return typeof source?.path === "string" && source.path ? source.path : file.url
 }
 
-function HighlightedText(props: { text: string; references: FilePart[] }) {
+function HighlightedText(props: { text: string; references: AttachmentPart[] }) {
   const resourceOpen = useResourceOpen()
   const segments = createMemo(() => {
     const text = props.text
 
-    const allRefs: { start: number; end: number; type: "file"; file: FilePart }[] = [
+    const allRefs: { start: number; end: number; type: "file"; file: AttachmentPart }[] = [
       ...props.references
         .filter((r) => r.source?.text?.start !== undefined && r.source?.text?.end !== undefined)
         .map((r) => ({
@@ -1590,6 +1815,7 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
     <For each={segments()}>
       {(segment) => (
         <Show
+          keyed
           when={resourceOpen ? segment.file : undefined}
           fallback={
             <span
@@ -1609,9 +1835,9 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
                 resourceOpen?.open(
                   {
                     kind: "workspace-file",
-                    path: fileReferencePath(file()),
-                    mime: file().mime,
-                    filename: file().filename,
+                    path: fileReferencePath(file),
+                    mime: file.mime,
+                    filename: file.filename,
                   },
                   { prefer: "workspace" },
                 )
@@ -1626,6 +1852,7 @@ function HighlightedText(props: { text: string; references: FilePart[] }) {
   )
 }
 export function Part(props: MessagePartProps) {
+  const { _ } = useLingui()
   const component = createMemo(() => PART_MAPPING[props.part.type])
   return (
     <Show when={component()}>
@@ -1634,7 +1861,9 @@ export function Part(props: MessagePartProps) {
           <div class="plugin-error-card">
             <div class="plugin-error-header">
               <Icon name="alert-triangle" />
-              <span>Part Render Error: {props.part.type}</span>
+              <span>
+                {_(MESSAGE_PART_DESC.partRenderError)} {props.part.type}
+              </span>
             </div>
             <div class="plugin-error-message">{err?.message || String(err)}</div>
           </div>
@@ -1678,33 +1907,34 @@ export {
   resolveToolRenderer,
 }
 
-function ToolAttachments(props: { attachments: FilePart[] }) {
+function ToolAttachments(props: { attachments: AttachmentPart[] }) {
   const data = useData()
   const files = createMemo(() =>
     props.attachments.map(
-      (f): ArtifactFile => ({
+      (f): AttachmentFile => ({
         mime: f.mime,
         filename: f.filename,
         url: f.url,
         localPath: f.localPath,
+        presentation: f.presentation,
         metadata: f.metadata,
         source: f.source,
       }),
     ),
   )
-  return <ArtifactGallery files={files()} serverUrl={data.serverUrl} />
+  return <AttachmentGallery files={files()} serverUrl={data.serverUrl} />
 }
 
-PART_MAPPING["file"] = function FilePartDisplay(props) {
+PART_MAPPING["attachment"] = function AttachmentPartDisplay(props) {
   const data = useData()
-  const file = createMemo(() => props.part as FilePart)
+  const file = createMemo(() => props.part as AttachmentPart)
   const isInlineReference = createMemo(() => file().source?.text?.start !== undefined)
   const isNoteAttachment = createMemo(() => file().metadata?.kind === "note")
   const isSessionAttachment = createMemo(() => file().metadata?.kind === "session")
 
   return (
     <Show when={!isInlineReference()}>
-      <div data-component="file-part">
+      <div data-component="attachment-part">
         <Switch>
           <Match when={isNoteAttachment()}>
             <div data-component="user-message">
@@ -1721,7 +1951,7 @@ PART_MAPPING["file"] = function FilePartDisplay(props) {
             </div>
           </Match>
           <Match when={true}>
-            <ArtifactGallery files={[file()]} serverUrl={data.serverUrl} />
+            <AttachmentGallery files={[file()]} serverUrl={data.serverUrl} />
           </Match>
         </Switch>
       </div>
@@ -1732,6 +1962,7 @@ PART_MAPPING["file"] = function FilePartDisplay(props) {
 PART_MAPPING["tool"] = function ToolPartDisplay(props) {
   const data = useData()
   const part = () => props.part as ToolPart
+  if (isToolCardHidden(part())) return null
 
   const permission = createMemo(() => {
     const next = data.store.permission?.[props.message.sessionID]?.[0]
@@ -1757,7 +1988,6 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
     if (raw) return streamInput
     return part().state?.input ?? {}
   }
-  // @ts-expect-error — ToolState is a discriminated union; metadata exists on running/completed/error
   const metadata = () => part().state?.metadata ?? {}
   const approval = createMemo(() => metadata().approval as Record<string, any> | undefined)
   const audit = createMemo(() => getApprovalAudit(approval()))
@@ -1815,7 +2045,12 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
       <div data-component="tool-card-area">
         <Switch>
           <Match when={part().state.status === "error" && (part().state as ToolStateError).error}>
-            {(error) => <ErrorCard error={error()} />}
+            {(error) => (
+              <ErrorCard
+                error={error()}
+                input={(part().state as ToolStateError).input as Record<string, unknown> | undefined}
+              />
+            )}
           </Match>
           <Match when={true}>
             <Dynamic
@@ -1852,62 +2087,58 @@ PART_MAPPING["tool"] = function ToolPartDisplay(props) {
 
 PART_MAPPING["text"] = function TextPartDisplay(props) {
   const data = useData()
-  const part = props.part as TextPart
-  const displayText = () => relativizeProjectPaths((part.text ?? "").trim(), data.directory)
-  const messageParts = () => data.store.part[props.message.id]
+  const part = () => props.part as TextPart
+  const isTerminal = createMemo(() =>
+    isTextPartTerminal({
+      partEnd: part().time?.end,
+      messageCompleted: (props.message as AssistantMessage).time.completed,
+    }),
+  )
 
-  const sessionStatus = () => data.store.session_status[props.message.sessionID]
-  const isStreaming = () => sessionStatus()?.type === "busy"
-  const isCompleted = () =>
-    isRenderableTextPartCompleted(
-      messageParts(),
-      props.message as AssistantMessage,
-      part,
-      sessionStatus() as { type: string } | undefined,
-    )
-
-  const typedText = createTypewriter({
-    source: displayText,
-    streaming: isStreaming,
-    completed: isCompleted,
-  })
+  const projection = createTextPartProjection()
+  const renderedText = createMemo(() =>
+    projection.project({
+      key: part().id,
+      source: part().text ?? "",
+      completed: isTerminal(),
+      remove: data.directory,
+    }),
+  )
 
   return (
-    <Show when={typedText()}>
+    <Show when={renderedText()}>
       <div data-component="text-part">
-        <Markdown text={typedText()} cacheKey={part.id} />
+        <Markdown text={renderedText()} streaming={!isTerminal()} cacheKey={part().id} />
       </div>
     </Show>
   )
 }
 
 PART_MAPPING["reasoning"] = function ReasoningPartDisplay(props) {
-  const data = useData()
-  const part = props.part as ReasoningPart
-  const text = () => part.text.trim()
-  const messageParts = () => data.store.part[props.message.id]
+  const part = () => props.part as ReasoningPart
+  const isTerminal = createMemo(() =>
+    isTextPartTerminal({
+      partEnd: part().time?.end,
+      messageCompleted: (props.message as AssistantMessage).time.completed,
+    }),
+  )
 
-  const sessionStatus = () => data.store.session_status[props.message.sessionID]
-  const isStreaming = () => sessionStatus()?.type === "busy"
-  const isCompleted = () =>
-    isRenderableTextPartCompleted(
-      messageParts(),
-      props.message as AssistantMessage,
-      part,
-      sessionStatus() as { type: string } | undefined,
-    )
-
-  const typedText = createTypewriter({
-    source: text,
-    streaming: isStreaming,
-    completed: isCompleted,
-  })
+  const projection = createTextPartProjection()
+  const renderedText = createMemo(() =>
+    projection.project({
+      key: part().id,
+      source: part().text,
+      completed: isTerminal(),
+    }),
+  )
 
   return (
-    <Show when={typedText()}>
+    <Show when={renderedText()}>
       <div data-component="reasoning-part">
-        <Markdown text={typedText()} cacheKey={part.id} />
+        <Markdown text={renderedText()} streaming={!isTerminal()} cacheKey={part().id} />
       </div>
     </Show>
   )
 }
+
+PART_MAPPING["compaction_recovery"] = CompactionCard

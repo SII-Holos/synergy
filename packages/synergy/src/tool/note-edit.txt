@@ -1,17 +1,23 @@
-Performs precise anchored edits to note content. Blueprint notes are editable only in Plan Mode. Outside Plan Mode, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables.
+Performs precise anchored edits to note content. Blueprint notes are editable only in Plan or Lattice. Outside Plan or Lattice, Blueprint notes are read-only; use `note_read`, `note_search`, or `note_list` to inspect them, and use ordinary notes for deliverables.
 
 Always read first:
-- Call note_read({ ids:[...], format:"blocks" }) immediately before editing.
+- Call note_read({ ids:[...], format:"blocks" }) before editing.
 - Pass baseVersion from Version.
 - Pass baseDocHash from DocHash when available.
-- Pass blockId and expectedHash from the target block line.
+- Pass blockId and expectedHash from the target block line when available.
+
+Default stale-anchor recovery:
+- `freshen:"safe"` is the default. If the note version, docHash, or a low-risk block hash is stale, note_edit re-reads the latest note and replays safe operations against the latest stable block IDs.
+- Safe replay is limited to insertBefore, insertAfter, setAttrs, replaceText with a `find` string, and updateTableCell by `cellId`.
+- Unsafe operations such as replaceBlock, deleteBlock, replaceRange, and range-based replaceText still fail on stale anchors; re-read and retry deliberately.
+- Use `freshen:"never"` when you need strict old behavior: any version, docHash, or expectedHash mismatch fails without writing.
 
 Preferred operations:
 - replaceBlock: Replace one block by stable blockId. The old block is removed.
 - insertBefore / insertAfter: Insert content adjacent to a stable blockId.
 - deleteBlock: Delete one block by stable blockId.
 - setAttrs: Update a block's attributes while preserving its blockId.
-- replaceText: Replace text inside one block using find or range. If find appears more than once, specify occurrence.
+- replaceText: Replace editable text inside one block using find or range. If find appears more than once, specify occurrence. Ranges use the exact block text shown by note_read, but spans that cross non-editable rendered content such as hard breaks, inline math, images, or generated separators fail without writing; use replaceBlock for those cases.
 - updateTableCell: Replace the content of one table cell by cellId or by tableId,row,col.
 - replaceRange: Replace a contiguous sibling range.
 
@@ -21,6 +27,13 @@ Content inputs:
 - { format:"json", json:{...} } inserts exact ProseMirror/Tiptap JSON. Use this for rich structures.
 
 Safety behavior:
-- Version mismatch, docHash mismatch, missing targets, hash mismatch, invalid JSON content, and ambiguous text replacements fail without writing.
-- On failure, the tool returns current version, current docHash, and current block summaries so you can re-read/retry deliberately.
-- dryRun:true validates and reports changed blocks without writing.
+- Strict failures, unsafe stale operations, missing targets, invalid JSON content, ambiguous text replacements, and replaceText ranges that include non-editable rendered content fail without writing.
+- On failure, the tool returns current version, current docHash, failed operation index/action when applicable, and current block summaries so you can re-read/retry deliberately. A failed operation means no write occurred.
+- dryRun:true validates and returns the same semantic operation preview without writing.
+
+Result interpretation:
+- Success output includes one section per operation. Inspect matched text, before/after context, checks, warnings, and changed-block classification before assuming the edit is correct.
+- `directChangedBlocks` are the operation's target, inserted, or deleted blocks; `ancestorChangedBlocks` are parent list/table/blockquote/container hashes changed by descendants; `unexpectedChangedBlocks` are changes outside that direct/ancestor set.
+- Warnings are not fatal, but they indicate a possible no-op, unexpected extra change, or semantic mismatch and should usually be followed by re-reading or correcting the note.
+
+Use note_write with mode:"replace" instead when rewriting most or all of a note/Blueprint and you have complete desired markdown content.

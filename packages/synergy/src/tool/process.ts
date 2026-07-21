@@ -1,8 +1,7 @@
 import z from "zod"
 import { Tool } from "./tool"
 import DESCRIPTION from "./process.txt"
-import { MetaProtocolEnv } from "@ericsanchezok/meta-protocol"
-import { RemoteExecution } from "./remote-execution"
+import { SynergyLinkExecution } from "./synergy-link-execution"
 import { LocalProcessBackend } from "./process/local"
 import { RemoteProcessBackend } from "./process/remote"
 import type { ProcessMetadata, ProcessParams } from "./process/shared"
@@ -22,18 +21,35 @@ const parameters = z.object({
     .number()
     .optional()
     .describe(`Max seconds to wait when block is true (default: ${ToolTimeout.DEFAULTS.processPollWaitMs / 1_000})`),
-  envID: MetaProtocolEnv.EnvID.optional().describe(
-    "Optional execution environment ID. Omit for local execution; provide one to target a remote execution backend.",
-  ),
+  linkID: z
+    .string()
+    .optional()
+    .describe(
+      "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
+    ),
+  targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
+  envID: z
+    .string()
+    .optional()
+    .describe("Deprecated: use linkID instead. Accepted temporarily for backward compatibility."),
 })
 
 export const ProcessTool = Tool.define<typeof parameters, ProcessMetadata>("process", {
   description: DESCRIPTION,
   parameters,
   async execute(params, ctx) {
-    const target = RemoteExecution.resolveTarget(params.envID)
+    const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
+    const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
+    const target = await SynergyLinkExecution.resolveExecutionTarget({
+      targetID: params.targetID,
+      targetIDSupplied: Object.hasOwn(params, "targetID"),
+      linkID: effectiveLinkID,
+      linkIDSupplied,
+      tool: "process",
+      agent: ctx.agent,
+    })
     if (target.kind === "remote") {
-      return RemoteProcessBackend.execute(params, target.envID)
+      return RemoteProcessBackend.execute(params, target)
     }
 
     return LocalProcessBackend.execute(params as ProcessParams, ctx)

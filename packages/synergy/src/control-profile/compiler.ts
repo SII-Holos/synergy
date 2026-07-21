@@ -1,5 +1,6 @@
 import type { ControlProfile, ProfileId, ProfileIdInput, ResolutionContext, ResolvedProfile } from "./types"
-import { buildProfile, getProfileLabel, normalizeProfileId, PROFILE_IDS } from "./profiles"
+import { PROFILE_IDS } from "./ids"
+import { buildProfile, getProfileLabel, normalizeProfileId } from "./profiles"
 
 export namespace ControlProfileCompiler {
   export const profileIds = PROFILE_IDS

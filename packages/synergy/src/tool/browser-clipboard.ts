@@ -1,78 +1,45 @@
 import z from "zod"
 import { Tool } from "./tool"
-import { BrowserToolHelper } from "./browser-shared"
-import { BrowserClipboard } from "../browser/clipboard"
+import { BrowserToolHelper, truncateBrowserOutput } from "./browser-shared"
 
-const parameters = z.object({
-  action: z.enum(["read", "write"]).describe("Whether to read from or write to the clipboard."),
-  text: z.string().optional().describe("Text to write to the clipboard. Required when action is 'write'."),
-  pageId: z.string().optional().describe("Page ID. Uses the session page if omitted."),
-})
+const MAX_CLIPBOARD_BYTES = 1024 * 1024
 
-interface BrowserClipboardMetadata {
-  action: string
-  pageId: string
-  hasText?: boolean
-  byteLength?: number
-  ok?: boolean
-}
-
-export const BrowserClipboardTool = Tool.define<typeof parameters, BrowserClipboardMetadata>("browser_clipboard", {
-  description:
-    "Read or write text from the browser clipboard via navigator.clipboard. Read returns the current clipboard text; write copies the provided text to the clipboard.",
-  parameters,
+export const BrowserClipboardTool = Tool.define("browser_clipboard", {
+  description: "Read, write, or clear page clipboard text through the dedicated browser clipboard capability.",
+  parameters: z
+    .object({
+      action: z.enum(["read", "write", "clear"]),
+      text: z.string().max(1_000_000).optional().describe("Required only for write."),
+    })
+    .strict()
+    .superRefine((value, ctx) => {
+      if (value.action === "write" && value.text === undefined) {
+        ctx.addIssue({ code: "custom", path: ["text"], message: "text is required for write." })
+      }
+      if (value.action !== "write" && value.text !== undefined) {
+        ctx.addIssue({ code: "custom", path: ["text"], message: "text is valid only for write." })
+      }
+    }),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
-    return BrowserToolHelper.withActivity(
-      ctx,
-      tab,
-      params.action === "read" ? "reading" : "acting",
-      "browser_clipboard",
-      `${params.action} clipboard`,
-      async () => {
-        // Route clipboard operations through Playwright context.grantPermissions + page.evaluate
-        const page = tab.page
-
-        if (params.action === "read") {
-          // Uses Playwright grantPermissions + page.evaluate for clipboard read
-          if (page) {
-            const result = await BrowserClipboard.readViaPage(page)
-            return {
-              title: `Clipboard read (tab: ${tab.id})`,
-              output: result.text ?? "(clipboard empty or permission denied)",
-              metadata: { action: "read", pageId: tab.id, hasText: result.ok },
-            }
-          }
-          return {
-            title: `Clipboard read (tab: ${tab.id})`,
-            output: "(no page available)",
-            metadata: { action: "read", pageId: tab.id, hasText: false },
-          }
-        }
-
-        // write
-        if (!params.text) throw new Error("text is required for clipboard write")
-        if (page) {
-          const result = await BrowserClipboard.writeViaPage(page, params.text)
-          return {
-            title: `Clipboard write${result.ok ? "" : " failed"} (tab: ${tab.id})`,
-            output: result.ok
-              ? `Copied ${Buffer.byteLength(params.text, "utf-8")} bytes to clipboard.`
-              : "Clipboard write failed — permission may be denied.",
-            metadata: {
-              action: "write",
-              pageId: tab.id,
-              ok: result.ok,
-              byteLength: Buffer.byteLength(params.text, "utf-8"),
-            },
-          }
-        }
-        return {
-          title: `Clipboard write failed (tab: ${tab.id})`,
-          output: "(no page available)",
-          metadata: { action: "write", pageId: tab.id, ok: false, byteLength: 0 },
-        }
-      },
+    if (params.text && Buffer.byteLength(params.text, "utf8") > MAX_CLIPBOARD_BYTES) {
+      throw new Error("Clipboard text exceeds the 1 MB limit.")
+    }
+    const page = await BrowserToolHelper.resolvePage(ctx)
+    const result = await BrowserToolHelper.execute(ctx, { type: "clipboard", action: params.action, text: params.text })
+    if (result.type !== "data") throw new Error("Browser clipboard returned an unexpected result.")
+    const data = result.data as { text?: string; byteLength?: number }
+    const formatted = truncateBrowserOutput(
+      params.action === "read" ? data.text || "(clipboard empty)" : JSON.stringify(data),
     )
+    return {
+      title: `Browser clipboard: ${params.action}`,
+      output: formatted.output,
+      metadata: {
+        pageId: page.id,
+        action: params.action,
+        byteLength: data.byteLength ?? Buffer.byteLength(data.text ?? "", "utf8"),
+        outputTruncated: formatted.truncated,
+      },
+    }
   },
 })

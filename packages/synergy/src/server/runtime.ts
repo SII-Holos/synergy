@@ -14,7 +14,11 @@ import { ServerProcessLock } from "../daemon/server-process-lock"
 import { StartupReporter } from "../cli/startup-reporter"
 import { Flag } from "../flag/flag"
 import { GlobalRuntime } from "./global-runtime"
-import { Observability } from "../observability"
+import { Observability, ObservabilityResources, ObservabilityStore } from "../observability"
+import { Session } from "../session"
+import { Plugin } from "../plugin"
+import { PluginSpec } from "../util/plugin-spec"
+import { watchManagedParent } from "./managed-parent"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -70,19 +74,24 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
-  await StartupReporter.provide(reporter, async () => {
-    await GlobalRuntime.start()
-    if (options.printChannelStatus) {
-      statuses.push(
-        ...(await ScopeContext.provide({
-          scope: Scope.home(),
-          fn: connectionStatusRows,
-        })),
-      )
-    }
-  })
+  await GlobalRuntime.start()
+  statuses.push(
+    await ScopeContext.provide({
+      scope: Scope.home(),
+      fn: async () => pluginStatusRow(await Plugin.getLoaded(), await Plugin.getDisabled()),
+    }),
+  )
+  if (options.printChannelStatus) {
+    statuses.push(
+      ...(await ScopeContext.provide({
+        scope: Scope.home(),
+        fn: connectionStatusRows,
+      })),
+    )
+  }
 
   if (options.printBanner) {
     if (
@@ -95,8 +104,6 @@ export async function run(options: RuntimeOptions) {
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
-
-  registerShutdown(server, processLock.release)
 
   if (process.env.SYNERGY_DAEMON === "1") {
     DaemonLogRotate.start()
@@ -138,6 +145,19 @@ function renderBanner(input: {
 
 export function startupScopeLabel() {
   return Flag.SYNERGY_CWD || process.cwd()
+}
+
+export function pluginStatusRow(
+  loaded: Array<{ id: string; name: string }>,
+  disabled: Array<{ pluginId: string }>,
+): StartupReporter.StatusRow {
+  if (loaded.length === 0 && disabled.length === 0) {
+    return { label: "Plugins", value: "none configured", kind: "muted" }
+  }
+  const names = loaded.map((plugin) => plugin.name).join(", ")
+  if (disabled.length === 0) return { label: "Plugins", value: names, kind: "success" }
+  const unavailable = `${disabled.length} unavailable: ${disabled.map((plugin) => PluginSpec.displayName(plugin.pluginId)).join(", ")}`
+  return { label: "Plugins", value: names ? `${names}; ${unavailable}` : unavailable, kind: "error" }
 }
 
 async function hasNoModelConfigured() {
@@ -302,6 +322,7 @@ function registerShutdown(
   releaseLock: () => Promise<void>,
 ) {
   let shuttingDown = false
+  let stopWatchingParent = () => {}
 
   const gracefulShutdown = async (signal: string) => {
     if (shuttingDown) {
@@ -314,6 +335,7 @@ function registerShutdown(
     }
 
     shuttingDown = true
+    stopWatchingParent()
     log.info("received signal, shutting down gracefully", { signal })
     await Observability.emit("shutdown.signal", {
       data: {
@@ -350,6 +372,12 @@ function registerShutdown(
       phase = "kill running processes"
       await Observability.emit("shutdown.phase", { data: { phase } })
       await ProcessRegistry.killAllRunning()
+
+      phase = "flush session parts"
+      await Observability.emit("shutdown.phase", { data: { phase } })
+      await Session.flushPartWrites().catch((error) => {
+        log.warn("failed to flush session part writes", { error })
+      })
 
       phase = "stop global runtime"
       await Observability.emit("shutdown.phase", { data: { phase } })
@@ -401,6 +429,12 @@ function registerShutdown(
       }
     }
 
+    ObservabilityResources.stop()
+    await Observability.flush().catch((error) => {
+      log.warn("failed to flush observability during shutdown", { error })
+    })
+    ObservabilityStore.close()
+
     clearTimeout(forceExitTimeout)
     Log.flush()
     process.exit(0)
@@ -408,4 +442,8 @@ function registerShutdown(
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
   process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+  stopWatchingParent = watchManagedParent({
+    expectedParentPid: process.env.SYNERGY_DESKTOP_PARENT_PID,
+    onParentExit: () => void gracefulShutdown("desktop-parent-exit"),
+  })
 }

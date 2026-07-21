@@ -1,6 +1,6 @@
 export namespace ToolTimeout {
   export type Source =
-    | "execution_budget"
+    | "tool_timeout"
     | "search"
     | "fetch"
     | "download"
@@ -12,7 +12,7 @@ export namespace ToolTimeout {
     | "document_extract"
 
   export interface Metadata {
-    executionBudgetMs: number
+    toolTimeoutMs: number
     operationTimeoutMs?: number
     displayMs: number
     source: Source
@@ -31,7 +31,6 @@ export namespace ToolTimeout {
     arxivDownloadMs: 60_000,
     browserWaitMs: 10_000,
     browserWaitMaxMs: 60_000,
-    browserDownloadMs: 120_000,
     browserDownloadsWaitMs: 30_000,
     browserHelperWaitMs: 30_000,
     browserLocatorMs: 5_000,
@@ -39,18 +38,19 @@ export namespace ToolTimeout {
     taskAutoBackgroundMs: 300_000,
     taskOutputWaitMs: 300_000,
     processPollWaitMs: 30_000,
-    questionMs: 1_800_000,
+    questionMs: 3_600_000,
     lookAtMs: 120_000,
-    bashHardCeilingMs: 3_600_000,
+    bashHardCeilingMs: 86_400_000,
+    bashAutoBackgroundMs: 30_000,
   } as const
 
-  export function create(input: { executionBudgetMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
+  export function create(input: { toolTimeoutMs: number; operationTimeoutMs?: number; source?: Source }): Metadata {
     const operationTimeoutMs = normalizeMs(input.operationTimeoutMs)
     return {
-      executionBudgetMs: input.executionBudgetMs,
+      toolTimeoutMs: input.toolTimeoutMs,
       ...(operationTimeoutMs !== undefined ? { operationTimeoutMs } : {}),
-      displayMs: operationTimeoutMs ?? input.executionBudgetMs,
-      source: operationTimeoutMs !== undefined ? (input.source ?? "wait") : "execution_budget",
+      displayMs: operationTimeoutMs ?? input.toolTimeoutMs,
+      source: operationTimeoutMs !== undefined ? (input.source ?? "wait") : "tool_timeout",
     }
   }
 
@@ -61,7 +61,7 @@ export namespace ToolTimeout {
   ): Metadata | undefined {
     if (!base) return undefined
     return create({
-      executionBudgetMs: base.executionBudgetMs,
+      toolTimeoutMs: base.toolTimeoutMs,
       operationTimeoutMs,
       source,
     })
@@ -107,12 +107,12 @@ export namespace ToolTimeout {
   export function metadataForTool(input: {
     tool: string
     args: Record<string, any>
-    executionBudgetMs: number
+    toolTimeoutMs: number
     mcpCallTimeoutMs?: number
   }): Metadata {
     const operation = operationForTool(input.tool, input.args, input.mcpCallTimeoutMs)
     return create({
-      executionBudgetMs: input.executionBudgetMs,
+      toolTimeoutMs: input.toolTimeoutMs,
       operationTimeoutMs: operation?.timeoutMs,
       source: operation?.source,
     })
@@ -156,8 +156,6 @@ export namespace ToolTimeout {
           timeoutMs: clampMs(args.timeout, DEFAULTS.browserWaitMs, 500, DEFAULTS.browserWaitMaxMs),
           source: "wait",
         }
-      case "browser_download":
-        return { timeoutMs: DEFAULTS.browserDownloadMs, source: "download" }
       case "browser_downloads":
         if (args.action !== "wait") return undefined
         return {
@@ -172,11 +170,18 @@ export namespace ToolTimeout {
       case "task_output":
         if (!args.block) return undefined
         return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.taskOutputWaitMs), source: "wait" }
-      case "bash":
-        if (typeof args.yieldSeconds === "number" && Number.isFinite(args.yieldSeconds) && args.yieldSeconds > 0) {
-          return { timeoutMs: args.yieldSeconds * 1_000, source: "auto_background" }
+      case "bash": {
+        const commandTimeoutMs = secondsToMsOrUndefined(args.timeoutSeconds)
+        const effectiveAutoBackgroundMs =
+          secondsToMsOrUndefined(args.backgroundAfterSeconds) ?? DEFAULTS.bashAutoBackgroundMs
+        if (effectiveAutoBackgroundMs && commandTimeoutMs && commandTimeoutMs < effectiveAutoBackgroundMs) {
+          return { timeoutMs: commandTimeoutMs, source: "wait" }
         }
-        return undefined
+        if (effectiveAutoBackgroundMs) {
+          return { timeoutMs: effectiveAutoBackgroundMs, source: "auto_background" }
+        }
+        return commandTimeoutMs ? { timeoutMs: commandTimeoutMs, source: "wait" } : undefined
+      }
       case "process":
         if (args.action !== "poll" || !args.block) return undefined
         return { timeoutMs: secondsToMs(args.timeout, DEFAULTS.processPollWaitMs), source: "wait" }
@@ -201,6 +206,11 @@ export namespace ToolTimeout {
 
   function secondsToMs(value: unknown, fallbackMs: number): number {
     if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return fallbackMs
+    return value * 1_000
+  }
+
+  function secondsToMsOrUndefined(value: unknown): number | undefined {
+    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return undefined
     return value * 1_000
   }
 

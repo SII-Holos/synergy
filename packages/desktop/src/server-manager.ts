@@ -30,7 +30,6 @@ export interface DesktopServerManagerOptions {
 
 const dirname = path.dirname(fileURLToPath(import.meta.url))
 const HEALTH_PATH = "/global/health"
-const HEALTH_TIMEOUT_MS = 30_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
 
 export class DesktopServerManager {
@@ -90,19 +89,7 @@ export class DesktopServerManager {
     }
     const child = this.child
     this.child = null
-    const exited = new Promise<void>((resolve) => {
-      child.once("exit", () => resolve())
-    })
-    child.kill("SIGTERM")
-    await Promise.race([
-      exited,
-      new Promise<void>((resolve) => {
-        setTimeout(() => {
-          if (!child.killed) child.kill("SIGKILL")
-          resolve()
-        }, SHUTDOWN_TIMEOUT_MS)
-      }),
-    ])
+    await terminateServerProcess(child)
     this.state = "stopped"
     this.port = null
     this.url = null
@@ -126,6 +113,7 @@ export class DesktopServerManager {
         ...process.env,
         SYNERGY_CWD: process.env.SYNERGY_CWD ?? os.homedir(),
         SYNERGY_DESKTOP_CHANNEL: this.options.channel,
+        SYNERGY_DESKTOP_PARENT_PID: String(process.pid),
       },
       stdio: ["ignore", "pipe", "pipe"],
     })
@@ -143,14 +131,17 @@ export class DesktopServerManager {
     })
 
     try {
-      await waitForHealth(`${this.url}${HEALTH_PATH}`, HEALTH_TIMEOUT_MS)
+      await waitForHealth(`${this.url}${HEALTH_PATH}`, child)
       this.state = "running"
       return this.url
     } catch (error) {
       this.state = "failed"
-      this.lastError = error instanceof Error ? error.message : String(error)
+      const message = error instanceof Error ? error.message : String(error)
+      const logTail = await readLogTail(this.logFile)
+      const detail = logTail ? `${message}\n\nServer log tail:\n${logTail}` : message
+      this.lastError = detail
       await this.stop()
-      throw error
+      throw new Error(detail, { cause: error instanceof Error ? error : undefined })
     }
   }
 
@@ -176,6 +167,29 @@ export class DesktopServerManager {
   }
 }
 
+export async function terminateServerProcess(
+  child: ChildProcess,
+  shutdownTimeoutMs = SHUTDOWN_TIMEOUT_MS,
+): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return
+
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve())
+  })
+  child.kill("SIGTERM")
+  const graceful = await Promise.race([
+    exited.then(() => true),
+    new Promise<false>((resolve) => {
+      const timeout = setTimeout(() => resolve(false), shutdownTimeoutMs)
+      timeout.unref()
+    }),
+  ])
+  if (graceful || child.exitCode !== null || child.signalCode !== null) return
+
+  child.kill("SIGKILL")
+  await exited
+}
+
 export async function findAvailablePort(): Promise<number> {
   return new Promise((resolve, reject) => {
     const server = net.createServer()
@@ -192,10 +206,9 @@ export async function findAvailablePort(): Promise<number> {
   })
 }
 
-async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
-  const startedAt = Date.now()
+async function waitForHealth(url: string, child: ChildProcess): Promise<void> {
   let lastError: unknown
-  while (Date.now() - startedAt < timeoutMs) {
+  while (child.exitCode === null && child.signalCode === null) {
     try {
       const response = await fetch(url)
       if (response.ok) return
@@ -206,7 +219,9 @@ async function waitForHealth(url: string, timeoutMs: number): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 250))
   }
   throw new Error(
-    `Timed out waiting for Synergy server health: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
+    `Synergy server exited before health became ready (code=${child.exitCode ?? "null"} signal=${child.signalCode ?? "null"}): ${
+      lastError instanceof Error ? lastError.message : String(lastError)
+    }`,
   )
 }
 
@@ -222,4 +237,21 @@ function sourceSynergyRoot(): string | null {
     path.resolve(dirname, "../../../packages/synergy"),
   ]
   return candidates.find((candidate) => fs.existsSync(path.join(candidate, "src/index.ts"))) ?? null
+}
+
+async function readLogTail(logFile: string | null): Promise<string | null> {
+  if (!logFile) return null
+  try {
+    const stat = await fsp.stat(logFile)
+    if (stat.size === 0) return "(empty)"
+    const fd = await fsp.open(logFile, "r")
+    const maxBytes = 8192
+    const start = Math.max(0, stat.size - maxBytes)
+    const buf = Buffer.alloc(maxBytes)
+    const { bytesRead } = await fd.read(buf, 0, maxBytes, start)
+    await fd.close()
+    return buf.subarray(0, bytesRead).toString("utf-8")
+  } catch {
+    return null
+  }
 }

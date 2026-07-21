@@ -1,0 +1,58 @@
+[data-component="dialog"] [data-slot="dialog-container"]:has(> [data-slot="dialog-content"].confirm-dialog) {
+  width: min(420px, calc(100vw - 32px));
+  height: auto;
+}
+
+[data-slot="dialog-content"].confirm-dialog {
+  width: min(420px, calc(100vw - 32px));
+  max-width: min(420px, calc(100vw - 32px));
+  min-height: 0;
+}
+
+[data-slot="dialog-content"].confirm-dialog [data-slot="dialog-description"] {
+  margin-top: 0;
+  padding-bottom: 0;
+}
+
+[data-slot="dialog-content"].confirm-dialog [data-slot="dialog-body"] {
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 18px 24px 22px;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 0;
+}
+
+.confirm-dialog-button {
+  gap: 6px;
+}
+
+.confirm-dialog-button[data-tone="danger"] {
+  background: color-mix(in oklch, var(--icon-critical-base) 16%, transparent);
+  color: var(--text-diff-delete-base);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--icon-critical-base) 26%, transparent);
+}
+
+.confirm-dialog-button[data-tone="danger"]:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--icon-critical-base) 20%, transparent);
+  color: var(--text-diff-delete-strong);
+}
+
+.confirm-dialog-button[data-tone="warning"] {
+  background: color-mix(in oklch, var(--icon-warning-base) 13%, transparent);
+  color: var(--text-strong);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--icon-warning-base) 24%, transparent);
+}
+
+.confirm-dialog-button[data-tone="warning"]:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--icon-warning-base) 20%, transparent);
+}
+
+.confirm-dialog-spinner {
+  width: 12px;
+  height: 12px;
+}

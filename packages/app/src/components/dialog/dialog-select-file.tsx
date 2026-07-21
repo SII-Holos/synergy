@@ -3,33 +3,34 @@ import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { FileIcon } from "@ericsanchezok/synergy-ui/file-icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { getDirectory, getFilename } from "@ericsanchezok/synergy-util/path"
-import { useParams } from "@solidjs/router"
-import { createMemo } from "solid-js"
-import { useLayout } from "@/context/layout"
+import { useLingui } from "@lingui/solid"
+import { dialog } from "@/locales/messages"
 import { useFile } from "@/context/file"
 
-export function DialogSelectFile() {
-  const layout = useLayout()
+export function DialogSelectFile(props: { onSelect?: (path: string) => void }) {
   const file = useFile()
-  const dialog = useDialog()
-  const params = useParams()
-  const sessionKey = createMemo(() => `${params.dir}${params.id ? "/" + params.id : ""}`)
-  const tabs = createMemo(() => layout.tabs(sessionKey()))
+  const dialogContext = useDialog()
+  const { _ } = useLingui()
   return (
-    <Dialog title="Select file">
+    <Dialog title={_(dialog.selectFile)} size="list">
       <List
-        search={{ placeholder: "Search files", autofocus: true }}
-        emptyMessage="No files found"
-        items={file.searchFiles}
+        search={{ placeholder: _(dialog.searchFiles), autofocus: true }}
+        emptyMessage={_(dialog.noFilesFound)}
+        items={(query) =>
+          file
+            .searchFiles(query)
+            .then((response) =>
+              (response?.items ?? [])
+                .filter((item) => item.kind === "file" && item.type === "file")
+                .map((item) => item.path),
+            )
+        }
         key={(x) => x}
         onSelect={(path) => {
           if (path) {
-            const value = file.tab(path)
-            tabs().open(value)
-            file.load(path)
-            layout.review.open()
+            props.onSelect?.(path)
           }
-          dialog.close()
+          dialogContext.close()
         }}
       >
         {(i) => (

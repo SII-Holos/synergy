@@ -1,8 +1,8 @@
-import { MetaProtocolProcess } from "@ericsanchezok/meta-protocol"
-import { RemoteExecution } from "../remote-execution"
+import { SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
+import type { SynergyLinkExecution } from "../synergy-link-execution"
 import type { ProcessParams, ProcessResult } from "./shared"
 
-function toPayload(params: ProcessParams): MetaProtocolProcess.ExecutePayload {
+function toPayload(params: ProcessParams): SynergyLinkProcess.ExecutePayload {
   switch (params.action) {
     case "list":
       return { action: "list" }
@@ -31,12 +31,13 @@ function toPayload(params: ProcessParams): MetaProtocolProcess.ExecutePayload {
 }
 
 export namespace RemoteProcessBackend {
-  export async function execute(params: ProcessParams, envID: string): Promise<ProcessResult> {
-    const session = RemoteExecution.requireSession(envID)
-    const client = RemoteExecution.requireClient(envID, "process")
-    return client.executeProcess(envID, toPayload(params), {
-      sessionID: session.sessionID,
-      targetAgentID: session.targetAgentID,
+  export async function execute(
+    params: ProcessParams,
+    target: Extract<SynergyLinkExecution.ExecutionTarget, { kind: "remote" }>,
+  ): Promise<ProcessResult> {
+    return target.client.executeProcess(target.linkID, toPayload(params), {
+      sessionID: target.session.sessionID,
+      targetAgentID: target.session.targetAgentID,
     })
   }
 }

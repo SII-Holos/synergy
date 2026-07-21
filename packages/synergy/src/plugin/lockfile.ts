@@ -4,11 +4,14 @@ import os from "os"
 import { Global } from "../global"
 import { PluginLockfile } from "./lockfile-schema"
 import type { PluginLockEntry } from "./lockfile-schema"
-const lockfilePath = path.join(Global.Path.root, "plugin.lock")
 
 const EMPTY_LOCKFILE: PluginLockfile = {
-  version: 1 as const,
+  version: 2 as const,
   plugins: {},
+}
+
+function lockfilePath() {
+  return path.join(Global.Path.root, "plugin.lock")
 }
 
 /**
@@ -17,7 +20,7 @@ const EMPTY_LOCKFILE: PluginLockfile = {
  */
 export async function read(): Promise<PluginLockfile> {
   try {
-    const text = await Bun.file(lockfilePath).text()
+    const text = await Bun.file(lockfilePath()).text()
     if (!text.trim()) return { ...EMPTY_LOCKFILE }
     const parsed = PluginLockfile.parse(JSON.parse(text))
     return parsed
@@ -31,10 +34,11 @@ export async function read(): Promise<PluginLockfile> {
  * Write the lockfile atomically (write to temp + rename).
  */
 export async function write(lockfile: PluginLockfile): Promise<void> {
+  const targetPath = lockfilePath()
   const tmpPath = path.join(os.tmpdir(), `.synergy-plugin-lock-${Date.now()}.tmp`)
   await Bun.write(tmpPath, JSON.stringify(lockfile, null, 2) + "\n")
-  await fs.mkdir(path.dirname(lockfilePath), { recursive: true })
-  await fs.rename(tmpPath, lockfilePath)
+  await fs.mkdir(path.dirname(targetPath), { recursive: true })
+  await fs.rename(tmpPath, targetPath)
 }
 
 /**
@@ -60,6 +64,18 @@ export function removeEntry(lockfile: PluginLockfile, pluginName: string): Plugi
   return {
     ...lockfile,
     plugins: rest,
+  }
+}
+
+export function removePluginEntries(lockfile: PluginLockfile, pluginId: string, specs: string[]): PluginLockfile {
+  const removedSpecs = new Set(specs)
+  return {
+    ...lockfile,
+    plugins: Object.fromEntries(
+      Object.entries(lockfile.plugins).filter(
+        ([entryId, entry]) => entryId !== pluginId && entry.approvalId !== pluginId && !removedSpecs.has(entry.spec),
+      ),
+    ),
   }
 }
 

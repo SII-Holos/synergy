@@ -1,7 +1,7 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
 import type { SetStoreFunction } from "solid-js/store"
 import type { SendShortcut } from "@/context/input"
-import type { SettingsState } from "../types"
+import type { QuickSwitcherPreference, SettingsState } from "../types"
 import {
   MODEL_DEFAULTS,
   TOAST_TYPES,
@@ -32,9 +32,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
 
   params.setSettings("general", {
     snapshot: cfg.snapshot ?? UI_DEFAULTS.snapshot,
-    autoupdate: String(cfg.autoupdate ?? UI_DEFAULTS.autoupdate),
     username: cfg.username ?? UI_DEFAULTS.username,
     theme: cfg.theme ?? UI_DEFAULTS.theme,
+    locale: cfg.locale ?? UI_DEFAULTS.locale,
     mutedToasts: cfg.toast?.muted ?? [],
     toastDurations: formatToastDurations(cfg.toast?.durationOverrides),
     sendShortcut: params.sendShortcut(),
@@ -49,7 +49,13 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     thinking_model: cfg.thinking_model ?? MODEL_DEFAULTS.thinking_model,
     long_context_model: cfg.long_context_model ?? MODEL_DEFAULTS.long_context_model,
     creative_model: cfg.creative_model ?? MODEL_DEFAULTS.creative_model,
+    quick_switcher: cfg.quick_switcher?.models ?? readLegacyQuickSwitcherPreferences(),
   })
+
+  params.setSettings("agents", {
+    defaultAgent: cfg.default_agent ?? UI_DEFAULTS.defaultAgent,
+  })
+  params.setSettings("roleVariant", cfg.role_variant ?? {})
 
   params.setSettings("providers", {
     enabledProviders: formatList(cfg.enabled_providers),
@@ -75,7 +81,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
           const headers = mcp.headers as Record<string, string> | undefined
           return {
             key,
-            type: isLocal ? "local" : "remote",
+            type: (isLocal ? "local" : "remote") as "local" | "remote",
             enabled: mcp.enabled !== false,
             command: isLocal && Array.isArray(mcp.command) ? (mcp.command as string[]).join(" ") : "",
             url: !isLocal && typeof mcp.url === "string" ? mcp.url : "",
@@ -96,6 +102,9 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
   })
 
   params.setSettings("runtime", {
+    lspWriteDiagnostics: cfg.lspWriteDiagnostics === false ? "false" : UI_DEFAULTS.lspWriteDiagnostics,
+    lspDiagnosticsSeverity: cfg.lspDiagnostics?.severity ?? UI_DEFAULTS.lspDiagnosticsSeverity,
+    lspDiagnosticsScope: cfg.lspDiagnostics?.scope ?? UI_DEFAULTS.lspDiagnosticsScope,
     questionTimeout: String(cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout),
     compactionAuto: cfg.compaction?.auto !== false ? UI_DEFAULTS.compactionAuto : "false",
     compactionPrune: cfg.compaction?.prune !== false ? UI_DEFAULTS.compactionPrune : "false",
@@ -105,6 +114,10 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     compactionMaxHistoryImages: String(
       cfg.compaction?.maxHistoryImages ?? Number(UI_DEFAULTS.compactionMaxHistoryImages),
     ),
+    cortexConcurrency:
+      cfg.cortex?.maxConcurrentTasks !== undefined
+        ? String(cfg.cortex.maxConcurrentTasks)
+        : UI_DEFAULTS.cortexConcurrency,
     invokeTimeout: cfg.timeout?.invoke_sec !== undefined ? String(cfg.timeout.invoke_sec) : UI_DEFAULTS.invokeTimeout,
     providerTtfbTimeout:
       cfg.timeout?.provider?.ttfb_sec !== undefined
@@ -125,6 +138,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
     toolOverrides: formatRecord(cfg.timeout?.tool?.overrides),
     watcherIgnore: formatList(cfg.watcher?.ignore),
     logLevel: cfg.logLevel ?? UI_DEFAULTS.logLevel,
+    coauthorReminder: cfg.experimental?.coauthor_reminder !== false ? "true" : "false",
   })
 
   params.setSettings("email", {
@@ -148,6 +162,7 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       ? Object.entries(cfg.channel.feishu.accounts).map(([key, account]) => ({
           key,
           enabled: account.enabled !== false,
+          model: ((account as Record<string, unknown>).model as string) ?? "",
         }))
       : [],
   })
@@ -172,10 +187,45 @@ export function ensureInit(params: EnsureInitParams): string | undefined {
       experienceRetrieve?.topK !== undefined ? String(experienceRetrieve.topK) : UI_DEFAULTS.experienceTopK,
     experienceEpsilon:
       experienceRetrieve?.epsilon !== undefined ? String(experienceRetrieve.epsilon) : UI_DEFAULTS.experienceEpsilon,
+    embeddingSource: cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource,
+    embeddingRemoteHost: cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost,
   })
 
   params.setInitialized(true)
   return setName
+}
+
+export function readLegacyQuickSwitcherPreferences(storage: Storage = localStorage): QuickSwitcherPreference[] {
+  const raw = storage.getItem("synergy.global.dat:model")
+  if (!raw) return []
+
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    return []
+  }
+  if (!parsed || typeof parsed !== "object") return []
+
+  const record = parsed as Record<string, unknown>
+  const preferences = Array.isArray(record.quickSwitcher)
+    ? (record.quickSwitcher as QuickSwitcherPreference[])
+    : Array.isArray(record.user)
+      ? record.user.flatMap((item) => {
+          if (!item || typeof item !== "object") return []
+          const entry = item as Record<string, unknown>
+          if (typeof entry.providerID !== "string" || typeof entry.modelID !== "string") return []
+          const state = entry.visibility === "hide" ? "remove" : "add"
+          return [{ providerID: entry.providerID, modelID: entry.modelID, state: state as "add" | "remove" }]
+        })
+      : []
+
+  return preferences.filter(
+    (item) =>
+      typeof item.providerID === "string" &&
+      typeof item.modelID === "string" &&
+      (item.state === "add" || item.state === "remove"),
+  )
 }
 
 function formatList(values: string[] | undefined): string {

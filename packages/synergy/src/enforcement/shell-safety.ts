@@ -1,4 +1,4 @@
-const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "true"])
+const SAFE_COMMANDS = new Set(["pwd", "ls", "cat", "head", "tail", "wc", "grep", "rg", "jq", "true"])
 
 const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   // ── read_only ──────────────────────────────────────────────
@@ -25,14 +25,15 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["init", "shell"],
   ["mv", "shell"],
   ["restore", "shell"],
-  ["switch", "shell"],
+  ["switch", "shell_branch_mutation"],
   // ── warn ──────────────────────────────────────────────────
   ["am", "shell"],
   ["cherry-pick", "shell"],
   ["commit", "shell"],
   ["merge", "shell"],
   ["pull", "shell"],
-  ["push", "shell"],
+  ["push", "shell_remote_publish"],
+  ["tag", "shell"],
   ["revert", "shell_destructive"],
   ["rm", "shell_destructive"],
   // ── destructive ───────────────────────────────────────────
@@ -42,13 +43,152 @@ const GIT_TAXONOMY: Map<string, BashRisk> = new Map([
   ["filter-repo", "shell_destructive"],
 ])
 
+export const PROTECTED_PUSH_TARGETS = new Set(["main", "master", "dev", "develop", "trunk"])
+
+function pushTargetBranchName(target: string): string | null {
+  if (target.startsWith("refs/heads/")) return target.slice("refs/heads/".length) || null
+  if (target.startsWith("refs/")) return null
+  return target || null
+}
+
+function analyzePushTargets(
+  words: string[],
+  subIndex: number,
+): { destructive: boolean; protected: boolean; explicitPublish: boolean } {
+  const positionals = words.slice(subIndex + 1).filter((word) => word && !word.startsWith("-") && !word.includes("="))
+  // Bare push or push with only remote (no refspec) — equivalent to
+  // explicit feature-branch push via push.default (typically "simple").
+  if (positionals.length <= 1) return { destructive: false, protected: false, explicitPublish: true }
+  return positionals.slice(1).reduce<{ destructive: boolean; protected: boolean; explicitPublish: boolean }>(
+    (result, refspec) => {
+      const force = refspec.startsWith("+")
+      const target = refspec.replace(/^\+/, "").split(":").pop() ?? refspec
+      const deletesRef = target.length === 0 || refspec.startsWith(":")
+      const branchName = pushTargetBranchName(target)
+      const protectedTarget = branchName !== null && PROTECTED_PUSH_TARGETS.has(branchName)
+      const publishableBranch = !force && !deletesRef && branchName !== null && !protectedTarget
+      return {
+        destructive: result.destructive || force || deletesRef,
+        protected: result.protected || protectedTarget,
+        explicitPublish: result.explicitPublish || publishableBranch,
+      }
+    },
+    { destructive: false, protected: false, explicitPublish: false },
+  )
+}
+
+function isGitRepoSelectorAssignment(word: string | undefined): boolean {
+  return (
+    word?.startsWith("GIT_DIR=") || word?.startsWith("GIT_WORK_TREE=") || word?.startsWith("GIT_NAMESPACE=") || false
+  )
+}
+
+function isAttachedGitRepoSelector(word: string | undefined): boolean {
+  return (
+    word?.startsWith("-C") ||
+    word?.startsWith("-c") ||
+    word?.startsWith("--git-dir=") ||
+    word?.startsWith("--work-tree=") ||
+    word?.startsWith("--namespace=") ||
+    word?.startsWith("--exec-path=") ||
+    false
+  )
+}
+
+function expandEnvSplitString(words: string[], idx: number): string[] | null {
+  if (words[idx] !== "env") return null
+
+  const splitIndex = words.findIndex(
+    (word, wordIndex) =>
+      wordIndex > idx &&
+      (word === "-S" || word === "--split-string" || word.startsWith("-S") || word.startsWith("--split-string=")),
+  )
+  if (splitIndex === -1) return null
+
+  const splitWord = words[splitIndex]
+  let payload: string | undefined
+  let afterPayloadIndex = splitIndex + 1
+  if (splitWord === "-S" || splitWord === "--split-string") {
+    payload = words[splitIndex + 1]
+    afterPayloadIndex = splitIndex + 2
+  } else if (splitWord.startsWith("-S")) {
+    payload = splitWord.slice(2)
+  } else if (splitWord.startsWith("--split-string=")) {
+    payload = splitWord.slice("--split-string=".length)
+  }
+
+  if (!payload) return null
+  return [...words.slice(0, idx), ...shellWords(payload), ...words.slice(afterPayloadIndex)]
+}
+
+function skipEnvWrapper(
+  words: string[],
+  idx: number,
+): { idx: number; hasEnvWrapper: boolean; hasRepoSelector: boolean } {
+  if (words[idx] !== "env") return { idx, hasEnvWrapper: false, hasRepoSelector: false }
+
+  let hasRepoSelector = false
+  idx++
+  while (idx < words.length) {
+    const word = words[idx]
+    if (!word) break
+    if (word === "--") {
+      idx++
+      break
+    }
+    if (word.includes("=") && !word.startsWith("-")) {
+      if (isGitRepoSelectorAssignment(word)) hasRepoSelector = true
+      idx++
+      continue
+    }
+    if (word === "-u" || word === "--unset" || word === "-C" || word === "--chdir") {
+      idx += 2
+      continue
+    }
+    if (word.startsWith("--unset=") || word.startsWith("--chdir=") || word.startsWith("-u") || word.startsWith("-C")) {
+      idx++
+      continue
+    }
+    if (word.startsWith("-")) {
+      idx++
+      continue
+    }
+    break
+  }
+
+  return { idx, hasEnvWrapper: true, hasRepoSelector }
+}
+
 /** Flag-aware git subcommand classification.
  *  Extracts subcommand + flags from tokenized words and returns a BashRisk
  *  for dangerous flag combinations, or falls through to GIT_TAXONOMY. */
 function classifyGitCommand(words: string[]): BashRisk | null {
-  // Skip env var assignments like FOO=bar git ...
+  const expandedEnv = expandEnvSplitString(words, 0)
+  if (expandedEnv) return classifyGitCommand(expandedEnv)
+
   let idx = 0
-  while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+  while (words[idx] === "command") {
+    idx++
+    if (words[idx] === "--") idx++
+  }
+
+  const expandedWrappedEnv = expandEnvSplitString(words, idx)
+  if (expandedWrappedEnv) return classifyGitCommand(expandedWrappedEnv)
+
+  // Skip env var assignments like FOO=bar git ...
+  let hasRepoSelector = false
+  while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) {
+    const assignment = words[idx]
+    if (isGitRepoSelectorAssignment(assignment)) {
+      hasRepoSelector = true
+    }
+    idx++
+  }
+
+  const envWrapper = skipEnvWrapper(words, idx)
+  idx = envWrapper.idx
+  hasRepoSelector = hasRepoSelector || envWrapper.hasRepoSelector
+
   if (words[idx] !== "git") return null
 
   let subIndex = idx + 1
@@ -62,8 +202,12 @@ function classifyGitCommand(words: string[]): BashRisk | null {
       word === "--namespace" ||
       word === "--exec-path"
     ) {
+      hasRepoSelector = true
       subIndex += 2
       continue
+    }
+    if (isAttachedGitRepoSelector(word)) {
+      hasRepoSelector = true
     }
     subIndex++
   }
@@ -85,7 +229,7 @@ function classifyGitCommand(words: string[]): BashRisk | null {
   if (sub === "checkout") {
     if (words.includes("--")) return "shell_destructive" // checkout -- <path>
     if (hasExact("-b") || hasExact("-B")) return "shell" // create branch
-    return "shell" // switch branch → warn
+    return "shell_branch_mutation" // switch branch
   }
 
   // ── clean ──────────────────────────────────────────────────
@@ -111,7 +255,25 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── push ───────────────────────────────────────────────────
   if (sub === "push") {
-    return "shell_destructive" // any push → destructive
+    const hasForce =
+      hasExact("--force") ||
+      hasExact("-f") ||
+      hasExact("--mirror") ||
+      flags.some((f) => f.startsWith("--force-with-lease"))
+    const hasDelete = hasExact("--delete") || hasExact("-d")
+    const targetRisk = analyzePushTargets(words, subIndex)
+    if (hasForce || hasDelete || targetRisk.destructive) return "shell_destructive"
+    if (
+      hasRepoSelector ||
+      hasExact("--all") ||
+      hasExact("--tags") ||
+      targetRisk.protected ||
+      !targetRisk.explicitPublish
+    )
+      return "shell_remote_write"
+    // Bare push (no refspec, explicitPublish: true from analyzePushTargets) or
+    // explicit non-protected feature-branch push — safe for automation.
+    return "shell_remote_publish"
   }
 
   // ── reset ──────────────────────────────────────────────────
@@ -198,6 +360,151 @@ function classifyGitCommand(words: string[]): BashRisk | null {
 
   // ── fall-through to taxonomy map ───────────────────────────
   return GIT_TAXONOMY.get(sub) ?? null
+}
+
+/** Classify GitHub CLI (gh) commands into BashRisk categories.
+ *  gh pr view/list/status/checks/diff → shell_read
+ *  gh pr create → shell_remote_publish
+ *  gh pr edit/ready/comment/review → shell_remote_write
+ *  gh issue view/list/status → shell_read
+ *  gh issue create/edit/comment/close/reopen → shell_remote_write */
+function classifyGitHubCommand(words: string[]): BashRisk | null {
+  let idx = 0
+  while (idx < words.length && words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+  if (words[idx] !== "gh") return null
+
+  const sub = words[idx + 1]
+  if (!sub) return null
+
+  // ── gh pr ──────────────────────────────────────────────────
+  if (sub === "pr") {
+    const subsub = words[idx + 2]
+    // Read-only PR operations
+    if (subsub === "view" || subsub === "list" || subsub === "status" || subsub === "checks" || subsub === "diff") {
+      return "shell_read"
+    }
+    // PR creation is the normal end of an autonomous worktree-to-PR workflow.
+    if (subsub === "create") {
+      return "shell_remote_publish"
+    }
+    // PR communication commands (comment, review) are non-destructive and part of the development workflow.
+    if (subsub === "comment" || subsub === "review") {
+      return "shell_remote_publish"
+    }
+    // PR metadata edits and status transitions remain generic remote writes.
+    if (subsub === "edit" || subsub === "ready") {
+      return "shell_remote_write"
+    }
+    // PR merge/close/reopen terminate or reopen review state and are destructive for automation.
+    if (subsub === "merge" || subsub === "close" || subsub === "reopen") {
+      return "shell_destructive"
+    }
+    // Default: gh pr <unknown> → shell_remote_write
+    return "shell_remote_write"
+  }
+
+  // ── gh issue ───────────────────────────────────────────────
+  if (sub === "issue") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "status") {
+      return "shell_read"
+    }
+    // Issue creation and comments are non-destructive communication.
+    if (subsub === "create" || subsub === "comment") {
+      return "shell_remote_publish"
+    }
+    // Issue metadata edits and status transitions remain remote writes.
+    if (subsub === "edit" || subsub === "close" || subsub === "reopen") {
+      return "shell_remote_write"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh repo ────────────────────────────────────────────────
+  if (sub === "repo") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "browse") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh release ─────────────────────────────────────────────
+  if (sub === "release") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "download") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh auth ────────────────────────────────────────────────
+  if (sub === "auth") {
+    const subsub = words[idx + 2]
+    if (subsub === "status" || subsub === "token") {
+      return "shell_read"
+    }
+    return "shell_remote_write" // auth login, logout, etc
+  }
+
+  // ── gh workflow ────────────────────────────────────────────
+  if (sub === "workflow") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "run") {
+      if (subsub === "run" && words[idx + 3] === "list") return "shell_read"
+      if (subsub === "run" && words[idx + 3] === "view") return "shell_read"
+      return "shell_read"
+    }
+    return "shell_remote_write" // workflow enable/disable/run/dispatch
+  }
+
+  // ── gh run ─────────────────────────────────────────────────
+  if (sub === "run") {
+    const subsub = words[idx + 2]
+    if (subsub === "list" || subsub === "view" || subsub === "watch") {
+      return "shell_read"
+    }
+    if (subsub === "rerun" || subsub === "cancel") {
+      return "shell_remote_write"
+    }
+    return "shell_read" // default: read
+  }
+
+  // ── gh gist ────────────────────────────────────────────────
+  if (sub === "gist") {
+    const subsub = words[idx + 2]
+    if (subsub === "view" || subsub === "list" || subsub === "clone") {
+      return "shell_read"
+    }
+    return "shell_remote_write"
+  }
+
+  // ── gh search ──────────────────────────────────────────────
+  if (sub === "search") {
+    return "shell_read"
+  }
+
+  // ── gh alias ──────────────────────────────────────────────────
+  if (sub === "alias") {
+    const subsub = words[idx + 2]
+    if (subsub === "list") return "shell_read"
+    return "shell" // alias set/delete → local write
+  }
+
+  // ── gh completion / gh help / gh version ───────────────────
+  if (sub === "completion" || sub === "help" || sub === "version" || sub === "codespace") {
+    const codespaceSub = words[idx + 2]
+    if (sub === "codespace" && codespaceSub) {
+      if (codespaceSub === "list" || codespaceSub === "logs" || codespaceSub === "view" || codespaceSub === "ports") {
+        return "shell_read"
+      }
+      return "shell_remote_write"
+    }
+    return "shell_read"
+  }
+
+  // Default: unknown gh command → shell_remote_write
+  return "shell_remote_write"
 }
 
 const UNSAFE_SHELL_TOKENS = [
@@ -413,8 +720,14 @@ function checkHardline(command: string): boolean {
   return false
 }
 
-export type BashRisk = "shell_read" | "shell" | "shell_destructive" | "shell_hardline"
-
+export type BashRisk =
+  | "shell_read"
+  | "shell"
+  | "shell_branch_mutation"
+  | "shell_remote_publish"
+  | "shell_remote_write"
+  | "shell_destructive"
+  | "shell_hardline"
 export namespace ShellSafety {
   export function isReadOnly(command: string): boolean {
     const padded = " " + normalizeCommand(command).toLowerCase() + " "
@@ -435,13 +748,52 @@ export namespace ShellSafety {
   }
 
   export const isHardline = checkHardline
+  /** Returns true when the command is a bare git push (no refspec, no repo selector, no flags).
+   *  Bare push uses push.default to determine the destination at runtime — typically it pushes
+   *  the current branch to its tracked upstream. This is reclassified at the enforcement gate
+   *  when the current git branch is protected. */
+  export function isBarePush(command: string): boolean {
+    const words = shellWords(normalizeCommand(command))
+    let idx = 0
+    while (words[idx]?.includes("=") && !words[idx]?.startsWith("-")) idx++
+    if (words[idx] !== "git") return false
+    idx++
+    // Skip git options (-c, -C, etc.) — bare push is only bare if no options
+    let hasGitOption = false
+    while (idx < words.length && words[idx]?.startsWith("-")) {
+      hasGitOption = true
+      idx++
+      // Skip argument for two-arg options like -C <path>
+      if (
+        words[idx - 1] === "-C" ||
+        words[idx - 1] === "-c" ||
+        words[idx - 1] === "--git-dir" ||
+        words[idx - 1] === "--work-tree" ||
+        words[idx - 1] === "--namespace" ||
+        words[idx - 1] === "--exec-path"
+      ) {
+        idx++
+      }
+    }
+    if (words[idx] !== "push") return false
+    if (hasGitOption) return false
+    // Check for flags
+    const flags = words.slice(idx + 1).filter((w) => w.startsWith("-"))
+    if (flags.length > 0) return false
+    // Check for positional args (remote, refspec)
+    const positionals = words.slice(idx + 1).filter((w) => w && !w.startsWith("-") && !w.includes("="))
+    return positionals.length === 0
+  }
 
   // ── compound command recursion ───────────────────────────────────────
   const RISK_ORDER: Record<BashRisk, number> = {
     shell_read: 0,
     shell: 1,
-    shell_destructive: 2,
-    shell_hardline: 3,
+    shell_branch_mutation: 2,
+    shell_remote_publish: 3,
+    shell_remote_write: 4,
+    shell_destructive: 5,
+    shell_hardline: 6,
   }
 
   function maxRisk(a: BashRisk, b: BashRisk): BashRisk {
@@ -558,6 +910,9 @@ export namespace ShellSafety {
     const words = shellWords(normalized)
     const gitRisk = classifyGitCommand(words)
     if (gitRisk !== null) return gitRisk
+
+    const ghRisk = classifyGitHubCommand(words)
+    if (ghRisk !== null) return ghRisk
 
     if (isReadOnly(command)) return "shell_read"
     return "shell"

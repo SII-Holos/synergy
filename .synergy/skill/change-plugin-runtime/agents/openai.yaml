@@ -1,0 +1,4 @@
+interface:
+  display_name: "Change Plugin Runtime"
+  short_description: "Modify Synergy plugin host and runtime contracts safely"
+  default_prompt: "Use $change-plugin-runtime to implement this Synergy plugin manifest, installation, runtime, bridge, or UI-host change safely."

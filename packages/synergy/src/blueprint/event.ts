@@ -46,8 +46,8 @@ export namespace LoopEvent {
     }),
   )
 
-  export const Restarted = BusEvent.define(
-    "blueprint_loop.restarted",
+  export const Rejected = BusEvent.define(
+    "blueprint_loop.rejected",
     z.object({
       loopID: z.string(),
       reason: z.string(),

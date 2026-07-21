@@ -4,12 +4,13 @@ import { CortexTypes } from "../../src/cortex/types"
 describe("CortexTypes", () => {
   describe("TaskStatus", () => {
     test("accepts valid status values", () => {
-      expect(CortexTypes.TaskStatus.parse("pending")).toBe("pending")
+      expect(CortexTypes.TaskStatus.safeParse("pending").success).toBe(false)
       expect(CortexTypes.TaskStatus.parse("queued")).toBe("queued")
       expect(CortexTypes.TaskStatus.parse("running")).toBe("running")
       expect(CortexTypes.TaskStatus.parse("completed")).toBe("completed")
       expect(CortexTypes.TaskStatus.parse("error")).toBe("error")
       expect(CortexTypes.TaskStatus.parse("cancelled")).toBe("cancelled")
+      expect(CortexTypes.TaskStatus.parse("interrupted")).toBe("interrupted")
     })
 
     test("rejects invalid status values", () => {
@@ -93,8 +94,16 @@ describe("CortexTypes", () => {
         status: "completed" as const,
         startedAt: Date.now(),
         completedAt: Date.now() + 1000,
-        result: "Task completed successfully",
+        outputConfig: { mode: "summary" },
+        output: { mode: "summary", value: "Task completed successfully" },
         notifyParentOnComplete: false,
+        owner: {
+          pluginId: "truthward",
+          pluginGeneration: "generation-one",
+          scopeId: "scope-one",
+          correlationId: "stage-one",
+        },
+        timeoutMs: 1_800_000,
         progress: {
           toolCalls: 3,
           lastUpdate: Date.now(),
@@ -102,8 +111,10 @@ describe("CortexTypes", () => {
       }
       const result = CortexTypes.Task.parse(task)
       expect(result.category).toBe("visual-engineering")
-      expect(result.result).toBe("Task completed successfully")
+      expect(result.output).toEqual({ mode: "summary", value: "Task completed successfully" })
       expect(result.notifyParentOnComplete).toBe(false)
+      expect(result.owner?.correlationId).toBe("stage-one")
+      expect(result.timeoutMs).toBe(1_800_000)
     })
 
     test("rejects task with invalid id prefix", () => {
@@ -161,6 +172,69 @@ describe("CortexTypes", () => {
       expect(() =>
         CortexTypes.LaunchInput.parse({
           description: "Test",
+        }),
+      ).toThrow()
+    })
+  })
+
+  describe("LaunchInput worktree extensions", () => {
+    test("accepts baseRevision for exact-SHA checkout", () => {
+      const input = {
+        description: "Review PR at SHA",
+        prompt: "Review the code",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+          name: "review-abc123",
+          baseRevision: "abc123def456",
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.baseRevision).toBe("abc123def456")
+    })
+
+    test("accepts failOnError to propagate worktree creation failures", () => {
+      const input = {
+        description: "Must succeed",
+        prompt: "Test",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+          failOnError: true,
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.failOnError).toBe(true)
+    })
+
+    test("defaults failOnError to false", () => {
+      const input = {
+        description: "Best effort",
+        prompt: "Test",
+        agent: "developer",
+        parentSessionID: "ses_parent01234567890",
+        parentMessageID: "msg_parent01234567890",
+        worktree: {
+          create: true as const,
+        },
+      }
+      const result = CortexTypes.LaunchInput.parse(input)
+      expect(result.worktree?.failOnError).toBe(false)
+    })
+
+    test("rejects non-string baseRevision", () => {
+      expect(() =>
+        CortexTypes.LaunchInput.parse({
+          description: "Bad revision",
+          prompt: "Test",
+          agent: "developer",
+          parentSessionID: "ses_parent01234567890",
+          parentMessageID: "msg_parent01234567890",
+          worktree: { create: true, baseRevision: 42 },
         }),
       ).toThrow()
     })

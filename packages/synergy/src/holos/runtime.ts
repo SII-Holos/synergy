@@ -51,15 +51,15 @@ async function fetchWsToken(apiUrl: string, agentSecret: string): Promise<string
   return body.data.ws_token
 }
 
-async function syncRemoteExecution(input: { provider: HolosProvider } | null) {
-  const { RemoteExecution } = await import("@/tool/remote-execution")
+async function syncSynergyLink(input: { provider: HolosProvider } | null) {
+  const { SynergyLinkExecution } = await import("@/tool/synergy-link-execution")
   if (!input) {
-    RemoteExecution.setClient(null)
+    SynergyLinkExecution.setClient(null)
     return
   }
-  const { HolosRemoteExecutionClient } = await import("@/remote/client")
-  const { HolosRemoteExecutionTransport } = await import("@/remote/holos-transport")
-  RemoteExecution.setClient(new HolosRemoteExecutionClient(new HolosRemoteExecutionTransport(input.provider)))
+  const { HolosSynergyLinkClient } = await import("@/remote/client")
+  const { HolosSynergyLinkTransport } = await import("@/remote/holos-transport")
+  SynergyLinkExecution.setClient(new HolosSynergyLinkClient(new HolosSynergyLinkTransport(input.provider)))
 }
 
 export namespace HolosRuntime {
@@ -199,7 +199,7 @@ export namespace HolosRuntime {
       onDisconnect: (reason) => {
         if (signal.aborted) return
         current.provider = null
-        void syncRemoteExecution(null).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
+        void syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
       },
@@ -209,7 +209,7 @@ export namespace HolosRuntime {
 
     current.provider = provider
     setStatus(current, { status: "connected" })
-    await syncRemoteExecution({ provider })
+    await syncSynergyLink({ provider })
   }
 
   export async function stop(): Promise<void> {
@@ -221,7 +221,7 @@ export namespace HolosRuntime {
     current.provider = null
     current.abort.abort()
     setStatus(current, { status: "disconnected" })
-    await syncRemoteExecution(null).catch((err) => log.warn("syncRemoteExecution failed", { error: err }))
+    await syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
   }
 
   export async function reload(): Promise<void> {

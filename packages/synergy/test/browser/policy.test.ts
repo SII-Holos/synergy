@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
-import path from "path"
+import path from "node:path"
+import { pathToFileURL } from "node:url"
 import { BrowserPolicy } from "../../src/browser/policy"
 
 describe("BrowserPolicy URL normalization", () => {
@@ -10,28 +11,28 @@ describe("BrowserPolicy URL normalization", () => {
   })
 })
 
-describe("BrowserPolicy user hard safety", () => {
-  test("allows public HTTP navigation for explicit user browsing", () => {
+describe("BrowserPolicy navigation", () => {
+  test("allows HTTP navigation without classifying the destination address or port", () => {
     const result = BrowserPolicy.hardCheckNavigation("https://example.com/", process.cwd())
     expect(result.decision).toBe("allow")
-  })
-
-  test("keeps sensitive localhost ports as hard deny", () => {
-    const result = BrowserPolicy.hardCheckNavigation("http://localhost:6379/", process.cwd())
-    expect(result.decision).toBe("deny")
+    expect(BrowserPolicy.hardCheckNavigation("http://localhost:6379/", process.cwd()).decision).toBe("allow")
+    expect(BrowserPolicy.hardCheckNavigation("http://198.18.0.102/", process.cwd()).decision).toBe("allow")
   })
 
   test("allows file URLs only inside workspace", () => {
-    const inside = path.join(process.cwd(), "README.md")
-    expect(BrowserPolicy.hardCheckNavigation(`file://${inside}`, process.cwd()).decision).toBe("allow")
+    const inside = path.join(process.cwd(), "package.json")
+    expect(BrowserPolicy.hardCheckNavigation(pathToFileURL(inside).href, process.cwd()).decision).toBe("allow")
     expect(BrowserPolicy.hardCheckNavigation("file:///etc/passwd", process.cwd()).decision).toBe("deny")
   })
-})
 
-describe("BrowserPolicy agent navigation approval split", () => {
-  test("continues to block public URLs for agent approval flow", () => {
-    const result = BrowserPolicy.evaluateURL("https://example.com/", process.cwd())
-    expect(result.decision).toBe("blocked")
+  test("checks blocked file segments inside directories whose names start with two dots", () => {
+    const filePath = path.join(process.cwd(), "..cache", ".synergy", "token.json")
+    const result = BrowserPolicy.hardCheckNavigation(pathToFileURL(filePath).href, process.cwd())
+    expect(result.decision).toBe("deny")
+    expect(result.reason).toContain("blocked segment")
+  })
+  test("rejects unsupported protocols", () => {
+    expect(BrowserPolicy.hardCheckNavigation("javascript:alert(1)", process.cwd()).decision).toBe("deny")
   })
 })
 

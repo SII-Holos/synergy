@@ -32,24 +32,40 @@ describe("EnforcementGate path classification", () => {
     expect(primary.nonBypassable).toBe(false)
   })
 
-  test("read of original checkout in worktree is classified as file_external + nonBypassable", async () => {
+  test("read of original checkout in worktree stays a bypassable external read", async () => {
     const gate = await EnforcementGate.create({
-      activeWorkspace: "/Users/test/synergy-control-profile",
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
       workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
     })
 
-    // The original checkout is a sibling directory, not inside the
-    // active worktree workspace.
     const result = gate.classify("read", {
-      filePath: "/Users/test/synergy/src/index.ts",
+      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
     })
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
+    expect(result.capabilities.some((c: any) => c.class === "protected_op")).toBe(false)
   })
 
-  test("read of home directory is classified as file_external + nonBypassable", async () => {
+  test("autonomous allows non-sensitive reads from the original checkout for worktree sessions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/Users/test/synergy/packages/synergy/src/index.ts",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((c: any) => c.class === "protected_op")).toBe(false)
+  })
+
+  test("protected home credential read carries secrets capability separately from file_external_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -61,7 +77,10 @@ describe("EnforcementGate path classification", () => {
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")!
+    expect(secrets).toBeDefined()
+    expect(secrets.nonBypassable).toBe(true)
   })
 
   test("write within active worktree is classified as file_write (inside)", async () => {
@@ -95,6 +114,132 @@ describe("EnforcementGate path classification", () => {
     expect(external.nonBypassable).toBe(true)
   })
 
+  test("autonomous denies save_file writes into the original checkout for worktree sessions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy/.synergy/worktrees/feature-x",
+      workspaceType: "worktree",
+      originalCheckout: "/Users/test/synergy",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("save_file", {
+      filePath: "/Users/test/synergy/packages/ui/src/main.tsx",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.refusal?.matchedPermission).toBe("file_external_write")
+    const external = envelope.capabilities.find((c: any) => c.class === "file_external_write")!
+    expect(external).toBeDefined()
+    expect(external.nonBypassable).toBe(true)
+  })
+
+  test("openai_image_gen classifies output_path as write path and bypassable external request", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("openai_image_gen", {
+      output_path: "/Users/test/synergy-control-profile/assets/generated/star.png",
+    })
+
+    expect(result.capabilities.some((c: any) => c.class === "file_read")).toBe(false)
+    const write = result.capabilities.find((c: any) => c.class === "file_write")!
+    expect(write).toBeDefined()
+    expect(write.paths).toContain("/Users/test/synergy-control-profile/assets/generated/star.png")
+    const network = result.capabilities.find((c: any) => c.class === "network_request")!
+    expect(network).toBeDefined()
+    expect(network.nonBypassable).toBe(false)
+  })
+
+  test("openai_image_edit classifies input_paths as reads, output_path as write, and external request as bypassable", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("openai_image_edit", {
+      input_paths: [
+        "/Users/test/synergy-control-profile/assets/input/source.png",
+        "/Users/test/synergy-control-profile/assets/input/reference.webp",
+      ],
+      output_path: "/Users/test/synergy-control-profile/assets/generated/source-edit.png",
+    })
+
+    const reads = result.capabilities.filter((c: any) => c.class === "file_read")
+    expect(reads.flatMap((cap: any) => cap.paths ?? [])).toEqual([
+      "/Users/test/synergy-control-profile/assets/input/source.png",
+      "/Users/test/synergy-control-profile/assets/input/reference.webp",
+    ])
+    const write = result.capabilities.find((c: any) => c.class === "file_write")!
+    expect(write).toBeDefined()
+    expect(write.paths).toEqual(["/Users/test/synergy-control-profile/assets/generated/source-edit.png"])
+    const network = result.capabilities.find((c: any) => c.class === "network_request")!
+    expect(network).toBeDefined()
+    expect(network.nonBypassable).toBe(false)
+  })
+
+  test("browser_screenshot stays browser_inspect only", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+      synergyRoot: "/Users/test/.synergy",
+    })
+
+    const envelope = gate.evaluate("browser_screenshot", { fullPage: true })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.map((cap: any) => cap.class)).toEqual(["browser_inspect"])
+  })
+
+  test("browser privileged operations use distinct capabilities and profile semantics", async () => {
+    const input = {
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree" as const,
+    }
+    const guarded = await EnforcementGate.create({ ...input, profileId: "guarded" })
+    const autonomous = await EnforcementGate.create({ ...input, profileId: "autonomous" })
+    const fullAccess = await EnforcementGate.create({ ...input, profileId: "full_access" })
+
+    expect(guarded.evaluate("browser_eval", { mode: "readonly", expression: "document.title" }).decision).toBe("ask")
+    expect(guarded.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "ask",
+    )
+    expect(autonomous.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "deny",
+    )
+    expect(fullAccess.evaluate("browser_eval", { mode: "trusted", expression: "document.title = 'x'" }).decision).toBe(
+      "allow",
+    )
+
+    const upload = guarded.classify("browser_upload", {
+      paths: ["/Users/test/synergy-control-profile/fixture.txt"],
+    })
+    expect(upload.capabilities.map((cap: any) => cap.class)).toEqual(["browser_upload", "file_read"])
+    expect(autonomous.evaluate("browser_upload", { paths: ["fixture.txt"] }).decision).toBe("deny")
+    expect(fullAccess.evaluate("browser_upload", { paths: ["fixture.txt"] }).decision).toBe("allow")
+
+    expect(guarded.classify("browser_clipboard", { action: "read" }).capabilities.map((cap: any) => cap.class)).toEqual(
+      ["browser_clipboard"],
+    )
+    expect(
+      guarded
+        .classify("browser_action", { action: { type: "click", target: { kind: "point", x: 1, y: 1 } } })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_interact", "browser_coordinate"])
+    expect(
+      guarded
+        .classify("browser_downloads", { action: "export", path: "downloads/file.txt" })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_download", "file_write"])
+    expect(
+      guarded
+        .classify("browser_navigation", { action: "goto", url: "http://192.168.1.10" })
+        .capabilities.map((cap: any) => cap.class),
+    ).toEqual(["browser_interact", "network_request"])
+  })
   test("revise_file target path is classified from hashline patch header", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -146,6 +291,31 @@ describe("EnforcementGate path classification", () => {
 // 2. Shell classification
 // ------------------------------------------------------------------
 describe("EnforcementGate shell classification", () => {
+  test("keeps reserved note virtual paths inside the bash boundary", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const command of [
+      "gh pr create --body-file /synergy/note/nte_reviewed",
+      'gh pr create --body "$(cat /synergy/note/nte_reviewed)"',
+      'gh pr create --body "`cat /synergy/note/nte_reviewed`"',
+    ]) {
+      const result = gate.classify("bash", {
+        command,
+        workdir: "/Users/test/synergy-control-profile",
+      })
+
+      expect(result.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(true)
+      expect(
+        result.capabilities.some(
+          (cap: any) => cap.class === "file_external_read" || cap.class === "file_external_write",
+        ),
+      ).toBe(false)
+    }
+  })
+
   test("simple ls within workspace is classified as shell_read", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -225,7 +395,7 @@ describe("EnforcementGate shell classification", () => {
     const external = result.capabilities.find((c: any) => c.class === "file_external_write")!
   })
 
-  test("command targeting external path produces file_external capability", async () => {
+  test("read-only command targeting external path produces bypassable file_external_read capability", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -237,8 +407,48 @@ describe("EnforcementGate shell classification", () => {
 
     const external = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(external).toBeDefined()
-    expect(external.nonBypassable).toBe(true)
+    expect(external.nonBypassable).toBe(false)
     expect(external.paths).toContain("/etc/passwd")
+  })
+})
+
+describe("EnforcementGate Synergy Link classification", () => {
+  test("bash with any remote selector gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { command: "echo remote", linkID: "link_test" },
+      { command: "echo remote", targetID: "target_test" },
+      { command: "echo remote", linkID: "malformed-but-still-remote-intent" },
+      { command: "echo remote", envID: "link_test" },
+    ]) {
+      const result = gate.classify("bash", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
+  })
+
+  test("process with any remote selector gets shell_remote_execute", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    for (const args of [
+      { action: "list", linkID: "link_test" },
+      { action: "list", targetID: "target_test" },
+      { action: "list", linkID: "malformed-but-still-remote-intent" },
+      { action: "list", envID: "link_test" },
+    ]) {
+      const result = gate.classify("process", args)
+      const remote = result.capabilities.find((c: any) => c.class === "shell_remote_execute")!
+      expect(remote).toBeDefined()
+      expect(remote.nonBypassable).toBe(true)
+    }
   })
 })
 
@@ -493,6 +703,29 @@ describe("EnforcementGate network classification", () => {
   })
 })
 
+describe("EnforcementGate session_send classification", () => {
+  test("classifies supported user deliveries as identity actions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", {}).capabilities).toEqual([{ class: "identity_act", nonBypassable: true }])
+    expect(gate.classify("session_send", { role: "user" }).capabilities).toEqual([
+      { class: "identity_act", nonBypassable: true },
+    ])
+  })
+
+  test("leaves unsupported assistant role to schema validation without requesting approval", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    expect(gate.classify("session_send", { role: "assistant" }).capabilities).toEqual([])
+  })
+})
+
 // ------------------------------------------------------------------
 // 4. Gate produces execution envelope and audit
 // ------------------------------------------------------------------
@@ -610,12 +843,30 @@ describe("EnforcementGate profile integration", () => {
     expect(external.decision).toBe("allow")
   })
 
+  test("autonomous allows workspace-internal openai image generation and edit", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
+    const generation = gate.evaluate("openai_image_gen", {
+      output_path: "/Users/test/synergy-control-profile/assets/generated/star.png",
+    })
+    expect(generation.decision).toBe("allow")
+
+    const edit = gate.evaluate("openai_image_edit", {
+      input_paths: ["/Users/test/synergy-control-profile/assets/input/source.png"],
+      output_path: "/Users/test/synergy-control-profile/assets/generated/source-edit.png",
+    })
+    expect(edit.decision).toBe("allow")
+  })
+
   test("gate with full_access allows external reads", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "full_access",
-      interactionMode: "attended",
     })
 
     const envelope = gate.evaluate("read", {
@@ -626,35 +877,104 @@ describe("EnforcementGate profile integration", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("gate rejects full_access in unattended mode", async () => {
-    // Creating a gate with full_access + unattended must fail
-    expect(() =>
-      EnforcementGate.create({
-        activeWorkspace: "/Users/test/synergy-control-profile",
-        workspaceType: "worktree",
-        profileId: "full_access",
-        interactionMode: "unattended",
-      }),
-    ).toThrow()
+  test("full_access allows sensitive path and destructive capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+      synergyRoot: "/Users/test/.synergy",
+    })
+
+    expect(gate.evaluate("read", { filePath: "/Users/test/.synergy/data/auth/provider-auth.json" }).decision).toBe(
+      "allow",
+    )
+    expect(gate.evaluate("write", { filePath: "/Users/test/synergy-control-profile/.env.local" }).decision).toBe(
+      "allow",
+    )
+    expect(gate.evaluate("bash", { command: "git reset --hard HEAD~1" }).decision).toBe("allow")
   })
 
-  test("autonomous denies git push as shell_destructive", async () => {
+  test("autonomous denies live env and destructive shell without asking", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
-    const envelope = gate.evaluate("bash", { command: "git push" })
-    expect(envelope.decision).toBe("deny")
+
+    expect(gate.evaluate("write", { filePath: "/Users/test/synergy-control-profile/.env.local" }).decision).toBe("deny")
+    expect(gate.evaluate("bash", { command: "git reset --hard HEAD~1" }).decision).toBe("deny")
   })
 
-  test("autonomous denies git push through git global options", async () => {
+  test("project .synergy non-secret writes are allowed", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
-    const envelope = gate.evaluate("bash", { command: "git -C /tmp push" })
+
+    expect(
+      gate.evaluate("write", { filePath: "/Users/test/synergy-control-profile/.synergy/synergy.d/00-general.jsonc" })
+        .decision,
+    ).toBe("allow")
+  })
+
+  test("gate allows full_access without interaction-mode restrictions", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const envelope = gate.evaluate("read", {
+      filePath: "/private/channel-context.txt",
+    })
+
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows worktree publish workflow while denying merge", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+
+    expect(gate.evaluate("worktree_enter", { target: "feature", baseRef: "current", force: false }).decision).toBe(
+      "allow",
+    )
+    expect(gate.evaluate("bash", { command: "git push origin feature" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr create --title fix --body body" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr merge 123 --squash" }).decision).toBe("deny")
+    expect(gate.evaluate("worktree_leave", { cleanup: "keep" }).decision).toBe("allow")
+  })
+
+  test("autonomous allows explicit branch push publication", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
+  })
+
+  test("autonomous allows PR creation but denies PR merge", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    expect(gate.evaluate("bash", { command: "gh pr create --title fix --body body" }).decision).toBe("allow")
+    expect(gate.evaluate("bash", { command: "gh pr merge 123 --squash" }).decision).toBe("deny")
+  })
+
+  test("autonomous denies ambiguous git push through git global options", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "autonomous",
+    })
+    const envelope = gate.evaluate("bash", { command: "git -C /tmp push origin feature" })
     expect(envelope.decision).toBe("deny")
   })
 
@@ -903,6 +1223,83 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
+  test("view_image inside readRoots is file_read in autonomous mode", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/.synergy/data/media/screenshot.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    const read = envelope.capabilities.find((cap: any) => cap.class === "file_read")!
+    expect(read).toBeDefined()
+    expect(read.paths).toEqual(["/Users/test/.synergy/data/media/screenshot.png"])
+  })
+
+  test("image inspection tools can read browser screenshots from Synergy media in autonomous mode", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+    const mediaPath = "/Users/test/.synergy/data/media/2026-07-07/browser-screenshots/screenshot-page.png"
+
+    for (const [toolName, args] of [
+      ["view_image", { filePath: mediaPath }],
+      ["look_at", { file_path: mediaPath }],
+    ] as const) {
+      const envelope = gate.evaluate(toolName, args)
+      expect(envelope.decision).toBe("allow")
+      expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+      const read = envelope.capabilities.find((cap: any) => cap.class === "file_read")!
+      expect(read).toBeDefined()
+      expect(read.paths).toEqual([mediaPath])
+    }
+  })
+  test("view_image outside workspace and readRoots is classified as file_external_read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/Pictures/private.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    const external = envelope.capabilities.find((cap: any) => cap.class === "file_external_read")!
+    expect(external).toBeDefined()
+    expect(external.paths).toEqual(["/Users/test/Pictures/private.png"])
+  })
+
+  test("view_image inside workspace is classified as file_read", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/my-project/screenshots/ui.png",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    const read = envelope.capabilities.find((cap: any) => cap.class === "file_read")!
+    expect(read).toBeDefined()
+    expect(read.paths).toEqual(["/Users/test/my-project/screenshots/ui.png"])
+  })
+
   test("attach inside readRoots is allowed in autonomous mode", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
@@ -952,7 +1349,7 @@ describe("EnforcementGate readRoots", () => {
     expect(envelope.decision).toBe("allow")
   })
 
-  test("autonomous asks before reading protected credential paths", async () => {
+  test("autonomous denies before reading protected credential paths", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/my-project",
       workspaceType: "main",
@@ -964,8 +1361,24 @@ describe("EnforcementGate readRoots", () => {
       file_path: "/Users/test/.ssh/id_rsa",
     })
 
-    expect(envelope.decision).toBe("ask")
-    expect(envelope.capabilities.some((cap: any) => cap.class === "protected_op")).toBe(true)
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "secrets")).toBe(true)
+  })
+
+  test("view_image protected credential path is denied in autonomous mode", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/my-project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      readRoots: ["/Users/test/.synergy"],
+    })
+
+    const envelope = gate.evaluate("view_image", {
+      filePath: "/Users/test/.ssh/id_rsa",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "secrets")).toBe(true)
   })
 
   test("scan_document inside readRoots is allowed in autonomous mode", async () => {
@@ -1011,6 +1424,98 @@ describe("EnforcementGate readRoots", () => {
     })
 
     expect(envelope.decision).toBe("allow")
+  })
+})
+
+describe("EnforcementGate trustedRoots", () => {
+  test("read and write inside trustedRoots are classified as workspace file capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const read = gate.classify("read", {
+      filePath: "/Users/test/.codex/skills/frontend/SKILL.md",
+    })
+    expect(read.capabilities.some((cap: any) => cap.class === "file_external_read")).toBe(false)
+    expect(read.capabilities.find((cap: any) => cap.class === "file_read")?.paths).toEqual([
+      "/Users/test/.codex/skills/frontend/SKILL.md",
+    ])
+
+    const write = gate.classify("save_file", {
+      filePath: "/Users/test/.codex/skills/frontend/SKILL.md",
+    })
+    expect(write.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+    expect(write.capabilities.find((cap: any) => cap.class === "file_write")?.paths).toEqual([
+      "/Users/test/.codex/skills/frontend/SKILL.md",
+    ])
+  })
+
+  test("external skill script paths do not create file_external_write capabilities", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "node /Users/test/.codex/skills/impeccable/scripts/context.mjs --target packages/app",
+    })
+
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(false)
+    expect(envelope.capabilities.find((cap: any) => cap.class === "file_write")?.paths).toEqual([
+      "/Users/test/.codex/skills/impeccable/scripts/context.mjs",
+    ])
+  })
+
+  test("trustedRoots seed sandbox policy read and write roots", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.claude/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.claude/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.claude/skills")
+  })
+
+  test("trustedRoots seed sandbox policy even when directories do not exist", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills", "/Users/test/.nonexistent/skills"],
+    })
+
+    const policy = gate.getSandboxPolicy()
+
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.codex/skills")
+    expect(policy?.fileSystem.readableRoots).toContain("/Users/test/.nonexistent/skills")
+    expect(policy?.fileSystem.writableRoots).toContain("/Users/test/.nonexistent/skills")
+  })
+
+  test("paths outside workspace and trustedRoots remain external writes", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/project",
+      workspaceType: "main",
+      profileId: "autonomous",
+      trustedRoots: ["/Users/test/.codex/skills"],
+    })
+
+    const envelope = gate.evaluate("bash", {
+      command: "node /Users/test/Downloads/context.mjs",
+    })
+
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "file_external_write")).toBe(true)
   })
 })
 
@@ -1210,34 +1715,37 @@ describe("EnforcementGate DESTRUCTIVE_PATTERNS — expanded", () => {
 
   // ── Refined git classifications (classifyBashRisk primary path) ──
 
-  test("git push (plain) is classified as destructive (classifyBashRisk)", async () => {
+  test("git push (plain) is classified as shell_remote_publish", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const remotePublish = result.capabilities.find((c: any) => c.class === "shell_remote_publish")!
+    expect(remotePublish).toBeDefined()
+    expect(remotePublish.nonBypassable).toBe(false)
   })
 
-  test("git push origin main is classified as destructive (classifyBashRisk)", async () => {
+  test("git push origin main is classified as shell_remote_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
     const result = gate.classify("bash", { command: "git push origin main" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
+    expect(remoteWrite).toBeDefined()
+    expect(remoteWrite.nonBypassable).toBe(false)
   })
 
-  test("git push through git global options is classified as destructive", async () => {
+  test("git push through git global options is classified as shell_remote_write", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("bash", { command: "git -C /tmp push" })
-    const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")!
-    expect(destructive).toBeDefined()
+    const result = gate.classify("bash", { command: "git -C /tmp push origin feature" })
+    const remoteWrite = result.capabilities.find((c: any) => c.class === "shell_remote_write")!
+    expect(remoteWrite).toBeDefined()
+    expect(remoteWrite.nonBypassable).toBe(false)
   })
 
   test("git push through shell wrapper is classified as destructive", async () => {
@@ -1925,6 +2433,17 @@ describe("EnforcementGate new tool classification", () => {
     expect(cap.nonBypassable).toBe(false)
   })
 
+  test.each(["loop_stop", "blueprint_loop_stop"])("%s classifies as session_state", async (tool) => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+    const result = gate.classify(tool, {})
+    const cap = result.capabilities.find((candidate: any) => candidate.class === "session_state")
+    expect(cap).toBeDefined()
+    expect(cap?.nonBypassable).toBe(false)
+  })
+
   test("dagpatch classifies as session_state (lightweight DAG patching)", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -2090,7 +2609,7 @@ describe("EnforcementGate new tool classification", () => {
     })
     const cap = result.capabilities.find((c: any) => c.class === "file_external_read")!
     expect(cap).toBeDefined()
-    expect(cap.nonBypassable).toBe(true)
+    expect(cap.nonBypassable).toBe(false)
   })
 
   test("lsp classifies as file_read with path classification", async () => {
@@ -2214,7 +2733,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "status", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "status", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "file_read")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(false)
@@ -2225,7 +2744,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "open", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "open", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
@@ -2236,7 +2755,7 @@ describe("EnforcementGate new tool classification", () => {
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
     })
-    const result = gate.classify("connect", { action: "close", envID: "env_abc123" })
+    const result = gate.classify("connect", { action: "close", linkID: "link_abc123" })
     const cap = result.capabilities.find((c: any) => c.class === "network_request")!
     expect(cap).toBeDefined()
     expect(cap.nonBypassable).toBe(true)
@@ -2354,19 +2873,45 @@ describe("EnforcementGate file_external split", () => {
 })
 
 describe("security invariants: nonBypassable permission boundaries", () => {
-  test("autonomous denies git push and keeps shell_destructive nonBypassable", async () => {
+  test("autonomous allows publish commands while destructive commands stay hard", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "autonomous",
     })
 
-    const envelope = gate.evaluate("bash", { command: "git push" })
-    expect(envelope.decision).toBe("deny")
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
 
-    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_destructive")
+    const caps = envelope.capabilities.filter((c: any) => c.class === "shell_remote_publish")
     expect(caps.length).toBeGreaterThan(0)
-    expect(caps.every((c: any) => c.nonBypassable === true)).toBe(true)
+    expect(caps.every((c: any) => c.nonBypassable === false)).toBe(true)
+  })
+
+  test("autonomous allows an explicit topic-branch push from the main checkout", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin feature" })
+    expect(envelope.decision).toBe("allow")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(false)
+  })
+
+  test("autonomous still denies an explicit protected-branch push from the main checkout", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "main",
+      profileId: "autonomous",
+    })
+
+    const envelope = gate.evaluate("bash", { command: "git push origin dev" })
+    expect(envelope.decision).toBe("deny")
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_write")).toBe(true)
+    expect(envelope.capabilities.some((cap: any) => cap.class === "shell_remote_publish")).toBe(false)
   })
 
   test("classifyBashRisk shell_destructive path sets nonBypassable=true", async () => {
@@ -2375,7 +2920,7 @@ describe("security invariants: nonBypassable permission boundaries", () => {
       workspaceType: "main",
     })
 
-    const result = gate.classify("bash", { command: "git push" })
+    const result = gate.classify("bash", { command: "git reset --hard" })
     const destructive = result.capabilities.find((c: any) => c.class === "shell_destructive")
     expect(destructive).toBeDefined()
     expect(destructive!.nonBypassable).toBe(true)
@@ -2393,7 +2938,7 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     expect(shell!.nonBypassable).toBe(false)
   })
 
-  test("revise_file detects protected paths from hashline patch headers", async () => {
+  test("revise_file detects secret candidate paths from hashline patch headers", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
@@ -2403,8 +2948,39 @@ describe("security invariants: nonBypassable permission boundaries", () => {
     const result = gate.classify("revise_file", {
       input: "[.env#abcd]\nSWAP 1..1:\n+SECRET=x\n",
     })
-    const protectedOp = result.capabilities.find((c: any) => c.class === "protected_op")
-    expect(protectedOp).toBeDefined()
-    expect(protectedOp!.nonBypassable).toBe(true)
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")
+    expect(secrets).toBeDefined()
+    expect(secrets!.metadata?.protectedCategory).toBe("secrets")
+  })
+
+  test("real secret candidates are explicit nonBypassable boundaries", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env#abcd]\nSWAP 1..1:\n+SECRET=x\n",
+    })
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")
+    expect(secrets).toBeDefined()
+    expect(secrets!.nonBypassable).toBe(true)
+  })
+
+  test("dotenv examples stay SmartAllow-eligible", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+      profileId: "full_access",
+    })
+
+    const result = gate.classify("revise_file", {
+      input: "[.env.example#abcd]\nSWAP 1..1:\n+OPENAI_API_KEY=your_key_here\n",
+    })
+    const secrets = result.capabilities.find((c: any) => c.class === "secrets")
+    expect(secrets).toBeDefined()
+    expect(secrets!.nonBypassable).toBe(false)
+    expect(secrets!.metadata?.smartAllowEligible).toBe(true)
   })
 })

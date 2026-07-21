@@ -5,8 +5,8 @@ import { StoragePath } from "../storage/path"
 import { Log } from "../util/log"
 import type { Info as SessionInfo } from "./types"
 
-export type NavCategory = "project" | "home" | "channel" | "background"
-export const NavCategory = z.enum(["project", "home", "channel", "background"])
+export type NavCategory = "project" | "home" | "channel" | "background" | "github"
+export const NavCategory = z.enum(["project", "home", "channel", "background", "github"])
 export const SessionNavEntry = z
   .object({
     id: z.string(),
@@ -19,6 +19,13 @@ export const SessionNavEntry = z
     archived: z.boolean(),
     parentID: z.string().optional(),
     endpointKind: z.literal("channel").optional(),
+    chatId: z.string().optional(),
+    chatName: z.string().optional(),
+    chatType: z.enum(["dm", "group"]).optional(),
+    completionNotice: z.object({
+      unread: z.boolean(),
+      unreadCount: z.number().int().nonnegative(),
+    }),
   })
   .meta({ ref: "SessionNavEntry" })
 
@@ -57,6 +64,7 @@ export const ScopeNavEntry = z
 export interface DeriveCategoryInput {
   scopeType: "home" | "project"
   endpointKind?: "channel"
+  provenance?: "github"
   parentID?: string
   cortex?: {
     parentSessionID: string
@@ -84,6 +92,13 @@ export interface SessionNavEntry {
   archived: boolean
   parentID?: string
   endpointKind?: "channel"
+  chatId?: string
+  chatName?: string
+  chatType?: "dm" | "group"
+  completionNotice: {
+    unread: boolean
+    unreadCount: number
+  }
 }
 export interface ScopeNavEntry {
   scopeID: string
@@ -110,6 +125,7 @@ export namespace SessionNav {
 
   export function deriveCategory(input: DeriveCategoryInput): NavCategory {
     if (input.endpointKind === "channel") return "channel"
+    if (input.provenance === "github") return "github"
     if (input.parentID || input.cortex || input.agenda) return "background"
     if (input.scopeType === "home") return "home"
     return "project"
@@ -152,6 +168,7 @@ export namespace SessionNav {
         const category = deriveCategory({
           scopeType,
           endpointKind: session.endpoint?.kind,
+          provenance: session.provenance,
           parentID: session.parentID,
           cortex: session.cortex,
           agenda: session.agenda,
@@ -162,6 +179,7 @@ export namespace SessionNav {
             category,
           })
         }
+        const channelEndpoint = session.endpoint?.kind === "channel" ? session.endpoint.channel : undefined
         entries.push({
           id: session.id,
           scopeID,
@@ -172,7 +190,14 @@ export namespace SessionNav {
           pinned: session.pinned ?? 0,
           archived: !!session.time.archived,
           parentID: session.parentID,
-          endpointKind: session.endpoint?.kind === "channel" ? "channel" : undefined,
+          endpointKind: channelEndpoint ? "channel" : undefined,
+          chatId: channelEndpoint?.chatId,
+          chatName: channelEndpoint?.chatName,
+          chatType: channelEndpoint?.chatType,
+          completionNotice: {
+            unread: session.completionNotice.unread,
+            unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
+          },
         })
       }
     }
@@ -237,11 +262,17 @@ export namespace SessionNav {
 
   export async function queryGlobal(opts?: {
     parentOnly?: boolean
+    category?: NavCategory
     includeArchived?: boolean
     search?: string
     cursor?: NavCursor
     limit?: number
-  }): Promise<{ items: SessionNavEntry[]; nextCursor: NavCursor | null; total: number }> {
+  }): Promise<{
+    items: SessionNavEntry[]
+    nextCursor: NavCursor | null
+    total: number
+    unreadCompletionCount: number
+  }> {
     // Includes Home sessions alongside project scopes for a cross-scope overview.
     const scopeIDs = await getAllScopeIDs()
     const allEntries: SessionNavEntry[] = []
@@ -252,12 +283,20 @@ export namespace SessionNav {
     allEntries.sort((a, b) => b.lastActivityAt - a.lastActivityAt || b.id.localeCompare(a.id))
     let entries = allEntries
     if (opts?.parentOnly ?? true) entries = entries.filter((e) => !e.parentID)
+    if (opts?.category) entries = entries.filter((e) => e.category === opts.category)
     if (!opts?.includeArchived) entries = entries.filter((e) => !e.archived)
     if (opts?.search) {
       const term = opts.search.toLowerCase()
       entries = entries.filter((e) => e.title.toLowerCase().includes(term))
     }
-    return paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit })
+    const unreadCompletionCount = entries.reduce(
+      (total, entry) => total + (entry.completionNotice.unreadCount ?? (entry.completionNotice.unread ? 1 : 0)),
+      0,
+    )
+    return {
+      ...paginateWithCursor(entries, { cursor: opts?.cursor ?? null, limit: opts?.limit }),
+      unreadCompletionCount,
+    }
   }
 
   export async function queryPinned(opts?: { limit?: number }): Promise<{ items: SessionNavEntry[]; total: number }> {
@@ -282,17 +321,27 @@ export namespace SessionNav {
       const index = await readNavIndex(sid)
       const activeEntries = index.entries.filter((e) => !e.archived)
       let scopeInfo:
-        | { name?: string; icon?: { url?: string; color?: string }; directory?: string; worktree?: string }
+        | {
+            name?: string
+            icon?: { url?: string; color?: string }
+            directory?: string
+            worktree?: string
+            time?: { created?: number; archived?: number }
+          }
         | undefined
       if (sid !== "home") {
         scopeInfo = await Storage.read<any>(StoragePath.scope(Identifier.asScopeID(sid))).catch(() => undefined)
       }
-      const latestActivityAt = activeEntries.length > 0 ? Math.max(...activeEntries.map((e) => e.lastActivityAt)) : 0
+      if (scopeInfo?.time?.archived) continue
+      const latestActivityAt =
+        activeEntries.length > 0
+          ? Math.max(...activeEntries.map((e) => e.lastActivityAt))
+          : (scopeInfo?.time?.created ?? 0)
       results.push({
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",
         name: scopeInfo?.name,
-        directory: sid === "home" ? home.directory : (scopeInfo?.directory ?? ""),
+        directory: sid === "home" ? home.directory : (scopeInfo?.worktree ?? scopeInfo?.directory ?? ""),
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,
@@ -302,17 +351,27 @@ export namespace SessionNav {
     return results
   }
 
-  export async function upsertNavEntry(entry: SessionNavEntry): Promise<void> {
+  export async function upsertNavEntry(
+    entry: SessionNavEntry,
+    options?: { preserveActivityAt?: boolean },
+  ): Promise<SessionNavEntry> {
     const index = await readNavIndex(entry.scopeID)
     const existing = index.entries.findIndex((e) => e.id === entry.id)
+    const nextEntry =
+      options?.preserveActivityAt && existing >= 0
+        ? { ...entry, lastActivityAt: index.entries[existing].lastActivityAt }
+        : entry
     if (existing >= 0) index.entries.splice(existing, 1)
     const insertAt = index.entries.findIndex(
-      (e) => e.lastActivityAt < entry.lastActivityAt || (e.lastActivityAt === entry.lastActivityAt && e.id < entry.id),
+      (e) =>
+        e.lastActivityAt < nextEntry.lastActivityAt ||
+        (e.lastActivityAt === nextEntry.lastActivityAt && e.id < nextEntry.id),
     )
-    if (insertAt === -1) index.entries.push(entry)
-    else index.entries.splice(insertAt, 0, entry)
+    if (insertAt === -1) index.entries.push(nextEntry)
+    else index.entries.splice(insertAt, 0, nextEntry)
     index.updatedAt = Date.now()
-    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(entry.scopeID)), index)
+    await Storage.write(StoragePath.sessionNavIndex(Identifier.asScopeID(nextEntry.scopeID)), index)
+    return nextEntry
   }
 
   export async function removeNavEntry(scopeID: string, sessionID: string): Promise<void> {

@@ -1,27 +1,64 @@
-## Debugging
+# Web Application Rules
 
-- To test the Synergy app, use the playwright MCP server, the app is already
-  running at http://localhost:3000
-- NEVER try to restart the app, or the server process, EVER.
+These rules apply under `packages/app`. Root [AGENTS.md](../../AGENTS.md) and [PRODUCT.md](PRODUCT.md) still apply.
 
-## SolidJS
+Load `develop-frontend` for the complete Web/shared UI workflow, `change-server-api` when the change needs a new or modified server contract, `change-browser-runtime` for Browser presentation/control, and `change-plugin-runtime` for the built-in plugin host or registries.
 
-- Always prefer `createStore` over multiple `createSignal` calls
+## Protect the Active App
 
-## Settings
+Do not restart or stop the Web app or server carrying the current task. Inspect the current dev URL before testing; do not assume port `3000`. Use the existing app for non-disruptive inspection or start an isolated second runtime through the `develop-synergy` skill.
 
-- Use `packages/app/src/components/settings/catalog.ts` as the source of truth for built-in settings sections, groups, metadata, domains, search keywords, and save strategy.
-- Derive config field ownership from `/config/domains` summaries, especially `ownedKeys`. Do not add duplicate frontend field-to-domain maps.
-- Do not build JSON editors for canonical config domains. Common settings should use focused forms; complex or low-frequency config should show the canonical file path and use the generated `config.domain.open` SDK method.
-- Preserve plugin-contributed settings sections. Built-in sections should use `iconToken`; plugin sections may continue to use plugin-provided icons.
-- Settings UI labels must be English-only and should avoid paired `X & Y` titles.
+## Solid State and Frontend Sync
 
-## Product Design
+Read [Frontend data sync](../../docs/architecture/frontend-data-sync.md) before changing contexts, session loading, composer intent, events, or reconnect behavior.
 
-- Treat `packages/app/PRODUCT.md` as the durable Web product contract. Read it before frontend work that changes interaction structure, visual hierarchy, theme behavior, or product taste.
-- When a product design decision becomes a reusable principle, update `packages/app/PRODUCT.md` in the same task so future changes inherit it.
-- Keep light and dark mode surface polarity aligned with PRODUCT.md: in dark mode, content and selected surfaces step brighter than their containers; in light mode, content and selected surfaces step darker than their containers.
+- Use a store for coherent keyed collections and targeted updates; use signals for genuinely independent scalar state.
+- Apply entity writes with `reconcile` or a targeted `setStore(..., reconcile(value))`. Do not replace an entity object when one field changes.
+- Read entities by stable key so reactive consumers subscribe only to the row they use.
+- Preserve composer resolution layers: explicit draft → session default → fallback. A derived/historical value must not write back into the user's draft; an explicit selector choice persists through `modelOverride`.
+- Preserve `seq`/`epoch` watermarks, reconnect replay, fail-open resync, unsequenced streaming deltas, write-behind behavior, and LRU protection of the active session. Do not add per-event REST refetches.
 
-## Tool Calling
+Use generated SDK methods for internal HTTP APIs. Add OpenAPI metadata and regenerate the SDK when a required route is missing. Keep raw browser APIs for WebSocket/EventSource/WebRTC, external URLs, local file/blob operations, downloads/uploads without an SDK contract, and platform fetch injection.
 
-- ALWAYS USE PARALLEL TOOLS WHEN APPLICABLE.
+## Product and Interaction
+
+Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hierarchy, theme behavior, navigation, workspace layout, or durable UX taste. Update it when a decision should survive future refactors.
+
+- Preserve surface polarity: dark-mode content/selection steps brighter than its container; light-mode content/selection steps darker.
+- Follow [Frontend themes and color](../../docs/reference/frontend-theming.md). Do not add Tailwind palette colors, arbitrary literal color utilities, or component-local light/dark palettes. Imperative renderers must consume the active resolved tokens and update on same-mode theme switches.
+- Use semantic icon tokens from `packages/ui/src/components/semantic-icon.tsx` for non-tool product UI. Reuse a token only for the same user-facing meaning; add a new token and an unused glyph for a new meaning. Raw Lucide icons belong only to narrow base, file-type, tool, or plugin plumbing with an explicit reason; tool icons follow `add-tool`.
+- Preserve keyboard focus, labels, WCAG AA contrast, reduced-motion behavior, loading/empty/error states, and narrow layouts.
+- Register optional built-in workbench content through `WorkbenchPanelEntry.loader`. Keep Notes/Tiptap/Mermaid, Files/Monaco, Browser, Terminal, and Review implementations out of the route shell until the panel opens.
+- Keep only active product fonts in the application bundle. Adding an optional font requires a user-selectable runtime path and a loading strategy; do not import dormant font families from the root `Font` component.
+- Treat mobile drawers as named modal surfaces with initial focus, contained Tab traversal, Escape close, and focus return. Verify dense toolbars at 375 px and do not hide overflow that clips interactive controls.
+- Keep Browser native and remote presentations consistent with [Browser runtime](../../docs/architecture/browser-runtime.md); do not introduce iframe, screenshot-stream, pseudo-tab, or multi-page fallbacks.
+
+## Settings and Plugins
+
+- Use `src/components/settings/catalog.ts` for built-in section metadata, search terms, domains, and save strategies.
+- Derive field ownership from `/config/domains` `ownedKeys`; do not maintain a frontend duplicate.
+- Use focused forms for common settings. For complex/low-frequency config, always show the canonical file and Copy Path; expose generated `config.domain.open` behavior only in Desktop managed-local mode where the shell and server share filesystem and desktop authority.
+- Preserve plugin-contributed settings and UI lifecycle. Built-ins use semantic `iconToken`; plugins may use declared plugin icons.
+- Built-in settings metadata and every other Synergy-owned user-visible string use the shared Lingui runtime with explicit semantic IDs; do not add language branches, dynamic IDs, macro imports, or module-load translation calls. Keep plugin-author, user, LLM, brand, path, identifier, and raw diagnostic content verbatim. Avoid vague paired `X & Y` headings.
+- Read [Plugin UI contributions](../../docs/plugins/ui-contributions.md) before changing the Web plugin host or registries.
+- Read [Frontend localization](../../docs/architecture/localization.md) before adding product copy, locale-sensitive formatting, or a language setting. Update catalogs with App extraction, then run the single repository localization gate for drift, strict compilation, and the App/UI source contract.
+
+## Verification
+
+Run the narrow UI/context test first, then:
+
+```bash
+bun run --cwd packages/app test
+bun run --cwd packages/app typecheck
+bun run --cwd packages/app build
+bun run quality:quick
+```
+
+For product copy, accessibility text, locale-sensitive formatting, or language settings, also run:
+
+```bash
+bun run --cwd packages/app i18n:extract
+bun run localization:check
+```
+
+Use the existing app or an isolated second instance for interaction checks. Verify both themes, keyboard/focus, loading/error states, session switching/reconnect when relevant, and the Desktop path for native Browser or Electron behavior. Do not bypass hooks or claim unrun checks.

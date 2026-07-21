@@ -1,6 +1,6 @@
 import z from "zod"
-import { MetaProtocolEnv } from "./env"
-import { MetaProtocolError } from "./error"
+import { MetaProtocolEnv } from "./env.js"
+import { MetaProtocolError } from "./error.js"
 
 export namespace MetaProtocolEnvelope {
   export const Tool = z.enum(["bash", "process", "session"])

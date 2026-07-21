@@ -1,18 +1,16 @@
-export {
-  type WorkspacePanelEntry,
-  registerWorkspacePanel,
-  listWorkspacePanels,
-  getWorkspacePanel,
-  clearWorkspacePanels,
-} from "./registries/workspace-registry"
+import "./builtin-navigation"
 
 export {
-  type GlobalPanelEntry,
-  registerGlobalPanel,
-  listGlobalPanels,
-  getGlobalPanel,
-  clearGlobalPanels,
-} from "./registries/panel-registry"
+  type WorkbenchPanelEntry,
+  type WorkbenchPanelSurface,
+  type WorkbenchPanelCardinality,
+  type WorkbenchPanelTab,
+  registerWorkbenchPanel,
+  listWorkbenchPanels,
+  getWorkbenchPanel,
+  clearWorkbenchPanels,
+  subscribeWorkbenchPanels,
+} from "./registries/workbench-panel-registry"
 
 export {
   type SettingsSection,
@@ -22,65 +20,58 @@ export {
 } from "./registries/settings-registry"
 
 export {
-  type ThemeDefinition,
-  registerTheme,
-  listThemes,
-  getTheme,
-  activateTheme,
-  getActiveThemeId,
-  getActiveTheme,
-} from "./registries/theme-registry"
+  type PluginThemeDefinition,
+  registerPluginTheme,
+  listPluginThemes,
+  getPluginTheme,
+  subscribePluginThemes,
+} from "@ericsanchezok/synergy-ui/theme"
 
 export { type IconEntry, registerIcon, getIcon, hasIcon, listIcons } from "./registries/icon-registry"
 
 export {
-  type ChatSlot,
-  type ChatComponentEntry,
-  registerChatComponent,
-  getChatComponentsBySlot,
-} from "./registries/chat-registry"
+  type ComposerSlotName,
+  type ComposerSlotProps,
+  type ComposerSlotEntry,
+  registerComposerSlot,
+  getComposerSlotsByName,
+  clearComposerSlots,
+  subscribeComposerSlots,
+} from "./registries/composer-slot-registry"
 
 export {
-  type PluginRouteEntry,
-  registerPluginRoute,
-  getPluginRoutes,
-  clearPluginRoutes,
-} from "./registries/route-registry"
+  type NavigationPlacement,
+  type NavigationContentProps,
+  type NavigationEntry,
+  registerNavigation,
+  listNavigation,
+  navigationEntryLabel,
+  getNavigation,
+  getPluginNavigation,
+  getBuiltinNavigation,
+  getNavigationByPath,
+  clearNavigation,
+  subscribeNavigation,
+} from "./registries/navigation-registry"
 
-export {
-  type PluginCommandEntry,
-  registerPluginCommand,
-  listPluginCommands,
-  getPluginCommand,
-  clearPluginCommands,
-} from "./registries/command-registry"
-
-export {
-  ToolRendererRegistry,
-  toolRendererRegistry,
-  type ToolRendererEntry,
-  type ToolFallbackMeta,
-  type ToolRendererProps,
-  type ToolRenderer,
-  registerToolRenderer,
-  getToolRenderer,
-  getToolFallback,
-  hasToolRenderer,
-  onToolLoaded,
-  clearAllToolRenderers,
-} from "./registries/tool-registry"
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
-export { type PluginContribution, type PluginUIContributions, type PluginPermissions } from "./api"
+export { type PluginContribution } from "./api"
 export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
-export { PluginToolBridge } from "./bridge"
+export { PluginComposerSlotBridge, PluginThemeConfigBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"
+export { PluginRouteScope } from "./route-scope"
+export { resolvePluginScopeKey } from "./scope-key"
 export { fetchUIContributions } from "./api"
+export { BuiltinNavigationPage, PluginNavigationPage } from "./pages"
 
 // Consent UI components
-export { PermissionDiffList, PermissionRiskBadge, TrustTierExplanation, InstallConsentDialog } from "./consent"
-export type { PermissionItem, PermissionSeverity, PermissionChange, PluginPermissionDiff, TrustTier } from "./consent"
-
-// Marketplace components
-export { VerifiedBadge, MarketplacePage, PluginDetailPage } from "./marketplace"
+export { PermissionRiskBadge, PluginConsentDialog } from "./consent"
+export type {
+  PermissionItem,
+  PermissionSeverity,
+  PermissionChange,
+  PluginPermissionDiff,
+  PluginConsentDialogProps,
+} from "./consent"

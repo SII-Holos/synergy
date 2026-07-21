@@ -1,54 +1,57 @@
 import z from "zod"
+import { BrowserActionSchema, BrowserBackendResultSchema, type BrowserAction } from "@ericsanchezok/synergy-browser"
 import { Tool } from "./tool"
-import { BrowserToolHelper } from "./browser-shared"
-import { BrowserActions } from "../browser/actions"
-import { BrowserLocator } from "../browser/locator"
+import { BrowserToolHelper, formatSnapshotText } from "./browser-shared"
 
 export const BrowserActionTool = Tool.define("browser_action", {
   description:
-    "Perform a browser action using Playwright-style locators. Supports click, dblclick, fill, type, press, selectOption, check, uncheck, hover, mouseMove, drag, and scroll actions.",
-  parameters: z.object({
-    action: z.enum(BrowserActions.ACTION_LIST as unknown as [string, ...string[]]),
-    locator: BrowserLocator.LocatorInputSchema.optional().describe("Target element locator."),
-    target: BrowserLocator.LocatorInputSchema.optional().describe("Target for drag end."),
-    text: z.string().optional(),
-    key: z.string().optional(),
-    values: z.array(z.string()).optional(),
-    x: z.number().optional(),
-    y: z.number().optional(),
-    deltaX: z.number().optional(),
-    deltaY: z.number().optional(),
-    pageId: z.string().optional(),
-  }),
+    'Perform one deterministic browser interaction. Prefer a fresh snapshot ref. Label locators target labelled form controls; use role/name for buttons. For select, strings match HTML option values; use {label: "Visible text"} for displayed labels. Set includeSnapshot when the next step depends on the changed DOM. Same-page actions are serialized and should be issued sequentially.',
+  parameters: z.object({ action: BrowserActionSchema }).strict(),
   async execute(params, ctx) {
-    const tab = await BrowserToolHelper.resolvePage(ctx, params.pageId)
+    const page = await BrowserToolHelper.resolvePage(ctx)
     return BrowserToolHelper.withActivity(
       ctx,
-      tab,
+      page,
       "acting",
       "browser_action",
-      `Running ${params.action}`,
+      `Running ${params.action.type}`,
       async () => {
-        const page = tab.page
-        if (!page) throw new Error("No Playwright page available for browser actions")
-
-        const resolveLocator = (li: BrowserLocator.LocatorInput) => BrowserLocator.toPlaywrightLocator(page, li)
-
-        // Build the action input from tool parameters
-        const actionInput = {
-          action: params.action,
-          locator: params.locator,
-          target: params.target,
-          text: params.text,
-          key: params.key,
-          values: params.values,
-          x: params.x,
-          y: params.y,
-        } as BrowserActions.ActionInput
-
-        const result = await BrowserActions.run(page, actionInput, resolveLocator)
-        return { ...result, metadata: {} }
+        const result = await BrowserToolHelper.execute(ctx, { type: "action", action: params.action })
+        if (result.type !== "action") throw new Error("Browser action returned an unexpected result.")
+        const snapshot = BrowserBackendResultSchema.safeParse(result.snapshot)
+        const snapshotResult = snapshot.success && snapshot.data.type === "snapshot" ? snapshot.data : null
+        const formatted = snapshotResult ? formatSnapshotText(snapshotResult.elements) : null
+        const summary = actionSummary(params.action)
+        return {
+          title: `Browser ${params.action.type}`,
+          output: snapshotResult
+            ? `${summary}\nsnapshotId: ${snapshotResult.snapshotId}\n${formatted!.output}`
+            : summary,
+          metadata: {
+            pageId: page.id,
+            action: params.action.type,
+            snapshot: result.snapshot,
+            outputTruncated: formatted?.truncated ?? false,
+          },
+        }
       },
     )
   },
+  formatValidationError() {
+    return 'Invalid browser_action input. Select by value with {"type":"select","target":{"kind":"role","role":"combobox","name":"Priority"},"values":["high"]}; select displayed text with "values":[{"label":"High"}].'
+  },
 })
+
+function actionSummary(action: BrowserAction): string {
+  if (action.type === "select") {
+    return `Selected ${action.values.map((value) => (typeof value === "string" ? `value ${JSON.stringify(value)}` : JSON.stringify(value))).join(", ")}.`
+  }
+  if (action.type === "scroll") {
+    return `Scrolled ${action.target ? "the target" : "the page"} by (${action.deltaX}, ${action.deltaY}) CSS pixels.`
+  }
+  if (action.type === "fill") return `Filled the target with ${action.value.length} characters.`
+  if (action.type === "type") return `Typed ${action.value.length} characters.`
+  if (action.type === "setChecked") return `Set the target checked state to ${action.checked}.`
+  if (action.type === "press") return `Pressed ${JSON.stringify(action.key)}.`
+  return `Completed ${action.type}.`
+}

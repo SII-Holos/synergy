@@ -18,8 +18,8 @@ import { createBlockResolver } from "../hashline/block-resolver"
 import { NoopLoopGuard, noopLoopDiagnostic } from "../hashline/noop-loop-guard"
 import { noopSoftWarning, WIDENED_SWAP_WARNING } from "../hashline/messages"
 import { diffStats, displayPath, resolveFilePath } from "./anchored-file"
-import { collectWriteDiagnostics } from "./write-quality"
-import { LSP } from "../lsp"
+import { captureWriteDiagnosticsBefore, collectWriteDiagnostics } from "./write-quality"
+import { SnapshotSchema } from "@/session/snapshot-schema"
 
 /**
  * Synergy-aware Filesystem that resolves paths using ScopeContext.current.directory
@@ -167,14 +167,13 @@ export const ReviseFileTool = Tool.define("revise_file", {
           sections: [],
           operations: 0,
           diff: "",
-          filediff: {
+          filediff: SnapshotSchema.fromContents({
             file: displayTitle,
-            path: displayTitle,
             before: p.normalized,
             after: p.normalized,
             additions: 0,
             deletions: 0,
-          },
+          }),
           operationSummary: summarizeOperations(p.section),
           changeSummary: { additions: 0, deletions: 0 },
           recovered: false,
@@ -204,13 +203,13 @@ export const ReviseFileTool = Tool.define("revise_file", {
       metadata: {
         sections: allPaths,
         diff,
-        filediff: {
+        filediff: SnapshotSchema.fromContents({
           file: allPaths.join(", "),
-          path: allPaths.join(", "),
           before: combinedBefore,
           after: combinedAfter,
           ...changeSummary,
-        },
+          preview: diff,
+        }),
         operationSummary: allOpsSummaries,
         changeSummary,
       },
@@ -220,8 +219,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
     const committedResults: PatchSectionResult[] = []
     let firstError: Error | undefined
 
-    // Capture before-diagnostics for delta computation
-    const beforeDiagnostics = await LSP.diagnostics().catch(() => undefined)
+    const beforeDiagnostics = await captureWriteDiagnosticsBefore()
 
     for (const p of prepared) {
       if (p.isNoop) {
@@ -304,7 +302,7 @@ export const ReviseFileTool = Tool.define("revise_file", {
         })
       : undefined
     const builtinSourceWarning = RuntimeReload.builtinSourceEditWarning(primaryCanonical)
-    if (runtimeReload) outputBlocks.push(`Runtime reload applied: ${runtimeReload.executed.join(",")}`)
+    if (runtimeReload) outputBlocks.push(RuntimeReload.formatCompactResult(runtimeReload))
     if (builtinSourceWarning) outputBlocks.push(builtinSourceWarning)
 
     const output = outputBlocks.join("\n")
@@ -352,13 +350,13 @@ ${r.after}`,
         })),
         operations: totalOps,
         diff: finalDiff,
-        filediff: {
+        filediff: SnapshotSchema.fromContents({
           file: committedResults.map((r) => r.path).join(", "),
-          path: committedResults.map((r) => r.path).join(", "),
           before: filediffBefore,
           after: filediffAfter,
           ...finalChangeSummary,
-        },
+          preview: finalDiff,
+        }),
         operationSummary: allOpsSummaries,
         changeSummary: finalChangeSummary,
         diagnostics: diagnostics.diagnostics,

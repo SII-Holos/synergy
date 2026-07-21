@@ -1,6 +1,7 @@
 import { For } from "solid-js"
+import { useLocale } from "@/context/locale"
 import type { OverviewMetric } from "./model"
-
+import { S } from "./stats-i18n"
 const ANIMATION_STYLE = `
 @keyframes overviewCardEnter {
   from {
@@ -14,14 +15,13 @@ const ANIMATION_STYLE = `
 }
 `
 
-function dayLabel(days: number) {
-  return `${days} day${days === 1 ? "" : "s"}`
+function dayLabel(days: number, i18n: ReturnType<typeof useLocale>["i18n"]) {
+  return i18n._(S.overviewDayLabel.id, { count: days })
 }
-
 function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   return (
     <div
-      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),inset_0_-1px_0_rgba(255,255,255,0.03)]"
+      class="rounded-2xl bg-surface-raised-base/95 px-3.5 py-3 ring-1 ring-inset ring-border-weaker-base"
       style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}
     >
       <div class="flex min-h-[5.5rem] flex-col justify-between gap-2">
@@ -33,17 +33,30 @@ function MetricCard(props: { metric: OverviewMetric; delay: number }) {
   )
 }
 
-function StreakItem(props: { label: string; value: number; delay: number }) {
+function StreakItem(props: {
+  label: string
+  value: number
+  i18n: ReturnType<typeof useLocale>["i18n"]
+  delay: number
+}) {
   return (
     <div style={{ animation: `overviewCardEnter 0.32s ease-out ${props.delay}ms both` }}>
       <span class="text-11-medium text-text-weak">{props.label}</span>
-      <span class="ml-1.5 text-11-semibold text-text-strong tabular-nums">{dayLabel(props.value)}</span>
+      <span class="ml-1.5 text-11-semibold text-text-strong tabular-nums">{dayLabel(props.value, props.i18n)}</span>
     </div>
   )
 }
 
-export function OverviewCards(props: { metrics: OverviewMetric[]; streak: { current: number; longest: number } }) {
+export function OverviewCards(props: {
+  metrics: OverviewMetric[]
+  streak: { current: number; longest: number }
+  streakCurrentLabel?: string
+  streakBestLabel?: string
+}) {
+  const { i18n } = useLocale()
   const metrics = () => props.metrics.slice(0, 6)
+  const currentLabel = () => props.streakCurrentLabel ?? i18n._(S.overviewStreakCurrentLong.id)
+  const bestLabel = () => props.streakBestLabel ?? i18n._(S.overviewStreakBestLong.id)
 
   return (
     <>
@@ -53,11 +66,11 @@ export function OverviewCards(props: { metrics: OverviewMetric[]; streak: { curr
           <For each={metrics()}>{(metric, index) => <MetricCard metric={metric} delay={index() * 40} />}</For>
         </div>
         <div
-          class="mt-2 flex items-center justify-between rounded-xl bg-amber-500/8 px-3 py-1.5"
+          class="mt-2 flex items-center justify-between rounded-xl bg-surface-warning-weak px-3 py-1.5"
           style={{ animation: `overviewCardEnter 0.32s ease-out ${metrics().length * 40}ms both` }}
         >
-          <StreakItem label="Current streak ·" value={props.streak.current} delay={0} />
-          <StreakItem label="Best streak ·" value={props.streak.longest} delay={40} />
+          <StreakItem label={currentLabel()} value={props.streak.current} i18n={i18n} delay={0} />
+          <StreakItem label={bestLabel()} value={props.streak.longest} i18n={i18n} delay={40} />
         </div>
       </section>
     </>

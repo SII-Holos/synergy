@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { Token } from "../../src/util/token"
 import { Log } from "../../src/util/log"
 import { Session } from "../../src/session"
 import { SessionCompaction } from "../../src/session/compaction"
 import { MessageV2 } from "../../src/session/message-v2"
+import { Config } from "../../src/config/config"
 import type { Provider } from "../../src/provider/provider"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
 
@@ -113,6 +114,110 @@ describe("session.getUsage", () => {
 
     expect(result.tokens.input).toBe(744)
     expect(result.tokens.cache.read).toBe(256)
+  })
+
+  test("extracts DeepSeek prompt cache tokens from usage fields", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        prompt_cache_hit_tokens: 384,
+        prompt_cache_miss_tokens: 616,
+      } as Parameters<typeof Session.getUsage>[0]["usage"],
+    })
+
+    expect(result.tokens.input).toBe(616)
+    expect(result.tokens.cache.read).toBe(384)
+  })
+
+  test("extracts OpenAI prompt cache hit and miss metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        openai: {
+          prompt_cache_hit_tokens: 300,
+          prompt_cache_miss_tokens: 700,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(700)
+    expect(result.tokens.cache.read).toBe(300)
+  })
+
+  test("extracts DeepSeek prompt cache metadata from provider namespace", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        deepseek: {
+          prompt_cache_hit_tokens: 128,
+          prompt_cache_miss_tokens: 872,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(872)
+    expect(result.tokens.cache.read).toBe(128)
+  })
+
+  test("extracts hyphenated openai-compatible prompt cache metadata", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+      },
+      metadata: {
+        "openai-compatible": {
+          prompt_cache_hit_tokens: 64,
+          prompt_cache_miss_tokens: 936,
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(936)
+    expect(result.tokens.cache.read).toBe(64)
+  })
+
+  test("handles Bedrock cache write metadata without subtracting cached reads from input", () => {
+    const model = createModel({ context: 100_000, output: 32_000 })
+    const result = Session.getUsage({
+      model,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 500,
+        totalTokens: 1500,
+        cachedInputTokens: 150,
+      },
+      metadata: {
+        bedrock: {
+          usage: {
+            cacheWriteInputTokens: 225,
+          },
+        },
+      },
+    })
+
+    expect(result.tokens.input).toBe(1000)
+    expect(result.tokens.cache.read).toBe(150)
+    expect(result.tokens.cache.write).toBe(225)
   })
 
   test("handles anthropic cache write metadata", () => {
@@ -319,6 +424,195 @@ describe("session.compaction.isContextExceeded", () => {
       true,
     )
   })
+
+  // issue #321: recognize the context-window signal even when the error was
+  // wrapped or normalized to a shape other than APIError.
+  test("detects a wrapped/plain error via top-level message", () => {
+    expect(SessionCompaction.isContextExceeded({ name: "Error", message: "context_length_exceeded" })).toBe(true)
+  })
+
+  test("detects a nested error code when the shape was rewritten", () => {
+    expect(
+      SessionCompaction.isContextExceeded({
+        name: "ProviderError",
+        data: { error: { type: "invalid_request_error", code: "context_length_exceeded" } },
+      }),
+    ).toBe(true)
+  })
+
+  test("still rejects unrelated wrapped errors", () => {
+    expect(SessionCompaction.isContextExceeded({ name: "Error", message: "network timeout" })).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.hasPendingCompaction (issue #321)
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.hasPendingCompaction", () => {
+  const rootID = "msg_root"
+  const compactionPart = () => ({ type: "compaction" }) as any
+  const textPart = () => ({ type: "text", text: "hi" }) as any
+  const summary = (parentID = rootID) =>
+    ({ info: { role: "assistant", summary: true, finish: "stop", parentID }, parts: [] }) as any
+  const assistant = () => ({ info: { role: "assistant", finish: "stop" }, parts: [] }) as any
+
+  test("no compaction part → not pending", () => {
+    expect(SessionCompaction.hasPendingCompaction([textPart()], [assistant()], rootID)).toBe(false)
+  })
+
+  test("one compaction part, no summary yet → pending", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [assistant()], rootID)).toBe(true)
+  })
+
+  test("one compaction part fulfilled by a summary → not pending (task resumes)", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary()], rootID)).toBe(false)
+  })
+
+  test("second compaction request after a fulfilled first → pending again (repeatable)", () => {
+    // Two compaction parts on R but only one completed summary so far.
+    expect(
+      SessionCompaction.hasPendingCompaction([compactionPart(), compactionPart()], [summary(), assistant()], rootID),
+    ).toBe(true)
+  })
+
+  test("a summary anchored on a different root does not count", () => {
+    expect(SessionCompaction.hasPendingCompaction([compactionPart()], [summary("msg_other")], rootID)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// SessionCompaction.buildAnchor
+// ---------------------------------------------------------------------------
+
+describe("session.compaction.buildAnchor", () => {
+  const now = Date.now()
+
+  function userMsg(
+    id: string,
+    parts: Array<{ text: string; synthetic?: boolean }>,
+    metadata?: Record<string, any>,
+  ): MessageV2.WithParts {
+    return {
+      info: {
+        id,
+        role: "user",
+        sessionID: "test-session",
+        time: { created: now },
+        agent: "synergy",
+        model: { providerID: "test", modelID: "test-model" },
+        ...(metadata ? { metadata } : {}),
+      },
+      parts: parts.map((part, index) => ({
+        id: `text-${id}-${index}`,
+        sessionID: "test-session",
+        messageID: id,
+        type: "text",
+        text: part.text,
+        ...(part.synthetic ? { synthetic: true } : {}),
+      })),
+    }
+  }
+
+  test("anchors the active parent user request when it has real text", () => {
+    const messages = [
+      userMsg("previous", [{ text: "will gh pr create be blocked?" }]),
+      userMsg("active", [{ text: "allow ordinary branch push and gh pr create in autonomous mode" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("allow ordinary branch push and gh pr create in autonomous mode")
+    expect(anchor).not.toContain("will gh pr create be blocked?")
+  })
+
+  test("anchors the root by parentID, not a later synthetic continue", () => {
+    // The loop always passes the task root R as parentID (issue #281 §7), so
+    // the anchor is R's text regardless of any later synthetic/steer messages.
+    const messages = [
+      userMsg("active", [{ text: "keep this active request across compaction" }]),
+      userMsg("continue", [{ text: "Continue if you have next steps", synthetic: true }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("keep this active request across compaction")
+    expect(anchor).not.toContain("Continue if you have next steps")
+  })
+
+  test("anchors the root by parentID, not a later guided steer", () => {
+    const messages = [
+      userMsg("active", [{ text: "implement the active task" }]),
+      userMsg("guided", [{ text: "temporary steering context" }], { guided: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("implement the active task")
+    expect(anchor).not.toContain("temporary steering context")
+  })
+
+  test("resolves the root by id in O(1) without scanning neighbours", () => {
+    const messages = [
+      userMsg("earlier", [{ text: "an earlier request" }]),
+      userMsg("active", [{ text: "the current root request" }]),
+      userMsg("guided", [{ text: "some steering context" }], { guided: true }),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("the current root request")
+    expect(anchor).not.toContain("an earlier request")
+    expect(anchor).not.toContain("some steering context")
+  })
+
+  test("ignores system-origin text parts when extracting anchor text", () => {
+    const messages = [
+      userMsg("active", [{ text: "hidden synthetic text", synthetic: true }, { text: "visible active request" }]),
+    ]
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("visible active request")
+    expect(anchor).not.toContain("hidden synthetic text")
+  })
+
+  test("falls back to the root summary title when it has no user-authored text", () => {
+    const messages = [
+      userMsg("active", [{ text: "only synthetic content", synthetic: true }], {
+        summary: { title: "Scheduled task", diffs: [] },
+      }),
+    ]
+    // summary lives on info, not metadata — attach it directly
+    ;(messages[0].info as MessageV2.User).summary = { title: "Scheduled task", diffs: [] }
+
+    const anchor = SessionCompaction.buildAnchor(messages, "active")
+
+    expect(anchor).toContain("Scheduled task")
+  })
+
+  test("returns undefined when the root is missing", () => {
+    const messages = [userMsg("active", [{ text: "a request" }])]
+
+    expect(SessionCompaction.buildAnchor(messages, "does-not-exist")).toBeUndefined()
+  })
+})
+
+describe("session.compaction.buildRecoveryHint", () => {
+  test("points the continuation at durable history around the compaction boundary", () => {
+    const hint = SessionCompaction.buildRecoveryHint({
+      sessionID: "ses_test",
+      summaryMessageID: "msg_summary",
+    })
+
+    expect(hint).toContain("<recovery-hint>")
+    expect(hint).toContain("Do not read the earlier history unless the continuation summary is insufficient")
+    expect(hint).toContain('expand the "session" tool group')
+    expect(hint).toContain('target session "ses_test"')
+    expect(hint).toContain('around message "msg_summary"')
+    expect(hint).toContain("limit 50")
+    expect(hint).toContain("</recovery-hint>")
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -522,6 +816,27 @@ describe("session.compaction.selectPartsToPrune", () => {
     expect(result.some((p) => p.id === "old-big-tool")).toBe(true)
   })
 
+  test("scans past an unfinished legacy compaction summary", () => {
+    const bigOutput = "x".repeat(50_000 * 4)
+    const ghost = assistantMsg("ghost-summary", [])
+    if (ghost.info.role !== "assistant") throw new Error("expected assistant fixture")
+    ghost.info.summary = true
+
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [toolPart({ id: "old-big-tool", output: bigOutput })]),
+      ghost,
+      userMsg("u1"),
+      assistantMsg("a1", []),
+      userMsg("u2"),
+      assistantMsg("a2", []),
+    ]
+
+    const result = SessionCompaction.selectPartsToPrune(msgs)
+
+    expect(result.some((part) => part.id === "old-big-tool")).toBe(true)
+  })
+
   test("returns empty when total output is below PRUNE_MINIMUM", () => {
     const smallOutput = "x".repeat(100)
     const msgs: MessageV2.WithParts[] = [
@@ -594,5 +909,48 @@ describe("session.compaction.selectPartsToPrune", () => {
 
     expect(withoutModel).toHaveLength(0)
     expect(withModel).toHaveLength(0)
+  })
+
+  test("prunes from the loop snapshot without rereading or mutating it", async () => {
+    const oldPart = toolPart({ id: "old-tool", output: "x".repeat(300_000) })
+    const msgs: MessageV2.WithParts[] = [
+      userMsg("u0"),
+      assistantMsg("a0", [oldPart]),
+      userMsg("u1"),
+      assistantMsg("a1", []),
+      userMsg("u2"),
+      assistantMsg("a2", []),
+    ]
+    const originalMessages = Session.messages
+    const originalUpdatePart = Session.updatePart
+    const originalConfigCurrent = Config.current
+    let persisted: MessageV2.Part | undefined
+    ;(Config.current as any) = mock(async () => ({ compaction: {} }))
+    ;(Session.messages as any) = mock(async () => {
+      throw new Error("prune reread full history")
+    })
+    ;(Session.updatePart as any) = mock(async (part: MessageV2.Part) => {
+      persisted = part
+      return part
+    })
+
+    try {
+      await SessionCompaction.prune({ sessionID: "test-session", messages: msgs })
+    } finally {
+      ;(Config.current as any) = originalConfigCurrent
+      ;(Session.messages as any) = originalMessages
+      ;(Session.updatePart as any) = originalUpdatePart
+    }
+
+    expect(oldPart.state.status).toBe("completed")
+    if (oldPart.state.status === "completed") {
+      expect(oldPart.state.output.length).toBe(300_000)
+      expect(oldPart.state.time.compacted).toBeUndefined()
+    }
+    expect(persisted?.type).toBe("tool")
+    if (persisted?.type === "tool" && persisted.state.status === "completed") {
+      expect(persisted.state.output).toBe("")
+      expect(persisted.state.time.compacted).toBeNumber()
+    }
   })
 })

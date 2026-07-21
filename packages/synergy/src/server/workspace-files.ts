@@ -5,6 +5,7 @@ import { WorkspaceFile } from "../workspace-file/types"
 import { WorkspaceFileSearch } from "../workspace-file/search"
 import { WorkspaceFileService } from "../workspace-file/service"
 import { WorkspaceFileStatus } from "../workspace-file/status"
+import { errors } from "./error"
 
 const BoolString = z.enum(["true", "false"]).optional()
 
@@ -47,6 +48,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(
@@ -87,6 +89,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(
@@ -97,6 +100,7 @@ export const WorkspaceFilesRoute = new Hono()
         offset: z.coerce.number().int().min(0).optional(),
         limit: z.coerce.number().int().min(1).max(5000).optional(),
         preview: BoolString,
+        mode: z.enum(["range", "document"]).default("range"),
       }),
     ),
     async (c) => {
@@ -108,6 +112,7 @@ export const WorkspaceFilesRoute = new Hono()
           offset: query.offset ?? range.offset,
           limit: query.limit ?? range.limit,
           preview: bool(query.preview),
+          mode: query.mode,
         }),
       )
     },
@@ -127,6 +132,7 @@ export const WorkspaceFilesRoute = new Hono()
             },
           },
         },
+        ...errors(404),
       },
     }),
     validator(

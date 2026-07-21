@@ -10,12 +10,9 @@ const parameters = z.object({
   target: z.string().describe("Target session. A session ID (ses_xxx)."),
   content: z.string().describe("The text content to send."),
   role: z
-    .enum(["user", "assistant"])
-    .default("assistant")
-    .describe(
-      "'assistant' = deliver as an assistant message (no response triggered), " +
-        "'user' = deliver as a user message (triggers the target session's agent to respond).",
-    ),
+    .literal("user", { error: 'session_send only supports role "user". Retry the call with role: "user".' })
+    .default("user")
+    .describe("Must be 'user'. This is the only supported delivery role."),
   sourceName: z
     .string()
     .optional()
@@ -32,6 +29,12 @@ async function resolveSession(target: string): Promise<Session.Info> {
 export const SessionSendTool = Tool.define("session_send", {
   description: DESCRIPTION,
   parameters,
+  formatValidationError(error) {
+    if (error.issues.some((issue) => issue.path[0] === "role")) {
+      return 'session_send only supports role "user". Retry the call with role: "user".'
+    }
+    return `The session_send tool was called with invalid arguments: ${error.message}`
+  },
   async execute(params: z.infer<typeof parameters>, ctx) {
     const session = await resolveSession(params.target)
 
@@ -44,42 +47,33 @@ export const SessionSendTool = Tool.define("session_send", {
     }
 
     const mailMetadata = {
-      mailbox: true,
-      source: "mailbox",
+      source: "session_send",
       sourceSessionID: ctx.sessionID,
       ...(params.sourceName ? { sourceName: params.sourceName } : {}),
     }
 
-    if (params.role === "assistant") {
-      const mail: SessionManager.SessionMail.Assistant = {
-        type: "assistant",
-        parts: [textPart],
-        metadata: mailMetadata,
-      }
-      await SessionManager.deliver({ target: session.id, mail })
-    } else {
-      await ctx.ask({
-        permission: "identity_act",
-        patterns: [`session_send role=user to ${params.target}`],
-        metadata: {
-          nonBypassable: true,
-          action: "session_send",
-          role: "user",
-          target: params.target,
-        },
-      })
-      const mail: SessionManager.SessionMail.User = {
-        type: "user",
-        parts: [textPart],
-        metadata: mailMetadata,
-      }
-      await SessionManager.deliver({ target: session.id, mail })
+    await ctx.ask({
+      permission: "identity_act",
+      patterns: [`session_send role=user to ${params.target}`],
+      metadata: {
+        nonBypassable: true,
+        action: "session_send",
+        role: "user",
+        target: params.target,
+      },
+    })
+    const mail: SessionManager.SessionMail.User = {
+      type: "user",
+      parts: [textPart],
+      metadata: mailMetadata,
     }
+    await SessionManager.deliver({ target: session.id, mail, waitForProcessing: false })
 
+    const deliveryState = "queued and scheduled for asynchronous processing"
     return {
       title: `Sent to ${params.target}`,
-      output: `Message delivered to session ${session.id} as ${params.role}.`,
-      metadata: { sessionID: session.id, role: params.role } as Record<string, any>,
+      output: `Message ${deliveryState} in session ${session.id} as user. The session_send tool call is complete.`,
+      metadata: { sessionID: session.id, role: "user", deliveryState } as Record<string, any>,
     }
   },
 })

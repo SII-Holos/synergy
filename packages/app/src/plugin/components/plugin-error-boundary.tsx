@@ -1,5 +1,7 @@
 import { ErrorBoundary, type ParentProps } from "solid-js"
+import { useLingui } from "@lingui/solid"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { usePluginHost } from "../host"
 
 interface PluginErrorBoundaryProps extends ParentProps {
@@ -8,6 +10,7 @@ interface PluginErrorBoundaryProps extends ParentProps {
 }
 
 export function PluginErrorBoundary(props: PluginErrorBoundaryProps) {
+  const { _ } = useLingui()
   let pluginHost: ReturnType<typeof usePluginHost> | undefined
   try {
     pluginHost = usePluginHost()
@@ -24,20 +27,29 @@ export function PluginErrorBoundary(props: PluginErrorBoundaryProps) {
           const existing = pluginHost.errors()
           const exists = existing.some((e) => e.pluginId === props.pluginId && e.message === message)
           if (!exists) {
-            // We can't directly mutate the signal here, but we can call reload
-            // which resets errors. Instead, log via console for now.
             console.error(`[PluginErrorBoundary] ${props.pluginId}:`, err)
           }
         }
         return (
           <div class="plugin-error-card">
             <div class="plugin-error-header">
-              <Icon name="alert-triangle" />
-              <span>Plugin Error: {props.pluginId}</span>
+              <Icon name={getSemanticIcon("state.error")} />
+              <span>
+                {_({
+                  id: "app.plugin.error.title",
+                  message: "Plugin Error: {pluginId}",
+                  values: { pluginId: props.pluginId },
+                })}
+              </span>
               {props.componentName && <span class="plugin-error-component">{props.componentName}</span>}
             </div>
             <div class="plugin-error-message">{message}</div>
-            <div class="plugin-error-hint">The plugin may need to be updated. Check the plugin settings.</div>
+            <div class="plugin-error-hint">
+              {_({
+                id: "app.plugin.error.hint",
+                message: "The plugin may need to be updated. Check the plugin settings.",
+              })}
+            </div>
           </div>
         )
       }}

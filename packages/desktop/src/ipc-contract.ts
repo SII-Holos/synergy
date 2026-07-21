@@ -1,43 +1,16 @@
 import z from "zod"
-import type { BrowserNativeAttachRequest, BrowserNativeBounds } from "./browser-native-view.js"
+import {
+  BrowserNativeAttachRequestSchema,
+  BrowserNativePageRequestSchema,
+  BrowserNativePresentationTicketRequestSchema,
+  BrowserNativeResizeRequestSchema,
+  type BrowserNativeAttachRequest,
+  type BrowserNativePageRequest,
+  type BrowserNativePresentationTicketRequest,
+  type BrowserNativeResizeRequest,
+} from "@ericsanchezok/synergy-browser"
 
 const nonEmptyString = z.string().trim().min(1)
-
-export const browserNativeBoundsSchema = z
-  .object({
-    x: z.number().finite(),
-    y: z.number().finite(),
-    width: z.number().finite().positive(),
-    height: z.number().finite().positive(),
-  })
-  .strict()
-
-export const browserNativeAttachSchema = z
-  .object({
-    serverUrl: z.string().url().optional(),
-    sessionID: nonEmptyString,
-    routeDirectory: z.string().optional(),
-    directory: z.string().optional(),
-    scopeID: z.string().optional(),
-    scopeKey: z.string().optional(),
-    pageId: nonEmptyString,
-    url: z.string().url().optional(),
-    bounds: browserNativeBoundsSchema.optional(),
-  })
-  .strict()
-
-export const browserNativePageSchema = z
-  .object({
-    pageId: nonEmptyString,
-  })
-  .strict()
-
-export const browserNativeResizeSchema = z
-  .object({
-    pageId: nonEmptyString,
-    bounds: browserNativeBoundsSchema,
-  })
-  .strict()
 
 export const externalUrlSchema = z
   .string()
@@ -50,18 +23,79 @@ export const externalUrlSchema = z
     { message: "Only http, https, and mailto URLs can be opened externally" },
   )
 
+export const clipboardWriteTextSchema = z.string()
+
+export const desktopBadgeStateSchema = z
+  .object({
+    count: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  })
+  .strict()
+
+export type DesktopBadgeState = z.infer<typeof desktopBadgeStateSchema>
+
+export const selectDirectoryDialogRequestSchema = z
+  .object({
+    title: z.string().trim().min(1).max(120).optional(),
+    multiple: z.boolean().default(false),
+  })
+  .strict()
+
+export const selectDirectoryDialogResponseSchema = z
+  .object({
+    canceled: z.boolean(),
+    directoryPaths: z.array(z.string().min(1)),
+  })
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.canceled && value.directoryPaths.length !== 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Canceled directory picker responses cannot include paths",
+      })
+    }
+    if (!value.canceled && value.directoryPaths.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Selected directory picker responses must include at least one path",
+      })
+    }
+  })
+
+export type SelectDirectoryDialogRequest = z.infer<typeof selectDirectoryDialogRequestSchema>
+export type SelectDirectoryDialogResponse = z.infer<typeof selectDirectoryDialogResponseSchema>
+
 export function parseBrowserNativeAttach(input: unknown): BrowserNativeAttachRequest {
-  return browserNativeAttachSchema.parse(input)
+  return BrowserNativeAttachRequestSchema.parse(input)
 }
 
-export function parseBrowserNativePage(input: unknown): { pageId: string } {
-  return browserNativePageSchema.parse(input)
+export function parseBrowserNativePage(input: unknown): BrowserNativePageRequest {
+  return BrowserNativePageRequestSchema.parse(input)
 }
 
-export function parseBrowserNativeResize(input: unknown): { pageId: string; bounds: BrowserNativeBounds } {
-  return browserNativeResizeSchema.parse(input)
+export function parseBrowserNativeResize(input: unknown): BrowserNativeResizeRequest {
+  return BrowserNativeResizeRequestSchema.parse(input)
+}
+
+export function parseBrowserNativePresentationTicket(input: unknown): BrowserNativePresentationTicketRequest {
+  return BrowserNativePresentationTicketRequestSchema.parse(input)
 }
 
 export function parseExternalUrl(input: unknown): string {
   return externalUrlSchema.parse(input)
+}
+
+export function parseClipboardWriteText(input: unknown): string {
+  return clipboardWriteTextSchema.parse(input)
+}
+
+export function parseDesktopBadgeState(input: unknown): DesktopBadgeState {
+  return desktopBadgeStateSchema.parse(input)
+}
+
+export function parseSelectDirectoryDialogRequest(input: unknown): SelectDirectoryDialogRequest {
+  return selectDirectoryDialogRequestSchema.parse(input)
+}
+
+export function parseSelectDirectoryDialogResponse(input: unknown): SelectDirectoryDialogResponse {
+  return selectDirectoryDialogResponseSchema.parse(input)
 }

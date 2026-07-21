@@ -1,5 +1,6 @@
 import type { Config } from "@ericsanchezok/synergy-sdk/client"
-import { MODEL_ROLES, TOAST_TYPES, UI_DEFAULTS, resolvePermissionForUi, snapToastDuration } from "../types"
+import { UI_DEFAULTS, MODEL_ROLES, resolvePermissionForUi } from "../types"
+import { normalizeServerToast, toastPatchFromPreferences } from "../toast-preferences"
 import type { SettingsState } from "../types"
 
 export type BuildPatchParams = {
@@ -13,7 +14,9 @@ export function buildPatch(params: BuildPatchParams): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
 
   buildGeneralPatch(cfg, state, patch)
+  buildEmbeddingPatch(cfg, state, patch)
   buildModelPatch(cfg, state, patch)
+  buildAgentPatch(cfg, state, patch)
   buildProviderPatch(cfg, state, patch)
   buildPluginPatch(cfg, state, patch)
   buildMcpPatch(cfg, state, originalMcps, patch)
@@ -30,22 +33,37 @@ function buildGeneralPatch(cfg: Config, state: SettingsState, patch: Record<stri
   const { general } = state
   if (general.snapshot !== (cfg.snapshot ?? UI_DEFAULTS.snapshot)) patch.snapshot = general.snapshot
 
-  const autoupdateOrig = cfg.autoupdate === undefined ? UI_DEFAULTS.autoupdate : String(cfg.autoupdate)
-  if (general.autoupdate !== autoupdateOrig) {
-    if (general.autoupdate === "true") patch.autoupdate = true
-    else if (general.autoupdate === "false") patch.autoupdate = false
-    else if (general.autoupdate === "notify") patch.autoupdate = "notify"
-  }
-
   const username = general.username.trim()
   if (username !== (cfg.username ?? UI_DEFAULTS.username)) patch.username = username || undefined
 
   const theme = general.theme.trim()
   if (theme !== (cfg.theme ?? UI_DEFAULTS.theme)) patch.theme = theme || undefined
 
-  const toast = buildToastPatch(general.mutedToasts, general.toastDurations)
-  if (JSON.stringify(toast) !== JSON.stringify(cfg.toast ?? {})) {
-    patch.toast = Object.keys(toast).length ? toast : undefined
+  const resolvedLocale = cfg.locale ?? UI_DEFAULTS.locale
+  if (general.locale !== resolvedLocale) patch.locale = general.locale
+
+  const toast = toastPatchFromPreferences(general.mutedToasts, general.toastDurations)
+  const current = normalizeServerToast(cfg.toast) ?? { muted: [] }
+  // Always include muted so domain mergeDeep can replace/clear the array.
+  if (JSON.stringify(toast) !== JSON.stringify(current)) {
+    patch.toast = toast
+  }
+}
+
+function buildEmbeddingPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const source = state.library.embeddingSource
+  const remoteHost = state.library.embeddingRemoteHost.trim()
+  const currentSource = cfg.embedding?.local?.source ?? UI_DEFAULTS.embeddingSource
+  const currentRemoteHost = cfg.embedding?.local?.remoteHost ?? UI_DEFAULTS.embeddingRemoteHost
+  const nextRemoteHost = source === "custom" ? remoteHost : ""
+
+  if (source === currentSource && nextRemoteHost === (source === "custom" ? currentRemoteHost : "")) return
+
+  patch.embedding = {
+    local: {
+      source,
+      ...(source === "custom" && nextRemoteHost ? { remoteHost: nextRemoteHost } : {}),
+    },
   }
 }
 
@@ -54,6 +72,31 @@ function buildModelPatch(cfg: Config, state: SettingsState, patch: Record<string
     const origVal = (cfg[role.key as keyof Config] as string | undefined) ?? ""
     const newVal = state.models[role.key]
     if (newVal !== origVal) patch[role.key] = newVal || undefined
+  }
+  const origVariant = cfg.role_variant
+  const variants = state.roleVariant
+  const cleanedVariant: Record<string, string> = {}
+  for (const [role, variant] of Object.entries(variants)) {
+    if (variant) cleanedVariant[role] = variant
+  }
+  if (JSON.stringify(cleanedVariant) !== JSON.stringify(origVariant ?? {})) {
+    patch.role_variant = Object.keys(cleanedVariant).length ? cleanedVariant : undefined
+  }
+
+  const cleanedQuickSwitcher = state.models.quick_switcher.filter(
+    (item) => item.providerID && item.modelID && (item.state === "add" || item.state === "remove"),
+  )
+  if (JSON.stringify(cleanedQuickSwitcher) !== JSON.stringify(cfg.quick_switcher?.models ?? [])) {
+    patch.quick_switcher = { models: cleanedQuickSwitcher }
+  }
+}
+
+function buildAgentPatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
+  const defaultAgent = state.agents.defaultAgent.trim()
+  if (!defaultAgent) return
+  const resolved = cfg.default_agent ?? UI_DEFAULTS.defaultAgent
+  if (defaultAgent !== resolved) {
+    patch.default_agent = defaultAgent
   }
 }
 
@@ -134,17 +177,36 @@ function buildSafetyPatch(cfg: Config, state: SettingsState, patch: Record<strin
   const sandbox: Record<string, unknown> = {}
   const sandboxEnabled = safety.sandboxEnabled === "true"
   const currentEnabled = cfg.sandbox?.enabled !== false
-  if (sandboxEnabled !== currentEnabled || cfg.sandbox?.enabled !== undefined) sandbox.enabled = sandboxEnabled
+  if (sandboxEnabled !== currentEnabled) sandbox.enabled = sandboxEnabled
   if (safety.sandboxFallbackPolicy !== (cfg.sandbox?.fallbackPolicy ?? UI_DEFAULTS.sandboxFallbackPolicy)) {
     sandbox.fallbackPolicy = safety.sandboxFallbackPolicy
   }
   if (Object.keys(sandbox).length) {
-    patch.sandbox = { ...(cfg.sandbox ?? {}), ...sandbox }
+    const nextSandbox = { ...(cfg.sandbox ?? {}), ...sandbox }
+    if (JSON.stringify(nextSandbox) !== JSON.stringify(cfg.sandbox ?? {})) {
+      patch.sandbox = nextSandbox
+    }
   }
 }
 
 function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<string, unknown>) {
   const { runtime } = state
+  const lspWriteDiagnostics = runtime.lspWriteDiagnostics !== "false"
+  if (lspWriteDiagnostics !== (cfg.lspWriteDiagnostics !== false)) {
+    patch.lspWriteDiagnostics = lspWriteDiagnostics
+  }
+
+  const lspDiagnostics = {
+    severity: runtime.lspDiagnosticsSeverity as "error" | "warning",
+    scope: runtime.lspDiagnosticsScope as "delta" | "file" | "project",
+  }
+  const currentLspDiagnostics = cfg.lspDiagnostics ?? {
+    severity: UI_DEFAULTS.lspDiagnosticsSeverity,
+    scope: UI_DEFAULTS.lspDiagnosticsScope,
+  }
+  if (JSON.stringify(lspDiagnostics) !== JSON.stringify(currentLspDiagnostics)) {
+    patch.lspDiagnostics = lspDiagnostics
+  }
 
   const questionTimeout = nonNegativeNumber(runtime.questionTimeout)
   if (questionTimeout !== undefined && questionTimeout !== (cfg.question?.timeout ?? UI_DEFAULTS.questionTimeout)) {
@@ -171,8 +233,20 @@ function buildRuntimePatch(cfg: Config, state: SettingsState, patch: Record<stri
     patch.compaction = compaction
   }
 
+  const cortexConcurrency = positiveInteger(runtime.cortexConcurrency)
+  const currentCortexConcurrency = cfg.cortex?.maxConcurrentTasks ?? Number(UI_DEFAULTS.cortexConcurrency)
+  if (cortexConcurrency !== undefined && cortexConcurrency !== currentCortexConcurrency) {
+    patch.cortex = { maxConcurrentTasks: cortexConcurrency }
+  }
+
   const timeout = buildTimeoutPatch(cfg, runtime)
   if (timeout.changed) patch.timeout = timeout.value
+
+  const coauthorReminder = runtime.coauthorReminder === "true"
+  const currentCoauthorReminder = cfg.experimental?.coauthor_reminder !== false
+  if (coauthorReminder !== currentCoauthorReminder) {
+    patch.experimental = { ...(cfg.experimental ?? {}), coauthor_reminder: coauthorReminder }
+  }
 
   const watcherIgnore = parseList(runtime.watcherIgnore)
   if (JSON.stringify(watcherIgnore) !== JSON.stringify(cfg.watcher?.ignore ?? [])) {
@@ -190,7 +264,7 @@ function buildTimeoutPatch(cfg: Config, runtime: SettingsState["runtime"]) {
 
   const provider: Record<string, unknown> = {}
   const ttfb = positiveNumber(runtime.providerTtfbTimeout)
-  const idle = nonNegativeNumber(runtime.providerIdleTimeout)
+  const idle = idleTimeoutValue(runtime.providerIdleTimeout)
   const wall = nonNegativeNumber(runtime.providerWallTimeout)
   if (ttfb !== undefined) provider.ttfb_sec = ttfb
   if (idle !== undefined) provider.idle_sec = idle
@@ -281,7 +355,9 @@ function buildChannelPatch(cfg: Config, state: SettingsState, patch: Record<stri
   if ("feishu" in newChannel && newChannel.feishu?.accounts) {
     for (const entry of state.channels.feishuAccounts) {
       const account = newChannel.feishu.accounts[entry.key]
-      if (account) account.enabled = entry.enabled
+      if (!account) continue
+      account.enabled = entry.enabled
+      ;(account as Record<string, unknown>).model = entry.model || undefined
     }
   }
   if (JSON.stringify(newChannel) !== JSON.stringify(currentChannel)) patch.channel = newChannel
@@ -351,31 +427,6 @@ function buildLibraryPatch(cfg: Config, state: SettingsState, patch: Record<stri
   patch.library = nextLibrary
 }
 
-function buildToastPatch(
-  muted: string[],
-  durations: SettingsState["general"]["toastDurations"],
-): Record<string, unknown> {
-  const toast: Record<string, unknown> = {}
-  const normalizedMuted = muted.filter((value) => ["info", "success", "warning", "error"].includes(value))
-  if (normalizedMuted.length) toast.muted = normalizedMuted
-  const durationOverrides = parseToastDurations(durations)
-  if (Object.keys(durationOverrides).length) toast.durationOverrides = durationOverrides
-  return toast
-}
-
-function parseToastDurations(durations: SettingsState["general"]["toastDurations"]): Record<string, number> {
-  const result: Record<string, number> = {}
-  for (const type of TOAST_TYPES) {
-    const raw = durations[type]
-    if (!raw.trim()) continue
-    const parsed = Number(raw)
-    if (!Number.isNaN(parsed) && Number.isInteger(parsed) && parsed > 0 && parsed <= 30000) {
-      result[type] = snapToastDuration(parsed)
-    }
-  }
-  return result
-}
-
 function parseList(value: string): string[] {
   return value
     .split(/\r?\n|,/)
@@ -416,6 +467,12 @@ function nonNegativeNumber(value: string): number | undefined {
   if (!value.trim()) return undefined
   const parsed = Number(value)
   return !Number.isNaN(parsed) && parsed >= 0 ? parsed : undefined
+}
+
+function idleTimeoutValue(value: string): number | false | undefined {
+  const trimmed = value.trim().toLowerCase()
+  if (trimmed === "false") return false
+  return nonNegativeNumber(value)
 }
 
 function boundedNumber(value: string, min: number, max: number): number | undefined {

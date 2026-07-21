@@ -150,6 +150,47 @@
   line-height: 1rem;
 }
 
+.plugin-marketplace-source-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  border-radius: 0.625rem;
+  background: var(--plugin-control-bg);
+  padding: 0.125rem;
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 20%, transparent);
+}
+
+.plugin-marketplace-source-filter button {
+  min-height: 1.625rem;
+  border-radius: 0.5rem;
+  padding: 0 0.625rem;
+  color: var(--text-weak);
+  font-size: 0.6875rem;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.plugin-marketplace-source-filter button:hover {
+  color: var(--text-base);
+}
+
+.plugin-marketplace-source-filter button.active {
+  background: var(--plugin-selected-bg);
+  color: var(--text-strong);
+}
+
+.plugin-detail-development-path {
+  overflow-wrap: anywhere;
+  border-radius: 0.625rem;
+  background: var(--surface-inset-base);
+  padding: 0.625rem 0.75rem;
+  color: var(--text-base);
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  line-height: 1.125rem;
+}
+
 .plugin-marketplace-list {
   display: flex;
   min-height: 0;
@@ -296,6 +337,11 @@
   color: var(--text-success);
 }
 
+.plugin-marketplace-state-disabled {
+  background: var(--surface-warning-soft);
+  color: var(--text-warning);
+}
+
 .plugin-marketplace-install-dot {
   position: absolute;
   top: 0.75rem;
@@ -399,7 +445,7 @@
   border-radius: 1rem;
   background: var(--surface-raised-stronger-non-alpha);
   box-shadow:
-    0 24px 76px rgba(0, 0, 0, 0.34),
+    0 24px 76px var(--surface-overlay),
     0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
@@ -529,8 +575,8 @@
   background: var(--text-strong);
   color: var(--background-base);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, white 12%, transparent),
-    0 1px 2px color-mix(in oklab, black 12%, transparent);
+    inset 0 0 0 1px var(--border-weak-base),
+    0 1px 2px var(--surface-overlay);
 }
 
 .plugin-detail-primary-action [data-component="icon"],
@@ -553,8 +599,7 @@
   box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--border-base) 25%, transparent);
 }
 
-.plugin-detail-secondary-action:hover:not(:disabled),
-.plugin-detail-secondary-action.is-confirming {
+.plugin-detail-secondary-action:hover:not(:disabled) {
   background: var(--surface-critical-soft);
   color: var(--text-critical);
 }

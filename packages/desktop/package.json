@@ -13,7 +13,11 @@
   "main": "./dist/main.js",
   "scripts": {
     "build": "bun run desktop:build",
-    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron",
+    "desktop:build": "bun build src/main.ts --outfile dist/main.js --target=node --external electron && bun build src/preload.ts --outfile dist/preload.cjs --target=node --format=cjs --external electron && bun run browser-host:build",
+    "browser-host:build": "bun build src/browser-host-main.ts --outfile dist/browser-host-main.js --target=node --external electron",
+    "browser-host:dev": "bun run browser-host:build && electron dist/browser-host-main.js",
+    "browser-host:dist": "bun run browser-host:build && electron-builder --config electron-builder.browser-host.json --publish=never",
+    "browser-host:manifest": "bun run script/browser-host-manifest.ts release/browser-host",
     "desktop:checksums": "bun run script/checksums.ts release",
     "desktop:prepare-runtime": "bun run script/prepare-runtime.ts",
     "desktop:pack": "bun run desktop:build && bun run desktop:prepare-runtime && electron-builder --dir",
@@ -24,7 +28,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@ericsanchezok/synergy-util": "workspace:*",
+    "@ericsanchezok/synergy-browser": "workspace:*",
     "electron-updater": "6.6.8",
     "zod": "catalog:"
   },

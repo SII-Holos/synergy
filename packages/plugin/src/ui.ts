@@ -1,58 +1,37 @@
-import type { Component } from "solid-js"
-
-export interface PluginToolRendererProps {
-  input: Record<string, unknown>
-  metadata: Record<string, unknown>
-  tool: string
-  title?: string
-  output?: string
-  status?: string
-  raw?: string
-  charsReceived?: number
-  hideDetails?: boolean
-  defaultOpen?: boolean
-  forceOpen?: boolean
+export interface PluginSurfaceIdentity {
+  kind: string
+  id: string
+  resource?: { id: string; title?: string; state?: unknown }
 }
 
-export type PluginToolRenderer = Component<PluginToolRendererProps>
-
-export interface PluginPartRendererProps {
-  part: unknown
-  message?: unknown
+export interface PluginUIOperations {
+  query<Output = unknown>(id: string, input?: unknown): Promise<Output>
+  command<Output = unknown>(id: string, input?: unknown): Promise<Output>
 }
 
-export type PluginPartRenderer = Component<PluginPartRendererProps>
+export interface PluginUIEvents {
+  subscribe(eventId: string, listener: (event: unknown) => void): () => void
+}
 
-export interface PluginPanelProps {
+export interface PluginUIHostActions {
+  openSession(sessionId: string): void
+  openPluginPage(path: string, params?: Record<string, string>): void
+  openWorkbenchPanel(panelId: string, resource?: { id: string; title?: string; state?: unknown }): void
+  openResource(resource: { kind: "artifact" | "file"; uri: string }): void
+  notify(message: string, options?: { kind?: "info" | "success" | "warning" | "error" }): void
+  confirm(options: { title: string; message: string; confirmLabel?: string }): Promise<boolean>
+}
+
+export interface PluginSurfaceContext {
   pluginId: string
-  panelId: string
-  scopeId?: string
-}
-
-export type PluginWorkspacePanel = Component<PluginPanelProps>
-export type PluginGlobalPanel = Component<PluginPanelProps>
-
-export interface PluginSettingsProps {
-  pluginId: string
-  values: Record<string, unknown>
-  onChange(values: Record<string, unknown>): void
-}
-
-export type PluginSettingsSection = Component<PluginSettingsProps>
-
-export type PluginChatSlot = "before-tools" | "after-tools" | "before-reasoning" | "after-reasoning"
-
-export interface PluginChatComponentProps {
-  slot: PluginChatSlot
+  scopeId: string
   sessionId?: string
-  messageId?: string
+  surface: PluginSurfaceIdentity
+  operations: PluginUIOperations
+  events: PluginUIEvents
+  settings: {
+    get(): Promise<Record<string, unknown>>
+    subscribe(listener: (values: Record<string, unknown>) => void): () => void
+  }
+  host: PluginUIHostActions
 }
-
-export type PluginChatComponent = Component<PluginChatComponentProps>
-
-export interface PluginCommandContext {
-  pluginId: string
-  serverUrl: string
-}
-
-export type PluginUICommand = (context: PluginCommandContext) => void | Promise<void>

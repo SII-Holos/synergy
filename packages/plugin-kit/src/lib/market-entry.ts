@@ -1,18 +1,26 @@
 import fs from "fs"
 import os from "os"
 import path from "path"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { baseCapabilities } from "./capability"
-import { computeManifestHash, computePermissionsHash } from "./hash"
-import { computeRisk } from "./risk"
-import { resolveRuntimeMode } from "./runtime-mode"
-import { readSignatureFile } from "./signature"
-import { sha256File } from "./crypto"
-import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets"
+import {
+  PluginManifest,
+  normalizePluginArchiveEntry,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
+import {
+  githubReleaseTag,
+  githubReleaseAssetUrl,
+  githubRepoSlug as sharedGithubRepoSlug,
+  normalizeGitHubRepoUrl,
+} from "@ericsanchezok/synergy-plugin/market"
+import { computeManifestHash, computePermissionsHash } from "./hash.js"
+import { readSignatureFile } from "./signature.js"
+import { sha256File } from "./crypto.js"
+import { isManifestIconPath, packageRelativePath, resolveUnder } from "./artifact-assets.js"
 
-export type GithubRegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
+export type RegistryIcon = { type: "lucide"; name: string } | { type: "registry-svg"; path: string }
+export type MarketplaceReleaseBackend = "github" | "manual"
 
-export interface GithubRegistryEntry {
+export interface RegistryEntry {
   schemaVersion: 1
   id: string
   name: string
@@ -20,7 +28,7 @@ export interface GithubRegistryEntry {
   repo: string
   homepage?: string
   author: { name: string; email?: string; url?: string }
-  icon?: GithubRegistryIcon
+  icon?: RegistryIcon
   verified: boolean
   official: boolean
   keywords: string[]
@@ -37,7 +45,7 @@ export interface GithubRegistryEntry {
     manifestHash: string
     permissionsHash: string
     risk: "low" | "medium" | "high"
-    runtimeMode: "in-process" | "worker" | "process"
+    runtimeMode: "process"
     permissionsSummary: Array<{ key: string; description: string; risk: string }>
     tools: string[]
     uiSurfaces: string[]
@@ -47,7 +55,7 @@ export interface GithubRegistryEntry {
   yankedVersions: string[]
 }
 
-export function parseAuthor(input?: string): GithubRegistryEntry["author"] {
+export function parseAuthor(input?: string): RegistryEntry["author"] {
   if (!input) return { name: "unknown" }
   const email = input.match(/<([^>]+)>/)?.[1]
   const url = input.match(/\(([^)]+)\)/)?.[1]
@@ -60,29 +68,69 @@ export function parseAuthor(input?: string): GithubRegistryEntry["author"] {
 }
 
 export function normalizeRepoUrl(input?: string): string | undefined {
-  if (!input) return undefined
-  const trimmed = input.trim()
-  const gitSsh = trimmed.match(/^git@github\.com:([^/]+\/[^/]+?)(?:\.git)?$/)
-  if (gitSsh) return `https://github.com/${gitSsh[1]}`
-  if (/^https:\/\/github\.com\/[^/]+\/[^/]+/.test(trimmed)) return trimmed.replace(/\.git$/, "")
-  return trimmed
+  return normalizeGitHubRepoUrl(input) ?? input?.trim()
 }
 
 export function githubRepoSlug(input?: string): string | undefined {
-  const normalized = normalizeRepoUrl(input)
-  if (!normalized) return undefined
-  const match = normalized.match(/^https:\/\/github\.com\/([^/]+\/[^/]+?)(?:\/.*)?$/)
-  if (!match) return undefined
-  return match[1].replace(/\.git$/, "")
+  return sharedGithubRepoSlug(input)
 }
 
-export function releaseAssetUrl(repo: string | undefined, version: string, filename: string): string | undefined {
-  const normalized = normalizeRepoUrl(repo)
-  if (!normalized || !normalized.startsWith("https://github.com/")) return undefined
-  return `${normalized}/releases/download/v${version}/${encodeURIComponent(filename)}`
+export function renderReleaseUrlTemplate(input: {
+  template: string
+  repo: string
+  version: string
+  tag?: string
+  filename: string
+}): string {
+  const tag = input.tag ?? githubReleaseTag(input.version)
+  return input.template
+    .replaceAll("{repo}", input.repo.replace(/\/+$/, ""))
+    .replaceAll("{version}", input.version)
+    .replaceAll("{tag}", tag)
+    .replaceAll("{filename}", encodeURIComponent(input.filename))
+}
+
+export function resolveReleaseAssetUrls(input: {
+  backend?: MarketplaceReleaseBackend
+  repo: string
+  version: string
+  filename: string
+  downloadUrl?: string
+  signatureUrl?: string
+  releaseUrlTemplate?: string
+  releaseTagTemplate?: string
+}): { downloadUrl: string; signatureUrl: string } {
+  const backend = input.backend ?? "github"
+  const tag = githubReleaseTag(input.version, input.releaseTagTemplate)
+  const downloadUrl =
+    input.downloadUrl ??
+    (input.releaseUrlTemplate
+      ? renderReleaseUrlTemplate({
+          template: input.releaseUrlTemplate,
+          repo: input.repo,
+          version: input.version,
+          tag,
+          filename: input.filename,
+        })
+      : backend === "github"
+        ? githubReleaseAssetUrl({
+            repo: input.repo,
+            version: input.version,
+            filename: input.filename,
+            tagTemplate: input.releaseTagTemplate,
+          })
+        : undefined)
+  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
+  if (!downloadUrl || !signatureUrl) {
+    throw new Error(
+      "Marketplace entry requires release asset URLs. Use GitHub backend, --release-url-template, or explicit --download-url and --signature-url.",
+    )
+  }
+  return { downloadUrl, signatureUrl }
 }
 
 function extractArchive(tarballPath: string): string {
+  validateArchiveEntries(tarballPath)
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-entry-"))
   const result = Bun.spawnSync(["tar", "-xzf", tarballPath, "-C", tmp], { stdout: "pipe", stderr: "pipe" })
   if (result.exitCode !== 0) {
@@ -90,6 +138,22 @@ function extractArchive(tarballPath: string): string {
     throw new Error(`Failed to inspect tarball${stderr ? `: ${stderr}` : ""}`)
   }
   return tmp
+}
+
+function validateArchiveEntries(tarballPath: string) {
+  const result = Bun.spawnSync(["tar", "-tzf", tarballPath], { stdout: "pipe", stderr: "pipe" })
+  if (result.exitCode !== 0) {
+    const stderr = new TextDecoder().decode(result.stderr)
+    throw new Error(`Failed to inspect tarball${stderr ? `: ${stderr}` : ""}`)
+  }
+  for (const line of new TextDecoder().decode(result.stdout).split("\n")) {
+    try {
+      normalizePluginArchiveEntry(line)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      throw new Error(`Plugin tarball contains unsafe path: ${message}`)
+    }
+  }
 }
 
 export function readTarballManifest(tarballPath: string): PluginManifestType {
@@ -105,7 +169,7 @@ function registryIconPath(pluginId: string): string {
   return `icons/${pluginId}.svg`
 }
 
-function iconForManifest(manifest: PluginManifestType, extractedDir: string): GithubRegistryIcon | undefined {
+function iconForManifest(manifest: PluginManifestType, extractedDir: string): RegistryIcon | undefined {
   if (!manifest.icon) return undefined
   if (!isManifestIconPath(manifest.icon)) return { type: "lucide", name: manifest.icon }
 
@@ -114,44 +178,28 @@ function iconForManifest(manifest: PluginManifestType, extractedDir: string): Gi
   if (!fs.existsSync(iconPath)) throw new Error(`Marketplace icon not found in tarball: ${manifest.icon}`)
   const stat = fs.statSync(iconPath)
   if (!stat.isFile()) throw new Error(`Marketplace icon must be a file: ${manifest.icon}`)
-  return { type: "registry-svg", path: registryIconPath(manifest.name) }
+  return { type: "registry-svg", path: registryIconPath(manifest.id) }
+}
+
+function compatibilityForManifest(manifest: PluginManifestType): RegistryEntry["compatibility"] {
+  return { synergy: `plugin-api:${manifest.apiVersion}` }
 }
 
 export function uiSurfaces(manifest: PluginManifestType): string[] {
-  const ui = manifest.contributes?.ui
-  if (!ui) return []
-  const surfaces: string[] = []
-  if (ui.toolRenderers?.length) surfaces.push("toolRenderers")
-  if (ui.partRenderers?.length) surfaces.push("partRenderers")
-  if (ui.workspacePanels?.length) surfaces.push("workspacePanels")
-  if (ui.globalPanels?.length) surfaces.push("globalPanels")
-  if (ui.settings?.length) surfaces.push("settings")
-  if (ui.chatComponents?.length) surfaces.push("chatComponents")
-  if (ui.themes?.length) surfaces.push("themes")
-  if (ui.icons?.length) surfaces.push("icons")
-  if (ui.routes?.length) surfaces.push("routes")
-  if (ui.commands?.length) surfaces.push("commands")
-  return surfaces
+  return [...new Set(manifest.contributions.filter((item) => item.kind.startsWith("ui.")).map((item) => item.kind))]
 }
 
-function registryPermissions(capabilities: string[]) {
-  return capabilities.map((cap) => ({
-    key: cap,
-    description: `Requires ${cap}`,
-    risk: cap.includes("write") || cap === "shell" || cap === "secrets" ? "high" : "medium",
-  }))
-}
-
-export function githubEntry(input: {
+export function registryEntry(input: {
   tarballPath: string
   repo?: string
   downloadUrl?: string
   signatureUrl?: string
-  verified?: boolean
-  official?: boolean
+  releaseBackend?: MarketplaceReleaseBackend
+  releaseUrlTemplate?: string
+  releaseTagTemplate?: string
   changelog?: string
   publishedAt?: string
-}): GithubRegistryEntry {
+}): RegistryEntry {
   const extractedDir = extractArchive(input.tarballPath)
   const manifestPath = path.join(extractedDir, "plugin.json")
   if (!fs.existsSync(manifestPath)) {
@@ -159,30 +207,35 @@ export function githubEntry(input: {
   }
   const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(manifestPath, "utf-8"))) as PluginManifestType
   const repo = normalizeRepoUrl(input.repo ?? manifest.repository ?? manifest.homepage)
-  if (!repo) throw new Error("GitHub registry entry requires --repo or manifest.repository")
+  if (!repo) throw new Error("Marketplace registry entry requires --repo or manifest.repository")
 
   const filename = path.basename(input.tarballPath)
-  const downloadUrl = input.downloadUrl ?? releaseAssetUrl(repo, manifest.version, filename)
-  const signatureUrl = input.signatureUrl ?? (downloadUrl ? `${downloadUrl}.sig` : undefined)
-  if (!downloadUrl || !signatureUrl) {
-    throw new Error("GitHub registry entry requires --download-url and --signature-url")
-  }
-
-  const capabilities = baseCapabilities(manifest)
-  const hasAgentCallableTools = (manifest.contributes?.tools ?? []).length > 0
-  const risk = computeRisk(hasAgentCallableTools ? capabilities : [], manifest)
-  const runtimeMode = resolveRuntimeMode({
-    source: "local",
-    manifestMode: manifest.runtime?.mode,
-    userTrusted: true,
-    risk,
+  const { downloadUrl, signatureUrl } = resolveReleaseAssetUrls({
+    backend: input.releaseBackend,
+    repo,
+    version: manifest.version,
+    filename,
+    downloadUrl: input.downloadUrl,
+    signatureUrl: input.signatureUrl,
+    releaseUrlTemplate: input.releaseUrlTemplate,
+    releaseTagTemplate: input.releaseTagTemplate,
   })
+
+  const capabilities = manifest.capabilities.map((item) => item.id)
+  const tools = manifest.contributions.filter((item) => item.kind === "tool").map((item) => item.id)
+  const risk = capabilities.some((item) =>
+    ["workspace.write", "secrets", "task.delegate", "blueprint.delegate", "lightloop.delegate"].includes(item),
+  )
+    ? ("high" as const)
+    : capabilities.length
+      ? ("medium" as const)
+      : ("low" as const)
   const integrity = `sha256-${sha256File(input.tarballPath)}`
   const manifestHash = computeManifestHash(manifest)
   const permissionsHash = computePermissionsHash(manifest, capabilities)
   const signature = readSignatureFile(input.tarballPath)
   if (!signature) throw new Error(`Signature file not found or invalid: ${input.tarballPath}.sig`)
-  if (signature.pluginId !== manifest.name) throw new Error("Signature pluginId does not match manifest name")
+  if (signature.pluginId !== manifest.id) throw new Error("Signature pluginId does not match manifest id")
   if (signature.version !== manifest.version) throw new Error("Signature version does not match manifest version")
   if (signature.payload.tarballHash !== integrity.slice("sha256-".length)) {
     throw new Error("Signature tarball hash does not match artifact integrity")
@@ -196,17 +249,17 @@ export function githubEntry(input: {
 
   return {
     schemaVersion: 1,
-    id: manifest.name,
+    id: manifest.id,
     name: manifest.name,
     description: manifest.description,
     repo,
     ...(manifest.homepage ? { homepage: manifest.homepage } : {}),
     author: parseAuthor(manifest.author),
     ...(icon ? { icon } : {}),
-    verified: Boolean(input.verified),
-    official: Boolean(input.official),
+    verified: false,
+    official: false,
     keywords: [...new Set([...(manifest.keywords ?? []), "synergy-plugin"])].sort(),
-    compatibility: { synergy: manifest.engines?.synergy ?? manifest.minSynergyVersion ?? ">=1.0.0" },
+    compatibility: compatibilityForManifest(manifest),
     versions: [
       {
         version: manifest.version,
@@ -220,9 +273,9 @@ export function githubEntry(input: {
         manifestHash,
         permissionsHash,
         risk,
-        runtimeMode,
-        permissionsSummary: registryPermissions(capabilities),
-        tools: (manifest.contributes?.tools ?? []).map((tool) => tool.name),
+        runtimeMode: "process",
+        permissionsSummary: capabilities.map((key) => ({ key, description: `Synergy host capability ${key}`, risk })),
+        tools,
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),
         ...(input.changelog ? { changelog: input.changelog } : {}),
@@ -237,10 +290,10 @@ function registryRootForEntryPath(entryPath: string): string {
   return path.basename(dir) === "plugins" ? path.dirname(dir) : dir
 }
 
-export function copyGithubEntryIcon(input: {
+export function copyRegistryEntryIcon(input: {
   tarballPath: string
   entryPath: string
-  entry: GithubRegistryEntry
+  entry: RegistryEntry
 }): string | undefined {
   if (input.entry.icon?.type !== "registry-svg") return undefined
   const manifest = readTarballManifest(input.tarballPath)
@@ -257,15 +310,22 @@ export function copyGithubEntryIcon(input: {
   return destination
 }
 
-export function writeGithubEntry(filepath: string, next: GithubRegistryEntry): GithubRegistryEntry {
+export function writeRegistryEntry(filepath: string, next: RegistryEntry): RegistryEntry {
   let merged = next
   if (fs.existsSync(filepath)) {
-    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as GithubRegistryEntry
+    const existing = JSON.parse(fs.readFileSync(filepath, "utf-8")) as RegistryEntry
     const versions = [
       ...existing.versions.filter((version) => version.version !== next.versions[0]?.version),
       ...next.versions,
     ].sort((a, b) => Date.parse(a.publishedAt) - Date.parse(b.publishedAt))
-    merged = { ...existing, ...next, versions, yankedVersions: existing.yankedVersions ?? [] }
+    merged = {
+      ...existing,
+      ...next,
+      verified: existing.verified ?? next.verified,
+      official: existing.official ?? next.official,
+      versions,
+      yankedVersions: existing.yankedVersions ?? [],
+    }
   }
   fs.mkdirSync(path.dirname(filepath), { recursive: true })
   fs.writeFileSync(filepath, JSON.stringify(merged, null, 2) + "\n")

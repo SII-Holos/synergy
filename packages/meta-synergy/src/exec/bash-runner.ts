@@ -1,5 +1,5 @@
 import type { MetaProtocolBash } from "@ericsanchezok/meta-protocol"
-import { ProcessRegistry } from "./process-registry"
+import { ProcessRegistry } from "./process-registry.js"
 
 export class BashRunner {
   constructor(private readonly processes: ProcessRegistry) {}

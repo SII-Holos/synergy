@@ -1,215 +1,86 @@
+import { pluginMarketplace } from "@/locales/messages"
+import { translateDescriptor } from "@/locales/translate"
 import { createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { useLingui } from "@lingui/solid"
+import { useLocale } from "@/context/locale"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { uninstallPluginConfirm } from "@/components/dialog/confirm-copy"
 import { usePluginHost } from "@/plugin"
 import { VerifiedBadge } from "./VerifiedBadge"
 import { PermissionRiskBadge } from "../consent/PermissionRiskBadge"
-import { InstallConsentDialog } from "../consent/InstallConsentDialog"
-import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
+import { PluginConsentDialog, type PluginConsentIntent } from "../consent/PluginConsentDialog"
+import { checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
-import type {
-  ApiPluginDetail,
-  ApiPluginInfo,
-  RegistryPermissionItem,
-  RegistryPluginSummary,
-  RegistryPluginVersion,
-} from "@ericsanchezok/synergy-sdk/client"
-import type { PermissionSeverity, PluginPermissionDiff, TrustTier } from "../consent/schema"
+import type { ApprovalReview, RegistryPluginSummary, RegistryPluginVersion } from "@ericsanchezok/synergy-sdk/client"
+import type { InstalledPlugin, PluginDetail } from "./types"
+import {
+  collectAllPermissions,
+  fallbackPluginSummary,
+  isRegistryPluginNotFoundError,
+  registryPluginSummary,
+  toTimestamp,
+} from "./plugin-detail-model"
+import {
+  installationLabel,
+  installedPluginFromSnapshot,
+  installedPluginStatusView,
+  isDevelopmentPlugin,
+} from "./view-model"
+import type { PermissionSeverity } from "../consent/schema"
 
 export type RegistrySource = "official" | "local"
 
-type MarketplaceSummary = RegistryPluginSummary & {
-  repo?: string
-  homepage?: string
-  downloads?: number
-}
-
-interface ApprovalRequiredError {
-  code: "approval_required"
-  source?: RegistrySource
-  pluginId: string
-  version: string
-  manifest: { name: string; version: string; displayName?: string; [key: string]: unknown }
-  capabilities: string[]
-  diff: PluginPermissionDiff
-  risk: PermissionSeverity
-  artifactCacheKey?: string
-  message?: string
-}
-
-type RuntimeMode = RegistryPluginSummary["runtimeMode"]
-type Risk = RegistryPluginSummary["risk"]
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null
-}
-
-function stringField(record: Record<string, unknown> | null | undefined, key: string): string | undefined {
-  const value = record?.[key]
-  return typeof value === "string" && value.length > 0 ? value : undefined
-}
-
-function arrayField(record: Record<string, unknown> | null | undefined, key: string): unknown[] {
-  const value = record?.[key]
-  return Array.isArray(value) ? value : []
-}
-
-function runtimeModeFromManifest(manifest: Record<string, unknown> | null | undefined): RuntimeMode {
-  const mode = stringField(asRecord(manifest?.runtime), "mode")
-  return mode === "in-process" || mode === "worker" || mode === "process" ? mode : "process"
-}
-
-function riskFromManifest(manifest: Record<string, unknown> | null | undefined): Risk {
-  const permissions = asRecord(manifest?.permissions)
-  const tools = asRecord(permissions?.tools)
-  if (tools?.shell === true || tools?.filesystem === "write") return "high"
-  if (tools?.network === true || tools?.filesystem === "read" || tools?.mcp === "spawn" || tools?.mcp === "invoke") {
-    return "medium"
-  }
-  return "low"
-}
-
-function toolsFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const contributes = asRecord(manifest?.contributes)
-  return arrayField(contributes, "tools")
-    .map((tool) => stringField(asRecord(tool), "name"))
-    .filter((name): name is string => Boolean(name))
-}
-
-function uiSurfacesFromManifest(manifest: Record<string, unknown> | null | undefined): string[] {
-  const ui = asRecord(asRecord(manifest?.contributes)?.ui)
-  if (!ui) return []
-  return [
-    "toolRenderers",
-    "partRenderers",
-    "workspacePanels",
-    "globalPanels",
-    "settings",
-    "chatComponents",
-    "themes",
-    "icons",
-    "routes",
-    "commands",
-  ].filter((key) => arrayField(ui, key).length > 0)
-}
-
-function permissionsFromManifest(manifest: Record<string, unknown> | null | undefined): RegistryPermissionItem[] {
-  const permissions = asRecord(manifest?.permissions)
-  const tools = asRecord(permissions?.tools)
-  if (!tools) return []
-  const items: RegistryPermissionItem[] = []
-  const add = (key: string, risk: RegistryPermissionItem["risk"]) => {
-    items.push({ key, description: `Requires ${key}`, risk })
-  }
-  if (tools.filesystem === "read") add("filesystem:read", "medium")
-  if (tools.filesystem === "write") {
-    add("filesystem:read", "medium")
-    add("filesystem:write", "high")
-  }
-  if (tools.shell === true) add("shell", "high")
-  if (tools.network === true) add("network", "medium")
-  if (tools.mcp === "invoke") add("mcp:invoke", "medium")
-  if (tools.mcp === "spawn") {
-    add("mcp:invoke", "medium")
-    add("mcp:spawn", "medium")
-  }
-  return items
-}
-
-function fallbackPluginSummary(input: {
-  installed?: ApiPluginInfo | null
-  detail?: ApiPluginDetail | null
-}): MarketplaceSummary | null {
-  if (!input.installed) return null
-  const manifest = asRecord(input.detail?.manifest)
-  const name = input.detail?.name ?? input.installed.name ?? stringField(manifest, "name") ?? input.installed.pluginId
-  return {
-    id: input.installed.pluginId,
-    name,
-    description: stringField(manifest, "description") ?? "Installed plugin",
-    repo: stringField(manifest, "repository"),
-    homepage: stringField(manifest, "homepage"),
-    author: { name: stringField(manifest, "author") ?? "Installed locally" },
-    verified: false,
-    official: false,
-    keywords: ["plugin"],
-    latestVersion: input.installed.version,
-    updatedAt: Date.now(),
-    risk: riskFromManifest(manifest),
-    trustTier: input.installed.trustTier,
-    runtimeMode: runtimeModeFromManifest(manifest),
-    uiSurfaces: uiSurfacesFromManifest(manifest),
-    tools: toolsFromManifest(manifest),
-    downloads: 0,
-    source: "local",
-  }
-}
-
-function toTimestamp(value: number | string | undefined): number {
-  if (typeof value === "number") return value
-  if (typeof value === "string") {
-    const parsed = Date.parse(value)
-    return Number.isFinite(parsed) ? parsed : Date.now()
-  }
-  return Date.now()
-}
-
-function timeAgo(value: number | string | undefined): string {
-  const delta = Date.now() - toTimestamp(value)
-  const mins = Math.floor(delta / 60000)
-  if (mins < 60) return mins <= 1 ? "just now" : `${mins}m ago`
-  const hours = Math.floor(mins / 60)
-  if (hours < 24) return `${hours}h ago`
-  const days = Math.floor(hours / 24)
-  if (days < 30) return `${days}d ago`
-  return new Date(toTimestamp(value)).toLocaleDateString()
-}
-
-function formatDate(value: number | string | undefined): string {
-  return new Date(toTimestamp(value)).toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  })
-}
-
-function formatSigner(signer?: string): string {
-  if (!signer) return "Not signed"
+function formatSigner(signer?: string): string | null {
+  if (!signer) return null
   return `${signer.slice(0, 10)}...${signer.slice(-8)}`
 }
-
 function installErrorMessage(input: unknown): string {
   if (typeof input === "string") return input
-  if (typeof input === "object" && input !== null) {
-    const message = (input as { message?: unknown }).message
+  const records = errorRecords(input)
+  for (const record of records) {
+    const message = record.message
     if (typeof message === "string") return message
   }
-  return "Action failed"
+  return input instanceof Error ? input.message : "Action failed"
 }
 
-function isApprovalRequiredError(input: unknown): input is ApprovalRequiredError {
-  return (
-    typeof input === "object" &&
-    input !== null &&
-    (input as { code?: unknown }).code === "approval_required" &&
-    typeof (input as { pluginId?: unknown }).pluginId === "string" &&
-    typeof (input as { version?: unknown }).version === "string"
+function errorRecords(input: unknown): Record<string, unknown>[] {
+  if (typeof input !== "object" || input === null) return []
+  const record = input as Record<string, unknown>
+  return [record, record.data, record.body, record.error].filter(
+    (value): value is Record<string, unknown> => typeof value === "object" && value !== null,
   )
 }
 
-function collectAllPermissions(versions: RegistryPluginVersion[]): RegistryPermissionItem[] {
-  const seen = new Set<string>()
-  const all: RegistryPermissionItem[] = []
-  for (const version of versions) {
-    for (const permission of version.permissionsSummary ?? []) {
-      if (seen.has(permission.key)) continue
-      seen.add(permission.key)
-      all.push(permission)
-    }
+function isApprovalReview(input: unknown): input is ApprovalReview {
+  if (typeof input !== "object" || input === null) return false
+  const review = input as Partial<ApprovalReview>
+  return (
+    typeof review.pluginId === "string" &&
+    typeof review.name === "string" &&
+    typeof review.version === "string" &&
+    typeof review.reviewToken === "string" &&
+    typeof review.target === "object" &&
+    review.target !== null &&
+    typeof review.diff === "object" &&
+    review.diff !== null
+  )
+}
+
+function approvalReviewFromError(input: unknown): ApprovalReview | undefined {
+  for (const record of errorRecords(input)) {
+    if (isApprovalReview(record.review)) return record.review
   }
-  return all
+  return undefined
+}
+
+function isStaleApprovalError(input: unknown): boolean {
+  return errorRecords(input).some((record) => record.code === "approval_stale" || record.code === "stale_review")
 }
 
 function repositoryHost(url: string | undefined): string {
@@ -223,31 +94,38 @@ function repositoryHost(url: string | undefined): string {
 
 export function PluginDetailDialog(props: {
   pluginId: string
-  source: RegistrySource
-  installedPlugin?: ApiPluginInfo
+  source?: RegistrySource
+  installedPlugin?: InstalledPlugin
   onChanged?: () => void | Promise<void>
 }) {
   const globalSDK = useGlobalSDK()
   const pluginHost = usePluginHost()
   const dialog = useDialog()
-  const [action, setAction] = createSignal<"install" | "update" | "uninstall" | null>(null)
+  const confirm = useConfirm()
+  const { _ } = useLingui()
+  const { controller, fmt, i18n } = useLocale()
+  const [action, setAction] = createSignal<"install" | "update" | "uninstall" | "review" | null>(null)
   const [error, setError] = createSignal<string | null>(null)
-  const [confirmingUninstall, setConfirmingUninstall] = createSignal(false)
 
   const [summary] = createResource(
-    () => ({ id: props.pluginId, source: props.source }),
+    () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
     async ({ id, source }) => {
       const res = await globalSDK.client.registry.plugins.search({ q: id, limit: 8, source })
-      const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []) as MarketplaceSummary[]
+      const plugins = ((res.data as { plugins: RegistryPluginSummary[] })?.plugins ?? []).map(registryPluginSummary)
       return plugins.find((plugin) => plugin.id === id || plugin.name === id) ?? null
     },
   )
 
   const [versions] = createResource(
-    () => ({ id: props.pluginId, source: props.source }),
+    () => (props.source ? { id: props.pluginId, source: props.source } : undefined),
     async ({ id, source }) => {
-      const res = await globalSDK.client.registry.plugins.versions({ id, source })
-      return (res.data as RegistryPluginVersion[]) ?? []
+      try {
+        const res = await globalSDK.client.registry.plugins.versions({ id, source })
+        return (res.data as RegistryPluginVersion[]) ?? []
+      } catch (err) {
+        if (isRegistryPluginNotFoundError(err, id)) return []
+        throw err
+      }
     },
   )
 
@@ -255,22 +133,33 @@ export function PluginDetailDialog(props: {
     () => true,
     async () => {
       const res = await globalSDK.client.api.plugins.list()
-      return (res.data as ApiPluginInfo[]) ?? []
+      return (res.data as InstalledPlugin[]) ?? []
     },
   )
 
-  const installedInfo = createMemo(
-    () =>
-      props.installedPlugin ??
-      (installedPlugins() ?? []).find((plugin) => plugin.pluginId === props.pluginId || plugin.name === props.pluginId),
+  const installedInfo = createMemo(() =>
+    installedPluginFromSnapshot(props.pluginId, installedPlugins(), props.installedPlugin),
   )
+  const developmentInstallation = createMemo(() => {
+    const installation = installedInfo()?.installation
+    return installation?.kind === "directory" ? installation : null
+  })
+  const sourceLabel = createMemo(() => {
+    controller.activeLocale()
+    if (props.source === "official") return _({ id: "app.plugin.detail.source.official", message: "Official registry" })
+    if (props.source === "local") return _({ id: "app.plugin.detail.source.local", message: "Local registry" })
+    const installed = installedInfo()
+    return installed
+      ? translateDescriptor(installationLabel(installed), i18n)
+      : _({ id: "app.plugin.detail.source.installed", message: "Installed plugin" })
+  })
 
   const [installedDetail] = createResource(
-    () => installedInfo()?.pluginId,
+    () => installedInfo()?.id,
     async (pluginId) => {
       try {
         const res = await globalSDK.client.api.plugins.get({ pluginId })
-        return (res.data as ApiPluginDetail) ?? null
+        return (res.data as PluginDetail) ?? null
       } catch {
         return null
       }
@@ -286,25 +175,52 @@ export function PluginDetailDialog(props: {
     return [...list].toSorted((a, b) => toTimestamp(b.publishedAt) - toTimestamp(a.publishedAt))[0]
   })
   const installedVersion = createMemo(() => {
-    const version = getInstalledVersion(installedPlugins() ?? [], props.pluginId)
-    if (version) return version
-    const propVersion = props.installedPlugin?.version
-    return propVersion && propVersion !== "0.0.0" ? propVersion : null
+    const version = installedInfo()?.version
+    return version && version !== "0.0.0" ? version : null
   })
   const updateAvailable = createMemo(() => checkUpdateAvailable(latestVersion()?.version, installedVersion()))
+  const installedStatus = createMemo(() => {
+    const installed = installedInfo()
+    return installed
+      ? installedPluginStatusView(installed, isDevelopmentPlugin(installed) ? "development" : "installed")
+      : null
+  })
+  const pluginToolsCount = createMemo(() => installedInfo()?.tools.length ?? plugin()?.tools.length ?? 0)
+  const pluginOperationsCount = createMemo(() => installedInfo()?.operations.length ?? 0)
+  const pluginUiCount = createMemo(() => installedInfo()?.uiContributions ?? plugin()?.uiSurfaces.length ?? 0)
   const permissions = createMemo(() => {
     const registryPermissions = collectAllPermissions(versions() ?? [])
     if (registryPermissions.length > 0) return registryPermissions
-    return permissionsFromManifest(asRecord(installedDetail()?.manifest))
+    return (installedDetail()?.capabilities ?? installedInfo()?.capabilities ?? []).map((key) => ({
+      key,
+      description: _({
+        id: "app.plugin.detail.permission.hostCapability",
+        message: "Synergy host capability {key}",
+        values: { key },
+      }),
+      risk: installedDetail()?.risk ?? installedInfo()?.risk ?? "low",
+    }))
   })
   const busy = createMemo(() => action() !== null)
   const repoUrl = createMemo(() => plugin()?.repo ?? plugin()?.homepage)
   const primaryLabel = createMemo(() => {
-    if (action() === "install") return "Installing..."
-    if (action() === "update") return "Updating..."
-    if (!installedVersion()) return "Install"
-    if (updateAvailable()) return `Update to v${latestVersion()?.version ?? ""}`
-    return `Installed v${installedVersion()}`
+    if (action() === "install") return _({ id: "app.plugin.detail.action.installing", message: "Installing..." })
+    if (action() === "update") return _({ id: "app.plugin.detail.action.updating", message: "Updating..." })
+    if (action() === "review") return _({ id: "app.plugin.detail.action.loadingReview", message: "Loading review..." })
+    if (installedStatus()?.canReviewPermissions)
+      return _({ id: "app.plugin.detail.action.reviewPermissions", message: "Review permissions" })
+    if (!installedVersion()) return _({ id: "app.plugin.detail.action.install", message: "Install" })
+    if (updateAvailable())
+      return _({
+        id: "app.plugin.detail.action.updateTo",
+        message: "Update to v{version}",
+        values: { version: latestVersion()?.version ?? "" },
+      })
+    return _({
+      id: "app.plugin.detail.action.installedVersion",
+      message: "Installed v{version}",
+      values: { version: installedVersion() ?? "" },
+    })
   })
 
   async function refreshAfterMutation() {
@@ -315,20 +231,30 @@ export function PluginDetailDialog(props: {
 
   async function performInstall(kind: "install" | "update") {
     const version = latestVersion()
-    if (!version || busy()) return
+    const source = props.source
+    if (!version || !source || busy()) return
     setAction(kind)
     setError(null)
     try {
-      await globalSDK.client.api.plugins.installFromRegistry({
-        id: props.pluginId,
-        version: version.version,
-        source: props.source,
-      })
+      if (kind === "update") {
+        await globalSDK.client.api.plugins.updateFromRegistry({
+          pluginId: props.pluginId,
+          version: version.version,
+          source,
+        })
+      } else {
+        await globalSDK.client.api.plugins.installFromRegistry({
+          id: props.pluginId,
+          version: version.version,
+          source,
+        })
+      }
       await refreshAfterMutation()
     } catch (err) {
-      if (isApprovalRequiredError(err)) {
+      const review = approvalReviewFromError(err)
+      if (review) {
         setAction(null)
-        openApprovalDialog(err)
+        openApprovalDialog(kind, review)
         return
       }
       setError(installErrorMessage(err))
@@ -337,49 +263,61 @@ export function PluginDetailDialog(props: {
     }
   }
 
-  function openApprovalDialog(approval: ApprovalRequiredError) {
+  async function approveReview(review: ApprovalReview): Promise<ApprovalReview | undefined> {
+    try {
+      await globalSDK.client.api.plugins.approve({ target: review.target, reviewToken: review.reviewToken })
+      await refreshAfterMutation()
+      return undefined
+    } catch (err) {
+      const staleReview = approvalReviewFromError(err)
+      if (staleReview && isStaleApprovalError(err)) return staleReview
+      throw new Error(installErrorMessage(err))
+    }
+  }
+
+  function openApprovalDialog(intent: PluginConsentIntent, review: ApprovalReview) {
     dialog.show(() => (
-      <InstallConsentDialog
-        manifest={approval.manifest}
-        diff={approval.diff}
-        trustTier={"trusted-import" as TrustTier}
-        onApprove={async () => {
-          await globalSDK.client.api.plugins.approveInstall({
-            pluginId: approval.pluginId,
-            manifest: approval.manifest,
-            capabilities: approval.capabilities,
-            source: approval.source ?? props.source,
-          })
-          await globalSDK.client.api.plugins.installFromRegistry({
-            id: approval.pluginId,
-            version: approval.version,
-            source: approval.source ?? props.source,
-          })
-          await pluginHost.reload()
-          await props.onChanged?.()
-        }}
-        onDeny={() => undefined}
-      />
+      <PluginConsentDialog intent={intent} review={review} onApprove={approveReview} onCancel={() => undefined} />
     ))
   }
 
-  async function performUninstall() {
-    if (busy() || !installedVersion()) return
-    if (!confirmingUninstall()) {
-      setConfirmingUninstall(true)
-      return
-    }
-    setAction("uninstall")
+  async function requestConfiguredApprovalReview() {
+    if (busy()) return
+    setAction("review")
     setError(null)
     try {
-      await globalSDK.client.api.plugins.remove({ pluginId: props.pluginId })
-      setConfirmingUninstall(false)
-      await refreshAfterMutation()
+      const res = await globalSDK.client.api.plugins.getApprovalReview({ pluginId: props.pluginId })
+      if (res.data) openApprovalDialog("reapprove", res.data)
     } catch (err) {
       setError(installErrorMessage(err))
     } finally {
       setAction(null)
     }
+  }
+
+  async function performUninstall() {
+    if (busy() || !installedInfo()) return
+    setAction("uninstall")
+    setError(null)
+    try {
+      await globalSDK.client.api.plugins.remove({ pluginId: props.pluginId })
+      await refreshAfterMutation()
+    } catch (err) {
+      const message = installErrorMessage(err)
+      setError(message)
+      throw new Error(message)
+    } finally {
+      setAction(null)
+    }
+  }
+
+  function requestUninstall() {
+    if (busy() || !installedInfo()) return
+    confirm.show({
+      ...uninstallPluginConfirm(plugin()?.name ?? props.pluginId),
+      onConfirm: performUninstall,
+      onConfirmed: () => dialog.close(),
+    })
   }
 
   return (
@@ -389,10 +327,10 @@ export function PluginDetailDialog(props: {
         <button
           type="button"
           class="plugin-detail-close"
-          aria-label="Close plugin details"
+          aria-label={_({ id: "app.plugin.detail.close", message: "Close plugin details" })}
           onClick={() => dialog.close()}
         >
-          <Icon name="x" size="small" />
+          <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
       }
       class="plugin-detail-dialog"
@@ -403,7 +341,7 @@ export function PluginDetailDialog(props: {
           fallback={
             <div class="plugin-detail-loading">
               <div class="plugin-detail-spinner" />
-              <span>Loading plugin...</span>
+              <span>{_({ id: "app.plugin.detail.loading", message: "Loading plugin..." })}</span>
             </div>
           }
         >
@@ -411,9 +349,17 @@ export function PluginDetailDialog(props: {
             when={plugin()}
             fallback={
               <div class="plugin-detail-empty">
-                <Icon name="scan-search" size="large" class="text-icon-weak" />
-                <span class="plugin-detail-empty-title">Plugin not found</span>
-                <span class="plugin-detail-empty-text">{props.pluginId} does not exist in this registry.</span>
+                <Icon name={getSemanticIcon("action.search")} size="large" class="text-icon-weak-base" />
+                <span class="plugin-detail-empty-title">
+                  {_({ id: "app.plugin.detail.notFound", message: "Plugin not found" })}
+                </span>
+                <span class="plugin-detail-empty-text">
+                  {_({
+                    id: "app.plugin.detail.notFoundInRegistry",
+                    message: "{pluginId} does not exist in this registry.",
+                    values: { pluginId: props.pluginId },
+                  })}
+                </span>
               </div>
             }
           >
@@ -423,52 +369,67 @@ export function PluginDetailDialog(props: {
                   <MarketplacePluginIcon plugin={current()} class="plugin-detail-hero-icon" />
                   <div class="plugin-detail-title-block">
                     <div class="plugin-detail-name-row">
+                      {/* plugin.name is author content — pass through */}
                       <h2>{current().name}</h2>
                       <Show when={current().latestVersion}>
-                        <span class="plugin-detail-version-pill">v{current().latestVersion}</span>
+                        <span class="plugin-detail-version-pill">
+                          {_(pluginMarketplace.versionLabel.id, { version: current().latestVersion })}
+                        </span>
                       </Show>
                     </div>
-                    <p>{current().description || "No description provided."}</p>
+                    {/* description is author content; fallback is host chrome */}
+                    <p>
+                      {current().description ||
+                        _({ id: "app.plugin.detail.noDescription", message: "No description provided." })}
+                    </p>
                     <div class="plugin-detail-badges">
                       <VerifiedBadge verified={current().verified} official={current().official} />
                       <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
-                      <span class="plugin-detail-chip">
-                        {props.source === "official" ? "Official source" : "Local source"}
-                      </span>
+                      <span class="plugin-detail-chip">{sourceLabel()}</span>
                     </div>
                   </div>
                 </section>
 
                 <div class="plugin-detail-action-row">
-                  <button
-                    type="button"
-                    class="plugin-detail-primary-action"
-                    disabled={busy() || Boolean(installedVersion() && !updateAvailable()) || !latestVersion()}
-                    onClick={() => void performInstall(installedVersion() ? "update" : "install")}
-                  >
-                    <Icon
-                      name={
-                        busy() && action() !== "uninstall"
-                          ? "loader-circle"
-                          : installedVersion()
-                            ? "refresh-ccw"
-                            : "download"
-                      }
-                      size="small"
-                      class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
-                    />
-                    {primaryLabel()}
-                  </button>
-
-                  <Show when={installedVersion()}>
+                  <Show when={props.source || installedStatus()?.canReviewPermissions}>
                     <button
                       type="button"
-                      classList={{
-                        "plugin-detail-secondary-action": true,
-                        "is-confirming": confirmingUninstall(),
-                      }}
+                      class="plugin-detail-primary-action"
+                      disabled={
+                        busy() ||
+                        (installedStatus()?.canReviewPermissions
+                          ? false
+                          : Boolean(installedVersion() && !updateAvailable()) || !latestVersion())
+                      }
+                      onClick={() =>
+                        installedStatus()?.canReviewPermissions
+                          ? void requestConfiguredApprovalReview()
+                          : void performInstall(installedVersion() ? "update" : "install")
+                      }
+                    >
+                      <Icon
+                        name={
+                          busy() && action() !== "uninstall"
+                            ? "loader-circle"
+                            : installedStatus()?.canReviewPermissions
+                              ? getSemanticIcon("permission.required")
+                              : installedVersion()
+                                ? "refresh-ccw"
+                                : "download"
+                        }
+                        size="small"
+                        class={busy() && action() !== "uninstall" ? "animate-spin" : ""}
+                      />
+                      {primaryLabel()}
+                    </button>
+                  </Show>
+
+                  <Show when={installedInfo()}>
+                    <button
+                      type="button"
+                      class="plugin-detail-secondary-action"
                       disabled={busy()}
-                      onClick={() => void performUninstall()}
+                      onClick={requestUninstall}
                     >
                       <Icon
                         name={action() === "uninstall" ? "loader-circle" : "trash-2"}
@@ -476,10 +437,8 @@ export function PluginDetailDialog(props: {
                         class={action() === "uninstall" ? "animate-spin" : ""}
                       />
                       {action() === "uninstall"
-                        ? "Uninstalling..."
-                        : confirmingUninstall()
-                          ? "Confirm uninstall"
-                          : "Uninstall"}
+                        ? _({ id: "app.plugin.detail.action.uninstalling", message: "Uninstalling..." })
+                        : _({ id: "app.plugin.detail.action.uninstall", message: "Uninstall" })}
                     </button>
                   </Show>
 
@@ -489,48 +448,154 @@ export function PluginDetailDialog(props: {
                       href={repoUrl()}
                       target="_blank"
                       rel="noreferrer"
-                      aria-label={`${current().name} repository on ${repositoryHost(repoUrl())}`}
+                      aria-label={_({
+                        id: "app.plugin.detail.repositoryAriaLabel",
+                        message: "{name} repository on {host}",
+                        values: { name: current().name, host: repositoryHost(repoUrl()) },
+                      })}
                       title={repositoryHost(repoUrl())}
                     >
-                      <Icon name="github" size="small" />
+                      <Icon name={getSemanticIcon("github.main")} size="small" />
                     </a>
                   </Show>
                 </div>
 
                 <Show when={busy()}>
-                  <div class="plugin-detail-progress" role="progressbar" aria-label={`${action()} plugin`} />
+                  <div
+                    class="plugin-detail-progress"
+                    role="progressbar"
+                    aria-label={_({
+                      id: "app.plugin.detail.progressAriaLabel",
+                      message: "{action} plugin",
+                      values: { action: action() ?? "" },
+                    })}
+                  />
                 </Show>
 
                 <Show when={error()}>
                   <div class="plugin-detail-error">
-                    <Icon name="alert-triangle" size="small" />
+                    <Icon name={getSemanticIcon("state.warning")} size="small" />
+                    {/* error messages come from server — pass through */}
                     <span>{error()}</span>
                   </div>
                 </Show>
 
                 <section class="plugin-detail-meta-grid">
-                  <DetailMetric label="Latest" value={latestVersion()?.version ?? current().latestVersion ?? "—"} />
-                  <DetailMetric label="Installed" value={installedVersion() ?? "Not installed"} />
-                  <DetailMetric label="Runtime" value={latestVersion()?.runtimeMode ?? current().runtimeMode ?? "—"} />
-                  <DetailMetric label="Updated" value={timeAgo(current().updatedAt)} />
-                  <DetailMetric label="Author" value={current().author?.name ?? "Unknown"} />
-                  <DetailMetric label="Signer" value={formatSigner(latestVersion()?.signature?.signer)} />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.latest", message: "Latest" })}
+                    value={latestVersion()?.version ?? current().latestVersion ?? "—"}
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.installed", message: "Installed" })}
+                    value={
+                      installedVersion() ?? _({ id: "app.plugin.detail.metric.notInstalled", message: "Not installed" })
+                    }
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.source", message: "Source" })}
+                    value={sourceLabel()}
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.runtime", message: "Runtime" })}
+                    value={latestVersion()?.runtimeMode ?? current().runtimeMode ?? "—"}
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.updated", message: "Updated" })}
+                    value={fmt.relative(new Date(toTimestamp(current().updatedAt)))}
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.author", message: "Author" })}
+                    value={
+                      // author.name is author content; fallback is host chrome
+                      current().author?.name ?? _({ id: "app.plugin.detail.metric.unknownAuthor", message: "Unknown" })
+                    }
+                  />
+                  <DetailMetric
+                    label={_({ id: "app.plugin.detail.metric.signer", message: "Signer" })}
+                    value={
+                      formatSigner(latestVersion()?.signature?.signer) ??
+                      _({ id: "app.plugin.detail.signer.unsigned", message: "Not signed" })
+                    }
+                  />
                 </section>
+
+                <Show when={developmentInstallation()}>
+                  {(installation) => (
+                    <section class="plugin-detail-section">
+                      <div class="plugin-detail-section-heading">
+                        <h3>
+                          {_({
+                            id: "app.plugin.detail.section.developmentRegistration",
+                            message: "Development registration",
+                          })}
+                        </h3>
+                        <span>
+                          {installedStatus()?.canReviewPermissions
+                            ? _({ id: "app.plugin.detail.state.needsApproval", message: "Needs approval" })
+                            : installedStatus()?.isDisabled
+                              ? _({ id: "app.plugin.detail.state.disabled", message: "Disabled" })
+                              : _({ id: "app.plugin.detail.state.active", message: "Active" })}
+                        </span>
+                      </div>
+                      {/* installation path is user content — pass through */}
+                      <div class="plugin-detail-development-path">{installation().path}</div>
+                      <div class="plugin-detail-chip-cloud">
+                        <Show when={installedInfo()?.apiVersion}>
+                          {(apiVersion) => (
+                            <span class="plugin-detail-chip">
+                              {_(pluginMarketplace.pluginApiLabel.id, { version: apiVersion() })}
+                            </span>
+                          )}
+                        </Show>
+                        <Show when={installedInfo()?.generation}>
+                          {(generation) => (
+                            <span class="plugin-detail-chip">
+                              {_({
+                                id: "app.plugin.marketplace.generation.label",
+                                message: "Generation {id}",
+                                values: { id: generation().slice(0, 12) },
+                              })}
+                            </span>
+                          )}
+                        </Show>
+                      </div>
+                    </section>
+                  )}
+                </Show>
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">
-                    <h3>Capabilities</h3>
+                    <h3>{_({ id: "app.plugin.detail.section.capabilities", message: "Capabilities" })}</h3>
                     <span>
-                      {current().tools.length} tools · {current().uiSurfaces.length} UI surfaces
+                      {_({
+                        id: "app.plugin.detail.section.capabilitiesSummary",
+                        message: "{tools} tools · {operations} operations · {surfaces} UI surfaces",
+                        values: {
+                          tools: pluginToolsCount(),
+                          operations: pluginOperationsCount(),
+                          surfaces: pluginUiCount(),
+                        },
+                      })}
                     </span>
                   </div>
                   <div class="plugin-detail-chip-cloud">
                     <Show
-                      when={current().tools.length > 0}
-                      fallback={<span class="plugin-detail-muted">No tools declared</span>}
+                      when={pluginToolsCount() > 0}
+                      fallback={
+                        <span class="plugin-detail-muted">
+                          {_({ id: "app.plugin.detail.section.noTools", message: "No tools declared" })}
+                        </span>
+                      }
                     >
-                      <For each={current().tools}>{(tool) => <span class="plugin-detail-chip">{tool}</span>}</For>
+                      {/* tool names are plugin-author content — pass through */}
+                      <For each={installedInfo()?.tools.map((tool) => tool.id) ?? current().tools}>
+                        {(tool) => <span class="plugin-detail-chip">{tool}</span>}
+                      </For>
                     </Show>
+                    <For each={installedInfo()?.operations.map((operation) => operation.id) ?? []}>
+                      {(operation) => <span class="plugin-detail-chip">{operation}</span>}
+                    </For>
+                    {/* ui surface ids are plugin-author content — pass through */}
                     <For each={current().uiSurfaces}>
                       {(surface) => <span class="plugin-detail-chip">{surface}</span>}
                     </For>
@@ -539,19 +604,34 @@ export function PluginDetailDialog(props: {
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">
-                    <h3>Permissions</h3>
-                    <span>{permissions().length} requested</span>
+                    <h3>{_({ id: "app.plugin.detail.section.permissions", message: "Permissions" })}</h3>
+                    <span>
+                      {_({
+                        id: "app.plugin.detail.section.permissionsCount",
+                        message: "{count} requested",
+                        values: { count: permissions().length },
+                      })}
+                    </span>
                   </div>
                   <Show
                     when={permissions().length > 0}
-                    fallback={<span class="plugin-detail-muted">No special permissions declared.</span>}
+                    fallback={
+                      <span class="plugin-detail-muted">
+                        {_({
+                          id: "app.plugin.detail.section.noPermissions",
+                          message: "No special permissions declared.",
+                        })}
+                      </span>
+                    }
                   >
                     <div class="plugin-detail-permission-list">
                       <For each={permissions()}>
                         {(permission) => (
                           <div class="plugin-detail-permission-row">
                             <div>
+                              {/* permission.key is plugin data — pass through */}
                               <span class="plugin-detail-permission-key">{permission.key}</span>
+                              {/* permission.description is passed through as-is */}
                               <span class="plugin-detail-permission-description">{permission.description}</span>
                             </div>
                             <PermissionRiskBadge risk={permission.risk as PermissionSeverity} />
@@ -564,8 +644,14 @@ export function PluginDetailDialog(props: {
 
                 <section class="plugin-detail-section">
                   <div class="plugin-detail-section-heading">
-                    <h3>Versions</h3>
-                    <span>{versions()?.length ?? 0} published</span>
+                    <h3>{_({ id: "app.plugin.detail.section.versions", message: "Versions" })}</h3>
+                    <span>
+                      {_({
+                        id: "app.plugin.detail.section.versionsCount",
+                        message: "{count} published",
+                        values: { count: versions()?.length ?? 0 },
+                      })}
+                    </span>
                   </div>
                   <div class="plugin-detail-version-list">
                     <Show
@@ -573,13 +659,27 @@ export function PluginDetailDialog(props: {
                       fallback={
                         <Show
                           when={installedVersion()}
-                          fallback={<span class="plugin-detail-muted">No registry versions available.</span>}
+                          fallback={
+                            <span class="plugin-detail-muted">
+                              {_({
+                                id: "app.plugin.detail.section.noVersions",
+                                message: "No registry versions available.",
+                              })}
+                            </span>
+                          }
                         >
                           {(version) => (
                             <div class="plugin-detail-version-row">
                               <div>
-                                <span class="plugin-detail-version-title">v{version()}</span>
-                                <span class="plugin-detail-version-meta">Installed locally</span>
+                                <span class="plugin-detail-version-title">
+                                  {_(pluginMarketplace.versionLabel.id, { version: version() })}
+                                </span>
+                                <span class="plugin-detail-version-meta">
+                                  {_({
+                                    id: "app.plugin.detail.version.installedLocally",
+                                    message: "Installed locally",
+                                  })}
+                                </span>
                               </div>
                               <PermissionRiskBadge risk={current().risk as PermissionSeverity} />
                             </div>
@@ -595,9 +695,18 @@ export function PluginDetailDialog(props: {
                         {(version) => (
                           <div class="plugin-detail-version-row">
                             <div>
-                              <span class="plugin-detail-version-title">v{version.version}</span>
-                              <span class="plugin-detail-version-meta">{formatDate(version.publishedAt)}</span>
+                              <span class="plugin-detail-version-title">
+                                {_(pluginMarketplace.versionLabel.id, { version: version.version })}
+                              </span>
+                              <span class="plugin-detail-version-meta">
+                                {fmt.date(new Date(toTimestamp(version.publishedAt)), {
+                                  year: "numeric",
+                                  month: "short",
+                                  day: "numeric",
+                                })}
+                              </span>
                               <Show when={version.changelog}>
+                                {/* changelog content is plugin-author content — pass through */}
                                 <span class="plugin-detail-version-copy">{version.changelog}</span>
                               </Show>
                             </div>

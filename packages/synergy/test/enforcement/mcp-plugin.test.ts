@@ -5,9 +5,8 @@ const { EnforcementGate } = await import("../../src/enforcement/gate")
 // enforcement/mcp-plugin.test.ts
 //
 // Tests for the EnforcementGate MCP and plugin opaque strategy — unknown
-// external tools must trigger ask/deny and never be auto-approved in
-// unattended mode.
-//
+// external tools must trigger ask/deny according to the active profile.
+
 // These tests encode the MCP/plugin external I/O boundary contract.
 // ---------------------------------------------------------------------------
 
@@ -58,12 +57,11 @@ describe("EnforcementGate MCP opaque strategy", () => {
     expect(mcpCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown MCP tool", async () => {
+  test("guarded profile asks for unknown MCP tools", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
-      interactionMode: "unattended",
     })
 
     const envelope = gate.evaluate("mcp__any_service__do_work", {
@@ -71,7 +69,7 @@ describe("EnforcementGate MCP opaque strategy", () => {
       toolName: "do_work",
     })
 
-    // Unattended mode must NOT auto-approve MCP opaque externalIO
+    // Guarded profile must ask for opaque MCP externalIO.
     expect(envelope.decision).toBe("ask")
   })
 
@@ -124,6 +122,21 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(pluginCap.nonBypassable).toBe(true)
   })
 
+  test("local custom tools are protected opaque operations", async () => {
+    const gate = await EnforcementGate.create({
+      activeWorkspace: "/Users/test/synergy-control-profile",
+      workspaceType: "worktree",
+    })
+
+    const result = gate.classify("local__custom__run", {})
+
+    const cap = result.capabilities.find((item: any) => item.class === "protected_op")!
+    expect(cap).toBeDefined()
+    expect(cap.nonBypassable).toBe(true)
+    expect(cap.opaque).toBe(true)
+    expect(cap.reason).toBe("local custom tool")
+  })
+
   test("plugin tool with unknown plugin name is classified as opaque", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -137,12 +150,11 @@ describe("EnforcementGate plugin opaque strategy", () => {
     expect(pluginCap.opaque).toBe(true)
   })
 
-  test("unattended mode does not auto-approve unknown plugin tool", async () => {
+  test("guarded profile asks for unknown plugin tools", async () => {
     const gate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
       workspaceType: "worktree",
       profileId: "guarded",
-      interactionMode: "unattended",
     })
 
     const envelope = gate.evaluate("plugin__remote_plugin__fetch", {
@@ -150,7 +162,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       actionName: "fetch",
     })
 
-    // Unattended mode must NOT auto-approve plugin opaque externalIO
+    // Guarded profile must ask for opaque plugin externalIO.
     expect(envelope.decision).toBe("ask")
   })
 
@@ -160,7 +172,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["filesystem:read", "filesystem:write", "network", "shell"],
+          capabilities: ["file_read", "file_write", "network_request", "shell"],
           risk: "high",
         },
       },
@@ -169,13 +181,11 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const result = gate.classify("plugin__data_export__publish", {})
     const classes = result.capabilities.map((cap: any) => cap.class)
 
-    expect(classes).toContain("plugin_file_read")
-    expect(classes).toContain("plugin_file_write")
-    expect(classes).toContain("plugin_network")
-    expect(classes).toContain("plugin_shell")
-    expect(new Set(classes)).toEqual(
-      new Set(["plugin_file_read", "plugin_file_write", "plugin_network", "plugin_shell"]),
-    )
+    expect(classes).toContain("file_read")
+    expect(classes).toContain("file_write")
+    expect(classes).toContain("network_request")
+    expect(classes).toContain("shell")
+    expect(new Set(classes)).toEqual(new Set(["file_read", "file_write", "network_request", "shell"]))
   })
 
   test("plugin approval records are keyed by canonical plugin id and mark unapproved sub-capabilities", async () => {
@@ -184,7 +194,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       workspaceType: "worktree",
       pluginToolCapabilities: {
         plugin__data_export__publish: {
-          capabilities: ["filesystem:read", "filesystem:write", "network"],
+          capabilities: ["file_read", "file_write", "network_request"],
           risk: "high",
         },
       },
@@ -194,24 +204,23 @@ describe("EnforcementGate plugin opaque strategy", () => {
           source: "npm",
           version: "1.0.0",
           manifestHash: "manifest",
-          permissionsHash: "permissions",
+          capabilitiesHash: "permissions",
           approvedAt: 1700000000000,
           approvedBy: "user",
-          trustTier: "sandbox",
-          approvedCapabilities: ["filesystem:read"],
-          approvedNetworkDomains: [],
-          approvedUISurfaces: [],
+          trustTier: "declarative",
+          approvedCapabilities: ["file_read"],
           risk: "high",
+          status: "approved",
         },
       },
     })
 
     const result = gate.classify("plugin__data_export__publish", {})
 
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_read")?.approved).toBe(true)
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.approved).toBe(false)
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_file_write")?.reason).toBe("unapproved")
-    expect(result.capabilities.find((cap: any) => cap.class === "plugin_network")?.approved).toBe(false)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_read")?.approved).toBe(true)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.approved).toBe(false)
+    expect(result.capabilities.find((cap: any) => cap.class === "file_write")?.reason).toBe("unapproved")
+    expect(result.capabilities.find((cap: any) => cap.class === "network_request")?.approved).toBe(false)
   })
 
   test("autonomous denies unapproved plugin sub-capabilities and allows approved ones", async () => {
@@ -221,7 +230,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       profileId: "autonomous",
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
-          capabilities: ["filesystem:read", "task"],
+          capabilities: ["file_read", "task"],
           risk: "medium",
         },
       },
@@ -231,7 +240,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
     const unapprovedEnvelope = unapprovedGate.evaluate("plugin__meme__generate_meme", {})
     expect(unapprovedEnvelope.decision).toBe("deny")
     expect(unapprovedEnvelope.opaque).toBe(true)
-    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("plugin_file_read")
+    expect(unapprovedEnvelope.refusal?.matchedPermission).toBe("file_read")
 
     const approvedGate = await EnforcementGate.create({
       activeWorkspace: "/Users/test/synergy-control-profile",
@@ -239,7 +248,7 @@ describe("EnforcementGate plugin opaque strategy", () => {
       profileId: "autonomous",
       pluginToolCapabilities: {
         plugin__meme__generate_meme: {
-          capabilities: ["filesystem:read", "task"],
+          capabilities: ["file_read", "task"],
           risk: "medium",
         },
       },
@@ -249,14 +258,13 @@ describe("EnforcementGate plugin opaque strategy", () => {
           source: "official",
           version: "1.0.0",
           manifestHash: "manifest",
-          permissionsHash: "permissions",
+          capabilitiesHash: "permissions",
           approvedAt: 1700000000000,
           approvedBy: "user",
-          trustTier: "sandbox",
-          approvedCapabilities: ["filesystem:read", "task"],
-          approvedNetworkDomains: [],
-          approvedUISurfaces: [],
+          trustTier: "declarative",
+          approvedCapabilities: ["file_read", "task"],
           risk: "medium",
+          status: "approved",
         },
       },
     })

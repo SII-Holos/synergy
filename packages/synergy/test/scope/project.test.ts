@@ -58,40 +58,51 @@ describe("Scope.fromDirectory with worktrees", () => {
   test("keeps the root worktree when called from a linked worktree", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    const worktreePath = path.join(tmp.path, "..", "worktree-test")
+    const worktreePath = path.join(path.dirname(tmp.path), `${path.basename(tmp.path)}-worktree-test`)
     await $`git worktree add ${worktreePath} -b test-branch`.cwd(tmp.path).quiet()
 
-    const { scope, sandbox } = await Scope.fromDirectory(worktreePath)
+    try {
+      const { scope, sandbox } = await Scope.fromDirectory(worktreePath)
 
-    expect(scope.worktree).toBe(tmp.path)
-    expect(sandbox).toBe(worktreePath)
-    if (scope.type === "project") {
-      expect(scope.sandboxes).toContain(worktreePath)
-      expect(scope.sandboxes).not.toContain(tmp.path)
+      expect(scope.worktree).toBe(tmp.path)
+      expect(sandbox).toBe(worktreePath)
+      if (scope.type === "project") {
+        expect(scope.directory).toBe(worktreePath)
+        expect(scope.sandboxes).toContain(worktreePath)
+        expect(scope.sandboxes).not.toContain(tmp.path)
+
+        const listed = (await Scope.list()).find((item) => item.id === scope.id)
+        expect(listed?.directory).toBe(tmp.path)
+
+        const fromID = await Scope.fromID(scope.id)
+        expect(fromID?.directory).toBe(tmp.path)
+      }
+    } finally {
+      await $`git worktree remove --force ${worktreePath}`.cwd(tmp.path).quiet().nothrow()
     }
-
-    await $`git worktree remove ${worktreePath}`.cwd(tmp.path).quiet()
   })
 
   test("tracks multiple linked worktrees as sandboxes", async () => {
     await using tmp = await tmpdir({ git: true })
 
-    const worktree1 = path.join(tmp.path, "..", "worktree-1")
-    const worktree2 = path.join(tmp.path, "..", "worktree-2")
+    const worktree1 = path.join(path.dirname(tmp.path), `${path.basename(tmp.path)}-worktree-1`)
+    const worktree2 = path.join(path.dirname(tmp.path), `${path.basename(tmp.path)}-worktree-2`)
     await $`git worktree add ${worktree1} -b branch-1`.cwd(tmp.path).quiet()
     await $`git worktree add ${worktree2} -b branch-2`.cwd(tmp.path).quiet()
 
-    await Scope.fromDirectory(worktree1)
-    const { scope } = await Scope.fromDirectory(worktree2)
+    try {
+      await Scope.fromDirectory(worktree1)
+      const { scope } = await Scope.fromDirectory(worktree2)
 
-    expect(scope.worktree).toBe(tmp.path)
-    if (scope.type === "project") {
-      expect(scope.sandboxes).toContain(worktree1)
-      expect(scope.sandboxes).toContain(worktree2)
-      expect(scope.sandboxes).not.toContain(tmp.path)
+      expect(scope.worktree).toBe(tmp.path)
+      if (scope.type === "project") {
+        expect(scope.sandboxes).toContain(worktree1)
+        expect(scope.sandboxes).toContain(worktree2)
+        expect(scope.sandboxes).not.toContain(tmp.path)
+      }
+    } finally {
+      await $`git worktree remove --force ${worktree1}`.cwd(tmp.path).quiet().nothrow()
+      await $`git worktree remove --force ${worktree2}`.cwd(tmp.path).quiet().nothrow()
     }
-
-    await $`git worktree remove ${worktree1}`.cwd(tmp.path).quiet()
-    await $`git worktree remove ${worktree2}`.cwd(tmp.path).quiet()
   })
 })

@@ -3,10 +3,11 @@ import { describeRoute, resolver, validator } from "hono-openapi"
 import z from "zod"
 import path from "path"
 import fs from "fs"
+import { fileURLToPath } from "url"
 import { errors } from "./error"
-import { Global } from "../global"
 import { checkPathContainment } from "../util/path-contain"
 import { PluginMarketplaceRegistry } from "../plugin/marketplace-registry"
+import { localRegistryPath, localRegistryStoreDir } from "../plugin/local-registry-store"
 
 // ── Types ──
 
@@ -28,6 +29,13 @@ const RegistryPermissionSummary = z
     description: z.string(),
   })
   .meta({ ref: "RegistryPermissionSummary" })
+
+const RegistryPluginCompatibility = z
+  .object({
+    synergy: z.string().min(1),
+  })
+  .strict()
+  .meta({ ref: "RegistryPluginCompatibility" })
 
 const PluginSignature = z
   .object({
@@ -58,9 +66,10 @@ const RegistryPluginVersion = z
     signature: PluginSignature.optional(),
     signatureUrl: z.string().optional(),
     downloadUrl: z.string().optional(),
-    integrity: z.string(),
+    installSpec: z.string().optional(),
+    integrity: z.string().optional(),
     risk: z.enum(["low", "medium", "high"]),
-    runtimeMode: z.enum(["in-process", "worker", "process"]).optional(),
+    runtimeMode: z.literal("process").optional(),
     permissionsSummary: z.array(PermissionItem),
     tools: z.array(z.string()).optional(),
     uiSurfaces: z.array(z.string()).optional(),
@@ -68,6 +77,7 @@ const RegistryPluginVersion = z
     changelog: z.string().optional(),
     source: PluginMarketplaceRegistry.Source.optional(),
   })
+  .strict()
   .meta({ ref: "RegistryPluginVersion" })
 
 const RegistryPluginEntry = z
@@ -86,14 +96,14 @@ const RegistryPluginEntry = z
     verified: z.boolean(),
     official: z.boolean(),
     keywords: z.array(z.string()),
-    compatibility: z.object({ synergy: z.string() }),
+    compatibility: RegistryPluginCompatibility.optional(),
     versions: z.array(RegistryPluginVersion),
     createdAt: z.number(),
     updatedAt: z.number(),
     // v2 fields
     risk: z.enum(["low", "medium", "high"]),
-    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
-    runtimeMode: z.enum(["in-process", "worker", "process"]),
+    trustTier: z.enum(["declarative", "trusted-import"]),
+    runtimeMode: z.literal("process"),
     permissionsSummary: z.array(RegistryPermissionSummary),
     uiSurfaces: z.array(z.string()),
     tools: z.array(z.string()),
@@ -105,6 +115,7 @@ const RegistryPluginEntry = z
     entryUrl: z.string().optional(),
     yankedVersions: z.array(z.string()).optional(),
   })
+  .strict()
   .meta({ ref: "RegistryPluginEntry" })
 
 type RegistryPluginEntry = z.infer<typeof RegistryPluginEntry>
@@ -129,8 +140,8 @@ const RegistryPluginSummary = z
     updatedAt: z.number(),
     // v2 fields
     risk: z.enum(["low", "medium", "high"]),
-    trustTier: z.enum(["declarative", "trusted-import", "sandbox"]),
-    runtimeMode: z.enum(["in-process", "worker", "process"]),
+    trustTier: z.enum(["declarative", "trusted-import"]),
+    runtimeMode: z.literal("process"),
     uiSurfaces: z.array(z.string()),
     tools: z.array(z.string()),
     downloads: z.number(),
@@ -149,7 +160,7 @@ const PublishInput = RegistryPluginEntry.omit({ createdAt: true, updatedAt: true
 // ── Helpers ──
 
 function registryPath(): string {
-  return path.join(Global.Path.data, "registry", "plugins.json")
+  return localRegistryPath()
 }
 
 function missingFileError(err: unknown): boolean {
@@ -168,8 +179,8 @@ async function loadRegistry(): Promise<RegistryPluginEntry[]> {
   }
   const text = await file.text()
   const parsed = JSON.parse(text)
-  if (Array.isArray(parsed)) return parsed
-  if (parsed && Array.isArray(parsed.plugins)) return parsed.plugins
+  if (Array.isArray(parsed)) return z.array(RegistryPluginEntry).parse(parsed)
+  if (parsed && Array.isArray(parsed.plugins)) return z.array(RegistryPluginEntry).parse(parsed.plugins)
   return []
 }
 
@@ -522,12 +533,12 @@ export const RegistryRoute = new Hono()
       if (downloadUrl.startsWith("file://")) {
         let filePath: string
         try {
-          filePath = new URL(downloadUrl).pathname
+          filePath = fileURLToPath(new URL(downloadUrl))
         } catch {
           return c.json({ message: "Invalid download URL" }, 400)
         }
 
-        const registryStore = path.join(Global.Path.data, "registry")
+        const registryStore = localRegistryStoreDir()
         const resolved = checkPathContainment(registryStore, filePath)
         if (!resolved) {
           return c.json({ message: "Path traversal denied" }, 403)

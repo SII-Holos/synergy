@@ -1,12 +1,18 @@
 import { createEffect, createMemo, createResource, createSignal, For, Show } from "solid-js"
 import { Popover } from "@kobalte/core/popover"
+import { createCopyController } from "@ericsanchezok/synergy-ui/clipboard"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { Markdown } from "@ericsanchezok/synergy-ui/markdown"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
+import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { VList, type VListHandle } from "virtua/solid"
+import { useLingui } from "@lingui/solid"
 import { useGlobalSDK } from "@/context/global-sdk"
+import { useConfirm } from "@/components/dialog/confirm-dialog"
+import { deleteLibraryItemsConfirm } from "@/components/dialog/confirm-copy"
 import { AppPanel } from "@/components/app-panel"
-import { absoluteDate, relativeTime } from "@/utils/time"
+import { useLocale } from "@/context/locale"
+import { relativeTime, absoluteDate } from "@/utils/time"
 import type {
   ExperienceDetailInfo,
   ExperienceInfo,
@@ -19,7 +25,8 @@ import {
   type ExperienceFilter,
   type ExperienceSortKey,
   DISCRETE_DIMENSIONS,
-  experienceSortLabels,
+  getExperienceSortLabel,
+  getDimensionFullLabel,
   libraryActionButtonClass,
   libraryCardBaseClass,
   libraryCardExpandedClass,
@@ -30,7 +37,7 @@ import {
   SelectionBar,
   SelectionCheckbox,
 } from "./shared"
-
+import { library as L } from "@/locales/messages"
 const PAGE_SIZE = 50
 const LOAD_MORE_THRESHOLD = 800
 
@@ -77,6 +84,8 @@ export function ExperienceView(props: {
   currentScopeID: string | undefined
   currentSessionID: string | undefined
 }) {
+  const { _ } = useLingui()
+  const confirm = useConfirm()
   const [sort, setSort] = createSignal<ExperienceSortKey>("newest")
   const [sortOpen, setSortOpen] = createSignal(false)
   const [filterOpen, setFilterOpen] = createSignal(false)
@@ -208,22 +217,31 @@ export function ExperienceView(props: {
     base.push("reward", "qvalue", "visits")
     return base
   })
-
   const statusText = createMemo(() => {
-    if (pageError()) return "Failed to load more experiences"
-    if (loadingMore()) return "Loading more experiences..."
-    if (hasMore()) return `Showing ${pagedItems().length} of ${total()} experiences`
-    if (pagedItems().length > 0) return `Showing all ${total()} experiences`
+    if (pageError()) return _({ id: "app.library.experience.loadFailed", message: "Failed to load more experiences" })
+    if (loadingMore()) return _({ id: "app.library.experience.loadingMore", message: "Loading more experiences..." })
+    if (hasMore())
+      return _({
+        id: "app.library.experience.showingOf",
+        message: "Showing {shown} of {total} experiences",
+        values: { shown: String(pagedItems().length), total: String(total()) },
+      })
+    if (pagedItems().length > 0)
+      return _({
+        id: "app.library.experience.showingAll",
+        message: "Showing all {total} experiences",
+        values: { total: String(total()) },
+      })
     return ""
   })
   const filterLabel = createMemo(() => {
     switch (effectiveFilter()) {
       case "scope":
-        return "Current scope"
+        return _({ id: "app.library.experience.filter.currentScope", message: "Current scope" })
       case "session":
-        return "Current session"
+        return _({ id: "app.library.experience.filter.currentSession", message: "Current session" })
       default:
-        return "All experiences"
+        return _({ id: "app.library.experience.filter.all", message: "All experiences" })
     }
   })
 
@@ -325,9 +343,16 @@ export function ExperienceView(props: {
     await loadPage(true)
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
     const ids = [...selected()]
     if (ids.length === 0) return
+    confirm.show({
+      ...deleteLibraryItemsConfirm("experience", ids.length),
+      onConfirm: () => performDeleteSelected(ids),
+    })
+  }
+
+  async function performDeleteSelected(ids: string[]) {
     setDeleting(true)
     try {
       await Promise.all(ids.map((id) => props.sdk.client.library.experience.remove({ id })))
@@ -339,8 +364,9 @@ export function ExperienceView(props: {
       exitSelection()
       await refreshList()
       props.refetchStats()
-    } catch {}
-    setDeleting(false)
+    } finally {
+      setDeleting(false)
+    }
   }
 
   function toggleSection(key: string) {
@@ -362,18 +388,23 @@ export function ExperienceView(props: {
     } catch {}
   }
 
-  async function deleteExperience(id: string, e: MouseEvent) {
+  function deleteExperience(id: string, e: MouseEvent) {
     e.stopPropagation()
-    try {
-      await props.sdk.client.library.experience.remove({ id })
-      setExpandedCards((prev) => {
-        const next = new Set(prev)
-        next.delete(id)
-        return next
-      })
-      await refreshList()
-      props.refetchStats()
-    } catch {}
+    confirm.show({
+      ...deleteLibraryItemsConfirm("experience", 1),
+      onConfirm: () => performDeleteExperience(id),
+    })
+  }
+
+  async function performDeleteExperience(id: string) {
+    await props.sdk.client.library.experience.remove({ id })
+    setExpandedCards((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+    await refreshList()
+    props.refetchStats()
   }
 
   return (
@@ -397,7 +428,7 @@ export function ExperienceView(props: {
               <Popover open={filterOpen()} onOpenChange={setFilterOpen} placement="bottom-start" gutter={6}>
                 <Popover.Trigger as="button" class="library-control-pill">
                   <span>{filterLabel()}</span>
-                  <Icon name="chevron-down" size="small" class="opacity-60" />
+                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
                   <Popover.Content class={`library-filter-menu ${libraryMenuClass}`}>
@@ -412,7 +443,7 @@ export function ExperienceView(props: {
                         setFilterOpen(false)
                       }}
                     >
-                      <span>All experiences</span>
+                      <span>{_({ id: "app.library.experience.filter.all", message: "All experiences" })}</span>
                       <span class="library-menu-count">{total() || displayedItems().length}</span>
                     </button>
                     <Show when={scopeAvailable()}>
@@ -427,7 +458,7 @@ export function ExperienceView(props: {
                           setFilterOpen(false)
                         }}
                       >
-                        <span>Current scope</span>
+                        <span>{_({ id: "app.library.experience.filter.currentScope", message: "Current scope" })}</span>
                       </button>
                     </Show>
                     <Show when={sessionAvailable()}>
@@ -442,7 +473,9 @@ export function ExperienceView(props: {
                           setFilterOpen(false)
                         }}
                       >
-                        <span>Current session</span>
+                        <span>
+                          {_({ id: "app.library.experience.filter.currentSession", message: "Current session" })}
+                        </span>
                       </button>
                     </Show>
                   </Popover.Content>
@@ -450,21 +483,25 @@ export function ExperienceView(props: {
               </Popover>
               <span class="library-toolbar-summary">
                 <Show when={props.isSearching} fallback={statusText() || `${total()} experiences`}>
-                  {displayedItems().length} results
+                  {_({
+                    id: "app.library.experience.search.results",
+                    message: "{count} results",
+                    values: { count: String(displayedItems().length) },
+                  })}
                 </Show>
               </span>
             </div>
             <div class="library-toolbar-right">
               <Show when={displayedItems().length > 0}>
                 <button type="button" class={libraryActionButtonClass} onClick={() => setSelecting(true)}>
-                  <Icon name="square-check" size="small" class="opacity-70" />
-                  <span>Select</span>
+                  <Icon name={getSemanticIcon("notes.select")} size="small" class="opacity-70" />
+                  <span>{_({ id: "app.library.experience.select", message: "Select" })}</span>
                 </button>
               </Show>
               <Popover open={sortOpen()} onOpenChange={setSortOpen} placement="bottom-end" gutter={6}>
                 <Popover.Trigger as="button" class={libraryActionButtonClass}>
-                  <span>{experienceSortLabels[sort()]}</span>
-                  <Icon name="chevron-down" size="small" class="opacity-60" />
+                  <span>{getExperienceSortLabel(_, sort())}</span>
+                  <Icon name={getSemanticIcon("navigation.collapse")} size="small" class="opacity-60" />
                 </Popover.Trigger>
                 <Popover.Portal>
                   <Popover.Content class={libraryMenuClass}>
@@ -482,7 +519,7 @@ export function ExperienceView(props: {
                             setSortOpen(false)
                           }}
                         >
-                          {experienceSortLabels[key]}
+                          {getExperienceSortLabel(_, key)}
                         </button>
                       )}
                     </For>
@@ -504,9 +541,9 @@ export function ExperienceView(props: {
             when={!pageError() || displayedItems().length > 0 || props.isSearching}
             fallback={
               <AppPanel.Empty
-                icon="brain"
-                title="Failed to load experiences"
-                description="Try refreshing the panel to load the latest experience records."
+                icon={getSemanticIcon("state.error")}
+                title={_(L.loadError)}
+                description={_(L.loadHint)}
               />
             }
           >
@@ -514,9 +551,9 @@ export function ExperienceView(props: {
               when={!empty()}
               fallback={
                 <AppPanel.Empty
-                  icon="brain"
-                  title="No experiences yet"
-                  description="Experiences are recorded as you work with the agent and capture behavioral patterns."
+                  icon={getSemanticIcon("experience.main")}
+                  title={_(L.noExperiences)}
+                  description={_(L.noExperiencesHint)}
                 />
               }
             >
@@ -544,7 +581,7 @@ export function ExperienceView(props: {
                               class="px-1.5 py-0.5 rounded-md text-text-base hover:bg-surface-raised-base-hover transition-colors"
                               onClick={() => void loadPage(false)}
                             >
-                              Retry
+                              {_(L.retry)}
                             </button>
                           </Show>
                         </div>
@@ -600,11 +637,10 @@ export function ExperienceView(props: {
     </div>
   )
 }
-
 function RewardDimensions(props: { rewards: RewardsInfo }) {
   const valueTone = (value: number) => {
-    if (value > 0) return "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]"
-    if (value < 0) return "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]"
+    if (value > 0) return "text-text-on-success-base"
+    if (value < 0) return "text-text-on-critical-base"
     return "text-text-weaker"
   }
   const discrete = createMemo(() => {
@@ -652,6 +688,8 @@ function ExperienceCard(props: {
   onToggleSection: (key: string) => void
   onDelete: (e: MouseEvent) => void
 }) {
+  const { _ } = useLingui()
+  const { fmt } = useLocale()
   const reward = () => props.item.reward
   const rewards = () => props.item.rewards
   const qValue = () => props.item.qValue
@@ -670,10 +708,7 @@ function ExperienceCard(props: {
   }
   const updated = () => props.item.updatedAt
   const searchScore = () => experienceScore(props.item)
-  const [copied, setCopied] = createSignal(false)
-
-  function copyExperience(e: MouseEvent) {
-    e.stopPropagation()
+  const experienceCopyText = createMemo(() => {
     const r = rewards()
     const lines: string[] = [
       `Intent: ${props.item.intent}`,
@@ -699,9 +734,23 @@ function ExperienceCard(props: {
     const detail = props.detail
     if (detail?.script) lines.push("", "--- Script ---", detail.script)
     if (detail?.raw) lines.push("", "--- Raw ---", detail.raw)
-    navigator.clipboard.writeText(lines.join("\n"))
-    setCopied(true)
-    setTimeout(() => setCopied(false), 1500)
+    return lines.join("\n")
+  })
+  const copyExperience = createCopyController({
+    text: experienceCopyText,
+    copyLabel: _({
+      id: "app.library.experience.copyLabel",
+      message: "Copy all content",
+    }),
+    failureDescription: _({
+      id: "app.library.experience.copyFailed",
+      message: "Unable to copy the experience.",
+    }),
+  })
+
+  function handleCopyExperience(e: MouseEvent) {
+    e.stopPropagation()
+    void copyExperience.copy()
   }
 
   return (
@@ -741,20 +790,22 @@ function ExperienceCard(props: {
             <Show when={props.expanded && !props.selecting}>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
-                onClick={copyExperience}
-                title="Copy all content"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-icon-base"
+                onClick={handleCopyExperience}
+                title={copyExperience.tooltip()}
+                data-copy-state={copyExperience.state()}
+                disabled={copyExperience.disabled()}
               >
-                <Show when={copied()} fallback={<Icon name="copy" size="small" />}>
-                  <Icon name="check" size="small" class="text-icon-success-base" />
+                <Show when={copyExperience.copied()} fallback={<Icon name={copyExperience.icon()} size="small" />}>
+                  <Icon name={getSemanticIcon("state.success")} size="small" class="text-icon-success-base" />
                 </Show>
               </button>
               <button
                 type="button"
-                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
+                class="flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all hover:bg-surface-raised-base-hover hover:text-text-diff-delete-base"
                 onClick={props.onDelete}
               >
-                <Icon name="x" size="small" />
+                <Icon name={getSemanticIcon("action.close")} size="small" />
               </button>
             </Show>
           </div>
@@ -774,28 +825,37 @@ function ExperienceCard(props: {
                       reward()! < 0,
                   }}
                 >
-                  R {reward()!.toFixed(2)}
+                  {_({ id: "app.library.experience.stat.reward", message: "R" })} {reward()!.toFixed(2)}
                 </span>
               </Show>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-base ring-1 ring-inset ring-border-base/35">
-                Q {qValue().toFixed(2)}
+                {_({ id: "app.library.experience.stat.qValue", message: "Q" })} {qValue().toFixed(2)}
               </span>
               <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                {qVisits()} visits
+                {_({
+                  id: "app.library.experience.visits",
+                  message: "{visits} visits",
+                  values: { visits: String(qVisits()) },
+                })}
               </span>
               <Show when={turnsRemaining() !== null && turnsRemaining()! > 0}>
                 <span class="rounded-full bg-icon-warning-base/14 px-2.5 py-1 text-[10px] font-medium text-icon-warning-base ring-1 ring-inset ring-icon-warning-base/12">
-                  {turnsRemaining()} remaining
+                  {_({
+                    id: "app.library.experience.remaining",
+                    message: "{remaining} remaining",
+                    values: { remaining: String(turnsRemaining()!) },
+                  })}
                 </span>
               </Show>
               <Show when={rewards()?.confidence !== undefined}>
                 <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  C {rewards()!.confidence!.toFixed(2)}
+                  {_({ id: "app.library.experience.stat.confidence", message: "C" })}{" "}
+                  {rewards()!.confidence!.toFixed(2)}
                 </span>
               </Show>
               <Show when={props.searching && searchScore() !== undefined}>
                 <span class="rounded-full bg-surface-inset-base px-2.5 py-1 text-[10px] font-medium text-text-weaker ring-1 ring-inset ring-border-base/35">
-                  S {searchScore()!.toFixed(2)}
+                  {_({ id: "app.library.experience.stat.score", message: "S" })} {searchScore()!.toFixed(2)}
                 </span>
               </Show>
             </div>
@@ -825,30 +885,33 @@ function ExperienceCard(props: {
               <div class={`grid gap-2 sm:grid-cols-3 ${libraryInsetClass} px-3.5 py-3`}>
                 <Show when={sourceModel()}>
                   <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>Model</div>
-                    <div class="mt-1 truncate text-11-regular text-text-weak">{sourceModel()}</div>
+                    <div class={libraryMetaLabelClass}>
+                      {_({ id: "app.library.experience.model", message: "Model" })}
+                    </div>
                   </div>
                 </Show>
                 <Show when={scopeID()}>
                   <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>Scope</div>
-                    <div class="mt-1 truncate text-11-regular text-text-weak">{scopeID()}</div>
+                    <div class={libraryMetaLabelClass}>
+                      {_({ id: "app.library.experience.scope", message: "Scope" })}
+                    </div>
                   </div>
                 </Show>
                 <Show when={sessionID()}>
                   <div class="min-w-0">
-                    <div class={libraryMetaLabelClass}>Session</div>
-                    <div class="mt-1 truncate text-11-regular text-text-weak">{sessionID()}</div>
+                    <div class={libraryMetaLabelClass}>
+                      {_({ id: "app.library.experience.session", message: "Session" })}
+                    </div>
                   </div>
                 </Show>
               </div>
 
-              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak" />}>
+              <Show when={props.detail} fallback={<Spinner class="size-3.5 my-1 text-icon-weak-base" />}>
                 {(detail) => (
                   <>
                     <Show when={detail().script}>
                       <CollapsibleSection
-                        label="Script"
+                        label={_({ id: "app.library.experience.script", message: "Script" })}
                         expanded={props.expandedSections.has(`${props.item.id}-script`)}
                         onToggle={() => props.onToggleSection(`${props.item.id}-script`)}
                       >
@@ -860,7 +923,7 @@ function ExperienceCard(props: {
                     </Show>
                     <Show when={detail().raw}>
                       <CollapsibleSection
-                        label="Raw"
+                        label={_({ id: "app.library.experience.raw", message: "Raw" })}
                         expanded={props.expandedSections.has(`${props.item.id}-raw`)}
                         onToggle={() => props.onToggleSection(`${props.item.id}-raw`)}
                       >
@@ -883,28 +946,28 @@ function ExperienceCard(props: {
             }}
           >
             <span class="text-11-regular text-text-weaker">
-              <Show when={props.expanded} fallback={relativeTime(updated() ?? props.item.createdAt)}>
-                {absoluteDate(props.item.createdAt)}
+              <Show when={props.expanded} fallback={relativeTime(fmt, updated() ?? props.item.createdAt)}>
+                {absoluteDate(fmt, props.item.createdAt)}
                 <Show when={updated() && updated() !== props.item.createdAt}>
                   {" · updated "}
-                  {absoluteDate(updated()!)}
+                  {absoluteDate(fmt, updated()!)}
                 </Show>
               </Show>
             </span>
             <span
               classList={{
-                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+                "flex size-6 items-center justify-center rounded-full bg-surface-inset-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
                 "rotate-180 bg-surface-raised-base-hover": props.expanded,
               }}
             >
-              <Icon name="chevron-down" size="small" />
+              <Icon name={getSemanticIcon("navigation.collapse")} size="small" />
             </span>
           </div>
         </Show>
 
         <Show when={props.selecting}>
           <div class="mt-0.5 flex items-center justify-between border-t border-border-base/22 pt-2.5">
-            <span class="text-11-regular text-text-weaker">{relativeTime(updated() ?? props.item.createdAt)}</span>
+            <span class="text-11-regular text-text-weaker">{relativeTime(fmt, updated() ?? props.item.createdAt)}</span>
           </div>
         </Show>
       </div>
@@ -913,6 +976,7 @@ function ExperienceCard(props: {
 }
 
 function QValueDimensions(props: { qValues: RewardsInfo }) {
+  const { _ } = useLingui()
   const dims = createMemo(() => {
     const entries: Array<{ short: string; full: string; value: number }> = []
     for (const dim of DISCRETE_DIMENSIONS) {
@@ -927,7 +991,9 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
   return (
     <Show when={dims().length > 0 && hasNonZero()}>
       <div class="flex w-full items-center gap-2">
-        <span class="shrink-0 text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">Q</span>
+        <span class="shrink-0 text-[9px] font-medium uppercase tracking-[0.12em] text-text-weaker">
+          {_({ id: "app.library.experience.stat.qValue", message: "Q" })}
+        </span>
         <div class="flex min-w-0 flex-wrap items-center gap-1.5">
           <For each={dims()}>
             {(dim) => (
@@ -939,9 +1005,9 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
                 <span
                   classList={{
                     "text-[10px] font-semibold leading-none tabular-nums": true,
-                    "text-[rgba(34,126,102,0.96)] dark:text-[rgba(126,213,188,0.92)]": dim.value > 0.05,
+                    "text-text-on-success-base": dim.value > 0.05,
                     "text-text-weaker": dim.value >= -0.05 && dim.value <= 0.05,
-                    "text-[rgba(145,79,57,0.96)] dark:text-[rgba(236,176,156,0.9)]": dim.value < -0.05,
+                    "text-text-on-critical-base": dim.value < -0.05,
                   }}
                 >
                   {dim.value >= 0 ? "+" : ""}
@@ -957,6 +1023,7 @@ function QValueDimensions(props: { qValues: RewardsInfo }) {
 }
 
 function CollapsibleSection(props: { label: string; expanded: boolean; onToggle: () => void; children: any }) {
+  const { _ } = useLingui()
   return (
     <div class={`overflow-hidden ${libraryInsetClass}`}>
       <button
@@ -965,14 +1032,16 @@ function CollapsibleSection(props: { label: string; expanded: boolean; onToggle:
         onClick={props.onToggle}
       >
         <span class={libraryMetaLabelClass}>{props.label}</span>
-        <span class="text-12-medium text-text-weak">Content</span>
+        <span class="text-12-medium text-text-weak">
+          {_({ id: "app.library.experience.section.content", message: "Content" })}
+        </span>
         <span
           classList={{
-            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak ring-1 ring-inset ring-border-base/35 transition-all": true,
+            "ml-auto flex size-5 items-center justify-center rounded-full bg-surface-raised-base text-icon-weak-base ring-1 ring-inset ring-border-base/35 transition-all": true,
             "rotate-90": props.expanded,
           }}
         >
-          <Icon name="chevron-right" size="small" />
+          <Icon name={getSemanticIcon("navigation.expand")} size="small" />
         </span>
       </button>
       <Show when={props.expanded}>

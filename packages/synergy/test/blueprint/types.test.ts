@@ -51,12 +51,56 @@ describe("Blueprint types", () => {
         auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "armed" as const,
+        source: "user" as const,
         time: {
           created: Date.now(),
           updated: Date.now(),
         },
       }
       // safeParse avoids TS narrowing on the literal; validates at runtime
+      const result = BlueprintLoopInfo.safeParse(loop)
+      expect(result.success).toBe(true)
+    })
+
+    test("validates plugin-owned loop metadata", () => {
+      const result = BlueprintLoopInfo.safeParse({
+        id: "bll_plugin1",
+        noteID: "note_plugin",
+        title: "Plugin Blueprint",
+        sessionID: "ses_plugin",
+        auditAgent: "supervisor",
+        scopeID: "scp_test",
+        status: "armed",
+        source: "plugin",
+        pluginOwner: {
+          pluginId: "focus",
+          pluginGeneration: "generation-one",
+          scopeId: "scp_test",
+        },
+        time: { created: Date.now(), updated: Date.now() },
+      })
+
+      expect(result.success).toBe(true)
+    })
+    test("validates loop with durable user prompt context", () => {
+      const now = Date.now()
+      const loop = {
+        id: "bll_prompt1",
+        noteID: "note_abc",
+        title: "Prompted Blueprint",
+        sessionID: "ses_xyz",
+        auditAgent: "supervisor",
+        scopeID: "scp_test",
+        status: "running",
+        source: "user" as const,
+        userPrompt: "Only change the CLI behavior; do not touch desktop.",
+        time: {
+          created: now,
+          started: now,
+          updated: now,
+        },
+      }
+
       const result = BlueprintLoopInfo.safeParse(loop)
       expect(result.success).toBe(true)
     })
@@ -71,6 +115,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "running",
+        source: "user" as const,
         time: {
           created: now,
           started: now,
@@ -90,6 +135,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "waiting" as const,
+        source: "user" as const,
         time: {
           created: Date.now(),
           started: Date.now(),
@@ -110,6 +156,7 @@ describe("Blueprint types", () => {
         auditSessionID: "ses_audit",
         scopeID: "scp_test",
         status: "auditing",
+        source: "user" as const,
         audit: {
           lastReason: "accuracy check",
           lastAuditedAt: Date.now(),
@@ -134,6 +181,7 @@ describe("Blueprint types", () => {
         auditAgent: "supervisor",
         scopeID: "scp_test",
         status: "completed",
+        source: "user" as const,
         time: {
           created: now,
           started: now - 60000,
@@ -192,6 +240,10 @@ describe("Blueprint types", () => {
 
     test("Auditing event is defined", () => {
       expect(LoopEvent.Auditing.type).toBe("blueprint_loop.auditing")
+    })
+
+    test("Rejected event is defined", () => {
+      expect(LoopEvent.Rejected.type).toBe("blueprint_loop.rejected")
     })
   })
 })

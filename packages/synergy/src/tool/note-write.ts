@@ -47,6 +47,15 @@ function createConflictResult(input: {
   }
 }
 
+function numberValue(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isFinite(value) ? value : undefined
+  if (typeof value === "string" && value.length > 0) {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : undefined
+  }
+  return undefined
+}
+
 async function updateExisting(input: {
   id: string
   action: "append" | "replace"
@@ -58,6 +67,7 @@ async function updateExisting(input: {
   auditAgent?: string
   content(existing: Awaited<ReturnType<typeof NoteStore.getAny>>): unknown
   ctx: Tool.Context
+  optimistic?: boolean
 }) {
   const existing = await NoteStore.getAny(ScopeContext.current.scope.id, input.id)
   const nextTitle = input.title ?? existing.title
@@ -69,7 +79,7 @@ async function updateExisting(input: {
   })
   const session = await Session.get(input.ctx.sessionID)
   const decision = NoteBlueprintPolicy.evaluateWrite({
-    planMode: session.blueprint?.planMode === true,
+    workflowKind: session.workflow?.kind,
     action: "update",
     existingKind: existing.kind ?? "note",
     requestedKind: nextKind,
@@ -83,19 +93,21 @@ async function updateExisting(input: {
     title: input.title ?? undefined,
     content: input.content(existing),
     tags: input.tags ?? undefined,
-    expectedVersion: existing.version,
+    ...(input.optimistic === false ? {} : { expectedVersion: existing.version }),
   }
 
   if (nextKind === "note") {
     patch.kind = "note"
     patch.blueprint = null
   } else if (nextKind === "blueprint") {
+    const blueprint = existing.blueprint ?? {}
     patch.kind = "blueprint"
     patch.blueprint = {
       ...(existing.blueprint ?? {}),
       ...(input.description !== undefined ? { description: input.description } : {}),
       ...(input.defaultAgent !== undefined ? { defaultAgent: input.defaultAgent } : {}),
       ...(input.auditAgent !== undefined ? { auditAgent: input.auditAgent } : {}),
+      runCount: numberValue(blueprint.runCount) ?? 0,
     }
   }
 
@@ -126,7 +138,13 @@ async function updateExisting(input: {
       `Kind: ${kind}`,
       ...(input.tags ? [`Tags: ${input.tags.join(", ")}`] : []),
     ].join("\n"),
-    metadata: { id: input.id, action: input.action, title: nextTitle, kind } as Record<string, any>,
+    metadata: {
+      id: input.id,
+      action: input.action,
+      title: nextTitle,
+      kind,
+      ...(kind === "blueprint" ? { runCount: numberValue((existing.blueprint ?? {}).runCount) ?? 0 } : undefined),
+    } as Record<string, any>,
   }
 }
 
@@ -155,7 +173,7 @@ export const NoteWriteTool = Tool.define("note_write", {
       })
       const session = await Session.get(ctx.sessionID)
       const decision = NoteBlueprintPolicy.evaluateWrite({
-        planMode: session.blueprint?.planMode === true,
+        workflowKind: session.workflow?.kind,
         action: "create",
         requestedKind: kind,
       })
@@ -181,6 +199,7 @@ export const NoteWriteTool = Tool.define("note_write", {
       )
 
       const label = kind === "blueprint" ? "Blueprint" : "Note"
+      const runCount = kind === "blueprint" ? numberValue(note.blueprint?.runCount) : undefined
       return {
         title: note.title,
         output: [
@@ -191,7 +210,14 @@ export const NoteWriteTool = Tool.define("note_write", {
           `Scope: ${scopeID}`,
           ...(note.tags.length > 0 ? [`Tags: ${note.tags.join(", ")}`] : []),
         ].join("\n"),
-        metadata: { id: note.id, action: "create", title: note.title, kind } as Record<string, any>,
+        metadata: {
+          id: note.id,
+          action: "create",
+          title: note.title,
+          kind,
+          scopeID,
+          ...(runCount !== undefined ? { runCount } : undefined),
+        } as Record<string, any>,
       }
     }
 
@@ -233,6 +259,7 @@ export const NoteWriteTool = Tool.define("note_write", {
         auditAgent: params.auditAgent,
         content: () => tiptapContent,
         ctx,
+        optimistic: false,
       })
     }
 

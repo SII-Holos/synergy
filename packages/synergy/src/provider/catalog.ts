@@ -5,8 +5,10 @@ import { mergeDeep } from "remeda"
 import z from "zod"
 import { Auth } from "./api-key"
 import { registerBuiltinProviderProfiles } from "./builtin"
+import { CodexProvider } from "./codex"
 import { ModelsDev } from "./models"
 import { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace ProviderCatalog {
   const log = Log.create({ service: "provider.catalog" })
@@ -15,6 +17,8 @@ export namespace ProviderCatalog {
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
   export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
+  export const FALLBACK_CACHE_TTL_MS = 60 * 1000
+  export const MAX_LAST_KNOWN_GOOD_ENTRIES = 100
 
   export const Config = z
     .object({
@@ -52,8 +56,34 @@ export namespace ProviderCatalog {
     .strict()
   type RemoteCatalog = z.infer<typeof RemoteCatalog>
 
-  let inFlight: Promise<Record<string, ModelsDev.Provider>> | undefined
-  let memoryCache: { value: Record<string, ModelsDev.Provider>; createdAt: number } | undefined
+  type LiveDiscoveryContext = {
+    auth?: Auth.Info
+    identity: string
+  }
+
+  type CacheEntry = {
+    value: Record<string, ModelsDev.Provider>
+    createdAt: number
+    ttlMs: number
+  }
+
+  const inFlight = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
+  const memoryCache = new Map<string, CacheEntry>()
+  const liveDiscovery = new Map<string, "verified" | "fallback">()
+  const lastKnownGood = new Map<string, ProviderProfile.ModelCatalogEntry[]>()
+
+  function rememberLastKnownGood(key: string, entries: ProviderProfile.ModelCatalogEntry[]) {
+    lastKnownGood.delete(key)
+    lastKnownGood.set(
+      key,
+      entries.map((entry) => ({ ...entry })),
+    )
+    while (lastKnownGood.size > MAX_LAST_KNOWN_GOOD_ENTRIES) {
+      const oldest = lastKnownGood.keys().next().value
+      if (!oldest) break
+      lastKnownGood.delete(oldest)
+    }
+  }
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
     return {
@@ -78,12 +108,71 @@ export namespace ProviderCatalog {
     }
   }
 
+  function modelFromSource(input: {
+    modelID: string
+    provider: ModelsDev.Provider
+    sourceModel?: ModelsDev.Model
+    profile?: ProviderProfile.Profile
+    npm: string
+    patch?: Partial<ModelsDev.Model>
+    inputImage?: boolean
+    supportedImageMediaTypes?: string[]
+  }): ModelsDev.Model {
+    const base = input.sourceModel
+      ? {
+          ...input.sourceModel,
+          id: input.modelID,
+          options: { ...input.sourceModel.options },
+          headers: { ...input.sourceModel.headers },
+          provider: {
+            ...(input.sourceModel.provider ?? {}),
+            npm: input.profile?.aiSdkPackage ?? input.sourceModel.provider?.npm ?? input.provider.npm ?? input.npm,
+          },
+        }
+      : fallbackModel(input.provider, input.modelID)
+    const model = input.patch ? (mergeDeep(base, input.patch) as ModelsDev.Model) : base
+    if (input.inputImage !== undefined) {
+      const modalities = model.modalities ?? { input: ["text"], output: ["text"] }
+      const hasImage = modalities.input.includes("image")
+      model.modalities = {
+        ...modalities,
+        input: input.inputImage
+          ? hasImage
+            ? modalities.input
+            : [...modalities.input, "image"]
+          : modalities.input.filter((modality) => modality !== "image"),
+      }
+    }
+    if (input.supportedImageMediaTypes !== undefined) {
+      model.supported_image_media_types = normalizeImageMediaTypes(input.supportedImageMediaTypes) ?? []
+    }
+    model.id = input.modelID
+    model.provider = {
+      ...(model.provider ?? {}),
+      npm: input.profile?.aiSdkPackage ?? model.provider?.npm ?? input.provider.npm ?? input.npm,
+    }
+    return model
+  }
+
+  function withBuiltinSourceSurfaces(
+    modelsDev: Record<string, ModelsDev.Provider>,
+  ): Record<string, ModelsDev.Provider> {
+    return {
+      ...modelsDev,
+      [CodexProvider.PROVIDER_ID]: CodexProvider.modelsDevProvider(
+        CodexProvider.DEFAULT_MODEL_IDS,
+        modelsDev.openai?.models,
+      ),
+    }
+  }
+
   function profileProvider(
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
   ): ModelsDev.Provider {
     const sourceID = profile.modelsDevProviderID ?? profile.id
     const source = modelsDev[sourceID]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const sourceModelIDs = Object.keys(source?.models ?? {})
     const mappedProvider = sourceID !== profile.id
     const modelIDs =
@@ -106,17 +195,14 @@ export namespace ProviderCatalog {
     }
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     for (const modelID of modelIDs) {
-      const sourceModel = source?.models?.[modelID]
-      provider.models[modelID] = sourceModel
-        ? {
-            ...sourceModel,
-            id: modelID,
-            provider: {
-              ...(sourceModel.provider ?? {}),
-              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? source?.npm ?? npm,
-            },
-          }
-        : fallbackModel(provider, modelID)
+      const sourceModel = source?.models?.[modelID] ?? metadataSource?.models?.[modelID]
+      provider.models[modelID] = modelFromSource({
+        modelID,
+        provider,
+        sourceModel,
+        profile,
+        npm,
+      })
     }
     return provider
   }
@@ -218,36 +304,97 @@ export namespace ProviderCatalog {
     return parsed.data
   }
 
+  function applyLiveEntries(
+    provider: ModelsDev.Provider,
+    profile: ProviderProfile.Profile,
+    modelsDev: Record<string, ModelsDev.Provider>,
+    live: ProviderProfile.ModelCatalogEntry[],
+  ): ModelsDev.Provider {
+    const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
+    const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
+    const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
+    const next: ModelsDev.Provider = { ...provider, models: {} }
+    for (const entry of live) {
+      const modelID = entry.id
+      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID] ?? metadataSource?.models?.[modelID]
+      next.models[modelID] = modelFromSource({
+        modelID,
+        provider,
+        sourceModel,
+        profile,
+        npm,
+        patch: entry.model,
+        inputImage: entry.inputImage,
+        supportedImageMediaTypes: entry.supportedImageMediaTypes,
+      })
+    }
+    return next
+  }
+
+  function liveDiscoveryKey(providerID: string, identity: string) {
+    return JSON.stringify({ providerID, identity })
+  }
+
+  async function resolveLiveDiscoveryContexts(includeLive: boolean | undefined) {
+    const contexts = new Map<string, LiveDiscoveryContext>()
+    if (!includeLive) return contexts
+
+    registerBuiltinProviderProfiles()
+    for (const profile of ProviderProfile.all()) {
+      if (!profile.fetchModelCatalog && !profile.fetchModels) continue
+      const selected = await Auth.select(profile.id)
+      const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
+      const identity = await profile.modelCatalogIdentity?.({
+        auth: selected?.auth,
+        credentialID: selected?.credentialID,
+        authUpdatedAt,
+      })
+      contexts.set(profile.id, {
+        auth: selected?.auth,
+        identity:
+          identity ??
+          (selected
+            ? JSON.stringify({ credentialID: selected.credentialID, authUpdatedAt })
+            : profile.authKind === "none"
+              ? "anonymous"
+              : "unauthenticated"),
+      })
+    }
+    return contexts
+  }
+
   async function applyLiveDiscovery(
     provider: ModelsDev.Provider,
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
-  ): Promise<ModelsDev.Provider> {
-    if (!profile.fetchModels) return provider
-    const auth = await Auth.get(profile.id)
-    if (!auth && profile.authKind !== "none") return provider
-    const live = await profile.fetchModels({ auth, fetch }).catch((error) => {
-      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
-      return []
-    })
-    if (!live.length) return provider
-    const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
-    const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
-    const next: ModelsDev.Provider = { ...provider, models: {} }
-    for (const modelID of live) {
-      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID]
-      next.models[modelID] = sourceModel
-        ? {
-            ...sourceModel,
-            id: modelID,
-            provider: {
-              ...(sourceModel.provider ?? {}),
-              npm: profile.aiSdkPackage ?? sourceModel.provider?.npm ?? provider.npm ?? npm,
-            },
-          }
-        : fallbackModel(provider, modelID)
+    context: LiveDiscoveryContext | undefined,
+  ): Promise<{ provider: ModelsDev.Provider; degraded: boolean }> {
+    if (!profile.fetchModelCatalog && !profile.fetchModels) return { provider, degraded: false }
+    const auth = context?.auth
+    if (!auth && profile.authKind !== "none") {
+      liveDiscovery.delete(profile.id)
+      return { provider, degraded: false }
     }
-    return next
+    let live: ProviderProfile.ModelCatalogEntry[] = []
+    try {
+      live = profile.fetchModelCatalog
+        ? await profile.fetchModelCatalog({ auth, fetch, baseURL: profile.baseURL })
+        : (await profile.fetchModels!({ auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
+    } catch (error) {
+      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
+    }
+    const lkgKey = context ? liveDiscoveryKey(profile.id, context.identity) : undefined
+    if (!live.length) {
+      liveDiscovery.set(profile.id, "fallback")
+      const previous = lkgKey ? lastKnownGood.get(lkgKey) : undefined
+      return {
+        provider: previous ? applyLiveEntries(provider, profile, modelsDev, previous) : provider,
+        degraded: true,
+      }
+    }
+    liveDiscovery.set(profile.id, "verified")
+    if (lkgKey) rememberLastKnownGood(lkgKey, live)
+    return { provider: applyLiveEntries(provider, profile, modelsDev, live), degraded: false }
   }
 
   export async function resolve(input?: {
@@ -255,24 +402,42 @@ export namespace ProviderCatalog {
     includeLive?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
-    if (!input?.forceRefresh && memoryCache && Date.now() - memoryCache.createdAt < DEFAULT_CACHE_TTL_MS) {
-      return memoryCache.value
+    const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive)
+    const key = cacheKey(input, liveContexts)
+    const cached = memoryCache.get(key)
+    if (!input?.forceRefresh && cached && Date.now() - cached.createdAt < cached.ttlMs) {
+      return cached.value
     }
-    if (!input?.forceRefresh && inFlight) return inFlight
-    inFlight = doResolve(input).finally(() => {
-      inFlight = undefined
+    const pending = inFlight.get(key)
+    if (!input?.forceRefresh && pending) return pending
+    let request: Promise<Record<string, ModelsDev.Provider>>
+    request = doResolve(input, liveContexts, key).finally(() => {
+      if (inFlight.get(key) === request) inFlight.delete(key)
     })
-    return inFlight
+    inFlight.set(key, request)
+    return request
   }
 
-  async function doResolve(input?: {
-    config?: unknown
-    includeLive?: boolean
-  }): Promise<Record<string, ModelsDev.Provider>> {
+  function cacheKey(
+    input: { config?: unknown; includeLive?: boolean } | undefined,
+    liveContexts: Map<string, LiveDiscoveryContext>,
+  ) {
+    const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
+    const liveIdentities = Object.fromEntries(
+      [...liveContexts.entries()].map(([providerID, context]) => [providerID, context.identity]),
+    )
+    return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog, liveIdentities })
+  }
+
+  async function doResolve(
+    input: { config?: unknown; includeLive?: boolean } | undefined,
+    liveContexts: Map<string, LiveDiscoveryContext>,
+    key: string,
+  ): Promise<Record<string, ModelsDev.Provider>> {
     registerBuiltinProviderProfiles()
     await registerPluginProfiles()
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
-    const modelsDev = { ...(await ModelsDev.get()) }
+    const modelsDev = withBuiltinSourceSurfaces(await ModelsDev.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
 
     for (const [providerID, provider] of Object.entries(bundledSnapshot(modelsDev))) {
@@ -296,7 +461,7 @@ export namespace ProviderCatalog {
               id: modelID,
               provider: {
                 ...(sourceModel.provider ?? {}),
-                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm ?? "@ai-sdk/openai-compatible",
               },
             }
             continue
@@ -308,7 +473,7 @@ export namespace ProviderCatalog {
                 id: modelID,
                 provider: {
                   ...(sourceModel.provider ?? {}),
-                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm,
+                  npm: merged.npm ?? sourceModel.provider?.npm ?? source?.npm ?? "@ai-sdk/openai-compatible",
                 },
               }
             : fallbackModel(merged, modelID)
@@ -317,70 +482,66 @@ export namespace ProviderCatalog {
       }
     }
 
+    let degraded = false
     if (input?.includeLive) {
       for (const profile of ProviderProfile.all()) {
         const provider = result[profile.id]
         if (!provider) continue
-        result[profile.id] = await applyLiveDiscovery(provider, profile, modelsDev)
+        const discovery = await applyLiveDiscovery(provider, profile, modelsDev, liveContexts.get(profile.id))
+        result[profile.id] = discovery.provider
+        degraded ||= discovery.degraded
       }
     }
 
-    memoryCache = { value: result, createdAt: Date.now() }
+    memoryCache.set(key, {
+      value: result,
+      createdAt: Date.now(),
+      ttlMs: degraded ? FALLBACK_CACHE_TTL_MS : DEFAULT_CACHE_TTL_MS,
+    })
     return result
   }
 
   async function registerPluginProfiles() {
     const { Plugin } = await import("../plugin")
-    const allHooks = await Plugin.allHooks().catch(() => [])
-    for (const hooks of allHooks) {
-      const values = Array.isArray(hooks.provider) ? hooks.provider : hooks.provider ? [hooks.provider] : []
-      for (const profile of values) {
-        ProviderProfile.register({
-          id: profile.id,
-          name: profile.name,
-          aliases: profile.aliases,
-          description: profile.description,
-          signupUrl: profile.signupUrl,
-          recommendation: profile.recommendation,
-          env: profile.env,
-          baseURL: profile.baseURL,
-          modelsURL: profile.modelsURL,
-          apiMode: profile.apiMode,
-          authKind: profile.authKind,
-          aiSdkPackage: profile.aiSdkPackage,
-          modelFactory: profile.modelFactory,
-          modelsDevProviderID: profile.modelsDevProviderID,
-          fallbackModels: profile.fallbackModels,
-          defaultAuxModel: profile.defaultAuxModel,
-          usageKind: profile.usageKind,
-          healthCheck: profile.healthCheck,
-          requestQuirks: profile.requestQuirks,
-          autoload: profile.autoload as ProviderProfile.Profile["autoload"],
-          resolveAuth: profile.resolveAuth as ProviderProfile.Profile["resolveAuth"],
-          refreshAuth: profile.refreshAuth as ProviderProfile.Profile["refreshAuth"],
-          buildHeaders: profile.buildHeaders as ProviderProfile.Profile["buildHeaders"],
-          rewriteBody: profile.rewriteBody as ProviderProfile.Profile["rewriteBody"],
-          modelOptions: profile.modelOptions as ProviderProfile.Profile["modelOptions"],
-          classifyError: profile.classifyError as ProviderProfile.Profile["classifyError"],
-          runtimeOptions: profile.runtimeOptions as ProviderProfile.Profile["runtimeOptions"],
-          getModel: profile.getModel as ProviderProfile.Profile["getModel"],
-          fetchModels: profile.fetchModels as ProviderProfile.Profile["fetchModels"],
-        })
-      }
+    const entries = await Plugin.authProviderEntries().catch(() => [])
+    ProviderProfile.clearPluginProfiles()
+    for (const { contribution } of entries) {
+      const profile = contribution.provider
+      ProviderProfile.register({
+        id: contribution.id,
+        name: profile.name,
+        origin: "plugin",
+        aliases: profile.aliases,
+        description: profile.description,
+        signupUrl: profile.signupUrl,
+        recommendation: profile.recommendation as ProviderProfile.Profile["recommendation"],
+        env: profile.env,
+        baseURL: profile.baseURL,
+        modelsURL: profile.modelsURL,
+        authKind: profile.authKind,
+        fallbackModels: profile.fallbackModels,
+      })
     }
   }
 
   export function bundledSnapshot(modelsDev: Record<string, ModelsDev.Provider>): Record<string, ModelsDev.Provider> {
     registerBuiltinProviderProfiles()
+    const sourceModelsDev = withBuiltinSourceSurfaces(modelsDev)
     const result: Record<string, ModelsDev.Provider> = {}
     for (const profile of ProviderProfile.all()) {
-      result[profile.id] = profileProvider(profile, modelsDev)
+      result[profile.id] = profileProvider(profile, sourceModelsDev)
     }
     return result
   }
 
   export function reset() {
-    memoryCache = undefined
-    inFlight = undefined
+    memoryCache.clear()
+    inFlight.clear()
+    liveDiscovery.clear()
+    lastKnownGood.clear()
+  }
+
+  export function liveDiscoveryStatus(providerID: string) {
+    return liveDiscovery.get(providerID)
   }
 }

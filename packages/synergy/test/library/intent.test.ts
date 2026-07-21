@@ -122,3 +122,26 @@ describe("Intent.isValid assistant reasoning", () => {
     expect(Intent.isValid("Your proposal looks good, go ahead")).toBe(false)
   })
 })
+
+describe("Intent.sanitizeWithReason", () => {
+  test("keeps valid intent and emits ok", () => {
+    expect(Intent.sanitizeWithReason("Fix authentication module", "fallback")).toEqual({
+      value: "Fix authentication module",
+      reason: "ok",
+    })
+  })
+
+  test("flags assistant-style output and falls back", () => {
+    expect(Intent.sanitizeWithReason("Let me inspect the errors", "fallback")).toEqual({
+      value: "fallback",
+      reason: "assistant-reasoning",
+    })
+  })
+
+  test("flags tool output and falls back", () => {
+    expect(Intent.sanitizeWithReason("[Tool: bash] Run tests", "fallback")).toEqual({
+      value: "fallback",
+      reason: "tool-hallucination",
+    })
+  })
+})

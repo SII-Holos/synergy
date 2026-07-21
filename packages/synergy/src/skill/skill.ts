@@ -1,4 +1,5 @@
 import path from "path"
+import os from "os"
 import { existsSync } from "fs"
 import z from "zod"
 import { ScopeContext } from "../scope/context"
@@ -16,7 +17,7 @@ import { Plugin } from "../plugin"
 export namespace Skill {
   const log = Log.create({ service: "skill" })
 
-  export const Source = z.enum(["builtin", "synergy", "claude", "openclaw", "codex", "generic"])
+  export const Source = z.enum(["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"])
   export type Source = z.infer<typeof Source>
 
   export const Scope = z.enum(["builtin", "project", "global", "workspace", "external"])
@@ -38,6 +39,8 @@ export namespace Skill {
     scope: Scope.optional(),
     entryFile: z.string().optional(),
     baseDir: z.string().optional(),
+    pluginId: z.string().optional(),
+    pluginName: z.string().optional(),
     content: z.string().optional(),
     references: z.record(z.string(), z.string()).optional(),
     scripts: z.record(z.string(), z.string()).optional(),
@@ -50,6 +53,9 @@ export namespace Skill {
     path: z.string(),
     name: z.string(),
     message: z.string(),
+    severity: z.enum(["error", "warning", "info"]).optional(),
+    code: z.string().optional(),
+    source: Source.optional(),
   })
   export type Diagnostic = z.infer<typeof Diagnostic>
 
@@ -92,6 +98,8 @@ export namespace Skill {
     switch (source) {
       case "synergy":
         return 100
+      case "plugin":
+        return 90
       case "openclaw":
         return 80
       case "claude":
@@ -125,7 +133,7 @@ export namespace Skill {
   }
 
   function analyzeCompatibility(source: Source, frontmatter: Record<string, unknown>): Compatibility {
-    if (source === "builtin" || source === "synergy") {
+    if (source === "builtin" || source === "plugin" || source === "synergy") {
       return {
         level: "native",
         warnings: [],
@@ -216,6 +224,8 @@ export namespace Skill {
     const seen = new Set<string>()
 
     for (const root of roots) {
+      if (!existsSync(root)) continue
+
       try {
         for await (const match of scanWithGlobs(root, globs)) {
           const normalized = path.resolve(match)
@@ -241,9 +251,55 @@ export namespace Skill {
   // ---------------------------------------------------------------------------
 
   const SKILL_CONTENT_FILES = ["SKILL.md", "Skill.md", "content.txt", "content.md"]
-  const SKILL_REF_GLOB = new Bun.Glob("*")
+  const SKILL_REF_GLOB = new Bun.Glob("**/*")
 
-  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & { pluginDir: string }
+  type ReferenceDiagnostic = { path: string; message: string; code: string }
+
+  async function loadSkillReferences(
+    dir: string,
+    existing?: Record<string, string>,
+    onDiagnostic?: (d: ReferenceDiagnostic) => void,
+  ) {
+    const refDir = path.join(dir, "references")
+    if (!existsSync(refDir)) return existing
+
+    const references = existing ? { ...existing } : {}
+    try {
+      for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
+        const normalized = file.replace(/\\/g, "/")
+        const key = `references/${normalized}`
+        if (!(key in references)) {
+          try {
+            references[key] = await Bun.file(path.join(refDir, file)).text()
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            log.warn("failed to read skill reference file", { dir, file, error: message })
+            onDiagnostic?.({
+              path: path.join(refDir, file),
+              message: `Failed to read reference file ${file}: ${message}`,
+              code: "skill.reference_read_failed",
+            })
+          }
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn("failed to scan skill references directory", { refDir, error: message })
+      onDiagnostic?.({
+        path: refDir,
+        message: `Failed to scan references directory: ${message}`,
+        code: "skill.reference_scan_failed",
+      })
+    }
+
+    return references
+  }
+
+  type PluginSkillInput = import("@ericsanchezok/synergy-plugin").PluginSkill & {
+    pluginId: string
+    pluginName?: string
+    pluginDir: string
+  }
 
   async function resolvePluginSkill(skill: PluginSkillInput, pluginDir: string): Promise<Info> {
     let content = skill.content
@@ -271,16 +327,7 @@ export namespace Skill {
         }
       }
 
-      const refDir = path.join(dir, "references")
-      if (existsSync(refDir)) {
-        references ??= {}
-        for await (const file of SKILL_REF_GLOB.scan({ cwd: refDir, absolute: false, onlyFiles: true })) {
-          const key = `references/${file}`
-          if (!(key in references)) {
-            references[key] = await Bun.file(path.join(refDir, file)).text()
-          }
-        }
-      }
+      references = await loadSkillReferences(dir, references)
 
       const scriptDir = path.join(dir, "scripts")
       if (existsSync(scriptDir)) {
@@ -297,10 +344,12 @@ export namespace Skill {
       description: skill.description,
       location: baseDir,
       builtin: false,
-      source: "builtin",
-      scope: "global",
+      source: "plugin",
+      scope: "external",
       entryFile: "plugin",
       baseDir,
+      pluginId: skill.pluginId,
+      pluginName: skill.pluginName,
       content,
       references,
       scripts,
@@ -314,12 +363,61 @@ export namespace Skill {
     const priorities: Record<string, number> = {}
     const diagnostics: Diagnostic[] = []
 
-    const recordDiagnostic = (input: { path: string; name?: string; message: string }) => {
+    const recordDiagnostic = (input: {
+      path: string
+      name?: string
+      message: string
+      severity?: "error" | "warning" | "info"
+      code?: string
+      source?: Source
+    }) => {
       diagnostics.push({
         path: input.path,
         name: input.name ?? path.basename(path.dirname(input.path)),
         message: input.message,
+        severity: input.severity,
+        code: input.code,
+        source: input.source,
       })
+    }
+
+    const skillLabel = (skill: Info) => {
+      if (skill.source === "plugin" && skill.pluginId) return `plugin ${skill.pluginId}`
+      if (skill.builtin) return "builtin"
+      return skill.location
+    }
+
+    const registerSkill = (entry: Info, priority: number) => {
+      const existing = skills[entry.name]
+      const existingPriority = priorities[entry.name] ?? -1
+      if (existing && priority < existingPriority) {
+        recordDiagnostic({
+          path: entry.location,
+          name: entry.name,
+          message: `Duplicate skill name ignored due to lower precedence than ${skillLabel(existing)}`,
+          severity: "warning",
+          code: "skill.duplicate_name_ignored",
+        })
+        return
+      }
+
+      if (existing) {
+        log.warn("duplicate skill name", {
+          name: entry.name,
+          existing: existing.location,
+          duplicate: entry.location,
+        })
+        recordDiagnostic({
+          path: entry.location,
+          name: entry.name,
+          message: `Duplicate skill name overrides ${skillLabel(existing)}`,
+          severity: "warning",
+          code: "skill.duplicate_name_override",
+        })
+      }
+
+      skills[entry.name] = entry
+      priorities[entry.name] = priority
     }
 
     for (const builtin of BUILTIN_SKILLS) {
@@ -327,32 +425,57 @@ export namespace Skill {
         const ok = await builtin.condition()
         if (!ok) continue
       }
-      skills[builtin.name] = {
-        name: builtin.name,
-        description: builtin.description,
-        location: "builtin",
-        builtin: true,
-        source: "builtin",
-        scope: "builtin",
-        entryFile: "builtin",
-        baseDir: "builtin",
-        content: builtin.content,
-        references: builtin.references,
-        scripts: builtin.scripts,
-        rawFrontmatter: {},
-        compatibility: {
-          level: "native",
-          warnings: [],
-          unsupported: [],
+      registerSkill(
+        {
+          name: builtin.name,
+          description: builtin.description,
+          location: "builtin",
+          builtin: true,
+          source: "builtin",
+          scope: "builtin",
+          entryFile: "builtin",
+          baseDir: "builtin",
+          content: builtin.content,
+          references: builtin.references,
+          scripts: builtin.scripts,
+          rawFrontmatter: {},
+          compatibility: {
+            level: "native",
+            warnings: [],
+            unsupported: [],
+          },
         },
-      }
-      priorities[builtin.name] = computePriority("builtin", "builtin")
+        computePriority("builtin", "builtin"),
+      )
     }
 
-    for (const pluginSkill of await Plugin.skillEntries()) {
-      const resolved = await resolvePluginSkill(pluginSkill, pluginSkill.pluginDir)
-      skills[resolved.name] = resolved
-      priorities[resolved.name] = computePriority("builtin", "builtin")
+    try {
+      for (const pluginSkill of await Plugin.skillEntries()) {
+        try {
+          const resolved = await resolvePluginSkill(pluginSkill, pluginSkill.pluginDir)
+          registerSkill(resolved, computePriority("plugin", "external"))
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          log.warn("failed to resolve plugin skill", { pluginId: pluginSkill.pluginId, error: message })
+          recordDiagnostic({
+            path: pluginSkill.pluginDir,
+            name: pluginSkill.name ?? pluginSkill.pluginId,
+            message: `Failed to resolve plugin skill: ${message}`,
+            severity: "error",
+            code: "skill.plugin_skill_resolve_failed",
+          })
+        }
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      log.warn("failed to enumerate plugin skills", { error: message })
+      recordDiagnostic({
+        path: "plugin",
+        name: "plugin",
+        message: `Failed to enumerate plugin skills: ${message}`,
+        severity: "error",
+        code: "skill.plugin_entries_failed",
+      })
     }
 
     const addCandidate = async (candidate: SkillCandidate) => {
@@ -362,7 +485,12 @@ export namespace Skill {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         log.warn("skipping invalid skill frontmatter", { path: candidate.location, error })
-        recordDiagnostic({ path: candidate.location, message })
+        recordDiagnostic({
+          path: candidate.location,
+          message,
+          severity: "error",
+          code: "skill.frontmatter_parse_failed",
+        })
         return
       }
 
@@ -380,12 +508,21 @@ export namespace Skill {
         if (!description) issues.push("Missing required skill field: description")
         const message = issues.join("; ") || "Invalid skill frontmatter"
         log.warn("skipping invalid skill metadata", { path: candidate.location, issues })
-        recordDiagnostic({ path: candidate.location, message })
+        recordDiagnostic({
+          path: candidate.location,
+          message,
+          severity: "error",
+          code: "skill.metadata_missing_required",
+        })
         return
       }
 
       const { source, scope, priority } = candidate
       const compatibility = analyzeCompatibility(source, frontmatter)
+      const baseDir = path.dirname(candidate.location)
+      const references = await loadSkillReferences(baseDir, undefined, (diag) =>
+        recordDiagnostic({ ...diag, name, source, severity: "error" }),
+      )
       const entry = {
         name,
         description,
@@ -393,38 +530,13 @@ export namespace Skill {
         source,
         scope,
         entryFile: candidate.location,
-        baseDir: path.dirname(candidate.location),
+        baseDir,
+        references,
         rawFrontmatter: frontmatter,
         compatibility,
       } satisfies Info
 
-      const existing = skills[name]
-      const existingPriority = priorities[name] ?? -1
-      if (existing && priority < existingPriority) {
-        recordDiagnostic({
-          path: candidate.location,
-          name,
-          message: `Duplicate skill name ignored due to lower precedence than ${existing.location}`,
-        })
-        return
-      }
-
-      if (existing) {
-        const label = existing.builtin ? "builtin" : existing.location
-        log.warn("duplicate skill name", {
-          name,
-          existing: existing.location,
-          duplicate: candidate.location,
-        })
-        recordDiagnostic({
-          path: candidate.location,
-          name,
-          message: `Duplicate skill name overrides ${label}`,
-        })
-      }
-
-      skills[name] = entry
-      priorities[name] = priority
+      registerSkill(entry, priority)
     }
 
     const candidates = [] as SkillCandidate[]
@@ -465,6 +577,7 @@ export namespace Skill {
 
     for (const root of projectRoots) {
       const normalized = path.resolve(root)
+      if (path.dirname(normalized) === path.resolve(os.homedir())) continue
       if (normalized.endsWith(`${path.sep}.synergy`)) {
         candidates.push(...(await scanRoots([normalized], "synergy", "project", SYNERGY_ENTRY_GLOBS)))
       } else if (normalized.endsWith(`${path.sep}.claude`) && !Flag.SYNERGY_DISABLE_CLAUDE_CODE_SKILLS) {

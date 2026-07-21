@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { ConfigDomainSummary } from "@ericsanchezok/synergy-sdk/client"
 import { buildFieldDomainMap, groupPatchByDomain, strategyForPatch } from "../domain-routing"
+import { MODEL_ROLES } from "../types"
 
 const domains: ConfigDomainSummary[] = [
-  domain("general", ["snapshot", "autoupdate", "theme", "username"]),
-  domain("models", ["model", "mini_model"]),
+  domain("general", ["snapshot", "theme", "username"]),
+  domain("models", ["model", "mini_model", "quick_switcher"]),
   domain("permissions", ["permission", "controlProfile", "sandbox", "smartAllow"]),
 ]
 
@@ -27,6 +28,24 @@ describe("settings save routing", () => {
 
   test("throws when a patch field has no save strategy", () => {
     expect(() => strategyForPatch({ unknownField: true })).toThrow("does not define a save strategy")
+  })
+
+  test("routes quick switcher patches through background save", () => {
+    const grouped = groupPatchByDomain({ quick_switcher: { models: [] } }, domains)
+    expect(grouped.get("models")).toEqual({ quick_switcher: { models: [] } })
+    expect(strategyForPatch({ quick_switcher: { models: [] } })).toEqual(["background"])
+  })
+
+  test("routes model role patches through explicit save", () => {
+    for (const role of MODEL_ROLES) {
+      expect(strategyForPatch({ [role.key]: "openai/gpt-5.5" })).toEqual(["explicit"])
+    }
+    expect(strategyForPatch({ model: "openai/gpt-5.5", theme: "dark" })).toEqual(["explicit", "background"])
+  })
+
+  test("does not route product update mode into server config", () => {
+    expect(() => groupPatchByDomain({ autoupdate: true }, domains)).toThrow("not owned by a config domain")
+    expect(() => strategyForPatch({ autoupdate: true })).toThrow("does not define a save strategy")
   })
 })
 

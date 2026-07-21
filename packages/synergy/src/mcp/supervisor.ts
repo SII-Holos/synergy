@@ -22,6 +22,8 @@ import { BusEvent } from "../bus/bus-event"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { McpOAuthProvider } from "./oauth-provider"
 import { PluginId } from "../plugin/ids.js"
+import { PendingOAuth } from "./pending-oauth"
+import { McpAuth } from "./auth"
 
 // ---------------------------------------------------------------------------
 // Bus events — defined here, re-exported by index.ts for back-compat
@@ -300,12 +302,6 @@ export function mapStatus(handle: McpHandle): Status {
 }
 
 // ---------------------------------------------------------------------------
-// Pending OAuth transports (shared with index.ts for auth flows)
-// ---------------------------------------------------------------------------
-
-export const pendingOAuthTransports = new Map<string, TransportWithAuth>()
-
-// ---------------------------------------------------------------------------
 // McpSupervisor — process-level singleton
 // ---------------------------------------------------------------------------
 
@@ -390,6 +386,7 @@ class McpSupervisorImpl {
 
   /** Disconnect a handle. */
   async disconnect(name: string): Promise<void> {
+    await PendingOAuth.dispose(name, "disconnected")
     const handle = this.handles.get(name)
     if (!handle) return
     handle.state = HS.Stopping
@@ -423,7 +420,7 @@ class McpSupervisorImpl {
     this.activeStarts = 0
     this.pendingStarts = []
     this.initPromise = undefined
-    pendingOAuthTransports.clear()
+    await PendingOAuth.disposeAll("supervisor reset")
 
     await Promise.all(
       handles.map((h) => {
@@ -574,6 +571,7 @@ class McpSupervisorImpl {
       const normalized = Config.normalizeMcp(merged as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
 
       this.add(scopedKey, normalized)
+      await Bus.publish(ToolsChanged, { server: scopedKey })
       log.info("plugin MCP registered", { pluginId, serverKey, scopedKey, startup: normalized.startup })
     }
   }
@@ -588,6 +586,7 @@ class McpSupervisorImpl {
     await Promise.all(handles.map((h) => this.disconnect(h.name)))
     for (const h of handles) {
       this.handles.delete(h.name)
+      await Bus.publish(ToolsChanged, { server: h.name })
     }
   }
 
@@ -716,9 +715,19 @@ class McpSupervisorImpl {
               handle.state = HS.NeedsClientRegistration
               handle.lastError =
                 "Server does not support dynamic client registration. Please provide clientId in config."
+              await closeFailedClient(c, handle.name, `connect:${tname}:registration`)
               log.warn("mcp server requires pre-registered client", { key: handle.name, transport: tname })
             } else {
-              pendingOAuthTransports.set(handle.name, transport)
+              await PendingOAuth.register(handle.name, {
+                client: c,
+                transport,
+                onDispose: async () => {
+                  await Promise.all([
+                    McpAuth.clearCodeVerifier(handle.name).catch(() => undefined),
+                    McpAuth.clearOAuthState(handle.name).catch(() => undefined),
+                  ])
+                },
+              })
               handle.state = HS.NeedsAuth
               log.warn("mcp server requires authentication", {
                 key: handle.name,

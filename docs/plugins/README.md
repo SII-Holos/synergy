@@ -1,36 +1,38 @@
-# Synergy Plugin Docs
+# Synergy Plugin Platform
 
-These docs describe the plugin platform and SDK contracts.
+Synergy Plugin API 3 has one authoring source and one host path. A plugin exports `definePlugin()` with a flat contribution list. plugin-kit validates that definition and generates the installable manifest and bundles. Synergy reads generated metadata before it imports executable code, records approval, registers contributions, and starts one runtime generation lazily when an executable contribution is invoked.
 
-Start here:
+## Start Here
 
-- [agent-quickstart.md](agent-quickstart.md) — shortest path for external agents and plugin authors
-- [development-kit.md](development-kit.md) — CLI, SDK, templates, and source-checkout boundary
-- [01-platform-overview.md](01-platform-overview.md)
-- [02-manifest-reference.md](02-manifest-reference.md)
-- [03-trust-tiers.md](03-trust-tiers.md)
-- [04-tool-renderer-guide.md](04-tool-renderer-guide.md)
-- [05-workspace-panels.md](05-workspace-panels.md)
-- [06-settings-themes-icons.md](06-settings-themes-icons.md)
-- [07-sandbox-guide.md](07-sandbox-guide.md)
-- [09-security-best-practices.md](09-security-best-practices.md)
-- [developer-guide.md](developer-guide.md)
+| Task                                                                                      | Document                                                       |
+| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Create, build, validate, run, and package a plugin                                        | [Getting started](getting-started.md)                          |
+| Understand the generated `plugin.json` contract                                           | [Generated manifest](manifest.md)                              |
+| Understand capabilities, Host Services, runtime generations, hooks, events, and lifecycle | [Runtime and capabilities](runtime-and-permissions.md)         |
+| Contribute agent-callable tools, delegation, BlueprintLoop, and LightLoop workflows       | [Tools and delegation](tools-and-delegation.md)                |
+| Add workbench, navigation, renderer, settings, theme, or icon contributions               | [UI contributions](ui-contributions.md)                        |
+| Browse, publish, install, update, or remove packages                                      | [Marketplace](marketplace.md)                                  |
+| Review trust and operational boundaries                                                   | [Security](security.md)                                        |
+| Look up TypeScript APIs                                                                   | [`packages/plugin` reference](../../packages/plugin/README.md) |
 
-Canonical workflow:
+## One Contract
 
-```bash
-bunx @ericsanchezok/synergy-plugin-kit create my-plugin
-cd my-plugin
-bun install
-synergy-plugin dev
-synergy-plugin validate --runtime-discovery
-synergy-plugin publish-market
-```
+The source definition owns plugin identity, capabilities, declarations, and handlers. Authors do not maintain a source `plugin.json`, a separate handler map, or a permission tree. `plugin.json` is build output.
 
-Public marketplace publishing uses the GitHub aggregator repository:
+Every contribution has a plugin-local unique `id` and a discriminating `kind`. Executable contributions are operations, tools, hooks, auth providers, and lifecycle handlers. Agents, skills, MCP servers, and UI metadata are declarative. Host adapters register each kind with its owning Synergy subsystem.
 
-```bash
-synergy-plugin publish-market --repo https://github.com/owner/my-plugin
-```
+Declarative contributions extend the corresponding host subsystem; they do not create plugin-local copies of it. In particular, Agent contributions enter Synergy's Agent registry, delegated Cortex tasks enter native child Sessions, BlueprintLoop and LightLoop workflow delegation enters the corresponding controller, tools enter the host Tool Registry, and settings enter the host Settings renderer.
 
-Plugin authors do not need to read the repository root `AGENTS.md` unless they are modifying Synergy itself.
+The plugin ID remains identical across the definition, generated manifest, registry entry, lockfile, approval, runtime generation, asset URLs, and UI surface IDs. A mismatch is an error, not an alias.
+
+## Runtime and Data Ownership
+
+External plugins run in a separate process for crash, timeout, and cleanup isolation. Trusted built-ins may run in process. There is no plugin worker mode, iframe tier, or claim that the process boundary is an OS security sandbox.
+
+One active `pluginId + version + generation` runtime is shared by every Scope that enables the plugin. Scope, Session, actor, cancellation, logger, events, and capability-gated Host Services are injected into each invocation. Plugins never receive a raw Synergy client, server URL, or token.
+
+Synergy stores installation metadata, approval, per-Scope enablement, declarative settings, and plugin credentials. A plugin owns its business data, schema, concurrency, backup, upgrade, and deletion policy.
+
+## UI Model
+
+Simple metadata is rendered by the host. Complex surfaces are trusted Solid components loaded only after approval. plugin-kit compiles TSX and binds it to the host's shared Solid runtime. Every trusted component receives one `PluginSurfaceContext`; it reads complete state through query operations, sends intent through command operations, and treats events as scoped invalidation or small state-change notifications.

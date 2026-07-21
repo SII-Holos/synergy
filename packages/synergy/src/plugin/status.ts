@@ -1,391 +1,211 @@
-import z from "zod"
 import path from "path"
-import fs from "fs/promises"
-import type { PluginManifest } from "@ericsanchezok/synergy-plugin"
-import { getPlugin, getLoadedPlugins } from "./loader"
-import * as ManifestReader from "./manifest-reader"
-import * as Capability from "./capability"
-import { decideTrust, derivePluginSource, type PluginTrustDecision, type PluginSource } from "./trust"
+import { fileURLToPath } from "url"
+import z from "zod"
 import { PluginToolId } from "./ids"
-import { read as readLockfile, checkIntegrity } from "./lockfile"
-import { Installation } from "../global/installation"
-import { getRuntime } from "../plugin-runtime/supervisor"
-import { DEFAULT_LIMITS } from "../plugin-runtime/health"
-import { computePermissionsHash, computeManifestHash } from "./consent/approval-store"
-import { baseCapabilities } from "./capability"
-import { getEvents } from "./audit.js"
+import { riskForCapabilities } from "./capability"
+import { getDisabledPlugin, getDisabledPlugins, getLoadedPlugins, getPlugin, type LoadedPlugin } from "./loader"
+import { pluginRuntimeManager } from "./runtime"
+import type { PluginSource } from "./trust"
+import { sourceFromSpec } from "./source"
+import { isArchivePath } from "./spec-resolver"
+import { localRegistryStoreDir } from "./local-registry-store"
+import { isPathContained } from "../util/path-contain"
 
-// ---------------------------------------------------------------------------
-// Comprehensive status — returned by GET /plugin/:id/status
-// ---------------------------------------------------------------------------
+export const PluginInstallationSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("directory"), spec: z.string(), path: z.string() }),
+  z.object({ kind: z.literal("archive"), spec: z.string(), path: z.string() }),
+  z.object({
+    kind: z.literal("registry"),
+    registry: z.enum(["official", "local"]),
+    spec: z.string(),
+  }),
+  z.object({
+    kind: z.literal("package"),
+    source: z.enum(["npm", "git", "url"]),
+    spec: z.string(),
+  }),
+  z.object({ kind: z.literal("builtin"), spec: z.string() }),
+])
 
-export interface PluginStatus {
-  id: string
-  name?: string
-  version?: string
-  source: PluginSource
-  trust: PluginTrustDecision
-  loaded: boolean
-  loadError?: string
-  manifestValid: boolean
-  integrity: "verified" | "unverified" | "failed"
-  permissions: {
-    base: string[]
-    tools: Record<string, string[]>
-    overallRisk: "low" | "medium" | "high"
-    warnings: Capability.CapabilityWarning[]
+export type PluginInstallation = z.infer<typeof PluginInstallationSchema>
+
+function localSpecPath(spec: string): string | undefined {
+  if (!spec.startsWith("file://")) return undefined
+  try {
+    return path.resolve(fileURLToPath(spec))
+  } catch {
+    return path.resolve(spec.slice("file://".length))
   }
-  routes: string[]
-  tools: Array<{
-    id: string
-    fullId: string
-    capabilities: string[]
-    warnings: string[]
-  }>
-  ui: {
-    contributions: number
-    errors: string[]
+}
+
+export function classifyPluginInstallation(input: {
+  spec: string
+  source?: PluginSource
+  pluginDir?: string
+}): PluginInstallation {
+  const source = input.source ?? sourceFromSpec(input.spec)
+  if (source === "official") return { kind: "registry", registry: "official", spec: input.spec }
+  if (source === "builtin") return { kind: "builtin", spec: input.spec }
+  if (source === "npm" || source === "git" || source === "url") {
+    return { kind: "package", source, spec: input.spec }
   }
-  stores: {
-    config: boolean
-    secrets: "none" | "plaintext" | "keychain"
-    cacheBytes?: number
+
+  const localPath = localSpecPath(input.spec) ?? path.resolve(input.pluginDir ?? input.spec)
+  if (isPathContained(localRegistryStoreDir(), localPath)) {
+    return { kind: "registry", registry: "local", spec: input.spec }
   }
-  runtime?: {
-    mode: string
-    pid?: number
-    state: string
-    restarts: number
-    lastHeartbeatAt?: number
-    memoryMb?: number
-    limits: typeof DEFAULT_LIMITS
-    lastError?: string
-    runtimeDecision?: string
-  }
-  warnings: Array<{ type: string; message: string; toolId?: string }>
+  if (isArchivePath(localPath)) return { kind: "archive", spec: input.spec, path: localPath }
+  return { kind: "directory", spec: input.spec, path: path.resolve(input.pluginDir ?? localPath) }
 }
 
 export const PluginStatusSchema = z
   .object({
     id: z.string(),
-    name: z.string().optional(),
+    name: z.string(),
     version: z.string().optional(),
-    source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-    trust: z.object({
-      tier: z.enum(["declarative", "trusted-import", "sandbox"]),
-      source: z.enum(["local", "npm", "git", "url", "builtin", "official"]),
-      userTrusted: z.boolean(),
-      verifiedIntegrity: z.boolean(),
-      reason: z.string(),
-    }),
+    apiVersion: z.string().optional(),
+    generation: z.string().optional(),
+    installation: PluginInstallationSchema,
+    trust: z.enum(["declarative", "trusted-import"]),
+    health: z.enum(["loaded", "disabled"]),
+    disabledReason: z.string().optional(),
+    disabledPhase: z.string().optional(),
     loaded: z.boolean(),
-    loadError: z.string().optional(),
-    manifestValid: z.boolean(),
-    integrity: z.enum(["verified", "unverified", "failed"]),
-    permissions: z.object({
-      base: z.array(z.string()),
-      tools: z.record(z.string(), z.array(z.string())),
-      overallRisk: z.enum(["low", "medium", "high"]),
-      warnings: z.array(
-        z.object({
-          type: z.string(),
-          message: z.string(),
-          toolId: z.string().optional(),
-        }),
-      ),
-    }),
-    routes: z.array(z.string()),
-    tools: z.array(
-      z.object({
-        id: z.string(),
-        fullId: z.string(),
-        capabilities: z.array(z.string()),
-        warnings: z.array(z.string()),
-      }),
+    capabilities: z.array(z.string()),
+    risk: z.enum(["low", "medium", "high"]),
+    operations: z.array(z.object({ id: z.string(), type: z.enum(["query", "command"]), expose: z.array(z.string()) })),
+    tools: z.array(z.object({ id: z.string(), fullId: z.string(), capabilities: z.array(z.string()) })),
+    uiContributions: z.number(),
+    contributionHealth: z.record(
+      z.string(),
+      z.object({ state: z.enum(["healthy", "degraded"]), lastError: z.string().optional(), updatedAt: z.number() }),
     ),
-    ui: z.object({
-      contributions: z.number(),
-      errors: z.array(z.string()),
-    }),
-    stores: z.object({
-      config: z.boolean(),
-      secrets: z.enum(["none", "plaintext", "keychain"]),
-      cacheBytes: z.number().optional(),
-    }),
     runtime: z
       .object({
-        mode: z.string(),
+        mode: z.enum(["process", "inProcess"]),
+        state: z.enum(["starting", "ready", "draining", "crashed", "stopped"]),
         pid: z.number().optional(),
-        state: z.string(),
-        restarts: z.number(),
+        inFlight: z.number(),
         lastHeartbeatAt: z.number().optional(),
-        memoryMb: z.number().optional(),
-        limits: z.record(z.string(), z.any()),
         lastError: z.string().optional(),
-        runtimeDecision: z.string().optional(),
       })
       .optional(),
-    warnings: z.array(
-      z.object({
-        type: z.string(),
-        message: z.string(),
-        toolId: z.string().optional(),
-      }),
-    ),
   })
   .meta({ ref: "PluginStatus" })
 
-/** Check whether we're running in dev mode (source checkout). */
-function isDevMode(): boolean {
-  return Installation.CHANNEL === "local"
-}
-/** Find the lockfile entry whose resolved path is under pluginDir. */
-async function findLockfileEntry(pluginDir: string): Promise<import("./lockfile-schema").PluginLockEntry | null> {
-  try {
-    const lockfile = await readLockfile()
-    for (const entry of Object.values(lockfile.plugins)) {
-      const resolved = path.resolve(entry.resolved)
-      const relative = path.relative(pluginDir, resolved)
-      if (relative === "" || relative.startsWith("..") === false) {
-        return entry
-      }
-    }
-    return null
-  } catch {
-    return null
-  }
+export type PluginStatus = z.infer<typeof PluginStatusSchema>
+
+function trustedImport(plugin: LoadedPlugin) {
+  return plugin.manifest.contributions.some(
+    (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
+  )
 }
 
-/** Resolve integrity status from the lockfile by finding the entry whose resolved path is under pluginDir. */
-async function resolveIntegrity(pluginDir: string): Promise<"verified" | "unverified" | "failed"> {
-  const entry = await findLockfileEntry(pluginDir)
-  if (!entry) return "unverified"
-  if (!entry.integrity) return "unverified"
-  const ok = await checkIntegrity(entry)
-  return ok ? "verified" : "failed"
-}
-/** Derive secrets store type from presence of auth.json. */
-async function resolveSecretsStore(pluginId: string): Promise<"none" | "plaintext" | "keychain"> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  const authPath = path.join(home, ".synergy", "data", "plugin", pluginId, "auth.json")
-  try {
-    await fs.access(authPath)
-    return "plaintext"
-  } catch {
-    return "none"
-  }
-}
-
-/** Compute cache directory size in bytes. */
-async function resolveCacheBytes(pluginId: string): Promise<number | undefined> {
-  const home = process.env.HOME || process.env.USERPROFILE || "~"
-  const cacheDir = path.join(home, ".synergy", "cache", "plugin", pluginId)
-  try {
-    let total = 0
-    const entries = await fs.readdir(cacheDir, { withFileTypes: true }).catch(() => [])
-    for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith(".json")) {
-        try {
-          const stat = await fs.stat(path.join(cacheDir, entry.name))
-          total += stat.size
-        } catch {
-          // ignore
+export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<PluginStatus> {
+  const capabilities = plugin.manifest.capabilities.map((item) => item.id)
+  const runtime = pluginRuntimeManager.registry.active(plugin.id)
+  return {
+    id: plugin.id,
+    name: plugin.name,
+    version: plugin.manifest.version,
+    apiVersion: plugin.manifest.apiVersion,
+    generation: plugin.manifest.artifacts.generation,
+    installation: classifyPluginInstallation(plugin),
+    trust: trustedImport(plugin) ? "trusted-import" : "declarative",
+    health: "loaded",
+    loaded: true,
+    capabilities,
+    risk: riskForCapabilities(capabilities),
+    operations: plugin.manifest.contributions
+      .filter((item) => item.kind === "operation")
+      .map((item) => ({ id: item.id, type: item.type, expose: item.expose })),
+    tools: plugin.manifest.contributions
+      .filter((item) => item.kind === "tool")
+      .map((item) => ({
+        id: item.id,
+        fullId: PluginToolId.format(plugin.id, item.id),
+        capabilities: item.requires ?? [],
+      })),
+    uiContributions: plugin.manifest.contributions.filter((item) => item.kind.startsWith("ui.")).length,
+    contributionHealth: Object.fromEntries(plugin.contributionHealth),
+    runtime: runtime
+      ? {
+          mode: runtime.mode,
+          state: runtime.state,
+          pid: runtime.process?.process.pid,
+          inFlight: runtime.inFlight,
+          lastHeartbeatAt: runtime.lastHeartbeatAt,
+          lastError: runtime.lastError,
         }
-      }
-    }
-    return total > 0 ? total : undefined
-  } catch {
-    return undefined
+      : undefined,
   }
 }
 
-/** Count UI contributions from the manifest. */
-function countUIContributions(manifest: PluginManifest | null): number {
-  if (!manifest?.contributes?.ui) return 0
-  const ui = manifest.contributes.ui
-  let count = 0
-  if (ui.toolRenderers?.length) count += ui.toolRenderers.length
-  if (ui.partRenderers?.length) count += ui.partRenderers.length
-  if (ui.workspacePanels?.length) count += ui.workspacePanels.length
-  if (ui.globalPanels?.length) count += ui.globalPanels.length
-  if (ui.settings?.length) count += ui.settings.length
-  if (ui.chatComponents?.length) count += ui.chatComponents.length
-  if (ui.themes?.length) count += ui.themes.length
-  if (ui.icons?.length) count += ui.icons.length
-  if (ui.routes?.length) count += 1 // routes are a group
-  if (ui.commands?.length) count += ui.commands.length
-  return count
+function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & {}): PluginStatus {
+  if (plugin.phase === "approval" && plugin.manifest) {
+    const manifest = plugin.manifest
+    const capabilities = manifest.capabilities.map((item) => item.id)
+    const trusted = manifest.contributions.some(
+      (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
+    )
+    return {
+      id: plugin.pluginId,
+      name: plugin.name ?? plugin.pluginId,
+      version: manifest.version,
+      apiVersion: manifest.apiVersion,
+      generation: manifest.artifacts.generation,
+      installation: classifyPluginInstallation({ spec: plugin.spec ?? plugin.pluginId, source: plugin.source }),
+      trust: trusted ? "trusted-import" : "declarative",
+      health: "disabled",
+      disabledReason: plugin.reason,
+      disabledPhase: plugin.phase,
+      loaded: false,
+      capabilities,
+      risk: riskForCapabilities(capabilities),
+      operations: manifest.contributions
+        .filter((item) => item.kind === "operation")
+        .map((item) => ({ id: item.id, type: item.type as "query" | "command", expose: item.expose })),
+      tools: manifest.contributions
+        .filter((item) => item.kind === "tool")
+        .map((item) => ({
+          id: item.id,
+          fullId: PluginToolId.format(plugin.pluginId, item.id),
+          capabilities: item.requires ?? [],
+        })),
+      uiContributions: manifest.contributions.filter((item) => item.kind.startsWith("ui.")).length,
+      contributionHealth: {},
+    }
+  }
+  return {
+    id: plugin.pluginId,
+    name: plugin.name ?? plugin.pluginId,
+    installation: classifyPluginInstallation({
+      spec: plugin.spec ?? plugin.pluginDir ?? plugin.pluginId,
+      source: plugin.source,
+      pluginDir: plugin.pluginDir,
+    }),
+    trust: "declarative",
+    health: "disabled",
+    disabledReason: plugin.reason,
+    disabledPhase: plugin.phase,
+    loaded: false,
+    capabilities: [],
+    risk: "low",
+    operations: [],
+    tools: [],
+    uiContributions: 0,
+    contributionHealth: {},
+  }
 }
 
 export async function getStatus(pluginId: string): Promise<PluginStatus | null> {
   const plugin = await getPlugin(pluginId)
-  if (!plugin) return null
-
-  const source = derivePluginSource(plugin.pluginDir)
-  const warnings: PluginStatus["warnings"] = []
-  let manifest: PluginManifest | null = null
-  let manifestValid = false
-
-  try {
-    manifest = await ManifestReader.read(plugin.pluginDir)
-    manifestValid = manifest !== null
-  } catch (err: any) {
-    warnings.push({
-      type: "manifest_error",
-      message: `Failed to read manifest: ${err.message ?? String(err)}`,
-    })
-  }
-
-  // ── Capabilities ──
-  const manifestTools = manifest?.contributes?.tools?.map((t) => t.name) ?? []
-  const runtimeToolNames = plugin.hooks.tool ? Object.keys(plugin.hooks.tool) : []
-  const runtimeFullIds = runtimeToolNames.map((t) => PluginToolId.format(pluginId, t))
-  const allDeclared = [...new Set([...manifestTools, ...runtimeToolNames])]
-
-  const capabilityResult = Capability.resolve({
-    pluginId,
-    manifest,
-    declaredTools: allDeclared,
-    runtimeToolIds: runtimeFullIds,
-  })
-
-  // ── Trust ──
-  const integrity = await resolveIntegrity(plugin.pluginDir)
-  // local/builtin plugins are implicitly trusted; npm/git/url require explicit trust
-  const userTrusted = source === "local" || source === "builtin"
-  const trust = decideTrust({
-    source,
-    userTrusted,
-    verifiedIntegrity: integrity === "verified",
-    devMode: isDevMode(),
-  })
-
-  // ── Routes ──
-  const routes = manifest?.contributes?.ui?.routes?.map((r) => r.path) ?? []
-
-  // ── Tools ──
-  const tools = runtimeToolNames.map((id) => ({
-    id,
-    fullId: PluginToolId.format(pluginId, id),
-    capabilities: capabilityResult.tools[id] ?? capabilityResult.base,
-    warnings: capabilityResult.warnings.filter((w) => w.toolId === id || !w.toolId).map((w) => w.message),
-  }))
-
-  // ── UI ──
-  const ui = {
-    contributions: countUIContributions(manifest),
-    errors: [] as string[],
-  }
-
-  // ── Stores ──
-  const stores = {
-    config: true, // plugin config is always available
-    secrets: await resolveSecretsStore(pluginId),
-    cacheBytes: await resolveCacheBytes(pluginId),
-  }
-
-  // ── Runtime ──
-  const runtimeEntry = getRuntime(pluginId)
-  const runtime = runtimeEntry
-    ? {
-        mode: runtimeEntry.mode,
-        pid: runtimeEntry.pid,
-        state: runtimeEntry.state,
-        restarts: runtimeEntry.restarts,
-        lastHeartbeatAt: runtimeEntry.lastHeartbeatAt,
-        memoryMb: runtimeEntry.memoryMb,
-        limits: DEFAULT_LIMITS,
-        lastError: runtimeEntry.lastError,
-        runtimeDecision: runtimeEntry.runtimeDecision,
-      }
-    : undefined
-
-  // ── Hash consistency warnings ──
-  const lockfileEntry = await findLockfileEntry(plugin.pluginDir)
-  if (lockfileEntry && manifest) {
-    const capabilities = baseCapabilities(manifest)
-    const currentPermissionsHash = computePermissionsHash(manifest, capabilities)
-    const currentManifestHash = computeManifestHash(manifest)
-    if (lockfileEntry.permissionsHash && lockfileEntry.permissionsHash !== currentPermissionsHash) {
-      warnings.push({
-        type: "hash_mismatch",
-        message: "Permissions have changed since install — re-approval may be required.",
-      })
-    }
-    if (lockfileEntry.manifestHash && lockfileEntry.manifestHash !== currentManifestHash) {
-      warnings.push({
-        type: "hash_mismatch",
-        message: "Manifest has changed since install.",
-      })
-    }
-  }
-
-  // ── Assemble warnings ──
-  for (const w of capabilityResult.warnings) {
-    warnings.push({ type: w.type, message: w.message, toolId: w.toolId })
-  }
-  if (integrity === "unverified") {
-    warnings.push({
-      type: "integrity",
-      message: "Plugin integrity has not been verified against a lockfile hash.",
-    })
-  }
-
-  // ── Rollback audit warnings ──
-  try {
-    const auditEvents = await getEvents(pluginId)
-    for (const event of auditEvents) {
-      if (event.type === "update_failed_rolled_back") {
-        const details = event.details as {
-          oldVersion?: string
-          newVersion?: string
-          error?: string
-          rolledBack?: boolean
-        }
-        const msg =
-          `Update from ${details.oldVersion ?? "?"} to ${details.newVersion ?? "?"} failed` +
-          (details.rolledBack ? " and was rolled back" : "") +
-          (details.error ? `: ${details.error}` : "")
-        warnings.push({
-          type: "update_failed_rolled_back",
-          message: msg,
-        })
-      }
-    }
-  } catch {
-    // Audit read failure is non-blocking for status
-  }
-
-  return {
-    id: pluginId,
-    name: plugin.name ?? manifest?.name,
-    version: manifest?.version,
-    source,
-    trust,
-    loaded: true,
-    manifestValid,
-    integrity,
-    permissions: {
-      base: capabilityResult.base,
-      tools: capabilityResult.tools,
-      overallRisk: capabilityResult.overallRisk,
-      warnings: capabilityResult.warnings,
-    },
-    routes,
-    tools,
-    ui,
-    stores,
-    runtime,
-    warnings,
-  }
+  if (plugin) return getStatusForLoadedPlugin(plugin)
+  const disabled = await getDisabledPlugin(pluginId)
+  return disabled ? disabledStatus(disabled) : null
 }
 
 export async function getAllStatus(): Promise<PluginStatus[]> {
-  const loaded = await getLoadedPlugins()
-  const results: PluginStatus[] = []
-  for (const p of loaded) {
-    const s = await getStatus(p.id)
-    if (s) results.push(s)
-  }
-  return results
+  const loaded = await Promise.all((await getLoadedPlugins()).map(getStatusForLoadedPlugin))
+  return [...loaded, ...(await getDisabledPlugins()).map(disabledStatus)]
 }

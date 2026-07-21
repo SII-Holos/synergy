@@ -1,4 +1,4 @@
-import type { ApiPluginInfo } from "@ericsanchezok/synergy-sdk/client"
+import type { InstalledPlugin } from "./types"
 
 /** Compare two semver strings. Returns true if a > b. */
 export function semverGt(a: string, b: string): boolean {
@@ -24,12 +24,8 @@ export function checkUpdateAvailable(registryVersion: string | undefined, instal
 }
 
 /** Find the installed version of a plugin given a list of loaded plugins. */
-export function getInstalledVersion(plugins: ApiPluginInfo[], registryId: string): string | null {
-  // First try exact pluginId match
-  const exact = plugins.find((p) => p.pluginId === registryId)
+export function getInstalledVersion(plugins: InstalledPlugin[], registryId: string): string | null {
+  const exact = plugins.find((p) => p.id === registryId)
   if (exact?.version && exact.version !== "0.0.0") return exact.version
-  // Fallback to name match
-  const byName = plugins.find((p) => p.name === registryId)
-  if (byName?.version && byName.version !== "0.0.0") return byName.version
   return null
 }

@@ -8,6 +8,8 @@ import { Session } from "../../src/session"
 import { Worktree } from "../../src/project/worktree"
 import { Log } from "../../src/util/log"
 import { Identifier } from "../../src/id/id"
+import { Server } from "../../src/server/server"
+import { SessionManager } from "../../src/session/manager"
 
 Log.init({ print: false })
 
@@ -51,11 +53,12 @@ describe("git worktree integration", () => {
 
   test("creates a managed worktree under .synergy/worktrees and binds the session", async () => {
     await using tmp = await tmpdir({ git: true })
+    const setupCommand = process.platform === "win32" ? "<nul set /p dummy=setup>setup.txt" : "printf setup > setup.txt"
     await fs.writeFile(path.join(tmp.path, ".env.local"), "TOKEN=local")
     await fs.mkdir(path.join(tmp.path, ".synergy"), { recursive: true })
     await fs.writeFile(
       path.join(tmp.path, ".synergy", "worktree-setup.jsonc"),
-      JSON.stringify({ copyIgnored: [".env.local"], setup: ["printf setup > setup.txt"] }),
+      JSON.stringify({ copyIgnored: [".env.local"], setup: [setupCommand] }),
     )
     const scope = await tmp.scope()
 
@@ -73,6 +76,10 @@ describe("git worktree integration", () => {
 
           expect(created.managed).toBe(true)
           expect(created.path).toStartWith(path.join(scope.worktree, ".synergy", "worktrees"))
+          expect(created.name).toStartWith("synergy-feature-one-")
+          expect(created.name).not.toContain("synergy-synergy")
+          expect(created.branch).toStartWith("synergy/feature-one-")
+          expect(created.branch).not.toContain("synergy/synergy")
           expect(await Bun.file(path.join(created.path, ".env.local")).text()).toBe("TOKEN=local")
           expect(await Bun.file(path.join(created.path, "setup.txt")).text()).toBe("setup")
 
@@ -88,6 +95,210 @@ describe("git worktree integration", () => {
 
           await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
           await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("POST /session with workspace create returns a git worktree session", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const response = await app.request(`/session?directory=${encodeURIComponent(scope.worktree)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: "Route Worktree",
+              workspace: { mode: "create", name: "route-worktree" },
+            }),
+          })
+
+          expect(response.status).toBe(200)
+          const session = await response.json()
+          expect(session.workspace?.type).toBe("git_worktree")
+          expect(session.workspace?.path).toStartWith(path.join(scope.worktree, ".synergy", "worktrees"))
+          expect(session.workspace?.name).toStartWith("synergy-route-worktree-")
+          expect(session.workspace?.branch).toStartWith("synergy/route-worktree-")
+          expect(session.workspace?.branch).not.toContain("synergy/synergy")
+          expect(session.workspace?.originalCheckout).toBe(scope.worktree)
+          expect(session.scope.directory).toBe(scope.worktree)
+
+          await Worktree.remove({ sessionID: session.id, target: session.workspace.worktreeID, force: true })
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("workspace create falls back to branded session names for default titles", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create()
+          const created = await Worktree.create({
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+
+          expect(created.name).toStartWith("synergy-session-")
+          expect(created.name).not.toContain("new-session")
+          expect(created.branch).toStartWith("synergy/session-")
+          expect(created.branch).not.toContain("new-session")
+
+          await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("POST /experimental/worktree/session/:id/enter binds an existing worktree", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const session = await Session.create({ title: "Route Enter Worktree" })
+          const created = await Worktree.create({ name: "route-enter", bind: false, baseRef: "current" })
+
+          const response = await app.request(
+            `/experimental/worktree/session/${session.id}/enter?directory=${encodeURIComponent(scope.worktree)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target: created.id }),
+            },
+          )
+
+          expect(response.status).toBe(200)
+          const updated = await response.json()
+          expect(updated.workspace?.type).toBe("git_worktree")
+          expect(updated.workspace?.path).toBe(created.path)
+          expect(updated.workspace?.worktreeID).toBe(created.id)
+
+          const listed = await Worktree.list()
+          const managed = listed.find((item) => item.id === created.id)
+          expect(managed?.bindings).toContain(session.id)
+
+          await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+          await Session.remove(session.id)
+        })(),
+    })
+  })
+
+  test("POST /session cleans up the session if workspace creation fails", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const sessionID = Identifier.descending("session")
+          const response = await app.request(`/session?directory=${encodeURIComponent(scope.worktree)}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: sessionID,
+              workspace: { mode: "create", baseRevision: "missing-revision-for-test" },
+            }),
+          })
+
+          expect(response.status).toBe(400)
+          expect(await SessionManager.getSession(sessionID)).toBeUndefined()
+        })(),
+    })
+  })
+
+  test("HTTP worktree create, enter, and leave reject running sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const session = await Session.create({ title: "Busy Session" })
+          const created = await Worktree.create({ name: "busy-enter", bind: false, baseRef: "current" })
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+
+          try {
+            const create = await app.request(`/experimental/worktree?directory=${encodeURIComponent(scope.worktree)}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ sessionID: session.id, bind: true }),
+            })
+            expect(create.status).toBe(400)
+            expect((await create.json()).name).toBe("WorktreeSessionBusyError")
+
+            const enter = await app.request(
+              `/experimental/worktree/session/${session.id}/enter?directory=${encodeURIComponent(scope.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ target: created.id }),
+              },
+            )
+            expect(enter.status).toBe(400)
+            expect((await enter.json()).name).toBe("WorktreeSessionBusyError")
+
+            const leave = await app.request(
+              `/experimental/worktree/session/${session.id}/leave?directory=${encodeURIComponent(scope.worktree)}`,
+              { method: "POST" },
+            )
+            expect(leave.status).toBe(400)
+            expect((await leave.json()).name).toBe("WorktreeSessionBusyError")
+          } finally {
+            await SessionManager.release(lease!)
+            await Worktree.remove({ sessionID: "none", target: created.id, force: true }).catch(() => undefined)
+            await Session.remove(session.id)
+          }
+        })(),
+    })
+  })
+
+  test("core worktree APIs still work while a session is running", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create({ title: "Running Core Worktree" })
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+
+          let created: Worktree.Info | undefined
+          try {
+            created = await Worktree.create({
+              name: "running-core",
+              sessionID: session.id,
+              bind: true,
+              baseRef: "current",
+            })
+            expect((await Session.get(session.id)).workspace?.type).toBe("git_worktree")
+
+            await Worktree.leave(session.id)
+            expect((await Session.get(session.id)).workspace?.type).toBe("main")
+          } finally {
+            await SessionManager.release(lease!)
+            if (created) await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+            await Session.remove(session.id)
+          }
         })(),
     })
   })
@@ -194,6 +405,282 @@ describe("git worktree integration", () => {
       fn: () =>
         using(async () => {
           await expect(Worktree.list()).rejects.toThrow("git worktree is unavailable")
+        })(),
+    })
+  })
+
+  test("remove leaves all bound sessions back to main before deleting the worktree", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session1 = await Session.create({ title: "Remove Bind Test 1" })
+          const session2 = await Session.create({ title: "Remove Bind Test 2" })
+          const created = await Worktree.create({
+            name: "remove-bind",
+            sessionID: session1.id,
+            bind: true,
+            baseRef: "current",
+          })
+          await Worktree.enter({ sessionID: session2.id, target: created.id, force: false })
+
+          expect((await Session.get(session1.id)).workspace?.type).toBe("git_worktree")
+          expect((await Session.get(session2.id)).workspace?.type).toBe("git_worktree")
+
+          await Worktree.remove({ sessionID: session1.id, target: created.id, force: true })
+
+          const s1 = await Session.get(session1.id)
+          const s2 = await Session.get(session2.id)
+          expect(s1.workspace?.type).toBe("main")
+          expect(s2.workspace?.type).toBe("main")
+
+          const listed = await Worktree.list()
+          expect(listed.find((item) => item.id === created.id)).toBeUndefined()
+
+          await Session.remove(session1.id)
+          await Session.remove(session2.id)
+        })(),
+    })
+  })
+
+  test("remove rejects when a bound session is running", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create({ title: "Busy Remove" })
+          const created = await Worktree.create({
+            name: "busy-remove",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+
+          try {
+            await expect(Worktree.remove({ sessionID: session.id, target: created.id, force: true })).rejects.toThrow(
+              "Stop session",
+            )
+          } finally {
+            await SessionManager.release(lease!)
+            await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+            await Session.remove(session.id)
+          }
+        })(),
+    })
+  })
+
+  test("remove rejects while session execution is using the worktree before it becomes busy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session = await Session.create({ title: "Reserved Remove" })
+          const created = await Worktree.create({
+            name: "reserved-remove",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+          let finishExecution!: () => void
+          const finish = new Promise<void>((resolve) => {
+            finishExecution = resolve
+          })
+          let executionStarted!: () => void
+          const started = new Promise<void>((resolve) => {
+            executionStarted = resolve
+          })
+          const execution = SessionManager.run(session.id, async () => {
+            executionStarted()
+            await finish
+          })
+
+          await started
+          try {
+            await expect(Worktree.remove({ target: created.id, force: true })).rejects.toThrow("using worktree")
+          } finally {
+            finishExecution()
+            await execution.catch(() => undefined)
+            const remaining = (await Worktree.list()).find((item) => item.id === created.id)
+            if (remaining) await Worktree.remove({ target: created.id, force: true })
+            await Session.remove(session.id)
+          }
+        })(),
+    })
+  })
+
+  test("concurrent enters retain every managed worktree binding", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const session1 = await Session.create({ title: "Concurrent Enter 1" })
+          const session2 = await Session.create({ title: "Concurrent Enter 2" })
+          const created = await Worktree.create({ name: "concurrent-enter", bind: false, baseRef: "current" })
+
+          await Promise.all([
+            Worktree.enter({ sessionID: session1.id, target: created.id }),
+            Worktree.enter({ sessionID: session2.id, target: created.id }),
+          ])
+
+          const listed = await Worktree.list()
+          const bindings = listed.find((item) => item.id === created.id)?.bindings ?? []
+          expect(new Set(bindings)).toEqual(new Set([session1.id, session2.id]))
+
+          await Worktree.remove({ target: created.id, force: true })
+          await Session.remove(session1.id)
+          await Session.remove(session2.id)
+        })(),
+    })
+  })
+
+  test("list includes dirty state and disk usage for managed worktrees", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({
+            name: "list-enriched",
+            bind: false,
+            baseRef: "current",
+          })
+
+          const listed = await Worktree.list()
+          const managed = listed.find((item) => item.id === created.id)
+          expect(managed).toBeDefined()
+          expect(managed!.dirty).toBe(false)
+          expect(managed!.diskBytes).toBeNumber()
+
+          const before = managed!.diskBytes!
+          await fs.writeFile(path.join(created.path, "disk-usage.bin"), Buffer.alloc(4096))
+          const updated = (await Worktree.list()).find((item) => item.id === created.id)
+          expect(updated?.dirty).toBe(true)
+          expect(updated?.diskBytes).toBeGreaterThanOrEqual(before + 4096)
+
+          await Worktree.remove({ target: created.id, force: true })
+        })(),
+    })
+  })
+
+  test("remove cleans a stale managed registry entry without touching the missing directory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const created = await Worktree.create({ name: "stale-remove", bind: false, baseRef: "current" })
+          await $`git worktree remove --force ${created.path}`.quiet().cwd(scope.worktree)
+
+          const stale = (await Worktree.list()).find((item) => item.id === created.id)
+          expect(stale?.stale).toBe(true)
+          expect(stale?.diskBytes).toBeUndefined()
+
+          await Worktree.remove({ target: created.id })
+          expect((await Worktree.list()).some((item) => item.id === created.id)).toBe(false)
+        })(),
+    })
+  })
+
+  test("POST /experimental/worktree/remove succeeds and migrates bound sessions to main", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const session1 = await Session.create({ title: "HTTP Remove 1" })
+          const session2 = await Session.create({ title: "HTTP Remove 2" })
+          const created = await Worktree.create({
+            name: "http-remove",
+            sessionID: session1.id,
+            bind: true,
+            baseRef: "current",
+          })
+          await Worktree.enter({ sessionID: session2.id, target: created.id, force: false })
+
+          const response = await app.request(
+            `/experimental/worktree/remove?directory=${encodeURIComponent(scope.worktree)}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ target: created.id, force: true }),
+            },
+          )
+
+          expect(response.status).toBe(200)
+
+          const s1 = await Session.get(session1.id)
+          const s2 = await Session.get(session2.id)
+          expect(s1.workspace?.type).toBe("main")
+          expect(s2.workspace?.type).toBe("main")
+
+          const listed = await Worktree.list()
+          expect(listed.find((item) => item.id === created.id)).toBeUndefined()
+
+          await Session.remove(session1.id)
+          await Session.remove(session2.id)
+        })(),
+    })
+  })
+
+  test("POST /experimental/worktree/remove rejects busy bound sessions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: () =>
+        using(async () => {
+          const app = Server.App()
+          const session = await Session.create({ title: "HTTP Busy Remove" })
+          const created = await Worktree.create({
+            name: "http-busy-remove",
+            sessionID: session.id,
+            bind: true,
+            baseRef: "current",
+          })
+
+          const lease = SessionManager.acquire(session.id)
+          expect(lease).toBeDefined()
+
+          try {
+            const response = await app.request(
+              `/experimental/worktree/remove?directory=${encodeURIComponent(scope.worktree)}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ target: created.id, force: true }),
+              },
+            )
+            expect(response.status).toBe(400)
+            const body = await response.json()
+            expect(body.name).toBe("WorktreeSessionBusyError")
+          } finally {
+            await SessionManager.release(lease!)
+            await Worktree.remove({ sessionID: session.id, target: created.id, force: true })
+            await Session.remove(session.id)
+          }
         })(),
     })
   })

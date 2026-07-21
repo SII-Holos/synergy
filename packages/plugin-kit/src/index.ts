@@ -1,3 +1,3 @@
-export * from "./commands"
-export * from "./lib/market-entry"
-export * from "./lib/signature"
+export * from "./commands/index.js"
+export * from "./lib/market-entry.js"
+export * from "./lib/signature.js"

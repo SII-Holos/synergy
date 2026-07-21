@@ -1,61 +1,29 @@
+import type { Argv } from "yargs"
+import type { PluginStatus } from "../../plugin/status"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
-import { EOL } from "os"
-import type { Argv } from "yargs"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
+import { pluginInfoStateText } from "./plugin-consent"
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface PluginStatus {
-  id: string
-  name?: string
-  version?: string
-  source: string
-  trust: { tier: string; source: string; userTrusted: boolean; verifiedIntegrity: boolean; reason: string }
-  loaded: boolean
-  loadError?: string
-  manifestValid: boolean
-  integrity: string
-  permissions: {
-    base: string[]
-    tools: Record<string, string[]>
-    overallRisk: "low" | "medium" | "high"
-    warnings: Array<{ type: string; message: string }>
-  }
-  routes: string[]
-  tools: Array<{ id: string; fullId: string; capabilities: string[]; warnings: string[] }>
-  ui: { contributions: number; errors: string[] }
-  stores: { config: boolean; secrets: string; cacheBytes?: number }
-  runtime?: {
-    mode: string
-    pid?: number
-    state: string
-    restarts: number
-    lastHeartbeatAt?: number
-    memoryMb?: number
-    limits: Record<string, number>
-    lastError?: string
-  }
-  warnings: Array<{ type: string; message: string; toolId?: string }>
+function tierLabel(tier: PluginStatus["trust"]): string {
+  return tier === "trusted-import"
+    ? UI.Style.TEXT_WARNING + tier + UI.Style.TEXT_NORMAL
+    : UI.Style.TEXT_SUCCESS + tier + UI.Style.TEXT_NORMAL
 }
 
-function tierLabel(tier: string): string {
-  if (tier === "sandbox") return UI.Style.TEXT_SUCCESS + "sandbox" + UI.Style.TEXT_NORMAL
-  if (tier === "trusted-import") return UI.Style.TEXT_WARNING + "trusted-import" + UI.Style.TEXT_NORMAL
-  return UI.Style.TEXT_DANGER + "declarative" + UI.Style.TEXT_NORMAL
+function riskLabel(risk: PluginStatus["risk"]): string {
+  if (risk === "high") return UI.Style.TEXT_DANGER + risk + UI.Style.TEXT_NORMAL
+  if (risk === "medium") return UI.Style.TEXT_WARNING + risk + UI.Style.TEXT_NORMAL
+  return UI.Style.TEXT_SUCCESS + risk + UI.Style.TEXT_NORMAL
 }
 
-function riskLabel(risk: "low" | "medium" | "high"): string {
-  if (risk === "high") return UI.Style.TEXT_DANGER + "high" + UI.Style.TEXT_NORMAL
-  if (risk === "medium") return UI.Style.TEXT_WARNING + "medium" + UI.Style.TEXT_NORMAL
-  return UI.Style.TEXT_SUCCESS + "low" + UI.Style.TEXT_NORMAL
+function installationLabel(installation: PluginStatus["installation"]): string {
+  if (installation.kind === "directory") return `directory (${installation.path})`
+  if (installation.kind === "archive") return `archive (${installation.path})`
+  if (installation.kind === "registry") return `${installation.registry} registry`
+  if (installation.kind === "package") return `${installation.source} package`
+  return "built in"
 }
-
-// ---------------------------------------------------------------------------
-// info <plugin>
-// ---------------------------------------------------------------------------
 
 export const PluginInfoCommand = cmd({
   command: "info <plugin>",
@@ -74,84 +42,61 @@ export const PluginInfoCommand = cmd({
 
     const pluginId = args.plugin as string
     const status = await fetchPluginApi<PluginStatus>(serverUrl, `/${pluginId}/status`)
+    const stateText = pluginInfoStateText(status)
+    const state = status.loaded
+      ? UI.Style.TEXT_SUCCESS + stateText + UI.Style.TEXT_NORMAL
+      : status.disabledPhase === "approval"
+        ? UI.Style.TEXT_WARNING + stateText + UI.Style.TEXT_NORMAL
+        : UI.Style.TEXT_DANGER + stateText + UI.Style.TEXT_NORMAL
 
     UI.println()
     UI.println(
-      `${UI.Style.TEXT_NORMAL_BOLD}${status.name ?? status.id}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}v${status.version ?? "?"}${UI.Style.TEXT_NORMAL}`,
+      `${UI.Style.TEXT_NORMAL_BOLD}${status.name}${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_DIM}v${status.version ?? "?"}${UI.Style.TEXT_NORMAL}`,
     )
-    UI.println(`${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL}     ${status.id}`)
-
-    // Source & Trust
+    UI.println(`${UI.Style.TEXT_DIM}ID:${UI.Style.TEXT_NORMAL}           ${status.id}`)
+    UI.println(`${UI.Style.TEXT_DIM}Installation:${UI.Style.TEXT_NORMAL} ${installationLabel(status.installation)}`)
     UI.println(
-      `${UI.Style.TEXT_DIM}Source:${UI.Style.TEXT_NORMAL} ${status.source}  ${UI.Style.TEXT_DIM}Trust:${UI.Style.TEXT_NORMAL} ${tierLabel(status.trust.tier)}`,
+      `${UI.Style.TEXT_DIM}Trust:${UI.Style.TEXT_NORMAL}        ${tierLabel(status.trust)}  ${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL} ${riskLabel(status.risk)}`,
     )
-    UI.println(
-      `${UI.Style.TEXT_DIM}Risk:${UI.Style.TEXT_NORMAL}  ${riskLabel(status.permissions.overallRisk)}  ${UI.Style.TEXT_DIM}Integrity:${UI.Style.TEXT_NORMAL} ${status.integrity}`,
-    )
-
-    // Loaded state
-    const loadStatus = status.loaded
-      ? UI.Style.TEXT_SUCCESS + "loaded" + UI.Style.TEXT_NORMAL
-      : UI.Style.TEXT_DANGER + "not loaded" + UI.Style.TEXT_NORMAL
-    UI.println(`${UI.Style.TEXT_DIM}Loaded:${UI.Style.TEXT_NORMAL} ${loadStatus}`)
-    if (status.loadError) {
-      UI.println(`  ${UI.Style.TEXT_DANGER}${status.loadError}${UI.Style.TEXT_NORMAL}`)
+    UI.println(`${UI.Style.TEXT_DIM}State:${UI.Style.TEXT_NORMAL}        ${state}`)
+    if (status.apiVersion) UI.println(`${UI.Style.TEXT_DIM}Plugin API:${UI.Style.TEXT_NORMAL}   ${status.apiVersion}`)
+    if (status.generation) UI.println(`${UI.Style.TEXT_DIM}Generation:${UI.Style.TEXT_NORMAL}   ${status.generation}`)
+    if (status.disabledReason) UI.println(`  ${UI.Style.TEXT_DANGER}${status.disabledReason}${UI.Style.TEXT_NORMAL}`)
+    if (status.disabledPhase === "approval") {
+      UI.println(`  ${UI.Style.TEXT_WARNING}Review with: synergy plugin approve ${status.id}${UI.Style.TEXT_NORMAL}`)
     }
 
-    // Tools
     UI.println()
-    UI.println(`${UI.Style.TEXT_DIM}Tools:${UI.Style.TEXT_NORMAL} ${status.tools.length}`)
+    UI.println(`${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.length}`)
+    for (const capability of status.capabilities) UI.println(`  ${capability}`)
+
+    UI.println()
+    UI.println(
+      `${UI.Style.TEXT_DIM}Contributions:${UI.Style.TEXT_NORMAL} ${status.tools.length} tools, ${status.operations.length} operations, ${status.uiContributions} UI surfaces`,
+    )
     for (const tool of status.tools) {
-      const caps = tool.capabilities.length > 0 ? ` (${tool.capabilities.join(", ")})` : ""
-      const warns =
-        tool.warnings.length > 0
-          ? ` ${UI.Style.TEXT_WARNING}[${tool.warnings.length} warning${tool.warnings.length !== 1 ? "s" : ""}]${UI.Style.TEXT_NORMAL}`
-          : ""
-      UI.println(`  ${tool.id}${caps}${warns}`)
+      const capabilities = tool.capabilities.length > 0 ? ` (${tool.capabilities.join(", ")})` : ""
+      UI.println(`  tool ${tool.id}${capabilities}`)
+    }
+    for (const operation of status.operations) {
+      UI.println(`  ${operation.type} ${operation.id} [${operation.expose.join(", ")}]`)
     }
 
-    // UI contributions
-    if (status.ui.contributions > 0) {
-      UI.println()
-      UI.println(`${UI.Style.TEXT_DIM}UI Contributions:${UI.Style.TEXT_NORMAL} ${status.ui.contributions}`)
-      if (status.routes.length > 0) {
-        UI.println(`  Routes: ${status.routes.join(", ")}`)
-      }
-      if (status.ui.errors.length > 0) {
-        for (const err of status.ui.errors) {
-          UI.println(`  ${UI.Style.TEXT_DANGER}✘${UI.Style.TEXT_NORMAL} ${err}`)
-        }
-      }
-    }
-
-    // Runtime
     if (status.runtime) {
-      const rt = status.runtime
-      UI.println()
-      UI.println(`${UI.Style.TEXT_DIM}Runtime:${UI.Style.TEXT_NORMAL} ${rt.mode}  ${rt.state}`)
-    }
-
-    // Approval — check approval endpoint
-    try {
-      const approval = await fetchPluginApi<any>(serverUrl, `/${pluginId}/approval`)
       UI.println()
       UI.println(
-        `${UI.Style.TEXT_DIM}Approval:${UI.Style.TEXT_NORMAL} ${approval.trustTier} (approved ${new Date(approval.approvedAt).toLocaleDateString()})`,
+        `${UI.Style.TEXT_DIM}Runtime:${UI.Style.TEXT_NORMAL} ${status.runtime.mode}  ${status.runtime.state}  ${status.runtime.inFlight} in flight`,
       )
-    } catch {
-      UI.println()
-      UI.println(
-        `${UI.Style.TEXT_DIM}Approval:${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_WARNING}not yet approved${UI.Style.TEXT_NORMAL}`,
-      )
+      if (status.runtime.pid) UI.println(`  PID ${status.runtime.pid}`)
+      if (status.runtime.lastError)
+        UI.println(`  ${UI.Style.TEXT_DANGER}${status.runtime.lastError}${UI.Style.TEXT_NORMAL}`)
     }
 
-    // Warnings
-    if (status.warnings.length > 0) {
+    const degraded = Object.entries(status.contributionHealth).filter(([, health]) => health.state === "degraded")
+    if (degraded.length > 0) {
       UI.println()
-      UI.println(`${UI.Style.TEXT_WARNING_BOLD}Warnings:${UI.Style.TEXT_NORMAL}`)
-      for (const w of status.warnings) {
-        UI.println(`  ${UI.Style.TEXT_WARNING}⚠${UI.Style.TEXT_NORMAL} ${w.message}`)
-      }
+      UI.println(`${UI.Style.TEXT_WARNING_BOLD}Degraded contributions:${UI.Style.TEXT_NORMAL}`)
+      for (const [id, health] of degraded) UI.println(`  ${id}${health.lastError ? `: ${health.lastError}` : ""}`)
     }
 
     UI.println()

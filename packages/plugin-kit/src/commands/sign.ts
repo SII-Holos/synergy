@@ -3,14 +3,17 @@ import fs from "fs"
 import { EOL } from "os"
 import { subtle } from "node:crypto"
 import type { Argv } from "yargs"
-import { PluginManifest, type PluginManifest as PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { cmd } from "../cmd"
-import { UI } from "../ui"
-import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths"
-import { sha256File } from "../lib/crypto"
-import type { SignatureMetadata } from "../lib/signature"
-import { baseCapabilities } from "../lib/capability"
-import { computeManifestHash, computePermissionsHash } from "../lib/hash"
+import {
+  PluginArtifact,
+  PluginManifest,
+  type PluginManifest as PluginManifestType,
+} from "@ericsanchezok/synergy-plugin"
+import { cmd } from "../cmd.js"
+import { UI } from "../ui.js"
+import { SIGNING_KEYS_DIR, SIGNING_KEY_FILE } from "../lib/paths.js"
+import { sha256File } from "../lib/crypto.js"
+import type { SignatureMetadata } from "../lib/signature.js"
+import { computeManifestHash, computePermissionsHash } from "../lib/hash.js"
 
 interface KeyFile {
   publicKey: string
@@ -46,7 +49,7 @@ async function generateKeyPair(): Promise<KeyFile> {
   }
 }
 
-async function importPrivateKey(hex: string): Promise<CryptoKey> {
+async function importPrivateKey(hex: string) {
   return subtle.importKey("pkcs8", Buffer.from(hex, "hex"), "Ed25519" as any, false, ["sign"])
 }
 
@@ -56,18 +59,21 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   UI.println(`${UI.Style.TEXT_NORMAL_BOLD}Signing${UI.Style.TEXT_NORMAL} ${path.basename(tarballPath)}`)
 
   const tarballHash = sha256File(tarballPath)
-  const manifestRaw = extractFromTarball(tarballPath, "plugin.normalized.json")
-  if (!manifestRaw) throw new Error("Failed to extract plugin.normalized.json from tarball. Has the plugin been built?")
+  const manifestRaw = extractFromTarball(tarballPath, PluginArtifact.manifestFile)
+  if (!manifestRaw)
+    throw new Error(`Failed to extract ${PluginArtifact.manifestFile} from tarball. Has the plugin been built?`)
 
   let manifest: PluginManifestType
   try {
     manifest = PluginManifest.parse(JSON.parse(manifestRaw)) as PluginManifestType
   } catch {
-    throw new Error("Failed to parse plugin.normalized.json from tarball")
+    throw new Error(`Failed to parse ${PluginArtifact.manifestFile} from tarball`)
   }
 
-  if (!extractFromTarball(tarballPath, "permissions.summary.json")) {
-    throw new Error("Failed to extract permissions.summary.json from tarball. Has the plugin been built?")
+  if (!extractFromTarball(tarballPath, PluginArtifact.permissionsSummaryFile)) {
+    throw new Error(
+      `Failed to extract ${PluginArtifact.permissionsSummaryFile} from tarball. Has the plugin been built?`,
+    )
   }
 
   let keyFile = readKeyFile()
@@ -82,13 +88,13 @@ export async function signPluginTarball(tarballPath: string, options: { stdout?:
   const payload = {
     tarballHash,
     manifestHash: computeManifestHash(manifest),
-    permissionsHash: computePermissionsHash(manifest, baseCapabilities(manifest)),
+    permissionsHash: computePermissionsHash(manifest),
   }
   const privateKey = await importPrivateKey(keyFile.privateKey)
   const sigRaw = await subtle.sign("Ed25519" as any, privateKey, new TextEncoder().encode(JSON.stringify(payload)))
   const signature: SignatureMetadata = {
     signatureVersion: 1,
-    pluginId: manifest.name,
+    pluginId: manifest.id,
     version: manifest.version,
     algorithm: "ed25519",
     signer: keyFile.publicKey,

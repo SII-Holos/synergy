@@ -15,6 +15,8 @@ import { ScopedState } from "../scope/scoped-state"
 import { SYNERGY_REFERER } from "../holos/constants" // DISABLED — inlined below
 import { TimeoutConfig } from "@/util/timeout-config"
 import { iife } from "@/util/iife"
+import net from "node:net"
+import tls from "node:tls"
 import { MODEL_ROLE_FALLBACK_FIELDS, ModelRole as ModelRoleSchema, type ModelRole as ModelRoleType } from "./model-role"
 
 // Direct imports for bundled providers
@@ -40,6 +42,10 @@ import { createVercel } from "@ai-sdk/vercel"
 import { ProviderTransform } from "./transform"
 import { ProviderCatalog } from "./catalog"
 import { ProviderProfile } from "./profile"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import { authHook as pluginAuthHook } from "@/plugin/auth-provider"
+import { normalizeImageMediaTypes } from "./image-capability"
+import { ProviderStream } from "./stream"
 
 export namespace Provider {
   const log = Log.create({ service: "provider" })
@@ -66,6 +72,159 @@ export namespace Provider {
     "@ai-sdk/vercel": createVercel,
   }
 
+  function createChunkedBodyDecoder(controller: ReadableStreamDefaultController<Uint8Array>) {
+    let buffer = new Uint8Array()
+    let remaining = 0
+    let done = false
+
+    return (chunk: Uint8Array) => {
+      if (done) return
+      const combined = new Uint8Array(buffer.length + chunk.length)
+      combined.set(buffer)
+      combined.set(chunk, buffer.length)
+      buffer = combined
+
+      while (!done) {
+        if (remaining === 0) {
+          const text = new TextDecoder().decode(buffer)
+          const lineEnd = text.indexOf("\r\n")
+          if (lineEnd === -1) return
+          const sizeText = text.slice(0, lineEnd).split(";", 1)[0]
+          remaining = Number.parseInt(sizeText, 16)
+          const consumed = lineEnd + 2
+          buffer = buffer.slice(consumed)
+          if (remaining === 0) {
+            done = true
+            controller.close()
+            return
+          }
+        }
+
+        if (buffer.length < remaining + 2) return
+        controller.enqueue(buffer.slice(0, remaining))
+        buffer = buffer.slice(remaining + 2)
+        remaining = 0
+      }
+    }
+  }
+
+  async function directFetch(input: RequestInfo | URL, init: RequestInit | undefined) {
+    const request = input instanceof Request ? input : new Request(input, init)
+    const url = new URL(request.url)
+    const isHttps = url.protocol === "https:"
+    const port = Number(url.port || (isHttps ? 443 : 80))
+    const headers = new Headers(request.headers)
+    headers.set("Host", url.host)
+    headers.set("Connection", "close")
+    if (!headers.has("Accept-Encoding")) headers.set("Accept-Encoding", "identity")
+
+    const body = request.body ? new Uint8Array(await request.arrayBuffer()) : undefined
+    if (body && !headers.has("Content-Length")) headers.set("Content-Length", String(body.byteLength))
+
+    return new Promise<Response>((resolve, reject) => {
+      const socket = isHttps
+        ? tls.connect({ host: url.hostname, port, servername: url.hostname })
+        : net.connect({ host: url.hostname, port })
+      let settled = false
+      let headerBuffer = new Uint8Array()
+      let controller: ReadableStreamDefaultController<Uint8Array> | undefined
+
+      const fail = (error: unknown) => {
+        if (settled) {
+          controller?.error(error)
+          return
+        }
+        settled = true
+        reject(error)
+      }
+
+      const abort = () => {
+        socket.destroy(request.signal.reason)
+        fail(request.signal.reason ?? new DOMException("Request aborted", "AbortError"))
+      }
+
+      request.signal.addEventListener("abort", abort, { once: true })
+      socket.on("error", fail)
+      const sendRequest = () => {
+        const path = `${url.pathname}${url.search}`
+        const headerLines = Array.from(headers.entries()).map(([key, value]) => `${key}: ${value}`)
+        socket.write(`${request.method} ${path || "/"} HTTP/1.1\r\n${headerLines.join("\r\n")}\r\n\r\n`)
+        if (body) socket.write(body)
+      }
+      socket.on(isHttps ? "secureConnect" : "connect", sendRequest)
+      let pushBody: ((chunk: Uint8Array) => void) | undefined
+      socket.on("data", (chunk: Buffer) => {
+        const data = new Uint8Array(chunk)
+        if (settled) {
+          pushBody?.(data)
+          return
+        }
+
+        const combined = new Uint8Array(headerBuffer.length + data.length)
+        combined.set(headerBuffer)
+        combined.set(data, headerBuffer.length)
+        const marker = "\r\n\r\n"
+        const text = new TextDecoder().decode(combined)
+        const headerEnd = text.indexOf(marker)
+        if (headerEnd === -1) {
+          headerBuffer = combined
+          return
+        }
+
+        const rawHeaders = text.slice(0, headerEnd).split("\r\n")
+        const [statusLine = "HTTP/1.1 502 Bad Gateway", ...headerLines] = rawHeaders
+        const [, statusCode = "502", ...statusTextParts] = statusLine.split(" ")
+        const responseHeaders = new Headers()
+        for (const line of headerLines) {
+          const separator = line.indexOf(":")
+          if (separator === -1) continue
+          responseHeaders.append(line.slice(0, separator), line.slice(separator + 1).trim())
+        }
+
+        const bodyStart = headerEnd + marker.length
+        const bodyPrefix = combined.slice(bodyStart)
+        const isChunked = responseHeaders.get("transfer-encoding")?.toLowerCase().includes("chunked") ?? false
+        settled = true
+        const stream = new ReadableStream<Uint8Array>({
+          start(c) {
+            controller = c
+            pushBody = isChunked ? createChunkedBodyDecoder(c) : (bodyChunk) => c.enqueue(bodyChunk)
+            if (bodyPrefix.byteLength > 0) pushBody(bodyPrefix)
+          },
+          cancel() {
+            socket.destroy()
+          },
+        })
+        resolve(
+          new Response(stream, {
+            status: Number(statusCode),
+            statusText: statusTextParts.join(" "),
+            headers: responseHeaders,
+          }),
+        )
+      })
+      socket.on("end", () => {
+        try {
+          controller?.close()
+        } catch {}
+      })
+      socket.on("close", () => request.signal.removeEventListener("abort", abort))
+    })
+  }
+
+  async function fetchWithProxyOptions(
+    fetchFn: ProviderProfile.FetchLike,
+    input: RequestInfo | URL,
+    init: RequestInit | undefined,
+    proxyUrl: string | undefined,
+    noProxy: boolean,
+  ) {
+    const request = input instanceof Request ? input : new Request(input, init)
+    if (noProxy) return directFetch(request, undefined)
+    if (proxyUrl) return fetchFn(request, { proxy: proxyUrl } as RequestInit)
+    return fetchFn(request)
+  }
+
   type CustomModelLoader = (sdk: any, modelID: string, options?: Record<string, any>) => Promise<any>
   export const Model = z
     .object({
@@ -81,6 +240,7 @@ export namespace Provider {
       capabilities: z.object({
         temperature: z.boolean(),
         reasoning: z.boolean(),
+        reasoningEfforts: z.array(z.string()).optional(),
         attachment: z.boolean(),
         toolcall: z.boolean(),
         input: z.object({
@@ -89,6 +249,7 @@ export namespace Provider {
           image: z.boolean(),
           video: z.boolean(),
           pdf: z.boolean(),
+          supportedImageMediaTypes: z.array(z.string()).optional(),
         }),
         output: z.object({
           text: z.boolean(),
@@ -137,6 +298,56 @@ export namespace Provider {
       ref: "Model",
     })
   export type Model = z.infer<typeof Model>
+
+  const CATALOG_CAPABILITY_DEFAULTS: Model["capabilities"] = {
+    temperature: false,
+    reasoning: false,
+    attachment: false,
+    toolcall: false,
+    input: { text: false, audio: false, image: false, video: false, pdf: false },
+    output: { text: false, audio: false, image: false, video: false, pdf: false },
+    interleaved: false,
+  }
+
+  const CONFIG_CAPABILITY_DEFAULTS: Model["capabilities"] = {
+    ...CATALOG_CAPABILITY_DEFAULTS,
+    toolcall: true,
+    input: { ...CATALOG_CAPABILITY_DEFAULTS.input, text: true },
+    output: { ...CATALOG_CAPABILITY_DEFAULTS.output, text: true },
+  }
+
+  export function mergeModelCapabilities(
+    model: Partial<ModelsDev.Model>,
+    fallback: Model["capabilities"] = CONFIG_CAPABILITY_DEFAULTS,
+  ): Model["capabilities"] {
+    const reasoning = model.reasoning ?? fallback.reasoning
+    return {
+      temperature: model.temperature ?? fallback.temperature,
+      reasoning,
+      reasoningEfforts: reasoning ? (ModelsDev.reasoningEfforts(model) ?? fallback.reasoningEfforts) : undefined,
+      attachment: model.attachment ?? fallback.attachment,
+      toolcall: model.tool_call ?? fallback.toolcall,
+      input: {
+        text: model.modalities?.input?.includes("text") ?? fallback.input.text,
+        audio: model.modalities?.input?.includes("audio") ?? fallback.input.audio,
+        image: model.modalities?.input?.includes("image") ?? fallback.input.image,
+        video: model.modalities?.input?.includes("video") ?? fallback.input.video,
+        pdf: model.modalities?.input?.includes("pdf") ?? fallback.input.pdf,
+        supportedImageMediaTypes:
+          model.supported_image_media_types !== undefined
+            ? normalizeImageMediaTypes(model.supported_image_media_types)
+            : fallback.input.supportedImageMediaTypes,
+      },
+      output: {
+        text: model.modalities?.output?.includes("text") ?? fallback.output.text,
+        audio: model.modalities?.output?.includes("audio") ?? fallback.output.audio,
+        image: model.modalities?.output?.includes("image") ?? fallback.output.image,
+        video: model.modalities?.output?.includes("video") ?? fallback.output.video,
+        pdf: model.modalities?.output?.includes("pdf") ?? fallback.output.pdf,
+      },
+      interleaved: model.interleaved ?? fallback.interleaved,
+    }
+  }
 
   export const Info = z
     .object({
@@ -190,27 +401,7 @@ export namespace Provider {
         input: model.limit.input,
         output: model.limit.output,
       },
-      capabilities: {
-        temperature: model.temperature,
-        reasoning: model.reasoning,
-        attachment: model.attachment,
-        toolcall: model.tool_call,
-        input: {
-          text: model.modalities?.input?.includes("text") ?? false,
-          audio: model.modalities?.input?.includes("audio") ?? false,
-          image: model.modalities?.input?.includes("image") ?? false,
-          video: model.modalities?.input?.includes("video") ?? false,
-          pdf: model.modalities?.input?.includes("pdf") ?? false,
-        },
-        output: {
-          text: model.modalities?.output?.includes("text") ?? false,
-          audio: model.modalities?.output?.includes("audio") ?? false,
-          image: model.modalities?.output?.includes("image") ?? false,
-          video: model.modalities?.output?.includes("video") ?? false,
-          pdf: model.modalities?.output?.includes("pdf") ?? false,
-        },
-        interleaved: model.interleaved ?? false,
-      },
+      capabilities: mergeModelCapabilities(model, CATALOG_CAPABILITY_DEFAULTS),
       release_date: model.release_date,
       variants: {},
     }
@@ -304,27 +495,7 @@ export namespace Provider {
           status: model.status ?? existingModel?.status ?? "active",
           name,
           providerID,
-          capabilities: {
-            temperature: model.temperature ?? existingModel?.capabilities.temperature ?? false,
-            reasoning: model.reasoning ?? existingModel?.capabilities.reasoning ?? false,
-            attachment: model.attachment ?? existingModel?.capabilities.attachment ?? false,
-            toolcall: model.tool_call ?? existingModel?.capabilities.toolcall ?? true,
-            input: {
-              text: model.modalities?.input?.includes("text") ?? existingModel?.capabilities.input.text ?? true,
-              audio: model.modalities?.input?.includes("audio") ?? existingModel?.capabilities.input.audio ?? false,
-              image: model.modalities?.input?.includes("image") ?? existingModel?.capabilities.input.image ?? false,
-              video: model.modalities?.input?.includes("video") ?? existingModel?.capabilities.input.video ?? false,
-              pdf: model.modalities?.input?.includes("pdf") ?? existingModel?.capabilities.input.pdf ?? false,
-            },
-            output: {
-              text: model.modalities?.output?.includes("text") ?? existingModel?.capabilities.output.text ?? true,
-              audio: model.modalities?.output?.includes("audio") ?? existingModel?.capabilities.output.audio ?? false,
-              image: model.modalities?.output?.includes("image") ?? existingModel?.capabilities.output.image ?? false,
-              video: model.modalities?.output?.includes("video") ?? existingModel?.capabilities.output.video ?? false,
-              pdf: model.modalities?.output?.includes("pdf") ?? existingModel?.capabilities.output.pdf ?? false,
-            },
-            interleaved: model.interleaved ?? false,
-          },
+          capabilities: mergeModelCapabilities(model, existingModel?.capabilities),
           cost: {
             input: model?.cost?.input ?? existingModel?.cost?.input ?? 0,
             output: model?.cost?.output ?? existingModel?.cost?.output ?? 0,
@@ -377,9 +548,9 @@ export namespace Provider {
       }
     }
 
-    for (const plugin of await Plugin.allHooks()) {
-      if (!plugin.auth) continue
-      const providerID = plugin.auth.provider
+    for (const entry of await Plugin.authProviderEntries()) {
+      const plugin = pluginAuthHook(entry.plugin, entry.contribution)
+      const providerID = plugin.provider
       if (disabled.has(providerID)) continue
 
       // For github-copilot plugin, check if auth exists for either github-copilot or github-copilot-enterprise
@@ -394,12 +565,12 @@ export namespace Provider {
       }
 
       if (!hasAuth) continue
-      if (!plugin.auth.loader) continue
+      if (!plugin.loader) continue
 
       // Load for the main provider if auth exists
       if (auth) {
-        const options = await plugin.auth.loader(() => Auth.get(providerID) as any, database[plugin.auth.provider])
-        mergeProvider(plugin.auth.provider, {
+        const options = await plugin.loader(() => Auth.get(providerID) as any, database[providerID])
+        mergeProvider(providerID, {
           source: "custom",
           options: options,
         })
@@ -411,7 +582,7 @@ export namespace Provider {
         if (!disabled.has(enterpriseProviderID)) {
           const enterpriseAuth = await Auth.get(enterpriseProviderID)
           if (enterpriseAuth) {
-            const enterpriseOptions = await plugin.auth.loader(
+            const enterpriseOptions = await plugin.loader(
               () => Auth.get(enterpriseProviderID) as any,
               database[enterpriseProviderID],
             )
@@ -548,10 +719,35 @@ export namespace Provider {
       throw new Error(`Unsupported provider SDK "${model.api.npm}" for "${model.providerID}"`)
     }
 
-    return bundledFn({
+    const customFetch = options["fetch"]
+    const proxyUrl = options["proxy"] as string | undefined
+    const noProxy = options["noProxy"] === true
+    delete options["proxy"]
+    delete options["noProxy"]
+
+    const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+    const proxyFetch =
+      proxyUrl || noProxy
+        ? (input: any, init?: any) => fetchWithProxyOptions(authFetch, input, init, proxyUrl, noProxy)
+        : authFetch
+    options["fetch"] = proxyFetch
+
+    const builtSDK = bundledFn({
       name: model.providerID,
       ...options,
     }) as SDK
+
+    if (proxyUrl || noProxy) {
+      const patchedSDK = new Proxy(builtSDK as object, {
+        get(target, prop) {
+          if (prop === "fetch") return proxyFetch
+          return Reflect.get(target, prop)
+        },
+      })
+      return patchedSDK as SDK
+    }
+
+    return builtSDK
   }
 
   export async function getSDK(model: Model) {
@@ -585,15 +781,26 @@ export namespace Provider {
       }
 
       const customFetch = options["fetch"]
+      const authFetch = ProviderAuthRecovery.wrapFetch(model.providerID, customFetch ?? fetch)
+      const proxyUrl = options["proxy"] as string | undefined
+      const noProxy = options["noProxy"] === true
+      delete options["proxy"]
+      delete options["noProxy"]
       const timeoutCfg = await TimeoutConfig.resolve()
-
       const DEFAULT_TIMEOUT_MS = 900_000
 
       options["fetch"] = async (input: any, init?: BunFetchRequestInit) => {
-        const fetchFn = customFetch ?? fetch
+        const fetchFn = authFetch
         const opts = init ?? {}
 
-        const timeoutMs = options["timeout"] === false ? false : (options["timeout"] ?? DEFAULT_TIMEOUT_MS)
+        const proxyUrlForRequest = proxyUrl
+        const noProxyForRequest = noProxy
+
+        // Provider-level options take precedence; otherwise use the configured
+        // idle timeout (timeout.provider.idle_sec). `false` disables it.
+        const configuredIdle = options["timeout"] !== undefined ? options["timeout"] : timeoutCfg.providerIdleMs
+        const timeoutMs =
+          configuredIdle === false ? false : ((configuredIdle as number | undefined) ?? DEFAULT_TIMEOUT_MS)
 
         let ttfbController: AbortController | null = null
         let ttfbTimer: ReturnType<typeof setTimeout> | null = null
@@ -656,16 +863,29 @@ export namespace Provider {
         const fetchTimer = log.time("fetch.request", { url: safeUrl })
         let response: Response
         try {
-          response = await fetchFn(input, {
-            ...opts,
-            headers,
-            // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
-            timeout: false,
-          })
+          response = await fetchWithProxyOptions(
+            fetchFn,
+            input,
+            {
+              ...opts,
+              headers,
+              // @ts-ignore see here: https://github.com/oven-sh/bun/issues/16682
+              timeout: false,
+            },
+            proxyUrlForRequest,
+            noProxyForRequest,
+          )
         } catch (error) {
+          cleanupTimers()
           fetchTimer.stop({ status: "exception" })
           log.error("fetch.request.failed", { url: safeUrl, error })
           throw error
+        }
+        // First byte arrived — stop the TTFB timer so it cannot abort a
+        // healthy long-lived stream later on.
+        if (ttfbTimer) {
+          clearTimeout(ttfbTimer)
+          ttfbTimer = null
         }
         fetchTimer.stop({ status: response.ok ? "success" : "error", statusCode: response.status })
         if (!response.ok) {
@@ -676,9 +896,29 @@ export namespace Provider {
           })
         }
 
+        const responseBody =
+          response.body && ProviderStream.isSSE(response.headers)
+            ? ProviderStream.enforceSSEEventParserBound(response.body)
+            : response.body
+
         // For streaming responses, wrap the body to reset idle timer on each chunk
-        if (idleController && response.body) {
-          const originalBody = response.body
+        if (idleController && responseBody) {
+          const originalBody = responseBody
+          const idleSignal = idleController.signal
+          // Aborting the fetch signal does not reliably reject a pending body
+          // read on a half-open connection, so the idle timeout must also win
+          // a race against the read itself.
+          let rejectIdle!: (reason: unknown) => void
+          const idleAborted = new Promise<never>((_, reject) => {
+            rejectIdle = reject
+          })
+          const onIdleAbort = () => rejectIdle(idleSignal.reason)
+          idleSignal.addEventListener("abort", onIdleAbort, { once: true })
+          idleAborted.catch(() => {})
+          const cleanupStream = () => {
+            if (idleTimer) clearTimeout(idleTimer)
+            idleSignal.removeEventListener("abort", onIdleAbort)
+          }
           const resetIdle = () => {
             if (idleTimer) clearTimeout(idleTimer)
             idleTimer = setTimeout(() => {
@@ -688,34 +928,46 @@ export namespace Provider {
             }, timeoutMs as number).unref()
           }
 
+          let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
           const wrappedStream = new ReadableStream({
-            async start(controller) {
-              const reader = originalBody.getReader()
+            // Pull-based so provider bytes stay bounded by downstream demand
+            // (AI SDK / SessionProcessor). The previous eager start() pump could
+            // enqueue far ahead of a slow fanout path and inflate native buffers
+            // (#524 / #498).
+            async pull(controller) {
+              reader ??= originalBody.getReader()
               try {
-                while (true) {
-                  const { done, value } = await reader.read()
-                  if (done) {
-                    if (idleTimer) clearTimeout(idleTimer)
-                    controller.close()
-                    break
-                  }
-                  resetIdle()
-                  controller.enqueue(value)
+                const { done, value } = await Promise.race([reader.read(), idleAborted])
+                if (done) {
+                  cleanupStream()
+                  controller.close()
+                  return
                 }
+                resetIdle()
+                controller.enqueue(value)
               } catch (err) {
-                if (idleTimer) clearTimeout(idleTimer)
+                cleanupStream()
                 controller.error(err)
-              } finally {
-                reader.releaseLock()
+                try {
+                  await reader.cancel(err)
+                } catch {}
               }
             },
-            cancel() {
-              if (idleTimer) clearTimeout(idleTimer)
-              return originalBody.cancel()
+            cancel(reason) {
+              cleanupStream()
+              return reader ? reader.cancel(reason) : originalBody.cancel(reason)
             },
           })
 
           return new Response(wrappedStream, {
+            status: response.status,
+            statusText: response.statusText,
+            headers: response.headers,
+          })
+        }
+
+        if (responseBody !== response.body) {
+          return new Response(responseBody, {
             status: response.status,
             statusText: response.statusText,
             headers: response.headers,
@@ -787,7 +1039,18 @@ export namespace Provider {
 
   export async function getLanguage(model: Model): Promise<LanguageModelV2> {
     const s = await state()
-    const key = `${model.providerID}/${model.id}`
+    const provider = s.providers[model.providerID]
+    const options = { ...provider.options, ...model.options }
+    const key = Bun.hash
+      .xxHash32(
+        JSON.stringify({
+          providerID: model.providerID,
+          modelID: model.id,
+          npm: model.api.npm,
+          options,
+        }),
+      )
+      .toString()
     const MODEL_CACHE_TTL_MS = 4 * 60 * 60 * 1000 // 4 hours — keep in sync with SDK_CACHE_TTL_MS
     const cached = s.models.get(key)
     if (cached) {
@@ -796,7 +1059,6 @@ export namespace Provider {
       log.info("model cache entry expired, recreating", { key })
     }
 
-    const provider = s.providers[model.providerID]
     const sdk = await getSDK(model)
 
     try {

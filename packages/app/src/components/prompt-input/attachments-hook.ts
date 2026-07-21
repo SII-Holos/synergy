@@ -6,15 +6,16 @@ import { useParams } from "@solidjs/router"
 import { useSDK } from "@/context/sdk"
 import { usePrompt } from "@/context/prompt"
 import type { ContentPart, NoteAttachmentPart, SessionAttachmentPart } from "@/context/prompt"
+import { PromptAttachmentError, uploadPromptAttachment } from "@/utils/prompt-attachment"
+import { useLocale } from "@/context/locale"
 import {
-  isTextAttachmentFile,
-  preparePromptAttachment,
-  PromptAttachmentError,
-  uploadPromptAttachment,
-} from "@/utils/prompt-attachment"
-import { ACCEPTED_FILE_TYPES } from "./files"
+  formatUnsupportedAttachmentToast,
+  isPromptAttachmentFileAccepted,
+  partitionPromptAttachmentFiles,
+} from "./files"
 import { createPromptPartID } from "./content"
 import { getCursorPosition } from "./editor-dom"
+import { PI } from "./prompt-input-i18n"
 import type { BlueprintSlot, DroppedBlueprintData, DroppedSessionData, PromptInputStore } from "./types"
 
 type PromptAttachmentsInput = {
@@ -26,6 +27,9 @@ type PromptAttachmentsInput = {
   localArmedLoop: Accessor<BlueprintSlot | null>
   setLocalArmedLoop: Setter<BlueprintSlot | null>
   activeLoopID: Accessor<string | undefined>
+  working: Accessor<boolean>
+  workflowKind: Accessor<"plan" | "lightloop" | "lattice" | undefined>
+  clearPendingWorkflows: () => void
   setStore: SetStoreFunction<PromptInputStore>
 }
 
@@ -41,48 +45,18 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
   const prompt = usePrompt()
   const params = useParams()
   const dialog = useDialog()
+  const { i18n } = useLocale()
 
   const addAttachment = async (file: File) => {
-    if (!ACCEPTED_FILE_TYPES.includes(file.type) && !isTextAttachmentFile(file)) return
+    if (!isPromptAttachmentFileAccepted(file)) {
+      const toast = formatUnsupportedAttachmentToast([file], 0)
+      if (toast) showToast(toast)
+      return
+    }
 
     try {
       const cursorPosition = prompt.cursor() ?? getCursorPosition(input.editor())
-      if (isTextAttachmentFile(file)) {
-        const uploaded = await uploadPromptAttachment(sdk.client, sdk.url, file)
-        prompt.set(
-          [
-            ...prompt.current(),
-            {
-              type: "attachment",
-              id: createPromptPartID(),
-              filename: file.name,
-              mime: uploaded.mime,
-              url: uploaded.url,
-            },
-          ],
-          cursorPosition,
-        )
-        return
-      }
-
-      const prepared = await preparePromptAttachment(file)
-      if (prepared.mime.startsWith("image/")) {
-        prompt.set(
-          [
-            ...prompt.current(),
-            {
-              type: "image",
-              id: createPromptPartID(),
-              filename: file.name,
-              mime: prepared.mime,
-              dataUrl: prepared.dataUrl,
-            },
-          ],
-          cursorPosition,
-        )
-        return
-      }
-
+      const uploaded = await uploadPromptAttachment(sdk.client, file)
       prompt.set(
         [
           ...prompt.current(),
@@ -90,8 +64,11 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
             type: "attachment",
             id: createPromptPartID(),
             filename: file.name,
-            mime: prepared.mime,
-            url: prepared.dataUrl,
+            mime: uploaded.mime,
+            url: uploaded.url,
+            size: uploaded.size,
+            metadata: uploaded.metadata,
+            presentation: uploaded.presentation,
           },
         ],
         cursorPosition,
@@ -102,13 +79,22 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
           ? error.message
           : error instanceof Error
             ? error.message
-            : "This attachment couldn’t be prepared. Try another file."
+            : i18n._(PI.attachFailedGeneric)
 
       showToast({
         type: "error",
-        title: error instanceof PromptAttachmentError ? error.title : "Couldn’t attach file",
+        title: error instanceof PromptAttachmentError ? error.title : i18n._(PI.attachFailedTitle),
         description,
       })
+    }
+  }
+
+  const addAttachments = async (files: Iterable<File>) => {
+    const { accepted, rejected } = partitionPromptAttachmentFiles(files)
+    const toast = formatUnsupportedAttachmentToast(rejected, accepted.length)
+    if (toast) showToast(toast)
+    for (const file of accepted) {
+      await addAttachment(file)
     }
   }
 
@@ -127,13 +113,13 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     event.stopPropagation()
 
     const items = Array.from(clipboardData.items)
-    const imageItems = items.filter((item) => ACCEPTED_FILE_TYPES.includes(item.type))
+    const files = items
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((file): file is File => !!file)
 
-    if (imageItems.length > 0) {
-      for (const item of imageItems) {
-        const file = item.getAsFile()
-        if (file) await addAttachment(file)
-      }
+    if (files.length > 0) {
+      await addAttachments(files)
       return
     }
 
@@ -178,13 +164,53 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
       try {
         const dropped = JSON.parse(blueprintData) as DroppedBlueprintData
         if (!dropped.noteID) return
+        const workflowKind = input.workflowKind()
+        if (input.working()) {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.sessionRunning),
+            description:
+              workflowKind === "lightloop"
+                ? i18n._(PI.attachWaitLightLoop)
+                : workflowKind === "plan"
+                  ? i18n._(PI.attachWaitPlan)
+                  : i18n._(PI.attachWaitRun),
+          })
+          return
+        }
         if (input.localArmedLoop() || input.activeLoopID()) {
           showToast({
             type: "warning",
-            title: "Blueprint slot occupied",
-            description: "Wait for the current BlueprintLoop to finish before equipping another Blueprint.",
+            title: i18n._(PI.attachSlotOccupied),
+            description: i18n._(PI.attachWaitCurrentBp),
           })
           return
+        }
+        if (workflowKind === "lattice") {
+          showToast({
+            type: "warning",
+            title: i18n._(PI.attachLatticeActive),
+            description: i18n._(PI.attachCancelLattice),
+          })
+          return
+        }
+        if (workflowKind === "plan" || workflowKind === "lightloop") {
+          if (params.id) {
+            try {
+              await sdk.client.workflow.session.set({
+                id: params.id,
+                workflowSetInput: { kind: "none" },
+              })
+            } catch (err) {
+              showToast({
+                type: "error",
+                title: workflowKind === "plan" ? i18n._(PI.attachExitPlanFailed) : i18n._(PI.attachExitLightLoopFailed),
+                description: err instanceof Error ? err.message : i18n._(PI.attachRequestFailed),
+              })
+              return
+            }
+          }
+          input.clearPendingWorkflows()
         }
         input.setLocalArmedLoop({
           type: "pending",
@@ -252,15 +278,12 @@ export function usePromptAttachments(input: PromptAttachmentsInput) {
     const dropped = event.dataTransfer?.files
     if (!dropped) return
 
-    for (const file of Array.from(dropped)) {
-      if (ACCEPTED_FILE_TYPES.includes(file.type) || isTextAttachmentFile(file)) {
-        await addAttachment(file)
-      }
-    }
+    await addAttachments(Array.from(dropped))
   }
 
   return {
     addAttachment,
+    addAttachments,
     removeAttachment,
     handlePaste,
     handleDragOver,

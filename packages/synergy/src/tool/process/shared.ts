@@ -1,19 +1,21 @@
-import { MetaProtocolEnv, MetaProtocolProcess } from "@ericsanchezok/meta-protocol"
+import { SynergyLinkProcess } from "@ericsanchezok/synergy-link-protocol"
 import type { MessageV2 } from "@/session/message-v2"
 
 export interface ProcessParams {
-  action: MetaProtocolProcess.Action
-  processId?: MetaProtocolEnv.ProcessID
+  action: SynergyLinkProcess.Action
+  processId?: string
   data?: string
   keys?: string[]
   offset?: number
   limit?: number
   block?: boolean
   timeout?: number
-  envID?: MetaProtocolEnv.EnvID
+  targetID?: string
+  linkID?: string
+  envID?: string
 }
 
-export type ProcessMetadata = MetaProtocolProcess.ResultMetadata
-export type ProcessResult = MetaProtocolProcess.Result & {
-  attachments?: MessageV2.FilePart[]
+export type ProcessMetadata = SynergyLinkProcess.ResultMetadata
+export type ProcessResult = SynergyLinkProcess.Result & {
+  attachments?: MessageV2.AttachmentPart[]
 }

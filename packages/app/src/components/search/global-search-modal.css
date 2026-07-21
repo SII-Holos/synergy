@@ -1,7 +1,7 @@
 .gsm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--surface-overlay);
   z-index: 100;
   backdrop-filter: blur(2px);
 }
@@ -18,7 +18,7 @@
   background: var(--surface-raised-base);
   border: 1px solid var(--border-weak-base);
   border-radius: 18px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+  box-shadow: 0 18px 60px var(--surface-overlay);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -173,4 +173,9 @@
 .gsm-footer {
   padding: 8px 28px;
   border-top: 1px solid var(--border-weaker-base);
+}
+
+.gsm-archived-tag {
+  font-weight: 500;
+  color: var(--text-weak);
 }

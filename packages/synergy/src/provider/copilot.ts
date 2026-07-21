@@ -1,7 +1,10 @@
 import { Auth } from "./api-key"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
-import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin"
+import type { AuthOuathResult } from "@ericsanchezok/synergy-plugin/auth"
 import z from "zod"
+import { ProviderAuthRecovery } from "./auth-recovery"
+import type { ProviderProfile } from "./profile"
+import { normalizeImageMediaTypes } from "./image-capability"
 
 export namespace CopilotProvider {
   export const PROVIDER_ID = "github-copilot"
@@ -14,6 +17,7 @@ export namespace CopilotProvider {
   export const API_TOKEN_REFRESH_MARGIN_SECONDS = 120
 
   type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>
+  const runtimeTokens = new Map<string, { githubToken: string; token: string; expiresAt: number }>()
 
   export const AuthError = NamedError.create(
     "CopilotAuthError",
@@ -134,10 +138,16 @@ export namespace CopilotProvider {
     return undefined
   }
 
-  export async function exchangeToken(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch) {
-    const auth = await Auth.get(providerID)
+  export function clearApiToken(providerID = PROVIDER_ID) {
+    runtimeTokens.delete(providerID)
+  }
+
+  export async function exchangeToken(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch, force = false) {
+    const selected = await Auth.select(providerID)
+    const auth = selected?.auth
     const metadata = auth?.metadata ?? {}
     if (
+      !force &&
       auth?.type === "api" &&
       typeof metadata.copilotApiToken === "string" &&
       typeof metadata.copilotApiTokenExpires === "number" &&
@@ -154,16 +164,34 @@ export namespace CopilotProvider {
         reloginRequired: true,
       })
     }
+    const runtime = runtimeTokens.get(providerID)
+    if (
+      !force &&
+      runtime?.githubToken === githubToken &&
+      runtime.expiresAt > nowSeconds() + API_TOKEN_REFRESH_MARGIN_SECONDS
+    ) {
+      return runtime.token
+    }
     return Auth.withLock(`${providerID}:copilot-token`, async () => {
-      const latest = await Auth.get(providerID)
+      const latestSelected = await Auth.select(providerID)
+      const latest = latestSelected?.auth
       const latestMetadata = latest?.metadata ?? {}
       if (
+        !force &&
         latest?.type === "api" &&
         typeof latestMetadata.copilotApiToken === "string" &&
         typeof latestMetadata.copilotApiTokenExpires === "number" &&
         latestMetadata.copilotApiTokenExpires > nowSeconds() + API_TOKEN_REFRESH_MARGIN_SECONDS
       ) {
         return latestMetadata.copilotApiToken
+      }
+      const latestRuntime = runtimeTokens.get(providerID)
+      if (
+        !force &&
+        latestRuntime?.githubToken === githubToken &&
+        latestRuntime.expiresAt > nowSeconds() + API_TOKEN_REFRESH_MARGIN_SECONDS
+      ) {
+        return latestRuntime.token
       }
       const response = await fetchFn(TOKEN_EXCHANGE_URL, {
         headers: {
@@ -193,51 +221,134 @@ export namespace CopilotProvider {
       }
       const expires = Number(payload.expires_at)
       const expiresAt = Number.isFinite(expires) && expires > 0 ? expires : nowSeconds() + 25 * 60
-      await Auth.set(
-        providerID,
-        {
-          type: "api",
-          key: githubToken,
-          metadata: {
-            ...(latest?.metadata ?? auth?.metadata ?? {}),
-            copilotApiToken: payload.token,
-            copilotApiTokenExpires: expiresAt,
+      if (latestSelected && latest?.type === "api") {
+        await Auth.replaceSelectedCredential(
+          providerID,
+          {
+            type: "api",
+            key: githubToken,
+            metadata: {
+              ...(latest.metadata ?? auth?.metadata ?? {}),
+              copilotApiToken: payload.token,
+              copilotApiTokenExpires: expiresAt,
+            },
           },
-        },
-        { source: "api" },
-      )
+          { credentialID: latestSelected.credentialID, source: latestSelected.poolEntry?.source ?? "api" },
+        )
+      } else {
+        runtimeTokens.set(providerID, { githubToken, token: payload.token, expiresAt })
+      }
       return payload.token
     })
   }
 
   export function copilotFetchFor(providerID = PROVIDER_ID) {
     return async (input: RequestInfo | URL, init?: RequestInit) => {
-      const token = await exchangeToken(providerID).catch(() => exchangeToken(PROVIDER_ID))
-      const headers = new Headers(init?.headers)
-      headers.set("Authorization", `Bearer ${token}`)
-      headers.set("User-Agent", USER_AGENT)
-      headers.set("Editor-Version", EDITOR_VERSION)
-      headers.set("Copilot-Integration-Id", "vscode-chat")
-      return fetch(input, { ...init, headers })
+      return ProviderAuthRecovery.execute({
+        providerID,
+        request: async () => {
+          const token = await exchangeToken(providerID)
+          const headers = new Headers(init?.headers)
+          headers.set("Authorization", `Bearer ${token}`)
+          headers.set("User-Agent", USER_AGENT)
+          headers.set("Editor-Version", EDITOR_VERSION)
+          headers.set("Copilot-Integration-Id", "vscode-chat")
+          return fetch(input, { ...init, headers })
+        },
+        refresh: (auth) => refreshAuth(providerID, auth),
+        recoverWithoutCredential: async () => {
+          clearApiToken(providerID)
+          await exchangeToken(providerID, fetch, true)
+          return true
+        },
+        classify: classifyError,
+      })
     }
   }
 
   export const copilotFetch = copilotFetchFor(PROVIDER_ID)
 
-  export async function fetchModelIDs(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch): Promise<string[]> {
-    const token = await exchangeToken(providerID, fetchFn)
-    const response = await fetchFn(`${BASE_URL}/models`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-        "User-Agent": USER_AGENT,
-        "Editor-Version": EDITOR_VERSION,
+  async function fetchModelPayload(providerID: string, fetchFn: FetchLike) {
+    const response = await ProviderAuthRecovery.execute({
+      providerID,
+      request: async () => {
+        const token = await exchangeToken(providerID, fetchFn)
+        return fetchFn(`${BASE_URL}/models`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+            "User-Agent": USER_AGENT,
+            "Editor-Version": EDITOR_VERSION,
+          },
+          signal: AbortSignal.timeout(15_000),
+        })
       },
-      signal: AbortSignal.timeout(15_000),
+      refresh: (auth) => refreshAuth(providerID, auth, fetchFn),
+      recoverWithoutCredential: async () => {
+        clearApiToken(providerID)
+        await exchangeToken(providerID, fetchFn, true)
+        return true
+      },
+      classify: classifyError,
+      reloadOnTransition: false,
+      throwOnActionRequired: false,
     })
     if (!response.ok) return []
     const payload = await safeJson(response)
-    const data = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : []
-    return data.map((item) => item?.id).filter((id): id is string => typeof id === "string" && !!id)
+    return Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : []
+  }
+
+  export async function fetchModelCatalog(
+    providerID = PROVIDER_ID,
+    fetchFn: FetchLike = fetch,
+  ): Promise<ProviderProfile.ModelCatalogEntry[]> {
+    const entries = await fetchModelPayload(providerID, fetchFn)
+    const result: ProviderProfile.ModelCatalogEntry[] = []
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object" || typeof entry.id !== "string" || !entry.id.trim()) continue
+      const id = entry.id.trim()
+      const supportsVision = entry.capabilities?.supports?.vision
+      const supportedImageMediaTypes = Array.isArray(entry.capabilities?.limits?.vision?.supported_media_types)
+        ? (normalizeImageMediaTypes(
+            entry.capabilities.limits.vision.supported_media_types.filter(
+              (mimeType: unknown): mimeType is string => typeof mimeType === "string",
+            ),
+          ) ?? [])
+        : undefined
+      result.push({
+        id,
+        ...(typeof supportsVision === "boolean" ? { inputImage: supportsVision } : {}),
+        ...(supportedImageMediaTypes !== undefined ? { supportedImageMediaTypes } : {}),
+      })
+    }
+    return result
+  }
+
+  export async function fetchModelIDs(providerID = PROVIDER_ID, fetchFn: FetchLike = fetch): Promise<string[]> {
+    return (await fetchModelCatalog(providerID, fetchFn)).map((entry) => entry.id)
+  }
+
+  export async function refreshAuth(
+    providerID: string,
+    auth: Auth.Info,
+    fetchFn: FetchLike = fetch,
+  ): Promise<Auth.Info | undefined> {
+    if (auth.type !== "api") return undefined
+    clearApiToken(providerID)
+    await exchangeToken(providerID, fetchFn, true)
+    return (await Auth.select(providerID))?.auth ?? auth
+  }
+
+  export function classifyError(input: {
+    status?: number
+    body?: unknown
+  }): ProviderProfile.ClassifiedError | undefined {
+    const payload = input.body && typeof input.body === "object" ? (input.body as Record<string, any>) : {}
+    const code = String(payload.error?.code ?? payload.error ?? payload.code ?? "")
+    if (input.status === 429) return { code: code || "rate_limited", retryable: true, exhausted: true }
+    if (input.status === 401 || ["invalid_token", "bad_credentials"].includes(code)) {
+      return { code: code || "github_token_rejected", retryable: false, reloginRequired: true }
+    }
+    return undefined
   }
 }

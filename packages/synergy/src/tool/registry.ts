@@ -7,6 +7,7 @@ import { FileSearchTool } from "./file-search"
 import { BatchTool } from "./batch"
 import { ReadTool } from "./read"
 import { ViewFileTool } from "./view-file"
+import { ViewImageTool } from "./view-image"
 import { ReviseFileTool } from "./revise-file"
 import { SaveFileTool } from "./save-file"
 import { ScanFilesTool } from "./scan-files"
@@ -25,13 +26,22 @@ import { NoteReadTool } from "./note-read"
 import { NoteSearchTool } from "./note-search"
 import { NoteWriteTool } from "./note-write"
 import { NoteEditTool } from "./note-edit"
-import { BlueprintLoopFinishTool } from "./blueprint-loop-finish"
-import { BlueprintLoopRestartTool } from "./blueprint-loop-restart"
+import { NoteArchiveTool } from "./note-archive"
+import { NoteDeleteTool } from "./note-delete"
+import { BlueprintLoopStopTool } from "./blueprint-loop-stop"
+import { BlueprintLoopApproveTool } from "./blueprint-loop-approve"
+import { BlueprintLoopRejectTool } from "./blueprint-loop-reject"
+import { LoopStopTool } from "./loop-stop"
+import { LightLoopApproveTool } from "./light-loop-approve"
+import { LightLoopRejectTool } from "./light-loop-reject"
+import { PathwayReadTool } from "./pathway-read"
+import { PathwayPatchTool } from "./pathway-patch"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
 import { SessionSendTool } from "./session-send"
 import { SessionControlTool } from "./session-control"
+import { ScopeListTool } from "./scope-list"
 import { AgendaScheduleTool } from "./agenda-schedule"
 import { AgendaWatchTool } from "./agenda-watch"
 import { AgendaListTool } from "./agenda-list"
@@ -48,6 +58,8 @@ import { AgendaLogsTool } from "./agenda-logs"
 // import { AgoraAcceptTool } from "./agora-accept"
 // import { AgoraCommentTool } from "./agora-comment"
 import { AttachTool } from "./attach"
+import { OpenAIImageGenTool } from "./openai-image-gen"
+import { OpenAIImageEditTool } from "./openai-image-edit"
 
 import { SkillTool } from "./skill"
 import { LookAtTool } from "./lookat"
@@ -59,12 +71,14 @@ import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Config } from "../config/config"
 import path from "path"
-import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin"
+import fs from "fs"
+import { type ToolDefinition, type ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import z from "zod"
+import Ajv2020 from "ajv/dist/2020"
 import { Plugin } from "../plugin"
 import { PluginToolId } from "../plugin/ids.js"
-import { createPluginToolContext } from "../plugin/host-services"
-import { getRuntime, invokeRuntimeTool } from "../plugin-runtime/supervisor"
+import { ensureRuntime, type LoadedPlugin } from "../plugin/loader"
+import { pluginRuntimeManager } from "../plugin/runtime"
 import { WebSearchTool } from "./websearch"
 import { ArxivSearchTool, ArxivDownloadTool } from "./arxiv"
 import { Flag } from "@/flag/flag"
@@ -78,33 +92,32 @@ import { RenderTool } from "./render"
 import { EmailSendTool } from "./email"
 import { EmailReadTool } from "./email-read"
 import { RuntimeReloadTool } from "./runtime-reload"
+import { CodexProvider } from "@/provider/codex"
 import { SearchToolsTool } from "./search-tools"
 import { ExpandToolsTool } from "./expand-tools"
 import { WorktreeEnterTool } from "./worktree-enter"
 import { WorktreeLeaveTool } from "./worktree-leave"
 import { WorktreeListTool } from "./worktree-list"
 import { BrowserAnnotateTool } from "./browser-annotate"
-import { BrowserNavigateTool } from "./browser-navigate"
 import { BrowserSnapshotTool } from "./browser-snapshot"
 import { BrowserScreenshotTool } from "./browser-screenshot"
 import { BrowserInspectTool } from "./browser-inspect"
 import { BrowserWaitTool } from "./browser-wait"
-import { BrowserClickTool } from "./browser-click"
-import { BrowserTypeTool } from "./browser-type"
-import { BrowserScrollTool } from "./browser-scroll"
 import { BrowserConsoleTool } from "./browser-console"
 import { BrowserNetworkTool } from "./browser-network"
-import { BrowserDownloadTool } from "./browser-download"
 import { BrowserDownloadsTool } from "./browser-downloads"
-import { BrowserViewportTool } from "./browser-viewport"
 import { BrowserReadTool } from "./browser-read"
 import { BrowserClipboardTool } from "./browser-clipboard"
-import { BrowserListTool } from "./browser-list"
 import { BrowserNavigationTool } from "./browser-navigation"
 import { BrowserActionTool } from "./browser-action"
 import { BrowserEvalTool } from "./browser-eval"
 import { BrowserViewTool } from "./browser-view"
 import { BrowserAssetsTool } from "./browser-assets"
+import { BrowserPerformanceTool } from "./browser-performance"
+import { BrowserAuditTool } from "./browser-audit"
+import { BrowserEmulateTool } from "./browser-emulate"
+import { BrowserDialogTool } from "./browser-dialog"
+import { BrowserUploadTool } from "./browser-upload"
 import { ToolExposure } from "./exposure"
 
 export namespace ToolRegistry {
@@ -115,6 +128,7 @@ export namespace ToolRegistry {
     const glob = new Bun.Glob("tool/*.{js,ts}")
 
     for (const dir of await Config.directories()) {
+      if (!isDirectory(dir)) continue
       for await (const match of glob.scan({
         cwd: dir,
         absolute: true,
@@ -129,100 +143,57 @@ export namespace ToolRegistry {
       }
     }
 
-    const plugins = await Plugin.perPluginHooks()
+    const plugins = await Plugin.getLoaded()
     for (const plugin of plugins) {
-      const manifest = await Plugin.manifest(plugin.id).catch(() => null)
-      for (const [id, def] of Object.entries(plugin.hooks.tool ?? {})) {
-        const exposure = pluginToolExposure(def, id, manifest)
-        const display = pluginToolDisplay(def, id, manifest)
-        const runtime = getRuntime(plugin.id)
-        const runtimeMode = plugin.runtimeMode ?? runtime?.mode ?? "in-process"
-        if (runtimeMode !== "in-process") {
-          custom.push(fromRuntimePlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
-        } else {
-          custom.push(fromPlugin(id, def, plugin.id, plugin.pluginDir, exposure, display))
+      try {
+        for (const contribution of Plugin.contributions(plugin, "tool")) {
+          custom.push(fromRuntimePlugin(contribution, plugin))
         }
+      } catch (err) {
+        log.warn("plugin tools skipped due to registry failure", {
+          pluginId: plugin.id,
+          error: err instanceof Error ? err.message : String(err),
+        })
       }
     }
 
     return { custom }
   })
 
+  function isDirectory(dir: string) {
+    try {
+      return fs.statSync(dir).isDirectory()
+    } catch {
+      return false
+    }
+  }
+
   export async function reload() {
     log.info("reloading tool registry state")
+    findCache.clear()
     await state.resetAll()
     log.info("tool registry state reloaded")
   }
 
-  function pluginToolExposure(
-    def: ToolDefinition,
-    id: string,
-    manifest: Awaited<ReturnType<typeof Plugin.manifest>>,
-  ): ToolExposure.Info | undefined {
-    const explicit = (def as ToolDefinition & { exposure?: ToolExposure.Info }).exposure
-    if (explicit) return explicit
-    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
-    return manifestTool?.exposure as ToolExposure.Info | undefined
-  }
-
-  function pluginToolDisplay(
-    def: ToolDefinition,
-    id: string,
-    manifest: Awaited<ReturnType<typeof Plugin.manifest>>,
-  ): ToolDisplay | undefined {
-    const manifestTool = manifest?.contributes?.tools?.find((tool) => tool.id === id || tool.name === id)
-    const manifestDisplay = manifestTool?.display as ToolDisplay | undefined
-    const explicit = (def as ToolDefinition & { display?: ToolDisplay }).display
-    if (!explicit) return manifestDisplay
-    const media = (
-      manifestDisplay?.media || explicit.media
-        ? {
-            ...manifestDisplay?.media,
-            ...explicit.media,
-          }
-        : undefined
-    ) as ToolDisplay["media"]
+  function fromPlugin(id: string, def: ToolDefinition, exposure?: ToolExposure.Info, display?: ToolDisplay): Tool.Info {
     return {
-      ...manifestDisplay,
-      ...explicit,
-      ...(media ? { media } : {}),
-    }
-  }
-
-  function fromPlugin(
-    id: string,
-    def: ToolDefinition,
-    pluginId?: string,
-    pluginDir?: string,
-    exposure?: ToolExposure.Info,
-    display?: ToolDisplay,
-  ): Tool.Info {
-    const fullId = pluginId ? PluginToolId.format(pluginId, id) : id
-    return {
-      id: fullId,
+      id,
       exposure,
       display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
+      source: { type: "local" },
       init: async (initCtx) => ({
         parameters: z.object(def.args),
         description: def.description,
         execute: async (args, ctx) => {
-          const pluginCtx =
-            pluginId && pluginDir
-              ? createPluginToolContext({
-                  pluginId,
-                  pluginDir,
-                  context: ctx,
-                  directory: ScopeContext.current.directory,
-                })
-              : {
-                  sessionID: ctx.sessionID,
-                  messageID: ctx.messageID,
-                  agent: ctx.agent,
-                  abort: ctx.abort,
-                  directory: ScopeContext.current.directory,
-                  ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
-                    ctx.ask({ ...input, metadata: input.metadata ?? {} }),
-                }
+          const pluginCtx = {
+            sessionID: ctx.sessionID,
+            messageID: ctx.messageID,
+            agent: ctx.agent,
+            abort: ctx.abort,
+            directory: ScopeContext.current.directory,
+            ask: (input: { permission: string; patterns: string[]; metadata?: Record<string, any> }) =>
+              ctx.ask({ ...input, metadata: input.metadata ?? {} }),
+          }
           const raw = await def.execute(args as any, pluginCtx)
           return normalizePluginResult(raw, initCtx?.agent)
         },
@@ -230,36 +201,84 @@ export namespace ToolRegistry {
     }
   }
 
-  function fromRuntimePlugin(
-    id: string,
-    def: ToolDefinition,
+  function manifestParameters(schema: Record<string, unknown>): z.ZodType {
+    const validate = new Ajv2020({ allErrors: true, strict: false }).compile(schema)
+    const result = z.custom((value) => validate(value), {
+      error: () => ({ message: new Ajv2020().errorsText(validate.errors) }),
+    })
+    return result
+  }
+
+  export function matchesSettingCondition(
+    condition: { setting: string; equals: string | number | boolean },
+    values: Record<string, unknown>,
+  ): boolean {
+    return values[condition.setting] === condition.equals
+  }
+
+  async function conditionEnabled(
     pluginId: string,
-    _pluginDir: string,
-    exposure?: ToolExposure.Info,
-    display?: ToolDisplay,
+    condition: { setting: string; equals: string | number | boolean },
+  ): Promise<boolean> {
+    const domain = await Config.domainGet("plugins")
+    const values = domain.pluginConfig?.[pluginId]
+    if (!values || typeof values !== "object" || Array.isArray(values)) return false
+    return matchesSettingCondition(condition, values as Record<string, unknown>)
+  }
+
+  async function enabled(tool: Tool.Info): Promise<boolean> {
+    if (!tool.enabledWhen) return true
+    if (tool.source?.type !== "plugin") return false
+    return conditionEnabled(tool.source.pluginId, tool.enabledWhen)
+  }
+
+  function fromRuntimePlugin(
+    contribution: Extract<LoadedPlugin["manifest"]["contributions"][number], { kind: "tool" }>,
+    plugin: LoadedPlugin,
   ): Tool.Info {
-    const fullId = PluginToolId.format(pluginId, id)
+    const fullId = PluginToolId.format(plugin.id, contribution.id)
     return {
       id: fullId,
-      exposure,
-      display: display ?? (def as ToolDefinition & { display?: ToolDisplay }).display,
+      exposure: contribution.exposure as ToolExposure.Info | undefined,
+      display: contribution.display as ToolDisplay | undefined,
+      source: {
+        type: "plugin",
+        pluginId: plugin.id,
+        toolId: contribution.id,
+        pluginDir: plugin.pluginDir,
+        runtimeMode: "process",
+      },
+      inputSchema: contribution.input,
+      enabledWhen: contribution.enabledWhen,
       init: async (initCtx) => ({
-        parameters: z.object(def.args),
-        description: def.description,
+        parameters: manifestParameters(contribution.input),
+        description: contribution.description,
         execute: async (args, ctx) => {
-          const raw = await invokeRuntimeTool(
-            pluginId,
-            id,
-            args,
-            {
-              sessionID: ctx.sessionID,
-              messageID: ctx.messageID,
-              agent: ctx.agent,
+          if (contribution.enabledWhen && !(await conditionEnabled(plugin.id, contribution.enabledWhen))) {
+            throw Object.assign(new Error(`Plugin tool ${fullId} is disabled by plugin settings.`), {
+              code: "CONTRIBUTION_DISABLED",
+            })
+          }
+          await ensureRuntime(plugin)
+          const raw = await pluginRuntimeManager.invoke({
+            pluginId: plugin.id,
+            handlerId: `tool:${contribution.id}`,
+            value: args,
+            context: {
+              scopeId: ScopeContext.current.scope.id,
+              sessionId: ctx.sessionID,
               directory: ScopeContext.current.directory,
-              callID: ctx.callID,
+              actor: {
+                type: "agent",
+                agent: ctx.agent,
+                messageId: ctx.messageID,
+                callId: ctx.callID ?? `${plugin.id}:${contribution.id}`,
+              },
             },
-            ctx.abort,
-          )
+            pluginDir: plugin.pluginDir,
+            manifest: plugin.manifest,
+            signal: ctx.abort,
+          })
           return normalizePluginResult(raw, initCtx?.agent)
         },
       }),
@@ -307,14 +326,15 @@ export namespace ToolRegistry {
 
   async function all(): Promise<Tool.Info[]> {
     const custom = await state().then((x) => x.custom)
-    const config = await Config.current()
+    await Config.current()
 
-    return [
+    const builtin: Tool.Info[] = [
       ...(Flag.SYNERGY_CLIENT === "cli" ? [QuestionTool] : []),
       BashTool,
       ProcessTool,
       ConnectTool,
       ReadTool,
+      ViewImageTool,
       ViewFileTool,
       ScanFilesTool,
       FileSearchTool,
@@ -348,18 +368,27 @@ export namespace ToolRegistry {
       MemoryEditTool,
       MemorySearchTool,
       MemoryGetTool,
+      NoteArchiveTool,
       NoteListTool,
       NoteReadTool,
       NoteSearchTool,
       NoteWriteTool,
       NoteEditTool,
-      BlueprintLoopFinishTool,
-      BlueprintLoopRestartTool,
+      NoteDeleteTool,
+      BlueprintLoopStopTool,
+      BlueprintLoopApproveTool,
+      BlueprintLoopRejectTool,
+      LoopStopTool,
+      LightLoopApproveTool,
+      LightLoopRejectTool,
+      PathwayReadTool,
+      PathwayPatchTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,
       SessionSendTool,
       SessionControlTool,
+      ScopeListTool,
       AgendaScheduleTool,
       AgendaWatchTool,
       AgendaListTool,
@@ -385,45 +414,53 @@ export namespace ToolRegistry {
       WorktreeLeaveTool,
       WorktreeListTool,
       BrowserAnnotateTool,
-      BrowserNavigateTool,
       BrowserSnapshotTool,
       BrowserScreenshotTool,
       BrowserInspectTool,
       BrowserWaitTool,
-      BrowserClickTool,
-      BrowserTypeTool,
-      BrowserScrollTool,
       BrowserConsoleTool,
       BrowserNetworkTool,
-      BrowserDownloadTool,
       BrowserDownloadsTool,
-      BrowserViewportTool,
       BrowserReadTool,
       BrowserClipboardTool,
-      BrowserListTool,
       BrowserNavigationTool,
       BrowserAssetsTool,
       BrowserActionTool,
       BrowserEvalTool,
       BrowserViewTool,
+      BrowserPerformanceTool,
+      BrowserAuditTool,
+      BrowserEmulateTool,
+      BrowserDialogTool,
+      BrowserUploadTool,
       ...(Flag.SYNERGY_EXPERIMENTAL_LSP_TOOL ? [LspTool] : []),
-      ...custom,
     ]
+
+    const codexAccess = await CodexProvider.resolveToken({
+      allowMissing: true,
+      refreshIfExpiring: false,
+    }).catch(() => undefined)
+    if (codexAccess) builtin.push(OpenAIImageGenTool, OpenAIImageEditTool)
+
+    return [...builtin, ...custom]
   }
 
   export async function ids() {
-    return all().then((x) => x.map((t) => t.id))
+    const tools = await all()
+    return (await Promise.all(tools.map(async (tool) => ((await enabled(tool)) ? tool.id : undefined)))).filter(
+      (id): id is string => Boolean(id),
+    )
   }
 
   const findCache = new Map<string, { id: string; description: string; parameters: any; execute: Function }>()
 
   export async function find(id: string) {
-    const cached = findCache.get(id)
-    if (cached) return cached
-
     const tools = await all()
     const tool = tools.find((t) => t.id === id)
     if (!tool) return undefined
+    if (!(await enabled(tool))) return undefined
+    const cached = findCache.get(id)
+    if (cached) return cached
     const def = await tool.init()
     const result = { id: tool.id, ...def }
     findCache.set(id, result)
@@ -431,13 +468,23 @@ export namespace ToolRegistry {
   }
 
   export async function tools(providerID: string, agent?: Agent.Info) {
-    const tools = await all()
+    const allTools = await all()
+    const tools = (await Promise.all(allTools.map(async (tool) => ((await enabled(tool)) ? tool : undefined)))).filter(
+      (tool): tool is Tool.Info => Boolean(tool),
+    )
     // Use allSettled to avoid one tool's init failure blocking all tools
     const initResults = await Promise.allSettled(
       tools.map(async (t) => {
         using _ = log.time(t.id)
         const def = await t.init({ agent })
-        return { id: t.id, exposure: ToolExposure.normalize(t.id, t.exposure), display: t.display, ...def }
+        return {
+          id: t.id,
+          exposure: ToolExposure.normalize(t.id, t.exposure),
+          display: t.display,
+          source: t.source,
+          inputSchema: t.inputSchema,
+          ...def,
+        }
       }),
     )
 

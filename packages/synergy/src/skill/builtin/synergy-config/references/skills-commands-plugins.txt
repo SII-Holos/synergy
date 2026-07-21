@@ -22,7 +22,7 @@ Skills extend Synergy with specialized knowledge, workflows, and tool integratio
 
 ### Skill file format
 
-Every skill is a `SKILL.md` file with YAML frontmatter:
+Every skill is a `SKILL.md` file (or `Skill.md` 鈥?both casings are discovered) with YAML frontmatter. Plugin skills may alternatively supply content via `content.txt` or `content.md` where applicable.
 
 ```markdown
 ---
@@ -37,7 +37,7 @@ Instructions and guidance for using the skill.
 
 **Required frontmatter:** `name`, `description`.
 
-The `description` is critical — it's the only text Synergy sees when deciding whether to load the skill. Be comprehensive about what the skill does and when to trigger it.
+The `description` is critical 鈥?it's the only text Synergy sees when deciding whether to load the skill. Be comprehensive about what the skill does and when to trigger it.
 
 The body is only loaded AFTER the skill triggers, so "When to Use" sections in the body are wasted.
 
@@ -51,27 +51,35 @@ Skills are discovered from these directories:
 | Global | `~/.synergy/config/{skill,skills}/**/SKILL.md` |
 | Claude compat (project) | `<project>/.claude/skills/**/SKILL.md` |
 | Claude compat (global) | `~/.claude/skills/**/SKILL.md` |
+| Codex compat (project) | `<project>/.codex/skills/**/SKILL.md` |
+| Codex compat (global) | `~/.codex/skills/**/SKILL.md` |
+| Agents compat (project) | `<project>/.agents/skills/**/SKILL.md` |
+| Agents compat (global) | `~/.agents/skills/**/SKILL.md` |
+| OpenClaw compat (global) | `~/.openclaw/skills/**/SKILL.md` |
+| Legacy project root | `<project>/skills/**/SKILL.md` |
+
+Skill entry files support `SKILL.md` and `Skill.md` (both casings). Plugin skills may supply content via `content.txt` or `content.md` as an alternative to `SKILL.md`.
 
 Example layout:
 ```
 .synergy/skill/
-├── my-skill/
-│   ├── SKILL.md
-│   ├── references/
-│   │   └── api-docs.md
-│   ├── scripts/
-│   │   └── helper.py
-│   └── assets/
-│       └── template.html
+鈹溾攢鈹€ my-skill/
+鈹?  鈹溾攢鈹€ SKILL.md
+鈹?  鈹溾攢鈹€ references/
+鈹?  鈹?  鈹斺攢鈹€ api-docs.md
+鈹?  鈹溾攢鈹€ scripts/
+鈹?  鈹?  鈹斺攢鈹€ helper.py
+鈹?  鈹斺攢鈹€ assets/
+鈹?      鈹斺攢鈹€ template.html
 ```
 
 ### Progressive disclosure
 
 Skills use three-level loading to manage context:
 
-1. **Metadata** (name + description) — always in context (~100 words)
-2. **SKILL.md body** — loaded when skill triggers (keep under 500 lines)
-3. **Bundled resources** — loaded by agent as needed (unlimited)
+1. **Metadata** (name + description) 鈥?always in context (~100 words)
+2. **SKILL.md body** 鈥?loaded when skill triggers (keep under 500 lines)
+3. **Bundled resources** 鈥?loaded by agent as needed (unlimited)
 
 When SKILL.md approaches 500 lines, split detailed content into `references/` files and reference them clearly:
 ```markdown
@@ -81,9 +89,9 @@ For conversion rules, see references/format-rules.md.
 
 ### Skill resources
 
-- **`references/`** — documentation loaded into context as needed. Keep SKILL.md lean.
-- **`scripts/`** — executable code (Python/Bash) for deterministic tasks. Token-efficient.
-- **`assets/`** — files used in output (templates, images). Not loaded into context.
+- **`references/`** 鈥?documentation loaded into context as needed. Keep SKILL.md lean.
+- **`scripts/`** 鈥?executable code (Python/Bash) for deterministic tasks. Token-efficient.
+- **`assets/`** 鈥?files used in output (templates, images). Not loaded into context.
 
 ### Reload
 
@@ -122,7 +130,7 @@ Provide a summary with severity ratings.
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `description` | string | — | Shown in command list UI. Required. |
+| `description` | string | 鈥?| Shown in command list UI. Required. |
 | `agent` | string | default agent | Which agent handles this command |
 | `model` | string | agent's model | Model override for this command |
 
@@ -130,7 +138,7 @@ Provide a summary with severity ratings.
 
 ### Nested command example
 
-`.synergy/command/review/security.md` → `/review/security`
+`.synergy/command/review/security.md` 鈫?`/review/security`
 
 ```markdown
 ---
@@ -155,7 +163,7 @@ Output a severity-ranked finding list.
 | Project | `<project>/.synergy/{command,commands}/**/*.md` |
 | Global | `~/.synergy/config/{command,commands}/**/*.md` |
 
-Nested commands: `.synergy/command/review/security.md` → `/review/security`
+Nested commands: `.synergy/command/review/security.md` 鈫?`/review/security`
 
 ### Reload
 
@@ -167,85 +175,80 @@ runtime_reload(target: "command")
 
 ## Plugins
 
-Plugins are TypeScript/JavaScript packages that extend Synergy runtime and optional Web UI capabilities.
+Plugins export one `definePlugin()` definition. plugin-kit generates the installable manifest and bundles; source projects must not contain `plugin.json`.
 
 ### Plugin config
 
-Configured plugins live in the plugin config domain:
+Configured plugin specs live in the Plugins domain:
 
 | Scope | Path |
 |---|---|
 | Project | `<project>/.synergy/synergy.d/50-plugins.jsonc` |
 | Global | `~/.synergy/config/synergy.d/50-plugins.jsonc` |
 
-Example:
-
 ```jsonc
 {
-  "plugin": ["file:///absolute/path/to/my-plugin"]
+  "plugin": ["file:///absolute/path/to/my-plugin"],
+  "pluginRuntimePolicy": {
+    "limits": {
+      "startupTimeoutMs": 15000,
+      "toolInvocationTimeoutMs": 120000,
+      "hostServiceRequestTimeoutMs": 120000,
+      "taskRunTimeoutMs": 120000,
+      "shutdownGraceMs": 1500,
+      "heartbeatIntervalMs": 5000
+    }
+  }
 }
 ```
 
-Supported specs include local directories, local entry files, `.synergy-plugin.tgz` archives, npm packages, git specs, and URLs. All specs use the shared plugin resolver.
+A built project directory resolves to `dist/plugin.json`. Supported specs also include built archives, npm packages, git specs, URLs, official/local registry artifacts, and built-ins. External runtime mode is always `process`; trusted built-ins may use `inProcess`.
 
 ### Plugin API
 
-Plugins use the `@ericsanchezok/synergy-plugin` SDK. A runtime entry exports an object descriptor. `PluginDescriptor.id` must match `plugin.json.name`.
-
 ```ts
-import type { PluginDescriptor } from "@ericsanchezok/synergy-plugin"
-import { tool } from "@ericsanchezok/synergy-plugin/tool"
+import z from "zod"
+import { capability, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
 
-const plugin: PluginDescriptor = {
+export default definePlugin({
   id: "my-metrics",
-  async init() {
-    return {
-      tool: {
-        query_metrics: tool({
-          description: "Query metrics from the internal monitoring system",
-          args: {
-            service: tool.schema.string(),
-            period: tool.schema.string().optional(),
-          },
-          async execute(args) {
-            const resp = await fetch(`https://metrics.internal/api/${args.service}?period=${args.period ?? "1h"}`)
-            return { output: JSON.stringify(await resp.json(), null, 2) }
-          },
-        }),
+  version: "1.0.0",
+  description: "Metrics integration",
+  capabilities: [capability("workspace.read")],
+  contributions: [
+    operation({
+      id: "metrics.get",
+      type: "query",
+      input: z.object({ service: z.string() }),
+      output: z.object({ value: z.number() }),
+      async handler({ service }, context) {
+        context.log.info("query metrics", { service })
+        return { value: 0 }
       },
-    }
-  },
-}
-
-export default plugin
+    }),
+  ],
+})
 ```
 
-Create a plugin package with:
+Build and register:
 
 ```bash
 bunx @ericsanchezok/synergy-plugin-kit create my-plugin
 cd my-plugin
 bun install
-bun run validate
 bun run build
+bun run validate
 bun run pack
+synergy plugin add file:///absolute/path/to/my-plugin
 ```
 
-### Plugin dependencies
+### Debugging and reload
 
-Plugins can use external npm packages. Add them to the plugin package's `package.json`:
-
-```bash
-cd my-plugin && bun add some-package
-```
-
-### Debugging plugins
-
-- Plugin `console.log` output appears in the Synergy server process logs (stdout/stderr).
-- If a plugin fails to load, check server startup logs for the error — load failures do not crash the server.
-- After modifying a plugin file, reload: `runtime_reload(target: "plugin")`. This cascades to `tool_registry`.
-- Runtime entry must export an object descriptor with `id` and `init()`.
-- Worker/process plugins run through the plugin runner; tools and hooks are proxied through the runtime supervisor.
+- Check plugin status, contribution health, runtime logs, manifest generation, and approval in `synergy plugin info <id>` and `synergy plugin runtime ...`.
+- Build failures must leave the prior dev generation active.
+- Runtime startup rejects API/protocol/generation/handler mismatches.
+- A plugin must be enabled for the active Scope before its operations and UI are available.
+- Reload configured contributions with `runtime_reload(target: "plugin")`; this also refreshes plugin tools, agents, skills, and MCP declarations.
 
 ### Reload
 
@@ -253,7 +256,20 @@ cd my-plugin && bun add some-package
 runtime_reload(target: "plugin")
 ```
 
-Plugin reload cascades to tool_registry reload.
+Plugin reload cascades to the tool registry.
+
+---
+
+## Custom Tools (lightweight, no SDK)
+
+For simple custom tools that do not need the full plugin SDK, place TypeScript/JavaScript files in a `tool/` directory:
+
+| Scope | Path pattern |
+|---|---|
+| Project | `<project>/.synergy/tool/*.{ts,js}` |
+| Global | `~/.synergy/config/tool/*.{ts,js}` |
+
+Each file exports one or more tool definitions using the internal tool API. Unlike plugins, these are scanned directly from the tool directories 鈥?not configured via `50-plugins.jsonc`.
 
 ---
 
@@ -261,16 +277,17 @@ Plugin reload cascades to tool_registry reload.
 
 ### Skills
 
-- **Skill not triggering** — check `description` in frontmatter is comprehensive; description is the ONLY text Synergy uses to decide whether to load the skill; vague descriptions = never loaded
-- **Skill content not loading** — verify the file is named exactly `SKILL.md` (case-sensitive); check it's in a `skill/` or `skills/` directory; try `runtime_reload(target: "skill")`
-- **References not found** — reference paths in the skill body are relative to the SKILL.md file's directory; use `references/filename.md` not absolute paths
+- **Skill not triggering** 鈥?check `description` in frontmatter is comprehensive; description is the ONLY text Synergy uses to decide whether to load the skill; vague descriptions = never loaded
+- **Skill content not loading** 鈥?verify the file is named `SKILL.md` or `Skill.md`; check it's in a recognized skill directory; try `runtime_reload(target: "skill")`
+- **References not found** 鈥?reference paths in the skill body are relative to the SKILL.md file's directory; use `references/filename.md` not absolute paths
 
 ### Commands
 
-- **Command not appearing** — verify file is `.md` in a `command/` or `commands/` directory; check frontmatter has `description`; try `runtime_reload(target: "command")`
-- **Command using wrong agent** — check `agent` field in frontmatter; if omitted, uses the default agent
+- **Command not appearing** 鈥?verify file is `.md` in a `command/` or `commands/` directory; check frontmatter has `description`; try `runtime_reload(target: "command")`
+- **Command using wrong agent** 鈥?check `agent` field in frontmatter; if omitted, uses the default agent
 
 ### Plugins
 
-- **Plugin tools not appearing** — reload with `runtime_reload(target: "plugin")`; check server logs for load errors; verify the tool schema is valid JSON Schema
-- **Plugin auth not working** — auth loaders must return a valid credential format; check credential store for the resulting entry
+- **Plugin tools not appearing** 鈥?reload with `runtime_reload(target: "plugin")`; check server logs for load errors; verify the tool schema is valid JSON Schema
+- **Plugin MCP tools not appearing** 鈥?reload with `runtime_reload(target: "plugin")` after plugin changes, or `runtime_reload(target: "mcp")` after MCP-only changes. Lazy plugin MCP servers must be connected before their tools appear in agent tool discovery.
+- **Plugin auth not working** 鈥?auth loaders must return a valid credential format; check credential store for the resulting entry

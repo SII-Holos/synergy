@@ -2,6 +2,8 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { Logo } from "@ericsanchezok/synergy-ui/logo"
 import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Component, Show } from "solid-js"
+import { useLocale } from "@/context/locale"
+import { AP } from "@/app-i18n"
 import { usePlatform } from "@/context/platform"
 
 export type InitError = {
@@ -40,7 +42,7 @@ function formatInitError(error: InitError): string {
   const data = error.data
   switch (error.name) {
     case "MCPFailed":
-      return `MCP server "${data.name}" failed. Note, synergy does not support MCP authentication yet.`
+      return `MCP server "${data.name}" failed. Check the server configuration, authentication state, and connection details.`
     case "ProviderAuthError": {
       const providerID = typeof data.providerID === "string" ? data.providerID : "unknown"
       const message = typeof data.message === "string" ? data.message : safeJson(data.message)
@@ -73,7 +75,7 @@ function formatInitError(error: InitError): string {
       return [
         `Model not found: ${providerID}/${modelID}`,
         ...(Array.isArray(suggestions) && suggestions.length ? ["Did you mean: " + suggestions.join(", ")] : []),
-        `Check your config (synergy.json) provider/model names`,
+        `Check your Models and Providers configuration for provider/model names`,
       ].join("\n")
     }
     case "ProviderInitError": {
@@ -180,14 +182,15 @@ interface ErrorPageProps {
 
 export const ErrorPage: Component<ErrorPageProps> = (props) => {
   const platform = usePlatform()
+  const { i18n } = useLocale()
 
   return (
     <div class="relative flex-1 h-screen w-screen min-h-0 flex flex-col items-center justify-center bg-background-base font-sans">
       <div class="w-2/3 max-w-3xl flex flex-col items-center justify-center gap-8">
         <Logo class="w-58.5 opacity-12 shrink-0" />
         <div class="flex flex-col items-center gap-2 text-center">
-          <h1 class="text-lg font-medium text-text-strong">Something went wrong</h1>
-          <p class="text-sm text-text-weak">An error occurred while loading the application.</p>
+          <h1 class="text-lg font-medium text-text-strong">{i18n._(AP.errorTitle.id)}</h1>
+          <p class="text-sm text-text-weak">{i18n._(AP.errorSubtitle.id)}</p>
         </div>
         <TextField
           value={formatError(props.error)}
@@ -195,12 +198,12 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
           copyable
           multiline
           class="max-h-96 w-full font-mono text-xs no-scrollbar"
-          label="Error Details"
+          label={i18n._(AP.errorDetailsLabel.id)}
           hideLabel
         />
         <div class="flex items-center gap-3">
           <Button size="large" onClick={platform.restart}>
-            Restart
+            {i18n._(AP.errorRestart.id)}
           </Button>
         </div>
         <div class="flex flex-col items-center gap-2">
@@ -208,12 +211,12 @@ export const ErrorPage: Component<ErrorPageProps> = (props) => {
             href="https://github.com/SII-Holos/synergy/issues"
             target="_blank"
             rel="noopener noreferrer"
-            class="flex items-center justify-center gap-1 text-text-link hover:underline"
+            class="flex items-center justify-center gap-1 text-text-interactive-base hover:underline"
           >
-            Report this issue on GitHub
+            {i18n._(AP.errorReport.id)}
           </a>
           <Show when={platform.version}>
-            <p class="text-xs text-text-weak">Version: {platform.version}</p>
+            <p class="text-xs text-text-weak">{i18n._(AP.errorVersionLabel.id, { version: platform.version })}</p>
           </Show>
         </div>
       </div>

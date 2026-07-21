@@ -319,7 +319,7 @@ export namespace ACP {
                   }
                 } else if (part.type === "text") {
                   const delta = props.delta
-                  if (delta && part.synthetic !== true) {
+                  if (delta && !MessageV2.isSystemPart(part)) {
                     await this.connection
                       .sessionUpdate({
                         sessionId,
@@ -883,7 +883,14 @@ export namespace ACP {
       const agent = session.modeId ?? (await AgentModule.defaultAgent())
 
       const parts: Array<
-        { type: "text"; text: string } | { type: "file"; url: string; filename: string; mime: string }
+        | { type: "text"; text: string }
+        | {
+            type: "attachment"
+            url: string
+            filename: string
+            mime: string
+            model?: { mode: "summary" | "content" | "provider-file"; summary?: string; text?: string }
+          }
       > = []
       for (const part of params.prompt) {
         switch (part.type) {
@@ -896,17 +903,19 @@ export namespace ACP {
           case "image":
             if (part.data) {
               parts.push({
-                type: "file",
+                type: "attachment",
                 url: `data:${part.mimeType};base64,${part.data}`,
                 filename: "image",
                 mime: part.mimeType,
+                model: { mode: "provider-file", summary: `image (${part.mimeType})` },
               })
             } else if (part.uri && part.uri.startsWith("http:")) {
               parts.push({
-                type: "file",
+                type: "attachment",
                 url: part.uri,
                 filename: "image",
                 mime: part.mimeType,
+                model: { mode: "provider-file", summary: `image (${part.mimeType})` },
               })
             }
             break
@@ -1065,7 +1074,7 @@ export namespace ACP {
     const directory = cwd ?? process.cwd()
 
     const specified = await sdk.config
-      .get({ directory }, { throwOnError: true })
+      .global({ directory }, { throwOnError: true })
       .then((resp) => {
         const cfg = resp.data
         if (!cfg || !cfg.model) return undefined
@@ -1108,18 +1117,25 @@ export namespace ACP {
 
     return undefined
   }
-  function parseUri(
-    uri: string,
-  ): { type: "file"; url: string; filename: string; mime: string } | { type: "text"; text: string } {
+  function parseUri(uri: string):
+    | {
+        type: "attachment"
+        url: string
+        filename: string
+        mime: string
+        model: { mode: "content" }
+      }
+    | { type: "text"; text: string } {
     try {
       if (uri.startsWith("file://")) {
         const filepath = uri.slice(7)
         const name = path.basename(filepath) || filepath
         return {
-          type: "file",
+          type: "attachment",
           url: uri,
           filename: name,
           mime: "text/plain",
+          model: { mode: "content" },
         }
       }
       return {

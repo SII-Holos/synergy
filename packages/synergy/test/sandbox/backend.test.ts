@@ -4,6 +4,13 @@ import * as fs from "fs"
 import * as os from "os"
 import * as path from "path"
 
+function printCommand(text: string) {
+  return {
+    command: process.execPath,
+    args: ["-e", `console.log(${JSON.stringify(text)})`],
+  }
+}
+
 // ---------------------------------------------------------------------------
 // sandbox/backend.test.ts
 //
@@ -205,7 +212,7 @@ describe("SandboxBackend Seatbelt profile generation", () => {
 
   test("profile explicitly allows active workspace data read/write", () => {
     const workspace = "/Users/test/synergy-control-profile"
-    const writableRoots = [workspace, path.join(workspace, ".synergy", "tmp")]
+    const writableRoots = [workspace, path.posix.join(workspace, ".synergy", "tmp")]
 
     const profile = SandboxBackend.generateSeatbeltProfile({
       workspace,
@@ -592,9 +599,10 @@ describe("SandboxBackend unavailable fallback", () => {
   })
 
   test("when fallback is warn, execute runs without sandbox", () => {
+    const command = printCommand("hello")
     const wrapper = SandboxBackend.prepareWrapper({
-      command: "echo",
-      args: ["hello"],
+      command: command.command,
+      args: command.args,
       workspace: "/tmp/test",
       sandboxMode: "workspace_write",
       forcePlatform: "unsupported_os",
@@ -606,9 +614,10 @@ describe("SandboxBackend unavailable fallback", () => {
   })
 
   test("when fallback is allow, execute runs without sandbox silently", () => {
+    const command = printCommand("hello")
     const wrapper = SandboxBackend.prepareWrapper({
-      command: "echo",
-      args: ["hello"],
+      command: command.command,
+      args: command.args,
       workspace: "/tmp/test",
       sandboxMode: "workspace_write",
       forcePlatform: "unsupported_os",

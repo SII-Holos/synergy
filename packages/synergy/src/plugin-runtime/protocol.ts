@@ -1,91 +1,107 @@
-import type { Info as ScopeInfo } from "../scope/types.js"
-import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
+import type { PluginActor } from "@ericsanchezok/synergy-plugin"
+import type { RuntimeLimits } from "./health.js"
 
-// === Direction: Host → Plugin ===
+export interface RuntimeActivationData {
+  pluginId: string
+  version: string
+  generation: string
+  hostVersion: string
+  protocolVersion: number
+  capabilities: string[]
+  runtimeLimits: RuntimeLimits
+}
+
+export interface RuntimeInvocationContextData {
+  scopeId: string
+  sessionId?: string
+  directory: string
+  actor: PluginActor
+}
+
+export type PluginHostServiceMethod =
+  | "event.publish"
+  | "session.get"
+  | "session.abort"
+  | "task.start"
+  | "task.current"
+  | "task.get"
+  | "task.cancel"
+  | "blueprint.start"
+  | "blueprint.get"
+  | "blueprint.cancel"
+  | "lightloop.start"
+  | "lightloop.get"
+  | "lightloop.cancel"
+  | "workspace.read"
+  | "workspace.write"
+  | "workspace.metadata"
+  | "settings.get"
+  | "settings.replace"
+  | "secrets.get"
+  | "secrets.set"
+  | "secrets.delete"
+  | "tool.invoke"
 
 export type HostToPlugin =
-  | { type: "init"; pluginId: string; input: IsolatedPluginInputData }
-  | { type: "invokeTool"; requestId: string; toolId: string; args: unknown; context?: RuntimeToolContextData }
-  | { type: "abortTool"; requestId: string; reason?: string }
-  | { type: "triggerHook"; requestId: string; hook: string; input: unknown; output: unknown }
-  | { type: "bridgeResponse"; requestId: string; ok: true; value: unknown }
-  | { type: "bridgeResponse"; requestId: string; ok: false; error: SerializedError }
-  | { type: "reload" }
+  | { type: "activate"; input: RuntimeActivationData }
+  | {
+      type: "invoke"
+      requestId: string
+      generation: string
+      handlerId: string
+      input: unknown
+      context: RuntimeInvocationContextData
+    }
+  | { type: "abort"; requestId: string; reason?: string }
+  | { type: "hostResponse"; requestId: string; ok: true; value: unknown }
+  | { type: "hostResponse"; requestId: string; ok: false; error: SerializedPluginRuntimeError }
   | { type: "shutdown" }
   | { type: "ping" }
 
-export type RuntimeRequestMessage = Extract<HostToPlugin, { type: "invokeTool" | "triggerHook" }>
-
-// === Direction: Plugin → Host ===
-
 export type PluginToHost =
-  | { type: "ready"; tools: RuntimeToolDescriptor[]; hooks: string[] }
-  | { type: "response"; requestId: string; ok: true; value: unknown }
-  | { type: "response"; requestId: string; ok: false; error: SerializedError }
-  | { type: "hostRequest"; requestId: string; method: HostBridgeMethod; params: unknown }
-  | { type: "log"; level: "debug" | "info" | "warn" | "error"; message: string }
+  | { type: "ready"; protocolVersion: number; generation: string; handlerIds: string[] }
+  | { type: "response"; requestId: string; generation: string; ok: true; value: unknown }
+  | {
+      type: "response"
+      requestId: string
+      generation: string
+      ok: false
+      error: SerializedPluginRuntimeError
+    }
+  | {
+      type: "hostRequest"
+      requestId: string
+      invocationId: string
+      method: PluginHostServiceMethod
+      params: unknown
+    }
+  | { type: "log"; level: "debug" | "info" | "warn" | "error"; message: string; details?: Record<string, unknown> }
   | { type: "heartbeat" }
 
-// === Bridge methods ===
-
-export type HostBridgeMethod =
-  | "config.get"
-  | "config.set"
-  | "secret.get"
-  | "secret.set"
-  | "secret.delete"
-  | "cache.get"
-  | "cache.set"
-  | "cache.delete"
-  | "file.read"
-  | "file.write"
-  | "network.fetch"
-  | "shell.run"
-  | "session.getMetadata"
-  | "session.read"
-  | "workspace.getMetadata"
-  | "tool.invoke"
-  | "permission.request"
-  | "task.run"
-
-// === Supporting types ===
-
-export interface IsolatedPluginInputData {
-  pluginId: string
-  pluginDir: string
-  scope: ScopeInfo
-  directory: string
-  serverUrl: string
-}
-
-export interface RuntimeToolDescriptor {
-  id: string
-  description: string
-  display?: ToolDisplay
-  schema?: unknown
-  capabilities?: string[]
-}
-
-export interface RuntimeToolContextData {
-  sessionID: string
-  messageID: string
-  agent: string
-  directory?: string
-  callID?: string
-}
-
-export interface SerializedError {
+export interface SerializedPluginRuntimeError {
   name: string
   message: string
   stack?: string
-  cause?: SerializedError
+  code?: string
 }
 
-// === Protocol constants ===
+export function serializePluginRuntimeError(error: unknown): SerializedPluginRuntimeError {
+  if (!(error instanceof Error)) return { name: "Error", message: String(error) }
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    code: "code" in error && error.code !== undefined ? String(error.code) : undefined,
+  }
+}
 
-export const PROTOCOL_VERSION = 1
-export const MESSAGE_DELIMITER = "\n"
+export function deserializePluginRuntimeError(error: SerializedPluginRuntimeError): Error & { code?: string } {
+  return Object.assign(new Error(error.message), {
+    name: error.name,
+    stack: error.stack,
+    ...(error.code ? { code: error.code } : {}),
+  })
+}
 
-// === Host bridge handler ===
-
-export type HostBridgeHandler = (requestId: string, method: HostBridgeMethod, params: unknown) => Promise<unknown>
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 5
+export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

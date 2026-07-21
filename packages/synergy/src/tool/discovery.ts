@@ -32,6 +32,7 @@ export namespace ToolDiscovery {
     agent: Agent.Info
     session?: SessionInfo
     includeMCP?: boolean
+    userTools?: Record<string, boolean>
   }): Promise<Catalog> {
     const { ToolRegistry } = await import("./registry")
     const groupByID = new Map(
@@ -104,6 +105,15 @@ export namespace ToolDiscovery {
           tool.id,
           SessionModePolicy.unavailable({ toolName: tool.id, reason: "permission", session: input.session }),
         )
+        continue
+      }
+      if (!ToolExposure.userAllows(tool.id, input.userTools)) {
+        disabled.add(tool.id)
+        diagnostics.set(
+          tool.id,
+          SessionModePolicy.unavailable({ toolName: tool.id, reason: "user_disabled", session: input.session }),
+        )
+        continue
       }
     }
 
@@ -116,24 +126,26 @@ export namespace ToolDiscovery {
     }
   }
 
+  export function availableGroups(catalog: Catalog): ToolExposure.GroupInfo[] {
+    return catalog.groups
+      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => !catalog.disabled.has(toolID)) }))
+      .filter((group) => group.tools.length > 0)
+  }
+
   export function nonResidentEntries(catalog: Catalog): ToolExposure.SearchEntry[] {
     const activeGroups = new Set(catalog.state.expandedGroups)
     const activeTools = new Set(catalog.state.activatedTools)
-    const groups = catalog.groups
-      .filter((group) => group.tools.length > 0)
-      .map((group) => ({ ...group, tools: group.tools.filter((toolID) => !catalog.disabled.has(toolID)) }))
-      .filter((group) => group.tools.length > 0)
-      .map(
-        (group): ToolExposure.SearchEntry => ({
-          type: "group",
-          id: group.id,
-          title: group.title,
-          description: group.description,
-          group: group.id,
-          active: activeGroups.has(group.id),
-          tools: group.tools,
-        }),
-      )
+    const groups = availableGroups(catalog).map(
+      (group): ToolExposure.SearchEntry => ({
+        type: "group",
+        id: group.id,
+        title: group.title,
+        description: group.description,
+        group: group.id,
+        active: activeGroups.has(group.id),
+        tools: group.tools,
+      }),
+    )
 
     const tools = catalog.tools
       .filter((tool) => !catalog.disabled.has(tool.id))

@@ -14,10 +14,21 @@ process.chdir(dir)
 
 import pkg from "../package.json"
 import { Script } from "@ericsanchezok/synergy-script"
+import {
+  assertPackagedSandboxAsset,
+  copySandboxAsset,
+  resolveSandboxAsset,
+  type SandboxRuntimeTarget,
+} from "./sandbox-assets"
 
 const singleFlag = process.argv.includes("--single")
 const baselineFlag = process.argv.includes("--baseline")
 const skipInstall = process.argv.includes("--skip-install")
+const requireSandboxAssets = process.env.SYNERGY_REQUIRE_SANDBOX_ASSETS === "1"
+const browserHostPublicKey = process.env.SYNERGY_BROWSER_HOST_PUBLIC_KEY ?? ""
+if (process.env.SYNERGY_REQUIRE_BROWSER_HOST_PUBLIC_KEY === "1" && !browserHostPublicKey) {
+  throw new Error("SYNERGY_BROWSER_HOST_PUBLIC_KEY is required for a product release build")
+}
 const requestedTargets = new Set(
   (process.env.SYNERGY_BUILD_TARGETS ?? "")
     .split(",")
@@ -134,9 +145,12 @@ for (const item of targets) {
   console.log(`building ${name}`)
   if (shouldReusePublishedRuntime(item)) {
     await extractPublishedRuntimePackage(name, Script.version)
+    if (requireSandboxAssets) assertPackagedSandboxAsset(item, path.join("dist", name))
     binaries[name] = Script.version
     continue
   }
+
+  const sandboxAsset = resolveSandboxAsset(item, { required: requireSandboxAssets })
 
   await $`mkdir -p dist/${name}/bin`
 
@@ -162,6 +176,8 @@ for (const item of targets) {
         SYNERGY_VERSION: `'${Script.version}'`,
         SYNERGY_CHANNEL: `'${Script.channel}'`,
         SYNERGY_LIBC: item.os === "linux" ? `'${item.abi ?? "glibc"}'` : "",
+        SYNERGY_BROWSER_HOST_PUBLIC_KEY: JSON.stringify(browserHostPublicKey),
+        SYNERGY_SANDBOX_HELPER_SHA256: JSON.stringify(sandboxAsset?.sha256 ?? ""),
       },
     }),
   )
@@ -180,40 +196,14 @@ for (const item of targets) {
   )
   binaries[name] = Script.version
 
-  // Copy sandbox helper into dist for tarball embedding
-  await copySandboxHelper(item, name)
+  if (sandboxAsset) {
+    copySandboxAsset(sandboxAsset, path.join("dist", name))
+  } else if (item.os !== "darwin") {
+    console.warn(`Sandbox asset is unavailable for ${targetKey(item)} — packaged runtime will not include a helper.`)
+  }
 }
 
-async function copySandboxHelper(item: { os: string; arch: string }, name: string): Promise<void> {
-  // macOS uses sandbox-exec built into the OS — no helper needed
-  if (item.os === "darwin") return
-
-  let helperSrc: string
-  let helperDest: string
-
-  if (item.os === "linux") {
-    const helperDir = path.resolve(dir, "src", "sandbox", "helper-linux", "target", "release")
-    helperSrc = path.join(helperDir, "synergy-sandbox-linux")
-    helperDest = path.join("dist", name, "sandbox", "synergy-sandbox-linux")
-  } else if (item.os === "win32") {
-    const helperDir = path.resolve(dir, "src", "sandbox", "helper", "target", "release")
-    helperSrc = path.join(helperDir, "synergy-sandbox-windows.exe")
-    helperDest = path.join("dist", name, "sandbox", "synergy-sandbox-windows.exe")
-  } else {
-    return
-  }
-
-  if (!fs.existsSync(helperSrc)) {
-    console.warn(`Sandbox helper not found at ${helperSrc} — skipping embed. Build the Rust helper first.`)
-    return
-  }
-
-  console.log(`Copying sandbox helper: ${helperSrc} → ${helperDest}`)
-  fs.mkdirSync(path.dirname(helperDest), { recursive: true })
-  fs.copyFileSync(helperSrc, helperDest)
-}
-
-function targetKey(item: { os: string; arch: string; abi?: string; avx2?: false }): string {
+function targetKey(item: SandboxRuntimeTarget): string {
   return [item.os, item.arch, item.avx2 === false ? "baseline" : undefined, item.abi].filter(Boolean).join("-")
 }
 

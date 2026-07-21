@@ -57,24 +57,36 @@ function userInfo(id: string): MessageV2.User {
   } as unknown as MessageV2.User
 }
 
-function imageFilePart(opts: { id: string; messageID: string; filename: string; url: string }): MessageV2.FilePart {
+function imageAttachmentPart(opts: {
+  id: string
+  messageID: string
+  filename: string
+  url: string
+}): MessageV2.AttachmentPart {
   return {
     ...basePart(opts.messageID, opts.id),
-    type: "file",
+    type: "attachment",
     mime: "image/png",
     filename: opts.filename,
     url: opts.url,
-  } as unknown as MessageV2.FilePart
+    model: { mode: "provider-file", summary: `${opts.filename} (image/png)` },
+  } as unknown as MessageV2.AttachmentPart
 }
 
-function textFilePart(opts: { id: string; messageID: string; filename: string; url: string }): MessageV2.FilePart {
+function textAttachmentPart(opts: {
+  id: string
+  messageID: string
+  filename: string
+  url: string
+}): MessageV2.AttachmentPart {
   return {
     ...basePart(opts.messageID, opts.id),
-    type: "file",
+    type: "attachment",
     mime: "text/plain",
     filename: opts.filename,
     url: opts.url,
-  } as unknown as MessageV2.FilePart
+    model: { mode: "provider-file", summary: `${opts.filename} (text/plain)` },
+  } as unknown as MessageV2.AttachmentPart
 }
 
 function userMsgWithParts(id: string, parts: MessageV2.Part[]): MessageV2.WithParts {
@@ -83,15 +95,15 @@ function userMsgWithParts(id: string, parts: MessageV2.Part[]): MessageV2.WithPa
 
 // ---- Output inspectors ----
 
-interface ExtractedFilePart {
+interface ExtractedProviderFilePart {
   data: unknown
   mediaType: string
   filename?: string
 }
 
 /** Collect all file parts from a ModelMessage[] result (after convertToModelMessages). */
-function collectFileParts(modelMessages: ModelMessage[]): ExtractedFilePart[] {
-  const result: ExtractedFilePart[] = []
+function collectProviderFileParts(modelMessages: ModelMessage[]): ExtractedProviderFilePart[] {
+  const result: ExtractedProviderFilePart[] = []
   for (const mm of modelMessages) {
     if (typeof mm.content === "string") continue
     for (const part of mm.content) {
@@ -135,16 +147,18 @@ describe("session.message-v2.toModelMessage image limit", () => {
     const urls = Array.from({ length: 10 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
-      return userMsgWithParts(msgID, [imageFilePart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url })])
+      return userMsgWithParts(msgID, [
+        imageAttachmentPart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url }),
+      ])
     })
 
     // Single-arg call — works today, should continue working
     const result = MessageV2.toModelMessage(msgs)
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
 
-    expect(fileParts).toHaveLength(10)
+    expect(providerFileParts).toHaveLength(10)
     for (let i = 0; i < 10; i++) {
-      expect(fileParts[i].data).toBe(urls[i])
+      expect(providerFileParts[i].data).toBe(urls[i])
     }
     expect(collectImagePlaceholders(result)).toHaveLength(0)
   })
@@ -153,19 +167,21 @@ describe("session.message-v2.toModelMessage image limit", () => {
     const urls = Array.from({ length: 10 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
-      return userMsgWithParts(msgID, [imageFilePart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url })])
+      return userMsgWithParts(msgID, [
+        imageAttachmentPart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url }),
+      ])
     })
 
     // Two-arg call — will compile via `as any` cast; fails at runtime
     // because current toModelMessage ignores the config and returns all 10.
     const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 5 })
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
     // Last 5 images (messages 5–9) should have base64 data
-    expect(fileParts).toHaveLength(5)
+    expect(providerFileParts).toHaveLength(5)
     for (let i = 0; i < 5; i++) {
-      expect(fileParts[i].data).toBe(urls[5 + i])
+      expect(providerFileParts[i].data).toBe(urls[5 + i])
     }
 
     // First 5 images (messages 0–4) should be placeholders
@@ -175,21 +191,31 @@ describe("session.message-v2.toModelMessage image limit", () => {
       expect(placeholders[i]).toContain("[Image:")
       expect(placeholders[i]).toContain("previously shared")
     }
+
+    const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 5 })
+    expect(projection.provenance.categories.filesReferences).toStrictEqual(placeholders.map((text) => ({ text })))
+    expect(projection.provenance.items.filesReferences).toBe(10)
   })
 
   test("replaces all images with placeholders when maxHistoryImages is 0", () => {
     const urls = Array.from({ length: 3 }, (_, i) => imageDataUrl(`img-${i}`))
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
-      return userMsgWithParts(msgID, [imageFilePart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url })])
+      return userMsgWithParts(msgID, [
+        imageAttachmentPart({ id: `p${i}`, messageID: msgID, filename: `img-${i}.png`, url }),
+      ])
     })
 
     const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 0 })
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
-    expect(fileParts).toHaveLength(0)
+    expect(providerFileParts).toHaveLength(0)
     expect(placeholders).toHaveLength(3)
+
+    const projection = MessageV2.projectModelMessages(msgs, { maxHistoryImages: 0 })
+    expect(projection.provenance.categories.filesReferences).toStrictEqual(placeholders.map((text) => ({ text })))
+    expect(projection.provenance.items.filesReferences).toBe(3)
   })
 
   test("text files are not affected by image limit", () => {
@@ -197,8 +223,8 @@ describe("session.message-v2.toModelMessage image limit", () => {
     const msgs = urls.map((url, i) => {
       const msgID = `m${i}`
       return userMsgWithParts(msgID, [
-        imageFilePart({ id: `img-${i}`, messageID: msgID, filename: `img-${i}.png`, url }),
-        textFilePart({
+        imageAttachmentPart({ id: `img-${i}`, messageID: msgID, filename: `img-${i}.png`, url }),
+        textAttachmentPart({
           id: `txt-${i}`,
           messageID: msgID,
           filename: `doc-${i}.txt`,
@@ -208,16 +234,16 @@ describe("session.message-v2.toModelMessage image limit", () => {
     })
 
     const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
     // Only 2 images kept (last 2 unique)
-    const imageParts = fileParts.filter((p) => p.mediaType === "image/png")
+    const imageParts = providerFileParts.filter((p) => p.mediaType === "image/png")
     expect(imageParts).toHaveLength(2)
     // 1 image replaced with placeholder
     expect(placeholders).toHaveLength(1)
     // 3 text files should all still be present (text/plain is not an image)
-    const textParts = fileParts.filter((p) => p.mediaType === "text/plain")
+    const textParts = providerFileParts.filter((p) => p.mediaType === "text/plain")
     expect(textParts).toHaveLength(3)
   })
 })
@@ -232,11 +258,11 @@ describe("session.message-v2.toModelMessage image dedup", () => {
 
     // 3 identical images (same URL → same hash → 1 unique)
     const dupParts = [0, 1, 2].map((i) =>
-      imageFilePart({ id: `dup-${i}`, messageID: `d${i}`, filename: `img.png`, url: dupURL }),
+      imageAttachmentPart({ id: `dup-${i}`, messageID: `d${i}`, filename: `img.png`, url: dupURL }),
     )
     // 2 unique images
     const uniqueParts = [3, 4].map((i) =>
-      imageFilePart({
+      imageAttachmentPart({
         id: `u-${i}`,
         messageID: `u${i}`,
         filename: `unique-${i}.png`,
@@ -249,10 +275,10 @@ describe("session.message-v2.toModelMessage image dedup", () => {
 
     // 3 dup (1 unique) + 2 unique = 3 unique total. Limit 3 → all kept.
     const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 3 })
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
-    expect(fileParts).toHaveLength(5)
+    expect(providerFileParts).toHaveLength(5)
     expect(placeholders).toHaveLength(0)
   })
 
@@ -263,22 +289,24 @@ describe("session.message-v2.toModelMessage image dedup", () => {
 
     const msgs = [urlA, urlB, urlC].map((url, i) => {
       const msgID = `m${i}`
-      return userMsgWithParts(msgID, [imageFilePart({ id: `p${i}`, messageID: msgID, filename: `photo.png`, url })])
+      return userMsgWithParts(msgID, [
+        imageAttachmentPart({ id: `p${i}`, messageID: msgID, filename: `photo.png`, url }),
+      ])
     })
 
     // 3 unique images, limit 2 → oldest gets replaced
     const result = (MessageV2.toModelMessage as any)(msgs, { maxHistoryImages: 2 })
-    const fileParts = collectFileParts(result)
+    const providerFileParts = collectProviderFileParts(result)
     const placeholders = collectImagePlaceholders(result)
 
     // Only 2 file parts kept (last 2 unique images)
-    expect(fileParts).toHaveLength(2)
+    expect(providerFileParts).toHaveLength(2)
     // Oldest image (urlA, message 0) should be a placeholder
     expect(placeholders).toHaveLength(1)
     expect(placeholders[0]).toContain("photo.png")
     // The two file parts should be urlB and urlC (messages 1 and 2)
-    expect(fileParts[0].data).toBe(urlB)
-    expect(fileParts[1].data).toBe(urlC)
+    expect(providerFileParts[0].data).toBe(urlB)
+    expect(providerFileParts[1].data).toBe(urlC)
   })
 })
 

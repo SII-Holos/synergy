@@ -9,17 +9,16 @@
       "type": "local",
       "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/path"],
       "environment": {},
-      "enabled": true,
-      "timeout": 5000
+      "enabled": true
     }
   }
 }
 ```
 
 **Required:** `type` (`"local"`), `command` (array of strings — NEVER a bare string).
-**Optional:** `environment` (env vars for the process), `enabled` (default true), `timeout` (ms, default 5000).
+**Optional:** `environment` (env vars for the process), `enabled` (default true), `cwd` (working directory).
 
-## Remote MCP server (HTTP/SSE)
+## Remote MCP server (Streamable HTTP)
 
 ```jsonc
 {
@@ -29,19 +28,57 @@
       "url": "http://127.0.0.1:3845/mcp",
       "oauth": false,
       "headers": {},
-      "enabled": true,
-      "timeout": 5000
+      "enabled": true
     }
   }
 }
 ```
 
 **Required:** `type` (`"remote"`), `url`.
-**Optional:** `oauth`, `headers`, `enabled`, `timeout`.
+**Optional:** `oauth`, `headers`, `enabled`.
+
+## Lifecycle fields (local and remote)
+
+These fields control connection behavior, tool discovery, and server lifecycle on both local and remote MCP servers.
+
+| Field | Default | Description |
+|---|---|---|
+| `startup` | `"eager"` | Startup mode: `"eager"` (connect on load), `"lazy"` (connect on first use), `"manual"` (never auto-connect) |
+| `required` | `false` | If true, session start fails when this server cannot connect |
+| `connectTimeout` | 30000 | Timeout in ms for the initial connection handshake |
+| `listTimeout` | 30000 | Timeout in ms for listing tools |
+| `callTimeout` | server setting or 30000 | Timeout in ms for tool call execution (per-server override) |
+| `retry` | `{ maxAttempts: 3, backoffMs: 1000, backoffMultiplier: 2 }` | Retry policy for reconnection |
+| `idleShutdownMs` | (none) | Idle time in ms after which the server is shut down |
+| `toolFilter` | (none) | Filter tools: `{ include: [...], exclude: [...] }` |
+| `tools` | (none) | Tool execution behavior: `{ approval: "auto" / "always" / "per_session", maxOutputBytes: ... }` |
+| `toolCache` | (none) | Tool list cache: `{ mode: "disabled" / "session" / "persistent", ttlMs: ... }` |
+
+Local-only:
+| Field | Default | Description |
+|---|---|---|
+| `cwd` | server process cwd | Working directory for the local MCP server process |
+
+`timeout` is a deprecated legacy field that applies to all phases (connect, list, call). Prefer the phase-specific fields above. The default timeout across all phases is 30000ms.
+
+## Defaults across servers (`mcpDefaults`)
+
+Set defaults for all MCP servers that don't override them:
+
+```jsonc
+{
+  "mcpDefaults": {
+    "connectTimeout": 15000,
+    "toolCache": { "mode": "session", "ttlMs": 60000 }
+  }
+}
+```
+
+Any lifecycle field listed above can be set in `mcpDefaults`.
 
 ## OAuth configuration
 
-OAuth auto-detection is ON by default for remote servers. Control it:
+OAuth is auto-detected by default for remote servers. Control it:
 
 - `"oauth": false` — disable OAuth (use for local/trusted services)
 - `"oauth": {}` — enable with auto-detection (default)
@@ -152,7 +189,7 @@ Converted:
 
 ### Remote MCP timeout
 
-- Increase `timeout` (default 5000ms) — slow servers or large tool lists may need 10000 or more.
+- Increase `connectTimeout`, `listTimeout`, or `callTimeout` as needed (default 30000ms each) — slow servers or large tool lists may need higher values.
 - Verify the URL is reachable from the Synergy server: `curl <url>` from the same host.
 - If the server requires authentication, check that OAuth or `headers` is configured.
 
@@ -171,6 +208,7 @@ Converted:
 ### MCP tools not appearing
 
 - Run `runtime_reload(target: "mcp")` after config changes.
+- For MCP servers contributed by plugins, run `runtime_reload(target: "plugin")` after plugin manifest/package changes. Lazy plugin MCP servers must be connected before their tools appear in agent tool discovery.
 - Check server logs for errors during the tool list request — a failing MCP server may connect but return an empty or errored tool list.
 
 ## Reload
@@ -179,4 +217,4 @@ Converted:
 runtime_reload(target: "mcp")
 ```
 
-MCP reload cascades to command reload automatically.
+MCP reload cascades to command reload automatically and re-registers MCP servers contributed by currently loaded plugins.

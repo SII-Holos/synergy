@@ -38,7 +38,6 @@ import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
 import { ConfigDomain } from "./config/domain"
-import { registerPluginCommands } from "./cli/plugin-dispatch"
 import { parse as parseJsonc } from "jsonc-parser"
 
 const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
@@ -176,7 +175,6 @@ const cli = yargs(hideBin(process.argv))
   .command(MigrationCommand)
 
 // Register CLI commands from installed plugins (e.g. `synergy inspire login`)
-await registerPluginCommands(cli)
 
 cli
   .fail((msg, err) => {
