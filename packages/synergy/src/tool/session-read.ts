@@ -4,10 +4,10 @@ import { Tool } from "./tool"
 import { Session } from "../session"
 import { SessionManager } from "../session/manager"
 import { MessageV2 } from "../session/message-v2"
+import { SessionHistory } from "../session/history"
+import { SessionMemoryPressure } from "../session/memory-pressure"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
-import { Storage } from "../storage/storage"
-import { StoragePath } from "../storage/path"
 import DESCRIPTION from "./session-read.txt"
 
 const parameters = z.object({
@@ -78,84 +78,117 @@ function formatMessage(msg: MessageV2.WithParts, highlight?: boolean): string {
   return lines.join("\n")
 }
 
-export const SessionReadTool = Tool.define("session_read", {
-  description: DESCRIPTION,
-  parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    const session = await resolveSession(params.target)
-    if (!session.scope) {
-      return {
-        title: "Legacy session",
-        output: `Session ${session.id} uses a legacy format and cannot be read.`,
-        metadata: { sessionID: session.id } as Record<string, any>,
-      }
+async function hydrateMessages(input: {
+  infos: MessageV2.Info[]
+  scopeID: Identifier.ScopeID
+  sessionID: Identifier.SessionID
+  abort: AbortSignal
+}) {
+  const messages: MessageV2.WithParts[] = []
+  for (const info of input.infos) {
+    input.abort.throwIfAborted()
+    messages.push({
+      info,
+      parts: await MessageV2.parts({
+        scopeID: input.scopeID,
+        sessionID: input.sessionID,
+        messageID: info.id,
+      }),
+    })
+  }
+  return messages
+}
+
+async function readSession(params: z.infer<typeof parameters>, ctx: Tool.Context) {
+  const session = await resolveSession(params.target)
+  if (!session.scope) {
+    return {
+      title: "Legacy session",
+      output: `Session ${session.id} uses a legacy format and cannot be read.`,
+      metadata: { sessionID: session.id } as Record<string, any>,
     }
-    const scopeID = (session.scope as Scope).id
-    const sessionID = session.id as Identifier.SessionID
-    const clampedLimit = Math.min(params.limit, 50)
+  }
+  const scopeID = Identifier.asScopeID((session.scope as Scope).id)
+  const sessionID = session.id as Identifier.SessionID
+  const clampedLimit = Math.max(0, Math.min(params.limit, 50))
+  const allMessageInfos = (await SessionHistory.messageInfos(session.id)).reverse()
+  const total = allMessageInfos.length
+  const updated = formatLocalDateTime(session.time.updated)
+  const header = `Session: ${session.id} — "${session.title}" (updated ${updated})`
 
-    const allMessageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(Identifier.asScopeID(scopeID), sessionID))
-    const total = allMessageIDs.length
-
-    // Collect messages via stream (newest first)
-    const allMessages: MessageV2.WithParts[] = []
-    for await (const msg of MessageV2.stream({ scopeID, sessionID })) {
-      allMessages.push(msg)
-    }
-
-    const updated = formatLocalDateTime(session.time.updated)
-    const header = `Session: ${session.id} — "${session.title}" (updated ${updated})`
-
-    if (params.around) {
-      // Anchor mode: center around a specific message
-      const anchorIndex = allMessages.findIndex((m) => m.info.id === params.around)
-      if (anchorIndex < 0) {
-        return {
-          title: session.title,
-          output: `${header}\n\nMessage ${params.around} not found in this session.`,
-          metadata: { sessionID: session.id, total } as Record<string, any>,
-        }
-      }
-
-      const half = Math.floor(clampedLimit / 2)
-      let start = Math.max(0, anchorIndex - half)
-      let end = Math.min(allMessages.length, start + clampedLimit)
-      if (end - start < clampedLimit) {
-        start = Math.max(0, end - clampedLimit)
-      }
-
-      const page = allMessages.slice(start, end)
-      const formatted = page.map((m) => formatMessage(m, m.info.id === params.around))
-      const pagination = `Showing messages ${start + 1}-${end} of ${total} (centered on ${params.around}):`
-
+  if (params.around) {
+    const anchorIndex = allMessageInfos.findIndex((message) => message.id === params.around)
+    if (anchorIndex < 0) {
       return {
         title: session.title,
-        output: `${header}\n${pagination}\n\n${formatted.join("\n\n---\n\n")}`,
-        metadata: { sessionID: session.id, total, shown: page.length, anchorIndex: start } as Record<string, any>,
+        output: `${header}\n\nMessage ${params.around} not found in this session.`,
+        metadata: { sessionID: session.id, total } as Record<string, any>,
       }
     }
 
-    // Browse mode: offset from newest
-    const page = allMessages.slice(params.offset, params.offset + clampedLimit)
-
-    if (page.length === 0) {
-      return {
-        title: session.title,
-        output: `${header}\n\nNo messages found.`,
-        metadata: { sessionID: session.id, total: 0 } as Record<string, any>,
-      }
+    const half = Math.floor(clampedLimit / 2)
+    let start = Math.max(0, anchorIndex - half)
+    const end = Math.min(total, start + clampedLimit)
+    if (end - start < clampedLimit) {
+      start = Math.max(0, end - clampedLimit)
     }
 
-    const rangeStart = params.offset + 1
-    const rangeEnd = params.offset + page.length
-    const pagination = `Showing messages ${rangeStart}-${rangeEnd} of ${total} (newest first):`
-
-    const formatted = page.map((m) => formatMessage(m))
+    const page = await hydrateMessages({
+      infos: allMessageInfos.slice(start, end),
+      scopeID,
+      sessionID,
+      abort: ctx.abort,
+    })
+    const formatted = page.map((message) => formatMessage(message, message.info.id === params.around))
+    const pagination = `Showing messages ${start + 1}-${end} of ${total} (centered on ${params.around}):`
 
     return {
       title: session.title,
       output: `${header}\n${pagination}\n\n${formatted.join("\n\n---\n\n")}`,
-      metadata: { sessionID: session.id, total, shown: page.length } as Record<string, any>,
+      metadata: { sessionID: session.id, total, shown: page.length, anchorIndex: start } as Record<string, any>,
+    }
+  }
+
+  const page = await hydrateMessages({
+    infos: allMessageInfos.slice(params.offset, params.offset + clampedLimit),
+    scopeID,
+    sessionID,
+    abort: ctx.abort,
+  })
+
+  if (page.length === 0) {
+    return {
+      title: session.title,
+      output: `${header}\n\nNo messages found.`,
+      metadata: { sessionID: session.id, total } as Record<string, any>,
+    }
+  }
+
+  const rangeStart = params.offset + 1
+  const rangeEnd = params.offset + page.length
+  const pagination = `Showing messages ${rangeStart}-${rangeEnd} of ${total} (newest first):`
+  const formatted = page.map((message) => formatMessage(message))
+
+  return {
+    title: session.title,
+    output: `${header}\n${pagination}\n\n${formatted.join("\n\n---\n\n")}`,
+    metadata: { sessionID: session.id, total, shown: page.length } as Record<string, any>,
+  }
+}
+
+export const SessionReadTool = Tool.define("session_read", {
+  description: DESCRIPTION,
+  parameters,
+  async execute(params, ctx) {
+    try {
+      return await readSession(params, ctx)
+    } finally {
+      await SessionMemoryPressure.maybeCollect({
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        phase: "tool.session_read.complete",
+        forceFull: true,
+      })
     }
   },
 })

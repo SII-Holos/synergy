@@ -57,6 +57,43 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([false])
   })
 
+  test("can request a full interval-limited GC", async () => {
+    const calls: boolean[] = []
+
+    const result = await SessionMemoryPressure.maybeCollect({
+      phase: "test.history.progress",
+      full: true,
+      now: () => 12_000,
+      snapshot: () => healthySnapshot,
+      collect: (full) => {
+        calls.push(full)
+      },
+      env,
+    })
+
+    expect(result.decision.action).toBe("normal")
+    expect(calls).toEqual([true])
+  })
+
+  test("requests a full GC for released history buffers", async () => {
+    SessionMemoryPressure.resetForTest(1_000)
+    const calls: boolean[] = []
+
+    const result = await SessionMemoryPressure.maybeCollect({
+      phase: "test.history.complete",
+      forceFull: true,
+      now: () => 1_500,
+      snapshot: () => healthySnapshot,
+      collect: (full) => {
+        calls.push(full)
+      },
+      env,
+    })
+
+    expect(result.decision.action).toBe("full_forced")
+    expect(calls).toEqual([true])
+  })
+
   test("forces critical GC even when the normal interval has not elapsed", async () => {
     SessionMemoryPressure.resetForTest(1_000)
     const calls: boolean[] = []

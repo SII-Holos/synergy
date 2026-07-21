@@ -26,6 +26,7 @@ export namespace SessionMemoryPressure {
     | { action: "unavailable"; reason: "gc_unavailable"; critical: boolean }
     | { action: "skip"; reason: "interval"; critical: false; nextEligibleAt: number }
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
+    | { action: "full_forced"; reason: "caller_requested"; critical: false }
     | { action: "critical_forced"; reason: "critical_pressure"; critical: true }
 
   let lastGCAt = 0
@@ -69,6 +70,7 @@ export namespace SessionMemoryPressure {
     now: number
     lastGCAt: number
     gcAvailable: boolean
+    forceFull?: boolean
   }): Decision {
     const critical =
       input.snapshot.rssBytes >= input.thresholds.rssCriticalBytes ||
@@ -77,6 +79,7 @@ export namespace SessionMemoryPressure {
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
     if (critical) return { action: "critical_forced", reason: "critical_pressure", critical: true }
+    if (input.forceFull) return { action: "full_forced", reason: "caller_requested", critical: false }
 
     const nextEligibleAt = input.lastGCAt + input.thresholds.minIntervalMs
     if (input.lastGCAt > 0 && input.now < nextEligibleAt) {
@@ -90,9 +93,11 @@ export namespace SessionMemoryPressure {
     sessionID?: string
     messageID?: string
     phase: string
+    full?: boolean
+    forceFull?: boolean
     now?: () => number
     snapshot?: () => Snapshot | Promise<Snapshot>
-    collect?: (critical: boolean) => void | Promise<void>
+    collect?: (full: boolean) => void | Promise<void>
     env?: NodeJS.ProcessEnv
   }) {
     const now = input.now?.() ?? Date.now()
@@ -105,6 +110,7 @@ export namespace SessionMemoryPressure {
       now,
       lastGCAt,
       gcAvailable: input.collect !== undefined || typeof Bun.gc === "function",
+      forceFull: input.forceFull,
     })
 
     if (decision.action === "skip" || decision.action === "unavailable") {
@@ -119,7 +125,7 @@ export namespace SessionMemoryPressure {
       return { decision, before }
     }
 
-    await collect(decision.critical)
+    await collect(decision.action === "critical_forced" || decision.action === "full_forced" || input.full === true)
     lastGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
     log.info("gc completed", {
@@ -127,6 +133,8 @@ export namespace SessionMemoryPressure {
       messageID: input.messageID,
       phase: input.phase,
       decision,
+      full: input.full === true,
+      forceFull: input.forceFull === true,
       before,
       after,
       thresholds,
@@ -147,8 +155,8 @@ export namespace SessionMemoryPressure {
     cachedCgroupDir = undefined
   }
 
-  async function defaultCollect(critical: boolean) {
-    Bun.gc(critical)
+  async function defaultCollect(full: boolean) {
+    Bun.gc(full)
   }
 
   async function cgroupMemory() {
