@@ -135,7 +135,7 @@ export class ComposerDocumentController {
     const registration: ComposerExtensionRegistration = { id: input.id, order: input.order }
     const dispose = this.register(registration)
     let active = true
-    const require = (capability: "composer.read" | "composer.write" | "composer.intercept") => {
+    const requireCapability = (capability: "composer.read" | "composer.write" | "composer.intercept") => {
       if (!active) throw new Error(`Composer extension is disposed: ${input.id}`)
       if (input.capabilities.has(capability)) return
       throw new ComposerDocumentError("capability_denied", `Composer extension requires ${capability}`)
@@ -147,30 +147,30 @@ export class ComposerDocumentController {
     }
     return {
       current: () => {
-        require("composer.read")
+        requireCapability("composer.read")
         return this.current()
       },
       onDraftSettled: (handler) => {
-        require("composer.read")
+        requireCapability("composer.read")
         setRegistration({ onDraftSettled: handler })
         this.#scheduleSettled()
         return () => setRegistration({ onDraftSettled: undefined })
       },
       onBeforeSubmit: (handler) => {
-        require("composer.intercept")
+        requireCapability("composer.intercept")
         setRegistration({ onBeforeSubmit: handler })
         return () => setRegistration({ onBeforeSubmit: undefined })
       },
       setCompletion: (completion) => {
-        require("composer.write")
+        requireCapability("composer.write")
         this.#setCompletion(input.id, completion)
       },
       setDecorations: (value) => {
-        require("composer.write")
+        requireCapability("composer.write")
         this.#setDecorations(input.id, value)
       },
       applyEdits: (value) => {
-        require("composer.write")
+        requireCapability("composer.write")
         return this.applyEdits(value)
       },
       dispose: () => {
