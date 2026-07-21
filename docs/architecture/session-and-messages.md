@@ -140,7 +140,7 @@ Downstream loop, compaction, history, and frontend code read canonical fields. T
 
 When a paginated result contains a non-root message whose root lies outside the page, session history loading adds the missing root record so consumers do not lose task identity.
 
-Transcript consumers use the ordered message array as the chronology. Current message IDs are monotonic, but persisted sessions may contain legacy stable delivery IDs whose lexical order is unrelated to creation time. Both full and model-working-set read boundaries restore those records by `time.created`; loop, rollback, fork, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
+Transcript consumers use the ordered message array as the chronology. `time.created` records when a message enters the transcript; message IDs provide stable identity and only break ties between messages with the same creation time. Inbox delivery may pre-allocate a message ID before materialization, so loop, rollback, fork, compaction, pagination, and other positional logic must not compare raw message IDs to decide whether one message is before or after another.
 
 ## Message Page API
 
@@ -289,7 +289,7 @@ Every item has one scheduling axis:
 | `steer`   | Existing root | Materialized before the next `needsModelCall` decision. | Wakes the latest root if one exists.          |
 | `context` | Existing root | Piggybacks only after a model call is already required. | Remains stored and does not wake the session. |
 
-Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID, and task, steer, and context order remains stable through `orderKey`; legacy hash-based transcript IDs are supported only at the read boundary.
+Stable delivery keys deduplicate inbox items independently from transcript message IDs. Materialization persists the assigned message ID for idempotency, but the ID allocation time does not define transcript chronology. Task, steer, and context order remains stable through `orderKey`; message reads order materialized records by `time.created` with the message ID as a deterministic tie-break.
 
 Typical mappings:
 

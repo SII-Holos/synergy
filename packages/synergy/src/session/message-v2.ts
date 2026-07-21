@@ -1196,16 +1196,26 @@ export namespace MessageV2 {
     return projectModelMessages(input, opts).messages
   }
 
-  function isLegacyStableDeliveryMessageID(id: string): boolean {
-    return /^msg_[0-9a-f]{26}$/.test(id)
+  export function compareStorageOrder(a: Info, b: Info): number {
+    const created = a.time.created - b.time.created
+    if (created !== 0) return created
+    return a.id.localeCompare(b.id)
   }
 
-  export function compareStorageOrder(a: Info, b: Info): number {
-    if (isLegacyStableDeliveryMessageID(a.id) || isLegacyStableDeliveryMessageID(b.id)) {
-      const created = a.time.created - b.time.created
-      if (created !== 0) return created
-    }
-    return a.id.localeCompare(b.id)
+  export async function readInfoList(input: {
+    scopeID: Identifier.ScopeID
+    sessionID: Identifier.SessionID
+  }): Promise<Info[]> {
+    const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(input.scopeID, input.sessionID))
+    const infos = await Storage.readMany<Info>(
+      messageIDs.map((messageID) =>
+        StoragePath.messageInfo(input.scopeID, input.sessionID, messageID as Identifier.MessageID),
+      ),
+    )
+    return infos
+      .filter((info): info is Info => info !== undefined)
+      .map(canonicalMessage)
+      .sort(compareStorageOrder)
   }
 
   export const stream = fn(
@@ -1217,38 +1227,26 @@ export namespace MessageV2 {
       const session = input.scopeID ? undefined : await requireSession(input.sessionID)
       const scopeID = Identifier.asScopeID(input.scopeID ?? (session!.scope as Scope).id)
       const sessionID = input.sessionID as Identifier.SessionID
-      const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sessionID))
-      const readMessage = (messageID: string) =>
-        get({
-          scopeID,
-          sessionID: input.sessionID,
-          messageID,
-        })
+      const ordered = (await readInfoList({ scopeID, sessionID })).toReversed()
 
-      if (!messageIDs.some(isLegacyStableDeliveryMessageID)) {
-        for (let index = messageIDs.length - 1; index >= 0; index--) {
-          const messageID = messageIDs[index]
-          try {
-            yield await readMessage(messageID)
-          } catch (error) {
-            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
+      for (const info of ordered) {
+        try {
+          yield {
+            info,
+            parts: await parts({
+              scopeID,
+              sessionID: input.sessionID,
+              messageID: info.id,
+            }),
           }
+        } catch (error) {
+          log.warn("skipping unreadable message", {
+            sessionID: input.sessionID,
+            messageID: info.id,
+            error: String(error),
+          })
         }
-        return
       }
-
-      const messages = await Promise.all(
-        messageIDs.map((messageID) =>
-          readMessage(messageID).catch((error) => {
-            log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID, error: String(error) })
-            return undefined
-          }),
-        ),
-      )
-      const ordered = messages
-        .filter((message): message is MessageV2.WithParts => message !== undefined)
-        .sort((a, b) => compareStorageOrder(b.info, a.info))
-      yield* ordered
     },
   )
 

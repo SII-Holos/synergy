@@ -158,6 +158,57 @@ describe("SessionWorking", () => {
         },
       })
     })
+    test("uses message creation time to find the latest incomplete assistant", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: 100 },
+          })
+          const delayedAssistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: 200, completed: 200 },
+            finish: "stop",
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+          await Session.updateMessage({
+            id: delayedAssistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: 300 },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          const result = await SessionWorking.resolve(session.id)
+          assertExists(result)
+          expect(result.status).toBe("recovering")
+        },
+      })
+    })
   })
 
   describe("toStatus()", () => {

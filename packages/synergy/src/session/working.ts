@@ -1,9 +1,7 @@
 import { Log } from "@/util/log"
 import { SessionManager } from "./manager"
 import type { Info, StatusInfo, WorkingInfo } from "./types"
-import { MessageV2 } from "./message-v2"
-import { Storage } from "@/storage/storage"
-import { StoragePath } from "@/storage/path"
+import { SessionHistory } from "./history"
 import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
@@ -34,12 +32,9 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
     return { status: "recovering" }
   }
 
-  const messageIDs = await Storage.scan(StoragePath.sessionMessagesRoot(scopeID, sid)).catch(() => [] as string[])
-  for (const mid of messageIDs.sort().reverse()) {
-    const info = await Storage.read<MessageV2.Info>(
-      StoragePath.messageInfo(scopeID, sid, mid as Identifier.MessageID),
-    ).catch(() => undefined)
-    if (!info || info.role !== "assistant") continue
+  const ordered = (await SessionHistory.messageInfos(sessionID)).toReversed()
+  for (const info of ordered) {
+    if (info.role !== "assistant") continue
     if (info.time.completed == null) {
       log.info("detected recovering session (incomplete)", { sessionID, messageID: info.id })
       return { status: "recovering" }
