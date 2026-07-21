@@ -99,6 +99,7 @@ describe("desktop packaging", () => {
 
     expect(nsisScript).toContain("Call PathHasEntry")
     expect(nsisScript).toContain("StrCmp $R6 $R1 found")
+    expect(nsisScript).toContain("!ifndef BUILD_UNINSTALLER\nFunction PathHasEntry")
     expect(nsisScript).not.toContain("Call StrStr")
   })
 
