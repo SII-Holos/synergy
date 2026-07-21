@@ -75,4 +75,34 @@ describe("synergy-link runtime approval", () => {
       "pending",
     )
   })
+
+  test("session responses report the observed host identity and capabilities", async () => {
+    await SynergyLinkCLIBackend.setApproval("trusted-only")
+    await SynergyLinkCLIBackend.addTrust("agent", "agent_observer")
+    const runtime = await SynergyLinkRuntime.create()
+    const linkID = runtime.state?.linkID
+    expect(linkID).toBeTruthy()
+
+    const response = await runtime.inbound.handle({
+      caller: { type: "holos", agentID: "agent_observer", ownerUserID: 7 },
+      body: {
+        version: 2,
+        requestID: "req_observe_host",
+        linkID,
+        tool: "session",
+        action: "open",
+        payload: { action: "open", label: "observe host" },
+      },
+    })
+
+    expect(response.ok).toBe(true)
+    if (!response.ok || response.tool !== "session") return
+    expect(response.result.metadata.host).toEqual(
+      expect.objectContaining({
+        type: "synergy_link.host.hello",
+        linkID,
+        capabilities: expect.objectContaining({ platform: expect.any(String), arch: expect.any(String) }),
+      }),
+    )
+  })
 })

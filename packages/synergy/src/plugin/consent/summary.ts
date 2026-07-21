@@ -17,6 +17,16 @@ const labels: Record<string, { title: string; description: string; category: Per
     description: "Start Synergy tasks from plugin tools invoked by an agent.",
     category: "tools",
   },
+  "blueprint.delegate": {
+    title: "Run Blueprint workflows",
+    description: "Create and control BlueprintLoop executions in the active Scope.",
+    category: "tools",
+  },
+  "lightloop.delegate": {
+    title: "Enable Light Loop",
+    description: "Enable the Light Loop workflow in an existing Session.",
+    category: "tools",
+  },
   "workspace.read": {
     title: "Read workspace",
     description: "Read files inside the active Scope workspace.",

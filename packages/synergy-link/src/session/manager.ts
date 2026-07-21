@@ -69,6 +69,29 @@ export class SessionManager {
       })
     }
 
+    if (
+      this.#current &&
+      this.#current.remoteAgentID === caller.agentID &&
+      this.#current.remoteOwnerUserID === caller.ownerUserID
+    ) {
+      this.#current.lastSeenAt = Date.now()
+      this.#emitChange()
+      SynergyLinkLog.info("session.open.reused", {
+        callerAgentID: caller.agentID,
+        callerOwnerUserID: caller.ownerUserID,
+        sessionID: this.#current.sessionID,
+      })
+      return this.#sessionResult({
+        action: "open",
+        status: "opened",
+        sessionID: this.#current.sessionID,
+        remoteAgentID: this.#current.remoteAgentID,
+        remoteOwnerUserID: this.#current.remoteOwnerUserID,
+        label: this.#current.label,
+        title: "Session opened",
+        output: `Session ${this.#current.sessionID} is already open for ${caller.agentID}.`,
+      })
+    }
     if (this.#current) {
       SynergyLinkLog.warn("session.open.busy", {
         callerAgentID: caller.agentID,

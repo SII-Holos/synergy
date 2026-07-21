@@ -1,5 +1,11 @@
 import { describe, test, expect } from "bun:test"
-import { resolveThemeVariant, resolveTheme, resolveThemeColor, themeToCss } from "../src/theme/resolve"
+import {
+  resolveThemeVariant,
+  resolveTheme,
+  resolveThemeColor,
+  themeToCss,
+  THEME_CONTRAST_REQUIREMENTS,
+} from "../src/theme/resolve"
 import { synergyTheme } from "../src/theme/default-themes"
 import { getSavedColorScheme, getSystemMode, isColorScheme, resolveColorSchemeMode } from "../src/theme/color-scheme"
 import { THEME_TOKEN_NAMES, type ThemeTokenName } from "../src/theme/tokens"
@@ -401,12 +407,14 @@ describe("resolveTheme (synergy)", () => {
   test("semantic foreground and surface pairs meet WCAG AA contrast", () => {
     const resolved = resolveTheme(synergyTheme)
     for (const variant of [resolved.light, resolved.dark]) {
-      expectReadablePair(variant, "text-base", "background-base")
-      expectReadablePair(variant, "text-weak", "surface-base")
-      expectReadablePair(variant, "text-on-interactive-base", "surface-interactive-solid")
-      expectReadablePair(variant, "text-on-success-base", "surface-success-weak")
-      expectReadablePair(variant, "text-on-warning-base", "surface-warning-weak")
-      expectReadablePair(variant, "text-on-critical-base", "surface-critical-weak")
+      for (const requirement of THEME_CONTRAST_REQUIREMENTS) {
+        expect(
+          contrastRatio(
+            resolveThemeColor(variant, requirement.foreground),
+            resolveThemeColor(variant, requirement.background),
+          ),
+        ).toBeGreaterThanOrEqual(requirement.minimum)
+      }
     }
   })
 

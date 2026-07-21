@@ -355,6 +355,33 @@ describe("WorkspaceFileSearch", () => {
           expect(match.submatches[0]).toEqual({ text: "needle", start: 0, end: 6 })
           expect(match.previewRanges[0]).toEqual({ start: 0, end: 6 })
         }
+
+        const next = await WorkspaceFileSearch.search({
+          kind: "content",
+          query: "needle",
+          limit: 1,
+          cursor: result.nextCursor,
+        })
+        expect(next.items).toHaveLength(1)
+        expect(next.items[0]).toMatchObject({ kind: "content", path: "src/search.txt", lineNumber: 3 })
+        expect(next.truncated).toBe(false)
+      },
+    )
+  })
+
+  test("bounds the displayed content line while preserving match metadata", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "large.txt"), `needle ${"x".repeat(3000)}\n`)
+      },
+      async () => {
+        const result = await WorkspaceFileSearch.search({ kind: "content", query: "needle", limit: 10 })
+        const match = result.items[0]
+        expect(match?.kind).toBe("content")
+        if (match?.kind === "content") {
+          expect(match.line.length).toBe(2003)
+          expect(match.submatches[0]).toEqual({ text: "needle", start: 0, end: 6 })
+        }
       },
     )
   })
@@ -370,6 +397,21 @@ describe("WorkspaceFileSearch", () => {
         expect(result.items).toEqual([])
         expect(result.truncated).toBe(false)
         expect(result.capability).toBeUndefined()
+      },
+    )
+  })
+
+  test("does not offer a cursor when the subprocess output safety limit stops content search", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "a.txt"), "needle small\n")
+        await Bun.write(path.join(dir, "z.txt"), `needle ${"x".repeat(300_000)}\n`)
+      },
+      async () => {
+        const result = await WorkspaceFileSearch.search({ kind: "content", query: "needle", limit: 10 })
+        expect(result.items).toHaveLength(1)
+        expect(result.truncated).toBe(true)
+        expect(result.nextCursor).toBeUndefined()
       },
     )
   })

@@ -8,6 +8,42 @@ import { publishGeneration } from "../src/commands/dev"
 import { packPluginProject } from "../src/commands/pack"
 
 describe("plugin build and dev generations", () => {
+  test("copies declared runtime assets and includes their content in the generation", async () => {
+    const root = fs.mkdtempSync(path.join(import.meta.dir, "asset-fixture-"))
+    try {
+      fs.mkdirSync(path.join(root, "src", "prompts"), { recursive: true })
+      fs.writeFileSync(
+        path.join(root, "package.json"),
+        JSON.stringify({ name: "asset-fixture", version: "1.0.0", type: "module", source: "./src/index.ts" }),
+      )
+      fs.writeFileSync(path.join(root, "src", "prompts", "method.md"), "first prompt")
+      fs.writeFileSync(
+        path.join(root, "src", "index.ts"),
+        `
+import { definePlugin } from "@ericsanchezok/synergy-plugin"
+export default definePlugin({
+  id: "asset-fixture",
+  version: "1.0.0",
+  description: "Runtime asset fixture",
+  assets: [{ source: "src/prompts", target: "runtime/prompts" }],
+  contributions: [],
+})
+`,
+      )
+
+      expect(await buildPluginProject(root)).toBe(true)
+      expect(fs.readFileSync(path.join(root, "dist", "runtime", "prompts", "method.md"), "utf8")).toBe("first prompt")
+      const first = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+
+      fs.writeFileSync(path.join(root, "src", "prompts", "method.md"), "second prompt")
+      expect(await buildPluginProject(root)).toBe(true)
+      const second = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(second.artifacts.generation).not.toBe(first.artifacts.generation)
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
   test("compiled Solid UI remains reactive after asynchronous state changes", async () => {
     const root = fs.mkdtempSync(path.join(import.meta.dir, "solid-fixture-"))
     try {

@@ -31,7 +31,7 @@
   border-radius: 14px;
   border-color: color-mix(in oklch, var(--border-base) 44%, transparent);
   box-shadow:
-    0 22px 72px rgba(0, 0, 0, 0.34),
+    0 22px 72px var(--surface-overlay),
     0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
@@ -141,8 +141,7 @@
   appearance: none;
   background: var(--agenda-selected-bg);
   color: var(--text-base);
-  box-shadow: inset 0 0 0 1px
-    light-dark(color-mix(in oklab, var(--border-base) 30%, transparent), color-mix(in oklab, white 7%, transparent));
+  box-shadow: inset 0 0 0 1px var(--border-weak-base);
   transition:
     background-color 150ms ease,
     box-shadow 150ms ease,
@@ -185,7 +184,7 @@
   background: var(--agenda-popup-bg);
   box-shadow:
     inset 0 0 0 1px color-mix(in oklab, var(--border-base) 24%, transparent),
-    0 16px 38px rgba(0, 0, 0, 0.24);
+    0 16px 38px var(--surface-overlay);
 }
 
 .agenda-date-popover {

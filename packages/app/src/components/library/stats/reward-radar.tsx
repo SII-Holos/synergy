@@ -60,11 +60,12 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
       r: {
         min: -1,
         max: 1,
+        border: { color: theme().grid },
         ticks: {
           stepSize: 0.5,
           font: { size: 9 },
           color: theme().axis,
-          backdropColor: "transparent",
+          backdropColor: theme().background,
           callback: (v: number | string) => {
             const n = typeof v === "string" ? parseFloat(v) : v
             return n === 0 ? "0" : n > 0 ? `+${n}` : `${n}`
@@ -82,6 +83,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { raw: number }) => `avg: ${formatR(ctx.raw as number)}`,
         },
@@ -110,6 +112,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             return t > 0 ? (getCount(dim, 1) / t) * 100 : 0
           }),
           backgroundColor: theme().alpha("text-on-success-base", 0.72),
+          hoverBackgroundColor: theme().states.success,
           borderRadius: 2,
         },
         {
@@ -119,6 +122,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             return t > 0 ? (getCount(dim, 0) / t) * 100 : 0
           }),
           backgroundColor: theme().alpha("text-weak", 0.45),
+          hoverBackgroundColor: theme().axis,
           borderRadius: 2,
         },
         {
@@ -128,6 +132,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
             return t > 0 ? (getCount(dim, -1) / t) * 100 : 0
           }),
           backgroundColor: theme().alpha("text-on-critical-base", 0.65),
+          hoverBackgroundColor: theme().states.critical,
           borderRadius: 2,
         },
       ],
@@ -140,6 +145,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     indexAxis: "y" as const,
     scales: {
       x: {
+        border: { display: false },
         stacked: true,
         max: 100,
         grid: { color: theme().grid },
@@ -150,6 +156,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
         },
       },
       y: {
+        border: { display: false },
         stacked: true,
         grid: { display: false },
         ticks: {
@@ -161,6 +168,7 @@ export function RewardRadar(props: { dimensions: DimStats[] }) {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { dataset: { label?: string }; raw: number }) =>
             `${ctx.dataset.label}: ${(ctx.raw as number).toFixed(1)}%`,

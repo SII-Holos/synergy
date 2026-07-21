@@ -10,7 +10,7 @@ import {
 import type { DesktopUpdateEvent, DesktopUpdateMode } from "./updater.js"
 import type { DesktopWindowState } from "./window-chrome.js"
 import { mapSelectDirectoryDialogResponse, type SelectDirectoryDialogBridgeResponse } from "./directory-picker.js"
-import type { DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
+import type { DesktopSkinUpdateV2, DesktopThemeEvent, DesktopThemeSnapshot, DesktopThemeSource } from "./theme.js"
 import type { DesktopBadgeState } from "./ipc-contract.js"
 
 const browserNative = {
@@ -100,8 +100,11 @@ const desktopTheme = {
   get() {
     return ipcRenderer.invoke("desktop.theme.get") as Promise<DesktopThemeSnapshot | null>
   },
-  set(source: DesktopThemeSource) {
-    return ipcRenderer.invoke("desktop.theme.set", source) as Promise<DesktopThemeSnapshot | null>
+  set(input: DesktopSkinUpdateV2) {
+    return ipcRenderer.invoke("desktop.theme.set", input) as Promise<DesktopThemeSnapshot | null>
+  },
+  setSource(source: DesktopThemeSource) {
+    return ipcRenderer.invoke("desktop.theme.setSource", source) as Promise<DesktopThemeSnapshot | null>
   },
   onEvent(listener: (event: DesktopThemeEvent) => void) {
     const wrapped = (_event: IpcRendererEvent, payload: DesktopThemeEvent) => listener(payload)

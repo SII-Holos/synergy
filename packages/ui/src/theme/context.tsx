@@ -5,7 +5,13 @@ import { synergyTheme } from "./default-themes"
 import { resolveThemeVariant } from "./resolve"
 import type { Theme } from "./types"
 import { createSimpleContext } from "../context/helper"
-import { getPluginTheme, listThemeChoices, subscribePluginThemes } from "./plugin-theme-registry"
+import {
+  getPluginTheme,
+  isPluginThemeRegistryReady,
+  listThemeChoices,
+  subscribePluginThemes,
+} from "./plugin-theme-registry"
+import { createSkinBootstrapSnapshot, readSkinBootstrapSnapshot, writeSkinBootstrapSnapshot } from "./shell-skin"
 import {
   COLOR_SCHEME_STORAGE_KEY,
   getSavedColorScheme,
@@ -24,16 +30,21 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
   init: () => {
     const initialColorScheme = getSavedColorScheme() ?? "system"
     const initialMode = resolveColorSchemeMode(initialColorScheme)
+    const bootstrap = readSkinBootstrapSnapshot()
     const [store, setStore] = createStore({
       colorScheme: initialColorScheme,
       mode: initialMode,
-      themeId: synergyTheme.id,
+      themeId: bootstrap?.themeId ?? synergyTheme.id,
     })
-    applyThemeToDocument(document, resolveThemeForMode(synergyTheme, initialMode), initialMode, synergyTheme.id)
+    const initialTheme = bootstrap?.theme ?? synergyTheme
+    applyThemeToDocument(document, resolveThemeForMode(initialTheme, initialMode), initialMode, store.themeId)
     const [themeRegistryVersion, setThemeRegistryVersion] = createSignal(0)
     const activeTheme = createMemo(() => {
       themeRegistryVersion()
-      return getPluginTheme(store.themeId)?.theme ?? synergyTheme
+      const registered = getPluginTheme(store.themeId)?.theme
+      if (registered) return registered
+      if (!isPluginThemeRegistryReady() && bootstrap?.themeId === store.themeId) return bootstrap.theme
+      return synergyTheme
     })
     const tokens = createMemo(() => {
       return resolveThemeForMode(activeTheme(), store.mode)
@@ -56,11 +67,13 @@ export const { use: useTheme, provider: ThemeProvider } = createSimpleContext({
     createEffect(() => {
       const activeId = store.themeId || synergyTheme.id
       const pluginTheme = activeId === synergyTheme.id ? undefined : getPluginTheme(activeId)
-      if (activeId !== synergyTheme.id && !pluginTheme) {
+      if (activeId !== synergyTheme.id && !pluginTheme && isPluginThemeRegistryReady()) {
         setStore("themeId", synergyTheme.id)
         return
       }
+      const theme = activeTheme()
       applyThemeToDocument(document, tokens(), store.mode, activeId)
+      writeSkinBootstrapSnapshot(createSkinBootstrapSnapshot(activeId, theme))
     })
 
     const setColorScheme = (scheme: ColorScheme) => {

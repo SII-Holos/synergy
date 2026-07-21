@@ -19,7 +19,13 @@ import type { InstalledPlugin } from "./types"
 import { getInstalledVersion, checkUpdateAvailable } from "./install-utils"
 import { MarketplacePluginIcon } from "./MarketplacePluginIcon"
 import { PluginDetailDialog, type RegistrySource } from "./PluginDetailDialog"
-import { installationLabel, installedPluginsForView, MARKETPLACE_NAV_ITEMS, type MarketplaceView } from "./view-model"
+import {
+  installationLabel,
+  installedPluginStatusView,
+  installedPluginsForView,
+  MARKETPLACE_NAV_ITEMS,
+  type MarketplaceView,
+} from "./view-model"
 import "./marketplace.css"
 
 type RowState = "available" | "installed" | "update"
@@ -443,7 +449,11 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
     controller.activeLocale()
     return translateDescriptor(installationLabel(props.plugin), i18n)
   }
-  const disabled = () => props.plugin.health === "disabled"
+  const status = () => installedPluginStatusView(props.plugin, props.development ? "development" : "installed")
+  const localizedStatusLabel = () => {
+    controller.activeLocale()
+    return translateDescriptor(status().label, i18n)
+  }
   const iconSource = () => ({
     name: props.plugin.name ?? props.plugin.id,
     keywords: ["plugin"],
@@ -462,7 +472,7 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
         </span>
         <span class="plugin-marketplace-row-description">
           <Show
-            when={disabled()}
+            when={status().isDisabled}
             fallback={
               // eslint-disable-next-line solid/prefer-show
               props.development && props.plugin.installation.kind === "directory" ? (
@@ -516,15 +526,11 @@ function InstalledPluginRow(props: { plugin: InstalledPlugin; development: boole
         <span
           classList={{
             "plugin-marketplace-state": true,
-            "plugin-marketplace-state-installed": !disabled(),
-            "plugin-marketplace-state-disabled": disabled(),
+            "plugin-marketplace-state-installed": !status().isDisabled,
+            "plugin-marketplace-state-disabled": status().isDisabled,
           }}
         >
-          {disabled()
-            ? _({ id: "app.plugin.marketplace.row.state.disabled", message: "Disabled" })
-            : props.development
-              ? _({ id: "app.plugin.marketplace.row.state.development", message: "Development" })
-              : _({ id: "app.plugin.marketplace.row.state.installed", message: "Installed" })}
+          {localizedStatusLabel()}
         </span>
       </span>
       <Icon name={getSemanticIcon("navigation.expand")} size="small" class="plugin-marketplace-row-arrow" />

@@ -10,8 +10,11 @@ export namespace CortexConcurrency {
 
   const DEFAULT_LIMIT = 8
   const DEFAULT_GLOBAL_LIMIT = 8
-  const SOFT_PRESSURE_RECOMMENDATION = 4
-  const CRITICAL_PRESSURE_RECOMMENDATION = 2
+  const GIB = 1024 ** 3
+  const SOFT_PRESSURE_LIMIT = 4
+  const CRITICAL_PRESSURE_LIMIT = 2
+  const SOFT_ARRAY_BUFFERS_BYTES = 1 * GIB
+  const CRITICAL_ARRAY_BUFFERS_BYTES = 2 * GIB
 
   let globalRunning = 0
   let configuredGlobalLimit: number | undefined
@@ -22,8 +25,8 @@ export namespace CortexConcurrency {
       configured: z.number().int().positive().nullable(),
       environment: z.number().int().positive().nullable(),
       effective: z.number().int().positive(),
-      recommended: z.number().int().positive(),
-      recommendationReason: z.enum(["normal", "memory_pressure", "critical_memory_pressure"]),
+      memoryPressureLimit: z.number().int().positive().nullable(),
+      memoryPressureReason: z.enum(["normal", "memory_pressure", "critical_memory_pressure"]),
       source: z.enum(["default", "config", "environment"]),
       perAgentLimit: z.number().int().positive(),
       running: z.number().int().nonnegative(),
@@ -42,30 +45,33 @@ export namespace CortexConcurrency {
     if (getGlobalLimit() > previous) wakeAllQueues()
   }
 
-  export function getGlobalLimit(): number {
-    return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
+  export function getGlobalLimit(snapshot = currentMemorySnapshot()): number {
+    const desired = desiredGlobalLimit()
+    const memoryPressureLimit = getMemoryPressureLimit(snapshot)
+    return memoryPressureLimit === undefined ? desired : Math.min(desired, memoryPressureLimit)
   }
 
-  export function getRecommendation(snapshot = currentMemorySnapshot()) {
+  export function getMemoryPressure(snapshot = currentMemorySnapshot()) {
     const thresholds = SessionMemoryPressure.resolveThresholds(process.env, snapshot)
+    const criticalArrayBuffers = Math.min(thresholds.arrayBuffersCriticalBytes, CRITICAL_ARRAY_BUFFERS_BYTES)
     const critical =
       snapshot.rssBytes >= thresholds.rssCriticalBytes ||
-      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
+      snapshot.arrayBuffersBytes >= criticalArrayBuffers ||
       (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
     if (critical) {
-      return { limit: CRITICAL_PRESSURE_RECOMMENDATION, reason: "critical_memory_pressure" as const }
+      return { limit: CRITICAL_PRESSURE_LIMIT, reason: "critical_memory_pressure" as const }
     }
 
     const softRss = thresholds.rssCriticalBytes * 0.5
-    const softArrayBuffers = thresholds.arrayBuffersCriticalBytes * 0.5
+    const softArrayBuffers = Math.min(thresholds.arrayBuffersCriticalBytes * 0.5, SOFT_ARRAY_BUFFERS_BYTES)
     if (snapshot.rssBytes >= softRss || snapshot.arrayBuffersBytes >= softArrayBuffers) {
-      return { limit: SOFT_PRESSURE_RECOMMENDATION, reason: "memory_pressure" as const }
+      return { limit: SOFT_PRESSURE_LIMIT, reason: "memory_pressure" as const }
     }
-    return { limit: DEFAULT_GLOBAL_LIMIT, reason: "normal" as const }
+    return { limit: null, reason: "normal" as const }
   }
 
-  export function getRecommendedLimit(snapshot = currentMemorySnapshot()): number {
-    return getRecommendation(snapshot).limit
+  export function getMemoryPressureLimit(snapshot = currentMemorySnapshot()): number | undefined {
+    return getMemoryPressure(snapshot).limit ?? undefined
   }
 
   export function setMemoryProbeForTest(probe?: () => SessionMemoryPressure.Snapshot) {
@@ -132,13 +138,13 @@ export namespace CortexConcurrency {
 
   export function globalStatus(snapshot = currentMemorySnapshot()): GlobalStatus {
     const environment = envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY)
-    const recommendation = getRecommendation(snapshot)
+    const memoryPressure = getMemoryPressure(snapshot)
     return {
       configured: configuredGlobalLimit ?? null,
       environment: environment ?? null,
-      effective: environment ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT,
-      recommended: recommendation.limit,
-      recommendationReason: recommendation.reason,
+      effective: getGlobalLimit(snapshot),
+      memoryPressureLimit: memoryPressure.limit,
+      memoryPressureReason: memoryPressure.reason,
       source:
         environment !== undefined
           ? ("environment" as const)
@@ -185,6 +191,10 @@ export namespace CortexConcurrency {
     if (value === undefined) return undefined
     if (!Number.isInteger(value) || value <= 0) return undefined
     return value
+  }
+
+  function desiredGlobalLimit(): number {
+    return envNumber(process.env.SYNERGY_CORTEX_GLOBAL_CONCURRENCY) ?? configuredGlobalLimit ?? DEFAULT_GLOBAL_LIMIT
   }
 
   function currentMemorySnapshot(): SessionMemoryPressure.Snapshot {

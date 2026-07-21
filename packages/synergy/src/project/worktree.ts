@@ -129,6 +129,13 @@ export namespace Worktree {
   export const SetupConfigError = NamedError.create("WorktreeSetupConfigError", z.object({ message: z.string() }))
   export const LockFailedError = NamedError.create("WorktreeLockFailedError", z.object({ message: z.string() }))
   export const NotFoundError = NamedError.create("WorktreeNotFoundError", z.object({ message: z.string() }))
+  export const UnavailableError = NamedError.create(
+    "WorktreeUnavailableError",
+    z.object({
+      message: z.string(),
+      reason: z.literal("missing"),
+    }),
+  )
   export const DirtyError = NamedError.create("WorktreeDirtyError", z.object({ message: z.string() }))
   export const SessionBusyError = NamedError.create(
     "WorktreeSessionBusyError",
@@ -379,6 +386,13 @@ export namespace Worktree {
       .stat(target)
       .then(() => true)
       .catch(() => false)
+  }
+  export async function assertAvailable(directory: string) {
+    if (await exists(path.resolve(directory))) return
+    throw new UnavailableError({
+      message: "The worktree for this session is no longer available.",
+      reason: "missing",
+    })
   }
 
   async function readJson<T>(filepath: string, schema: z.ZodType<T>): Promise<T | undefined> {

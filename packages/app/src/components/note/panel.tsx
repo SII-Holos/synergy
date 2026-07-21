@@ -173,7 +173,7 @@ function attachNoteDragData(e: DragEvent, note: NoteCardInfo) {
 
   const dragImage = document.createElement("div")
   dragImage.className =
-    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-[0_14px_36px_rgba(28,34,48,0.12)]"
+    "flex items-center gap-2 rounded-xl border border-border-weak-base bg-surface-raised-base/95 px-3 py-2 text-12-medium text-text-base shadow-lg"
   dragImage.style.position = "absolute"
   dragImage.style.top = "-1000px"
   dragImage.textContent = title
@@ -203,6 +203,13 @@ function NoteCard(props: {
   const variant = createMemo(() => props.variant ?? "balanced")
   const isBlueprint = createMemo(() => isBlueprintNote(props.note))
   const blueprintState = createMemo(() => getBlueprintVisualState(props.lingui, props.note, props.loops ?? []))
+  const pluginOwnerName = createMemo(() => {
+    const loops = props.loops ?? []
+    for (const loop of loops) {
+      if (loop.source === "plugin" && loop.pluginOwner) return loop.pluginOwner.pluginId
+    }
+    return undefined
+  })
   const cardHeight = createMemo(() => {
     if (variant() === "compact") return "h-[260px]"
     if (variant() === "featured") return "h-[370px]"
@@ -337,6 +344,18 @@ function NoteCard(props: {
                     id: N.fromOrigin.id,
                     message: N.fromOrigin.message,
                     values: { name: props.originName ?? "" },
+                  })}
+                </span>
+              </span>
+            </Show>
+            <Show when={pluginOwnerName()}>
+              <span class="note-card-origin">
+                <Icon name={getSemanticIcon("plugins.main")} class="size-3 shrink-0" />
+                <span class="truncate">
+                  {props.lingui._({
+                    id: "app.note.blueprint.pluginOwner",
+                    message: "From {plugin}",
+                    values: { plugin: pluginOwnerName() ?? "" },
                   })}
                 </span>
               </span>
@@ -1291,8 +1310,7 @@ export function NotePanel(props: { tab?: WorkbenchPanelTab } = {}) {
                       type="button"
                       classList={{
                         "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-11-medium transition-colors": true,
-                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-[0_1px_0_rgba(255,255,255,0.04)]":
-                          kindFilter() === option.value,
+                        "bg-surface-raised-stronger-non-alpha text-text-base shadow-xs": kindFilter() === option.value,
                         "text-text-weak hover:bg-surface-raised-base-hover hover:text-text-base":
                           kindFilter() !== option.value,
                       }}

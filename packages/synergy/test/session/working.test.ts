@@ -650,7 +650,7 @@ describe("SessionWorking", () => {
           await Session.update(parent.id, (draft) => {
             draft.workflow = {
               kind: "lightloop",
-              taskDescription: "Finish the task",
+              instructions: "Finish the task",
               stopRequest: {
                 summary: "Task complete",
                 requestedAt: Date.now(),

@@ -12,7 +12,70 @@ function part(id: string, messageID: string, text = ""): MessageV2.Part {
 }
 
 describe("SessionMessageCache", () => {
-  beforeEach(() => SessionMessageCache.disable(SID))
+  beforeEach(() => {
+    SessionMessageCache.disable(SID)
+    SessionMessageCache.resetStatsForTest()
+  })
+
+  test("reports bounded footprint and hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    expect(SessionMessageCache.get(SID)).toBeUndefined()
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+
+    const entry = SessionMessageCache.stats().entries.find((item) => item.sessionID === SID)
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats()).toMatchObject({
+      activeCount: 1,
+      entryCount: 1,
+      hits: 1,
+      misses: 1,
+      evictions: 0,
+      protectedOverbudget: 0,
+    })
+    expect(entry?.estimatedBytes).toBeGreaterThan(0)
+    expect(SessionMessageCache.stats().totalBytes).toBe(entry!.estimatedBytes)
+  })
+
+  test("keeps the reported largest-entry list bounded", () => {
+    const sessionIDs = Array.from({ length: 140 }, (_, index) => `ses_cache_stats_${index}`)
+    try {
+      for (const [index, sessionID] of sessionIDs.entries()) {
+        SessionMessageCache.enable(sessionID)
+        SessionMessageCache.set(sessionID, [
+          {
+            info: { id: `msg_${index}`, sessionID, role: "user", time: { created: index } } as any,
+            parts: [
+              {
+                id: `prt_${index}`,
+                sessionID,
+                messageID: `msg_${index}`,
+                type: "text",
+                text: "x".repeat(index),
+              } as any,
+            ],
+          },
+        ])
+      }
+
+      const stats = SessionMessageCache.stats({ entryLimit: 20 })
+      expect(stats.entries).toHaveLength(20)
+      expect(stats.truncatedEntryCount).toBe(120)
+      expect(stats.entries[0].estimatedBytes).toBeGreaterThanOrEqual(stats.entries.at(-1)!.estimatedBytes)
+    } finally {
+      for (const sessionID of sessionIDs) SessionMessageCache.disable(sessionID)
+    }
+  })
+
+  test("upsert paths do not inflate hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+    SessionMessageCache.resetStatsForTest()
+    SessionMessageCache.upsertMessage(SID, userMsg("msg_2", 2).info)
+    SessionMessageCache.upsertPart(SID, part("prt_1", "msg_1", "a"))
+    expect(SessionMessageCache.stats()).toMatchObject({ hits: 0, misses: 0 })
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats().hits).toBe(1)
+  })
 
   test("get returns undefined outside the active window", () => {
     SessionMessageCache.set(SID, [userMsg("msg_1")])
@@ -186,6 +249,8 @@ describe("SessionMessageCache", () => {
       SessionMessageCache.set(B, [big(B)])
       expect(SessionMessageCache.get(B)).toBeDefined()
       expect(SessionMessageCache.get(A)).toBeUndefined()
+      expect(SessionMessageCache.stats().evictions).toBe(1)
+      expect(SessionMessageCache.stats().totalBytes).toBeLessThanOrEqual(700)
       // A is still active, so a fresh read repopulates it transparently.
       SessionMessageCache.set(A, [big(A)])
       expect(SessionMessageCache.get(A)).toBeDefined()

@@ -95,6 +95,7 @@ import { translateDescriptor } from "@/locales/translate"
 import { PI } from "./prompt-input-i18n"
 import { EditLightLoopDialog } from "./edit-light-loop-dialog"
 import { LightLoopSubmitControl } from "./light-loop-submit-control"
+import { WorktreeUnavailableDialog } from "./worktree-unavailable-dialog"
 
 function sanitizePromptHistory(value: unknown) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return value
@@ -206,9 +207,9 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
   )
   const blueprintModeLocked = createMemo(() => !!localArmedLoop() || !!info()?.blueprint?.loopID)
   const lightLoopActive = createMemo(() => !blueprintModeLocked() && storedLightLoop())
-  const lightLoopTaskDesc = createMemo(() => {
+  const lightLoopInstructions = createMemo(() => {
     const workflow = activeWorkflow()
-    return params.id && workflow?.kind === "lightloop" ? workflow.taskDescription : undefined
+    return params.id && workflow?.kind === "lightloop" ? workflow.instructions : undefined
   })
   const persistedLightLoopActive = createMemo(() => activeWorkflow()?.kind === "lightloop")
   const lightLoopReviewPending = createMemo(() => {
@@ -759,12 +760,12 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     }
   }
 
-  const updateLightLoopTask = async (taskDescription: string) => {
+  const updateLightLoopInstructions = async (instructions: string) => {
     const sessionID = params.id
     if (!sessionID) throw new Error(i18n._(PI.lightLoopSessionUnavailable))
     await sdk.client.workflow.session.updateLightloop({
       id: sessionID,
-      lightloopUpdateInput: { taskDescription },
+      lightloopUpdateInput: { instructions },
     })
   }
 
@@ -773,11 +774,11 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     if (!params.id || workflow?.kind !== "lightloop") return
     workflowDialog.show(() => (
       <EditLightLoopDialog
-        taskDescription={workflow.taskDescription}
+        instructions={workflow.instructions}
         active={persistedLightLoopActive}
         working={working}
         reviewPending={lightLoopReviewPending}
-        onSave={updateLightLoopTask}
+        onSave={updateLightLoopInstructions}
       />
     ))
   }
@@ -842,7 +843,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
             id: "light-loop",
             label: i18n._(PI.workflowLightLoop),
             description: lightLoopActive()
-              ? (lightLoopTaskDesc() ?? i18n._(PI.lightLoopNextMsg))
+              ? (lightLoopInstructions() ?? i18n._(PI.lightLoopNextMsg))
               : i18n._(PI.workflowLightLoopDesc),
             icon: getSemanticIcon("prompt.lightLoop"),
             selected: lightLoopActive(),
@@ -1540,6 +1541,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     abort,
     editor: () => editorRef,
     queueScroll,
+    onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
   })
 
   createEffect(() => {
@@ -1973,10 +1975,10 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
                     </Tooltip>
                   )}
                 </Show>
-                <Show when={lightLoopTaskDesc()}>
-                  {(taskDescription) => (
+                <Show when={lightLoopInstructions()}>
+                  {(instructions) => (
                     <LightLoopSubmitControl
-                      taskDescription={taskDescription()}
+                      instructions={instructions()}
                       onEdit={openLightLoopDialog}
                       onCancel={safelyCancelLightLoop}
                     />

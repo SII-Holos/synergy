@@ -38,8 +38,9 @@ const parameters = z.object({
     .string()
     .optional()
     .describe(
-      "Optional Synergy Link target ID. Omit for intentional local execution. Invalid or unavailable supplied linkID values run locally with a warning.",
+      "Legacy Synergy Link instance ID. Prefer targetID. Omit both fields for intentional local execution. A supplied remote target never falls back locally.",
     ),
+  targetID: z.string().optional().describe("Persisted Synergy Link target ID returned by connect list_targets."),
   envID: z
     .string()
     .optional()
@@ -57,19 +58,18 @@ export const BashTool = Tool.define<typeof parameters, BashMetadata>("bash", {
     // Accept deprecated envID for backward compat — map to linkID with a warning
     const effectiveLinkID = params.linkID ?? ((params as Record<string, unknown>).envID as string | undefined)
     const linkIDSupplied = Object.hasOwn(params, "linkID") || Object.hasOwn(params, "envID")
-    const target = SynergyLinkExecution.resolveExecutionTarget({
+    const target = await SynergyLinkExecution.resolveExecutionTarget({
+      targetID: params.targetID,
+      targetIDSupplied: Object.hasOwn(params, "targetID"),
       linkID: effectiveLinkID,
       linkIDSupplied,
       tool: "bash",
+      agent: ctx.agent,
     })
     if (target.kind === "remote") {
       return RemoteBashBackend.execute(params, target)
     }
 
-    const result = await LocalBashBackend.execute({ ...params, backgroundAfterSeconds: params.yieldSeconds }, ctx)
-    if (target.kind === "local_fallback") {
-      return SynergyLinkExecution.withLocalFallbackWarning(result, target.warning)
-    }
-    return result
+    return LocalBashBackend.execute({ ...params, backgroundAfterSeconds: params.yieldSeconds }, ctx)
   },
 })

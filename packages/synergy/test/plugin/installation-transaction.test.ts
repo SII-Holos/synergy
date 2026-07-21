@@ -219,4 +219,192 @@ describe("plugin uninstall transaction", () => {
       await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
     }
   })
+
+  describe("plugin approval transaction", () => {
+    test("saves approval, reloads, and asserts loaded", async () => {
+      const pluginId = `approve-${crypto.randomUUID()}`
+      const previousApprovals = await readApprovals()
+      let reloaded = false
+      try {
+        // approve() asserts loaded after reload; for this test it will throw because
+        // no real plugin is configured. We test the rollback path instead.
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: approval(pluginId),
+            reload: async () => {
+              reloaded = true
+            },
+            getLoaded: async () => [],
+          }),
+        ).rejects.toThrow("failed to load")
+
+        // Approval should have been rolled back
+        expect(reloaded).toBe(true)
+        const approvals = await readApprovals()
+        expect(approvals.some((r) => r.pluginId === pluginId)).toBe(false)
+      } finally {
+        await writeApprovals(previousApprovals)
+      }
+    })
+
+    test("does not write or reload when locked approval validation fails", async () => {
+      const pluginId = `approve-stale-${crypto.randomUUID()}`
+      const previousApprovals = await readApprovals()
+      let reloadCount = 0
+      try {
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: async () => {
+              throw new Error("stale review")
+            },
+            reload: async () => {
+              reloadCount++
+            },
+            getLoaded: async () => [],
+          }),
+        ).rejects.toThrow("stale review")
+
+        expect(reloadCount).toBe(0)
+        expect(await readApprovals()).toEqual(previousApprovals)
+      } finally {
+        await writeApprovals(previousApprovals)
+      }
+    })
+
+    test("rolls back approval on reload failure", async () => {
+      const pluginId = `approve-rollback-${crypto.randomUUID()}`
+      const previousApprovals = await readApprovals()
+      try {
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: approval(pluginId),
+            reload: async () => {
+              throw new Error("reload failed")
+            },
+            getLoaded: async () => [],
+          }),
+        ).rejects.toThrow("reload failed")
+
+        const approvals = await readApprovals()
+        expect(approvals.some((r) => r.pluginId === pluginId)).toBe(false)
+      } finally {
+        await writeApprovals(previousApprovals)
+      }
+    })
+    test("rolls back approval and performs rollback reload when plugin loads zero times after approval", async () => {
+      const pluginId = `approve-zero-${crypto.randomUUID()}`
+      const previousApprovals = await readApprovals()
+      let reloadCount = 0
+      let rollbackReloadCount = 0
+      try {
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: approval(pluginId),
+            reload: async () => {
+              if (reloadCount === 0) {
+                reloadCount++
+              } else {
+                rollbackReloadCount++
+              }
+            },
+            getLoaded: async () => [],
+          }),
+        ).rejects.toThrow("failed to load")
+
+        expect(reloadCount).toBe(1)
+        expect(rollbackReloadCount).toBe(1)
+        const approvals = await readApprovals()
+        expect(approvals.some((r) => r.pluginId === pluginId)).toBe(false)
+      } finally {
+        await writeApprovals(previousApprovals)
+      }
+    })
+
+    test("rolls back approval and performs rollback reload when plugin loads in duplicate after approval", async () => {
+      const pluginId = `approve-dup-${crypto.randomUUID()}`
+      const previousApprovals = await readApprovals()
+      let reloadCount = 0
+      let rollbackReloadCount = 0
+      try {
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: approval(pluginId),
+            reload: async () => {
+              if (reloadCount === 0) {
+                reloadCount++
+              } else {
+                rollbackReloadCount++
+              }
+            },
+            getLoaded: async () => [
+              {
+                id: pluginId,
+                name: pluginId,
+                manifest: {} as any,
+                pluginDir: "/tmp",
+                spec: "file:///test",
+                source: "local" as const,
+                enabledScopes: new Set(),
+                contributionHealth: new Map(),
+              },
+              {
+                id: pluginId,
+                name: pluginId,
+                manifest: {} as any,
+                pluginDir: "/tmp",
+                spec: "file:///test",
+                source: "local" as const,
+                enabledScopes: new Set(),
+                contributionHealth: new Map(),
+              },
+            ],
+          }),
+        ).rejects.toThrow("config still contains duplicates")
+
+        expect(reloadCount).toBe(1)
+        expect(rollbackReloadCount).toBe(1)
+        const approvals = await readApprovals()
+        expect(approvals.some((r) => r.pluginId === pluginId)).toBe(false)
+      } finally {
+        await writeApprovals(previousApprovals)
+      }
+    })
+
+    test("asserts config and approval snapshots unchanged after rollback", async () => {
+      const pluginId = `approve-snap-${crypto.randomUUID()}`
+      const previousDomain = await Config.domainGet("plugins")
+      const previousLockfile = await Lockfile.read()
+      const previousApprovals = await readApprovals()
+      try {
+        const configBefore = JSON.stringify(await Config.domainGet("plugins"))
+        const lockfileBefore = JSON.stringify(await Lockfile.read())
+
+        await expect(
+          PluginInstallationTransaction.approve({
+            pluginId,
+            approval: approval(pluginId),
+            reload: async () => {},
+            getLoaded: async () => [],
+          }),
+        ).rejects.toThrow("failed to load")
+
+        // Config and lockfile should be unchanged after rollback
+        const configAfter = JSON.stringify(await Config.domainGet("plugins"))
+        const lockfileAfter = JSON.stringify(await Lockfile.read())
+        expect(configAfter).toBe(configBefore)
+        expect(lockfileAfter).toBe(lockfileBefore)
+        const approvals = await readApprovals()
+        expect(approvals.some((r) => r.pluginId === pluginId)).toBe(false)
+      } finally {
+        await Config.domainUpdate("plugins", previousDomain, { mode: "replace-domain" })
+        await Lockfile.write(previousLockfile)
+        await writeApprovals(previousApprovals)
+      }
+    })
+  })
 })

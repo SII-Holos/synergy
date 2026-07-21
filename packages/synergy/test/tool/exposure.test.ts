@@ -718,7 +718,7 @@ describe("tool exposure", () => {
       fn: async () => {
         const parent = await Session.create({})
         await Session.update(parent.id, (draft) => {
-          draft.workflow = { kind: "lightloop", taskDescription: "Finish the feature" }
+          draft.workflow = { kind: "lightloop", instructions: "Finish the feature" }
         })
         const primarySession = await Session.get(parent.id)
 
@@ -908,7 +908,7 @@ describe("tool exposure", () => {
         await Session.update(parent.id, (draft) => {
           draft.workflow = {
             kind: "lightloop",
-            taskDescription: "Finish the feature",
+            instructions: "Finish the feature",
             stopRequest: {
               summary: "done",
               requestedAt: Date.now(),

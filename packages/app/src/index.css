@@ -3,14 +3,14 @@
 html:not([data-color-scheme]),
 html:not([data-color-scheme]) body,
 html:not([data-color-scheme]) #root {
-  background: var(--synergy-boot-bg, #fafafa);
+  background: var(--synergy-boot-bg);
   color: var(--synergy-boot-text, var(--text-base));
 }
 
 html[data-color-scheme],
 html[data-color-scheme] body,
 html[data-color-scheme] #root {
-  background: var(--background-stronger, var(--synergy-boot-bg, #fafafa));
+  background: var(--background-stronger, var(--synergy-boot-bg));
   color: var(--text-base, var(--synergy-boot-text));
 }
 
@@ -167,7 +167,7 @@ a:active,
   --workbench-selected-bg: color-mix(in srgb, var(--surface-interactive-selected) 88%, transparent);
   --workbench-selected-bg-hover: var(--surface-interactive-selected);
   --workbench-border: var(--border-weaker-base);
-  --workbench-popover-shadow: 0 14px 34px light-dark(rgba(15, 23, 42, 0.1), rgba(0, 0, 0, 0.24));
+  --workbench-popover-shadow: 0 14px 34px var(--surface-overlay);
   --workbench-tab-shadow: none;
   --shadow-xs-border: inset 0 0 0 1px var(--workbench-border);
   --shadow-xs-border-base: inset 0 0 0 1px var(--workbench-border);

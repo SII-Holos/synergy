@@ -102,6 +102,7 @@ export const ParseCodeTool = Tool.define("parse_code", {
       globs: params.globs,
       context: params.context,
       cwd: ScopeContext.current.directory,
+      signal: ctx.abort,
     })
     const limit = normalizeLimit(params.limit)
     const skip = Math.max(params.skip ?? 0, 0)

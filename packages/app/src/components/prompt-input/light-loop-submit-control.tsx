@@ -8,7 +8,7 @@ import { PI } from "./prompt-input-i18n"
 const HOLD_DURATION_MS = 2000
 
 export function LightLoopSubmitControl(props: {
-  taskDescription: string
+  instructions: string
   onEdit: () => void
   onCancel: () => Promise<void>
 }) {
@@ -74,7 +74,7 @@ export function LightLoopSubmitControl(props: {
       placement="top"
       value={
         <div class="min-w-56 max-w-72">
-          <div class="text-12-medium text-text-strong line-clamp-2">{props.taskDescription}</div>
+          <div class="text-12-medium text-text-strong line-clamp-2">{props.instructions}</div>
           <div class="mt-2 text-10-regular text-text-weak">{i18n._(PI.lightLoopTaskClick)}</div>
           <div class="mt-1 text-10-regular text-text-weak">{i18n._(PI.lightLoopTaskHold)}</div>
         </div>

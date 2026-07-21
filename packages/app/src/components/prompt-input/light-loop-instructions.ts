@@ -6,7 +6,7 @@ import type {
   UploadedAttachmentPart,
 } from "@/context/prompt"
 
-const MAX_TASK_DESCRIPTION_LENGTH = 1800
+const MAX_INSTRUCTIONS_LENGTH = 1800
 const MAX_CONTEXT_LINES = 12
 
 function truncate(value: string, max: number) {
@@ -23,7 +23,7 @@ function fileSelectionText(selection?: { startLine?: number; endLine?: number })
   return ` line ${selection.startLine ?? selection.endLine}`
 }
 
-export function buildLightLoopTaskDescription(input: {
+export function buildLightLoopInstructions(input: {
   text: string
   uploads: UploadedAttachmentPart[]
   notes: NoteAttachmentPart[]
@@ -31,8 +31,8 @@ export function buildLightLoopTaskDescription(input: {
   fileAttachments: FileAttachmentPart[]
   contextItems: ContextItem[]
 }) {
-  const task = input.text.trim()
-  if (!task) return undefined
+  const instructions = input.text.trim()
+  if (!instructions) return undefined
 
   const context: string[] = []
   for (const file of input.fileAttachments) {
@@ -52,8 +52,8 @@ export function buildLightLoopTaskDescription(input: {
   }
 
   const uniqueContext = Array.from(new Set(context)).slice(0, MAX_CONTEXT_LINES)
-  if (uniqueContext.length === 0) return truncate(task, MAX_TASK_DESCRIPTION_LENGTH)
+  if (uniqueContext.length === 0) return truncate(instructions, MAX_INSTRUCTIONS_LENGTH)
 
-  const result = `${task}\n\nContext:\n${uniqueContext.map((line) => `- ${line}`).join("\n")}`
-  return truncate(result, MAX_TASK_DESCRIPTION_LENGTH)
+  const result = `${instructions}\n\nContext:\n${uniqueContext.map((line) => `- ${line}`).join("\n")}`
+  return truncate(result, MAX_INSTRUCTIONS_LENGTH)
 }
