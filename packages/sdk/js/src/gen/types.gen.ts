@@ -4680,6 +4680,14 @@ export type SessionInputResult =
       item: SessionInboxItem
     }
 
+export type WorktreeUnavailableError = {
+  name: "WorktreeUnavailableError"
+  data: {
+    message: string
+    reason: "missing"
+  }
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -10472,6 +10480,10 @@ export type SessionInputErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Session worktree unavailable
+   */
+  409: WorktreeUnavailableError
 }
 
 export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]

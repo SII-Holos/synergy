@@ -51,6 +51,19 @@ export const PI = {
   submitFailedTogglePlan: { id: "prompt.submit.failedTogglePlan", message: "Failed to toggle Plan" },
   submitFailedEnableLattice: { id: "prompt.submit.failedEnableLattice", message: "Failed to enable Lattice" },
   submitSentDesc: { id: "prompt.submit.sent.description", message: "Response will appear after reconnection" },
+  worktreeUnavailableTitle: {
+    id: "prompt.submit.worktreeUnavailable.title",
+    message: "Worktree unavailable",
+  },
+  worktreeUnavailableDescription: {
+    id: "prompt.submit.worktreeUnavailable.description",
+    message:
+      "This session's worktree no longer exists. Your prompt was restored. Restore the missing worktree or move to another session before trying again.",
+  },
+  worktreeUnavailableClose: {
+    id: "prompt.submit.worktreeUnavailable.close",
+    message: "Close",
+  },
 
   // prompt-input.tsx — toasts
   sessionRunning: { id: "prompt.sessionRunning", message: "Session is running" },

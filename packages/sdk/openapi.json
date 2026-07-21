@@ -5777,6 +5777,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Session worktree unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeUnavailableError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -30618,6 +30628,29 @@
             "required": ["status", "item"]
           }
         ]
+      },
+      "WorktreeUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorktreeUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "const": "missing"
+              }
+            },
+            "required": ["message", "reason"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "TextPartInput": {
         "type": "object",
