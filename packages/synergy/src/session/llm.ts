@@ -24,6 +24,7 @@ import { Plugin } from "@/plugin"
 import { SystemPrompt } from "./system"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ContextUsage } from "./context-usage"
+import type { LLMTurnMemory } from "./llm-memory"
 
 export namespace LLM {
   const log = Log.create({ service: "llm" })
@@ -176,6 +177,7 @@ export namespace LLM {
     retries?: number
     contextUsageProvenance?: ContextUsage.Provenance
     maxOutputTokens?: number
+    memoryTurn?: LLMTurnMemory.Handle
   }
 
   export interface PromptLayoutInput {

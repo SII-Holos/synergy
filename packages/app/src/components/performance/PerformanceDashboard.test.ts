@@ -3,6 +3,7 @@ import type { I18n, MessageDescriptor } from "@lingui/core"
 import {
   browserMetricPoints,
   buildLineChartModel,
+  CHART_METRICS,
   memoryPoints,
   requestPoints,
   resourcePressurePoints,
@@ -211,6 +212,27 @@ describe("performance chart model", () => {
     expect(points).toEqual([{ timestamp: 1000, memory: 1 }, { timestamp: 2000 }])
   })
 
+  test("memory chart includes external and ArrayBuffer categories", () => {
+    expect(CHART_METRICS).toContain("process.memory.external")
+    expect(CHART_METRICS).toContain("process.memory.array_buffers")
+    const points = memoryPoints(
+      timeline([
+        {
+          name: "process.memory.external",
+          unit: "bytes",
+          points: [{ time: 1000, value: 2 * 1048576, sampleCount: 1 }],
+        },
+        {
+          name: "process.memory.array_buffers",
+          unit: "bytes",
+          points: [{ time: 1000, value: 1048576, sampleCount: 1 }],
+        },
+      ]),
+    )
+
+    expect(points).toEqual([{ timestamp: 1000, external: 2, arrayBuffers: 1 }])
+  })
+
   test("browser metric chart uses separate axes for heap DOM nodes and navigation latency", () => {
     const points = browserMetricPoints([{ timestamp: 1000, memory: 1048576, domNodes: 42, navigationMs: 120 }])
     const model = buildLineChartModel({
@@ -317,6 +339,33 @@ describe("performance dashboard runtime support", () => {
     expect(items[0].value).toContain("Alive")
     expect(items[0].value).toContain("pid 42")
     expect(items[0].tone).toBe("success")
+  })
+
+  test("surfaces MessageCache footprint and active LLM stream counts", () => {
+    const items = runtimeSupportItems(
+      summary({
+        messageCache: {
+          totalBytes: 1048576,
+          activeCount: 2,
+          entryCount: 2,
+          hits: 4,
+          misses: 1,
+          evictions: 3,
+          protectedOverbudget: 1,
+          entries: [{ estimatedBytes: 700000 }, { estimatedBytes: 348576 }],
+          truncatedEntryCount: 0,
+        },
+        llmTurns: { activeTurnCount: 3, activeStreamCount: 2, turns: [] },
+      }),
+      i18n,
+    )
+
+    expect(items).toContainEqual({
+      label: P.runtimeMessageCache,
+      value: "1 MB · 2 entries (2 active) · 4/1 hit/miss · 3 evictions · 1 protected over budget · largest 700000 B",
+      tone: "warning",
+    })
+    expect(items).toContainEqual({ label: P.runtimeLlmStreams, value: "2 streams · 3 turns", tone: "default" })
   })
 
   test("marks unhealthy runtime support state as warning", () => {
