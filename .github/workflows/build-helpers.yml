@@ -3,6 +3,13 @@ name: Build Sandbox Helpers
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - ".github/workflows/build-helpers.yml"
+      - "packages/synergy/src/sandbox/helper-linux/**"
+      - "packages/synergy/src/sandbox/helper/**"
+      - "packages/synergy/scripts/build-helper.ts"
   push:
     branches: [dev, main]
     paths:
