@@ -36,6 +36,12 @@ Legacy persisted records that have `unread === true` and `silent !== true` but l
 
 Session metadata is not the message transcript. Each has its own storage and events.
 
+### Global identity and endpoint lookup
+
+`sessionID` is globally stable. `Session.get(sessionID)` resolves `data/session_index/<sessionID>` to the owning Scope and then reads `data/sessions/<scopeID>/<sessionID>/info`; callers do not form a composite `(scopeID, sessionID)` identity.
+
+Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
+
 ## Session Lineage
 
 Synergy records two different relationships:

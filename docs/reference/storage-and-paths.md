@@ -37,6 +37,9 @@ data/session_nav_v2/
 data/sessions/<scope>/<session>/
 data/session_message_order_v1/<scope>/<session>/
 data/endpoint_session/
+data/channel/project_scopes/
+data/channel/workspaces/
+data/channel/providers/clarus/accounts/
 data/permissions/
 data/permission-rules.json
 data/notes/<scope>/

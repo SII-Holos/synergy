@@ -6,6 +6,7 @@ import { SessionManager } from "@/session/manager"
 import { SessionProgress } from "@/session/progress"
 import { Session } from "@/session"
 import { Channel } from "."
+import { externalIdentityHash } from "./identity"
 
 const log = Log.create({ service: "channel.outbound" })
 
@@ -92,14 +93,14 @@ export namespace ChannelOutbound {
         log.info(replyRequired ? "message replied to channel" : "message pushed to channel", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
-          accountId: channelInfo.accountId,
-          chatId: channelInfo.chatId,
+          accountHash: externalIdentityHash(channelInfo.accountId),
+          chatHash: externalIdentityHash(channelInfo.chatId),
         })
       } catch (err) {
         log.error(replyRequired ? "channel outbound reply failed" : "channel outbound push failed", {
           sessionID: msg.sessionID,
           channelType: channelInfo.type,
-          chatId: channelInfo.chatId,
+          chatHash: externalIdentityHash(channelInfo.chatId),
           error: err,
         })
       }

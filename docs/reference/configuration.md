@@ -41,6 +41,26 @@ Use `synergy config path` to print the active global roots.
 
 Global loading validates each canonical file against the keys owned by its domain. Project `synergy.d` fragments are loaded in numeric filename order and merged into the resolved config. Use the canonical files above for predictable ownership and UI editing.
 
+Clarus accounts live in the Channel domain and reuse Holos credentials:
+
+```jsonc
+{
+  "channel": {
+    "clarus": {
+      "type": "clarus",
+      "accounts": {
+        "<holos-agent-id>": {
+          "enabled": true,
+          "agent": "synergy",
+        },
+      },
+    },
+  },
+}
+```
+
+Holos login creates the matching Clarus Channel account when it is absent and preserves explicit account settings. There is no top-level `clarus` domain or Clarus workspace-root setting.
+
 Monolithic `synergy.json` and `synergy.jsonc` files are migration inputs, not active runtime config paths. Startup migrates legacy global and project files into domain files and archives the originals.
 
 ### Execution isolation

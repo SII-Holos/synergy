@@ -22,6 +22,8 @@ import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
+import { ChannelProjectScope, ProjectScopeConflictError as ProjectScopeConflictErrorType } from "./project-scope"
+import { externalIdentityHash } from "./identity"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -64,6 +66,32 @@ export namespace Channel {
   export type Provider = ProviderType
 
   export const toKey = toKeyFn
+  export const ProjectScopeConflictError = ProjectScopeConflictErrorType
+
+  export async function findProjectScope(input: {
+    channelType: string
+    accountId: string
+    projectID: string
+  }): Promise<Scope.Project | undefined> {
+    return ChannelProjectScope.find(input)
+  }
+
+  export async function ensureProjectScope(input: {
+    channelType: string
+    accountId: string
+    projectID: string
+    projectName?: string
+  }): Promise<Scope.Project> {
+    return ChannelProjectScope.ensure(input)
+  }
+
+  export async function archiveProjectScope(input: {
+    channelType: string
+    accountId: string
+    projectID: string
+  }): Promise<void> {
+    return ChannelProjectScope.archive(input)
+  }
 
   export async function resolveAccountScope(input: {
     channelType: string
@@ -212,8 +240,24 @@ export namespace Channel {
             reconnects,
           }).catch((err) => {
             const error = err instanceof Error ? err.message : String(err)
-            log.error("channel connection failed", { channelType, accountId, error })
+            log.error("channel connection failed", {
+              channelType,
+              accountHash: externalIdentityHash(accountId),
+              error,
+            })
             statuses.set(key, { status: "failed", error })
+            scheduleReconnect({
+              channelType,
+              accountId,
+              accountConfig,
+              channelConfig,
+              provider,
+              abort,
+              connections,
+              statuses,
+              reconnects,
+              attempt: 0,
+            })
           })
         }
       }
@@ -280,11 +324,11 @@ export namespace Channel {
       accountId,
       accountConfig,
       channelConfig,
-      onMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
+      onMessage: (ctx, messageScope) => handleMessage(provider, ctx, messageScope, accountConfig),
       signal: abort.signal,
       onDisconnect: (reason) => {
         if (abort.signal.aborted) return
-        log.info("channel disconnected", { channelType, accountId, reason })
+        log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
         connections.delete(key)
         statuses.set(key, { status: "disconnected" })
         Bus.publish(Event.Disconnected, { channelType, accountId, reason })
@@ -313,7 +357,7 @@ export namespace Channel {
     statuses.set(key, { status: "connected" })
     reconnects.delete(key)
 
-    log.info("channel connected", { channelType, accountId })
+    log.info("channel connected", { channelType, accountHash: externalIdentityHash(accountId) })
     Bus.publish(Event.Connected, { channelType, accountId })
   }
 
@@ -346,7 +390,11 @@ export namespace Channel {
     const key = connectionKey(channelType, accountId)
 
     if (attempt >= MAX_RECONNECT_ATTEMPTS) {
-      log.warn("max reconnect attempts exceeded", { channelType, accountId, attempt })
+      log.warn("max reconnect attempts exceeded", {
+        channelType,
+        accountHash: externalIdentityHash(accountId),
+        attempt,
+      })
       statuses.set(key, { status: "failed", error: "max reconnect attempts exceeded" })
       return
     }
@@ -374,7 +422,12 @@ export namespace Channel {
         attempt: attempt + 1,
       }).catch((err) => {
         const error = err instanceof Error ? err.message : String(err)
-        log.warn("channel reconnect failed", { channelType, accountId, attempt: attempt + 1, error })
+        log.warn("channel reconnect failed", {
+          channelType,
+          accountHash: externalIdentityHash(accountId),
+          attempt: attempt + 1,
+          error,
+        })
         statuses.set(key, { status: "failed", error })
         scheduleReconnect({
           channelType,
@@ -405,9 +458,9 @@ export namespace Channel {
       fn: async () => {
         log.info("message received", {
           channel: ctx.channelType,
-          account: ctx.accountId,
-          chatId: ctx.chatId,
-          from: ctx.senderId,
+          accountHash: externalIdentityHash(ctx.accountId),
+          chatHash: externalIdentityHash(ctx.chatId),
+          senderHash: externalIdentityHash(ctx.senderId),
         })
 
         Bus.publish(Event.MessageReceived, {
@@ -417,17 +470,21 @@ export namespace Channel {
           text: ctx.text,
         })
 
-        const cmdResult = await ChannelCommand.execute(ctx.text, {
-          channelType: ctx.channelType,
-          accountId: ctx.accountId,
-          chatId: ctx.chatId,
-          senderId: ctx.senderId,
-          senderName: ctx.senderName,
-          scopeKey: ctx.scopeKey,
-          messageId: ctx.messageId,
-          wasMentioned: ctx.wasMentioned,
-          mentions: ctx.mentions,
-        })
+        const cmdResult = await ChannelCommand.execute(
+          ctx.text,
+          {
+            channelType: ctx.channelType,
+            accountId: ctx.accountId,
+            chatId: ctx.chatId,
+            senderId: ctx.senderId,
+            senderName: ctx.senderName,
+            scopeKey: ctx.scopeKey,
+            messageId: ctx.messageId,
+            wasMentioned: ctx.wasMentioned,
+            mentions: ctx.mentions,
+          },
+          scope,
+        )
 
         if (cmdResult.action === "handled") {
           if (cmdResult.reply) {
@@ -486,11 +543,10 @@ export namespace Channel {
           createdAt: Date.now(),
         })
         const [session] = await Promise.all([
-          Session.getOrCreateForEndpoint(
-            endpoint,
-            undefined,
-            SessionInteraction.unattended(`channel:${ctx.channelType}`),
-          ),
+          Session.getOrCreateForEndpoint(endpoint, {
+            scope,
+            interaction: SessionInteraction.unattended(`channel:${ctx.channelType}`),
+          }),
           streaming.start(),
         ])
         const sessionID = session.id

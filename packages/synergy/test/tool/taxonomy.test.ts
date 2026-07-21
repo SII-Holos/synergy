@@ -30,4 +30,11 @@ describe("tool taxonomy", () => {
       traits: { auxiliary: true, stateful: true },
     })
   })
+
+  test("classifies Clarus result submission as stateful external collaboration", () => {
+    const entry = ToolTaxonomy.classify("clarus_submit_task_result")
+
+    expect(entry.kind).toBe("platform.collaboration")
+    expect(entry.traits).toEqual({ stateful: true, externalIO: true })
+  })
 })
