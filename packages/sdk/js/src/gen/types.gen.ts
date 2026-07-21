@@ -520,6 +520,8 @@ export type PerfDashboardSummary = {
     rssBytes?: number
     heapUsedBytes?: number
     heapTotalBytes?: number
+    externalBytes?: number
+    arrayBuffersBytes?: number
     cpuUtilizationRatio?: number
     eventLoopLagP95Ms?: number
     appReadBytes?: number
@@ -560,6 +562,35 @@ export type PerfDashboardSummary = {
       childCount: number
       userCount: number
       waiterCount: number
+    }
+    messageCache?: {
+      totalBytes: number
+      activeCount: number
+      entryCount: number
+      hits: number
+      misses: number
+      evictions: number
+      protectedOverbudget: number
+      entries: Array<{
+        estimatedBytes: number
+      }>
+      truncatedEntryCount: number
+    }
+    llmTurns?: {
+      activeTurnCount: number
+      activeStreamCount: number
+      turns: Array<{
+        ageMs: number
+        streamActive: boolean
+        providerID: string
+        modelID: string
+        historyBeforeBytes: number
+        historyAfterBytes: number
+        requestBytes: number
+        toolSchemaBytes: number
+        outputChars: number
+        toolRawChars: number
+      }>
     }
     cortexTasks: {
       totalCount: number

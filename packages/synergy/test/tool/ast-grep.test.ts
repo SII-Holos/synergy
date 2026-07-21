@@ -264,6 +264,30 @@ class MyClass:
 })
 
 describe("ast-grep CLI utilities", () => {
+  test("stops after one match beyond the retained match limit", async () => {
+    if (!sgAvailable) return
+
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (dir) => {
+        await Bun.write(
+          path.join(dir, "many.js"),
+          `${Array.from({ length: 600 }, (_, index) => `console.log(${index});`).join("\n")}\n`,
+        )
+      },
+    })
+
+    const result = await runSg({
+      pattern: "console.log($VALUE)",
+      lang: "javascript",
+      paths: ["many.js"],
+      cwd: tmp.path,
+    })
+    expect(result.matches).toHaveLength(500)
+    expect(result.totalMatches).toBe(501)
+    expect(result.truncatedReason).toBe("max_matches")
+  })
+
   describe("formatSearchResult", () => {
     test("formats empty results", () => {
       const result = formatSearchResult({

@@ -58,7 +58,7 @@ export interface SgResult {
   matches: CliMatch[]
   totalMatches: number
   truncated: boolean
-  truncatedReason?: "max_matches" | "max_output_bytes" | "timeout"
+  truncatedReason?: "max_matches" | "max_record_bytes" | "max_output_bytes" | "timeout"
   error?: string
 }
 
