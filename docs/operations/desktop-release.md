@@ -83,11 +83,15 @@ macOS:
 - `APPLE_TEAM_ID`
 - `CSC_LINK`
 - `CSC_KEY_PASSWORD`
+- `CSC_INSTALLER_LINK`
+- `CSC_INSTALLER_KEY_PASSWORD`
 
-Windows:
+Windows (optional; configure both values to sign artifacts):
 
 - `WINDOWS_CERTIFICATE`
 - `WINDOWS_CERTIFICATE_PASSWORD`
+
+When both Windows values are absent, the release produces unsigned Windows artifacts. A partial Windows signing configuration fails validation.
 
 GitHub upload/update feed:
 
@@ -122,6 +126,7 @@ Product release keeps the existing candidate/finalize model:
 
 ## Validation Checklist
 
+- `bun run release:test`
 - `bun run --cwd packages/desktop desktop:test`
 - `bun run --cwd packages/desktop desktop:build`
 - `bun run --cwd packages/desktop test:runtime`
