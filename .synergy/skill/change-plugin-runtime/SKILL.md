@@ -27,12 +27,13 @@ description: Add, modify, or review Synergy Plugin API 3 definitions, generated 
 11. For trusted UI, enforce approval, UI API major, plugin-kit Solid compilation, host runtime linking, named exports, artifact hash, Scope/Session context, and one disposer per registration. Resource identity includes opaque `id/title/state`; reuse the same panel/resource tab and keep distinct resources separate. Keep themes and icons as validated, namespaced data contributions; themes use the shared structured JSON schema, never arbitrary CSS.
     Theme build, validate, and dev paths share `@ericsanchezok/synergy-plugin/theme`, validate source and packaged JSON, include declarative asset content in generation identity, and publish a complete theme registry generation atomically.
 12. Preserve transactional install/update/remove rollback and explicit lifecycle failure semantics. Synergy must not guess how to migrate or delete plugin-owned business data.
+13. Keep compiler dependencies reachable from the packaged Synergy CLI statically analyzable so Bun includes them in standalone executables. A package dependency in `node_modules` is not sufficient for runtime `require()` from `/$bunfs`.
 
 ## Verify
 
 1. Add or update behavior tests at the owning boundary: descriptor/schema, plugin-kit build/validate/pack/sign, metadata-only discovery, approval, transaction rollback, runtime generation, operation/event/hook contract, server route, or Web registration lifecycle.
 2. Cover duplicate IDs, undeclared capabilities, handler mismatch, invalid schemas/hashes, disabled Scope, timeout/cancel/crash, stale generation, trusted UI export/runtime mismatch, upgrade failure, and force uninstall when relevant.
-3. Run public package typecheck/build, inspect a packed artifact, run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
+3. Run public package typecheck/build, inspect a packed artifact, and verify a compiled standalone executable can invoke compiler-backed commands. Run focused host/Web tests, regenerate OpenAPI/SDK or config schema when their sources change, and finish with `bun run quality:quick`.
 4. Update the canonical plugin docs and this Skill in the same change. Delete obsolete guidance instead of appending migration caveats to current-state docs.
 
 ## Handoff
