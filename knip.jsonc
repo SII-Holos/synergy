@@ -15,6 +15,7 @@
     "packages/synergy/test/tool/fixtures/large-image.png",
   ],
   "ignoreDependencies": [
+    "@babel/preset-typescript",
     "@ericsanchezok/synergy-plugin",
     "@ericsanchezok/synergy-script",
     "@ericsanchezok/synergy-sdk",

@@ -11,12 +11,18 @@ const REQUIRED_RELEASE_ENV = [
   "APPLE_TEAM_ID",
   "CSC_LINK",
   "CSC_KEY_PASSWORD",
-  "WINDOWS_CERTIFICATE",
-  "WINDOWS_CERTIFICATE_PASSWORD",
+  "CSC_INSTALLER_LINK",
+  "CSC_INSTALLER_KEY_PASSWORD",
 ] as const
 
+const OPTIONAL_RELEASE_ENV_GROUPS = [["WINDOWS_CERTIFICATE", "WINDOWS_CERTIFICATE_PASSWORD"]] as const
+
 export function validateProductReleaseEnvironment(env: Record<string, string | undefined>): void {
-  const missing = REQUIRED_RELEASE_ENV.filter((name) => !env[name]?.trim())
+  const missing: string[] = REQUIRED_RELEASE_ENV.filter((name) => !env[name]?.trim())
+  for (const group of OPTIONAL_RELEASE_ENV_GROUPS) {
+    if (!group.some((name) => env[name]?.trim())) continue
+    missing.push(...group.filter((name) => !env[name]?.trim()))
+  }
   if (missing.length > 0) throw new Error(`Product release environment is missing: ${missing.join(", ")}`)
 
   const privateKey = createPrivateKey({

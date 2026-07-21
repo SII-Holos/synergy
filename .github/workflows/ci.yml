@@ -93,6 +93,9 @@ jobs:
         env:
           SYNERGY_LINK_HOME: /tmp/synergy-link-ci-test
 
+      - name: Run release contract tests
+        run: bun run release:test
+
       - name: Run Synergy tests
         run: bun run test:ci
         working-directory: packages/synergy
