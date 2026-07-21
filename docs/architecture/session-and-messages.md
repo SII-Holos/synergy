@@ -304,6 +304,14 @@ On abort, steer and context items are discarded while queued task items remain f
 
 If a loop run fails while runnable inbox work remains, release still yields ownership but does not immediately request another drive cycle. The durable inbox item remains available for an explicit retry or a later delivery-triggered wake instead of entering a tight self-wake loop.
 
+## Message Chronology Index
+
+Message info records remain the canonical transcript and `time.created`, followed by message ID, remains the canonical chronology. `MessageV2.readInfoList()` reconstructs that complete order directly from message info for full-history consumers.
+
+Newest-first bounded readers use the derived `session_message_order_v1` index instead of eagerly parsing every message info. The index stores one sortable marker per message plus a ready/count state record. Message creation, chronology changes, removal, and permanent session deletion maintain it under a per-session write lock. Ordinary streaming updates whose `time.created` value is unchanged do not rewrite marker state.
+
+The index is not part of session export or canonical recovery state. Missing, incomplete, or internally inconsistent index state is rebuilt from canonical message infos before use; a non-ready state left by interruption also forces a rebuild. Consumers must not derive transcript semantics from marker filenames or treat the index as an independent message source.
+
 ## Model Context Projection
 
 `MessageV2.projectModelMessages()` projects canonical session history into provider messages and derives category hints from the same emitted branches. `PromptBudgeter.buildPlan()` may transform those messages for the selected provider; before streaming, `SessionInvoke` remaps the hints over the plan's final message array so removed content is not attributed and inserted or rewritten content follows its final role. `MessageV2.toModelMessage()` is the compatibility wrapper for callers that need only the messages.

@@ -1,7 +1,7 @@
 import { Log } from "@/util/log"
 import { SessionManager } from "./manager"
 import type { Info, StatusInfo, WorkingInfo } from "./types"
-import { SessionHistory } from "./history"
+import { MessageV2 } from "./message-v2"
 import { Identifier } from "@/id/id"
 import { Scope } from "@/scope"
 import { SessionProgress } from "./progress"
@@ -32,8 +32,7 @@ export async function resolve(sessionID: string): Promise<WorkingInfo | undefine
     return { status: "recovering" }
   }
 
-  const ordered = (await SessionHistory.messageInfos(sessionID)).toReversed()
-  for (const info of ordered) {
+  for await (const info of MessageV2.readNewestInfos({ scopeID, sessionID: sid })) {
     if (info.role !== "assistant") continue
     if (info.time.completed == null) {
       log.info("detected recovering session (incomplete)", { sessionID, messageID: info.id })
