@@ -43,6 +43,7 @@
   ],
   "dependencies": {
     "@babel/core": "catalog:",
+    "@babel/preset-typescript": "catalog:",
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "babel-preset-solid": "catalog:",
     "yargs": "18.0.0"

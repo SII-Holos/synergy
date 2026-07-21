@@ -12,11 +12,12 @@ import { Log } from "@/util/log"
 import { MessageV2 } from "./message-v2"
 import { SessionMessageCache } from "./message-cache"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
-
-const log = Log.create({ service: "session.history" })
 import { SessionManager } from "./manager"
 import { Snapshot } from "./snapshot"
 import type { Info } from "./types"
+
+const log = Log.create({ service: "session.history" })
+const PAGE_HYDRATION_CONCURRENCY = 16
 
 export namespace SessionHistory {
   const { asScopeID, asSessionID, asHistoryID, asMessageID } = Identifier
@@ -387,14 +388,26 @@ export namespace SessionHistory {
     cursor?: string
     limit?: number
   }): Promise<MessagePage> {
-    const raw = await rawMessages({ sessionID: input.sessionID })
-    const messages = applyEvents(raw, await readEvents(input.sessionID))
+    const [infos, events] = await Promise.all([readMessageInfo(input.sessionID), readEvents(input.sessionID)])
+    const loadedParts = new Map<string, MessageV2.Part[]>()
+    const loadParts = async (messageID: string) => {
+      const cached = loadedParts.get(messageID)
+      if (cached) return cached
+      const parts = await MessageV2.parts({ sessionID: input.sessionID, messageID }).catch((error) => {
+        log.warn("skipping unreadable message parts", { sessionID: input.sessionID, messageID, error: String(error) })
+        return [] as MessageV2.Part[]
+      })
+      loadedParts.set(messageID, parts)
+      return parts
+    }
+    const canonicalInfos = await deriveInfoSemantics(infos, loadParts)
+    const messages = applyEventsToInfo(canonicalInfos, events)
     const total = messages.length
     let end = total
 
     if (input.cursor) {
       const cursor = decodeMessagePageCursor(input.cursor)
-      end = messages.findIndex((message) => message.info.id === cursor.a)
+      end = messages.findIndex((message) => message.id === cursor.a)
       if (end === -1) {
         throw new MessagePageCursorStaleError({
           message: "Session message cursor no longer exists in effective history",
@@ -405,21 +418,36 @@ export namespace SessionHistory {
 
     const limit = input.limit ?? 200
     const start = Math.max(0, end - limit)
-    const items = messages.slice(start, end)
-    const included = new Set(items.map((message) => message.info.id))
+    const itemInfos = messages.slice(start, end)
+    const included = new Set(itemInfos.map((message) => message.id))
     const rootIDs = new Set(
-      items
-        .map((message) => message.info.rootID)
+      itemInfos
+        .map((message) => message.rootID)
         .filter((rootID): rootID is string => !!rootID && !included.has(rootID)),
     )
-    const referencedRoots = rootIDs.size ? messages.filter((message) => rootIDs.has(message.info.id)) : []
+    const referencedRootInfos = rootIDs.size ? messages.filter((message) => rootIDs.has(message.id)) : []
+    const selectedIDs = new Set([...included, ...referencedRootInfos.map((message) => message.id)])
+    const selected = messages.filter((message) => selectedIDs.has(message.id))
+    const hydrated = await mapWithConcurrency(selected, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
+      info,
+      parts: await loadParts(info.id),
+    }))
+    const byID = new Map(MessageV2.deriveSemantics(hydrated).map((message) => [message.info.id, message]))
+    const items = itemInfos.flatMap((info) => {
+      const message = byID.get(info.id)
+      return message ? [message] : []
+    })
+    const referencedRoots = referencedRootInfos.flatMap((info) => {
+      const message = byID.get(info.id)
+      return message ? [message] : []
+    })
     const hasMore = start > 0
-    const oldest = items[0]
+    const oldest = itemInfos[0]
 
     return {
       items,
       referencedRoots,
-      nextCursor: hasMore && oldest ? encodeMessagePageCursor({ v: 1, a: oldest.info.id, d: "before" }) : null,
+      nextCursor: hasMore && oldest ? encodeMessagePageCursor({ v: 1, a: oldest.id, d: "before" }) : null,
       hasMore,
       total,
     }
@@ -482,17 +510,40 @@ export namespace SessionHistory {
     loadParts: (messageID: string) => Promise<MessageV2.Part[]>,
   ) {
     if (activeRollbacks(events).length === 0) return messages
+    return deriveInfoSemantics(messages, loadParts)
+  }
+
+  async function deriveInfoSemantics(
+    messages: MessageV2.Info[],
+    loadParts: (messageID: string) => Promise<MessageV2.Part[]>,
+  ) {
     const legacy = new Set(
-      messages.flatMap((message) => (message.role === "user" && message.isRoot === undefined ? [message.id] : [])),
+      messages.flatMap((message) => {
+        if (message.role !== "user") return []
+        if (message.isRoot !== undefined && message.rootID !== undefined) return []
+        return [message.id]
+      }),
     )
-    if (legacy.size === 0) return messages
-    const withParts = await Promise.all(
-      messages.map(async (info) => ({
-        info,
-        parts: legacy.has(info.id) ? await loadParts(info.id) : [],
-      })),
-    )
+    const needsDerivation = legacy.size > 0 || messages.some((message) => message.rootID === undefined)
+    if (!needsDerivation) return messages
+    const withParts = await mapWithConcurrency(messages, PAGE_HYDRATION_CONCURRENCY, async (info) => ({
+      info,
+      parts: legacy.has(info.id) ? await loadParts(info.id) : [],
+    }))
     return MessageV2.deriveSemantics(withParts).map((message) => message.info)
+  }
+
+  async function mapWithConcurrency<T, U>(items: T[], concurrency: number, fn: (item: T) => Promise<U>) {
+    const result = new Array<U>(items.length)
+    let next = 0
+    const workers = Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next++
+        result[index] = await fn(items[index])
+      }
+    })
+    await Promise.all(workers)
+    return result
   }
 
   function applyEventsToInfo(messages: MessageV2.Info[], events: Event[]) {
@@ -616,7 +667,10 @@ export namespace SessionHistory {
     const messages = await Storage.readMany<MessageV2.Info>(
       ids.map((id) => StoragePath.messageInfo(scopeID, asSessionID(sessionID), asMessageID(id))),
     )
-    return messages.filter((msg): msg is MessageV2.Info => !!msg).sort(MessageV2.compareStorageOrder)
+    return messages
+      .filter((msg): msg is MessageV2.Info => !!msg)
+      .map(MessageV2.canonicalMessage)
+      .sort(MessageV2.compareStorageOrder)
   }
 
   function canUnrollbackInfo(messages: MessageV2.Info[], event: RollbackEvent) {

@@ -100,8 +100,13 @@ export namespace SessionMessageCache {
   export function set(sessionID: string, messages: MessageV2.WithParts[]) {
     if (!active.has(sessionID)) return
     const workingSet = projectModelWorkingSet(messages)
+    const size = estimateList(workingSet)
+    if (size > byteBudget()) {
+      drop(sessionID)
+      return
+    }
     cache.set(sessionID, workingSet)
-    setSize(sessionID, estimateList(workingSet))
+    setSize(sessionID, size)
     touch(sessionID)
     evict(sessionID)
   }
@@ -214,13 +219,13 @@ export namespace SessionMessageCache {
     sizes.set(sessionID, current + bytes)
   }
 
-  // Evict least-recently-used entries until under budget, never evicting the
-  // session currently being written (it would just re-read on the next step and
-  // thrash). A single over-budget session is left resident: shrinking its own
-  // working set would force a disk re-read every step.
+  // Evict least-recently-used entries until under budget. The current writer is
+  // protected only while its own entry fits the budget; a single oversized
+  // working set must not make the aggregate limit ineffective.
   function evict(protect: string) {
     const budget = byteBudget()
     if (totalBytes <= budget) return
+    if ((sizes.get(protect) ?? 0) > budget) drop(protect)
     for (let i = 0; i < lru.length && totalBytes > budget; ) {
       const victim = lru[i]
       if (victim === protect) {

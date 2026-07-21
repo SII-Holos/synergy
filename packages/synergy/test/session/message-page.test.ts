@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, mock, test } from "bun:test"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
@@ -175,6 +175,40 @@ describe("session message cursor pages", () => {
         }
       },
     })
+  })
+
+  test("does not hydrate parts outside the requested page", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalParts = MessageV2.parts
+    const loadedMessageIDs: string[] = []
+    ;(MessageV2.parts as any) = mock(async (input: Parameters<typeof MessageV2.parts>[0]) => {
+      loadedMessageIDs.push(input.messageID)
+      return originalParts(input)
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({ title: "Bounded page hydration" })
+          const ids = [1, 2, 3, 4].map((value) => legacyMessageID(value))
+          for (const [index, id] of ids.entries()) {
+            await writeUser(session.id, id, 1_000 + index)
+          }
+
+          const latest = await Session.messagePage({ sessionID: session.id, limit: 2 })
+
+          expect(latest.items.map((message) => message.info.id)).toEqual(ids.slice(2))
+          expect(latest.total).toBe(4)
+          expect(latest.hasMore).toBe(true)
+          expect(loadedMessageIDs).toEqual(ids.slice(2))
+
+          await Session.remove(session.id)
+        },
+      })
+    } finally {
+      ;(MessageV2.parts as any) = originalParts
+    }
   })
 
   test("rejects malformed, unsupported, and stale cursors", async () => {

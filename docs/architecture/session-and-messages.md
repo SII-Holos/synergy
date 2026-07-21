@@ -146,6 +146,8 @@ Transcript consumers use the ordered message array as the chronology. Current me
 
 `Session.messagePage()` and `GET /session/:sessionID/message/page` (`operationId: session.messagePage`) provide additive cursor-based pagination over effective session history. The existing `Session.messages()` and `GET /session/:sessionID/message` remain unchanged and are the correct path for runtime loops, export, preview, and flat consumers that need the complete message array or a simple tail slice.
 
+Pagination scans lightweight message info to establish effective history, cursor position, and referenced roots, then hydrates parts only for the selected page and those roots with bounded concurrency. Legacy records whose canonical semantics depend on parts are hydrated during read-time derivation; current records outside the requested page are not.
+
 ### Query parameters
 
 | Parameter | Type     | Meaning                                                                                  |
