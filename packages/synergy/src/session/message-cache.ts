@@ -57,12 +57,16 @@ export namespace SessionMessageCache {
 
   /** Cached model working set, or undefined when closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
+    return read(sessionID, true)
+  }
+
+  function read(sessionID: string, countStats: boolean): MessageV2.WithParts[] | undefined {
     if (!active.has(sessionID)) return undefined
     const hit = cache.get(sessionID)
     if (hit) {
-      hits++
+      if (countStats) hits++
       touch(sessionID)
-    } else {
+    } else if (countStats) {
       misses++
     }
     return hit
@@ -103,7 +107,7 @@ export namespace SessionMessageCache {
   }
 
   export function upsertMessage(sessionID: string, info: MessageV2.Info) {
-    const list = get(sessionID)
+    const list = read(sessionID, false)
     if (!list) return
     const idx = list.findIndex((m) => m.info.id === info.id)
     const next = list.slice()
@@ -124,7 +128,7 @@ export namespace SessionMessageCache {
   }
 
   export function upsertPart(sessionID: string, part: MessageV2.Part) {
-    const list = get(sessionID)
+    const list = read(sessionID, false)
     if (!list) return
     const mi = list.findIndex((m) => m.info.id === part.messageID)
     if (mi < 0) {

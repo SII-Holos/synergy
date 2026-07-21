@@ -114,9 +114,8 @@ async function searchContent(input: {
     }
   }
 
-  const signal = input.signal
-    ? AbortSignal.any([input.signal, AbortSignal.timeout(SEARCH_TIMEOUT_MS)])
-    : AbortSignal.timeout(SEARCH_TIMEOUT_MS)
+  const timeoutSignal = AbortSignal.timeout(SEARCH_TIMEOUT_MS)
+  const signal = input.signal ? AbortSignal.any([input.signal, timeoutSignal]) : timeoutSignal
 
   const offset = parseCursor(input.cursor)
   const items: WorkspaceFile.ContentSearchItem[] = []
@@ -156,17 +155,24 @@ async function searchContent(input: {
     }
   } catch (error) {
     if (input.signal?.aborted) throw input.signal.reason ?? new DOMException("Search aborted", "AbortError")
-    if (!(error instanceof ProcessOutput.LimitError) && !signal.aborted) throw error
-    truncated = true
+    if (timeoutSignal.aborted) {
+      truncated = true
+    } else if (error instanceof ProcessOutput.LimitError) {
+      truncated = true
+    } else {
+      throw error
+    }
   }
 
   const page = items.slice(0, input.limit)
-  const hasNextPage = items.length > input.limit || (truncated && page.length === input.limit)
+  // Keep pagination available after early stop so clients can resume from the
+  // last complete item instead of losing the remainder of a bounded scan.
+  const hasNextPage = items.length > input.limit || (truncated && page.length > 0)
   return {
     kind: "content",
     query: input.query,
     items: page,
-    nextCursor: hasNextPage ? String(offset + input.limit) : undefined,
+    nextCursor: hasNextPage ? String(offset + page.length) : undefined,
     truncated,
   }
 }

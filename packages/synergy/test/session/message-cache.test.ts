@@ -36,6 +36,17 @@ describe("SessionMessageCache", () => {
     expect(SessionMessageCache.stats().totalBytes).toBe(entry!.estimatedBytes)
   })
 
+  test("upsert paths do not inflate hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+    SessionMessageCache.resetStatsForTest()
+    SessionMessageCache.upsertMessage(SID, { id: "msg_2", sessionID: SID, role: "user" } as any)
+    SessionMessageCache.upsertPart(SID, part("prt_1", "msg_1", "a"))
+    expect(SessionMessageCache.stats()).toMatchObject({ hits: 0, misses: 0 })
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats().hits).toBe(1)
+  })
+
   test("get returns undefined outside the active window", () => {
     SessionMessageCache.set(SID, [userMsg("msg_1")])
     expect(SessionMessageCache.get(SID)).toBeUndefined()

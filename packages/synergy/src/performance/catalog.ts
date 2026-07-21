@@ -257,9 +257,6 @@ export namespace PerformanceCatalog {
       "backend",
       [],
     ),
-    metric("process.memory.heap_profile.bytes", "Heap profile size", "bytes", "size", "latest", "process", "process", [
-      "reason",
-    ]),
     metric(
       "llm.turn.history.before_bytes",
       "LLM history before projection",

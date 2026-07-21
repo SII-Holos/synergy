@@ -108,7 +108,7 @@ export function runtimeSupportItems(summary: PerformanceSummary | null | undefin
             turns: String(runtime.llmTurns.activeTurnCount),
           })
         : i18n._(P.runtimeUnknown.id),
-      tone: (runtime.llmTurns?.activeStreamCount ?? 0) > 0 ? "warning" : "default",
+      tone: "default",
     },
   ]
 }

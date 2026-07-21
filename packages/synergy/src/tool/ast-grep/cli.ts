@@ -228,7 +228,7 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
     } else if (timeoutSignal.aborted) {
       truncatedReason = "timeout"
     } else if (error instanceof ProcessOutput.LimitError) {
-      truncatedReason = "max_output_bytes"
+      truncatedReason = error.reason
     } else {
       failure = error instanceof Error ? error : new Error(String(error))
     }
@@ -286,9 +286,11 @@ export function formatSearchResult(result: SgResult): string {
     const reason =
       result.truncatedReason === "max_matches"
         ? `showing first ${result.matches.length} of at least ${result.totalMatches}`
-        : result.truncatedReason === "max_output_bytes"
-          ? "output exceeded 1MB limit"
-          : "search timed out"
+        : result.truncatedReason === "max_record_bytes"
+          ? "a single match record exceeded the size limit"
+          : result.truncatedReason === "max_output_bytes"
+            ? "output exceeded 1MB limit"
+            : "search timed out"
     lines.push(`Warning: Results truncated (${reason})\n`)
   }
 

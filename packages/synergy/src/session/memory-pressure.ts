@@ -1,5 +1,4 @@
 import { Log } from "@/util/log"
-import { SessionMemoryProfile } from "./memory-profile"
 
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
@@ -125,11 +124,6 @@ export namespace SessionMemoryPressure {
     const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
     const pressure = pressureLevel(before, thresholds)
-    const profile = await SessionMemoryProfile.maybeCapture({
-      reason: input.phase,
-      snapshot: before,
-      soft: pressure === "soft",
-    })
     const collect = input.collect ?? defaultCollect
     const decision = decide({
       snapshot: before,
@@ -148,7 +142,7 @@ export namespace SessionMemoryPressure {
         memory: before,
         thresholds,
       })
-      return { decision, before, thresholds, pressure, profile }
+      return { decision, before, thresholds, pressure }
     }
 
     await collect(decision.critical)
@@ -163,7 +157,7 @@ export namespace SessionMemoryPressure {
       after,
       thresholds,
     })
-    return { decision, before, after, thresholds, pressure, profile }
+    return { decision, before, after, thresholds, pressure }
   }
 
   export function probe(phase: string, context: { sessionID?: string; messageID?: string } = {}) {

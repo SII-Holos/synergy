@@ -279,6 +279,8 @@ export namespace Ripgrep {
     follow?: boolean
     maxDepth?: number
     signal?: AbortSignal
+    maxRecordBytes?: number
+    maxOutputBytes?: number
   }) {
     const args = [await filepath(), "--files", "--glob=!.git/*"]
     if (input.follow !== false) args.push("--follow")
@@ -304,69 +306,21 @@ export namespace Ripgrep {
       cwd: input.cwd,
       stdout: "pipe",
       stderr: "ignore",
-      maxBuffer: 1024 * 1024 * 20,
     })
 
-    const reader = proc.stdout.getReader()
-    let stoppedEarly = false
-    let terminatePromise: Promise<void> | undefined
-    const requestTerminate = () => {
-      terminatePromise ??= terminate(proc)
-      return terminatePromise
-    }
-
-    const onAbort = () => {
-      stoppedEarly = true
-      void reader.cancel().catch(() => {})
-      void requestTerminate()
-    }
-    input.signal?.addEventListener("abort", onAbort, { once: true })
-    if (input.signal?.aborted) onAbort()
-
-    const decoder = new TextDecoder()
-    let buffer = ""
     let reachedEnd = false
-
     try {
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) {
-          reachedEnd = !stoppedEarly && !input.signal?.aborted
-          break
-        }
-        if (input.signal?.aborted) {
-          stoppedEarly = true
-          break
-        }
-
-        buffer += decoder.decode(value, { stream: true })
-        // Handle both Unix (\n) and Windows (\r\n) line endings
-        const lines = buffer.split(/\r?\n/)
-        buffer = lines.pop() || ""
-
-        for (const line of lines) {
-          if (line) yield line
-        }
+      for await (const line of ProcessOutput.lines(proc.stdout, {
+        maxRecordBytes: input.maxRecordBytes,
+        maxOutputBytes: input.maxOutputBytes ?? 20 * 1024 * 1024,
+        signal: input.signal,
+      })) {
+        if (line) yield line
       }
-
-      // Don't yield partial buffer on abort — content may be incomplete
-      if (buffer && !input.signal?.aborted) yield buffer
+      reachedEnd = true
+      await proc.exited
     } finally {
-      if (!reachedEnd) {
-        stoppedEarly = true
-        void reader.cancel().catch(() => {})
-        await requestTerminate()
-      }
-      try {
-        reader.releaseLock()
-      } catch {
-        // The reader may already be released by cancellation on abort.
-      }
-      try {
-        if (reachedEnd) await proc.exited
-      } finally {
-        input.signal?.removeEventListener("abort", onAbort)
-      }
+      if (!reachedEnd) await terminate(proc)
     }
   }
 

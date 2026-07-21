@@ -76,7 +76,7 @@ Session turns establish the root observability context. LLM and concurrent tool 
 
 ## Session memory pressure
 
-After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may run Bun GC. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Soft pressure is tracked separately from critical pressure so a local development runtime can capture evidence while allocation headroom remains:
+After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may run Bun GC. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
 
 - `SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES` (default `1.25 GiB`)
 - `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
@@ -90,9 +90,9 @@ Critical pressure bypasses the GC interval when RSS, JavaScript heap, external a
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES` (default `8 GiB`)
 - `SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES` (default cgroup `memory.high`, then 90% of `memory.max`, then `10.5 GiB`)
 
-Source and local development installations capture a Chrome-compatible `.heapsnapshot` at the first soft-pressure checkpoint, before critical pressure or an allocation failure. Captures use Bun's ArrayBuffer snapshot form to avoid an additional large JSON string, retain three files under the isolated runtime's observability state by default, and have a 15-minute cooldown. `SYNERGY_MEMORY_PROFILE_ENABLED=1` opts a non-local runtime into capture; `SYNERGY_MEMORY_PROFILE_COOLDOWN_MS` and `SYNERGY_MEMORY_PROFILE_RETAIN` adjust cooldown and retention. Snapshot paths never enter public telemetry.
+Soft pressure is evidence for GC and turn-size telemetry only. Automatic heap snapshots are not taken on the soft path because snapshot generation itself allocates and can worsen allocation failures. Use ordinary resource samples, MessageCache counters, and LLM turn size metrics for diagnosis.
 
-When Bun reports an out-of-memory allocation error, the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. The incident contains recent server resource samples, active span summaries, MessageCache counters and entry sizes, active and most-recent turn-size summaries, the GC decision, and memory deltas already attributed to those turns. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY` for the Performance issue list. Snapshot capture is intentionally not attempted at the OOM boundary because generating one also requires allocation headroom.
+When the runtime reports an allocation failure (`Out of memory`, `Array buffer allocation failed`, heap-limit errors, or `ENOMEM`/cannot-allocate variants, including nested causes), the processor emits one deduplicated, bounded incident before persisting the ordinary turn error. Capture stays light: it samples current process memory, recent server resource rows, running spans from the last five minutes, MessageCache counters and entry sizes, and active/recent turn-size summaries without running GC or generating heap snapshots. It caps each collection, omits prompt/tool/response content and runtime identifiers from nested data, and raises `PERF_PROCESS_OUT_OF_MEMORY`.
 
 Experience re-encode jobs use the same critical thresholds to pause new item claims and resume automatically after pressure subsides. `SYNERGY_REENCODE_PRESSURE_POLL_MS` controls the pause polling interval (default `30000`).
 

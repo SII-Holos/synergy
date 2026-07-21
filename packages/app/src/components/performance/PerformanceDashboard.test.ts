@@ -338,7 +338,7 @@ describe("performance dashboard runtime support", () => {
       value: "1 MB · 2 entries (2 active) · 4/1 hit/miss · 3 evictions · 1 protected over budget · largest 700000 B",
       tone: "warning",
     })
-    expect(items).toContainEqual({ label: P.runtimeLlmStreams, value: "2 streams · 3 turns", tone: "warning" })
+    expect(items).toContainEqual({ label: P.runtimeLlmStreams, value: "2 streams · 3 turns", tone: "default" })
   })
 
   test("marks unhealthy runtime support state as warning", () => {

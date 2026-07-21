@@ -13,6 +13,12 @@ describe("SessionMemoryIncident", () => {
   test("recognizes runtime allocation failures", () => {
     expect(SessionMemoryIncident.isOutOfMemory(new RangeError("Out of memory"))).toBe(true)
     expect(SessionMemoryIncident.isOutOfMemory(new Error("Out of memory"))).toBe(true)
+    expect(SessionMemoryIncident.isOutOfMemory(new Error("Array buffer allocation failed"))).toBe(true)
+    expect(
+      SessionMemoryIncident.isOutOfMemory(
+        Object.assign(new Error("wrapped"), { cause: new Error("Cannot allocate memory") }),
+      ),
+    ).toBe(true)
     expect(SessionMemoryIncident.isOutOfMemory(new Error("network failed"))).toBe(false)
   })
 

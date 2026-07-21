@@ -87,7 +87,7 @@ export namespace ProcessOutput {
 
   export async function drainText(
     stream: ReadableStream<Uint8Array>,
-    options: { maxBytes?: number } = {},
+    options: { maxBytes?: number; signal?: AbortSignal } = {},
   ): Promise<{ text: string; truncated: boolean }> {
     const maxBytes = options.maxBytes ?? 64 * 1024
     const reader = stream.getReader()
@@ -95,8 +95,13 @@ export namespace ProcessOutput {
     let retainedBytes = 0
     let truncated = false
 
+    const onAbort = () => void reader.cancel(options.signal?.reason).catch(() => {})
+    options.signal?.addEventListener("abort", onAbort, { once: true })
+    if (options.signal?.aborted) onAbort()
+
     try {
       while (true) {
+        if (options.signal?.aborted) break
         const { done, value } = await reader.read()
         if (done) break
         const remaining = maxBytes - retainedBytes
@@ -108,6 +113,7 @@ export namespace ProcessOutput {
         if (value.length > remaining) truncated = true
       }
     } finally {
+      options.signal?.removeEventListener("abort", onAbort)
       try {
         reader.releaseLock()
       } catch {}
@@ -136,9 +142,9 @@ export namespace ProcessOutput {
     ])
   }
 
-  export async function terminate(proc: BunProcess) {
+  export async function terminate(proc: BunProcess): Promise<boolean> {
     proc.kill()
-    if (await waitExited(proc, TERMINATE_GRACE_MS)) return
+    if (await waitExited(proc, TERMINATE_GRACE_MS)) return true
 
     if (process.platform === "win32" && proc.pid) {
       const killer = Bun.spawn(["taskkill", "/pid", String(proc.pid), "/f", "/t"], {
@@ -149,6 +155,6 @@ export namespace ProcessOutput {
     } else {
       proc.kill("SIGKILL")
     }
-    await waitExited(proc, TERMINATE_HARD_WAIT_MS)
+    return await waitExited(proc, TERMINATE_HARD_WAIT_MS)
   }
 }

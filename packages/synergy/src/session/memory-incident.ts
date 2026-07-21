@@ -6,8 +6,8 @@ import { LLMTurnMemory } from "./llm-memory"
 import { SessionMemoryPressure } from "./memory-pressure"
 
 export namespace SessionMemoryIncident {
-  const PROCESS_STARTED_AT = Date.now()
   const DEDUPE_MS = 5_000
+  const SPAN_WINDOW_MS = 5 * 60_000
   let lastCapturedAt = 0
 
   interface ResourceView {
@@ -55,7 +55,33 @@ export namespace SessionMemoryIncident {
   }
 
   export function isOutOfMemory(error: unknown) {
-    return error instanceof Error && /out of memory/i.test(error.message)
+    const texts: string[] = []
+    const visit = (value: unknown, depth: number) => {
+      if (value == null || depth > 4) return
+      if (typeof value === "string") {
+        texts.push(value)
+        return
+      }
+      if (value instanceof Error) {
+        texts.push(value.name, value.message)
+        visit((value as Error & { code?: unknown }).code, depth + 1)
+        visit(value.cause, depth + 1)
+        return
+      }
+      if (typeof value === "object") {
+        const record = value as { message?: unknown; code?: unknown; cause?: unknown; name?: unknown }
+        if (typeof record.name === "string") texts.push(record.name)
+        if (typeof record.message === "string") texts.push(record.message)
+        if (typeof record.code === "string" || typeof record.code === "number") texts.push(String(record.code))
+        visit(record.cause, depth + 1)
+      }
+    }
+    visit(error, 0)
+    return texts.some((text) =>
+      /out of memory|array buffer allocation failed|heap (?:out of memory|limit)|cannot allocate memory|ENOMEM/i.test(
+        text,
+      ),
+    )
   }
 
   export function build(input: {
@@ -84,11 +110,22 @@ export namespace SessionMemoryIncident {
     if (lastCapturedAt > 0 && now - lastCapturedAt < DEDUPE_MS) return undefined
     lastCapturedAt = now
 
-    const gc = await SessionMemoryPressure.maybeCollect({
-      sessionID: input.sessionID,
-      messageID: input.messageID,
-      phase: "oom.incident",
-    })
+    // Avoid maybeCollect/GC here: allocation failure is the worst time to allocate more.
+    const current = SessionMemoryPressure.currentSnapshot()
+    const thresholds = SessionMemoryPressure.resolveThresholds(process.env, current)
+    const pressure = SessionMemoryPressure.pressureLevel(current, thresholds)
+    const gc = {
+      decision: SessionMemoryPressure.decide({
+        snapshot: current,
+        thresholds,
+        now,
+        lastGCAt: 0,
+        gcAvailable: typeof Bun.gc === "function",
+      }),
+      before: current,
+      thresholds,
+      pressure,
+    }
     const resources = ObservabilityStore.resourceSince(now - 30_000, { limit: 64, newestFirst: true })
       .filter((row) => row.process_role === "server")
       .reverse()
@@ -101,7 +138,7 @@ export namespace SessionMemoryIncident {
         arrayBuffersBytes: row.memory_array_buffers_bytes ?? undefined,
       }))
     const spans = ObservabilityStore.querySpans({
-      since: PROCESS_STARTED_AT,
+      since: Math.max(0, now - SPAN_WINDOW_MS),
       status: "running",
       limit: 40,
     }).map((row) => ({
@@ -116,7 +153,7 @@ export namespace SessionMemoryIncident {
     const cacheStats = SessionMessageCache.stats()
     const incident = build({
       occurredAt: now,
-      current: gc.before,
+      current,
       gc,
       resources,
       spans,

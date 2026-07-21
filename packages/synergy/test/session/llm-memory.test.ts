@@ -1,12 +1,10 @@
 import { beforeEach, describe, expect, test } from "bun:test"
 import { LLMTurnMemory } from "../../src/session/llm-memory"
-import { SessionMemoryProfile } from "../../src/session/memory-profile"
 import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 
 describe("LLMTurnMemory", () => {
   beforeEach(() => {
     LLMTurnMemory.resetForTest()
-    SessionMemoryProfile.resetForTest()
     SessionMemoryPressure.resetForTest()
   })
 
@@ -65,7 +63,7 @@ describe("LLMTurnMemory", () => {
     expect(LLMTurnMemory.estimateBytes(cyclic)).toBeGreaterThan(0)
   })
 
-  test("captures soft-pressure evidence before history projection allocates", async () => {
+  test("stabilizes soft pressure with GC before history projection", async () => {
     const original = {
       soft: process.env.SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES,
       heapCritical: process.env.SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES,
@@ -78,11 +76,7 @@ describe("LLMTurnMemory", () => {
     process.env.SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES = String(Number.MAX_SAFE_INTEGER)
     process.env.SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES = String(Number.MAX_SAFE_INTEGER)
     process.env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES = String(Number.MAX_SAFE_INTEGER)
-    const reasons: string[] = []
-    SessionMemoryProfile.setCaptureForTest(async (reason) => {
-      reasons.push(reason)
-      return { bytes: 10 }
-    })
+    const phases: string[] = []
 
     try {
       const turn = LLMTurnMemory.begin({
@@ -91,10 +85,31 @@ describe("LLMTurnMemory", () => {
         providerID: "provider",
         modelID: "model",
         historyBeforeBytes: 10,
+        baseline: {
+          rssBytes: 10,
+          heapUsedBytes: 10,
+          heapTotalBytes: 20,
+          externalBytes: 1,
+          arrayBuffersBytes: 1,
+        },
+      })
+      await SessionMemoryPressure.maybeCollect({
+        phase: "llm.turn.history.before_projection",
+        snapshot: () => ({
+          rssBytes: 10,
+          heapUsedBytes: 10,
+          heapTotalBytes: 20,
+          externalBytes: 1,
+          arrayBuffersBytes: 1,
+        }),
+        collect: () => {
+          phases.push("llm.turn.history.before_projection")
+        },
+        env: process.env,
       })
       await turn.stabilizeBeforeProjection()
       turn.release()
-      expect(reasons).toEqual(["llm.turn.history.before_projection"])
+      expect(phases).toEqual(["llm.turn.history.before_projection"])
     } finally {
       restoreEnv("SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES", original.soft)
       restoreEnv("SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES", original.heapCritical)
