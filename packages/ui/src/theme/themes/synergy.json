@@ -49,8 +49,6 @@
       "surface-focus": "#11182714",
       "surface-interactive-selected": "#F1F2F4",
       "surface-interactive-selected-weak": "#F7F7F8",
-      "surface-brand-base": "#3B82F6",
-      "surface-brand-hover": "#2563EB",
       "input-base": "#F4F4F5",
       "input-hover": "#EFEFF1",
       "input-active": "#F1F2F4",
@@ -109,18 +107,7 @@
       "syntax-object": "var(--text-strong)",
       "syntax-info": "#2563EB",
       "syntax-diff-unknown": "#EF4444",
-      "avatar-background-pink": "#FFF1F3",
-      "avatar-background-mint": "#EAF8F2",
-      "avatar-background-orange": "#FFF3E8",
-      "avatar-background-purple": "#F6F0FB",
-      "avatar-background-cyan": "#EAF7F7",
-      "avatar-background-lime": "#EFF7E6",
-      "avatar-text-pink": "#B84A6B",
-      "avatar-text-mint": "#1F8A5B",
-      "avatar-text-orange": "#B7791F",
-      "avatar-text-purple": "#7C4BA3",
-      "avatar-text-cyan": "#286AA8",
-      "avatar-text-lime": "#5D770D"
+      "markdown-code-block": "#1A1A1A"
     }
   },
   "dark": {
@@ -170,8 +157,6 @@
       "surface-focus": "#F4F4F514",
       "surface-interactive-selected": "#2A2B2F",
       "surface-interactive-selected-weak": "#222326",
-      "surface-brand-base": "#3B82F6",
-      "surface-brand-hover": "#2563EB",
       "input-base": "#222326",
       "input-hover": "#2A2B2F",
       "input-active": "#2A2B2F",
@@ -230,18 +215,7 @@
       "syntax-object": "var(--text-strong)",
       "syntax-info": "#60A5FA",
       "syntax-diff-unknown": "#EF4444",
-      "avatar-background-pink": "#3B1F2E",
-      "avatar-background-mint": "#133329",
-      "avatar-background-orange": "#3E2919",
-      "avatar-background-purple": "#332347",
-      "avatar-background-cyan": "#163338",
-      "avatar-background-lime": "#243317",
-      "avatar-text-pink": "#E58CAC",
-      "avatar-text-mint": "#5FD39A",
-      "avatar-text-orange": "#E0A85D",
-      "avatar-text-purple": "#BC8EEA",
-      "avatar-text-cyan": "#6FC9C9",
-      "avatar-text-lime": "#B5D46D"
+      "markdown-code-block": "#EEEEEE"
     }
   }
 }

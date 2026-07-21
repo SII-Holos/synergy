@@ -52,11 +52,11 @@ describe("app boot shell", () => {
     expect(css).toContain("html:not([data-color-scheme]),")
     expect(css).toContain("html:not([data-color-scheme]) body,")
     expect(css).toContain("html:not([data-color-scheme]) #root")
-    expect(css).toContain("background: var(--synergy-boot-bg, #fafafa);")
+    expect(css).toContain("background: var(--synergy-boot-bg);")
     expect(css).toContain("html[data-color-scheme],")
     expect(css).toContain("html[data-color-scheme] body,")
     expect(css).toContain("html[data-color-scheme] #root")
-    expect(css).toContain("background: var(--background-stronger, var(--synergy-boot-bg, #fafafa));")
+    expect(css).toContain("background: var(--background-stronger, var(--synergy-boot-bg));")
     expect(css).toContain("color: var(--text-base, var(--synergy-boot-text));")
   })
 
@@ -67,8 +67,13 @@ describe("app boot shell", () => {
     expect(html).toContain('document.documentElement.setAttribute("data-synergy-color-scheme", mode)')
     expect(html).toContain('document.documentElement.setAttribute("data-color-scheme", mode)')
     expect(html).toContain('var isDark = scheme === "dark" || (scheme === "system" && systemDark)')
-    expect(html).toContain("window.synergyDesktop?.theme?.set")
-    expect(html).toContain("Promise.resolve(desktopThemeSet(scheme)).catch")
+    expect(html).toContain('localStorage.getItem("synergy-skin-cache-v1")')
+    expect(html).toContain("var fields = {")
+    expect(html).toContain("hex.test(shell[field])")
+    expect(html).toContain('document.getElementById("synergy-theme-color").setAttribute("content", shell.background)')
+    expect(html).not.toContain("snapshot.css")
+    expect(html).toContain("window.synergyDesktop?.theme?.setSource")
+    expect(html).toContain("Promise.resolve(desktopThemeSetSource(scheme)).catch")
   })
 
   test("renders a minimal animated icon splash instead of an app skeleton", () => {
@@ -133,7 +138,10 @@ describe("app boot shell", () => {
     expect(entry).toContain('theme?: Platform["desktopTheme"]')
     expect(entry).toContain("desktopTheme: window.synergyDesktop?.theme")
     expect(app).toContain("<DesktopThemeSync />")
-    expect(desktopThemeSync).toContain("platform.desktopTheme?.set(source)")
+    expect(desktopThemeSync).toContain("deriveShellSkin(theme.theme())")
+    expect(desktopThemeSync).toContain(
+      "?.set({ source, themeId: theme.themeId(), light: shell.light, dark: shell.dark })",
+    )
     expect(desktopThemeSync).toContain("theme.colorScheme()")
   })
 

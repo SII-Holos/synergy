@@ -213,7 +213,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
           CSC_INSTALLER_LINK: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_LINK || '' }}
           CSC_INSTALLER_KEY_PASSWORD: ${{ matrix.platform == 'darwin' && secrets.CSC_INSTALLER_KEY_PASSWORD || '' }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin' && 'true' || 'false' }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -231,7 +231,7 @@ jobs:
           SYNERGY_BROWSER_HOST_SIGNING_KEY: ${{ secrets.BROWSER_HOST_MANIFEST_SIGNING_KEY }}
           CSC_LINK: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE || secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ matrix.platform == 'win32' && secrets.WINDOWS_CERTIFICATE_PASSWORD || secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: false
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ matrix.platform == 'darwin' && 'true' || 'false' }}
 
       - name: Upload desktop artifact bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

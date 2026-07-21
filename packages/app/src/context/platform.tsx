@@ -18,13 +18,40 @@ export type BrowserNativeViewBridge = {
 
 export type DesktopThemeSource = "system" | "light" | "dark"
 export type DesktopThemeEffective = "light" | "dark"
+export type DesktopShellSkinColors = {
+  background: string
+  text: string
+  mutedText: string
+  panel: string
+  border: string
+  control: string
+  controlHover: string
+  controlHoverBackground: string
+  focus: string
+  markBackground: string
+  markText: string
+  criticalBackground: string
+  criticalText: string
+}
+export type DesktopSkinUpdate = {
+  source: DesktopThemeSource
+  themeId: string
+  light: DesktopShellSkinColors
+  dark: DesktopShellSkinColors
+}
 export type DesktopThemeSnapshot = {
+  version: 2
   source: DesktopThemeSource
   effective: DesktopThemeEffective
+  themeId: string
+  light: DesktopShellSkinColors
+  dark: DesktopShellSkinColors
+  colors: DesktopShellSkinColors
 }
 export type DesktopThemeBridge = {
   get(): Promise<DesktopThemeSnapshot | null>
-  set(source: DesktopThemeSource): Promise<DesktopThemeSnapshot | null>
+  set(input: DesktopSkinUpdate): Promise<DesktopThemeSnapshot | null>
+  setSource(source: DesktopThemeSource): Promise<DesktopThemeSnapshot | null>
   onEvent?(listener: (event: { type: "theme"; snapshot: DesktopThemeSnapshot }) => void): () => void
 }
 

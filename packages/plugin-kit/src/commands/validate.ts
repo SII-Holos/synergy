@@ -12,6 +12,7 @@ import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 import { sha256File } from "../lib/crypto.js"
 import { loadPluginDefinition } from "../lib/definition.js"
+import { validateThemeAssets } from "../lib/theme-assets.js"
 
 export interface PluginValidationResult {
   type: "pass" | "warning" | "error"
@@ -57,6 +58,9 @@ export async function validatePluginProject(
     const { definition } = await loadPluginDefinition(pluginDir)
     results.push({ type: "pass", message: `definePlugin() descriptor valid: ${definition.id}@${definition.version}` })
     expectEqual(definition.handlerIds.slice().sort(), executableIds(definition), "descriptor handler ids", results)
+    for (const asset of validateThemeAssets(pluginDir, definition.contributions)) {
+      results.push({ type: "pass", message: `source theme valid: ${asset.contribution.id}` })
+    }
 
     for (const source of trustedComponentSources(definition)) {
       if (fs.existsSync(path.resolve(pluginDir, source))) {
@@ -80,6 +84,9 @@ export async function validatePluginProject(
     const ui = manifest.artifacts.ui
     if (runtime) verifyArtifact(pluginDir, runtime.entry, runtime.sha256, "runtime", results)
     if (ui) verifyArtifact(pluginDir, ui.entry, ui.sha256, "UI", results)
+    for (const asset of validateThemeAssets(path.join(pluginDir, "dist"), manifest.contributions)) {
+      results.push({ type: "pass", message: `packaged theme valid: ${asset.contribution.id}` })
+    }
 
     if (options.runtimeDiscovery && runtime) {
       const discovered = await runtimeHandlerIds(path.join(pluginDir, "dist", runtime.entry), manifest.id)

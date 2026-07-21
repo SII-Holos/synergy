@@ -445,7 +445,7 @@
   border-radius: 1rem;
   background: var(--surface-raised-stronger-non-alpha);
   box-shadow:
-    0 24px 76px rgba(0, 0, 0, 0.34),
+    0 24px 76px var(--surface-overlay),
     0 1px 0 color-mix(in oklch, var(--border-base) 34%, transparent);
 }
 
@@ -575,8 +575,8 @@
   background: var(--text-strong);
   color: var(--background-base);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, white 12%, transparent),
-    0 1px 2px color-mix(in oklab, black 12%, transparent);
+    inset 0 0 0 1px var(--border-weak-base),
+    0 1px 2px var(--surface-overlay);
 }
 
 .plugin-detail-primary-action [data-component="icon"],

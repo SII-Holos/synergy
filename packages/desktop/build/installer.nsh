@@ -34,6 +34,7 @@
   SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 !macroend
 
+!ifndef BUILD_UNINSTALLER
 Function PathHasEntry
   Exch $R1
   Exch
@@ -71,6 +72,7 @@ Function PathHasEntry
     Pop $R1
     Pop $R3
 FunctionEnd
+!endif
 
 Function un.RemovePathEntry
   Exch $R1
