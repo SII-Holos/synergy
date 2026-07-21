@@ -89,7 +89,7 @@ export namespace HolosAuth {
     })
     const credential = await getStoredCredential()
     if (!credential) return
-    const current = await Config.current()
+    const current = await Config.globalResolved()
     const existing = current.channel?.clarus
     if (existing?.type === "clarus" && existing.accounts[credential.agentId]) return
     await Config.domainUpdate("channels", {
