@@ -1241,7 +1241,7 @@ function SessionPageContent() {
         </Show>
         <Show when={!isDesktop() && store.mobileReviewOpen}>
           <div
-            class="md:hidden absolute inset-x-0 bottom-0 z-40 flex flex-col bg-background-stronger border-t border-border-weak-base rounded-t-xl shadow-[0_-4px_24px_rgba(0,0,0,0.15)]"
+            class="md:hidden absolute inset-x-0 bottom-0 z-40 flex flex-col bg-background-stronger border-t border-border-weak-base rounded-t-xl shadow-lg"
             style={{ height: "50vh" }}
           >
             <div class="flex items-center justify-between px-4 h-11 shrink-0">

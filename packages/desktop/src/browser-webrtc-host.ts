@@ -93,7 +93,7 @@ export class BrowserWebRTCHost {
 
   setTheme(theme: DesktopThemeSnapshot): void {
     this.options = { ...this.options, theme }
-    if (this.browserWindow) this.browserWindow.setBackgroundColor(desktopThemeBackground(theme.effective))
+    if (this.browserWindow) this.browserWindow.setBackgroundColor(desktopThemeBackground(theme))
   }
 
   async start(): Promise<void> {
@@ -107,7 +107,7 @@ export class BrowserWebRTCHost {
       height,
       title: this.browserWindowTitle,
       skipTaskbar: true,
-      backgroundColor: desktopThemeBackground(this.options.theme.effective),
+      backgroundColor: desktopThemeBackground(this.options.theme),
       webPreferences: {
         partition: browserProfilePartition(this.options.ownerKey),
         backgroundThrottling: false,

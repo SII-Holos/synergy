@@ -152,15 +152,11 @@ export function DailyTrend(props: { days: StatsSnapshot["timeSeries"]["days"] })
         display: false,
       },
       tooltip: {
+        ...theme().tooltip,
         mode: "index",
         intersect: false,
         displayColors: false,
-        backgroundColor: theme().background,
-        borderColor: theme().grid,
-        borderWidth: 1,
         padding: 12,
-        titleColor: theme().foreground,
-        bodyColor: theme().axisStrong,
         titleMarginBottom: 6,
         callbacks: {
           title: (items) => {

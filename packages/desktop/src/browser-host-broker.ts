@@ -10,7 +10,7 @@ import {
   type BrowserHostPageEvent,
 } from "@ericsanchezok/synergy-browser"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
-import { desktopThemeSnapshot } from "./theme.js"
+import { defaultDesktopSkinState, desktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"
 
 export interface BrowserHostBrokerOptions {
@@ -235,7 +235,7 @@ export class BrowserHostBrokerClient {
       pageId: message.page.id,
       routeDirectory: message.routeDirectory,
       url: message.page.url,
-      theme: desktopThemeSnapshot("system", nativeTheme.shouldUseDarkColors),
+      theme: desktopThemeSnapshot(defaultDesktopSkinState(), nativeTheme.shouldUseDarkColors),
       iceServers: parseIceServers(process.env.SYNERGY_BROWSER_ICE_SERVERS),
       networkProxy: message.networkProxy,
       downloadDir: message.downloadDir,

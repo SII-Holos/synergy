@@ -10,7 +10,7 @@
   border-radius: 999px;
   background: color-mix(in oklch, var(--surface-raised-stronger-non-alpha) 84%, var(--wake-accent) 16%);
   color: var(--text-base);
-  box-shadow: 0 1px 3px color-mix(in oklch, var(--background-base) 80%, black 20%);
+  box-shadow: 0 1px 3px var(--surface-overlay);
   transition:
     background-color 160ms cubic-bezier(0.2, 0, 0, 1),
     border-color 160ms cubic-bezier(0.2, 0, 0, 1),
@@ -49,8 +49,8 @@
   height: 13px;
   padding: 0 3px;
   border-radius: 999px;
-  background: color-mix(in oklch, var(--wake-accent) 90%, white 10%);
-  color: white;
+  background: color-mix(in oklch, var(--wake-accent) 90%, var(--surface-raised-base) 10%);
+  color: var(--text-on-interactive-base);
   font-size: 9px;
   font-weight: 600;
   line-height: 1;
@@ -63,7 +63,7 @@
   border: 1px solid var(--workbench-border, var(--border-base));
   border-radius: 1rem;
   background: var(--workbench-popover-bg, var(--surface-raised-stronger-non-alpha));
-  box-shadow: var(--workbench-popover-shadow, 0 14px 34px rgb(0 0 0 / 0.2));
+  box-shadow: var(--workbench-popover-shadow, 0 14px 34px var(--surface-overlay));
 }
 
 .session-agenda-wake-panel [data-slot="popover-body"] {

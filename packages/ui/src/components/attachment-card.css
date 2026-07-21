@@ -232,13 +232,13 @@
   flex-direction: column;
   gap: 1px;
   padding: 20px 10px 8px;
-  background: linear-gradient(to top, color-mix(in oklch, black 64%, transparent), transparent);
-  color: white;
+  background: linear-gradient(to top, var(--surface-overlay), transparent);
+  color: var(--text-on-brand-strong);
   pointer-events: none;
 
   [data-slot="attachment-card-filename"],
   [data-slot="attachment-card-meta"] {
-    color: white;
+    color: var(--text-on-brand-strong);
   }
 }
 

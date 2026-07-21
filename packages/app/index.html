@@ -35,8 +35,7 @@
         write("meta", { property: "twitter:image", content: asset("/social-share.png") })
       })()
     </script>
-    <meta name="theme-color" content="#F8F7F7" />
-    <meta name="theme-color" content="#131010" media="(prefers-color-scheme: dark)" />
+    <meta id="synergy-theme-color" name="theme-color" content="#FAFAFA" />
     <script id="synergy-theme-preload-script">
       ;(function () {
         var fallbackScheme = "system"
@@ -54,8 +53,29 @@
         document.documentElement.setAttribute("data-synergy-color-scheme", mode)
         document.documentElement.setAttribute("data-color-scheme", mode)
         try {
-          var desktopThemeSet = window.synergyDesktop?.theme?.set
-          if (desktopThemeSet) Promise.resolve(desktopThemeSet(scheme)).catch(function () {})
+          var snapshot = JSON.parse(localStorage.getItem("synergy-skin-cache-v1") || "null")
+          var shell = snapshot && snapshot.version === 1 && snapshot.shell && snapshot.shell[mode]
+          var fields = {
+            background: "--synergy-boot-bg",
+            text: "--synergy-boot-text",
+            control: "--synergy-boot-control-color",
+            controlHover: "--synergy-boot-control-hover-color",
+            controlHoverBackground: "--synergy-boot-control-hover-bg",
+            focus: "--synergy-boot-focus-ring",
+            criticalBackground: "--synergy-boot-critical-bg",
+            criticalText: "--synergy-boot-critical-text",
+          }
+          var hex = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+          var valid = shell && typeof shell === "object"
+          for (var field in fields) valid = valid && hex.test(shell[field])
+          if (valid) {
+            for (var name in fields) document.documentElement.style.setProperty(fields[name], shell[name])
+            document.getElementById("synergy-theme-color").setAttribute("content", shell.background)
+          }
+        } catch (error) {}
+        try {
+          var desktopThemeSetSource = window.synergyDesktop?.theme?.setSource
+          if (desktopThemeSetSource) Promise.resolve(desktopThemeSetSource(scheme)).catch(function () {})
         } catch (error) {}
       })()
     </script>
@@ -69,32 +89,41 @@
       })()
     </script>
     <style id="synergy-app-boot-style">
+      /* BEGIN GENERATED SKIN FALLBACK */
+      /* Generated from the canonical Synergy theme. Do not edit manually. */
       :root {
         --synergy-boot-bg: #fafafa;
-        --synergy-boot-text: #191a1d;
-        --synergy-boot-control-color: #5e6572;
-        --synergy-boot-control-hover-color: #191a1d;
-        --synergy-boot-control-hover-bg: #ecedef;
-        --synergy-boot-focus-ring: rgba(25, 26, 29, 0.16);
+        --synergy-boot-text: #111827;
+        --synergy-boot-control-color: #4b5563;
+        --synergy-boot-control-hover-color: #151313;
+        --synergy-boot-control-hover-bg: #f7f7f7;
+        --synergy-boot-focus-ring: #888888;
+        --synergy-boot-critical-bg: #ffdfda;
+        --synergy-boot-critical-text: #a8000c;
       }
 
       html[data-synergy-color-scheme="dark"] {
         --synergy-boot-bg: #0f0f10;
-        --synergy-boot-text: #f5f6f7;
-        --synergy-boot-control-color: #b8bdc7;
-        --synergy-boot-control-hover-color: #f5f6f7;
-        --synergy-boot-control-hover-bg: #24262a;
-        --synergy-boot-focus-ring: rgba(245, 246, 247, 0.18);
+        --synergy-boot-text: #f4f4f5;
+        --synergy-boot-control-color: #c5c5cc;
+        --synergy-boot-control-hover-color: #f6f3f3;
+        --synergy-boot-control-hover-bg: #080808;
+        --synergy-boot-focus-ring: #656565;
+        --synergy-boot-critical-bg: #320c0b;
+        --synergy-boot-critical-text: #ef4444;
       }
 
       html[data-synergy-color-scheme="light"] {
         --synergy-boot-bg: #fafafa;
-        --synergy-boot-text: #191a1d;
-        --synergy-boot-control-color: #5e6572;
-        --synergy-boot-control-hover-color: #191a1d;
-        --synergy-boot-control-hover-bg: #ecedef;
-        --synergy-boot-focus-ring: rgba(25, 26, 29, 0.16);
+        --synergy-boot-text: #111827;
+        --synergy-boot-control-color: #4b5563;
+        --synergy-boot-control-hover-color: #151313;
+        --synergy-boot-control-hover-bg: #f7f7f7;
+        --synergy-boot-focus-ring: #888888;
+        --synergy-boot-critical-bg: #ffdfda;
+        --synergy-boot-critical-text: #a8000c;
       }
+      /* END GENERATED SKIN FALLBACK */
 
       html,
       body {
@@ -191,8 +220,8 @@
 
       .synergy-app-boot-control--close:hover,
       .synergy-app-boot-control--close:focus-visible {
-        background: #c7392f;
-        color: #ffffff;
+        background: var(--synergy-boot-critical-bg);
+        color: var(--synergy-boot-critical-text);
       }
 
       .synergy-app-boot-glyph {

@@ -1,5 +1,4 @@
 import fs from "fs"
-import os from "os"
 import path from "path"
 import type { Argv } from "yargs"
 import {
@@ -17,9 +16,10 @@ import {
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 import { sha256File, sha256JSON } from "../lib/crypto.js"
-import { hashPackagedFiles, normalizeManifestPath, resolveUnder } from "../lib/artifact-assets.js"
+import { hashDeclaredPaths, hashPackagedFiles, normalizeManifestPath, resolveUnder } from "../lib/artifact-assets.js"
 import { loadPluginDefinition } from "../lib/definition.js"
 import { solidCompilerPlugin } from "../lib/solid-compiler.js"
+import { validateThemeAssets } from "../lib/theme-assets.js"
 
 function ensureDir(directory: string) {
   fs.mkdirSync(directory, { recursive: true })
@@ -73,7 +73,7 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
   const components = trustedComponents(definition.contributions)
   if (components.length === 0) return undefined
 
-  const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), "synergy-plugin-ui-"))
+  const tempDirectory = fs.mkdtempSync(path.join(pluginDir, ".synergy-plugin-ui-"))
   const entry = path.join(tempDirectory, "index.tsx")
   const exports: Record<string, string> = {}
   const lines: string[] = []
@@ -102,7 +102,10 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
       external: ["solid-js", "solid-js/web", "solid-js/store"],
       plugins: [solidCompilerPlugin()],
     })
-    if (!result.success) throw new AggregateError(result.logs, "Plugin UI build failed")
+    if (!result.success) {
+      const details = result.logs.map((log) => log.message).join("\n")
+      throw new Error(details ? `Plugin UI build failed:\n${details}` : "Plugin UI build failed")
+    }
     const output = path.join(outputDirectory, "index.js")
     const source = fs.readFileSync(output, "utf8")
     if (hasBundledSolidRuntime(source)) throw new Error("Plugin UI bundle contains a private Solid runtime")
@@ -121,6 +124,9 @@ async function buildUI(pluginDir: string, distDir: string, definition: PluginDef
 export async function buildPluginProject(pluginDir: string, options: { outputDir?: string } = {}): Promise<boolean> {
   try {
     const { entry, definition } = await loadPluginDefinition(pluginDir)
+    validateThemeAssets(pluginDir, definition.contributions)
+    const declaredAssets = assetPaths(definition)
+    const assetHashes = hashDeclaredPaths(pluginDir, declaredAssets)
     const distDir = options.outputDir ?? path.join(pluginDir, "dist")
     fs.rmSync(distDir, { recursive: true, force: true })
     ensureDir(distDir)
@@ -132,7 +138,8 @@ export async function buildPluginProject(pluginDir: string, options: { outputDir
       definition.handlerIds.length > 0 || Boolean(definition.activate) || Boolean(definition.deactivate),
     )
     const ui = await buildUI(pluginDir, distDir, definition)
-    for (const asset of assetPaths(definition)) copyPath(pluginDir, distDir, asset)
+    for (const asset of declaredAssets) copyPath(pluginDir, distDir, asset)
+    validateThemeAssets(distDir, definition.contributions)
 
     const generation = sha256JSON({
       id: definition.id,
@@ -140,6 +147,7 @@ export async function buildPluginProject(pluginDir: string, options: { outputDir
       handlers: definition.handlerIds,
       runtime: runtime?.sha256,
       ui: ui?.sha256,
+      assets: assetHashes,
     })
     const artifacts: CompiledPluginArtifacts = { generation, ...(runtime ? { runtime } : {}), ...(ui ? { ui } : {}) }
     const manifest = compilePluginManifest(definition, artifacts)
@@ -172,9 +180,17 @@ export async function buildPluginProject(pluginDir: string, options: { outputDir
     UI.println(`${UI.Style.TEXT_SUCCESS}Built${UI.Style.TEXT_NORMAL} ${definition.id} -> ${distDir}`)
     return true
   } catch (error) {
-    UI.error(error instanceof Error ? error.message : String(error))
+    UI.error(buildErrorMessage(error))
     return false
   }
+}
+
+function buildErrorMessage(error: unknown): string {
+  if (error instanceof AggregateError) {
+    const details = error.errors.map((item) => (item instanceof Error ? item.message : String(item))).join("\n")
+    return details || error.message
+  }
+  return error instanceof Error ? error.message : String(error)
 }
 
 export const PluginBuildCommand = cmd({

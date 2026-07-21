@@ -39,6 +39,10 @@
       "type": "string",
       "pattern": "^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$"
     },
+    "CssVarRef": {
+      "type": "string",
+      "pattern": "^var\\(--[a-z0-9-]+\\)$"
+    },
     "ColorValue": {
       "oneOf": [
         {

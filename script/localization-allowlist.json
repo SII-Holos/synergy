@@ -24,22 +24,6 @@
     "reason": "Quality score abbreviation — a mathematical metric label, not translateable."
   },
   {
-    "path": "packages/ui/src/theme/generate.ts",
-    "kind": "user-visible-property",
-    "literal": "Synergy Theme",
-    "occurrence": 1,
-    "category": "developer-output",
-    "reason": "Developer-facing theme JSON metadata label — not a UI string seen by end users."
-  },
-  {
-    "path": "packages/ui/src/theme/generate.ts",
-    "kind": "user-visible-property",
-    "literal": "A complete Synergy color theme generated from light and dark seed palettes.",
-    "occurrence": 1,
-    "category": "developer-output",
-    "reason": "Developer-facing theme JSON description — not a UI string seen by end users."
-  },
-  {
     "path": "packages/ui/src/components/session-review.tsx",
     "kind": "jsx-text",
     "literal": "&lrm;",

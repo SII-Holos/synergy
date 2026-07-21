@@ -109,6 +109,8 @@ export default definePlugin({
 
 Theme JSON contains `name`, an `id` equal to the contribution ID, and complete `light.seeds` and `dark.seeds`. Each seed set defines `neutral`, `primary`, `success`, `warning`, `error`, `info`, `interactive`, `diffAdd`, and `diffDelete` as opaque hex colors. Optional `overrides` may address only canonical theme tokens. The host validates and resolves both variants before registration; arbitrary CSS, unknown tokens, cyclic references, and invalid contrast are rejected.
 
+The template includes `themes/theme.schema.json`. Theme tooling may import `ThemeSchema`, `parseTheme()`, `resolveTheme()`, and the token catalog from `@ericsanchezok/synergy-plugin/theme`. Plugin Kit `build`, `validate`, and `dev` validate both source and packaged Theme JSON with that public parser. Missing or escaping paths, malformed JSON, ID mismatches, and resolver failures stop the command with a nonzero result. Theme and icon content hashes are part of the generation, so declarative-only edits receive new asset URLs; dev keeps its last valid generation when validation fails.
+
 The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surface `icon` fields continue to use the plugin-local contribution ID; the host resolves it to the namespaced registered icon. Assets are fetched and validated before an atomic reload replaces the previous generation.
 
 ## Scope and Reload

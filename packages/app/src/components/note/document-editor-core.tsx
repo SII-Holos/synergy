@@ -19,6 +19,9 @@ import { Video, Mermaid, CrossCellSelection, createFileUpload } from "@/componen
 import { createSlashCommands } from "@/components/note/slash-menu"
 import { createBubbleMenu, BubbleMenuContent } from "@/components/note/bubble-menu"
 import type { SynergyClient } from "@ericsanchezok/synergy-sdk/client"
+import { registerSynergyShikiThemes, SYNERGY_SHIKI_DARK, SYNERGY_SHIKI_LIGHT } from "./shiki-theme"
+
+registerSynergyShikiThemes()
 
 // ---------------------------------------------------------------------------
 // Shared Tiptap styles — used by NoteEditor and future BlueprintEditor
@@ -80,7 +83,7 @@ export const TIPTAP_STYLES = `
     padding: 0.9em 1.05em;
     font-style: italic;
     color: var(--text-weak);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+    box-shadow: inset 0 1px 0 var(--border-weak-base);
   }
   .tiptap pre {
     background: var(--surface-inset-base);
@@ -89,7 +92,7 @@ export const TIPTAP_STYLES = `
     padding: 1em 1.05em;
     overflow-x: auto;
     margin-bottom: 0.95em;
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 14px 34px -28px rgba(0,0,0,0.28);
+    box-shadow: inset 0 1px 0 var(--border-weak-base), 0 14px 34px -28px var(--surface-overlay);
   }
   .tiptap pre.shiki,
   .tiptap pre.shiki code,
@@ -125,7 +128,7 @@ export const TIPTAP_STYLES = `
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 0.85em;
     color: var(--text-strong);
-    box-shadow: inset 0 1px 0 rgba(0,0,0,0.04);
+    box-shadow: inset 0 1px 0 var(--border-weak-base);
   }
   .tiptap table {
     border-collapse: collapse;
@@ -441,10 +444,10 @@ export function createDocumentEditorExtensions(config: DocumentEditorExtensionsC
       nested: true,
     }),
     CodeBlockShiki.configure({
-      defaultTheme: "github-light",
+      defaultTheme: SYNERGY_SHIKI_LIGHT,
       themes: {
-        light: "github-light",
-        dark: "github-dark",
+        light: SYNERGY_SHIKI_LIGHT,
+        dark: SYNERGY_SHIKI_DARK,
       },
     }),
     MathExtension,

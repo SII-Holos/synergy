@@ -48,11 +48,14 @@ import type { DesktopStartupStatus } from "./startup-page.js"
 import { DesktopUpdateMode, DesktopUpdater } from "./updater.js"
 import {
   applyDesktopThemeToWindow,
+  defaultDesktopSkinState,
   desktopThemeBackground,
   desktopThemeSnapshot,
-  loadDesktopThemeSource,
+  loadDesktopSkinState,
+  parseDesktopSkinUpdate,
   parseDesktopThemeSource,
-  saveDesktopThemeSource,
+  saveDesktopSkinState,
+  type DesktopSkinStateV2,
   type DesktopThemeSnapshot,
 } from "./theme.js"
 import { loadWindowState, scheduleWindowStatePersistence } from "./window-state.js"
@@ -211,7 +214,7 @@ async function createWindow() {
     width: windowState.width,
     height: windowState.height,
     title: desktopWindowTitle(channel),
-    backgroundColor: desktopThemeBackground(theme.effective),
+    backgroundColor: desktopThemeBackground(theme),
     ...desktopWindowChromeOptions({
       platform: process.platform,
       dirname,
@@ -258,7 +261,7 @@ async function createWindow() {
     preloadPath,
     chrome: process.platform === "darwin" ? "native" : "custom",
     iconDataUrl: startupIconDataUrl,
-    theme: theme.effective,
+    theme,
   })
   await startupOverlay.load()
   startupOverlay.attach()
@@ -305,12 +308,12 @@ async function createWindow() {
 }
 
 async function initializeDesktopTheme(): Promise<void> {
-  const source = await loadDesktopThemeSource(app.getPath("userData"))
-  updateDesktopThemeSnapshot(snapshotDesktopTheme(source), { broadcast: false })
+  const state = await loadDesktopSkinState(app.getPath("userData"))
+  updateDesktopThemeSnapshot(snapshotDesktopTheme(state), { broadcast: false })
 }
 
 function getDesktopThemeSnapshot(): DesktopThemeSnapshot {
-  currentDesktopTheme ??= snapshotDesktopTheme("system")
+  currentDesktopTheme ??= snapshotDesktopTheme(defaultDesktopSkinState())
   return currentDesktopTheme
 }
 
@@ -321,7 +324,7 @@ function updateDesktopThemeSnapshot(
   currentDesktopTheme = snapshot
   nativeTheme.themeSource = snapshot.source
   if (mainWindow) applyDesktopThemeToWindow(mainWindow, snapshot)
-  startupOverlay?.setTheme(snapshot.effective)
+  startupOverlay?.setTheme(snapshot)
   if (options.broadcast !== false) broadcastDesktopTheme(snapshot)
   return snapshot
 }
@@ -332,20 +335,39 @@ function broadcastDesktopTheme(snapshot: DesktopThemeSnapshot): void {
 
 async function setDesktopThemeSource(input: unknown): Promise<DesktopThemeSnapshot> {
   const source = parseDesktopThemeSource(input)
-  await saveDesktopThemeSource(app.getPath("userData"), source)
-  return updateDesktopThemeSnapshot(snapshotDesktopTheme(source))
+  const current = desktopSkinState(getDesktopThemeSnapshot())
+  const state = { ...current, source }
+  await saveDesktopSkinState(app.getPath("userData"), state)
+  return updateDesktopThemeSnapshot(snapshotDesktopTheme(state))
+}
+
+async function setDesktopSkin(input: unknown): Promise<DesktopThemeSnapshot> {
+  const update = parseDesktopSkinUpdate(input)
+  const state: DesktopSkinStateV2 = { version: 2, ...update }
+  await saveDesktopSkinState(app.getPath("userData"), state)
+  return updateDesktopThemeSnapshot(snapshotDesktopTheme(state))
 }
 
 function installDesktopThemeNativeListener(): void {
   nativeTheme.on("updated", () => {
     const snapshot = getDesktopThemeSnapshot()
     if (snapshot.source !== "system") return
-    updateDesktopThemeSnapshot(snapshotDesktopTheme(snapshot.source))
+    updateDesktopThemeSnapshot(snapshotDesktopTheme(desktopSkinState(snapshot)))
   })
 }
 
-function snapshotDesktopTheme(source: DesktopThemeSnapshot["source"]): DesktopThemeSnapshot {
-  return desktopThemeSnapshot(source, nativeTheme.shouldUseDarkColors)
+function snapshotDesktopTheme(state: DesktopSkinStateV2): DesktopThemeSnapshot {
+  return desktopThemeSnapshot(state, nativeTheme.shouldUseDarkColors)
+}
+
+function desktopSkinState(snapshot: DesktopThemeSnapshot): DesktopSkinStateV2 {
+  return {
+    version: 2,
+    source: snapshot.source,
+    themeId: snapshot.themeId,
+    light: snapshot.light,
+    dark: snapshot.dark,
+  }
 }
 
 async function setStartupStatus(status: DesktopStartupStatus): Promise<void> {
@@ -376,7 +398,7 @@ async function resolveAppURL(): Promise<string> {
   } catch (error) {
     currentAppURL = null
     const details = error instanceof Error ? error.stack || error.message : String(error)
-    return desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot().effective)
+    return desktopErrorPage("Synergy server failed to start", details, getDesktopThemeSnapshot())
   }
 }
 
@@ -485,7 +507,8 @@ function registerIpcHandlers() {
     return true
   })
   ipcMain.handle("desktop.theme.get", () => getDesktopThemeSnapshot())
-  ipcMain.handle("desktop.theme.set", (_event, input: unknown) => setDesktopThemeSource(input))
+  ipcMain.handle("desktop.theme.set", (_event, input: unknown) => setDesktopSkin(input))
+  ipcMain.handle("desktop.theme.setSource", (_event, input: unknown) => setDesktopThemeSource(input))
   ipcMain.handle("desktop.window.minimize", () => {
     mainWindow?.minimize()
   })

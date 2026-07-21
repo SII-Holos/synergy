@@ -533,7 +533,7 @@ export function AgendaForm(props: {
       </AppPanel.Body>
 
       <Show when={error()}>
-        <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div class="shrink-0 mx-5 mb-3 text-12-regular text-text-diff-delete-base bg-text-diff-delete-base/10 border border-text-diff-delete-base/18 rounded-[1rem] px-3 py-2.5 shadow-[inset_0_1px_0_var(--border-weak-base)]">
           {error()}
         </div>
       </Show>

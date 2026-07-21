@@ -10,6 +10,7 @@ export interface PluginThemeDefinition {
 
 const pluginThemes = new Map<string, PluginThemeDefinition>()
 const listeners = new Set<() => void>()
+let registryReady = false
 
 function notify() {
   for (const listener of listeners) listener()
@@ -23,6 +24,17 @@ export function registerPluginTheme(theme: PluginThemeDefinition): () => void {
     pluginThemes.delete(theme.id)
     notify()
   }
+}
+
+export function replacePluginThemes(themes: Iterable<PluginThemeDefinition>): void {
+  pluginThemes.clear()
+  for (const theme of themes) pluginThemes.set(theme.id, theme)
+  registryReady = true
+  notify()
+}
+
+export function isPluginThemeRegistryReady(): boolean {
+  return registryReady
 }
 
 export function listPluginThemes(): PluginThemeDefinition[] {
