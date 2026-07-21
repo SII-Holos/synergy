@@ -86,10 +86,12 @@ macOS:
 - `CSC_INSTALLER_LINK`
 - `CSC_INSTALLER_KEY_PASSWORD`
 
-Windows:
+Windows (optional; configure both values to sign artifacts):
 
 - `WINDOWS_CERTIFICATE`
 - `WINDOWS_CERTIFICATE_PASSWORD`
+
+When both Windows values are absent, the release produces unsigned Windows artifacts. A partial Windows signing configuration fails validation.
 
 GitHub upload/update feed:
 
