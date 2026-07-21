@@ -630,7 +630,8 @@ function descendantProcessGroups(children: DevProcess[]): number[] {
   const groups = new Set(activeRoots)
   const result = (() => {
     try {
-      return Bun.spawnSync(["ps", "eww", "-x", "-o", "pid=,ppid=,pgid=,command="], {
+      const includeNoTty = process.platform === "darwin" ? "-x" : "x"
+      return Bun.spawnSync(["ps", "eww", includeNoTty, "-o", "pid=,ppid=,pgid=,command="], {
         stdin: "ignore",
         stdout: "pipe",
         stderr: "ignore",
