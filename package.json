@@ -17,6 +17,7 @@
     "perf:benchmark": "bun script/performance-benchmark.ts",
     "perf:playwright": "bun script/performance-playwright.ts",
     "perf:tools:test": "bun test ./script/performance-tools.test.ts",
+    "release:test": "bun test --config /dev/null script/release",
     "format": "./script/format.ts",
     "format:check": "prettier --ignore-unknown --check .",
     "lint": "oxlint -c oxlintrc.json --deny-warnings",
@@ -31,7 +32,7 @@
     "secrets:check": "bun script/secrets-check.ts",
     "package:check": "bun script/package-check.ts",
     "quality:quick": "bun run format:check && bun run lint && bun run skill:check && bun run package-guide:check && bun run localization:check && bun run typecheck && bun run monorepo:check && bun run package:check",
-    "quality": "bun run quality:quick && bun turbo test",
+    "quality": "bun run quality:quick && bun run release:test && bun turbo test",
     "typecheck": "bun turbo typecheck",
     "prepare": "husky",
     "test": "echo 'Root test is intentionally disabled. Use bun run quality, bun turbo test, or cd packages/synergy && bun test.' && exit 1"

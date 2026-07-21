@@ -83,6 +83,8 @@ macOS:
 - `APPLE_TEAM_ID`
 - `CSC_LINK`
 - `CSC_KEY_PASSWORD`
+- `CSC_INSTALLER_LINK`
+- `CSC_INSTALLER_KEY_PASSWORD`
 
 Windows:
 
@@ -122,6 +124,7 @@ Product release keeps the existing candidate/finalize model:
 
 ## Validation Checklist
 
+- `bun run release:test`
 - `bun run --cwd packages/desktop desktop:test`
 - `bun run --cwd packages/desktop desktop:build`
 - `bun run --cwd packages/desktop test:runtime`
