@@ -735,9 +735,9 @@ test("scribe agent has selective skill permissions", async () => {
     fn: async () => {
       const scribe = await Agent.get("scribe")
       expect(scribe).toBeDefined()
-      // Scribe allows git-guide and skill-creator
+      // Scribe allows git-guide and synergy-skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", scribe!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "skill-creator", scribe!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", scribe!.permission).action).toBe("allow")
     },
   })
 })
@@ -749,9 +749,9 @@ test("explore agent has selective skill permissions", async () => {
     fn: async () => {
       const explore = await Agent.get("explore")
       expect(explore).toBeDefined()
-      // Explore allows git-guide and skill-creator
+      // Explore allows git-guide and synergy-skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", explore!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "skill-creator", explore!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", explore!.permission).action).toBe("allow")
     },
   })
 })
@@ -765,7 +765,7 @@ test("multimodal-looker agent denies all skills", async () => {
       expect(looker).toBeDefined()
       expect(PermissionNext.evaluate("skill", "*", looker!.permission).action).toBe("deny")
       expect(PermissionNext.evaluate("skill", "git-guide", looker!.permission).action).toBe("deny")
-      expect(PermissionNext.evaluate("skill", "skill-creator", looker!.permission).action).toBe("deny")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", looker!.permission).action).toBe("deny")
     },
   })
 })
@@ -777,9 +777,9 @@ test("scout agent has selective skill permissions", async () => {
     fn: async () => {
       const scout = await Agent.get("scout")
       expect(scout).toBeDefined()
-      // Scout allows git-guide and skill-creator
+      // Scout allows git-guide and synergy-skill-creator
       expect(PermissionNext.evaluate("skill", "git-guide", scout!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "skill-creator", scout!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", scout!.permission).action).toBe("allow")
     },
   })
 })
@@ -792,7 +792,7 @@ test("developer agent denies skills by default", async () => {
       const developer = await Agent.get("developer")
       expect(developer).toBeDefined()
       expect(PermissionNext.evaluate("skill", "git-guide", developer!.permission).action).toBe("allow")
-      expect(PermissionNext.evaluate("skill", "skill-creator", developer!.permission).action).toBe("allow")
+      expect(PermissionNext.evaluate("skill", "synergy-skill-creator", developer!.permission).action).toBe("allow")
     },
   })
 })

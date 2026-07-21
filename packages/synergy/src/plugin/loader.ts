@@ -272,12 +272,13 @@ export async function getDescriptors() {
 }
 
 export async function getSkillEntries(): Promise<
-  Array<PluginSkill & { pluginId: string; pluginName?: string; pluginDir: string }>
+  Array<PluginSkill & { contributionId: string; pluginId: string; pluginName?: string; pluginDir: string }>
 > {
   return (await getLoadedPlugins()).flatMap((plugin) =>
     contributions(plugin, "skill").map((item) => ({
       ...(item.skill as unknown as PluginSkill),
       name: (item.skill.name as string | undefined) ?? item.id,
+      contributionId: item.id,
       pluginId: plugin.id,
       pluginName: plugin.name,
       pluginDir: plugin.pluginDir,

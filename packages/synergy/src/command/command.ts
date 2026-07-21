@@ -4,12 +4,12 @@ import { Log } from "@/util/log"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import z from "zod"
 import { Config } from "../config/config"
-import { ConfigMarkdown } from "../config/markdown"
 import { Identifier } from "../id/id"
 import { MCP } from "../mcp"
 import { ScopeContext } from "../scope/context"
 import { ScopedState } from "../scope/scoped-state"
 import { Skill } from "../skill/skill"
+import { SkillRenderer } from "../skill/renderer"
 import PROMPT_COMMIT from "./template/commit.txt"
 import PROMPT_INITIALIZE from "./template/initialize.txt"
 import PROMPT_NOTE from "./template/note.txt"
@@ -286,17 +286,15 @@ export namespace Command {
     }
 
     for (const skill of await Skill.all()) {
-      if (result[skill.name]) continue
+      if (!skill.invocation.user || result[skill.name]) continue
       result[skill.name] = promptCommand({
         name: skill.name,
         description: skill.description,
         source: "skill",
         get template() {
-          if (skill.content) return skill.content
-          if (!skill.entryFile) return ""
-          return ConfigMarkdown.parse(skill.entryFile).then((md) => md?.content ?? "")
+          return Skill.content(skill)
         },
-        hints: [],
+        hints: SkillRenderer.hints(),
       })
     }
 

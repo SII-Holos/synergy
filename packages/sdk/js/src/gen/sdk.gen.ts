@@ -485,6 +485,8 @@ import type {
   SessionVolatileBatchInput,
   SessionVolatileBatchResponses,
   SessionWorkspaceSelection,
+  SkillExportErrors,
+  SkillExportResponses,
   SkillImportErrors,
   SkillImportResponses,
   SkillImportUrlErrors,
@@ -6958,7 +6960,7 @@ export class Skill extends HeyApiClient {
   /**
    * List skills
    *
-   * Get a list of all available skills in the Synergy system.
+   * Get canonical public summaries and diagnostics for all available Skills.
    */
   public list<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -6988,7 +6990,7 @@ export class Skill extends HeyApiClient {
   /**
    * Reload skills
    *
-   * Reload all skills by rescanning skill directories.
+   * Reload all Skills by rescanning configured Skill directories.
    */
   public reload<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -7016,9 +7018,43 @@ export class Skill extends HeyApiClient {
   }
 
   /**
-   * Delete a skill
+   * Export a Skill
    *
-   * Delete a non-builtin skill by removing its directory from disk.
+   * Download a strict-standard, file-backed Skill as a ZIP archive.
+   */
+  public export<ThrowOnError extends boolean = false>(
+    parameters: {
+      name: string
+      directory?: string
+      scopeID?: string
+      format?: "zip" | "skill"
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "name" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "query", key: "format" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).get<SkillExportResponses, SkillExportErrors, ThrowOnError>({
+      url: "/skill/{name}/export",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Delete a Skill
+   *
+   * Delete a non-builtin, non-plugin Skill from disk.
    */
   public remove<ThrowOnError extends boolean = false>(
     parameters: {
@@ -7048,9 +7084,9 @@ export class Skill extends HeyApiClient {
   }
 
   /**
-   * Import a skill
+   * Import a Skill
    *
-   * Import a skill from a .skill or .zip file. Extracts to the project or global skill directory.
+   * Transactionally import a .zip or .skill ZIP archive into project or global scope.
    */
   public import<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -7088,9 +7124,9 @@ export class Skill extends HeyApiClient {
   }
 
   /**
-   * Import a skill from URL
+   * Import a Skill from URL
    *
-   * Download a .zip file from a URL and import it as a skill.
+   * Download a bounded .zip or .skill archive and pass its bytes to the transactional Skill importer.
    */
   public importUrl<ThrowOnError extends boolean = false>(
     parameters?: {
