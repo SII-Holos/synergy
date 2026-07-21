@@ -42,6 +42,7 @@ export interface PluginHostServiceInvocationInput {
   pluginDir: string
   manifest: PluginManifestType
   invocation: RuntimeInvocationContextData
+  handlerId?: string
   method: PluginHostServiceMethod
   params: unknown
   signal: AbortSignal
@@ -55,6 +56,7 @@ interface RuntimeInvocationRecord {
   entry: PluginRuntimeEntry
   pluginDir: string
   manifest: PluginManifestType
+  handlerId: string
 }
 
 export class PluginRuntimeManager {
@@ -186,6 +188,7 @@ export class PluginRuntimeManager {
           pluginDir: invocation.pluginDir,
           manifest: invocation.manifest,
           invocation: invocation.context,
+          handlerId: invocation.handlerId,
           method: request.method,
           params: request.params,
           signal: invocation.controller.signal,
@@ -281,6 +284,7 @@ export class PluginRuntimeManager {
       entry,
       pluginDir: input.pluginDir,
       manifest: input.manifest,
+      handlerId: input.handlerId,
     })
     try {
       const invocation =
@@ -418,7 +422,11 @@ export class PluginRuntimeManager {
         protocolVersion: PLUGIN_RUNTIME_PROTOCOL_VERSION,
       },
       signal: controller.signal,
-      capabilities: new Set(manifest.capabilities.map((item) => item.id)),
+      capabilities: new Set(
+        manifest.capabilities
+          .map((item) => item.id)
+          .filter((capability) => capability !== "agent.call" || contribution.requires?.includes(capability)),
+      ),
       log: this.#logger(entry.pluginId),
       invokeHost: (method, params) =>
         this.hostServices({
@@ -426,6 +434,7 @@ export class PluginRuntimeManager {
           pluginDir,
           manifest,
           invocation: data,
+          handlerId,
           method,
           params,
           signal: controller.signal,

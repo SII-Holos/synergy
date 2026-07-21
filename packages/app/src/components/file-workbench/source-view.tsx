@@ -6,6 +6,7 @@ import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
 import { getFileSourceModel, pruneFileSourceModels, setFileSourceModel } from "./source-model-cache"
 import { fileWorkbench as F } from "@/locales/messages"
+import { textSelectionController } from "@/context/text-selection"
 
 type Monaco = typeof import("monaco-editor")
 let monacoPromise: Promise<Monaco> | undefined
@@ -166,7 +167,9 @@ export function FileSourceView(props: { path: string; content: string }) {
           start: selection.startLineNumber,
           end: selection.endLineNumber,
         })
+        textSelectionController.update(selection.isEmpty() ? undefined : cached.model.getValueInRange(selection))
       })
+      editor.onDidBlurEditorText(() => textSelectionController.update(undefined))
       pruneFileSourceModels(key)
       setLoading(false)
     })
@@ -191,6 +194,7 @@ export function FileSourceView(props: { path: string; content: string }) {
 
   onCleanup(() => {
     disposed = true
+    textSelectionController.update(undefined)
     editor?.dispose()
   })
 

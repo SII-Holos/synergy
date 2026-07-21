@@ -5184,6 +5184,46 @@ msgid "app.plugin.marketplace.version.label"
 msgstr "v{version}"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.description"
+msgstr "向获批的无会话代理发送有长度限制的文本，不启用工具，也不写入会话历史。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.title"
+msgstr "调用 Synergy 代理"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.description"
+msgstr "插件完成交互期间，延迟普通消息进入会话。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.title"
+msgstr "拦截消息提交"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.description"
+msgstr "读取当前 Synergy 输入框中已稳定的文本和选区。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.title"
+msgstr "读取输入框草稿"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.description"
+msgstr "提供补全和标注，或对当前输入框应用编辑。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.title"
+msgstr "修改输入框草稿"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.description"
+msgstr "接收 Synergy 中选取的非敏感文本，并向文本菜单添加操作。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.title"
+msgstr "读取所选文本"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
 msgstr "数据"
 
@@ -8056,6 +8096,34 @@ msgstr "工具"
 msgid "nav.tools.title"
 msgstr "工具"
 
+#. js-lingui-explicit-id
+msgid "plugin.textAction.copy"
+msgstr "复制"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.cut"
+msgstr "剪切"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.failed"
+msgstr "文本操作失败"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.paste"
+msgstr "粘贴"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.selectAll"
+msgstr "全选"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.tooLarge"
+msgstr "所选文本过长，扩展无法处理。"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.unavailable"
+msgstr "此编辑操作当前不可用。"
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -9327,6 +9395,13 @@ msgstr "会话正在启动"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.inProgress.description"
 msgstr "请等待此会话启动完成，再发送其他消息。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.interceptFailed"
+msgstr "输入框扩展已停止发送此消息"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.

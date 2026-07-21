@@ -41,6 +41,7 @@ export type PluginHostServiceMethod =
   | "secrets.set"
   | "secrets.delete"
   | "tool.invoke"
+  | "agent.call"
 
 export type HostToPlugin =
   | { type: "activate"; input: RuntimeActivationData }

@@ -38,7 +38,7 @@ import { sendSessionCommand } from "./session-command"
 import type { BlueprintSlot, PromptInputMode, PromptInputProps, PromptInputStore } from "./types"
 import { buildLightLoopInstructions } from "./light-loop-instructions"
 import { getPendingLightLoopSlashBlock, resolveSlashCommandIntent, type SlashUiCommand } from "./slash-command-intent"
-import { resolvePromptSubmitIntent } from "./submit-intent"
+import { resolvePromptSubmitIntent, shouldRunComposerBeforeSubmit } from "./submit-intent"
 import { acquireNewSessionSubmitLock } from "./new-session-submit-lock"
 import {
   createNewSessionWorkspaceErrorProgress,
@@ -95,6 +95,7 @@ type PromptSubmitInput = {
   editor: () => HTMLDivElement
   queueScroll: () => void
   onWorktreeUnavailable: () => void
+  beforeSubmit: (signal: AbortSignal) => Promise<void>
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
@@ -136,23 +137,33 @@ export function usePromptSubmit(input: PromptSubmitInput) {
     }
     const releaseNewSessionSubmit = newSessionSubmitLease.release
 
-    const currentPrompt = prompt.current()
-    const text = currentPrompt.map((part) => ("content" in part && part.type === "text" ? part.content : "")).join("")
-    const attachments = input.uploadedAttachments().slice()
-    const notes = input.noteAttachments().slice()
-    const sessions = input.sessionAttachments().slice()
-    const mode = input.store.mode
-    const currentContext = {
-      items: prompt.context.items(),
+    const capture = () => {
+      const currentPrompt = prompt.current()
+      const text = currentPrompt.map((part) => ("content" in part && part.type === "text" ? part.content : "")).join("")
+      const currentContext = { items: prompt.context.items() }
+      return {
+        currentPrompt,
+        text,
+        attachments: input.uploadedAttachments().slice(),
+        notes: input.noteAttachments().slice(),
+        sessions: input.sessionAttachments().slice(),
+        mode: input.store.mode,
+        currentContext,
+        draftSnapshot: createPromptDraftSnapshot({ prompt: currentPrompt, context: currentContext }),
+        failureRestoreSnapshot: createSubmitFailureRestoreSnapshot({ prompt: currentPrompt, context: currentContext }),
+      }
     }
-    const draftSnapshot = createPromptDraftSnapshot({
-      prompt: currentPrompt,
-      context: currentContext,
-    })
-    const failureRestoreSnapshot = createSubmitFailureRestoreSnapshot({
-      prompt: currentPrompt,
-      context: currentContext,
-    })
+    let {
+      currentPrompt,
+      text,
+      attachments,
+      notes,
+      sessions,
+      mode,
+      currentContext,
+      draftSnapshot,
+      failureRestoreSnapshot,
+    } = capture()
     const restoreInput = (options?: { focus?: boolean }) => {
       prompt.set(failureRestoreSnapshot.prompt, inlineLength(failureRestoreSnapshot.prompt))
       prompt.context.set(failureRestoreSnapshot.context)
@@ -168,14 +179,14 @@ export function usePromptSubmit(input: PromptSubmitInput) {
         input.queueScroll()
       })
     }
-    const slashIntent = resolveSlashCommandIntent({
+    let slashIntent = resolveSlashCommandIntent({
       text,
       backendCommands: sync.data.command,
       uiCommands: input.frontendCommands(),
     })
 
     const blueprintSlot = input.localArmedLoop()
-    const submitIntent = resolvePromptSubmitIntent({
+    let submitIntent = resolvePromptSubmitIntent({
       text,
       working: input.working(),
       hasBlueprintSlot: !!blueprintSlot,
@@ -230,6 +241,53 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       })
       releaseNewSessionSubmit()
       return
+    }
+
+    const runsBeforeSubmit = shouldRunComposerBeforeSubmit({
+      intent: submitIntent,
+      mode,
+      slashKind: slashIntent.kind,
+      hasBlueprintSlot: !!blueprintSlot,
+      pendingLightLoop: input.pendingLightLoop(),
+    })
+    if (runsBeforeSubmit) {
+      const controller = new AbortController()
+      try {
+        await input.beforeSubmit(controller.signal)
+      } catch (error) {
+        releaseNewSessionSubmit()
+        showToast({
+          type: "error",
+          title: i18n._(PI.submitInterceptFailed),
+          description: errorMessage(error),
+        })
+        return
+      }
+      ;({
+        currentPrompt,
+        text,
+        attachments,
+        notes,
+        sessions,
+        mode,
+        currentContext,
+        draftSnapshot,
+        failureRestoreSnapshot,
+      } = capture())
+      slashIntent = resolveSlashCommandIntent({
+        text,
+        backendCommands: sync.data.command,
+        uiCommands: input.frontendCommands(),
+      })
+      submitIntent = resolvePromptSubmitIntent({
+        text,
+        working: input.working(),
+        hasBlueprintSlot: !!blueprintSlot,
+      })
+      if (submitIntent !== "message") {
+        releaseNewSessionSubmit()
+        return
+      }
     }
 
     const currentModel = local.model.current()

@@ -10,7 +10,13 @@ import {
   type ParentProps,
   useContext,
 } from "solid-js"
-import type { PluginManifestContribution, PluginSurfaceContext } from "@ericsanchezok/synergy-plugin"
+import type {
+  PluginComposerSurfaceContext,
+  PluginManifestContribution,
+  PluginSelectionSurfaceContext,
+  PluginMessageSurfaceContext,
+  PluginSurfaceContext,
+} from "@ericsanchezok/synergy-plugin"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
 import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
@@ -22,6 +28,7 @@ import { loadPluginExport } from "./loaders"
 import { loadPluginUIAssets, resolvePluginIconReference, type PluginUIAssets } from "./ui-assets"
 import { pluginSurfaceId } from "./surface-id"
 import { registerComposerSlot, type ComposerSlotProps } from "./registries/composer-slot-registry"
+import { registerComposerExtension, type ComposerExtensionProps } from "./registries/composer-extension-registry"
 import { registerIcon } from "./registries/icon-registry"
 import { registerNavigation, type NavigationContentProps } from "./registries/navigation-registry"
 import { registerPartRenderer } from "./registries/part-registry"
@@ -30,6 +37,10 @@ import { registerWorkbenchPanel, type WorkbenchPanelContentProps } from "./regis
 import { useConfirm } from "@/components/dialog/confirm-dialog"
 import { requestPluginHostConfirm } from "./host-confirm"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
+import { textSelectionController } from "@/context/text-selection"
+import { registerSelectionExtension } from "./registries/selection-extension-registry"
+import { registerMessageSlot } from "./registries/message-slot-registry"
+import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -75,7 +86,7 @@ function surfaceContext(input: {
     if (!input.contribution.capabilities.includes("ui.hostActions"))
       throw new Error("Plugin is not approved for ui.hostActions")
   }
-  const invoke = async (type: "query" | "command", id: string, value?: unknown) => {
+  const invoke = async (type: "query" | "command", id: string, value?: unknown, signal?: AbortSignal) => {
     const declared = input.contribution.contributions.find((item) => item.kind === "operation" && item.id === id)
     if (!declared || declared.kind !== "operation" || declared.type !== type)
       throw new Error(`Plugin operation ${id} is not a ${type}`)
@@ -89,6 +100,7 @@ function surfaceContext(input: {
           "x-synergy-scope-id": encodeURIComponent(input.contribution.scopeId),
         },
         body: JSON.stringify({ input: value ?? {}, sessionId: input.sessionId }),
+        signal,
       },
     )
     const body = await response.json()
@@ -108,8 +120,8 @@ function surfaceContext(input: {
       ...(input.resource ? { resource: input.resource } : {}),
     },
     operations: {
-      query: (id, value) => invoke("query", id, value),
-      command: (id, value) => invoke("command", id, value),
+      query: (id, value, options) => invoke("query", id, value, options?.signal),
+      command: (id, value, options) => invoke("command", id, value, options?.signal),
     },
     events: {
       subscribe(eventId, listener) {
@@ -197,6 +209,7 @@ function registerPluginSurfaces(input: {
       item: PluginManifestContribution,
       session: (props: Props) => string | undefined = () => currentSessionId(),
       resource: (props: Props) => { id: string; title?: string; state?: unknown } | undefined = () => undefined,
+      extendContext?: (context: PluginSurfaceContext, props: Props) => PluginSurfaceContext,
     ) => {
       if (!("component" in item) || !item.component) return undefined
       return async () => {
@@ -206,21 +219,20 @@ function registerPluginSurfaces(input: {
           item.component!.exportName,
           "3.0",
         )
-        const Wrapper: Component<Props> = (props) =>
-          createComponent(
-            loaded.default,
-            surfaceContext({
-              contribution: plugin,
-              contributionId: item.id,
-              kind: item.kind,
-              serverUrl: input.serverUrl,
-              events: input.events,
-              scopeKey: input.scopeKey,
-              sessionId: session(props),
-              resource: resource(props),
-              showConfirm: input.showConfirm,
-            }),
-          )
+        const Wrapper: Component<Props> = (props) => {
+          const context = surfaceContext({
+            contribution: plugin,
+            contributionId: item.id,
+            kind: item.kind,
+            serverUrl: input.serverUrl,
+            events: input.events,
+            scopeKey: input.scopeKey,
+            sessionId: session(props),
+            resource: resource(props),
+            showConfirm: input.showConfirm,
+          })
+          return createComponent(loaded.default, extendContext?.(context, props) ?? context)
+        }
         return { default: Wrapper }
       }
     }
@@ -309,6 +321,118 @@ function registerPluginSurfaces(input: {
               loader,
             }),
           )
+      },
+      "ui.composerExtension": (item: Extract<PluginManifestContribution, { kind: "ui.composerExtension" }>) => {
+        const loader = componentLoader<ComposerExtensionProps>(
+          item,
+          (props) => props.sessionId,
+          () => undefined,
+          (context, props) => {
+            const approved = new Set(plugin.capabilities)
+            const declared = new Set(item.requires ?? [])
+            const capabilities = new Set(
+              ["composer.read", "composer.write", "composer.intercept"].filter(
+                (capability) => approved.has(capability) && declared.has(capability),
+              ),
+            ) as ReadonlySet<"composer.read" | "composer.write" | "composer.intercept">
+            const composer = props.controller.service({
+              id: pluginSurfaceId(plugin.pluginId, item.id),
+              order: item.order,
+              capabilities,
+            })
+            onCleanup(() => composer.dispose())
+            return { ...context, composer } satisfies PluginComposerSurfaceContext
+          },
+        )
+        if (!loader) {
+          fail(plugin.pluginId, `Composer extension ${item.id} has no trusted component`)
+          return
+        }
+        disposers.push(
+          registerComposerExtension({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            order: item.order,
+            pluginId: plugin.pluginId,
+            loader,
+          }),
+        )
+      },
+      "ui.selectionExtension": (item: Extract<PluginManifestContribution, { kind: "ui.selectionExtension" }>) => {
+        const loader = componentLoader<object>(
+          item,
+          () => currentSessionId(),
+          () => undefined,
+          (context) =>
+            ({
+              ...context,
+              selection: {
+                current: () => textSelectionController.current(),
+                onSettled: (listener) => textSelectionController.onSettled(listener),
+              },
+            }) satisfies PluginSelectionSurfaceContext,
+        )
+        if (!loader) {
+          fail(plugin.pluginId, `Selection extension ${item.id} has no trusted component`)
+          return
+        }
+        disposers.push(
+          registerSelectionExtension({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            order: item.order,
+            pluginId: plugin.pluginId,
+            loader,
+          }),
+        )
+      },
+      "ui.textAction": (item: Extract<PluginManifestContribution, { kind: "ui.textAction" }>) => {
+        disposers.push(
+          textSelectionController.registerAction({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            label: item.label,
+            icon: resolvePluginIconReference(plugin, item.icon),
+            order: item.order,
+            run: (snapshot, signal) =>
+              surfaceContext({
+                contribution: plugin,
+                contributionId: item.id,
+                kind: item.kind,
+                serverUrl: input.serverUrl,
+                events: input.events,
+                scopeKey: input.scopeKey,
+                sessionId: currentSessionId(),
+                showConfirm: input.showConfirm,
+              }).operations.command(item.operation, snapshot, { signal }),
+          }),
+        )
+      },
+      "ui.messageSlot": (item: Extract<PluginManifestContribution, { kind: "ui.messageSlot" }>) => {
+        const loader = componentLoader<MessageSlotProps>(
+          item,
+          (props) => props.sessionId,
+          () => undefined,
+          (context, props) =>
+            ({
+              ...context,
+              message: {
+                id: props.messageId!,
+                role: props.role!,
+              },
+            }) satisfies PluginMessageSurfaceContext,
+        )
+        if (!loader) {
+          fail(plugin.pluginId, `Message slot ${item.id} has no trusted component`)
+          return
+        }
+        disposers.push(
+          registerMessageSlot({
+            id: pluginSurfaceId(plugin.pluginId, item.id),
+            slot: item.slot,
+            roles: item.roles,
+            order: item.order,
+            pluginId: plugin.pluginId,
+            loader,
+          }),
+        )
       },
       "ui.settings": (item: Extract<PluginManifestContribution, { kind: "ui.settings" }>) => {
         const loader = componentLoader<Record<string, never>>(item)
