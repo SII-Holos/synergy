@@ -74,6 +74,28 @@ Channels integrate Synergy with external messaging platforms.
 
 Top-level `domain` and `streaming` on the channel object set defaults for all accounts.
 
+### Clarus channel
+
+Clarus accounts reuse the active Holos credential. A successful Holos login adds the matching account when it is absent, so access tokens never belong in Channel config. Explicit account settings are preserved.
+
+```jsonc
+{
+  "channel": {
+    "clarus": {
+      "type": "clarus",
+      "accounts": {
+        "<holos-agent-id>": {
+          "enabled": true,
+          "agent": "synergy"
+        }
+      }
+    }
+  }
+}
+```
+
+`apiUrl` is an optional per-account override. Clarus has no top-level config domain or workspace-root setting: each remote project is mapped to a standard Synergy Project Scope by the Channel runtime.
+
 ### Holos platform configuration
 
 Holos is configured under `100-holos.jsonc`, not in channels:
@@ -111,6 +133,11 @@ Holos config belongs in `100-holos.jsonc`, not in channels. Do not edit model, p
 ---
 
 ## Troubleshooting
+
+### Clarus
+
+- **Account is absent** — sign in to Holos, which creates the matching `channel.clarus` account without copying credentials.
+- **Project is unavailable** — verify the Holos account can manage the project; project discovery failures leave existing Scopes and Sessions intact while Channel reconnects.
 
 ### Feishu/Lark
 

@@ -1229,6 +1229,11 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         title: TOOL_TITLE_DESC["email_send"],
         subtitle: input.to ? `To: ${Array.isArray(input.to) ? input.to.join(", ") : input.to}` : input.subject,
       }
+    case "clarus_submit_task_result":
+      return {
+        icon: "send",
+        title: TOOL_TITLE_DESC["clarus_submit_task_result"],
+      }
     case "email_read": {
       const args: string[] = []
       pushArg(args, input.folder && input.folder !== "INBOX" ? input.folder : undefined)

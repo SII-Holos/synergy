@@ -205,6 +205,54 @@ export namespace StoragePath {
     encodeURIComponent(workflowName),
   ]
 
+  export const channelProjectScope = (identityHash: string) => ["channel", "project_scopes", identityHash]
+  export const clarusProviderAccountRoot = (accountHash: string) => [
+    "channel",
+    "providers",
+    "clarus",
+    "accounts",
+    accountHash,
+  ]
+  export const clarusProviderAccountsRoot = () => ["channel", "providers", "clarus", "accounts"]
+  export const clarusProviderAssignment = (accountHash: string, assignmentHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignments",
+    assignmentHash,
+  ]
+  export const clarusProviderAssignmentSession = (accountHash: string, sessionID: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "assignment_session_index",
+    sessionID,
+  ]
+  export const clarusProviderDedup = (accountHash: string, messageHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "dedup",
+    messageHash,
+  ]
+  export const clarusProviderProjectSync = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "sync",
+    "projects",
+  ]
+  export const clarusProviderMessageOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "project_messages",
+  ]
+  export const clarusProviderMessageOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderMessageOutboxRoot(accountHash),
+    recordHash,
+  ]
+  export const clarusProviderResultOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "results",
+  ]
+  export const clarusProviderResultOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderResultOutboxRoot(accountHash),
+    recordHash,
+  ]
+
   // Stats
   export const statsRoot = () => ["stats"]
   export const statsWatermark = () => ["stats", "watermark"]
