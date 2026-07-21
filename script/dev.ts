@@ -8,6 +8,8 @@ import { randomBytes } from "node:crypto"
 const DEFAULT_SERVER_PORT = 4096
 const DEFAULT_APP_PORT = 3000
 const DEFAULT_HOSTNAME = "127.0.0.1"
+const DEV_PROCESS_OWNER_ENV = "SYNERGY_DEV_PROCESS_OWNER"
+const devProcessOwners = new WeakMap<object, string>()
 
 export interface DevProcessSpec {
   label:
@@ -572,14 +574,16 @@ function prefixedStream(
 }
 
 export function spawnDevProcess(spec: DevProcessSpec) {
+  const owner = randomBytes(16).toString("hex")
   const proc = Bun.spawn(spec.command, {
     cwd: spec.cwd,
-    env: { ...process.env, ...(spec.env ?? {}) },
+    env: { ...process.env, ...(spec.env ?? {}), [DEV_PROCESS_OWNER_ENV]: owner },
     stdin: "inherit",
     stdout: "pipe",
     stderr: "pipe",
     detached: process.platform !== "win32",
   })
+  devProcessOwners.set(proc, owner)
   prefixedStream(proc.stdout, spec.label, (chunk) => process.stdout.write(chunk))
   prefixedStream(proc.stderr, spec.label, (chunk) => process.stderr.write(chunk))
   return proc
@@ -618,23 +622,38 @@ async function waitForProcessGroupExit(processGroupId: number, timeoutMs: number
 }
 
 function descendantProcessGroups(children: DevProcess[]): number[] {
-  const roots = children.flatMap((child) => (child.pid ? [child.pid] : []))
-  const groups = new Set(roots)
-  const result = Bun.spawnSync(["ps", "-axo", "pid=,ppid=,pgid="], {
-    stdin: "ignore",
-    stdout: "pipe",
-    stderr: "ignore",
+  const activeRoots = children.flatMap((child) => (child.exitCode === null && child.pid ? [child.pid] : []))
+  const ownerMarkers = children.flatMap((child) => {
+    const owner = devProcessOwners.get(child)
+    return owner ? [`${DEV_PROCESS_OWNER_ENV}=${owner}`] : []
   })
-  if (result.exitCode !== 0) return [...groups]
+  const groups = new Set(activeRoots)
+  const result = (() => {
+    try {
+      return Bun.spawnSync(["ps", "eww", "-x", "-o", "pid=,ppid=,pgid=,command="], {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "ignore",
+      })
+    } catch {
+      return undefined
+    }
+  })()
+  if (!result || result.exitCode !== 0) return [...groups]
 
   const processes = new Map<number, { parentPid: number; processGroupId: number }>()
+  const descendants = new Set(activeRoots)
   for (const line of result.stdout.toString().split("\n")) {
-    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)$/)
+    const match = line.trim().match(/^(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/)
     if (!match) continue
-    processes.set(Number(match[1]), { parentPid: Number(match[2]), processGroupId: Number(match[3]) })
+    const pid = Number(match[1])
+    const process = { parentPid: Number(match[2]), processGroupId: Number(match[3]) }
+    processes.set(pid, process)
+    if (!ownerMarkers.some((marker) => match[4].includes(marker))) continue
+    descendants.add(pid)
+    groups.add(process.processGroupId)
   }
 
-  const descendants = new Set(roots)
   let changed = true
   while (changed) {
     changed = false
@@ -656,7 +675,7 @@ export async function terminateDevProcesses(children: DevProcess[]): Promise<voi
     return
   }
 
-  const processGroups = descendantProcessGroups(active)
+  const processGroups = descendantProcessGroups(children)
   for (const processGroupId of processGroups) signalProcessGroup(processGroupId, "SIGTERM")
   const settle = Promise.allSettled(children.map((child) => child.exited))
   await Promise.all(processGroups.map((processGroupId) => waitForProcessGroupExit(processGroupId, 3000)))
@@ -670,7 +689,8 @@ export async function terminateDevProcesses(children: DevProcess[]): Promise<voi
 async function runSerial(processes: DevProcessSpec[]): Promise<number> {
   const children: DevProcess[] = []
   let exiting = false
-  const cleanup = () => terminateDevProcesses(children)
+  let cleanupPromise: Promise<void> | undefined
+  const cleanup = () => (cleanupPromise ??= terminateDevProcesses(children))
   const handleSignal = (exitCode: number) => async () => {
     if (exiting) return
     exiting = true
@@ -692,6 +712,7 @@ async function runSerial(processes: DevProcessSpec[]): Promise<number> {
   } finally {
     process.off("SIGINT", handleSigint)
     process.off("SIGTERM", handleSigterm)
+    await cleanup()
   }
 }
 

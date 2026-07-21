@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import os from "node:os"
 import path from "node:path"
-import { createDevPlan, spawnDevProcess, terminateDevProcesses } from "../../../../script/dev"
+import { createDevPlan, runDevPlan, spawnDevProcess, terminateDevProcesses } from "../../../../script/dev"
 
 const options = { repoRoot: "/repo", cwd: "/workspace", bunPath: "/bun" }
 
@@ -180,6 +180,80 @@ describe("dev orchestrator process lifecycle", () => {
   })
 
   test.skipIf(process.platform === "win32")(
+    "terminates detached descendants after their command wrapper exits",
+    async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-exited-wrapper-"))
+      const childPidPath = path.join(directory, "child.pid")
+      const parent = spawnDevProcess({
+        label: "build",
+        command: [
+          process.execPath,
+          "-e",
+          `const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore", detached: true }); await Bun.write(process.env.CHILD_PID_PATH, String(child.pid)); child.unref()`,
+        ],
+        cwd: directory,
+        env: { CHILD_PID_PATH: childPidPath },
+      })
+
+      let childPid = 0
+      try {
+        childPid = await waitForPid(childPidPath)
+        expect(await parent.exited).toBe(0)
+
+        await terminateDevProcesses([parent])
+        await waitForProcessExit(childPid)
+
+        expect(isProcessRunning(childPid)).toBe(false)
+      } finally {
+        killProcessGroup(childPid)
+        await terminateDevProcesses([parent])
+        await rm(directory, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
+    "cleans detached descendants after a serial command completes",
+    async () => {
+      const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-completed-serial-"))
+      const childPidPath = path.join(directory, "child.pid")
+      let childPid = 0
+
+      try {
+        const exitCode = await runDevPlan({
+          kind: "run",
+          mode: "serial",
+          command: "test",
+          help: "",
+          exitCode: 0,
+          requiredPorts: [],
+          requiredServers: [],
+          processes: [
+            {
+              label: "build",
+              command: [
+                process.execPath,
+                "-e",
+                `const child = Bun.spawn([process.execPath, "-e", "setInterval(() => {}, 1000)"], { stdin: "ignore", stdout: "ignore", stderr: "ignore", detached: true }); await Bun.write(process.env.CHILD_PID_PATH, String(child.pid)); child.unref()`,
+              ],
+              cwd: directory,
+              env: { CHILD_PID_PATH: childPidPath },
+            },
+          ],
+        })
+        childPid = await waitForPid(childPidPath)
+
+        expect(exitCode).toBe(0)
+        await waitForProcessExit(childPid)
+        expect(isProcessRunning(childPid)).toBe(false)
+      } finally {
+        killProcessGroup(childPid)
+        await rm(directory, { recursive: true, force: true })
+      }
+    },
+  )
+
+  test.skipIf(process.platform === "win32")(
     "cleans up the active serial command when the orchestrator is terminated",
     async () => {
       const directory = await mkdtemp(path.join(os.tmpdir(), "synergy-dev-serial-process-"))
@@ -249,6 +323,13 @@ function isProcessRunning(pid: number): boolean {
   } catch {
     return false
   }
+}
+
+function killProcessGroup(pid: number): void {
+  if (pid <= 0 || process.platform === "win32") return
+  try {
+    process.kill(-pid, "SIGKILL")
+  } catch {}
 }
 
 async function waitForProcessExit(pid: number): Promise<void> {

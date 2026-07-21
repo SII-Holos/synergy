@@ -74,6 +74,7 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
@@ -103,8 +104,6 @@ export async function run(options: RuntimeOptions) {
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
-
-  registerShutdown(server, processLock.release)
 
   if (process.env.SYNERGY_DAEMON === "1") {
     DaemonLogRotate.start()

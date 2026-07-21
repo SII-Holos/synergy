@@ -38,6 +38,8 @@ Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--ap
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
+The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
+
 ## Developing Synergy with Synergy
 
 Do not restart or stop the Synergy instance carrying your current session. Run the source checkout against an isolated home and explicit alternate ports:
