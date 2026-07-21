@@ -1,7 +1,8 @@
 import { resolveTheme, themeToCss } from "./resolve"
-import { HEX_COLOR_PATTERN, OPAQUE_HEX_COLOR_PATTERN, THEME_ID_PATTERN, THEME_SEED_NAMES } from "./schema-contract"
+import { renderThemeSchemaJson } from "@ericsanchezok/synergy-plugin/theme"
 import { THEME_TOKEN_NAMES } from "./tokens"
 import type { ResolvedTheme, Theme } from "./types"
+import { deriveShellSkin } from "./shell-skin"
 
 function declarations(tokens: ResolvedTheme, indentation: string) {
   return themeToCss(tokens)
@@ -41,51 +42,53 @@ ${mappings}
 `
 }
 
-export function renderThemeSchemaJson(): string {
-  const seedProperties = Object.fromEntries(
-    THEME_SEED_NAMES.map((name) => [name, { $ref: "#/definitions/OpaqueHexColor" }]),
-  )
-  const schema = {
-    $schema: "http://json-schema.org/draft-07/schema#",
-    $id: "./theme.schema.json",
-    title: "Synergy Theme",
-    description: "A complete Synergy color theme generated from light and dark seed palettes.",
-    type: "object",
-    additionalProperties: false,
-    required: ["name", "id", "light", "dark"],
-    properties: {
-      $schema: { type: "string" },
-      name: { type: "string", minLength: 1 },
-      id: { type: "string", pattern: THEME_ID_PATTERN },
-      light: { $ref: "#/definitions/ThemeVariant" },
-      dark: { $ref: "#/definitions/ThemeVariant" },
-    },
-    definitions: {
-      HexColor: { type: "string", pattern: HEX_COLOR_PATTERN },
-      OpaqueHexColor: { type: "string", pattern: OPAQUE_HEX_COLOR_PATTERN },
-      ColorValue: {
-        oneOf: [{ $ref: "#/definitions/HexColor" }, { enum: THEME_TOKEN_NAMES.map((name) => `var(--${name})`) }],
-      },
-      ThemeSeedColors: {
-        type: "object",
-        additionalProperties: false,
-        required: Object.keys(seedProperties),
-        properties: seedProperties,
-      },
-      ThemeVariant: {
-        type: "object",
-        additionalProperties: false,
-        required: ["seeds"],
-        properties: {
-          seeds: { $ref: "#/definitions/ThemeSeedColors" },
-          overrides: {
-            type: "object",
-            propertyNames: { enum: [...THEME_TOKEN_NAMES] },
-            additionalProperties: { $ref: "#/definitions/ColorValue" },
-          },
-        },
-      },
-    },
-  }
-  return `${JSON.stringify(schema, null, 2)}\n`
+export function renderDesktopFallbackSkin(theme: Theme): string {
+  const shell = deriveShellSkin(theme)
+  const variant = (colors: (typeof shell)["light"], indentation: string) =>
+    Object.entries(colors)
+      .map(([name, value]) => `${indentation}${name}: ${JSON.stringify(value)},`)
+      .join("\n")
+  return `/* Generated from the canonical Synergy theme. Do not edit manually. */
+
+export const DEFAULT_DESKTOP_SHELL_SKIN = {
+  light: {
+${variant(shell.light, "    ")}
+  },
+  dark: {
+${variant(shell.dark, "    ")}
+  },
+} as const
+`
 }
+
+export function renderWebBootFallbackCss(theme: Theme): string {
+  const shell = deriveShellSkin(theme)
+  const declarations = (
+    colors: (typeof shell)["light"],
+  ) => `        --synergy-boot-bg: ${colors.background.toLowerCase()};
+        --synergy-boot-text: ${colors.text.toLowerCase()};
+        --synergy-boot-control-color: ${colors.control.toLowerCase()};
+        --synergy-boot-control-hover-color: ${colors.controlHover.toLowerCase()};
+        --synergy-boot-control-hover-bg: ${colors.controlHoverBackground.toLowerCase()};
+        --synergy-boot-focus-ring: ${colors.focus.toLowerCase()};
+        --synergy-boot-critical-bg: ${colors.criticalBackground.toLowerCase()};
+        --synergy-boot-critical-text: ${colors.criticalText.toLowerCase()};`
+  return `      /* Generated from the canonical Synergy theme. Do not edit manually. */
+      :root {
+${declarations(shell.light)}
+      }
+
+      html[data-synergy-color-scheme="dark"] {
+${declarations(shell.dark)}
+      }
+
+      html[data-synergy-color-scheme="light"] {
+${declarations(shell.light)}
+      }`
+}
+
+export function renderWebThemeColorMeta(theme: Theme): string {
+  return `<meta id="synergy-theme-color" name="theme-color" content="${deriveShellSkin(theme).light.background}" />`
+}
+
+export { renderThemeSchemaJson }

@@ -73,6 +73,11 @@
       "types": "./src/ui.ts",
       "import": "./dist/ui.js"
     },
+    "./theme": {
+      "bun": "./src/theme/index.ts",
+      "types": "./src/theme/index.ts",
+      "import": "./dist/theme/index.js"
+    },
     "./auth": {
       "bun": "./src/auth-types.ts",
       "types": "./src/auth-types.ts",

@@ -12,7 +12,7 @@ import {
 } from "solid-js"
 import type { PluginManifestContribution, PluginSurfaceContext } from "@ericsanchezok/synergy-plugin"
 import { pluginAssetUrl } from "@ericsanchezok/synergy-plugin/artifact"
-import { registerPluginTheme } from "@ericsanchezok/synergy-ui/theme"
+import { replacePluginThemes } from "@ericsanchezok/synergy-ui/theme"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
 import { useGlobalSDK } from "@/context/global-sdk"
 import { useServer } from "@/context/server"
@@ -189,6 +189,7 @@ function registerPluginSurfaces(input: {
   const disposers: Array<() => void> = []
   const errors: PluginUIError[] = input.assets.errors.map((error) => ({ ...error, timestamp: Date.now() }))
   const fail = (pluginId: string, message: string) => errors.push({ pluginId, message, timestamp: Date.now() })
+  replacePluginThemes(input.assets.themes.values())
 
   for (const plugin of input.contributions) {
     const asset = (file: string) => pluginAssetUrl(plugin.pluginId, plugin.generation, file)
@@ -326,8 +327,7 @@ function registerPluginSurfaces(input: {
         )
       },
       "ui.theme": (item: Extract<PluginManifestContribution, { kind: "ui.theme" }>) => {
-        const loaded = input.assets.themes.get(pluginSurfaceId(plugin.pluginId, item.id))
-        if (loaded) disposers.push(registerPluginTheme(loaded))
+        void item
       },
       "ui.icon": (item: Extract<PluginManifestContribution, { kind: "ui.icon" }>) => {
         const loaded = input.assets.icons.get(pluginSurfaceId(plugin.pluginId, item.id))
@@ -397,6 +397,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
   onCleanup(() => {
     reloadController?.abort()
     dispose()
+    replacePluginThemes([], { ready: false })
   })
   return (
     <PluginHostContext.Provider
