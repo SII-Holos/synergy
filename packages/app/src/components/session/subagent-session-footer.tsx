@@ -5,7 +5,7 @@ import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { AgentGlyph, getAgentVisual } from "@/components/agent-visual"
 import type { SessionCortexDelegation, SessionStatus } from "@ericsanchezok/synergy-sdk/client"
 import { useNavigateToSession } from "@/composables/use-navigate-to-session"
-import { subagentFooterSessionStatus } from "./subagent-session-footer-model"
+import { SUBAGENT_FOOTER_MODEL_LABEL_CLASS, subagentFooterSessionStatus } from "./subagent-session-footer-model"
 import { useLocale } from "@/context/locale"
 import { translateDescriptor } from "@/locales/translate"
 import { S } from "./session-i18n"
@@ -135,8 +135,14 @@ export function SubagentSessionFooter(props: {
             <span class="text-11-regular text-text-subtle">·</span>
             <span class="text-11-regular text-text-subtle">{duration()}</span>
             <Show when={modelLabel()}>
-              <span class="text-11-regular text-text-subtle">·</span>
-              <span class="truncate text-11-regular text-text-subtle max-w-32">{modelLabel()}</span>
+              {(label) => (
+                <>
+                  <span class="text-11-regular text-text-subtle">·</span>
+                  <span class={SUBAGENT_FOOTER_MODEL_LABEL_CLASS} title={label()}>
+                    {label()}
+                  </span>
+                </>
+              )}
             </Show>
           </div>
           <div class="mt-0.5 truncate text-12-regular text-text-weak">{props.cortex.description}</div>
