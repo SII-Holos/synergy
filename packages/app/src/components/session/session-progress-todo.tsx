@@ -25,7 +25,7 @@ function statusIcon(status: string): string {
 function statusClass(status: string): string {
   switch (status) {
     case "completed":
-      return "text-on-success-base"
+      return "text-text-on-success-base"
     case "in_progress":
       return "text-text-interactive-base"
     case "cancelled":
@@ -61,7 +61,7 @@ function labelClass(status: string): string {
     case "in_progress":
       return "bg-text-interactive-base/10 text-text-interactive-base ring-1 ring-inset ring-text-interactive-base/12"
     case "completed":
-      return "bg-surface-success-base/20 text-on-success-base ring-1 ring-inset ring-border-success-base/15"
+      return "bg-surface-success-base/20 text-text-on-success-base ring-1 ring-inset ring-border-success-base/15"
     case "cancelled":
       return "workbench-control-surface text-text-weaker ring-1 ring-inset ring-border-weak-base"
     default:

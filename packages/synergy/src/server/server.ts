@@ -373,7 +373,11 @@ export namespace Server {
           })
           if (err instanceof NamedError) {
             let status: ContentfulStatusCode
-            if (err instanceof ConfigImport.RevisionConflictError || err instanceof ConfigImport.LockedError)
+            if (
+              err instanceof ConfigImport.RevisionConflictError ||
+              err instanceof ConfigImport.LockedError ||
+              err instanceof Worktree.UnavailableError
+            )
               status = 409
             else if (err instanceof ConfigImport.SourceTooLargeError) status = 413
             else if (

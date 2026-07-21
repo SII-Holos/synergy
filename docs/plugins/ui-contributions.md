@@ -31,7 +31,7 @@ workbenchPanel({
 })
 ```
 
-The component exports a Solid component that receives `{ context: PluginSurfaceContext }` in source templates. plugin-kit compiles all trusted components into one named-export UI bundle, externalizes `solid-js`, `solid-js/web`, and `solid-js/store`, rewrites those imports to the host's shared runtime, and records the bundle hash. Bundles that include a private Solid runtime, use unsupported Solid subpaths, bypass host linking, or omit an export are rejected.
+The component exports a Solid component that receives `{ context: PluginSurfaceContext }` in source templates. plugin-kit compiles all trusted components into one named-export UI bundle, externalizes `solid-js`, `solid-js/web`, and `solid-js/store`, rewrites those imports to the host's shared runtime, and records the bundle hash. The plugin-kit CLI and standalone Synergy runtime include the compiler, so plugin projects do not install Babel presets. Bundles that include a private Solid runtime, use unsupported Solid subpaths, bypass host linking, or omit an export are rejected.
 
 Trusted code runs in the Synergy App context after explicit approval. This is a trust decision, not a sandbox claim.
 
@@ -108,6 +108,8 @@ export default definePlugin({
 ```
 
 Theme JSON contains `name`, an `id` equal to the contribution ID, and complete `light.seeds` and `dark.seeds`. Each seed set defines `neutral`, `primary`, `success`, `warning`, `error`, `info`, `interactive`, `diffAdd`, and `diffDelete` as opaque hex colors. Optional `overrides` may address only canonical theme tokens. The host validates and resolves both variants before registration; arbitrary CSS, unknown tokens, cyclic references, and invalid contrast are rejected.
+
+The template includes `themes/theme.schema.json`. Theme tooling may import `ThemeSchema`, `parseTheme()`, `resolveTheme()`, and the token catalog from `@ericsanchezok/synergy-plugin/theme`. Plugin Kit `build`, `validate`, and `dev` validate both source and packaged Theme JSON with that public parser. Missing or escaping paths, malformed JSON, ID mismatches, and resolver failures stop the command with a nonzero result. Theme and icon content hashes are part of the generation, so declarative-only edits receive new asset URLs; dev keeps its last valid generation when validation fails.
 
 The host namespaces theme and icon IDs as `<plugin-id>:<contribution-id>`. Surface `icon` fields continue to use the plugin-local contribution ID; the host resolves it to the namespaced registered icon. Assets are fetched and validated before an atomic reload replaces the previous generation.
 

@@ -1,5 +1,6 @@
 import { MessageV2 } from "./message-v2"
 import { applyModelWorkingSetProjection, modelWorkingSetProjection } from "./model-working-set"
+import { LLMTurnMemory } from "./llm-memory"
 
 // Loop-scoped in-memory model working-set cache (issue #350 D2).
 //
@@ -22,6 +23,10 @@ export namespace SessionMessageCache {
   const sizes = new Map<string, number>()
   const lru: string[] = []
   let totalBytes = 0
+  let hits = 0
+  let misses = 0
+  let evictions = 0
+  let protectedOverbudget = 0
   const DEFAULT_BYTE_BUDGET = 256 * 1024 * 1024
   // Read on each eviction so SYNERGY_SESSION_CACHE_MAX_BYTES can be tuned (and
   // set by tests) without a restart; the cost is a trivial env parse on writes.
@@ -52,24 +57,78 @@ export namespace SessionMessageCache {
 
   /** Cached model working set, or undefined when closed or unpopulated. */
   export function get(sessionID: string): MessageV2.WithParts[] | undefined {
+    return read(sessionID, true)
+  }
+
+  function read(sessionID: string, countStats: boolean): MessageV2.WithParts[] | undefined {
     if (!active.has(sessionID)) return undefined
     const hit = cache.get(sessionID)
-    if (hit) touch(sessionID)
+    if (hit) {
+      if (countStats) hits++
+      touch(sessionID)
+    } else if (countStats) {
+      misses++
+    }
     return hit
+  }
+
+  export function stats(input: { entryLimit?: number } = {}) {
+    const entryLimit = Math.max(0, Math.floor(input.entryLimit ?? 100))
+    const entries: Array<{ sessionID: string; estimatedBytes: number }> = []
+    for (const [sessionID, estimatedBytes] of sizes) {
+      let lo = 0
+      let hi = entries.length
+      while (lo < hi) {
+        const mid = (lo + hi) >>> 1
+        const current = entries[mid]
+        if (
+          current.estimatedBytes > estimatedBytes ||
+          (current.estimatedBytes === estimatedBytes && current.sessionID < sessionID)
+        )
+          lo = mid + 1
+        else hi = mid
+      }
+      if (lo >= entryLimit) continue
+      entries.splice(lo, 0, { sessionID, estimatedBytes })
+      if (entries.length > entryLimit) entries.pop()
+    }
+    return {
+      totalBytes,
+      activeCount: active.size,
+      entryCount: cache.size,
+      hits,
+      misses,
+      evictions,
+      protectedOverbudget,
+      entries,
+      truncatedEntryCount: Math.max(0, sizes.size - entries.length),
+    }
+  }
+
+  export function resetStatsForTest() {
+    hits = 0
+    misses = 0
+    evictions = 0
+    protectedOverbudget = 0
   }
 
   /** Seed from a fresh compaction-aware disk read (no-op outside the window). */
   export function set(sessionID: string, messages: MessageV2.WithParts[]) {
     if (!active.has(sessionID)) return
     const workingSet = projectModelWorkingSet(messages)
+    const size = estimateList(workingSet)
+    if (size > byteBudget()) {
+      drop(sessionID)
+      return
+    }
     cache.set(sessionID, workingSet)
-    setSize(sessionID, estimateList(workingSet))
+    setSize(sessionID, size)
     touch(sessionID)
     evict(sessionID)
   }
 
   export function upsertMessage(sessionID: string, info: MessageV2.Info) {
-    const list = get(sessionID)
+    const list = read(sessionID, false)
     if (!list) return
     const idx = list.findIndex((m) => m.info.id === info.id)
     const next = list.slice()
@@ -90,7 +149,7 @@ export namespace SessionMessageCache {
   }
 
   export function upsertPart(sessionID: string, part: MessageV2.Part) {
-    const list = get(sessionID)
+    const list = read(sessionID, false)
     if (!list) return
     const mi = list.findIndex((m) => m.info.id === part.messageID)
     if (mi < 0) {
@@ -176,13 +235,13 @@ export namespace SessionMessageCache {
     sizes.set(sessionID, current + bytes)
   }
 
-  // Evict least-recently-used entries until under budget, never evicting the
-  // session currently being written (it would just re-read on the next step and
-  // thrash). A single over-budget session is left resident: shrinking its own
-  // working set would force a disk re-read every step.
+  // Evict least-recently-used entries until under budget. The current writer is
+  // protected only while its own entry fits the budget; a single oversized
+  // working set must not make the aggregate limit ineffective.
   function evict(protect: string) {
     const budget = byteBudget()
     if (totalBytes <= budget) return
+    if ((sizes.get(protect) ?? 0) > budget) drop(protect)
     for (let i = 0; i < lru.length && totalBytes > budget; ) {
       const victim = lru[i]
       if (victim === protect) {
@@ -190,23 +249,17 @@ export namespace SessionMessageCache {
         continue
       }
       drop(victim)
+      evictions++
     }
+    if (totalBytes > budget) protectedOverbudget++
   }
 
   function estimatePart(part: MessageV2.Part): number {
-    try {
-      return JSON.stringify(part).length
-    } catch {
-      return 0
-    }
+    return LLMTurnMemory.estimateBytes(part)
   }
 
   function estimateInfo(info: MessageV2.Info): number {
-    try {
-      return JSON.stringify(info).length
-    } catch {
-      return 0
-    }
+    return LLMTurnMemory.estimateBytes(info)
   }
 
   function estimateList(list: MessageV2.WithParts[]): number {

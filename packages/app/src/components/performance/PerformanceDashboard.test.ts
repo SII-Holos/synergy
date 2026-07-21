@@ -3,6 +3,7 @@ import type { I18n, MessageDescriptor } from "@lingui/core"
 import {
   browserMetricPoints,
   buildLineChartModel,
+  CHART_METRICS,
   memoryPoints,
   requestPoints,
   resourcePressurePoints,
@@ -13,6 +14,7 @@ import { P } from "./performance-i18n"
 import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories } from "./tool-failure-model"
 import type { PerformanceSummary, PerformanceTimeline } from "./types"
+import type { ChartTheme } from "../visualization/use-chart-theme"
 
 function mockI18n(): I18n {
   const pMessages = new Map<string, string>()
@@ -96,7 +98,33 @@ const datasetSpecs: ChartDatasetSpec[] = [
     color: "#b7791f",
   },
 ]
-const chartTheme = { axisText: "#6b7280", gridColor: "#d1d5db" }
+const chartTheme = {
+  color: () => "#2563eb",
+  alpha: () => "#2563eb80",
+  series: Array.from({ length: 9 }, () => "#2563eb"),
+  axis: "#6b7280",
+  axisStrong: "#111827",
+  grid: "#d1d5db",
+  background: "#ffffff",
+  foreground: "#111827",
+  canvas: "#ffffff",
+  legend: { labels: { color: "#111827" } },
+  tooltip: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d1d5db",
+    borderWidth: 1,
+    titleColor: "#111827",
+    bodyColor: "#111827",
+    footerColor: "#6b7280",
+  },
+  point: {
+    pointBackgroundColor: "#ffffff",
+    pointBorderColor: "#d1d5db",
+    pointHoverBackgroundColor: "#ffffff",
+    pointHoverBorderColor: "#111827",
+  },
+  states: { info: "#2563eb", success: "#16805d", warning: "#b7791f", critical: "#b42318" },
+} satisfies ChartTheme
 const formatTime = (value: number) => `time:${value}`
 
 function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {
@@ -182,6 +210,27 @@ describe("performance chart model", () => {
       ]),
     )
     expect(points).toEqual([{ timestamp: 1000, memory: 1 }, { timestamp: 2000 }])
+  })
+
+  test("memory chart includes external and ArrayBuffer categories", () => {
+    expect(CHART_METRICS).toContain("process.memory.external")
+    expect(CHART_METRICS).toContain("process.memory.array_buffers")
+    const points = memoryPoints(
+      timeline([
+        {
+          name: "process.memory.external",
+          unit: "bytes",
+          points: [{ time: 1000, value: 2 * 1048576, sampleCount: 1 }],
+        },
+        {
+          name: "process.memory.array_buffers",
+          unit: "bytes",
+          points: [{ time: 1000, value: 1048576, sampleCount: 1 }],
+        },
+      ]),
+    )
+
+    expect(points).toEqual([{ timestamp: 1000, external: 2, arrayBuffers: 1 }])
   })
 
   test("browser metric chart uses separate axes for heap DOM nodes and navigation latency", () => {
@@ -290,6 +339,33 @@ describe("performance dashboard runtime support", () => {
     expect(items[0].value).toContain("Alive")
     expect(items[0].value).toContain("pid 42")
     expect(items[0].tone).toBe("success")
+  })
+
+  test("surfaces MessageCache footprint and active LLM stream counts", () => {
+    const items = runtimeSupportItems(
+      summary({
+        messageCache: {
+          totalBytes: 1048576,
+          activeCount: 2,
+          entryCount: 2,
+          hits: 4,
+          misses: 1,
+          evictions: 3,
+          protectedOverbudget: 1,
+          entries: [{ estimatedBytes: 700000 }, { estimatedBytes: 348576 }],
+          truncatedEntryCount: 0,
+        },
+        llmTurns: { activeTurnCount: 3, activeStreamCount: 2, turns: [] },
+      }),
+      i18n,
+    )
+
+    expect(items).toContainEqual({
+      label: P.runtimeMessageCache,
+      value: "1 MB · 2 entries (2 active) · 4/1 hit/miss · 3 evictions · 1 protected over budget · largest 700000 B",
+      tone: "warning",
+    })
+    expect(items).toContainEqual({ label: P.runtimeLlmStreams, value: "2 streams · 3 turns", tone: "default" })
   })
 
   test("marks unhealthy runtime support state as warning", () => {

@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test"
+import { describe, expect, spyOn, test } from "bun:test"
 import { tmpdir } from "../fixture/fixture"
 import { Identifier } from "../../src/id/id"
 import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { MessageV2 } from "../../src/session/message-v2"
+import { SessionMemoryPressure } from "../../src/session/memory-pressure"
 import { SessionSearchTool } from "../../src/tool/session-search"
 import { Log } from "../../src/util/log"
 
@@ -86,6 +87,27 @@ describe("session_search", () => {
         expect(result.metadata.matches).toBe(0)
         expect(result.metadata.sessionsMatched).toBe(0)
         expect(result.title).toBe("No matches")
+      },
+    })
+  })
+
+  test("signals after releasing searched messages without choosing GC policy", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Collect" })
+        await writeMessage(session.id, Identifier.ascending("message"), "searchable text", 100)
+
+        using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
+        const tool = await SessionSearchTool.init()
+        await tool.execute({ pattern: "searchable", scope: "current", limit: 10 }, ctx)
+
+        expect(release).toHaveBeenCalledWith(expect.objectContaining({ phase: "tool.session_search.complete" }))
+        for (const [input] of release.mock.calls) {
+          expect(input).not.toHaveProperty("full")
+          expect(input).not.toHaveProperty("forceFull")
+        }
       },
     })
   })

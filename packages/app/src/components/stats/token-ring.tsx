@@ -155,6 +155,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
       {
         data: segmentData().map((segment) => segment.value),
         backgroundColor: segmentData().map((segment) => segment.color),
+        hoverBackgroundColor: segmentData().map((segment) => segment.color),
         borderWidth: 3,
         borderColor: theme().background,
         hoverBorderColor: theme().grid,
@@ -177,6 +178,7 @@ export function TokenRing(props: { tokens: StatsSnapshot["tokenCost"]["tokens"];
         display: false,
       },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { label?: string; raw: number | string }) => {
             const raw = Number(ctx.raw ?? 0)

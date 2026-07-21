@@ -1,4 +1,3 @@
-import { nativeTheme } from "electron"
 import {
   BROWSER_PROTOCOL_VERSION,
   BrowserIceServerSchema,
@@ -10,7 +9,7 @@ import {
   type BrowserHostPageEvent,
 } from "@ericsanchezok/synergy-browser"
 import { BrowserWebRTCHost } from "./browser-webrtc-host.js"
-import { desktopThemeSnapshot } from "./theme.js"
+import { type DesktopThemeSnapshot } from "./theme.js"
 import { BrowserNativePagePool, type BrowserNativePageHandle } from "./browser-native-page-pool.js"
 
 export interface BrowserHostBrokerOptions {
@@ -18,12 +17,17 @@ export interface BrowserHostBrokerOptions {
   token: string
   hostId?: string
   nativePool?: BrowserNativePagePool
+  theme: DesktopThemeSnapshot
 }
 
 type ManagedPage = BrowserWebRTCHost | BrowserNativePageHandle
 interface ManagedPageEntry {
   pageId: string
   page: ManagedPage
+}
+
+function isThemeAwarePage(page: ManagedPage): page is BrowserWebRTCHost {
+  return "setTheme" in page
 }
 
 export class BrowserHostBrokerClient {
@@ -36,9 +40,18 @@ export class BrowserHostBrokerClient {
   private disconnecting: Promise<void> | null = null
 
   private options: BrowserHostBrokerOptions
+  private theme: DesktopThemeSnapshot
 
   constructor(options: BrowserHostBrokerOptions) {
     this.options = { ...options, token: BrowserRegistrationSecretSchema.parse(options.token) }
+    this.theme = options.theme
+  }
+
+  setTheme(theme: DesktopThemeSnapshot): void {
+    this.theme = theme
+    for (const entry of this.pages.values()) {
+      if (isThemeAwarePage(entry.page)) entry.page.setTheme(theme)
+    }
   }
 
   connect(): void {
@@ -148,6 +161,7 @@ export class BrowserHostBrokerClient {
           await page.destroy()
           return
         }
+        if (isThemeAwarePage(page)) page.setTheme(this.theme)
         this.pages.set(message.ownerKey, { pageId: message.page.id, page })
         this.result(message.requestId, { type: "page", page: page.state() })
       } catch (error) {
@@ -235,7 +249,7 @@ export class BrowserHostBrokerClient {
       pageId: message.page.id,
       routeDirectory: message.routeDirectory,
       url: message.page.url,
-      theme: desktopThemeSnapshot("system", nativeTheme.shouldUseDarkColors),
+      theme: this.theme,
       iceServers: parseIceServers(process.env.SYNERGY_BROWSER_ICE_SERVERS),
       networkProxy: message.networkProxy,
       downloadDir: message.downloadDir,

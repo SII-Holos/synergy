@@ -21,11 +21,11 @@
 }
 
 .logo-line-holos {
-  color: var(--border-base, #999);
+  color: var(--border-base);
   font-size: 3rem;
 }
 
 .logo-line-synergy {
-  color: var(--text-strong, #333);
+  color: var(--text-strong);
   font-size: 3rem;
 }

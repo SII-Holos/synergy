@@ -325,7 +325,7 @@
 }
 
 .question-prompt-option.is-picked .question-prompt-option-mark {
-  color: var(--workbench-canvas-bg, light-dark(white, black));
+  color: var(--workbench-canvas-bg, var(--background-stronger));
   background: var(--text-strong);
 }
 

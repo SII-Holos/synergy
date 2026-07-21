@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { Config } from "../../src/config/config"
+import { Bus } from "../../src/bus"
 import { ExperienceEncoder } from "../../src/library/experience-encoder"
 import { ObservabilityStore } from "../../src/observability/store"
 import { ObservabilityContext } from "../../src/observability/context"
@@ -8,11 +9,15 @@ import { Session } from "../../src/session"
 import { LLM } from "../../src/session/llm"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionProcessor } from "../../src/session/processor"
+import { SessionMemoryIncident } from "../../src/session/memory-incident"
 import { TimeoutConfig } from "../../src/util/timeout-config"
 import { cleanupObservabilityHomes, resetObservabilityHome } from "../observability/fixture"
 
 describe("SessionProcessor observability", () => {
-  beforeEach(() => resetObservabilityHome("synergy-session-observability-"))
+  beforeEach(() => {
+    resetObservabilityHome("synergy-session-observability-")
+    SessionMemoryIncident.resetForTest()
+  })
   afterEach(() => cleanupObservabilityHomes())
 
   test("records LLM first token, chunk gap, and output throughput metrics", async () => {
@@ -61,6 +66,20 @@ describe("SessionProcessor observability", () => {
     const metrics = ObservabilityStore.queryMetrics({ since: 0, traceId: "trace_parent_turn" })
     expect(metrics.some((metric) => metric.name === "llm.stream.output_chars")).toBe(true)
   })
+
+  test("automatically records a bounded incident when provider streaming exhausts allocation", async () => {
+    await runStreamScenario(async function* () {
+      yield await Promise.reject(new RangeError("Out of memory"))
+    })
+    ObservabilityStore.flush()
+
+    expect(ObservabilityStore.queryEvents({ type: "process.memory.oom_incident" })).toHaveLength(1)
+    expect(
+      ObservabilityStore.queryIssues({ status: "open", module: "process" }).filter(
+        (issue) => issue.code === "PERF_PROCESS_OUT_OF_MEMORY",
+      ),
+    ).toHaveLength(1)
+  })
 })
 
 async function runStreamScenario(
@@ -76,6 +95,7 @@ async function runStreamScenario(
   const originalConfigCurrent = Config.current
   const originalPluginTrigger = Plugin.trigger
   const originalExperienceComplete = ExperienceEncoder.onComplete
+  const originalBusPublish = Bus.publish
   const parts = new Map<string, MessageV2.Part>()
 
   try {
@@ -95,6 +115,7 @@ async function runStreamScenario(
     ;(Config.current as any) = mock(async () => ({ experimental: {}, timeout: { tool: { default_sec: 60 } } }))
     ;(Plugin.trigger as any) = mock(async (_name: string, _context: unknown, value: unknown) => value)
     ;(ExperienceEncoder.onComplete as any) = mock(() => {})
+    ;(Bus.publish as any) = mock(async () => {})
     ;(LLM.stream as any) = mock(async () => ({ fullStream: stream() }))
 
     const processor = SessionProcessor.create({
@@ -130,5 +151,6 @@ async function runStreamScenario(
     ;(Config.current as any) = originalConfigCurrent
     ;(Plugin.trigger as any) = originalPluginTrigger
     ;(ExperienceEncoder.onComplete as any) = originalExperienceComplete
+    ;(Bus.publish as any) = originalBusPublish
   }
 }

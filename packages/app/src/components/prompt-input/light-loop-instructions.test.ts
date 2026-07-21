@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { buildLightLoopTaskDescription } from "./light-loop-task"
+import { buildLightLoopInstructions } from "./light-loop-instructions"
 
-describe("Light Loop task description", () => {
+describe("Light Loop instructions", () => {
   test("requires non-empty user text", () => {
     expect(
-      buildLightLoopTaskDescription({
+      buildLightLoopInstructions({
         text: " ",
         uploads: [{ type: "attachment", id: "att_1", filename: "spec.pdf", mime: "application/pdf", url: "x" }],
         notes: [],
@@ -16,7 +16,7 @@ describe("Light Loop task description", () => {
   })
 
   test("uses text plus compact context metadata", () => {
-    const task = buildLightLoopTaskDescription({
+    const instructions = buildLightLoopInstructions({
       text: "Finish the implementation",
       uploads: [{ type: "attachment", id: "att_1", filename: "trace.log", mime: "text/plain", url: "x" }],
       notes: [{ type: "note", id: "part_note", noteId: "note_1", title: "Plan", content: "full content" }],
@@ -42,12 +42,12 @@ describe("Light Loop task description", () => {
       contextItems: [{ type: "file", path: "src/context.ts" }],
     })
 
-    expect(task).toContain("Finish the implementation")
-    expect(task).toContain("File: src/app.ts lines 3-9")
-    expect(task).toContain("Context file: src/context.ts")
-    expect(task).toContain("Attachment: trace.log (text/plain)")
-    expect(task).toContain("Note: Plan (note_1)")
-    expect(task).toContain("Session: Prior work (ses_1, C:/repo)")
-    expect(task).not.toContain("full content")
+    expect(instructions).toContain("Finish the implementation")
+    expect(instructions).toContain("File: src/app.ts lines 3-9")
+    expect(instructions).toContain("Context file: src/context.ts")
+    expect(instructions).toContain("Attachment: trace.log (text/plain)")
+    expect(instructions).toContain("Note: Plan (note_1)")
+    expect(instructions).toContain("Session: Prior work (ses_1, C:/repo)")
+    expect(instructions).not.toContain("full content")
   })
 })

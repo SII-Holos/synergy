@@ -36,7 +36,7 @@ Recommended Desktop installer artifacts:
 - `Synergy-darwin-x64-${version}.pkg`
 - `Synergy-darwin-arm64-${version}.pkg`
 - `Synergy-win32-x64-${version}.exe`
-- `Synergy-linux-x86_64-${version}.deb`
+- `Synergy-linux-amd64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
 
@@ -47,6 +47,8 @@ Portable and updater artifacts are still published but are not the full Desktop 
 - macOS `.zip` is required by updater metadata.
 - macOS `.dmg` is an app-bundle artifact and does not install the CLI link.
 - Linux `.AppImage` and `.tar.gz` are portable/debug artifacts and do not install global commands.
+
+Linux x64 artifact names follow each format's native architecture label: `amd64` for `.deb`, `x86_64` for `.AppImage`, and `x64` for `.tar.gz`.
 
 The Linux `.deb` depends on the system `bubblewrap` package. Linux portable artifacts require users to install Bubblewrap separately.
 
@@ -83,11 +85,10 @@ macOS:
 - `APPLE_TEAM_ID`
 - `CSC_LINK`
 - `CSC_KEY_PASSWORD`
+- `CSC_INSTALLER_LINK`
+- `CSC_INSTALLER_KEY_PASSWORD`
 
-Windows:
-
-- `WINDOWS_CERTIFICATE`
-- `WINDOWS_CERTIFICATE_PASSWORD`
+Windows artifacts are currently unsigned. The release workflow does not pass CSC signing material to `electron-builder` on Windows. `WINDOWS_CERTIFICATE` and `WINDOWS_CERTIFICATE_PASSWORD` are reserved for re-enabling Windows signing later.
 
 GitHub upload/update feed:
 
@@ -98,7 +99,7 @@ Browser Host artifact trust:
 - `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix
 - `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key embedded in product runtime binaries
 
-PR/package validation works without signing secrets. A product Release validates every required signing secret before publishing a candidate and verifies that the Browser Host private/public key pair matches.
+PR/package validation works without signing secrets. A product Release validates every required macOS signing secret before publishing a candidate and verifies that the Browser Host private/public key pair matches.
 
 ## GitHub Actions Flow
 
@@ -122,6 +123,7 @@ Product release keeps the existing candidate/finalize model:
 
 ## Validation Checklist
 
+- `bun run release:test`
 - `bun run --cwd packages/desktop desktop:test`
 - `bun run --cwd packages/desktop desktop:build`
 - `bun run --cwd packages/desktop test:runtime`

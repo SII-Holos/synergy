@@ -4,6 +4,8 @@ import { ObservabilityIssues } from "@/observability/issues"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityStore } from "@/observability/store"
 import { SessionManager } from "@/session/manager"
+import { SessionMessageCache } from "@/session/message-cache"
+import { LLMTurnMemory } from "@/session/llm-memory"
 import { parseJson } from "@/util/json-parse"
 import { PerformanceProjection } from "./projection"
 import { PerformanceSchema } from "./schema"
@@ -33,6 +35,9 @@ export namespace PerformanceDashboard {
     }).map(PerformanceProjection.issue)
     const diagnostics = await Diagnostics.summary().catch(() => undefined)
     const runtimeStats = SessionManager.runtimeStats()
+    const messageCacheStats = SessionMessageCache.stats()
+    const llmTurnStats = LLMTurnMemory.stats()
+    const activeLLMTurns = LLMTurnMemory.activeSnapshot(20)
     const cortexTasks = Cortex.list()
     const cortexStats = {
       totalCount: cortexTasks.length,
@@ -104,6 +109,8 @@ export namespace PerformanceDashboard {
         rssBytes: resources?.memory_rss_bytes ?? undefined,
         heapUsedBytes: resources?.memory_heap_used_bytes ?? undefined,
         heapTotalBytes: resources?.memory_heap_total_bytes ?? undefined,
+        externalBytes: resources?.memory_external_bytes ?? undefined,
+        arrayBuffersBytes: resources?.memory_array_buffers_bytes ?? undefined,
         cpuUtilizationRatio: resources?.cpu_utilization_ratio ?? undefined,
         eventLoopLagP95Ms: ObservabilityMetrics.percentile(
           serverResourceRows.map((row) => row.event_loop_lag_ms ?? 0),
@@ -159,6 +166,32 @@ export namespace PerformanceDashboard {
         recentErrors: diagnostics?.traces.recentErrors.length ?? 0,
         pendingSessions: diagnostics?.sessions.pendingReply.length ?? 0,
         sessionRuntimes: runtimeStats,
+        messageCache: {
+          totalBytes: messageCacheStats.totalBytes,
+          activeCount: messageCacheStats.activeCount,
+          entryCount: messageCacheStats.entryCount,
+          hits: messageCacheStats.hits,
+          misses: messageCacheStats.misses,
+          evictions: messageCacheStats.evictions,
+          protectedOverbudget: messageCacheStats.protectedOverbudget,
+          entries: messageCacheStats.entries.map((entry) => ({ estimatedBytes: entry.estimatedBytes })),
+          truncatedEntryCount: messageCacheStats.truncatedEntryCount,
+        },
+        llmTurns: {
+          ...llmTurnStats,
+          turns: activeLLMTurns.map((turn) => ({
+            ageMs: turn.ageMs,
+            streamActive: turn.streamActive,
+            providerID: turn.providerID,
+            modelID: turn.modelID,
+            historyBeforeBytes: turn.historyBeforeBytes,
+            historyAfterBytes: turn.historyAfterBytes,
+            requestBytes: turn.requestBytes,
+            toolSchemaBytes: turn.toolSchemaBytes,
+            outputChars: turn.outputChars,
+            toolRawChars: turn.toolRawChars,
+          })),
+        },
         cortexTasks: {
           totalCount: cortexStats.totalCount,
           queuedCount: cortexStats.byStatus.queued,

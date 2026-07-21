@@ -203,6 +203,6 @@ Channel and Holos connection models are described in [Connections](../product/co
 
 ## Plugins
 
-`synergy plugin` includes hooks, create, add, remove, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish, publish-market, entry, info, permissions, and approval commands. Installed plugins can also contribute their own top-level CLI commands.
+`synergy plugin` includes create, add, remove, update, build, sign, pack, list, search, doctor, validate, dev, runtime, test, publish-market, entry, info, permissions, and approval commands. `synergy plugin approve <id>` fetches the server approval review for a configured plugin and submits the opaque `reviewToken` through `POST /api/plugins/approve`; it does not send manifest, capability, source, or path data. `list` and `info` show approval-disabled plugins with their canonical identity and `Needs approval` state. Installed plugins can also contribute their own top-level CLI commands.
 
 The canonical authoring and command reference is [Plugin documentation](../plugins/README.md).

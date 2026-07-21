@@ -71,6 +71,7 @@ export const AstGrepTool = Tool.define("ast_grep", {
       globs: params.globs,
       context: params.context,
       cwd,
+      signal: ctx.abort,
     })
 
     let output = formatSearchResult(result)

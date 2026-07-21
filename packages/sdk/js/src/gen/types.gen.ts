@@ -520,6 +520,8 @@ export type PerfDashboardSummary = {
     rssBytes?: number
     heapUsedBytes?: number
     heapTotalBytes?: number
+    externalBytes?: number
+    arrayBuffersBytes?: number
     cpuUtilizationRatio?: number
     eventLoopLagP95Ms?: number
     appReadBytes?: number
@@ -560,6 +562,35 @@ export type PerfDashboardSummary = {
       childCount: number
       userCount: number
       waiterCount: number
+    }
+    messageCache?: {
+      totalBytes: number
+      activeCount: number
+      entryCount: number
+      hits: number
+      misses: number
+      evictions: number
+      protectedOverbudget: number
+      entries: Array<{
+        estimatedBytes: number
+      }>
+      truncatedEntryCount: number
+    }
+    llmTurns?: {
+      activeTurnCount: number
+      activeStreamCount: number
+      turns: Array<{
+        ageMs: number
+        streamActive: boolean
+        providerID: string
+        modelID: string
+        historyBeforeBytes: number
+        historyAfterBytes: number
+        requestBytes: number
+        toolSchemaBytes: number
+        outputChars: number
+        toolRawChars: number
+      }>
     }
     cortexTasks: {
       totalCount: number
@@ -3728,7 +3759,27 @@ export type SessionWorkflowInfo =
     }
   | {
       kind: "lightloop"
-      taskDescription: string
+      instructions: string
+      status?: "running" | "reviewing" | "completed" | "failed" | "cancelled" | "timed_out" | "iteration_exhausted"
+      executionAgent?: string
+      reviewAgent?: string
+      pluginOwner?: {
+        pluginId: string
+        pluginGeneration: string
+        scopeId: string
+        correlationId?: string
+      }
+      budget?: {
+        maxRuntimeMs: number
+        maxIterations: number
+      }
+      deadlineAt?: number
+      terminalError?: string
+      terminalHookDeliveredAt?: number
+      terminalHookError?: string
+      reviewTools?: {
+        [key: string]: boolean
+      }
       stopRequest?: {
         summary: string
         completed?: Array<string>
@@ -4721,6 +4772,14 @@ export type SessionInputResult =
       item: SessionInboxItem
     }
 
+export type WorktreeUnavailableError = {
+  name: "WorktreeUnavailableError"
+  data: {
+    message: string
+    reason: "missing"
+  }
+}
+
 export type TextPartInput = {
   id?: string
   type: "text"
@@ -5376,8 +5435,8 @@ export type CortexConcurrencyStatus = {
   configured: number | null
   environment: number | null
   effective: number
-  recommended: number
-  recommendationReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  memoryPressureLimit: number | null
+  memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
   source: "default" | "config" | "environment"
   perAgentLimit: number
   running: number
@@ -6087,11 +6146,28 @@ export type BlueprintLoopInfo = {
   /**
    * Owner that created and drives this loop lifecycle
    */
-  source: "user" | "lattice"
+  source: "user" | "lattice" | "plugin"
+  sourceDigest?: string
+  budget?: {
+    maxRuntimeMs: number
+    maxIterations: number
+  }
+  pluginOwner?: {
+    pluginId: string
+    pluginGeneration: string
+    scopeId: string
+    correlationId?: string
+  }
   audit?: {
     lastReason?: string
     lastAuditedAt?: number
     attempts: number
+  }
+  executionTools?: {
+    [key: string]: boolean
+  }
+  auditTools?: {
+    [key: string]: boolean
   }
   time: {
     created: number
@@ -6103,6 +6179,8 @@ export type BlueprintLoopInfo = {
     providerID: string
     modelID: string
   }
+  terminalHookDeliveredAt?: number
+  terminalHookError?: string
 }
 
 export type BlueprintLoopCreateInput = {
@@ -6260,9 +6338,9 @@ export type WorkflowSetInput =
   | {
       kind: "lightloop"
       /**
-       * Task description for Light Loop
+       * Instructions for Light Loop
        */
-      taskDescription: string
+      instructions: string
     }
   | {
       kind: "lattice"
@@ -6286,9 +6364,9 @@ export type WorkflowSetInput =
 
 export type LightloopUpdateInput = {
   /**
-   * Updated task description for the active Light Loop
+   * Updated instructions for the active Light Loop
    */
-  taskDescription: string
+  instructions: string
 }
 
 export type AssetInfo = {
@@ -6725,6 +6803,105 @@ export type PluginStatus = {
     lastHeartbeatAt?: number
     lastError?: string
   }
+}
+
+export type ApprovalReview = {
+  target:
+    | {
+        kind: "configured"
+        pluginId: string
+      }
+    | {
+        kind: "registry"
+        pluginId: string
+        version: string
+        source: "official" | "local"
+      }
+  pluginId: string
+  name: string
+  version: string
+  apiVersion?: string
+  generation?: string
+  capabilities: Array<string>
+  risk: "low" | "medium" | "high"
+  trust: "declarative" | "trusted-import"
+  diff: {
+    pluginId: string
+    fromVersion?: string
+    toVersion?: string
+    riskBefore?: "low" | "medium" | "high"
+    riskAfter?: "low" | "medium" | "high"
+    added: Array<{
+      key: string
+      category:
+        | "tools"
+        | "files"
+        | "network"
+        | "data"
+        | "ui"
+        | "runtime"
+        | "hooks"
+        | "session"
+        | "browser"
+        | "identity"
+        | "communication"
+        | "platform"
+      severity: "low" | "medium" | "high"
+      title: string
+      description: string
+      technical?: string
+    }>
+    removed: Array<{
+      key: string
+      category:
+        | "tools"
+        | "files"
+        | "network"
+        | "data"
+        | "ui"
+        | "runtime"
+        | "hooks"
+        | "session"
+        | "browser"
+        | "identity"
+        | "communication"
+        | "platform"
+      severity: "low" | "medium" | "high"
+      title: string
+      description: string
+      technical?: string
+    }>
+    unchanged: Array<{
+      key: string
+      category:
+        | "tools"
+        | "files"
+        | "network"
+        | "data"
+        | "ui"
+        | "runtime"
+        | "hooks"
+        | "session"
+        | "browser"
+        | "identity"
+        | "communication"
+        | "platform"
+      severity: "low" | "medium" | "high"
+      title: string
+      description: string
+      technical?: string
+    }>
+    changed: Array<{
+      key: string
+      before?: string
+      after?: string
+    }>
+    requiresApproval: boolean
+    reason?: string
+  }
+  permissionsChanged: boolean
+  reason?: string
+  reviewToken: string
 }
 
 export type PluginRuntimeInfo = {
@@ -10549,6 +10726,10 @@ export type SessionInputErrors = {
    * Not found
    */
   404: NotFoundError
+  /**
+   * Session worktree unavailable
+   */
+  409: WorktreeUnavailableError
 }
 
 export type SessionInputError = SessionInputErrors[keyof SessionInputErrors]
@@ -15573,29 +15754,7 @@ export type ApiPluginsGetResponses = {
   200: unknown
 }
 
-export type ApiPluginsApproveInstallData = {
-  body?: {
-    pluginId: string
-    manifest: unknown
-    capabilities: Array<string>
-    source: "local" | "official" | "npm" | "git" | "url" | "builtin"
-  }
-  path?: never
-  query?: {
-    directory?: string
-    scopeID?: string
-  }
-  url: "/api/plugins/approve-install"
-}
-
-export type ApiPluginsApproveInstallResponses = {
-  /**
-   * Approved
-   */
-  200: unknown
-}
-
-export type ApiPluginsGetApprovalData = {
+export type ApiPluginsGetApprovalReviewData = {
   body?: never
   path: {
     pluginId: string
@@ -15604,24 +15763,108 @@ export type ApiPluginsGetApprovalData = {
     directory?: string
     scopeID?: string
   }
-  url: "/api/plugins/{pluginId}/approval"
+  url: "/api/plugins/{pluginId}/approval-review"
 }
 
-export type ApiPluginsGetApprovalErrors = {
+export type ApiPluginsGetApprovalReviewErrors = {
   /**
-   * Not found
+   * Plugin not found
    */
-  404: NotFoundError
-}
-
-export type ApiPluginsGetApprovalError = ApiPluginsGetApprovalErrors[keyof ApiPluginsGetApprovalErrors]
-
-export type ApiPluginsGetApprovalResponses = {
+  404: {
+    code: string
+    message: string
+  }
   /**
-   * Approval
+   * Approval not required
    */
-  200: unknown
+  409: {
+    code: string
+    message: string
+  }
+  /**
+   * Invalid plugin
+   */
+  422: {
+    code: string
+    message: string
+  }
 }
+
+export type ApiPluginsGetApprovalReviewError =
+  ApiPluginsGetApprovalReviewErrors[keyof ApiPluginsGetApprovalReviewErrors]
+
+export type ApiPluginsGetApprovalReviewResponses = {
+  /**
+   * Approval review
+   */
+  200: ApprovalReview
+}
+
+export type ApiPluginsGetApprovalReviewResponse =
+  ApiPluginsGetApprovalReviewResponses[keyof ApiPluginsGetApprovalReviewResponses]
+
+export type ApiPluginsApproveData = {
+  body?: {
+    target:
+      | {
+          kind: "configured"
+          pluginId: string
+        }
+      | {
+          kind: "registry"
+          pluginId: string
+          version: string
+          source: "official" | "local"
+        }
+    reviewToken: string
+  }
+  path?: never
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/api/plugins/approve"
+}
+
+export type ApiPluginsApproveErrors = {
+  /**
+   * Bad request
+   */
+  400: unknown
+  /**
+   * Plugin not found
+   */
+  404: {
+    code: string
+    message: string
+  }
+  /**
+   * Stale review
+   */
+  409: {
+    code: string
+    message: string
+    review: ApprovalReview
+  }
+  /**
+   * Invalid plugin
+   */
+  422: {
+    code: string
+    message: string
+  }
+}
+
+export type ApiPluginsApproveError = ApiPluginsApproveErrors[keyof ApiPluginsApproveErrors]
+
+export type ApiPluginsApproveResponses = {
+  /**
+   * Approved
+   */
+  200: PluginStatus
+}
+
+export type ApiPluginsApproveResponse = ApiPluginsApproveResponses[keyof ApiPluginsApproveResponses]
 
 export type ApiPluginsInstallFromRegistryData = {
   body?: {
@@ -15641,8 +15884,22 @@ export type ApiPluginsInstallFromRegistryErrors = {
   /**
    * Approval required
    */
-  409: unknown
+  409: {
+    code: string
+    message: string
+    review: ApprovalReview
+  }
+  /**
+   * Invalid
+   */
+  422: {
+    code: string
+    message: string
+  }
 }
+
+export type ApiPluginsInstallFromRegistryError =
+  ApiPluginsInstallFromRegistryErrors[keyof ApiPluginsInstallFromRegistryErrors]
 
 export type ApiPluginsInstallFromRegistryResponses = {
   /**
@@ -15669,8 +15926,22 @@ export type ApiPluginsUpdateFromRegistryErrors = {
   /**
    * Approval required
    */
-  409: unknown
+  409: {
+    code: string
+    message: string
+    review: ApprovalReview
+  }
+  /**
+   * Invalid
+   */
+  422: {
+    code: string
+    message: string
+  }
 }
+
+export type ApiPluginsUpdateFromRegistryError =
+  ApiPluginsUpdateFromRegistryErrors[keyof ApiPluginsUpdateFromRegistryErrors]
 
 export type ApiPluginsUpdateFromRegistryResponses = {
   /**

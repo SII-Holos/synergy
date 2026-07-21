@@ -1,7 +1,13 @@
 import fs from "fs"
 import { fileURLToPath } from "url"
 import type { PluginLogEntry } from "./logs.js"
-import type { HostToPlugin, PluginToHost, RuntimeActivationData, SerializedPluginRuntimeError } from "./protocol.js"
+import {
+  deserializePluginRuntimeError,
+  serializePluginRuntimeError,
+  type HostToPlugin,
+  type PluginToHost,
+  type RuntimeActivationData,
+} from "./protocol.js"
 
 const runnerPath = fileURLToPath(new URL("./runner.ts", import.meta.url))
 
@@ -74,10 +80,6 @@ export function createPendingRequestMap() {
   }
 }
 
-function runtimeError(error: SerializedPluginRuntimeError) {
-  return Object.assign(new Error(error.message), { name: error.name, stack: error.stack, code: error.code })
-}
-
 export function resolvePluginProcessRunnerCommand(entryPath: string): string[] {
   if (fs.existsSync(runnerPath)) return [process.execPath, "run", runnerPath, entryPath]
   return [process.execPath, "__plugin-runtime-runner", entryPath]
@@ -96,7 +98,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
         options.onLog({ timestamp: Date.now(), level: parsed.level, message: parsed.message })
       } else if (parsed.type === "response") {
         if (parsed.ok) pending.resolve(parsed.requestId, { generation: parsed.generation, value: parsed.value })
-        else pending.reject(parsed.requestId, runtimeError(parsed.error))
+        else pending.reject(parsed.requestId, deserializePluginRuntimeError(parsed.error))
       } else if (parsed.type === "hostRequest") {
         void options.onHostRequest(parsed).then(
           (value) => send({ type: "hostResponse", requestId: parsed.requestId, ok: true, value }),
@@ -105,11 +107,7 @@ export function spawnPluginProcess(options: SpawnPluginProcessOptions): PluginPr
               type: "hostResponse",
               requestId: parsed.requestId,
               ok: false,
-              error: {
-                name: error instanceof Error ? error.name : "Error",
-                message: error instanceof Error ? error.message : String(error),
-                stack: error instanceof Error ? error.stack : undefined,
-              },
+              error: serializePluginRuntimeError(error),
             }),
         )
       }

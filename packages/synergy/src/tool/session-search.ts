@@ -3,6 +3,7 @@ import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
 import { MessageV2 } from "../session/message-v2"
+import { SessionMemoryPressure } from "../session/memory-pressure"
 import { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Identifier } from "../id/id"
@@ -127,80 +128,106 @@ function formatResult(result: SessionResult): string {
   return lines.join("\n")
 }
 
+async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Context) {
+  let regex: RegExp
+  try {
+    regex = new RegExp(params.pattern, "i")
+  } catch {
+    return {
+      title: "Invalid pattern",
+      output: `"${params.pattern}" is not a valid regex pattern.`,
+      metadata: {} as Record<string, any>,
+    }
+  }
+
+  const sinceMs = params.since ? new Date(params.since).getTime() : undefined
+  const beforeMs = params.before ? new Date(params.before).getTime() : undefined
+  const candidates = await collectSessionCandidates(params.scope, sinceMs, beforeMs)
+  const clampedLimit = Math.max(0, Math.min(params.limit, MAX_TOTAL_MATCHES))
+
+  const results: SessionResult[] = []
+  let totalMatches = 0
+  let sessionsSearched = 0
+  let messagesSearched = 0
+
+  for (const candidate of candidates) {
+    if (totalMatches >= clampedLimit) break
+    ctx.abort.throwIfAborted()
+
+    const session = await readCandidateSession(candidate)
+    if (!session) continue
+
+    sessionsSearched++
+    const matches: Match[] = []
+
+    for await (const msg of MessageV2.stream({ scopeID: session.scope.id, sessionID: session.id })) {
+      ctx.abort.throwIfAborted()
+      if (matches.length >= MAX_MATCHES_PER_SESSION) break
+      if (totalMatches + matches.length >= clampedLimit) break
+
+      messagesSearched++
+      const match = searchMessage(msg, regex)
+      if (match) {
+        matches.push(match)
+      }
+
+      SessionMemoryPressure.signalRelease({
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        phase: "tool.session_search.progress",
+      })
+    }
+
+    if (matches.length > 0) {
+      matches.reverse()
+      results.push({ session, matches })
+      totalMatches += matches.length
+    }
+  }
+
+  if (results.length === 0) {
+    return {
+      title: "No matches",
+      output: `No messages matching "${params.pattern}" found across ${sessionsSearched} searched session${sessionsSearched === 1 ? "" : "s"}.`,
+      metadata: {
+        sessionsSearched,
+        messagesSearched,
+        sessionsMatched: 0,
+        matches: 0,
+        candidateSessions: candidates.length,
+      } as Record<string, any>,
+    }
+  }
+
+  const header = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${results.length} session${results.length === 1 ? "" : "s"} (searched ${sessionsSearched} of ${candidates.length} candidate session${candidates.length === 1 ? "" : "s"}):`
+  const formatted = results.map(formatResult)
+
+  return {
+    title: `${totalMatches} match${totalMatches === 1 ? "" : "es"} in ${results.length} session${results.length === 1 ? "" : "s"}`,
+    output: `${header}\n\n${formatted.join("\n\n")}`,
+    metadata: {
+      sessionsSearched,
+      messagesSearched,
+      matches: totalMatches,
+      sessions: results.length,
+      sessionsMatched: results.length,
+      candidateSessions: candidates.length,
+    } as Record<string, any>,
+  }
+}
+
 export const SessionSearchTool = Tool.define("session_search", {
   description: DESCRIPTION,
   parameters,
-  async execute(params: z.infer<typeof parameters>) {
-    let regex: RegExp
+  async execute(params, ctx) {
     try {
-      regex = new RegExp(params.pattern, "i")
-    } catch {
-      return {
-        title: "Invalid pattern",
-        output: `"${params.pattern}" is not a valid regex pattern.`,
-        metadata: {} as Record<string, any>,
-      }
-    }
-
-    const sinceMs = params.since ? new Date(params.since).getTime() : undefined
-    const beforeMs = params.before ? new Date(params.before).getTime() : undefined
-    const candidates = await collectSessionCandidates(params.scope, sinceMs, beforeMs)
-    const clampedLimit = Math.max(0, Math.min(params.limit, MAX_TOTAL_MATCHES))
-
-    const results: SessionResult[] = []
-    let totalMatches = 0
-    let sessionsSearched = 0
-
-    for (const candidate of candidates) {
-      if (totalMatches >= clampedLimit) break
-
-      const session = await readCandidateSession(candidate)
-      if (!session) continue
-
-      sessionsSearched++
-      const matches: Match[] = []
-
-      for await (const msg of MessageV2.stream({ scopeID: session.scope.id, sessionID: session.id })) {
-        if (matches.length >= MAX_MATCHES_PER_SESSION) break
-        if (totalMatches + matches.length >= clampedLimit) break
-
-        const match = searchMessage(msg, regex)
-        if (match) {
-          matches.push(match)
-        }
-      }
-
-      if (matches.length > 0) {
-        matches.reverse()
-        results.push({ session, matches })
-        totalMatches += matches.length
-      }
-    }
-
-    if (results.length === 0) {
-      return {
-        title: "No matches",
-        output: `No messages matching "${params.pattern}" found across ${sessionsSearched} searched session${sessionsSearched === 1 ? "" : "s"}.`,
-        metadata: { sessionsSearched, sessionsMatched: 0, matches: 0, candidateSessions: candidates.length } as Record<
-          string,
-          any
-        >,
-      }
-    }
-
-    const header = `Found ${totalMatches} match${totalMatches === 1 ? "" : "es"} across ${results.length} session${results.length === 1 ? "" : "s"} (searched ${sessionsSearched} of ${candidates.length} candidate session${candidates.length === 1 ? "" : "s"}):`
-    const formatted = results.map(formatResult)
-
-    return {
-      title: `${totalMatches} match${totalMatches === 1 ? "" : "es"} in ${results.length} session${results.length === 1 ? "" : "s"}`,
-      output: `${header}\n\n${formatted.join("\n\n")}`,
-      metadata: {
-        sessionsSearched,
-        matches: totalMatches,
-        sessions: results.length,
-        sessionsMatched: results.length,
-        candidateSessions: candidates.length,
-      } as Record<string, any>,
+      return await searchSessions(params, ctx)
+    } finally {
+      SessionMemoryPressure.signalRelease({
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        phase: "tool.session_search.complete",
+      })
     }
   },
 })

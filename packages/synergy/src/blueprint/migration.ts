@@ -400,6 +400,31 @@ export const migrations: Migration[] = [
       await migrateBlueprintLoopSource(progress)
     },
   },
+  {
+    id: "20260715-blueprint-loop-source-plugin",
+    description: "Allow plugin-owned BlueprintLoops with generation ownership metadata",
+    domain: "blueprint_loop",
+    dependsOn: ["20260708-blueprint-loop-source"],
+    async up(progress) {
+      progress(1, 1)
+    },
+    async down(progress) {
+      const scopeIDs = await Storage.scan(["blueprint_loops"])
+      for (const scopeID of scopeIDs) {
+        const scope = Identifier.asScopeID(scopeID)
+        const loopIDs = await Storage.scan(StoragePath.blueprintLoopsRoot(scope))
+        for (const loopID of loopIDs) {
+          const loop = await Storage.read<Record<string, unknown>>(StoragePath.blueprintLoop(scope, loopID)).catch(
+            () => undefined,
+          )
+          if (loop?.source === "plugin") {
+            throw new Error("Cannot roll back plugin BlueprintLoop ownership while plugin-owned loops exist.")
+          }
+        }
+      }
+      progress(1, 1)
+    },
+  },
 ]
 
 MigrationRegistry.register("blueprint_loop", migrations)

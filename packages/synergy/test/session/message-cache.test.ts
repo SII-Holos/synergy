@@ -12,7 +12,70 @@ function part(id: string, messageID: string, text = ""): MessageV2.Part {
 }
 
 describe("SessionMessageCache", () => {
-  beforeEach(() => SessionMessageCache.disable(SID))
+  beforeEach(() => {
+    SessionMessageCache.disable(SID)
+    SessionMessageCache.resetStatsForTest()
+  })
+
+  test("reports bounded footprint and hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    expect(SessionMessageCache.get(SID)).toBeUndefined()
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+
+    const entry = SessionMessageCache.stats().entries.find((item) => item.sessionID === SID)
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats()).toMatchObject({
+      activeCount: 1,
+      entryCount: 1,
+      hits: 1,
+      misses: 1,
+      evictions: 0,
+      protectedOverbudget: 0,
+    })
+    expect(entry?.estimatedBytes).toBeGreaterThan(0)
+    expect(SessionMessageCache.stats().totalBytes).toBe(entry!.estimatedBytes)
+  })
+
+  test("keeps the reported largest-entry list bounded", () => {
+    const sessionIDs = Array.from({ length: 140 }, (_, index) => `ses_cache_stats_${index}`)
+    try {
+      for (const [index, sessionID] of sessionIDs.entries()) {
+        SessionMessageCache.enable(sessionID)
+        SessionMessageCache.set(sessionID, [
+          {
+            info: { id: `msg_${index}`, sessionID, role: "user", time: { created: index } } as any,
+            parts: [
+              {
+                id: `prt_${index}`,
+                sessionID,
+                messageID: `msg_${index}`,
+                type: "text",
+                text: "x".repeat(index),
+              } as any,
+            ],
+          },
+        ])
+      }
+
+      const stats = SessionMessageCache.stats({ entryLimit: 20 })
+      expect(stats.entries).toHaveLength(20)
+      expect(stats.truncatedEntryCount).toBe(120)
+      expect(stats.entries[0].estimatedBytes).toBeGreaterThanOrEqual(stats.entries.at(-1)!.estimatedBytes)
+    } finally {
+      for (const sessionID of sessionIDs) SessionMessageCache.disable(sessionID)
+    }
+  })
+
+  test("upsert paths do not inflate hit/miss counters", () => {
+    SessionMessageCache.enable(SID)
+    SessionMessageCache.set(SID, [userMsg("msg_1")])
+    SessionMessageCache.resetStatsForTest()
+    SessionMessageCache.upsertMessage(SID, { id: "msg_2", sessionID: SID, role: "user" } as any)
+    SessionMessageCache.upsertPart(SID, part("prt_1", "msg_1", "a"))
+    expect(SessionMessageCache.stats()).toMatchObject({ hits: 0, misses: 0 })
+    expect(SessionMessageCache.get(SID)).toBeDefined()
+    expect(SessionMessageCache.stats().hits).toBe(1)
+  })
 
   test("get returns undefined outside the active window", () => {
     SessionMessageCache.set(SID, [userMsg("msg_1")])
@@ -169,7 +232,7 @@ describe("SessionMessageCache", () => {
     const B = "ses_evict_b"
     const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
     // Tiny budget so a single populated session already approaches it.
-    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "300"
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "700"
     try {
       const big = (sid: string): MessageV2.WithParts => ({
         info: { id: "msg_1", sessionID: sid, role: "user" } as any,
@@ -184,12 +247,34 @@ describe("SessionMessageCache", () => {
       SessionMessageCache.set(B, [big(B)])
       expect(SessionMessageCache.get(B)).toBeDefined()
       expect(SessionMessageCache.get(A)).toBeUndefined()
+      expect(SessionMessageCache.stats().evictions).toBe(1)
+      expect(SessionMessageCache.stats().totalBytes).toBeLessThanOrEqual(700)
       // A is still active, so a fresh read repopulates it transparently.
       SessionMessageCache.set(A, [big(A)])
       expect(SessionMessageCache.get(A)).toBeDefined()
     } finally {
       SessionMessageCache.disable(A)
       SessionMessageCache.disable(B)
+      if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+      else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
+    }
+  })
+
+  test("does not retain one session whose working set exceeds the byte budget", () => {
+    const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "300"
+    try {
+      SessionMessageCache.enable(SID)
+      SessionMessageCache.set(SID, [
+        {
+          info: { id: "msg_1", sessionID: SID, role: "user" } as any,
+          parts: [part("prt_1", "msg_1", "x".repeat(500))],
+        },
+      ])
+
+      expect(SessionMessageCache.get(SID)).toBeUndefined()
+    } finally {
+      SessionMessageCache.disable(SID)
       if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
       else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
     }

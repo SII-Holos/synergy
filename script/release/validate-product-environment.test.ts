@@ -15,6 +15,8 @@ function environment() {
     APPLE_TEAM_ID: "team-id",
     CSC_LINK: "mac-certificate",
     CSC_KEY_PASSWORD: "mac-certificate-password",
+    CSC_INSTALLER_LINK: "mac-installer-certificate",
+    CSC_INSTALLER_KEY_PASSWORD: "mac-installer-certificate-password",
     WINDOWS_CERTIFICATE: "windows-certificate",
     WINDOWS_CERTIFICATE_PASSWORD: "windows-certificate-password",
   }
@@ -27,8 +29,27 @@ describe("product release environment", () => {
 
   test("rejects missing signing material before publishing a candidate", () => {
     const env = environment()
+    delete (env as Partial<typeof env>).APPLE_TEAM_ID
+    expect(() => validateProductReleaseEnvironment(env)).toThrow(/APPLE_TEAM_ID/)
+  })
+
+  test("accepts unsigned Windows artifacts when both signing values are absent", () => {
+    const env = environment()
     delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE
-    expect(() => validateProductReleaseEnvironment(env)).toThrow(/WINDOWS_CERTIFICATE/)
+    delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE_PASSWORD
+    expect(() => validateProductReleaseEnvironment(env)).not.toThrow()
+  })
+
+  test("rejects a partially configured Windows signing identity", () => {
+    const env = environment()
+    delete (env as Partial<typeof env>).WINDOWS_CERTIFICATE_PASSWORD
+    expect(() => validateProductReleaseEnvironment(env)).toThrow(/WINDOWS_CERTIFICATE_PASSWORD/)
+  })
+
+  test("rejects a missing macOS Installer signing identity", () => {
+    const env = environment()
+    delete (env as Partial<typeof env>).CSC_INSTALLER_LINK
+    expect(() => validateProductReleaseEnvironment(env)).toThrow(/CSC_INSTALLER_LINK/)
   })
 
   test("rejects a mismatched Browser Host key pair", () => {

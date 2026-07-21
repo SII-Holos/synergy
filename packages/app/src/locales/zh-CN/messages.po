@@ -3399,6 +3399,10 @@ msgstr "知识库"
 msgid "app.name.synergy"
 msgstr "Synergy"
 
+#. js-lingui-explicit-id
+msgid "app.note.blueprint.pluginOwner"
+msgstr "来自 {plugin}"
+
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.runMode.active"
 msgstr "当前会话运行"
@@ -4136,7 +4140,7 @@ msgstr "CPU 与事件循环"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.desc"
-msgstr "以 MB 为单位显示 RSS、已用堆和总堆内存指标"
+msgstr "以 MB 为单位显示 RSS、堆、外部内存和 ArrayBuffer 内存指标"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4187,6 +4191,31 @@ msgstr "此范围内没有可用的存储指标"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.storage.title"
 msgstr "存储 I/O"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.arrayBuffers"
+msgstr "ArrayBuffer"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.external"
+msgstr "外部内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapTotal"
+msgstr "总堆"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapUsed"
+msgstr "已用堆"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.rss"
+msgstr "RSS"
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -4344,6 +4373,16 @@ msgstr "健康"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreams"
+msgstr "LLM 流"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreamsValue"
+msgstr "{streams} 个流 · {turns} 个 turn"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.runtime.lock"
 msgstr "运行时锁"
 
@@ -4360,6 +4399,16 @@ msgstr "未运行"
 #. runtime support values
 msgid "app.performance.runtime.lockStateUnknown"
 msgstr "未知"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCache"
+msgstr "消息缓存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCacheValue"
+msgstr "{bytes} · {entries} 个条目（{active} 个活跃）· 命中/未命中 {hits}/{misses} · 淘汰 {evictions} 次 · 受保护超预算 {protected} 次 · 最大 {largest}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4422,6 +4471,11 @@ msgstr "性能快照"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.arrayBuffers"
+msgstr "ArrayBuffer"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.cpu"
 msgstr "CPU"
 
@@ -4450,9 +4504,19 @@ msgstr "读取 {read} · 写入 {write}"
 msgid "app.performance.summary.eventLoop"
 msgstr "事件循环 p95"
 
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.external"
+msgstr "外部内存"
+
 #. summary cards
 msgid "app.performance.summary.health"
 msgstr "健康"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.heapUsed"
+msgstr "已用堆"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4648,32 +4712,92 @@ msgid "app.plugin.builtin.plugins"
 msgstr "插件"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.approveInstall"
+msgid "app.plugin.consent.addedGroup"
+msgstr "新增：{group}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.approvalFailed"
+msgstr "批准失败"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.approvalRequired"
+msgstr "此插件需要你的批准。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.approving"
+msgstr "正在批准…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.current.empty"
+msgstr "没有保持不变的现有权限。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.current.title"
+msgstr "当前权限"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.dialog.description"
+msgstr "{plugin} {version}。{description}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.approve"
 msgstr "批准并安装"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.deny"
-msgstr "拒绝"
+msgid "app.plugin.consent.install.description"
+msgstr "安装此插件前请审查其权限。"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.description"
-msgstr "{plugin} {version} 请求以下权限。"
+msgid "app.plugin.consent.install.title"
+msgstr "批准安装插件"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.emptyPermissions"
-msgstr "未声明特定权限。"
+msgid "app.plugin.consent.manifestChanged"
+msgstr "权限未发生变化，但插件清单已更改。批准前请审查元数据。"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.riskSummary"
-msgstr "安装此插件需要你的批准"
+msgid "app.plugin.consent.notNow"
+msgstr "暂不"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.approve"
+msgstr "批准并重新加载"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.description"
+msgstr "重新加载前请审查当前插件清单。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.title"
+msgstr "审查插件权限"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.empty"
+msgstr "没有要移除的权限。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.title"
+msgstr "已移除的权限"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reviewChanged"
+msgstr "你审查期间插件发生了变化"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.severityChanges"
 msgstr "严重级别变化"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.title"
-msgstr "安装插件"
+msgid "app.plugin.consent.update.approve"
+msgstr "批准并更新"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.description"
+msgstr "更新此插件前请审查权限变化。"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.title"
+msgstr "批准更新插件"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.install"
@@ -4686,6 +4810,14 @@ msgstr "已安装 v{version}"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.installing"
 msgstr "正在安装…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingReview"
+msgstr "正在加载审查信息…"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.reviewPermissions"
+msgstr "审查权限"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.uninstall"
@@ -4777,7 +4909,7 @@ msgstr "能力"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
-msgstr "{tools} 个工具 · {surfaces} 个 UI 界面"
+msgstr "{tools} 个工具 · {operations} 个操作 · {surfaces} 个 UI 界面"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.developmentRegistration"
@@ -4834,6 +4966,10 @@ msgstr "活跃"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.disabled"
 msgstr "已禁用"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.state.needsApproval"
+msgstr "需要批准"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
@@ -4996,18 +5132,6 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "插件已禁用"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.development"
-msgstr "开发"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.disabled"
-msgstr "已禁用"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.installed"
-msgstr "已安装"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.tools"
 msgstr "{count} 个工具"
 
@@ -5038,6 +5162,18 @@ msgstr "本地注册表"
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.source.official"
 msgstr "官方"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.active"
+msgstr "活跃"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.disabled"
+msgstr "已禁用"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.needsApproval"
+msgstr "需要批准"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.title"
@@ -9265,6 +9401,27 @@ msgstr "使用普通模式"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.useNormal.description"
 msgstr "Light Loop 会从下一条文本提示开始，而不是从 shell 模式开始。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.close"
+msgstr "关闭"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.description"
+msgstr "此会话的 worktree 已不存在。你的提示词已恢复。请先恢复缺失的 worktree，或切换到其他会话后再试。"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.title"
+msgstr "Worktree 不可用"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -15021,8 +15178,12 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.recommended"
-msgstr "推荐：{value}"
+msgid "settings.runtime.agents.concurrency.memorySafety"
+msgstr "内存安全限制：{value}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
+msgstr "由环境管理 · 内存安全限制：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

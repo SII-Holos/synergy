@@ -5,7 +5,7 @@ import { Session } from "./index"
 import { SessionManager } from "./manager"
 import { SessionAbort } from "./abort"
 
-type BlueprintLoopSource = "user" | "lattice"
+type BlueprintLoopSource = "user" | "lattice" | "plugin"
 
 function activeLoopStatus(status: string): boolean {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
@@ -29,7 +29,7 @@ export namespace SessionWorkflowService {
   export type SetInput =
     | { kind: "none" }
     | { kind: "plan" }
-    | { kind: "lightloop"; taskDescription: string }
+    | { kind: "lightloop"; instructions: string }
     | {
         kind: "lattice"
         mode: "auto" | "collaborative"
@@ -48,6 +48,8 @@ export namespace SessionWorkflowService {
       if (!workflow) return
       throw new Error(`User BlueprintLoops cannot start while the ${workflow.kind} workflow is active.`)
     }
+    // Plugin-owned loops are independently gated by the blueprint.delegate capability.
+    if (source === "plugin") return
 
     if (workflow?.kind === "lattice") return
     if (!workflow) {
@@ -62,6 +64,8 @@ export namespace SessionWorkflowService {
   ): Promise<Session.Info> {
     const session = await Session.get(sessionID)
     const workflow = session.workflow
+    // Plugin-owned loops do not replace or depend on the Session's interactive workflow.
+    if (source === "plugin") return session
     if (source === "user") {
       if (!workflow) return session
       if (workflow.kind === "plan" || workflow.kind === "lightloop") {
@@ -78,7 +82,7 @@ export namespace SessionWorkflowService {
   export async function set(sessionID: string, input: SetInput): Promise<Session.Info> {
     if (input.kind === "none") return setNone(sessionID)
     if (input.kind === "plan") return enablePlan(sessionID)
-    if (input.kind === "lightloop") return enableLightloop(sessionID, input.taskDescription)
+    if (input.kind === "lightloop") return startLightloop(sessionID, input.instructions)
     return enableLattice(sessionID, input)
   }
 
@@ -113,10 +117,10 @@ export namespace SessionWorkflowService {
     })
   }
 
-  export async function enableLightloop(sessionID: string, taskDescription: string): Promise<Session.Info> {
+  export async function startLightloop(sessionID: string, instructions: string): Promise<Session.Info> {
     SessionManager.assertIdle(sessionID)
-    const trimmed = taskDescription.trim()
-    if (!trimmed) throw new Error("taskDescription is required when enabling Light Loop.")
+    const trimmed = instructions.trim()
+    if (!trimmed) throw new Error("instructions is required when starting Light Loop.")
 
     const session = await Session.get(sessionID)
     if (session.workflow) {
@@ -124,16 +128,13 @@ export namespace SessionWorkflowService {
     }
     await assertNoActiveBlueprintLoop(session, "Light Loop")
     return Session.update(sessionID, (draft) => {
-      draft.workflow = { kind: "lightloop", taskDescription: trimmed }
+      draft.workflow = { kind: "lightloop", instructions: trimmed }
     })
   }
 
-  export async function updateLightloopTaskDescription(
-    sessionID: string,
-    taskDescription: string,
-  ): Promise<Session.Info> {
-    const trimmed = taskDescription.trim()
-    if (!trimmed) throw new Error("taskDescription is required when updating Light Loop.")
+  export async function updateLightloopInstructions(sessionID: string, instructions: string): Promise<Session.Info> {
+    const trimmed = instructions.trim()
+    if (!trimmed) throw new Error("instructions is required when updating Light Loop.")
 
     return Session.update(sessionID, (draft) => {
       if (draft.workflow?.kind !== "lightloop") {
@@ -142,7 +143,7 @@ export namespace SessionWorkflowService {
       if (draft.workflow.stopRequest) {
         throw new Error("Cannot update the Light Loop task while completion review is pending.")
       }
-      draft.workflow.taskDescription = trimmed
+      draft.workflow.instructions = trimmed
     })
   }
 
@@ -167,8 +168,8 @@ export namespace SessionWorkflowService {
     }
 
     const loop = await activeBlueprintLoop(session)
-    if (loop?.source === "user") {
-      throw new Error("Cannot enable Lattice while a user BlueprintLoop is active.")
+    if (loop?.source === "user" || loop?.source === "plugin") {
+      throw new Error(`Cannot enable Lattice while a ${loop.source} BlueprintLoop is active.`)
     }
 
     const run = await LatticeRunService.enable({

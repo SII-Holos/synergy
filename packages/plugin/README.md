@@ -10,6 +10,7 @@ export default definePlugin({
   id: "example",
   version: "1.0.0",
   description: "Example plugin",
+  assets: [{ source: "src/prompts", target: "runtime/prompts" }],
   capabilities: [capability("workspace.read"), capability("ui.hostActions")],
   contributions: [
     event({ id: "example.changed", payload: z.object({ reason: z.string() }) }),
@@ -41,6 +42,7 @@ export default definePlugin({
 - `operation()` defaults to `expose: ['ui']`; add `sdk` explicitly for public SDK access.
 - Zod and JSON Schema are accepted for operation, event, and tool schemas.
 - `activate()` runs once per runtime generation and does not receive Scope or Session state.
+- Top-level `assets` map project-relative files or directories into package-relative targets. Asset contents are integrity-checked and included in the generation hash.
 
 ## Contribution Factories
 
@@ -54,7 +56,9 @@ The generated manifest contains declarations only. Runtime startup reports its a
 
 Every executable call receives a fresh `PluginInvocationContext` with request ID, Scope, optional Session, actor, cancellation, logger, scoped events, and only the Host Services allowed by approved capabilities. Plugins never receive a raw Synergy client, server URL, or token.
 
-Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/get/cancel`; non-agent callers must provide an explicit parent Session/message in the active Scope. `tool.invoke` remains agent-only.
+Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/current/get/cancel`; `current()` reads the durable owner of the invoking child Session and is intended for correlation-based domain binding. Non-agent callers must provide an explicit parent Session/message in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of model prompts and the native `task` tool; the owner plugin can launch it only through an approved `task.delegate` allowlist, and execution still uses native Cortex and child Sessions. `tool.invoke` remains agent-only.
+
+`task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
 ## Trusted UI
 
