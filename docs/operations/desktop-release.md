@@ -36,7 +36,7 @@ Recommended Desktop installer artifacts:
 - `Synergy-darwin-x64-${version}.pkg`
 - `Synergy-darwin-arm64-${version}.pkg`
 - `Synergy-win32-x64-${version}.exe`
-- `Synergy-linux-x86_64-${version}.deb`
+- `Synergy-linux-amd64-${version}.deb`
 - `Synergy-linux-arm64-${version}.deb`
 - `Synergy-${version}-checksums.txt`
 
@@ -47,6 +47,8 @@ Portable and updater artifacts are still published but are not the full Desktop 
 - macOS `.zip` is required by updater metadata.
 - macOS `.dmg` is an app-bundle artifact and does not install the CLI link.
 - Linux `.AppImage` and `.tar.gz` are portable/debug artifacts and do not install global commands.
+
+Linux x64 artifact names follow each format's native architecture label: `amd64` for `.deb`, `x86_64` for `.AppImage`, and `x64` for `.tar.gz`.
 
 The Linux `.deb` depends on the system `bubblewrap` package. Linux portable artifacts require users to install Bubblewrap separately.
 

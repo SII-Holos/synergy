@@ -18,6 +18,7 @@ import { Observability, ObservabilityResources, ObservabilityStore } from "../ob
 import { Session } from "../session"
 import { Plugin } from "../plugin"
 import { PluginSpec } from "../util/plugin-spec"
+import { watchManagedParent } from "./managed-parent"
 
 const log = Log.create({ service: "server-runtime" })
 
@@ -73,6 +74,7 @@ export async function run(options: RuntimeOptions) {
 
   Server.mountApp()
   const server = Server.listen(options.network)
+  registerShutdown(server, processLock.release)
   const statuses: StartupReporter.StatusRow[] = []
 
   await GlobalRuntime.start()
@@ -102,8 +104,6 @@ export async function run(options: RuntimeOptions) {
     }
     renderBanner({ server, network: options.network, reporter: reporter ?? StartupReporter.create(), statuses })
   }
-
-  registerShutdown(server, processLock.release)
 
   if (process.env.SYNERGY_DAEMON === "1") {
     DaemonLogRotate.start()
@@ -322,6 +322,7 @@ function registerShutdown(
   releaseLock: () => Promise<void>,
 ) {
   let shuttingDown = false
+  let stopWatchingParent = () => {}
 
   const gracefulShutdown = async (signal: string) => {
     if (shuttingDown) {
@@ -334,6 +335,7 @@ function registerShutdown(
     }
 
     shuttingDown = true
+    stopWatchingParent()
     log.info("received signal, shutting down gracefully", { signal })
     await Observability.emit("shutdown.signal", {
       data: {
@@ -440,4 +442,8 @@ function registerShutdown(
 
   process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
   process.on("SIGINT", () => gracefulShutdown("SIGINT"))
+  stopWatchingParent = watchManagedParent({
+    expectedParentPid: process.env.SYNERGY_DESKTOP_PARENT_PID,
+    onParentExit: () => void gracefulShutdown("desktop-parent-exit"),
+  })
 }
