@@ -5,42 +5,17 @@ import fs from "fs/promises"
 import z from "zod"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { lazy } from "../util/lazy"
-import { $ } from "bun"
 
 import { ZipReader, BlobReader, BlobWriter } from "@zip.js/zip.js"
 import { Log } from "@/util/log"
+import { ProcessOutput } from "@/process/output"
 
 export namespace Ripgrep {
   const log = Log.create({ service: "ripgrep" })
-  const TERMINATE_GRACE_MS = 500
-  const TERMINATE_HARD_WAIT_MS = 1_000
   type RipgrepProcess = ReturnType<typeof Bun.spawn>
 
-  async function waitExited(proc: RipgrepProcess, timeoutMs: number) {
-    return Promise.race([
-      proc.exited.then(
-        () => true,
-        () => true,
-      ),
-      Bun.sleep(timeoutMs).then(() => false),
-    ])
-  }
-
   export async function terminate(proc: RipgrepProcess) {
-    proc.kill()
-    if (await waitExited(proc, TERMINATE_GRACE_MS)) return
-
-    if (process.platform === "win32" && proc.pid) {
-      const killer = Bun.spawn(["taskkill", "/pid", String(proc.pid), "/f", "/t"], {
-        stdout: "ignore",
-        stderr: "ignore",
-      })
-      await Promise.race([killer.exited.catch(() => undefined), Bun.sleep(TERMINATE_HARD_WAIT_MS)])
-    } else {
-      proc.kill("SIGKILL")
-    }
-
-    await waitExited(proc, TERMINATE_HARD_WAIT_MS)
+    await ProcessOutput.terminate(proc)
   }
 
   const Stats = z.object({
@@ -243,6 +218,60 @@ export namespace Ripgrep {
     return filepath
   }
 
+  export async function* matches(input: {
+    cwd: string
+    pattern: string
+    paths?: string[]
+    glob?: string[]
+    fixedStrings?: boolean
+    hidden?: boolean
+    follow?: boolean
+    maxCountPerFile?: number
+    sortModifiedDesc?: boolean
+    sortPath?: boolean
+    signal?: AbortSignal
+    maxRecordBytes?: number
+    maxOutputBytes?: number
+  }): AsyncGenerator<Match["data"]> {
+    const args = [await Ripgrep.filepath(), "--json", "--glob=!.git/*"]
+    if (input.fixedStrings) args.push("--fixed-strings")
+    if (input.hidden) args.push("--hidden")
+    if (input.follow) args.push("--follow")
+    if (input.maxCountPerFile !== undefined) args.push("--max-count", String(input.maxCountPerFile))
+    if (input.sortModifiedDesc) args.push("--sortr=modified")
+    if (input.sortPath) args.push("--sort=path")
+    for (const glob of input.glob ?? []) args.push(`--glob=${glob}`)
+    args.push("--", input.pattern, ...(input.paths?.length ? input.paths : ["."]))
+
+    const proc = Bun.spawn(args, {
+      cwd: input.cwd,
+      stdout: "pipe",
+      stderr: "pipe",
+    })
+    const stderrPromise = ProcessOutput.drainText(proc.stderr)
+    let reachedEnd = false
+
+    try {
+      for await (const line of ProcessOutput.lines(proc.stdout, {
+        maxRecordBytes: input.maxRecordBytes,
+        maxOutputBytes: input.maxOutputBytes,
+        signal: input.signal,
+      })) {
+        if (!line) continue
+        const result = Result.parse(JSON.parse(line))
+        if (result.type === "match") yield result.data
+      }
+
+      reachedEnd = true
+      const [exitCode, stderr] = await Promise.all([proc.exited, stderrPromise])
+      if (exitCode === 0 || exitCode === 1) return
+      throw new Error(`ripgrep failed: ${stderr.text.trim() || `exit code ${exitCode}`}`)
+    } finally {
+      if (!reachedEnd) await terminate(proc)
+      await stderrPromise.catch(() => undefined)
+    }
+  }
+
   export async function* files(input: {
     cwd: string
     glob?: string[]
@@ -343,7 +372,13 @@ export namespace Ripgrep {
 
   export async function tree(input: { cwd: string; limit?: number }) {
     log.info("tree", input)
-    const files = await Array.fromAsync(Ripgrep.files({ cwd: input.cwd }))
+    const files: string[] = []
+    const limit = input.limit ?? 50
+    for await (const file of Ripgrep.files({ cwd: input.cwd })) {
+      if (file.includes(".synergy")) continue
+      files.push(file)
+      if (files.length >= limit) break
+    }
     interface Node {
       path: string[]
       children: Node[]
@@ -372,7 +407,6 @@ export namespace Ripgrep {
       children: [],
     }
     for (const file of files) {
-      if (file.includes(".synergy")) continue
       const parts = file.split(path.sep)
       getPath(root, parts, true)
     }
@@ -396,7 +430,6 @@ export namespace Ripgrep {
     }
 
     let processed = 0
-    const limit = input.limit ?? 50
     while (current.length > 0) {
       const next = []
       for (const node of current) {
@@ -444,35 +477,17 @@ export namespace Ripgrep {
   }
 
   export async function search(input: { cwd: string; pattern: string; glob?: string[]; limit?: number }) {
-    const args = [`${await filepath()}`, "--json", "--hidden", "--glob='!.git/*'"]
-
-    if (input.glob) {
-      for (const g of input.glob) {
-        args.push(`--glob=${g}`)
-      }
+    const results: Match["data"][] = []
+    const limit = input.limit ?? 100
+    for await (const match of matches({
+      cwd: input.cwd,
+      pattern: input.pattern,
+      glob: input.glob,
+      hidden: true,
+    })) {
+      results.push(match)
+      if (results.length >= limit) break
     }
-
-    if (input.limit) {
-      args.push(`--max-count=${input.limit}`)
-    }
-
-    args.push("--")
-    args.push(input.pattern)
-
-    const command = args.join(" ")
-    const result = await $`${{ raw: command }}`.cwd(input.cwd).quiet().nothrow()
-    if (result.exitCode !== 0) {
-      return []
-    }
-
-    // Handle both Unix (\n) and Windows (\r\n) line endings
-    const lines = result.text().trim().split(/\r?\n/).filter(Boolean)
-    // Parse JSON lines from ripgrep output
-
-    return lines
-      .map((line) => JSON.parse(line))
-      .map((parsed) => Result.parse(parsed))
-      .filter((r) => r.type === "match")
-      .map((r) => r.data)
+    return results
   }
 }

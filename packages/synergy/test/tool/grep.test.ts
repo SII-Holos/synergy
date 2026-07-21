@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test"
 import path from "path"
+import fs from "fs/promises"
 import { GrepTool } from "../../src/tool/grep"
 import { ScopeContext } from "../../src/scope/context"
 import { tmpdir } from "../fixture/fixture"
@@ -105,6 +106,71 @@ describe("tool.grep", () => {
           ctx,
         )
         expect(result.metadata.matches).toBeGreaterThan(0)
+      },
+    })
+  })
+
+  test("returns newest matches first without retaining results beyond the global limit", async () => {
+    if (!rgAvailable) return
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        const older = path.join(dir, "older.ts")
+        const newer = path.join(dir, "newer.ts")
+        await Bun.write(older, "hit older\n")
+        await Bun.write(newer, `${Array.from({ length: 110 }, (_, index) => `hit ${index}`).join("\n")}\n`)
+        await fs.utimes(older, new Date("2020-01-01T00:00:00Z"), new Date("2020-01-01T00:00:00Z"))
+        await fs.utimes(newer, new Date("2021-01-01T00:00:00Z"), new Date("2021-01-01T00:00:00Z"))
+      },
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const grep = await GrepTool.init()
+        const result = await grep.execute({ pattern: "hit", path: tmp.path, include: "*.ts" }, ctx)
+        expect(result.metadata.matches).toBe(100)
+        expect(result.metadata.truncated).toBe(true)
+        expect(result.output).toContain("newer.ts")
+        expect(result.output).not.toContain("older.ts")
+      },
+    })
+  })
+
+  test("returns an explicit partial-result state for a pathological single-line match", async () => {
+    if (!rgAvailable) return
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "large.json"), `hit${"x".repeat(300 * 1024)}`)
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const grep = await GrepTool.init()
+        const result = await grep.execute({ pattern: "hit", path: tmp.path }, ctx)
+        expect(result.metadata.matches).toBe(0)
+        expect(result.metadata.truncated).toBe(true)
+        expect(result.metadata.truncatedReason).toBe("max_record_bytes")
+        expect(result.output).toContain("output safety limit")
+      },
+    })
+  })
+
+  test("preserves ripgrep failures for invalid regular expressions", async () => {
+    if (!rgAvailable) return
+
+    await using tmp = await tmpdir({
+      init: async (dir) => {
+        await Bun.write(path.join(dir, "file.txt"), "content\n")
+      },
+    })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const grep = await GrepTool.init()
+        await expect(grep.execute({ pattern: "[", path: tmp.path }, ctx)).rejects.toThrow("ripgrep failed")
       },
     })
   })

@@ -4,6 +4,7 @@ import path from "path"
 import { fileURLToPath } from "url"
 import type { AstGrepLanguage, CliMatch, SgResult } from "./types"
 import { DEFAULT_TIMEOUT_MS, DEFAULT_MAX_OUTPUT_BYTES, DEFAULT_MAX_MATCHES } from "./types"
+import { ProcessOutput } from "../../process/output"
 
 export interface RunOptions {
   pattern: string
@@ -14,6 +15,7 @@ export interface RunOptions {
   context?: number
   updateAll?: boolean
   cwd?: string
+  signal?: AbortSignal
 }
 
 function isValidBinary(filePath: string): boolean {
@@ -124,7 +126,7 @@ function getSgCliPath(): string {
 }
 
 export async function runSg(options: RunOptions): Promise<SgResult> {
-  const args = ["run", "-p", options.pattern, "--lang", options.lang, "--json=compact"]
+  const args = ["run", "-p", options.pattern, "--lang", options.lang, "--json=stream"]
 
   if (options.rewrite) {
     args.push("-r", options.rewrite)
@@ -147,7 +149,8 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
   args.push(...paths)
 
   const cliPath = getSgCliPath()
-  const timeout = DEFAULT_TIMEOUT_MS
+  const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT_MS)
+  const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal
 
   let proc: ReturnType<typeof spawn>
   try {
@@ -179,103 +182,92 @@ export async function runSg(options: RunOptions): Promise<SgResult> {
     }
   }
 
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    const id = setTimeout(() => {
-      proc.kill()
-      reject(new Error(`Search timeout after ${timeout}ms`))
-    }, timeout)
-    proc.exited.then(() => clearTimeout(id))
-  })
-
-  let stdout: string
-  let stderr: string
-
-  try {
-    const stdoutStream = proc.stdout
-    const stderrStream = proc.stderr
-    if (typeof stdoutStream === "number" || typeof stderrStream === "number") {
-      return {
-        matches: [],
-        totalMatches: 0,
-        truncated: false,
-        error: "Failed to capture output streams",
-      }
-    }
-    stdout = await Promise.race([new Response(stdoutStream).text(), timeoutPromise])
-    stderr = await new Response(stderrStream).text()
-    await proc.exited
-  } catch (e) {
-    const error = e as Error
-    if (error.message?.includes("timeout")) {
-      return {
-        matches: [],
-        totalMatches: 0,
-        truncated: true,
-        truncatedReason: "timeout",
-        error: error.message,
-      }
-    }
+  const stdoutStream = proc.stdout
+  const stderrStream = proc.stderr
+  if (!stdoutStream || !stderrStream || typeof stdoutStream === "number" || typeof stderrStream === "number") {
+    await ProcessOutput.terminate(proc)
     return {
       matches: [],
       totalMatches: 0,
       truncated: false,
-      error: `Failed to run ast-grep: ${error.message}`,
+      error: "Failed to capture output streams",
     }
   }
 
-  // Handle no output
-  if (!stdout.trim()) {
-    if (stderr.includes("No files found")) {
-      return { matches: [], totalMatches: 0, truncated: false }
-    }
-    if (stderr.trim()) {
-      return { matches: [], totalMatches: 0, truncated: false, error: stderr.trim() }
-    }
-    return { matches: [], totalMatches: 0, truncated: false }
-  }
+  const stderrPromise = ProcessOutput.drainText(stderrStream)
+  const matches: CliMatch[] = []
+  let totalMatches = 0
+  let stoppedEarly = false
+  let reachedEnd = false
+  let truncatedReason: SgResult["truncatedReason"]
+  let failure: Error | undefined
+  let abortReason: unknown
 
-  // Check if output is truncated
-  const outputTruncated = stdout.length >= DEFAULT_MAX_OUTPUT_BYTES
-  const outputToProcess = outputTruncated ? stdout.substring(0, DEFAULT_MAX_OUTPUT_BYTES) : stdout
-
-  let matches: CliMatch[] = []
   try {
-    matches = JSON.parse(outputToProcess) as CliMatch[]
-  } catch {
-    if (outputTruncated) {
-      // Try to parse partial JSON
-      try {
-        const lastValidIndex = outputToProcess.lastIndexOf("}")
-        if (lastValidIndex > 0) {
-          const bracketIndex = outputToProcess.lastIndexOf("},", lastValidIndex)
-          if (bracketIndex > 0) {
-            const truncatedJson = outputToProcess.substring(0, bracketIndex + 1) + "]"
-            matches = JSON.parse(truncatedJson) as CliMatch[]
-          }
-        }
-      } catch {
-        return {
-          matches: [],
-          totalMatches: 0,
-          truncated: true,
-          truncatedReason: "max_output_bytes",
-          error: "Output too large and could not be parsed",
-        }
+    for await (const line of ProcessOutput.lines(stdoutStream, {
+      maxRecordBytes: 256 * 1024,
+      maxOutputBytes: DEFAULT_MAX_OUTPUT_BYTES,
+      signal,
+    })) {
+      if (!line) continue
+      const match = JSON.parse(line) as CliMatch
+      totalMatches++
+      if (matches.length < DEFAULT_MAX_MATCHES) {
+        matches.push(match)
+        continue
       }
-    } else {
-      return { matches: [], totalMatches: 0, truncated: false }
+      truncatedReason = "max_matches"
+      stoppedEarly = true
+      break
     }
+    reachedEnd = !stoppedEarly
+  } catch (error) {
+    stoppedEarly = true
+    if (options.signal?.aborted) {
+      abortReason = options.signal.reason ?? new DOMException("Aborted", "AbortError")
+    } else if (timeoutSignal.aborted) {
+      truncatedReason = "timeout"
+    } else if (error instanceof ProcessOutput.LimitError) {
+      truncatedReason = "max_output_bytes"
+    } else {
+      failure = error instanceof Error ? error : new Error(String(error))
+    }
+  } finally {
+    if (!reachedEnd) await ProcessOutput.terminate(proc)
   }
 
-  const totalMatches = matches.length
-  const matchesTruncated = totalMatches > DEFAULT_MAX_MATCHES
-  const finalMatches = matchesTruncated ? matches.slice(0, DEFAULT_MAX_MATCHES) : matches
-
+  const [exitCode, stderr] = await Promise.all([proc.exited, stderrPromise])
+  if (abortReason) throw abortReason
+  if (failure) {
+    return {
+      matches,
+      totalMatches,
+      truncated: false,
+      error: `Failed to run ast-grep: ${failure.message}`,
+    }
+  }
+  if (truncatedReason === "timeout" && matches.length === 0) {
+    return {
+      matches,
+      totalMatches,
+      truncated: true,
+      truncatedReason,
+      error: `Search timeout after ${DEFAULT_TIMEOUT_MS}ms`,
+    }
+  }
+  if (exitCode !== 0 && exitCode !== 1 && !truncatedReason) {
+    return {
+      matches,
+      totalMatches,
+      truncated: false,
+      error: stderr.text.trim() || `ast-grep exited with code ${exitCode}`,
+    }
+  }
   return {
-    matches: finalMatches,
+    matches,
     totalMatches,
-    truncated: outputTruncated || matchesTruncated,
-    truncatedReason: outputTruncated ? "max_output_bytes" : matchesTruncated ? "max_matches" : undefined,
+    truncated: truncatedReason !== undefined,
+    truncatedReason,
   }
 }
 
@@ -293,7 +285,7 @@ export function formatSearchResult(result: SgResult): string {
   if (result.truncated) {
     const reason =
       result.truncatedReason === "max_matches"
-        ? `showing first ${result.matches.length} of ${result.totalMatches}`
+        ? `showing first ${result.matches.length} of at least ${result.totalMatches}`
         : result.truncatedReason === "max_output_bytes"
           ? "output exceeded 1MB limit"
           : "search timed out"

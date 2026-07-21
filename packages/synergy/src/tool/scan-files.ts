@@ -15,11 +15,11 @@ import {
   recordSeenSessionLines,
 } from "./anchored-file"
 import { ToolTimeout } from "./timeout"
+import { ProcessOutput } from "../process/output"
 
 const DEFAULT_FILE_LIMIT = 20
 const DEFAULT_PER_FILE_LIMIT = 20
 const SINGLE_FILE_PER_FILE_LIMIT = 200
-const INTERNAL_TOTAL_CAP = 2000
 const DEFAULT_TIMEOUT_MS = ToolTimeout.DEFAULTS.scanFilesMs
 
 function noMatchGuidance(params: { path?: string; include?: string; globs?: string[] }): string[] {
@@ -50,10 +50,11 @@ function formatNoMatches(params: { pattern: string; path?: string; include?: str
   return [...details, "", ...noMatchGuidance(params)].join("\n")
 }
 
-function formatRipgrepFailure(stderr: string): string {
+function formatRipgrepFailure(error: unknown): string {
+  const detail = error instanceof Error ? error.message.replace(/^ripgrep failed:\s*/, "") : String(error)
   return [
     "scan_files could not run this regular expression.",
-    stderr.trim(),
+    detail.trim(),
     "",
     "Check the regex syntax, escape literal metacharacters like (, ), [, ], {, }, and retry.",
     "If you meant a literal string, remove unnecessary regex punctuation or escape it.",
@@ -108,29 +109,61 @@ export const ScanFilesTool = Tool.define("scan_files", {
     })
 
     const searchPath = params.path ? resolveFilePath(params.path) : ScopeContext.current.directory
-    const rgPath = await Ripgrep.filepath()
     const perFileLimit = normalizePositiveInt(params.perFileLimit, DEFAULT_PER_FILE_LIMIT, SINGLE_FILE_PER_FILE_LIMIT)
     const limitFiles = normalizePositiveInt(params.limitFiles, DEFAULT_FILE_LIMIT, DEFAULT_FILE_LIMIT)
     const skipFiles = Math.max(params.skipFiles ?? 0, 0)
     const timeoutMs = Math.max(params.timeoutMs ?? DEFAULT_TIMEOUT_MS, 1000)
     const outputMode = params.outputMode ?? "matches"
 
-    const args = ["-nH", "--field-match-separator=|", "--max-count", String(perFileLimit), "--regexp", params.pattern]
-    if (params.include) args.push("--glob", params.include)
-    for (const glob of params.globs ?? []) args.push("--glob", glob)
-    args.push(searchPath)
+    const timeoutSignal = AbortSignal.timeout(timeoutMs)
+    const signal = ctx.abort ? AbortSignal.any([ctx.abort, timeoutSignal]) : timeoutSignal
+    const byFile = new Map<string, { count: number; lines: number[]; totalLines: number }>()
+    const fileIndexes = new Map<string, number>()
+    let observedMatches = 0
+    let hasNextFile = false
+    let truncatedReason: ProcessOutput.LimitReason | undefined
 
-    const proc = Bun.spawn([rgPath, ...args], { stdout: "pipe", stderr: "pipe" })
-    let timedOut = false
-    const timeout = setTimeout(() => {
-      timedOut = true
-      proc.kill()
-    }, timeoutMs)
-    const stdout = await new Response(proc.stdout).text()
-    const stderr = await new Response(proc.stderr).text()
-    const exitCode = await proc.exited.finally(() => clearTimeout(timeout))
-    if (timedOut) throw new Error(formatSearchTimeout(timeoutMs))
-    if (exitCode === 1)
+    try {
+      for await (const match of Ripgrep.matches({
+        cwd: ScopeContext.current.directory,
+        pattern: params.pattern,
+        paths: [searchPath],
+        glob: [...(params.include ? [params.include] : []), ...(params.globs ?? [])],
+        maxCountPerFile: perFileLimit,
+        sortPath: true,
+        signal,
+      })) {
+        observedMatches++
+        const filePath = match.path.text
+        let fileIndex = fileIndexes.get(filePath)
+        if (fileIndex === undefined) {
+          fileIndex = fileIndexes.size
+          fileIndexes.set(filePath, fileIndex)
+        }
+        if (fileIndex < skipFiles) continue
+        if (fileIndex >= skipFiles + limitFiles) {
+          hasNextFile = true
+          break
+        }
+
+        const lineNumber = match.line_number
+        const entry = byFile.get(filePath) ?? { count: 0, lines: [], totalLines: 0 }
+        entry.totalLines++
+        if (entry.lines.length < perFileLimit && !entry.lines.includes(lineNumber)) entry.lines.push(lineNumber)
+        entry.count++
+        byFile.set(filePath, entry)
+      }
+    } catch (error) {
+      if (ctx.abort?.aborted) throw ctx.abort.reason ?? new DOMException("Aborted", "AbortError")
+      if (timeoutSignal.aborted) throw new Error(formatSearchTimeout(timeoutMs))
+      if (error instanceof ProcessOutput.LimitError) {
+        truncatedReason = error.reason
+      } else {
+        throw new Error(formatRipgrepFailure(error))
+      }
+    }
+
+    if (observedMatches === 0 && !truncatedReason)
       return {
         title: params.pattern,
         metadata: {
@@ -149,30 +182,14 @@ export const ScanFilesTool = Tool.define("scan_files", {
           outputMode,
           oversizedFiles: [] as string[],
           guidance: noMatchGuidance(params),
+          truncatedReason: undefined as ProcessOutput.LimitReason | undefined,
         },
         output: formatNoMatches(params),
       }
-    if (exitCode !== 0) throw new Error(formatRipgrepFailure(stderr))
 
-    const rawMatches = stdout.trim().split(/\r?\n/).filter(Boolean)
-    const byFile = new Map<string, { count: number; lines: number[]; totalLines: number }>()
-    for (const line of rawMatches.slice(0, INTERNAL_TOTAL_CAP)) {
-      const [filePath, lineNumberRaw] = line.split("|")
-      const lineNumber = Number(lineNumberRaw)
-      if (!filePath || !Number.isInteger(lineNumber)) continue
-      const entry = byFile.get(filePath) ?? { count: 0, lines: [], totalLines: 0 }
-      entry.totalLines++
-      if (entry.lines.length < perFileLimit && !entry.lines.includes(lineNumber)) entry.lines.push(lineNumber)
-      entry.count++
-      byFile.set(filePath, entry)
-    }
-
-    const allFiles = [...byFile.keys()]
-    const selectedEntries = allFiles
-      .slice(skipFiles, skipFiles + limitFiles)
-      .map((filePath) => [filePath, byFile.get(filePath)!] as const)
-    const limitReached = rawMatches.length > INTERNAL_TOTAL_CAP || allFiles.length > skipFiles + limitFiles
-    const nextSkipFiles = allFiles.length > skipFiles + limitFiles ? skipFiles + limitFiles : undefined
+    const selectedEntries = [...byFile.entries()]
+    const limitReached = hasNextFile || truncatedReason !== undefined
+    const nextSkipFiles = limitReached && selectedEntries.length ? skipFiles + selectedEntries.length : undefined
 
     const blocks: string[] = []
     const files: string[] = []
@@ -223,7 +240,7 @@ export const ScanFilesTool = Tool.define("scan_files", {
       title: params.pattern,
       output: blocks.length ? `${blocks.join("\n\n")}${footer}${oversized}` : formatNoMatches(params),
       metadata: {
-        matches: rawMatches.length,
+        matches: observedMatches,
         files,
         matchLines,
         tags,
@@ -231,12 +248,13 @@ export const ScanFilesTool = Tool.define("scan_files", {
         truncated: limitReached || oversizedFiles.length > 0,
         limitReached,
         nextSkipFiles,
-        totalFiles: allFiles.length,
+        totalFiles: fileIndexes.size,
         perFileLimit,
         limitFiles,
         skipFiles,
         outputMode,
         oversizedFiles,
+        truncatedReason,
         guidance: blocks.length ? [] : noMatchGuidance(params),
       },
     }
