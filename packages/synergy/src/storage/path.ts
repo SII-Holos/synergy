@@ -170,6 +170,9 @@ export namespace StoragePath {
     messageId,
   ]
 
+  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
+  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
+
   export const githubDeliveriesRoot = () => ["github", "deliveries"]
   export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]
   export const githubRuntimeState = () => ["github", "runtime"]

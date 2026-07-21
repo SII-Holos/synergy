@@ -4,6 +4,7 @@ import type { MessageV2 } from "@/session/message-v2"
 import type { SandboxExecutionWrapper } from "@/sandbox/backend"
 
 export type BashParams = SynergyLinkBash.ExecutePayload & {
+  targetID?: string
   linkID?: string
   envID?: string
   backgroundAfterSeconds?: number

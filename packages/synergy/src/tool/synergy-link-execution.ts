@@ -1,9 +1,11 @@
 import { SynergyLinkIdentity } from "@ericsanchezok/synergy-link-protocol"
 import type { SynergyLinkClient } from "@ericsanchezok/synergy-link-protocol"
+import { SynergyLinkTargetStore } from "@/synergy-link/target-store"
 
 export namespace SynergyLinkExecution {
   export interface SessionRecord {
     linkID: SynergyLinkIdentity.LinkID
+    targetID?: string
     targetAgentID: string
     sessionID: SynergyLinkIdentity.SessionID
     status: "opened" | "closed"
@@ -20,7 +22,6 @@ export namespace SynergyLinkExecution {
         session: SessionRecord
         client: SynergyLinkClient.ExecutionClient
       }
-    | { kind: "local_fallback"; warning: SynergyLinkIdentity.Warning }
 
   let client: SynergyLinkClient.ExecutionClient | null = null
   const sessions = new Map<SynergyLinkIdentity.LinkID, SessionRecord>()
@@ -76,63 +77,70 @@ export namespace SynergyLinkExecution {
     return session
   }
 
-  export function resolveExecutionTarget(input: {
+  export async function resolveExecutionTarget(input: {
+    targetID?: string
+    targetIDSupplied: boolean
     linkID?: string
     linkIDSupplied: boolean
     tool: "bash" | "process"
-  }): ExecutionTarget {
-    if (!input.linkIDSupplied) {
+    agent: string
+  }): Promise<ExecutionTarget> {
+    if (!input.linkIDSupplied && !input.targetIDSupplied) {
       return { kind: "local" }
     }
 
+    if (input.linkIDSupplied && input.targetIDSupplied) {
+      throw new Error("Specify targetID or linkID, not both.")
+    }
+
+    if (input.targetIDSupplied) {
+      const target = await SynergyLinkTargetStore.require(input.targetID ?? "")
+      if (!target.enabled) throw new Error(`Synergy Link target is disabled: ${target.id}`)
+      SynergyLinkTargetStore.assertAgentAccess(target, input.agent)
+      return resolveRemoteTarget({
+        linkID: target.linkID,
+        targetID: target.id,
+        targetAgentID: target.targetAgentID,
+        tool: input.tool,
+      })
+    }
+
     const resolution = SynergyLinkIdentity.resolve(input.linkID)
-    if (resolution.kind === "local") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.invalid_link_id", input.linkID ?? "", false),
-      }
-    }
-
     if (resolution.kind === "invalid") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.invalid_link_id", resolution.input, false),
-      }
+      throw new SynergyLinkIdentity.InvalidLinkIDError(resolution.input, resolution.reason)
     }
-
-    if (!client) {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.not_connected", resolution.linkID, true),
-      }
+    if (resolution.kind === "local") {
+      throw new SynergyLinkIdentity.InvalidLinkIDError(input.linkID, "missing")
     }
+    const remote = resolveRemoteTarget({ linkID: resolution.linkID, tool: input.tool })
+    const registeredTarget = await SynergyLinkTargetStore.findByLocator(resolution.linkID, remote.session.targetAgentID)
+    if (registeredTarget) {
+      if (!registeredTarget.enabled) throw new Error(`Synergy Link target is disabled: ${registeredTarget.id}`)
+      SynergyLinkTargetStore.assertAgentAccess(registeredTarget, input.agent)
+    }
+    return remote
+  }
 
-    const session = sessions.get(resolution.linkID)
+  function resolveRemoteTarget(input: {
+    linkID: SynergyLinkIdentity.LinkID
+    targetID?: string
+    targetAgentID?: string
+    tool: "bash" | "process"
+  }): Extract<ExecutionTarget, { kind: "remote" }> {
+    const activeClient = requireClient(input.linkID, input.tool)
+    const session = sessions.get(input.linkID)
     if (!session || session.status !== "opened") {
-      return {
-        kind: "local_fallback",
-        warning: warning("synergy_link.no_active_session", resolution.linkID, true),
-      }
+      throw new NoSessionError(input.linkID)
+    }
+    if (input.targetID && session.targetID && session.targetID !== input.targetID) {
+      throw new NoSessionError(input.linkID)
+    }
+    if (input.targetAgentID && session.targetAgentID !== input.targetAgentID) {
+      throw new NoSessionError(input.linkID)
     }
 
     session.lastUsedAt = Date.now()
-    return { kind: "remote", linkID: resolution.linkID, session, client }
-  }
-
-  export function withLocalFallbackWarning<T extends { output: string; metadata: Record<string, unknown> }>(
-    result: T,
-    warning: SynergyLinkIdentity.Warning,
-  ): T {
-    const warnings = Array.isArray(result.metadata.warnings) ? result.metadata.warnings : []
-    return {
-      ...result,
-      metadata: {
-        ...result.metadata,
-        backend: "local",
-        warnings: [...warnings, warning],
-      },
-      output: `${visibleWarning(warning)}\n\n${result.output}`,
-    }
+    return { kind: "remote", linkID: input.linkID, session, client: activeClient }
   }
 
   export class NotConnectedError extends Error {
@@ -153,41 +161,5 @@ export namespace SynergyLinkExecution {
       super(`No active Synergy Link session for link "${linkID}". Open a session first with the connect tool.`)
       this.name = "SynergyLinkNoSessionError"
     }
-  }
-
-  function warning(
-    code: SynergyLinkIdentity.Warning["code"],
-    requestedLinkID: string,
-    retryable: boolean,
-  ): SynergyLinkIdentity.Warning {
-    if (code === "synergy_link.invalid_link_id") {
-      return {
-        code,
-        message: `Requested linkID "${requestedLinkID}" is invalid, so this operation ran locally.`,
-        reminder: "Omit linkID for intentional local execution. To run remotely, connect a Synergy Link target first.",
-        requestedLinkID,
-        retryable,
-      }
-    }
-    if (code === "synergy_link.not_connected") {
-      return {
-        code,
-        message: `Requested link "${requestedLinkID}" is not connected, so this operation ran locally.`,
-        reminder: "Open a Synergy Link session with connect before targeting this linkID.",
-        requestedLinkID,
-        retryable,
-      }
-    }
-    return {
-      code,
-      message: `Requested link "${requestedLinkID}" has no active session, so this operation ran locally.`,
-      reminder: "Open a Synergy Link session with connect before remote execution.",
-      requestedLinkID,
-      retryable,
-    }
-  }
-
-  function visibleWarning(warning: SynergyLinkIdentity.Warning) {
-    return `[Synergy Link warning: ${warning.message} ${warning.reminder}]`
   }
 }

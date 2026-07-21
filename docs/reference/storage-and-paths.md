@@ -48,6 +48,7 @@ data/lattice/runs/<scope>/
 data/lattice/events/<scope>/
 data/holos/contacts/
 data/holos/mailbox/
+data/synergy_link/targets/
 data/stats/
 data/github/deliveries/
 data/github/ci/
@@ -56,6 +57,8 @@ data/github/poll-state/
 ```
 
 GitHub integration deliveries, CI failure state, runtime anchors, and per-repository poll state live under `data/github/`. Each delivery is keyed by its synthetic delivery GUID. Poll state files use URI-encoded repository names.
+
+Synergy Link targets live under `data/synergy_link/targets/`, one JSON record per stable target ID. They contain routing identifiers, local visibility policy, authorization state, and last observed host capabilities. Holos account secrets remain in `data/auth/` and are never copied into target records.
 
 Inside a session, `info.json`, `summary.json`, `summary_cursor.json`, `todo.json`, `dag.json`, `inbox/`, `messages/`, and `history/` are separate records. The summary cursor is derived, discardable state used to extend cumulative diff ranges from bounded loop messages; missing cursors rebuild from session history, and rollback or unrollback invalidates them. Message info and each part are independently addressable, which supports streaming writes and narrow reads.
 

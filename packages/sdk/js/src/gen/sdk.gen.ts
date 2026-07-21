@@ -493,6 +493,17 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  SynergyLinkTargetCreateErrors,
+  SynergyLinkTargetCreateInput,
+  SynergyLinkTargetCreateResponses,
+  SynergyLinkTargetPatchInput,
+  SynergyLinkTargetProbeErrors,
+  SynergyLinkTargetProbeResponses,
+  SynergyLinkTargetRemoveErrors,
+  SynergyLinkTargetRemoveResponses,
+  SynergyLinkTargetsResponses,
+  SynergyLinkTargetUpdateErrors,
+  SynergyLinkTargetUpdateResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -4452,6 +4463,127 @@ export class Holos extends HeyApiClient {
   outbox = new Outbox({ client: this.client })
 
   thread = new Thread({ client: this.client })
+}
+
+export class SynergyLink extends HeyApiClient {
+  /**
+   * List Synergy Link targets
+   *
+   * List the persisted remote Synergy targets available on this installation.
+   */
+  public targets<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<SynergyLinkTargetsResponses, unknown, ThrowOnError>({
+      url: "/synergy-link/targets",
+      ...options,
+    })
+  }
+
+  /**
+   * Create a Synergy Link target
+   */
+  public targetCreate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      synergyLinkTargetCreateInput?: SynergyLinkTargetCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "synergyLinkTargetCreateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      SynergyLinkTargetCreateResponses,
+      SynergyLinkTargetCreateErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a Synergy Link target
+   */
+  public targetRemove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<
+      SynergyLinkTargetRemoveResponses,
+      SynergyLinkTargetRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a Synergy Link target
+   */
+  public targetUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      synergyLinkTargetPatchInput?: SynergyLinkTargetPatchInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { key: "synergyLinkTargetPatchInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SynergyLinkTargetUpdateResponses,
+      SynergyLinkTargetUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Test a Synergy Link target
+   *
+   * Open or heartbeat a remote session to verify authorization and observe host capabilities.
+   */
+  public targetProbe<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<
+      SynergyLinkTargetProbeResponses,
+      SynergyLinkTargetProbeErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}/probe",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class Github extends HeyApiClient {
@@ -10555,6 +10687,8 @@ export class SynergyClient extends HeyApiClient {
   performance = new Performance({ client: this.client })
 
   holos = new Holos({ client: this.client })
+
+  synergyLink = new SynergyLink({ client: this.client })
 
   github = new Github({ client: this.client })
 

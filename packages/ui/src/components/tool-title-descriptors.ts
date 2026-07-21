@@ -128,6 +128,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   connect_closing: d("tool.title.connect-closing", "Closing"),
   connect_status: d("tool.title.connect-status", "View connection status"),
   connect_list: d("tool.title.connect-list", "View connections"),
+  connect_list_targets: d("tool.title.connect-list-targets", "View Link targets"),
   connect_connected: d("tool.title.connected", "Connected"),
   connect_disconnected: d("tool.title.disconnected", "Disconnected"),
   worktree_enter: d("tool.title.enter-worktree", "Enter isolated workspace"),

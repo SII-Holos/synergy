@@ -27,6 +27,7 @@ export const BUILTIN_SETTINGS_IDS = [
   "providers",
   "usage",
   "github",
+  "synergy-link",
   "learning",
   "memory",
   "experience",
@@ -178,6 +179,23 @@ const BUILTIN_SETTINGS_COPY = {
       message: "github | gh | issue | pull request | release | token",
       comment: SEARCH_TERMS_COMMENT,
     },
+  },
+  "synergy-link": {
+    label: { id: "settings.catalog.synergyLink.label", message: "Synergy Link" },
+    description: {
+      id: "settings.catalog.synergyLink.description",
+      message: "Persisted remote Synergy targets, authorization, and observed host details.",
+    },
+    searchTerms: {
+      id: "settings.catalog.synergyLink.searchTerms",
+      message: "synergy link | remote host | target | agent | link id | key",
+      comment: SEARCH_TERMS_COMMENT,
+    },
+    rowLabels: [
+      { id: "settings.catalog.synergyLink.row.targets", message: "Targets" },
+      { id: "settings.catalog.synergyLink.row.targetAgentID", message: "Target agent ID" },
+      { id: "settings.catalog.synergyLink.row.linkID", message: "Link ID" },
+    ],
   },
   learning: {
     label: { id: "settings.catalog.learning.label", message: "Learning" },
@@ -444,6 +462,7 @@ export const BUILTIN_SETTINGS_SECTIONS: SettingsCatalogSection[] = [
   section("providers", "core", 50, "providers.main", ["providers"]),
   section("usage", "core", 60, "settings.usage", ["providers"]),
   section("github", "integrations", 5, "github.main", ["providers"]),
+  section("synergy-link", "integrations", 8, "synergyLink.main"),
   section("learning", "library", 10, "settings.learning", ["library"]),
   section("memory", "library", 20, "memory.main", ["library", "general"]),
   section("experience", "library", 30, "experience.main", ["library"]),

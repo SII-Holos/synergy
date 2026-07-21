@@ -12477,6 +12477,30 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "沙箱 | 隔离 | 降级"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.description"
+msgstr "持久化的远程 Synergy 目标、授权状态和已观测的主机信息。"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.label"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targetAgentID"
+msgstr "目标 Agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targets"
+msgstr "目标"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.searchTerms"
+msgstr "synergy link | 远程主机 | 目标 | agent | link id | 密钥"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr "设置智能体响应、子智能体并发和各类操作超时。"
 
@@ -15349,6 +15373,158 @@ msgid "settings.stepScale.customValue"
 msgstr "自定义 {value}"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.action"
+msgstr "添加目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.description"
+msgstr "从 B 复制目标 Agent ID 和 Link ID。首次连接仍需在 B 上批准。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.title"
+msgstr "添加目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.approved"
+msgstr "已批准"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.revoked"
+msgstr "已撤销"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.unverified"
+msgstr "未验证"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.idle"
+msgstr "就绪"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.offline"
+msgstr "Holos 离线"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.description"
+msgstr "添加目标后，Agent 就能通过稳定的目标 ID 发现并连接它。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.title"
+msgstr "还没有 Link 目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.enabled"
+msgstr "已启用"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents"
+msgstr "允许的本地 Agent"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.description"
+msgstr "以逗号分隔 Synergy Agent 名称。留空表示所有本地 Agent 均可发现此目标。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.placeholder"
+msgstr "synergy, build"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID.placeholder"
+msgstr "link_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name"
+msgstr "名称"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name.placeholder"
+msgstr "构建 Mac"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.stableTargetID"
+msgstr "稳定目标 ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID"
+msgstr "目标 Agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID.placeholder"
+msgstr "agent_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.notObserved"
+msgstr "尚未观测"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.title"
+msgstr "已观测主机"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.description"
+msgstr "持久化本实例可控制的 Synergy 主机，并查看最近观测到的主机身份。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.title"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.refresh"
+msgstr "刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove"
+msgstr "移除"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.description"
+msgstr "Agent 将无法再发现此目标。此操作不会修改 B 的信任列表。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.title"
+msgstr "移除 Link 目标？"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.save"
+msgstr "保存"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.description"
+msgstr "目标会保存路由标识、授权状态和已观测的主机能力，但不会保存 B 的 Holos 凭据。"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.title"
+msgstr "目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.test"
+msgstr "测试连接"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.created"
+msgstr "已添加 Link 目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.failed"
+msgstr "Synergy Link 操作失败"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.saved"
+msgstr "已保存 Link 目标"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.tested"
+msgstr "连接测试已完成"
+
+#. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "这些账号被拒绝，并会留在这里，直到其凭据恢复。"
 
@@ -15855,6 +16031,10 @@ msgstr "正在关闭"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-list"
 msgstr "查看连接"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.connect-list-targets"
+msgstr "查看 Link 目标"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-opening"

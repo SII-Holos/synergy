@@ -1610,6 +1610,238 @@
         ]
       }
     },
+    "/synergy-link/targets": {
+      "get": {
+        "operationId": "synergyLink.targets",
+        "summary": "List Synergy Link targets",
+        "description": "List the persisted remote Synergy targets available on this installation.",
+        "responses": {
+          "200": {
+            "description": "Persisted Synergy Link targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SynergyLinkTargetView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targets({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "synergyLink.targetCreate",
+        "summary": "Create a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Created target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynergyLinkTargetCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetCreate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/synergy-link/targets/{id}": {
+      "patch": {
+        "operationId": "synergyLink.targetUpdate",
+        "summary": "Update a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Updated target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynergyLinkTargetPatchInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetUpdate({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "synergyLink.targetRemove",
+        "summary": "Remove a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Target removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTargetRemoveResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetRemove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/synergy-link/targets/{id}/probe": {
+      "post": {
+        "operationId": "synergyLink.targetProbe",
+        "summary": "Test a Synergy Link target",
+        "description": "Open or heartbeat a remote session to verify authorization and observe host capabilities.",
+        "responses": {
+          "200": {
+            "description": "Observed target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTargetView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetProbe({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/agenda": {
       "get": {
         "operationId": "global.agenda.list",
@@ -22121,6 +22353,317 @@
         },
         "required": ["success"]
       },
+      "SynergyLinkHostObservation": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.host.hello"
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "hostSessionID": {
+            "description": "Synergy Link host session identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "type": "string"
+              },
+              "arch": {
+                "type": "string"
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string",
+                "enum": ["node", "bun", "unknown"]
+              },
+              "defaultShell": {
+                "type": "string",
+                "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
+              },
+              "supportedShells": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
+                }
+              },
+              "supportsPty": {
+                "type": "boolean"
+              },
+              "supportsSendKeys": {
+                "type": "boolean"
+              },
+              "supportsSoftKill": {
+                "type": "boolean"
+              },
+              "supportsProcessGroups": {
+                "type": "boolean"
+              },
+              "envCaseInsensitive": {
+                "type": "boolean"
+              },
+              "lineEndings": {
+                "type": "string",
+                "enum": ["lf", "crlf"]
+              }
+            },
+            "required": [
+              "platform",
+              "arch",
+              "runtime",
+              "defaultShell",
+              "supportedShells",
+              "supportsPty",
+              "supportsSendKeys",
+              "supportsSoftKill",
+              "supportsProcessGroups",
+              "envCaseInsensitive",
+              "lineEndings"
+            ]
+          },
+          "observedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["type", "linkID", "hostSessionID", "capabilities", "observedAt"],
+        "additionalProperties": false
+      },
+      "SynergyLinkProbe": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["reachable", "refused", "busy", "failed"]
+          },
+          "checkedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["status", "checkedAt"]
+      },
+      "SynergyLinkTargetView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^target_[0-9a-f-]{36}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "authorization": {
+            "type": "string",
+            "enum": ["unverified", "approved", "revoked"]
+          },
+          "host": {
+            "$ref": "#/components/schemas/SynergyLinkHostObservation"
+          },
+          "lastProbe": {
+            "$ref": "#/components/schemas/SynergyLinkProbe"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "availability": {
+            "type": "string",
+            "enum": ["holos_offline", "idle", "connected"]
+          },
+          "sessionID": {
+            "description": "Synergy Link session identifier",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "targetAgentID",
+          "linkID",
+          "allowedAgents",
+          "authorization",
+          "createdAt",
+          "updatedAt",
+          "availability"
+        ]
+      },
+      "SynergyLinkTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^target_[0-9a-f-]{36}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "authorization": {
+            "type": "string",
+            "enum": ["unverified", "approved", "revoked"]
+          },
+          "host": {
+            "$ref": "#/components/schemas/SynergyLinkHostObservation"
+          },
+          "lastProbe": {
+            "$ref": "#/components/schemas/SynergyLinkProbe"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "targetAgentID",
+          "linkID",
+          "allowedAgents",
+          "authorization",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "SynergyLinkTargetCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowedAgents": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": ["name", "targetAgentID", "linkID"],
+        "additionalProperties": false
+      },
+      "NotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SynergyLinkTargetPatchInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SynergyLinkTargetRemoveResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["success"]
+      },
       "AgendaTriggerAt": {
         "type": "object",
         "properties": {
@@ -22769,25 +23312,6 @@
           }
         },
         "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
-      },
-      "NotFoundError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "NotFoundError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "Model": {
         "type": "object",
@@ -38661,6 +39185,64 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.plugin.event": {
         "type": "object",
         "properties": {
@@ -39313,6 +39895,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

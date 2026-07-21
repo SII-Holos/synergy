@@ -1,5 +1,6 @@
 import z from "zod"
 import { SynergyLinkEnvelope } from "./envelope"
+import { SynergyLinkHost } from "./host"
 import { SynergyLinkIdentity } from "./identity"
 
 export namespace SynergyLinkSession {
@@ -42,6 +43,7 @@ export namespace SynergyLinkSession {
     linkID: SynergyLinkIdentity.LinkID.optional(),
     backend: z.enum(["local", "remote"]).optional(),
     warnings: z.array(SynergyLinkIdentity.Warning).optional(),
+    host: SynergyLinkHost.Hello.optional(),
   })
   export type ResultMetadata = z.infer<typeof ResultMetadata>
 
