@@ -91,7 +91,7 @@ describe("session_search", () => {
     })
   })
 
-  test("requests a full collection after releasing searched messages", async () => {
+  test("signals after releasing searched messages without choosing GC policy", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -99,13 +99,15 @@ describe("session_search", () => {
         const session = await Session.create({ title: "Collect" })
         await writeMessage(session.id, Identifier.ascending("message"), "searchable text", 100)
 
-        using collect = spyOn(SessionMemoryPressure, "maybeCollect").mockResolvedValue({} as never)
+        using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
         const tool = await SessionSearchTool.init()
         await tool.execute({ pattern: "searchable", scope: "current", limit: 10 }, ctx)
 
-        expect(collect).toHaveBeenCalledWith(
-          expect.objectContaining({ phase: "tool.session_search.complete", forceFull: true }),
-        )
+        expect(release).toHaveBeenCalledWith(expect.objectContaining({ phase: "tool.session_search.complete" }))
+        for (const [input] of release.mock.calls) {
+          expect(input).not.toHaveProperty("full")
+          expect(input).not.toHaveProperty("forceFull")
+        }
       },
     })
   })

@@ -1,4 +1,5 @@
 import { formatLocalDateTime } from "@/util/time-format"
+import { Log } from "@/util/log"
 import z from "zod"
 import { Tool } from "./tool"
 import { Session } from "../session"
@@ -9,6 +10,8 @@ import { SessionMemoryPressure } from "../session/memory-pressure"
 import { Scope } from "@/scope"
 import { Identifier } from "../id/id"
 import DESCRIPTION from "./session-read.txt"
+
+const log = Log.create({ service: "tool.session-read" })
 
 const parameters = z.object({
   target: z.string().describe("Session to read. A session ID (ses_xxx)."),
@@ -87,14 +90,19 @@ async function hydrateMessages(input: {
   const messages: MessageV2.WithParts[] = []
   for (const info of input.infos) {
     input.abort.throwIfAborted()
-    messages.push({
-      info,
-      parts: await MessageV2.parts({
-        scopeID: input.scopeID,
-        sessionID: input.sessionID,
-        messageID: info.id,
-      }),
-    })
+    try {
+      messages.push({
+        info,
+        parts: await MessageV2.parts({
+          scopeID: input.scopeID,
+          sessionID: input.sessionID,
+          messageID: info.id,
+        }),
+      })
+    } catch (error) {
+      input.abort.throwIfAborted()
+      log.warn("skipping unreadable message", { sessionID: input.sessionID, messageID: info.id, error })
+    }
   }
   return messages
 }
@@ -183,11 +191,10 @@ export const SessionReadTool = Tool.define("session_read", {
     try {
       return await readSession(params, ctx)
     } finally {
-      await SessionMemoryPressure.maybeCollect({
+      SessionMemoryPressure.signalRelease({
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
         phase: "tool.session_read.complete",
-        forceFull: true,
       })
     }
   },

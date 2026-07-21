@@ -3,6 +3,7 @@ import { Log } from "@/util/log"
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
   const GIB = 1024 ** 3
+  const RELEASE_COALESCE_MS = 1_000
 
   export type Snapshot = {
     rssBytes: number
@@ -26,11 +27,31 @@ export namespace SessionMemoryPressure {
     | { action: "unavailable"; reason: "gc_unavailable"; critical: boolean }
     | { action: "skip"; reason: "interval"; critical: false; nextEligibleAt: number }
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
-    | { action: "full_forced"; reason: "caller_requested"; critical: false }
     | { action: "critical_forced"; reason: "critical_pressure"; critical: true }
+
+  type CollectionInput = {
+    sessionID?: string
+    messageID?: string
+    phase: string
+    now?: () => number
+    snapshot?: () => Snapshot | Promise<Snapshot>
+    collect?: (synchronous: boolean) => void | Promise<void>
+    env?: NodeJS.ProcessEnv
+  }
+
+  type CollectionResult = {
+    decision: Decision
+    before: Snapshot
+    after?: Snapshot
+  }
+
+  type ReleaseResult = CollectionResult & { releaseCount: number }
 
   let lastGCAt = 0
   let cachedCgroupDir: string | undefined | null
+  let pendingRelease: { count: number; input: CollectionInput } | undefined
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined
+  let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
 
   export function currentSnapshot(): Snapshot {
     const memory = process.memoryUsage()
@@ -70,7 +91,6 @@ export namespace SessionMemoryPressure {
     now: number
     lastGCAt: number
     gcAvailable: boolean
-    forceFull?: boolean
   }): Decision {
     const critical =
       input.snapshot.rssBytes >= input.thresholds.rssCriticalBytes ||
@@ -79,7 +99,6 @@ export namespace SessionMemoryPressure {
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
     if (critical) return { action: "critical_forced", reason: "critical_pressure", critical: true }
-    if (input.forceFull) return { action: "full_forced", reason: "caller_requested", critical: false }
 
     const nextEligibleAt = input.lastGCAt + input.thresholds.minIntervalMs
     if (input.lastGCAt > 0 && input.now < nextEligibleAt) {
@@ -89,17 +108,7 @@ export namespace SessionMemoryPressure {
     return { action: "normal", reason: "interval_elapsed", critical: false }
   }
 
-  export async function maybeCollect(input: {
-    sessionID?: string
-    messageID?: string
-    phase: string
-    full?: boolean
-    forceFull?: boolean
-    now?: () => number
-    snapshot?: () => Snapshot | Promise<Snapshot>
-    collect?: (full: boolean) => void | Promise<void>
-    env?: NodeJS.ProcessEnv
-  }) {
+  export async function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
     const now = input.now?.() ?? Date.now()
     const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
@@ -110,7 +119,6 @@ export namespace SessionMemoryPressure {
       now,
       lastGCAt,
       gcAvailable: input.collect !== undefined || typeof Bun.gc === "function",
-      forceFull: input.forceFull,
     })
 
     if (decision.action === "skip" || decision.action === "unavailable") {
@@ -125,7 +133,7 @@ export namespace SessionMemoryPressure {
       return { decision, before }
     }
 
-    await collect(decision.action === "critical_forced" || decision.action === "full_forced" || input.full === true)
+    await collect(decision.action === "critical_forced")
     lastGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
     log.info("gc completed", {
@@ -133,13 +141,64 @@ export namespace SessionMemoryPressure {
       messageID: input.messageID,
       phase: input.phase,
       decision,
-      full: input.full === true,
-      forceFull: input.forceFull === true,
       before,
       after,
       thresholds,
     })
     return { decision, before, after }
+  }
+  export function signalRelease(input: CollectionInput) {
+    if (pendingRelease) {
+      pendingRelease.count++
+      pendingRelease.input = input
+    } else {
+      pendingRelease = { count: 1, input }
+    }
+    scheduleReleaseFlush()
+  }
+
+  function scheduleReleaseFlush() {
+    if (!pendingRelease || releaseTimer || releaseFlushInFlight) return
+    const delay = envNumber(pendingRelease.input.env?.SYNERGY_SESSION_GC_RELEASE_COALESCE_MS) ?? RELEASE_COALESCE_MS
+    releaseTimer = setTimeout(() => {
+      releaseTimer = undefined
+      void flushReleaseSignals().catch((error) => {
+        log.warn("release-triggered gc failed", { error })
+      })
+    }, delay)
+    releaseTimer.unref()
+  }
+
+  async function flushReleaseSignals(): Promise<ReleaseResult | undefined> {
+    if (releaseFlushInFlight) return releaseFlushInFlight
+    const pending = pendingRelease
+    if (!pending) return
+    pendingRelease = undefined
+
+    const flush = (async () => {
+      const result = await maybeCollect(pending.input)
+      return { ...result, releaseCount: pending.count }
+    })()
+    releaseFlushInFlight = flush
+    try {
+      return await flush
+    } finally {
+      if (releaseFlushInFlight === flush) releaseFlushInFlight = undefined
+      scheduleReleaseFlush()
+    }
+  }
+
+  export async function flushReleaseSignalsForTest() {
+    if (releaseTimer) {
+      clearTimeout(releaseTimer)
+      releaseTimer = undefined
+    }
+    if (releaseFlushInFlight) await releaseFlushInFlight
+    if (releaseTimer) {
+      clearTimeout(releaseTimer)
+      releaseTimer = undefined
+    }
+    return flushReleaseSignals()
   }
 
   export function probe(phase: string, context: { sessionID?: string; messageID?: string } = {}) {
@@ -151,12 +210,16 @@ export namespace SessionMemoryPressure {
   }
 
   export function resetForTest(lastRunAt = 0) {
+    if (releaseTimer) clearTimeout(releaseTimer)
     lastGCAt = lastRunAt
     cachedCgroupDir = undefined
+    pendingRelease = undefined
+    releaseTimer = undefined
+    releaseFlushInFlight = undefined
   }
 
-  async function defaultCollect(full: boolean) {
-    Bun.gc(full)
+  async function defaultCollect(synchronous: boolean) {
+    Bun.gc(synchronous)
   }
 
   async function cgroupMemory() {

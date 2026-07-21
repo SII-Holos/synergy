@@ -31,7 +31,6 @@ const parameters = z.object({
 const MAX_MATCHES_PER_SESSION = 3
 const MAX_TOTAL_MATCHES = 100
 const SNIPPET_CHARS = 150
-const MEMORY_COLLECTION_INTERVAL_MS = 10_000
 
 interface Match {
   messageID: string
@@ -150,7 +149,6 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
   let totalMatches = 0
   let sessionsSearched = 0
   let messagesSearched = 0
-  let nextMemoryCollectionAt = Date.now() + MEMORY_COLLECTION_INTERVAL_MS
 
   for (const candidate of candidates) {
     if (totalMatches >= clampedLimit) break
@@ -173,15 +171,11 @@ async function searchSessions(params: z.infer<typeof parameters>, ctx: Tool.Cont
         matches.push(match)
       }
 
-      if (Date.now() >= nextMemoryCollectionAt) {
-        await SessionMemoryPressure.maybeCollect({
-          sessionID: ctx.sessionID,
-          messageID: ctx.messageID,
-          phase: "tool.session_search.progress",
-          full: true,
-        })
-        nextMemoryCollectionAt = Date.now() + MEMORY_COLLECTION_INTERVAL_MS
-      }
+      SessionMemoryPressure.signalRelease({
+        sessionID: ctx.sessionID,
+        messageID: ctx.messageID,
+        phase: "tool.session_search.progress",
+      })
     }
 
     if (matches.length > 0) {
@@ -229,11 +223,10 @@ export const SessionSearchTool = Tool.define("session_search", {
     try {
       return await searchSessions(params, ctx)
     } finally {
-      await SessionMemoryPressure.maybeCollect({
+      SessionMemoryPressure.signalRelease({
         sessionID: ctx.sessionID,
         messageID: ctx.messageID,
         phase: "tool.session_search.complete",
-        forceFull: true,
       })
     }
   },

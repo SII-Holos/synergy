@@ -52,7 +52,7 @@ describe("session_read", () => {
         }
 
         using readMany = spyOn(Storage, "readMany")
-        using collect = spyOn(SessionMemoryPressure, "maybeCollect").mockResolvedValue({} as never)
+        using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
         const tool = await SessionReadTool.init()
         const result = await tool.execute({ target: session.id, limit: 3, offset: 5 }, ctx)
 
@@ -62,9 +62,43 @@ describe("session_read", () => {
         })
         expect(partReads).toHaveLength(3)
         expect(result.metadata).toMatchObject({ sessionID: session.id, total: 12, shown: 3 })
-        expect(collect).toHaveBeenCalledWith(
-          expect.objectContaining({ phase: "tool.session_read.complete", forceFull: true }),
-        )
+        expect(release).toHaveBeenCalledWith(expect.objectContaining({ phase: "tool.session_read.complete" }))
+        expect(release.mock.calls[0]?.[0]).not.toHaveProperty("forceFull")
+      },
+    })
+  })
+
+  test("skips an unreadable message and returns the rest of the page", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({ title: "Partially corrupt history" })
+        await writeMessage(session.id, "healthy message", 100)
+        const corrupt = (await Session.updateMessage({
+          id: Identifier.ascending("message"),
+          sessionID: session.id,
+          role: "user",
+          time: { created: 101 },
+          agent: "synergy",
+          model: { providerID: "test", modelID: "test" },
+        })) as MessageV2.User
+        await Session.updatePart({
+          id: Identifier.ascending("part"),
+          sessionID: session.id,
+          messageID: corrupt.id,
+          type: "attachment",
+          mime: "application/octet-stream",
+          url: "data:broken",
+        })
+
+        using release = spyOn(SessionMemoryPressure, "signalRelease").mockImplementation(() => {})
+        const tool = await SessionReadTool.init()
+        const result = await tool.execute({ target: session.id, limit: 20, offset: 0 }, ctx)
+
+        expect(result.metadata).toMatchObject({ sessionID: session.id, total: 2, shown: 1 })
+        expect(result.output).toContain("healthy message")
+        expect(release).toHaveBeenCalledTimes(1)
       },
     })
   })
