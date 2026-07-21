@@ -570,8 +570,8 @@ describe("SessionInvoke system prompt assembly", () => {
       ;(ToolResolver.definitions as any) = mock(async () => [])
       ;(ToolResolver.resolveWithAvailability as any) = mock(async () => ({ tools: {}, activeToolIDs: [] }))
       ;(PromptBudgeter.buildPlan as any) = mock(async (input: Parameters<typeof PromptBudgeter.buildPlan>[0]) => {
-        capturedSystem = input.system
-        capturedLateSystem = input.lateSystem
+        capturedSystem = [...input.system]
+        capturedLateSystem = input.lateSystem ? [...input.lateSystem] : undefined
         return {
           system: input.system,
           systemCacheBreakpoint: input.systemCacheBreakpoint,
@@ -668,7 +668,7 @@ describe("SessionInvoke context usage provenance", () => {
       toolDefinitions,
       activeToolIDs: ["active_tool"],
       onProcess: async (input) => {
-        toolContributions = input.contextUsageProvenance.categories.toolActivity
+        toolContributions = [...input.contextUsageProvenance.categories.toolActivity]
       },
     })
 
@@ -701,7 +701,7 @@ describe("SessionInvoke context usage provenance", () => {
         toolDefinitions: input.toolDefinitions,
       }),
       onProcess: async (input) => {
-        conversationContributions = input.contextUsageProvenance.categories.conversation
+        conversationContributions = [...input.contextUsageProvenance.categories.conversation]
       },
     })
 
@@ -1294,6 +1294,34 @@ describe("SessionInvoke completion notices", () => {
     }
   })
 
+  test("records completion without loading the full session history", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalMessages = Session.messages
+    let activeSessionID = ""
+    const restore = installBasicLoopMocks()
+    ;(Session.messages as any) = mock(async () => {
+      throw new Error("full session history must not be loaded after root completion")
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+
+          await SessionInvoke.loop.force(session.id)
+
+          expect((await Session.get(session.id)).completionNotice.unreadCount).toBe(1)
+        },
+      })
+    } finally {
+      ;(Session.messages as any) = originalMessages
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
   test("silent session completion leaves unread false", async () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""
@@ -1392,6 +1420,51 @@ describe("SessionInvoke completion notices", () => {
 })
 
 describe("SessionInvoke turn lifecycle", () => {
+  test("clears prompt containers in place after processor completion", async () => {
+    await using tmp = await tmpdir({ git: true })
+    let activeSessionID = ""
+    let retainedMessages: unknown[] | undefined
+    let retainedSystem: unknown[] | undefined
+    let retainedToolIDs: string[] | undefined
+    let retainedTools: Record<string, unknown> | undefined
+    const restore = installBasicLoopMocks({
+      toolDefinitions: [
+        {
+          id: "memory_probe",
+          description: "Large prompt lifecycle probe",
+          inputSchema: { type: "object", properties: {} },
+          execute: async () => ({ output: "ok", title: "probe", metadata: {} }),
+        } as ToolResolver.Definition,
+      ],
+      activeToolIDs: ["memory_probe"],
+      onProcess(input) {
+        retainedMessages = input.messages
+        retainedSystem = input.system
+        retainedToolIDs = input.activeToolIDs
+        retainedTools = input.tools
+      },
+    })
+
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const { session } = await createSessionWithUser()
+          activeSessionID = session.id
+          await SessionInvoke.loop.force(session.id)
+        },
+      })
+
+      expect(retainedMessages?.length).toBe(0)
+      expect(retainedSystem?.length).toBe(0)
+      expect(retainedToolIDs?.length).toBe(0)
+      expect(Object.keys(retainedTools ?? {})).toEqual([])
+    } finally {
+      restore()
+      if (activeSessionID) SessionManager.unregisterRuntime(activeSessionID)
+    }
+  })
+
   test("keeps the loop message cache populated across pre-jobs", async () => {
     await using tmp = await tmpdir({ git: true })
     let activeSessionID = ""

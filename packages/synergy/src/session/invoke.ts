@@ -835,19 +835,42 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
         let streamInput: LLM.StreamInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
+          if (mutateStreamInput) {
+            toolDefinitions.length = 0
+            systemParts.length = 0
+            lateSystemParts.length = 0
+            modelSessionMessages.length = 0
+            modelProjection.messages.length = 0
+            for (const contributions of Object.values(modelProjection.provenance.categories)) {
+              contributions.length = 0
+            }
+            preparedMessages.length = 0
+            promptPlan?.system.splice(0)
+            promptPlan?.lateSystem?.splice(0)
+            promptPlan?.messages.splice(0)
+            promptPlan?.toolDefinitions.splice(0)
+            resolvedTools?.activeToolIDs.splice(0)
+            if (resolvedTools) {
+              for (const id of Object.keys(resolvedTools.tools)) delete resolvedTools.tools[id]
+            }
+            activeToolIDs.clear()
+            for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
+              for (const contributions of Object.values(provenance.categories)) contributions.length = 0
+            }
+            if (streamInput) {
+              streamInput.system.splice(0)
+              streamInput.lateSystem?.splice(0)
+              streamInput.messages.splice(0)
+              for (const id of Object.keys(streamInput.tools)) delete streamInput.tools[id]
+              streamInput.activeToolIDs?.splice(0)
+            }
+          }
           toolDefinitions = []
           systemParts = []
           lateSystemParts = []
           modelSessionMessages = []
           preparedMessages = []
           promptDecision = undefined
-          if (mutateStreamInput && streamInput) {
-            streamInput.system = []
-            streamInput.lateSystem = undefined
-            streamInput.messages = []
-            streamInput.tools = {}
-            streamInput.activeToolIDs = undefined
-          }
           promptPlan = undefined
           resolvedTools = undefined
           streamInput = undefined
@@ -1026,7 +1049,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       }
 
       if (processedRootID) {
-        const messages = await Session.messages({ sessionID })
+        const messages = await SessionHistory.modelMessages({ sessionID })
         const terminalReply = SessionProgress.findTerminalReply(messages, processedRootID)
         if (terminalReply?.info.role === "assistant" && terminalReply.info.id !== previousTerminalReplyID) {
           await Session.recordCompletionNotice(sessionID, { publishEvent: !terminalReply.info.error })

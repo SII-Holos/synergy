@@ -169,7 +169,7 @@ describe("SessionMessageCache", () => {
     const B = "ses_evict_b"
     const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
     // Tiny budget so a single populated session already approaches it.
-    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "300"
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "700"
     try {
       const big = (sid: string): MessageV2.WithParts => ({
         info: { id: "msg_1", sessionID: sid, role: "user" } as any,
@@ -190,6 +190,26 @@ describe("SessionMessageCache", () => {
     } finally {
       SessionMessageCache.disable(A)
       SessionMessageCache.disable(B)
+      if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+      else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
+    }
+  })
+
+  test("does not retain one session whose working set exceeds the byte budget", () => {
+    const previous = process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
+    process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = "300"
+    try {
+      SessionMessageCache.enable(SID)
+      SessionMessageCache.set(SID, [
+        {
+          info: { id: "msg_1", sessionID: SID, role: "user" } as any,
+          parts: [part("prt_1", "msg_1", "x".repeat(500))],
+        },
+      ])
+
+      expect(SessionMessageCache.get(SID)).toBeUndefined()
+    } finally {
+      SessionMessageCache.disable(SID)
       if (previous === undefined) delete process.env.SYNERGY_SESSION_CACHE_MAX_BYTES
       else process.env.SYNERGY_SESSION_CACHE_MAX_BYTES = previous
     }

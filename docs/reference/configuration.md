@@ -457,7 +457,7 @@ Domain files are the durable configuration contract. Environment variables are p
 | `SYNERGY_EXPERIMENTAL_LSP_TOOL=1`    | Register the experimental direct LSP tool                                                    |
 | `SYNERGY_DISABLE_MESSAGE_CACHE=1`    | Bypass the loop-scoped model-working-set cache and reconstruct it from storage on every read |
 | `SYNERGY_VERIFY_MESSAGE_CACHE=1`     | Compare the cached model working set with storage and fall back when they diverge            |
-| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate model-working-set cache byte budget; the default is 256 MiB                |
+| `SYNERGY_SESSION_CACHE_MAX_BYTES`    | Set the aggregate and per-session model-working-set cache byte budget; defaults to 256 MiB   |
 | `SYNERGY_DISABLE_LSP_REAP=1`         | Keep idle LSP clients instead of reaping and recreating them on demand                       |
 | `SYNERGY_LSP_MAX_CLIENTS_PER_SERVER` | Set the per-language-server client cap; the minimum is one and the default is two            |
 
