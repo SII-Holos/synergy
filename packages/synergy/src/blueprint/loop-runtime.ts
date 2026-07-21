@@ -34,10 +34,15 @@ export namespace BlueprintLoopRuntime {
       const scopeID = ScopeContext.current.scope.id
       const loops = await BlueprintLoopStore.list(scopeID).catch(() => [])
       for (const loop of loops) {
-        if (!loop.budget?.maxRuntimeMs) continue
         if (loop.source !== "plugin" || !loop.pluginOwner) continue
-        if (!isActiveLoopStatus(loop.status)) continue
-        if (loop.status === "armed") continue // not yet started
+        if (!isActiveLoopStatus(loop.status)) {
+          if (loop.terminalHookDeliveredAt === undefined) {
+            await BlueprintLoopStore.deliverTerminalHook(scopeID, loop.id).catch(() => undefined)
+          }
+          continue
+        }
+        if (!loop.budget?.maxRuntimeMs) continue
+        if (loop.status === "armed") continue
         if (activeTimers.has(timerKey(scopeID, loop.id))) continue
         const elapsed = Date.now() - loop.time.created
         const remaining = Math.max(0, loop.budget.maxRuntimeMs - elapsed)
@@ -58,6 +63,8 @@ export namespace BlueprintLoopRuntime {
         await expireLoop(scopeID, loopID)
       } catch {
         // best effort
+      } finally {
+        clearTimer(scopeID, loopID)
       }
     })
   }

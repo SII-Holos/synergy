@@ -8,6 +8,8 @@ import { tmpdir } from "../fixture/fixture"
 
 const LIGHTLOOP_CAP = "lightloop.delegate"
 const BLUEPRINT_CAP = "blueprint.delegate"
+const SESSION_READ_CAP = "session.read"
+const SESSION_CONTROL_CAP = "session.control"
 
 describe("loop-start parent contract (host runtime)", () => {
   /**
@@ -290,6 +292,26 @@ describe("loop-start parent contract (host runtime)", () => {
         { type: "agent", agent: "test-agent", messageId: "fallback-msg", callId: "call-1" },
       ),
     ).rejects.toThrow("parent Session does not belong to the active Scope")
+  })
+
+  test("session.get rejects a Session from another Scope", async () => {
+    const s = await setup(SESSION_READ_CAP)
+    const wrong = await createWrongScopeSession()
+
+    await expect(s.invoke("session.get", { sessionId: wrong.sessionID })).rejects.toMatchObject({
+      name: "PluginHostServiceError",
+      code: "PLUGIN_SESSION_SCOPE_MISMATCH",
+    })
+  })
+
+  test("session.abort rejects a Session from another Scope", async () => {
+    const s = await setup(SESSION_CONTROL_CAP)
+    const wrong = await createWrongScopeSession()
+
+    await expect(s.invoke("session.abort", { sessionId: wrong.sessionID })).rejects.toMatchObject({
+      name: "PluginHostServiceError",
+      code: "PLUGIN_SESSION_SCOPE_MISMATCH",
+    })
   })
 
   // --- lightloop.get works from lifecycle ---

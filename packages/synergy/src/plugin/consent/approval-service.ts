@@ -16,6 +16,7 @@ import * as Lockfile from "../lockfile"
 import { PluginMarketplaceRegistry } from "../marketplace-registry"
 import { localRegistryPath, resolveLocalRegistryInstallSpec } from "../local-registry-store"
 import { pathToFileURL } from "url"
+import { ScopeContext } from "../../scope/context"
 
 export const ApprovalTargetSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("configured"), pluginId: z.string() }).strict(),
@@ -166,7 +167,10 @@ async function resolveConfiguredTarget(pluginId: string): Promise<ResolvedTarget
 
   let resolved
   try {
-    resolved = await resolvePluginSpec(spec, { cwd: process.cwd(), install: !spec.startsWith("file://") })
+    resolved = await resolvePluginSpec(spec, {
+      cwd: ScopeContext.current.directory,
+      install: !spec.startsWith("file://"),
+    })
   } catch (err) {
     throw new ApprovalInvalidError(err instanceof Error ? err.message : "Plugin spec resolution failed")
   }
@@ -193,7 +197,10 @@ async function resolveRegistryTarget(
   const { spec } = await resolveRegistrySpec(target.pluginId, target.version, target.source)
   let resolved
   try {
-    resolved = await resolvePluginSpec(spec, { cwd: process.cwd(), install: !spec.startsWith("file://") })
+    resolved = await resolvePluginSpec(spec, {
+      cwd: ScopeContext.current.directory,
+      install: !spec.startsWith("file://"),
+    })
   } catch (err) {
     throw new ApprovalInvalidError(err instanceof Error ? err.message : "Plugin spec resolution failed")
   }

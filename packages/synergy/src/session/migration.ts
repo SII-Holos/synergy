@@ -264,8 +264,8 @@ function workflowFromLegacySession(info: Record<string, unknown>, hasActiveBluep
 
   const lightLoop = asRecord(info.lightLoop)
   if (lightLoop?.active === true) {
-    const instructions = asString(lightLoop.instructions)
-    if (instructions) return { kind: "lightloop", instructions }
+    const taskDescription = asString(lightLoop.taskDescription)
+    if (taskDescription) return { kind: "lightloop", taskDescription }
   }
 
   if (info.planMode === true) return { kind: "plan" }
@@ -314,6 +314,62 @@ async function migrateSessionWorkflowFields(progress: (current: number, total: n
   }
 
   log.info("session workflow field migration complete", { total: tasks.length, changed })
+}
+async function migrateLightloopInstructionsField(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  if (tasks.length === 0) return
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const scope = Identifier.asScopeID(scopeID)
+    const path = StoragePath.sessionInfo(scope, Identifier.asSessionID(sessionID))
+    const info = await Storage.read<Record<string, unknown>>(path).catch(() => undefined)
+    if (!info) {
+      done++
+      progress(done, tasks.length)
+      continue
+    }
+
+    let recordChanged = false
+    let workflow = asRecord(info.workflow)
+    const hadLegacy = "planMode" in info || "lightLoop" in info || "lattice" in info
+    if (!workflow && hadLegacy) {
+      workflow = workflowFromLegacySession(info, await sessionHasActiveBlueprintLoop(info))
+      delete info.planMode
+      delete info.lightLoop
+      delete info.lattice
+      if (workflow) info.workflow = workflow
+      recordChanged = true
+    }
+
+    if (workflow?.kind === "lightloop") {
+      const taskDescription = asString(workflow.taskDescription)
+      if (taskDescription && !asString(workflow.instructions)) {
+        workflow.instructions = taskDescription
+        delete workflow.taskDescription
+        info.workflow = workflow
+        recordChanged = true
+      }
+    }
+
+    if (recordChanged) {
+      await Storage.write(path, info)
+      changed++
+    }
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("Light Loop instructions field migration complete", { total: tasks.length, changed })
 }
 
 function migrateWorkflowMessageMetadata(metadata: Record<string, unknown>): {
@@ -2286,6 +2342,13 @@ export const migrations: Migration[] = [
     description: "Backfill unread completion counts and rebuild session navigation indexes",
     async up(progress) {
       await migrateSessionCompletionNotice(progress)
+    },
+  },
+  {
+    id: "20260718-lightloop-instructions-field",
+    description: "Migrate Light Loop task descriptions to canonical instructions",
+    async up(progress) {
+      await migrateLightloopInstructionsField(progress)
     },
   },
 ]

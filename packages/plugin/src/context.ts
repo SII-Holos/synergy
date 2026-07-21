@@ -70,6 +70,7 @@ export type PluginTaskParent = {
 export const PluginHostServiceErrorCode = {
   TASK_PARENT_REQUIRED: "PLUGIN_TASK_PARENT_REQUIRED",
   TASK_PARENT_SCOPE_MISMATCH: "PLUGIN_TASK_PARENT_SCOPE_MISMATCH",
+  SESSION_SCOPE_MISMATCH: "PLUGIN_SESSION_SCOPE_MISMATCH",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
 

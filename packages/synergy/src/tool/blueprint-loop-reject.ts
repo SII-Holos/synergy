@@ -7,6 +7,7 @@ import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { BlueprintLoopReviewAccess } from "../session/blueprint-loop-review-access"
 import { SessionManager } from "../session/manager"
+import { isIterationBudgetExhausted } from "../session/iteration-budget"
 import DESCRIPTION from "./blueprint-loop-reject.txt"
 import { Tool } from "./tool"
 
@@ -51,7 +52,7 @@ export const BlueprintLoopRejectTool = Tool.define("blueprint_loop_reject", {
     })
     const attempts = (loop.audit?.attempts ?? 0) + 1
     const maxIterations = loop.budget?.maxIterations
-    if (maxIterations !== undefined && attempts > maxIterations) {
+    if (isIterationBudgetExhausted(attempts, maxIterations)) {
       // Exhausted — terminalize as failed with iteration_exhausted
       await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
         status: "failed",

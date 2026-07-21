@@ -47,6 +47,7 @@ function lightLoopSession(
     pluginOwner?: any
     executionAgent?: string
     reviewAgent?: string
+    budget?: { maxRuntimeMs: number; maxIterations: number }
   } = {},
 ): Session.Info {
   return {
@@ -59,6 +60,7 @@ function lightLoopSession(
       ...(opts.pluginOwner ? { pluginOwner: opts.pluginOwner } : {}),
       ...(opts.executionAgent ? { executionAgent: opts.executionAgent } : {}),
       ...(opts.reviewAgent ? { reviewAgent: opts.reviewAgent } : {}),
+      ...(opts.budget ? { budget: opts.budget } : {}),
     },
   } as unknown as Session.Info
 }
@@ -279,6 +281,52 @@ describe("light_loop_reject", () => {
         const part = deliveries[0].mail.parts[0]
         expect(part.origin).toBe("system")
         expect("synthetic" in part).toBe(false)
+      },
+    })
+  })
+
+  test("exhausts the configured iteration budget when the rejection reaches the limit", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = lightLoopSession({
+          stopRequest: {
+            summary: "all done",
+            requestedAt: Date.now(),
+            requesterSessionID: "ses_exec",
+            requesterMessageID: "msg_1",
+            reviewSessionID: "ses_reviewer",
+            reviewTaskID: "ctx_1",
+          },
+          budget: { maxRuntimeMs: 60_000, maxIterations: 1 },
+        })
+        const deliveries: any[] = []
+        mockSessions(session)
+        ;(Session.update as any) = mock(async (_sid: string, fn: (draft: any) => void) => {
+          fn(session)
+        })
+        ;(SessionManager.deliver as any) = mock(async (input: any) => {
+          deliveries.push(input)
+        })
+
+        const tool = await LightLoopRejectTool.init()
+        const result = await tool.execute(
+          {
+            sessionID: "ses_exec",
+            reason: "tests missing",
+            remaining: "- Add tests (BLOCKING)",
+            instructions: "Write unit tests for the new module",
+          },
+          ctx("ses_reviewer"),
+        )
+
+        expect(result.metadata.loopExhausted).toBe(true)
+        expect(result.metadata.attempts).toBe(1)
+        expect((session.workflow as any)?.status).toBe("iteration_exhausted")
+        expect((session.workflow as any)?.review?.attempts).toBe(1)
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0].mail.metadata.source).toBe("light_loop_exhausted")
       },
     })
   })

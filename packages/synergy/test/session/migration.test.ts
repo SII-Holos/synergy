@@ -841,12 +841,12 @@ describe("session migrations", () => {
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(latticeSession.id)), {
           ...latticeSession,
           planMode: true,
-          lightLoop: { active: true, instructions: "ignored" },
+          lightLoop: { active: true, taskDescription: "ignored" },
           lattice: { runID: "ltr_legacy", mode: "auto", firstBlueprintStarted: true },
         })
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(lightloopSession.id)), {
           ...lightloopSession,
-          lightLoop: { active: true, instructions: "Keep going" },
+          lightLoop: { active: true, taskDescription: "Keep going" },
         })
         await Storage.write(StoragePath.sessionInfo(scope, Identifier.asSessionID(planSession.id)), {
           ...planSession,
@@ -868,7 +868,7 @@ describe("session migrations", () => {
           ...conflictSession,
           blueprint: { loopID },
           planMode: true,
-          lightLoop: { active: true, instructions: "conflict" },
+          lightLoop: { active: true, taskDescription: "conflict" },
         })
 
         const planMessageID = Identifier.ascending("message")
@@ -922,7 +922,7 @@ describe("session migrations", () => {
           mode: "auto",
           firstBlueprintStarted: true,
         })
-        expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", instructions: "Keep going" })
+        expect(migratedLightloop.workflow).toEqual({ kind: "lightloop", taskDescription: "Keep going" })
         expect(migratedPlan.workflow).toEqual({ kind: "plan" })
         expect(migratedConflict.workflow).toBeUndefined()
 
@@ -950,6 +950,58 @@ describe("session migrations", () => {
           workflowAgent: "synergy-max",
           workflowVersion: 1,
         })
+      },
+    })
+  })
+  test("migrates legacy Light Loop task descriptions to canonical instructions", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const tmpScope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope: tmpScope,
+      fn: async () => {
+        const legacySession = await Session.create({ title: "Legacy Light Loop" })
+        const migratedSession = await Session.create({ title: "Migrated Light Loop" })
+        const currentSession = await Session.create({ title: "Current Light Loop" })
+        const scope = Identifier.asScopeID(tmpScope.id)
+        const legacyKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(legacySession.id))
+        const migratedKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(migratedSession.id))
+        const currentKey = StoragePath.sessionInfo(scope, Identifier.asSessionID(currentSession.id))
+
+        await Storage.write(legacyKey, {
+          ...legacySession,
+          lightLoop: { active: true, taskDescription: "Resume the legacy task" },
+        })
+        await Storage.write(migratedKey, {
+          ...migratedSession,
+          workflow: { kind: "lightloop", taskDescription: "Resume the migrated task" },
+        })
+        await Storage.write(currentKey, {
+          ...currentSession,
+          workflow: { kind: "lightloop", instructions: "Keep current instructions" },
+        })
+
+        const migration = migrations.find((entry) => entry.id === "20260718-lightloop-instructions-field")
+        expect(migration).toBeDefined()
+        await migration!.up(() => {})
+
+        expect((await Storage.read<any>(legacyKey)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Resume the legacy task",
+        })
+        expect((await Storage.read<any>(migratedKey)).workflow).toEqual({
+          kind: "lightloop",
+          instructions: "Resume the migrated task",
+        })
+        const legacy = await Storage.read<any>(legacyKey)
+        const migrated = await Storage.read<any>(migratedKey)
+        const current = await Storage.read<any>(currentKey)
+        expect(current.workflow).toEqual({ kind: "lightloop", instructions: "Keep current instructions" })
+
+        await migration!.up(() => {})
+        expect(await Storage.read<any>(legacyKey)).toEqual(legacy)
+        expect(await Storage.read<any>(migratedKey)).toEqual(migrated)
+        expect(await Storage.read<any>(currentKey)).toEqual(current)
       },
     })
   })

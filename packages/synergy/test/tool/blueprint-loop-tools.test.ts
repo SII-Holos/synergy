@@ -455,7 +455,7 @@ describe("blueprint_loop_reject", () => {
     })
   })
 
-  test("persists attempts and exhausts the configured iteration budget", async () => {
+  test("exhausts the configured iteration budget when the rejection reaches the limit", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -465,29 +465,20 @@ describe("blueprint_loop_reject", () => {
         })
         ;(SessionManager.deliver as any) = mock(async () => {})
         const reject = await BlueprintLoopRejectTool.init()
-        const feedback = {
-          sessionID: session.id,
-          reason: "Acceptance evidence is incomplete.",
-          remaining: "Add the missing verification. BLOCKING",
-          instructions: "Run and record the missing verification.",
-        }
+        const result = await reject.execute(
+          {
+            sessionID: session.id,
+            reason: "Acceptance evidence is incomplete.",
+            remaining: "Add the missing verification. BLOCKING",
+            instructions: "Run and record the missing verification.",
+          },
+          ctx(reviewSessionID, "supervisor"),
+        )
 
-        await reject.execute(feedback, ctx(reviewSessionID, "supervisor"))
-        const afterFirst = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(afterFirst.status).toBe("running")
-        expect(afterFirst.audit?.attempts).toBe(1)
-
-        const stop = await BlueprintLoopStopTool.init()
-        await stop.execute({ summary: "Verification is now complete." }, ctx(session.id))
-        await startPendingReview(session.id)
-        const auditingAgain = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
-        expect(auditingAgain.status).toBe("auditing")
-
-        const result = await reject.execute(feedback, ctx(auditingAgain.auditSessionID!, "supervisor"))
         const exhausted = await BlueprintLoopStore.get(ScopeContext.current.scope.id, loop.id)
         expect(exhausted.status).toBe("failed")
         expect(exhausted.error).toContain("iteration_exhausted")
-        expect(exhausted.audit?.attempts).toBe(2)
+        expect(exhausted.audit?.attempts).toBe(1)
         expect(result.metadata.iterationExhausted).toBe(true)
       },
     })

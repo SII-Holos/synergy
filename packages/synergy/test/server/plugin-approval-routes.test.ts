@@ -10,9 +10,9 @@ import {
   computeManifestHash,
   computePermissionsHash,
 } from "../../src/plugin/consent/approval-store"
-import { generateReviewToken } from "../../src/plugin/consent/approval-service"
+import { buildApprovalReview, generateReviewToken } from "../../src/plugin/consent/approval-service"
 import * as Lockfile from "../../src/plugin/lockfile"
-import { resetAllPluginState, getDisabledPlugins } from "../../src/plugin/loader"
+import { getDisabledPlugins, resetAllPluginState } from "../../src/plugin/loader"
 import path from "path"
 import fs from "fs"
 import { pathToFileURL } from "url"
@@ -281,6 +281,29 @@ describe("plugin approval routes", () => {
           // Step 5: Assert lock snapshots unchanged by configured approval
           const lockfileAfter = await Lockfile.read()
           expect(lockfileAfter).toEqual(lockfileBefore)
+        },
+      })
+    } finally {
+      await restoreState()
+    }
+  })
+
+  test("configured plugin approval resolves relative specs from the active Scope", async () => {
+    await saveState()
+    const fixture = createPluginFixture(tmp.path, "relative-approve-test")
+    try {
+      await ScopeContext.provide({
+        scope,
+        async fn() {
+          const domain = await Config.domainGet("plugins")
+          const relativeSpec = `file://./${path.relative(tmp.path, fixture.dir)}`
+          const plugins = Array.isArray(domain.plugin) ? [...domain.plugin, relativeSpec] : [relativeSpec]
+          await Config.domainUpdate("plugins", { ...domain, plugin: plugins }, { mode: "replace-domain" })
+          await resetAllPluginState()
+
+          const review = await buildApprovalReview({ kind: "configured", pluginId: fixture.pluginId })
+          expect(review.pluginId).toBe(fixture.pluginId)
+          expect(review.target).toEqual({ kind: "configured", pluginId: fixture.pluginId })
         },
       })
     } finally {

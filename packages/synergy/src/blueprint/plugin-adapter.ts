@@ -247,7 +247,7 @@ export async function startBlueprint(input: {
 
     // Step 4: Bind session to loop and mark running
     await BlueprintLoopService.bindSessionToLoop(sessionID, loop.id, "execution")
-    await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
+    const runningLoop = await BlueprintLoopStore.updateStatus(scopeID, loop.id, {
       status: "running",
     })
 
@@ -275,7 +275,7 @@ export async function startBlueprint(input: {
     // Schedule timer for maxRuntimeMs
     BlueprintLoopRuntime.scheduleDeadline(scopeID, loop.id, r.budget.maxRuntimeMs)
 
-    return publicLoop(loop)
+    return publicLoop(runningLoop)
   } catch (err) {
     await rollback()
     throw err

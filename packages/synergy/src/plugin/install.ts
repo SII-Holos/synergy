@@ -39,7 +39,7 @@ export class PluginApprovalRequiredError extends Error {
 
 export async function resolveConfiguredPluginId(spec: string): Promise<string | null> {
   try {
-    return (await resolvePluginSpec(spec, { cwd: process.cwd(), install: false })).manifest.id
+    return (await resolvePluginSpec(spec, { cwd: ScopeContext.current.directory, install: false })).manifest.id
   } catch {
     return null
   }
@@ -100,7 +100,7 @@ export async function add(
   let preparedKey: string | undefined
   try {
     const resolved = await resolvePluginSpec(spec, {
-      cwd: process.cwd(),
+      cwd: ScopeContext.current.directory,
       install: !spec.startsWith("file://"),
       refresh: !spec.startsWith("file://"),
       stageLocalArchive: spec.startsWith("file://"),

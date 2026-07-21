@@ -5,6 +5,8 @@ import { pathToFileURL } from "url"
 import z from "zod"
 import { compilePluginManifest, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
 import { resolvePluginSpec } from "../../src/plugin/spec-resolver"
+import { add, PluginApprovalRequiredError, resolveConfiguredPluginId } from "../../src/plugin/install"
+import { ScopeContext } from "../../src/scope/context"
 import { sha256File } from "../../src/util/crypto"
 import { tmpdir } from "../fixture/fixture"
 
@@ -48,5 +50,30 @@ describe("plugin installation discovery", () => {
     await expect(resolvePluginSpec(pathToFileURL(tmp.path).href, { install: false })).rejects.toThrow(
       "integrity mismatch",
     )
+  })
+
+  test("resolves configured relative specs from the active Scope", async () => {
+    await using tmp = await tmpdir()
+    const pluginDir = path.join(tmp.path, "relative-discovery")
+    await fs.mkdir(pluginDir, { recursive: true })
+    const definition = definePlugin({
+      id: "relative-discovery",
+      version: "1.0.0",
+      description: "Relative discovery uses the active Scope",
+      contributions: [],
+    })
+    const manifest = compilePluginManifest(definition, { generation: "relative-discovery-generation" })
+    await Bun.write(path.join(pluginDir, "plugin.json"), JSON.stringify(manifest))
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      async fn() {
+        expect(await resolveConfiguredPluginId("file://./relative-discovery")).toBe("relative-discovery")
+        await expect(add("file://./relative-discovery", { source: "official" })).rejects.toBeInstanceOf(
+          PluginApprovalRequiredError,
+        )
+      },
+    })
   })
 })

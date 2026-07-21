@@ -385,8 +385,7 @@ export async function startLightLoop(input: {
   const limits = await defaultPluginRuntimeLimits(input.pluginDir)
   const timeoutMs = request.budget.maxRuntimeMs
 
-  // Create dedicated hidden execution session
-  const task = await Cortex.launch({
+  const task = await Cortex.prepare({
     description: `[LightLoop] ${request.instructions.slice(0, 80)}`,
     prompt: request.instructions.trim(),
     agent: request.executionAgent.trim(),
@@ -407,35 +406,43 @@ export async function startLightLoop(input: {
     },
   })
 
-  // Write the Light Loop workflow onto the execution session
-  const deadlineAt = Date.now() + timeoutMs
-  await SessionWorkflowService.startLightloop(task.sessionID, request.instructions.trim())
-  await Session.update(task.sessionID, (draft) => {
-    if (draft.workflow?.kind !== "lightloop") return
-    draft.workflow = {
-      ...draft.workflow,
+  try {
+    const deadlineAt = Date.now() + timeoutMs
+    await SessionWorkflowService.startLightloop(task.sessionID, request.instructions.trim())
+    await Session.update(task.sessionID, (draft) => {
+      if (draft.workflow?.kind !== "lightloop") return
+      draft.workflow = {
+        ...draft.workflow,
+        status: "running",
+        executionAgent: request.executionAgent.trim(),
+        reviewAgent: request.reviewAgent.trim(),
+        ...(request.reviewTools ? { reviewTools: request.reviewTools } : {}),
+        pluginOwner: {
+          pluginId: input.pluginId,
+          pluginGeneration: input.pluginGeneration,
+          scopeId: input.scopeId,
+          correlationId: request.correlationId.trim(),
+        },
+        budget: request.budget,
+        deadlineAt,
+      }
+    })
+
+    await Cortex.start(task.id)
+    LightLoopRuntime.scheduleDeadline(task.sessionID, deadlineAt)
+
+    return {
+      sessionID: task.sessionID,
       status: "running",
-      executionAgent: request.executionAgent.trim(),
-      reviewAgent: request.reviewAgent.trim(),
-      ...(request.reviewTools ? { reviewTools: request.reviewTools } : {}),
-      pluginOwner: {
-        pluginId: input.pluginId,
-        pluginGeneration: input.pluginGeneration,
-        scopeId: input.scopeId,
-        correlationId: request.correlationId.trim(),
-      },
-      budget: request.budget,
-      deadlineAt,
+      instructions: request.instructions.trim(),
     }
-  })
-
-  // Schedule deadline timer
-  LightLoopRuntime.scheduleDeadline(task.sessionID, deadlineAt)
-
-  return {
-    sessionID: task.sessionID,
-    status: "running",
-    instructions: request.instructions.trim(),
+  } catch (error) {
+    await Cortex.cancel(task.id).catch(() => {})
+    await Session.update(task.sessionID, (draft) => {
+      draft.workflow = undefined
+      draft.time.archived = Date.now()
+    }).catch(() => {})
+    throw error
   }
 }
 

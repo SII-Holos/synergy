@@ -8,6 +8,7 @@ import { LoopError } from "./error"
 import { NoteStore } from "../note"
 import { Session } from "../session"
 import { Plugin } from "../plugin"
+import { Lock } from "../util/lock"
 import type { Info } from "./types"
 
 type LoopStatus = Info["status"]
@@ -28,6 +29,10 @@ function isValidTransition(from: LoopStatus, to: LoopStatus): boolean {
 
 export function isActiveLoopStatus(status: LoopStatus) {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
+}
+
+function terminalHookLock(scopeID: string, loopID: string): string {
+  return `blueprint_terminal_hook:${scopeID}:${loopID}`
 }
 
 export namespace BlueprintLoopStore {
@@ -168,6 +173,10 @@ export namespace BlueprintLoopStore {
     }
 
     const isTerminal = patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled"
+    if (isTerminal) {
+      const { BlueprintLoopRuntime } = await import("./loop-runtime")
+      BlueprintLoopRuntime.cancelDeadline(scopeID, id)
+    }
 
     const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
       draft.status = patch.status
@@ -239,44 +248,42 @@ export namespace BlueprintLoopStore {
       }
     }
 
-    // Deliver blueprint.after hook for plugin-owned terminal loops.
-    // Idempotent: check terminalHookDeliveredAt before delivery.
     if (isTerminal && updated.source === "plugin" && updated.pluginOwner) {
-      deliverTerminalHook(scopeID, id, updated).catch(() => {})
+      await deliverTerminalHook(scopeID, id)
     }
 
     await Bus.publish(LoopEvent.Updated, { loop: updated })
     return updated
   }
 
-  /**
-   * Deliver blueprint.after hook for a plugin-owned terminal loop.
-   * Idempotent: sets terminalHookDeliveredAt on success; retries if missing.
-   * Hook failure stores terminalHookError and leaves terminalHookDeliveredAt
-   * undefined so the next terminal transition retries.
-   */
-  async function deliverTerminalHook(scopeID: string, id: string, loop: Info): Promise<void> {
-    if (!loop.pluginOwner) return
-    if (loop.terminalHookDeliveredAt !== undefined) return
+  export async function deliverTerminalHook(scopeID: string, id: string): Promise<void> {
+    using _ = await Lock.write(terminalHookLock(scopeID, id))
+    const path = StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id)
+    const loop = await Storage.read<Info>(path)
+    if (!loop.pluginOwner || loop.terminalHookDeliveredAt !== undefined) return
 
-    const delivered = await Plugin.triggerForPlugin(
+    const delivery = await Plugin.deliverHookForPlugin(
       loop.pluginOwner.pluginId,
       loop.pluginOwner.pluginGeneration,
       "blueprint.after",
       { loop },
-      {},
-    ).catch(() => undefined)
+    ).catch((hookError) => ({
+      status: "failed" as const,
+      handlerCount: 0,
+      succeededHandlerCount: 0,
+      error: `Hook blueprint.after delivery failed: ${hookError instanceof Error ? hookError.message : String(hookError)}`,
+    }))
 
-    if (delivered) {
-      await Storage.update<Info>(StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id), (draft) => {
+    await Storage.update<Info>(path, (draft) => {
+      if (draft.terminalHookDeliveredAt !== undefined) return
+      if (delivery.status === "delivered" && delivery.handlerCount > 0) {
         draft.terminalHookDeliveredAt = Date.now()
         draft.terminalHookError = undefined
-      }).catch(() => {})
-    } else {
-      await Storage.update<Info>(StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id), (draft) => {
-        draft.terminalHookError = "delivery_failed"
-      }).catch(() => {})
-    }
+        return
+      }
+      draft.terminalHookError =
+        delivery.status === "delivered" ? "Hook blueprint.after reported delivery without a handler" : delivery.error
+    })
   }
 
   export async function complete(scopeID: string, id: string): Promise<Info> {

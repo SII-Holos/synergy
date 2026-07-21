@@ -75,6 +75,17 @@ async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Pro
   return ScopeContext.provide({ scope, fn })
 }
 
+async function sessionInInvocationScope(input: PluginHostServiceInvocationInput, sessionId: string) {
+  const session = await Session.get(sessionId)
+  if (session.scope.id !== input.invocation.scopeId) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.SESSION_SCOPE_MISMATCH,
+      `Session ${sessionId} does not belong to the active Scope`,
+    )
+  }
+  return session
+}
+
 function workspacePath(directory: string, requested: unknown): string {
   if (typeof requested !== "string" || !requested.trim()) throw new Error("Workspace path must be a non-empty string")
   const resolved = path.resolve(directory, requested)
@@ -190,11 +201,12 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
     if (input.method === "session.get") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.get requires sessionId")
-      return Session.get(sessionId)
+      return sessionInInvocationScope(input, sessionId)
     }
     if (input.method === "session.abort") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.abort requires sessionId")
+      await sessionInInvocationScope(input, sessionId)
       SessionInvoke.cancel(sessionId)
       return
     }

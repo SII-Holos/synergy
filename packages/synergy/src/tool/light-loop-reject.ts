@@ -6,6 +6,7 @@ import { Identifier } from "../id/id"
 import DESCRIPTION from "./light-loop-reject.txt"
 import { LightLoopReviewAccess } from "@/session/light-loop-review-access"
 import { LightLoopRuntime } from "@/session/light-loop-runtime"
+import { isIterationBudgetExhausted } from "@/session/iteration-budget"
 
 const parameters = z.object({
   sessionID: z.string().describe("The execution session ID provided in your launch context"),
@@ -50,7 +51,7 @@ export const LightLoopRejectTool = Tool.define("light_loop_reject", {
     const now = Date.now()
 
     // Check maxIterations exhaustion — use single terminal path
-    if (maxIterations !== undefined && currentAttempts + 1 >= maxIterations) {
+    if (isIterationBudgetExhausted(currentAttempts + 1, maxIterations)) {
       // Update review state, then transition to iteration_exhausted
       await Session.update(sessionID, (draft) => {
         if (draft.workflow?.kind !== "lightloop") return
