@@ -60,7 +60,22 @@ function symlinkBinary(sourcePath, binaryName) {
   }
 }
 
-async function installSandboxHelper() {
+function filesEqual(left, right) {
+  try {
+    const leftStat = fs.statSync(left)
+    const rightStat = fs.statSync(right)
+    return (
+      leftStat.isFile() &&
+      rightStat.isFile() &&
+      leftStat.size === rightStat.size &&
+      fs.readFileSync(left).equals(fs.readFileSync(right))
+    )
+  } catch {
+    return false
+  }
+}
+
+async function installSandboxHelper(binaryPath) {
   const platform = os.platform()
   const homedir = os.homedir()
 
@@ -84,14 +99,23 @@ async function installSandboxHelper() {
   const destDir = path.join(homedir, ".synergy", "sandbox-helper")
   const destPath = path.join(destDir, helperBinaryName)
 
-  // Idempotent: skip if already installed
-  if (fs.existsSync(destPath)) return
-
-  // Search for the helper in node_modules/@ericsanchezok/
+  // Prefer the helper embedded in the selected platform package, then support
+  // legacy standalone helper packages if one is present.
   const scopeDir = path.join(__dirname, "..", "node_modules", "@ericsanchezok")
   let found = false
 
-  if (fs.existsSync(scopeDir)) {
+  const packagedHelper = path.resolve(path.dirname(binaryPath), "..", "sandbox", helperBinaryName)
+  if (fs.existsSync(packagedHelper)) {
+    if (!filesEqual(packagedHelper, destPath)) {
+      fs.mkdirSync(destDir, { recursive: true })
+      fs.copyFileSync(packagedHelper, destPath)
+      if (platform === "linux") fs.chmodSync(destPath, 0o755)
+      console.log(`Sandbox helper installed: ${destPath}`)
+    }
+    found = true
+  }
+
+  if (!found && fs.existsSync(scopeDir)) {
     try {
       const entries = fs.readdirSync(scopeDir)
       for (const entry of entries) {
@@ -123,13 +147,14 @@ async function main() {
       // On Windows, the .exe is already included in the package and bin field points to it
       // No postinstall setup needed
       console.log("Windows detected: binary setup not needed (using packaged .exe)")
-      await installSandboxHelper()
+      const { binaryPath } = findBinary()
+      await installSandboxHelper(binaryPath)
       return
     }
 
     const { binaryPath, binaryName } = findBinary()
     symlinkBinary(binaryPath, binaryName)
-    await installSandboxHelper()
+    await installSandboxHelper(binaryPath)
   } catch (error) {
     console.error("Failed to setup synergy binary:", error.message)
     process.exit(1)

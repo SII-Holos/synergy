@@ -10,6 +10,7 @@ import { Flag } from "../flag/flag"
 declare global {
   const SYNERGY_VERSION: string
   const SYNERGY_CHANNEL: string
+  const SYNERGY_SANDBOX_HELPER_SHA256: string
 }
 
 export namespace Installation {

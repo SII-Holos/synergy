@@ -44,6 +44,8 @@ Download a platform installer from [GitHub Releases](https://github.com/SII-Holo
 
 The recommended installers include the Desktop app and expose its packaged runtime as the `synergy` CLI. Portable artifacts are also published but do not configure a system CLI.
 
+Released packages do not require Rust. Rust is used only to build the Linux and Windows sandbox helpers. The Linux `.deb` installs Bubblewrap as a package dependency; Linux portable and CLI archive users must install `bubblewrap` with their system package manager. Windows Desktop and CLI releases currently support x64.
+
 ### CLI and Web
 
 Install the current release:
@@ -59,6 +61,8 @@ curl -fsSL https://raw.githubusercontent.com/SII-Holos/synergy/main/install | ba
 ```
 
 The CLI installer places the runtime, Web UI, and schema assets under `~/.synergy/`. It does not install the Electron Desktop app.
+
+Desktop Browser presentation includes Electron's Chromium. Headless Browser tools used directly by the CLI/server require an installed Chrome or Chromium; set `CHROMIUM_PATH` when it is not in a standard system or Playwright cache location.
 
 Configure a model provider, start the background runtime, and open the Web client:
 

@@ -74,6 +74,19 @@ has_bundled_assets() {
     [ -f "$ROOT_DIR/schema/config.schema.json" ]
 }
 
+has_required_sandbox_asset() {
+    local platform="${SYNERGY_INSTALL_PLATFORM:-$(uname -s)}"
+    case "$platform" in
+        Linux*) [ -f "$ROOT_DIR/sandbox/synergy-sandbox-linux" ] ;;
+        MINGW*|MSYS*|CYGWIN*|Windows*) [ -f "$ROOT_DIR/sandbox/synergy-sandbox-windows.exe" ] ;;
+        *) return 0 ;;
+    esac
+}
+
+has_complete_bundle() {
+    has_bundled_assets && has_required_sandbox_asset
+}
+
 install_bundle_contents() {
     local bundle_root="$1"
 
@@ -90,6 +103,11 @@ install_bundle_contents() {
 
     if [ -d "$bundle_root/schema" ]; then
         cp -R "$bundle_root/schema/." "$ROOT_DIR/schema/"
+    fi
+
+    rm -rf "$ROOT_DIR/sandbox"
+    if [ -d "$bundle_root/sandbox" ]; then
+        cp -R "$bundle_root/sandbox" "$ROOT_DIR/sandbox"
     fi
 
     rm -f "$ROOT_DIR/vec0.so" "$ROOT_DIR/vec0.dylib" "$ROOT_DIR/vec0.dll"
@@ -111,7 +129,14 @@ install_bundle_contents() {
     if [ -f "$INSTALL_DIR/ast-grep.exe" ]; then
         chmod 755 "$INSTALL_DIR/ast-grep.exe"
     fi
+    if [ -f "$ROOT_DIR/sandbox/synergy-sandbox-linux" ]; then
+        chmod 755 "$ROOT_DIR/sandbox/synergy-sandbox-linux"
+    fi
 }
+
+if [ "${SYNERGY_INSTALL_LIBRARY_MODE:-}" = "1" ]; then
+    return 0 2>/dev/null || exit 0
+fi
 
 # If --binary is provided, skip all download/detection logic
 if [ -n "$binary_path" ]; then
@@ -258,7 +283,7 @@ check_version() {
 
         if [[ "$installed_version" != "$specific_version" ]]; then
             print_message info "${MUTED}Installed version: ${NC}$installed_version."
-        else
+        elif has_complete_bundle; then
             print_message info "${MUTED}Version ${NC}$specific_version${MUTED} already installed"
             exit 0
         fi
@@ -392,6 +417,10 @@ if [ -n "$binary_path" ]; then
 else
     check_version
     download_and_install
+fi
+
+if [[ "$(uname -s)" == Linux* ]] && ! command -v bwrap >/dev/null 2>&1; then
+    print_message warning "${ORANGE}Linux sandbox prerequisite missing: install bubblewrap with your system package manager.${NC}"
 fi
 
 

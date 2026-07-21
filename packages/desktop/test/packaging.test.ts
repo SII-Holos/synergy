@@ -22,6 +22,7 @@ interface ElectronBuilderConfig {
   deb?: {
     afterInstall?: string
     afterRemove?: string
+    depends?: string[]
   }
   extraResources?: Array<{
     from?: string
@@ -79,6 +80,7 @@ describe("desktop packaging", () => {
     expect(config.nsis?.include).toBe("build/installer.nsh")
     expect(config.deb?.afterInstall).toBe("build/linux/deb-after-install.sh")
     expect(config.deb?.afterRemove).toBe("build/linux/deb-after-remove.sh")
+    expect(config.deb?.depends).toContain("bubblewrap")
   })
 
   test("Windows installer publishes only the launcher directory, not runtime internals", async () => {

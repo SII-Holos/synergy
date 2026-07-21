@@ -93,6 +93,8 @@ Network policy is represented separately as full or restricted access. Restricte
 
 Synergy compiles the policy into platform-specific wrappers: Seatbelt on macOS, a Linux sandbox helper, and Windows/WSL-specific restricted execution paths. The configured fallback (`deny`, `warn`, or `allow`) determines what happens when the requested sandbox cannot be enforced on the current platform.
 
+Stable Linux and Windows runtimes package an architecture- and ABI-matched helper. The runtime embeds that helper's SHA-256 during compilation and verifies it before execution; a Stable build fails when the required helper asset is absent. Linux uses either a verified optional bundled Bubblewrap binary or the system `bubblewrap` package. The Debian installer declares Bubblewrap as a dependency, while portable and CLI archive installations report it as an external prerequisite.
+
 An explicit policy authorization can mark a shell operation as sandbox-bypassed. Otherwise, Bash receives the resolved sandbox wrapper when its profile mode is not `none`.
 
 ## OOM Victim Preference

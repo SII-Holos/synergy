@@ -10,7 +10,7 @@ The root manifest pins Bun `1.3.14`. Install that version, then run:
 bun dev prepare
 ```
 
-Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the plugin SDK and Web app, and prepares the platform sandbox helper where supported. Linux and Windows helper compilation requires Rust; Linux sandboxing also uses Bubblewrap.
+Preparation installs dependencies, generates OpenAPI/SDK artifacts, builds the plugin SDK and Web app, and prepares the platform sandbox helper where supported. Linux and Windows helper compilation requires Rust; Linux sandboxing also uses Bubblewrap. `build-helper.ts --local` installs the local helper without editing tracked trust hashes. Stable builds compile each release helper first and embed its SHA-256 into the matching runtime binary.
 
 ## Development Modes
 

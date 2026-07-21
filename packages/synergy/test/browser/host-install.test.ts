@@ -123,6 +123,25 @@ describe("Browser Host artifact installation", () => {
   })
 })
 
+describe("Chromium discovery", () => {
+  test("finds current Playwright Chromium layouts in the Windows local cache", async () => {
+    const localAppData = await fs.mkdtemp(path.join(os.tmpdir(), "synergy-playwright-windows-"))
+    tempDirs.push(localAppData)
+    const executable = path.join(localAppData, "ms-playwright", "chromium-1234", "chrome-win64", "chrome.exe")
+    await fs.mkdir(path.dirname(executable), { recursive: true })
+    await fs.writeFile(executable, "browser")
+
+    await expect(
+      BrowserInstall.discoverChromium({
+        platform: "win32",
+        arch: "x64",
+        home: localAppData,
+        env: { LOCALAPPDATA: localAppData },
+      }),
+    ).resolves.toBe(executable)
+  })
+})
+
 async function zip(name: string, content: string): Promise<Buffer> {
   const writer = new BlobWriter("application/zip")
   const zipWriter = new ZipWriter(writer)

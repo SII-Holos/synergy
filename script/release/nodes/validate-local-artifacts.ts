@@ -3,6 +3,14 @@ import fs from "fs"
 import path from "path"
 import { APP_DIST_DIR, SYNERGY_DIR, SYNERGY_DIST_DIR } from "../shared/packages"
 
+export function requiredRuntimeArtifactPaths(name: string): string[] {
+  const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
+  const required = [binaryRelative, "app/index.html", "schema/config.schema.json"]
+  if (name.includes("linux")) required.push("sandbox/synergy-sandbox-linux")
+  if (name.includes("windows")) required.push("sandbox/synergy-sandbox-windows.exe")
+  return required
+}
+
 export async function validateLocalArtifacts(platformPackageNames: string[]) {
   console.log("\n=== validate local artifacts ===\n")
 
@@ -24,8 +32,7 @@ export async function validateLocalArtifacts(platformPackageNames: string[]) {
 
   for (const name of platformPackageNames) {
     const baseDir = path.join(SYNERGY_DIST_DIR, name)
-    const binaryRelative = name.includes("windows") ? "bin/synergy.exe" : "bin/synergy"
-    for (const relative of [binaryRelative, "app/index.html", "schema/config.schema.json"]) {
+    for (const relative of requiredRuntimeArtifactPaths(name)) {
       if (!fs.existsSync(path.join(baseDir, relative))) {
         throw new Error(`missing ${relative} in ${baseDir}`)
       }

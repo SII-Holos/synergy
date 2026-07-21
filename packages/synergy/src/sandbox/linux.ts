@@ -153,7 +153,7 @@ function tryInstallCargoHelper(): boolean {
 
   for (const srcPath of cargoPaths) {
     try {
-      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || isTarballHelperUpToDate(srcPath, destPath))) {
+      if (fs.existsSync(srcPath) && (!fs.existsSync(destPath) || !isTarballHelperUpToDate(srcPath, destPath))) {
         fs.mkdirSync(destDir, { recursive: true })
         fs.copyFileSync(srcPath, destPath)
         fs.chmodSync(destPath, 0o755)
@@ -318,8 +318,11 @@ export function isBundledBwrapAvailable(): boolean {
  * Never load from config — embedded at compile time.
  */
 export const TRUSTED_LINUX_HELPER_HASHES: Record<string, string> = {
-  // Hash entries for verified helper binaries. Run scripts/build-helper.ts linux --auto-update to populate.
-  // Empty map is intentional until release — no helper will be trusted.
+  ...(typeof SYNERGY_SANDBOX_HELPER_SHA256 === "string" && SYNERGY_SANDBOX_HELPER_SHA256
+    ? {
+        [path.join(os.homedir(), ".synergy", "sandbox-helper", "synergy-sandbox-linux")]: SYNERGY_SANDBOX_HELPER_SHA256,
+      }
+    : {}),
 }
 
 /**
