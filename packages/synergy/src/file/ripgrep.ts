@@ -319,6 +319,9 @@ export namespace Ripgrep {
       }
       reachedEnd = true
       await proc.exited
+    } catch (error) {
+      // Historical files() contract: abort stops enumeration without throwing.
+      if (!input.signal?.aborted) throw error
     } finally {
       if (!reachedEnd) await terminate(proc)
     }

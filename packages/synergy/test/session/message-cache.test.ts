@@ -218,7 +218,7 @@ describe("SessionMessageCache", () => {
       expect(SessionMessageCache.get(B)).toBeDefined()
       expect(SessionMessageCache.get(A)).toBeUndefined()
       expect(SessionMessageCache.stats().evictions).toBe(1)
-      expect(SessionMessageCache.stats().protectedOverbudget).toBeGreaterThanOrEqual(1)
+      expect(SessionMessageCache.stats().totalBytes).toBeLessThanOrEqual(700)
       // A is still active, so a fresh read repopulates it transparently.
       SessionMessageCache.set(A, [big(A)])
       expect(SessionMessageCache.get(A)).toBeDefined()
