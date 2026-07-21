@@ -63,6 +63,10 @@ function pluginAliasEntries() {
   return [
     // Bare import: @ericsanchezok/synergy-plugin
     { find: /^@ericsanchezok\/synergy-plugin$/, replacement: path.join(pluginRoot, "src/index.ts") },
+    {
+      find: /^@ericsanchezok\/synergy-plugin\/theme$/,
+      replacement: path.join(pluginRoot, "src/theme/index.ts"),
+    },
     // Subpath imports: @ericsanchezok/synergy-plugin/tool, /display, etc.
     { find: /^@ericsanchezok\/synergy-plugin\/([^/]+)$/, replacement: path.join(pluginRoot, "src/$1.ts") },
   ]

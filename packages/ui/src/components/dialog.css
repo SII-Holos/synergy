@@ -94,7 +94,7 @@
       background: var(--dialog-surface);
       border-radius: 16px;
       box-shadow:
-        0 20px 60px light-dark(rgba(15, 23, 42, 0.14), rgba(0, 0, 0, 0.34)),
+        0 20px 60px var(--surface-overlay),
         0 1px 0 color-mix(in oklch, var(--border-base) 24%, transparent);
       font-family: var(--font-family-sans);
       font-feature-settings: var(--font-family-sans--font-feature-settings);

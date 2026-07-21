@@ -86,12 +86,7 @@ macOS:
 - `CSC_INSTALLER_LINK`
 - `CSC_INSTALLER_KEY_PASSWORD`
 
-Windows (optional; configure both values to sign artifacts):
-
-- `WINDOWS_CERTIFICATE`
-- `WINDOWS_CERTIFICATE_PASSWORD`
-
-When both Windows values are absent, the release produces unsigned Windows artifacts. A partial Windows signing configuration fails validation.
+Windows artifacts are currently unsigned. The release workflow does not pass CSC signing material to `electron-builder` on Windows. `WINDOWS_CERTIFICATE` and `WINDOWS_CERTIFICATE_PASSWORD` are reserved for re-enabling Windows signing later.
 
 GitHub upload/update feed:
 
@@ -102,7 +97,7 @@ Browser Host artifact trust:
 - `BROWSER_HOST_MANIFEST_SIGNING_KEY` — base64 PKCS#8 Ed25519 private key used only by the release matrix
 - `BROWSER_HOST_MANIFEST_PUBLIC_KEY` — base64 raw Ed25519 public key embedded in product runtime binaries
 
-PR/package validation works without signing secrets. A product Release validates every required signing secret before publishing a candidate and verifies that the Browser Host private/public key pair matches.
+PR/package validation works without signing secrets. A product Release validates every required macOS signing secret before publishing a candidate and verifies that the Browser Host private/public key pair matches.
 
 ## GitHub Actions Flow
 

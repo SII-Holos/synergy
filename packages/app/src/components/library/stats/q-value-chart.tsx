@@ -53,6 +53,7 @@ export function QValueChart(props: {
             if (center < 0.3) return theme().alpha("text-weak", 0.38)
             return theme().alpha("text-on-success-base", 0.72)
           }),
+          hoverBackgroundColor: bins.map((_bin, index) => theme().series[index % theme().series.length]),
           borderRadius: 2,
           barPercentage: 1.0,
           categoryPercentage: 0.92,
@@ -66,6 +67,7 @@ export function QValueChart(props: {
     maintainAspectRatio: false,
     scales: {
       x: {
+        border: { display: false },
         grid: { display: false },
         ticks: {
           font: { size: 8 },
@@ -77,6 +79,7 @@ export function QValueChart(props: {
         },
       },
       y: {
+        border: { display: false },
         grid: { color: theme().grid },
         ticks: { font: { size: 8 }, color: theme().axis },
       },
@@ -84,6 +87,7 @@ export function QValueChart(props: {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           title: (items: { label: string }[]) => {
             const label = items[0]?.label ?? ""
@@ -112,6 +116,9 @@ export function QValueChart(props: {
         tension: 0.3,
         pointRadius: 3,
         pointBackgroundColor: theme().series[0],
+        pointBorderColor: theme().background,
+        pointHoverBackgroundColor: theme().background,
+        pointHoverBorderColor: theme().series[0],
         borderWidth: 2,
       },
     ],
@@ -122,10 +129,12 @@ export function QValueChart(props: {
     maintainAspectRatio: false,
     scales: {
       x: {
+        border: { display: false },
         grid: { display: false },
         ticks: { font: { size: 8 }, color: theme().axis },
       },
       y: {
+        border: { display: false },
         min: -1,
         max: 1,
         grid: { color: theme().grid },
@@ -143,6 +152,7 @@ export function QValueChart(props: {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { dataIndex: number }) => {
             const point = dist().trend[ctx.dataIndex]

@@ -14,6 +14,7 @@ import { P } from "./performance-i18n"
 import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories } from "./tool-failure-model"
 import type { PerformanceSummary, PerformanceTimeline } from "./types"
+import type { ChartTheme } from "../visualization/use-chart-theme"
 
 function mockI18n(): I18n {
   const pMessages = new Map<string, string>()
@@ -97,7 +98,33 @@ const datasetSpecs: ChartDatasetSpec[] = [
     color: "#b7791f",
   },
 ]
-const chartTheme = { axisText: "#6b7280", gridColor: "#d1d5db" }
+const chartTheme = {
+  color: () => "#2563eb",
+  alpha: () => "#2563eb80",
+  series: Array.from({ length: 9 }, () => "#2563eb"),
+  axis: "#6b7280",
+  axisStrong: "#111827",
+  grid: "#d1d5db",
+  background: "#ffffff",
+  foreground: "#111827",
+  canvas: "#ffffff",
+  legend: { labels: { color: "#111827" } },
+  tooltip: {
+    backgroundColor: "#ffffff",
+    borderColor: "#d1d5db",
+    borderWidth: 1,
+    titleColor: "#111827",
+    bodyColor: "#111827",
+    footerColor: "#6b7280",
+  },
+  point: {
+    pointBackgroundColor: "#ffffff",
+    pointBorderColor: "#d1d5db",
+    pointHoverBackgroundColor: "#ffffff",
+    pointHoverBorderColor: "#111827",
+  },
+  states: { info: "#2563eb", success: "#16805d", warning: "#b7791f", critical: "#b42318" },
+} satisfies ChartTheme
 const formatTime = (value: number) => `time:${value}`
 
 function timeline(series: PerformanceTimeline["series"]): PerformanceTimeline {

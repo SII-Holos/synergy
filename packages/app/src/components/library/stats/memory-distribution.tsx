@@ -53,7 +53,10 @@ export function MemoryDistribution(props: {
       {
         data: categories().map((c) => c.count),
         backgroundColor: categories().map((category) => categoryColor(category.category)),
-        borderWidth: 0,
+        hoverBackgroundColor: categories().map((category) => categoryColor(category.category)),
+        borderWidth: 2,
+        borderColor: theme().background,
+        hoverBorderColor: theme().grid,
         hoverOffset: 4,
       },
     ],
@@ -66,6 +69,7 @@ export function MemoryDistribution(props: {
     plugins: {
       legend: { display: false },
       tooltip: {
+        ...theme().tooltip,
         callbacks: {
           label: (ctx: { label?: string; raw: number }) => {
             const pct = props.totalMemories > 0 ? (((ctx.raw as number) / props.totalMemories) * 100).toFixed(0) : "0"
