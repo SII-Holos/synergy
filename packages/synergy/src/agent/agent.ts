@@ -27,6 +27,13 @@ import { CodexProvider } from "@/provider/codex"
 
 export namespace Agent {
   const log = Log.create({ service: "agent" })
+  export type PluginOwner = {
+    pluginId: string
+    pluginGeneration: string
+  }
+  // Host-only provenance: ownership authorizes programmatic invocation but is
+  // not part of the public Agent descriptor or model-visible Agent metadata.
+  const pluginOwners = new WeakMap<Info, PluginOwner>()
 
   const ModelRef = z.object({
     providerID: z.string(),
@@ -278,7 +285,7 @@ export namespace Agent {
         log.info("plugin agent skipped, name already exists", { name: key })
         continue
       }
-      result[key] = {
+      const registered: Info = {
         name: agent.name,
         description: agent.description,
         prompt: agent.prompt,
@@ -299,6 +306,11 @@ export namespace Agent {
         delegationGroups: agent.delegationGroups,
         color: agent.color,
       }
+      result[key] = registered
+      pluginOwners.set(registered, {
+        pluginId: agent.pluginId,
+        pluginGeneration: agent.pluginGeneration,
+      })
     }
 
     for (const [name, item] of Object.entries(result)) {
@@ -430,6 +442,10 @@ export namespace Agent {
 
   export async function get(agent: string) {
     return state().then((x) => x[agent])
+  }
+
+  export function pluginOwner(agent: Info): PluginOwner | undefined {
+    return pluginOwners.get(agent)
   }
 
   export async function getAvailableModel(agent: Info): Promise<{ providerID: string; modelID: string } | undefined> {

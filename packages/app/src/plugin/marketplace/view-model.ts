@@ -3,6 +3,11 @@ import type { MessageDescriptor } from "@lingui/core"
 import type { InstalledPlugin } from "./types"
 
 export type MarketplaceView = "discover" | "installed" | "development"
+export interface InstalledPluginStatusView {
+  label: MessageDescriptor
+  isDisabled: boolean
+  canReviewPermissions: boolean
+}
 
 export const MARKETPLACE_NAV_ITEMS: ReadonlyArray<{ id: MarketplaceView; label: MessageDescriptor }> = [
   { id: "discover", label: pluginMarketplace.navDiscover },
@@ -12,6 +17,9 @@ export const MARKETPLACE_NAV_ITEMS: ReadonlyArray<{ id: MarketplaceView; label: 
 
 function normalize(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase()
+}
+export function isApprovalDisabledPlugin(plugin: InstalledPlugin): boolean {
+  return plugin.health === "disabled" && plugin.disabledPhase === "approval"
 }
 
 export function isDevelopmentPlugin(plugin: InstalledPlugin): boolean {
@@ -53,6 +61,18 @@ export function installationLabel(plugin: InstalledPlugin): MessageDescriptor {
     return { ...pluginMarketplace.installationPackage, values: { source: installation.source.toUpperCase() } }
   }
   return pluginMarketplace.installationBuiltIn
+}
+export function installedPluginStatusView(
+  plugin: InstalledPlugin,
+  _view: Exclude<MarketplaceView, "discover">,
+): InstalledPluginStatusView {
+  if (isApprovalDisabledPlugin(plugin)) {
+    return { label: pluginMarketplace.statusNeedsApproval, isDisabled: true, canReviewPermissions: true }
+  }
+  if (plugin.health === "disabled") {
+    return { label: pluginMarketplace.statusDisabled, isDisabled: true, canReviewPermissions: false }
+  }
+  return { label: pluginMarketplace.statusActive, isDisabled: false, canReviewPermissions: false }
 }
 
 export function installedPluginFromSnapshot(

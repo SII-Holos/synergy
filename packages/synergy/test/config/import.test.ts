@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import path from "path"
+import { pathToFileURL } from "url"
 import { Config } from "../../src/config/config"
 import { ConfigDomain } from "../../src/config/domain"
 import { ConfigImport } from "../../src/config/import"
@@ -185,7 +186,8 @@ describe("config import planning", () => {
 describe("config import apply", () => {
   test("writes project domains and preserves unrelated domain files", async () => {
     await withProject(async ({ root }) => {
-      await Config.domainUpdate("plugins", { plugin: ["example-plugin"] }, { root, mode: "replace-domain" })
+      const plugin = pathToFileURL(path.join(root, "missing-plugin")).href
+      await Config.domainUpdate("plugins", { plugin: [plugin] }, { root, mode: "replace-domain" })
       const pluginPath = ConfigDomain.filepath("plugins", root)
       const pluginBefore = await Bun.file(pluginPath).text()
       const plan = await ConfigImport.plan({ config: { model: "test/new" }, scope: "project" })

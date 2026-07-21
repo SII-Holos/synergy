@@ -1221,6 +1221,9 @@ export const pluginMarketplace = {
   generationLabel: { id: "app.plugin.marketplace.generation.label", message: "Generation {id}" },
   headingLabel: { id: "app.plugin.marketplace.heading.label", message: "{label} plugins" },
   pluginApiLabel: { id: "app.plugin.marketplace.pluginApi.label", message: "Plugin API {version}" },
+  statusNeedsApproval: { id: "app.plugin.marketplace.status.needsApproval", message: "Needs approval" },
+  statusDisabled: { id: "app.plugin.marketplace.status.disabled", message: "Disabled" },
+  statusActive: { id: "app.plugin.marketplace.status.active", message: "Active" },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin permission groups ──────────────────────────────────────────────────

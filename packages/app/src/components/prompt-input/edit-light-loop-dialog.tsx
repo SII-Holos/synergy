@@ -10,15 +10,15 @@ import { resolveLightLoopControlState } from "./light-loop-control"
 import { PI } from "./prompt-input-i18n"
 
 export function EditLightLoopDialog(props: {
-  taskDescription: string
+  instructions: string
   active: Accessor<boolean>
   working: Accessor<boolean>
   reviewPending: Accessor<boolean>
-  onSave: (taskDescription: string) => Promise<void>
+  onSave: (instructions: string) => Promise<void>
 }) {
   const dialog = useDialog()
   const { i18n } = useLocale()
-  const [taskDescription, setTaskDescription] = createSignal(props.taskDescription)
+  const [instructions, setInstructions] = createSignal(props.instructions)
   const [saving, setSaving] = createSignal(false)
   const state = createMemo(() =>
     resolveLightLoopControlState({
@@ -27,9 +27,9 @@ export function EditLightLoopDialog(props: {
       reviewPending: props.reviewPending(),
     }),
   )
-  const value = () => taskDescription().trim()
+  const value = () => instructions().trim()
   const canSave = () =>
-    state().mode === "editable" && value().length > 0 && value() !== props.taskDescription.trim() && !saving()
+    state().mode === "editable" && value().length > 0 && value() !== props.instructions.trim() && !saving()
   const stateDescription = () => {
     switch (state().reason) {
       case "inactive":
@@ -70,8 +70,8 @@ export function EditLightLoopDialog(props: {
       <div data-slot="dialog-form">
         <TextField
           label={i18n._(PI.lightLoopTaskLabel)}
-          value={taskDescription()}
-          onChange={setTaskDescription}
+          value={instructions()}
+          onChange={setInstructions}
           multiline
           rows={7}
           autofocus={state().mode === "editable"}

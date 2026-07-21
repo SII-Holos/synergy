@@ -47,19 +47,6 @@ function walk(root: string, directory: string, output: Record<string, string>) {
   }
 }
 
-export function hashDeclaredPaths(root: string, paths: readonly string[]) {
-  const files: Record<string, string> = {}
-  for (const declaredPath of paths) {
-    const target = resolveUnder(root, declaredPath)
-    if (!fs.existsSync(target)) throw new Error(`Declared plugin asset not found: ${declaredPath}`)
-    const stat = fs.statSync(target)
-    if (stat.isDirectory()) walk(root, target, files)
-    else if (stat.isFile()) files[normalizeManifestPath(declaredPath)] = sha256File(target)
-    else throw new Error(`Unsupported plugin asset: ${declaredPath}`)
-  }
-  return Object.fromEntries(Object.entries(files).sort(([left], [right]) => left.localeCompare(right)))
-}
-
 export function hashPackagedFiles(distDir: string) {
   const files: Record<string, string> = {}
   walk(distDir, distDir, files)

@@ -3399,6 +3399,10 @@ msgstr ""
 msgid "app.name.synergy"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.note.blueprint.pluginOwner"
+msgstr ""
+
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.runMode.active"
 msgstr ""
@@ -4708,23 +4712,75 @@ msgid "app.plugin.builtin.plugins"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.approveInstall"
+msgid "app.plugin.consent.addedGroup"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.deny"
+msgid "app.plugin.consent.approvalFailed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.description"
+msgid "app.plugin.consent.approvalRequired"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.emptyPermissions"
+msgid "app.plugin.consent.approving"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.riskSummary"
+msgid "app.plugin.consent.current.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.current.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.dialog.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.approve"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.manifestChanged"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.notNow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.approve"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reviewChanged"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -4732,7 +4788,15 @@ msgid "app.plugin.consent.severityChanges"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.title"
+msgid "app.plugin.consent.update.approve"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.title"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -4745,6 +4809,14 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.installing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.reviewPermissions"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -4893,6 +4965,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.state.needsApproval"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5056,18 +5132,6 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.development"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.disabled"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.installed"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.tools"
 msgstr ""
 
@@ -5097,6 +5161,18 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.source.official"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.active"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.disabled"
+msgstr ""
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.needsApproval"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15057,7 +15133,11 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.recommended"
+msgid "settings.runtime.agents.concurrency.memorySafety"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
 msgstr ""
 
 #. js-lingui-explicit-id

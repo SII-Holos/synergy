@@ -203,6 +203,13 @@ function NoteCard(props: {
   const variant = createMemo(() => props.variant ?? "balanced")
   const isBlueprint = createMemo(() => isBlueprintNote(props.note))
   const blueprintState = createMemo(() => getBlueprintVisualState(props.lingui, props.note, props.loops ?? []))
+  const pluginOwnerName = createMemo(() => {
+    const loops = props.loops ?? []
+    for (const loop of loops) {
+      if (loop.source === "plugin" && loop.pluginOwner) return loop.pluginOwner.pluginId
+    }
+    return undefined
+  })
   const cardHeight = createMemo(() => {
     if (variant() === "compact") return "h-[260px]"
     if (variant() === "featured") return "h-[370px]"
@@ -337,6 +344,18 @@ function NoteCard(props: {
                     id: N.fromOrigin.id,
                     message: N.fromOrigin.message,
                     values: { name: props.originName ?? "" },
+                  })}
+                </span>
+              </span>
+            </Show>
+            <Show when={pluginOwnerName()}>
+              <span class="note-card-origin">
+                <Icon name={getSemanticIcon("plugins.main")} class="size-3 shrink-0" />
+                <span class="truncate">
+                  {props.lingui._({
+                    id: "app.note.blueprint.pluginOwner",
+                    message: "From {plugin}",
+                    values: { plugin: pluginOwnerName() ?? "" },
                   })}
                 </span>
               </span>

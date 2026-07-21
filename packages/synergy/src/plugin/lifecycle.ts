@@ -15,6 +15,8 @@ import {
 } from "./loader"
 import { startForPlugin, stopForPlugin } from "./mcp"
 import Ajv2020 from "ajv/dist/2020"
+import { LightLoopRuntime } from "../session/light-loop-runtime"
+import { BlueprintLoopRuntime } from "../blueprint/loop-runtime"
 
 const log = Log.create({ service: "plugin.lifecycle" })
 
@@ -81,22 +83,35 @@ function validateHookValue(schema: Record<string, unknown>, value: unknown, labe
 function sessionId(input: unknown): string | undefined {
   if (!input || typeof input !== "object") return undefined
   const record = input as Record<string, unknown>
-  return typeof record.sessionID === "string"
-    ? record.sessionID
-    : typeof record.sessionId === "string"
-      ? record.sessionId
+  if (typeof record.sessionID === "string") return record.sessionID
+  if (typeof record.sessionId === "string") return record.sessionId
+  if (!record.loop || typeof record.loop !== "object") return undefined
+  const loop = record.loop as Record<string, unknown>
+  return typeof loop.sessionID === "string"
+    ? loop.sessionID
+    : typeof loop.sessionId === "string"
+      ? loop.sessionId
       : undefined
 }
 
-async function triggerPlugins<Input, Output>(
+type PluginHookExecution<Output> = {
+  value: Output
+  matchedHandlers: number
+  succeededHandlers: number
+  errors: string[]
+}
+
+async function executePluginHooks<Input, Output>(
   pointName: string,
   input: Input,
   initial: Output,
   plugins: LoadedPlugin[],
-): Promise<Output> {
+): Promise<PluginHookExecution<Output>> {
   const point = PluginHookPointRegistry.get(pointName)
   validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
   let value = initial
+  let succeededHandlers = 0
+  const errors: string[] = []
   const handlers = sortPluginHookHandlers(
     plugins.flatMap((plugin) => hookContributions(plugin, pointName).map((contribution) => ({ plugin, contribution }))),
   )
@@ -120,19 +135,31 @@ async function triggerPlugins<Input, Output>(
       value = applyPluginHookResult(point, value, result)
       if (point.mode !== "observer")
         validateHookValue(point.outputSchema, value, `Invalid output for hook point ${pointName}`)
+      succeededHandlers++
     } catch (error) {
       if (error instanceof PluginHookDeniedError) throw error
+      const message = error instanceof Error ? error.message : String(error)
+      errors.push(`Hook ${pointName} handler ${contribution.id} failed: ${message}`)
       markContributionDegraded(plugin, contribution.id, error)
       log.error("plugin contribution failed", {
         pluginId: plugin.id,
         contributionId: contribution.id,
         point: pointName,
-        error: error instanceof Error ? error.message : String(error),
+        error: message,
       })
       if (point.failure === "fail") throw error
     }
   }
-  return value
+  return { value, matchedHandlers: handlers.length, succeededHandlers, errors }
+}
+
+async function triggerPlugins<Input, Output>(
+  pointName: string,
+  input: Input,
+  initial: Output,
+  plugins: LoadedPlugin[],
+): Promise<Output> {
+  return executePluginHooks(pointName, input, initial, plugins).then((result) => result.value)
 }
 
 export async function trigger<Input, Output>(pointName: string, input: Input, initial: Output): Promise<Output> {
@@ -152,6 +179,49 @@ export async function triggerForPlugin<Input, Output>(
   return triggerPlugins(pointName, input, initial, [plugin])
 }
 
+export type PluginHookDeliveryResult =
+  | { status: "delivered"; handlerCount: number }
+  | { status: "plugin_mismatch" | "no_handler"; handlerCount: 0; error: string }
+  | { status: "failed"; handlerCount: number; succeededHandlerCount: number; error: string }
+
+export async function deliverHookForPlugin<Input>(
+  pluginId: string,
+  pluginGeneration: string,
+  pointName: string,
+  input: Input,
+): Promise<PluginHookDeliveryResult> {
+  const point = PluginHookPointRegistry.get(pointName)
+  if (point.mode !== "observer")
+    throw new Error(`Hook delivery acknowledgment requires an observer point: ${pointName}`)
+
+  const plugin = await getPlugin(pluginId)
+  if (!plugin || plugin.manifest.artifacts.generation !== pluginGeneration) {
+    return {
+      status: "plugin_mismatch",
+      handlerCount: 0,
+      error: `Plugin ${pluginId} generation ${pluginGeneration} is not active`,
+    }
+  }
+
+  const result = await executePluginHooks(pointName, input, undefined, [plugin])
+  if (result.matchedHandlers === 0) {
+    return {
+      status: "no_handler",
+      handlerCount: 0,
+      error: `Plugin ${pluginId} has no handler for ${pointName}`,
+    }
+  }
+  if (result.errors.length > 0) {
+    return {
+      status: "failed",
+      handlerCount: result.matchedHandlers,
+      succeededHandlerCount: result.succeededHandlers,
+      error: result.errors.join("; "),
+    }
+  }
+  return { status: "delivered", handlerCount: result.succeededHandlers }
+}
+
 export async function init() {
   const plugins = await state().then((value) => value.loaded)
   for (const plugin of plugins) {
@@ -162,6 +232,8 @@ export async function init() {
       )
     }
   }
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function reload() {
@@ -175,8 +247,10 @@ export async function reload() {
     ])
   }
   await resetAllPluginState()
-  const { ToolRegistry } = await import("../tool/registry")
-  await ToolRegistry.reload()
+  const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
+  await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  await LightLoopRuntime.reattachPluginTimers()
+  await BlueprintLoopRuntime.reattachPluginTimers()
 }
 
 export async function reloadMcpContributions() {
