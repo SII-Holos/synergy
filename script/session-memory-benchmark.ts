@@ -6,7 +6,7 @@ import { SessionToolInput } from "../packages/synergy/src/session/tool-input"
 type Memory = Pick<
   ReturnType<typeof process.memoryUsage>,
   "rss" | "heapUsed" | "heapTotal" | "external" | "arrayBuffers"
->
+> & { footprint: number | null }
 type Scenario = "history-projection" | "tool-stream"
 
 const presets = {
@@ -220,6 +220,7 @@ function memory(): Memory {
     heapTotal: value.heapTotal,
     external: value.external,
     arrayBuffers: value.arrayBuffers,
+    footprint: runtimeFootprint(),
   }
 }
 
@@ -230,6 +231,7 @@ function maximum(a: Memory, b: Memory): Memory {
     heapTotal: Math.max(a.heapTotal, b.heapTotal),
     external: Math.max(a.external, b.external),
     arrayBuffers: Math.max(a.arrayBuffers, b.arrayBuffers),
+    footprint: a.footprint === null || b.footprint === null ? null : Math.max(a.footprint, b.footprint),
   }
 }
 
@@ -240,7 +242,15 @@ function subtract(a: Memory, b: Memory): Memory {
     heapTotal: a.heapTotal - b.heapTotal,
     external: a.external - b.external,
     arrayBuffers: a.arrayBuffers - b.arrayBuffers,
+    footprint: a.footprint === null || b.footprint === null ? null : a.footprint - b.footprint,
   }
+}
+
+function runtimeFootprint() {
+  const unsafe = (Bun as unknown as { unsafe?: { memoryFootprint?: () => number } }).unsafe
+  if (typeof unsafe?.memoryFootprint !== "function") return null
+  const value = unsafe.memoryFootprint()
+  return Number.isFinite(value) && value >= 0 ? value : null
 }
 
 function deterministicText(bytes: number) {

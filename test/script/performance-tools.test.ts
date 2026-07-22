@@ -31,5 +31,6 @@ describe("optional performance tooling integration", () => {
     expect(docs).toContain("perf:memory")
     expect(docs).toContain("history-projection")
     expect(docs).toContain("tool-stream")
+    expect(docs).toContain("runtime footprint")
   })
 })

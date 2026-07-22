@@ -57,7 +57,7 @@ bun run perf:memory --preset smoke
 bun run perf:memory --preset standard
 ```
 
-Each scenario runs in a fresh Bun child process and reports `baseline`, `peak`, and `afterGC` values for RSS, JavaScript heap, external memory, and ArrayBuffers. `history-projection` exercises Synergy's message-to-model projection with deterministic tool output. `tool-stream` exercises chunked `Uint8Array` decoding, JSON tool-input parsing, and release. Keep the preset, Bun version, and architecture identical when comparing platforms. The harness is a bounded regression baseline, not a concurrency or stress test.
+Each scenario runs in a fresh Bun child process and reports `baseline`, `peak`, and `afterGC` values for RSS, JavaScript heap, external memory, ArrayBuffers, and runtime footprint. Footprint is `null` when the active Bun build does not expose `Bun.unsafe.memoryFootprint()`. `history-projection` exercises Synergy's message-to-model projection with deterministic tool output. `tool-stream` exercises chunked `Uint8Array` decoding, JSON tool-input parsing, and release. Keep the preset, Bun version, and architecture identical when comparing platforms. The harness is a bounded regression baseline, not a concurrency or stress test.
 
 ## Runtime config
 
