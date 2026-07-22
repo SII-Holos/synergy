@@ -28,7 +28,38 @@ export namespace McpAuth {
   })
   export type Entry = z.infer<typeof Entry>
 
+  export interface MutationOptions {
+    isCurrent?: () => boolean
+  }
+
   let cache: { filepath: string; data: Record<string, Entry> } | undefined
+  let mutation: Promise<void> = Promise.resolve()
+
+  function serialize<T>(fn: () => Promise<T>): Promise<T> {
+    const current = mutation.then(fn, fn)
+    mutation = current.then(
+      () => undefined,
+      () => undefined,
+    )
+    return current
+  }
+
+  async function persist(data: Record<string, Entry>): Promise<void> {
+    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
+    await fs.chmod(Global.Path.authMcp, 0o600)
+  }
+
+  function mutate(mcpName: string, fn: (entry: Entry | undefined) => Entry | undefined | false): Promise<boolean> {
+    return serialize(async () => {
+      const data = await all()
+      const next = fn(data[mcpName])
+      if (next === false) return false
+      if (next) data[mcpName] = next
+      else delete data[mcpName]
+      await persist(data)
+      return true
+    })
+  }
 
   export function invalidateCache() {
     cache = undefined
@@ -66,50 +97,64 @@ export namespace McpAuth {
   }
 
   export async function set(mcpName: string, entry: Entry, serverUrl?: string): Promise<void> {
-    if (serverUrl) entry.serverUrl = serverUrl
-    const data = await all()
-    data[mcpName] = entry
-    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
-    await fs.chmod(Global.Path.authMcp, 0o600)
+    await mutate(mcpName, () => {
+      const next = { ...entry }
+      if (serverUrl) next.serverUrl = serverUrl
+      else delete next.serverUrl
+      return next
+    })
   }
 
   export async function remove(mcpName: string): Promise<void> {
-    const data = await all()
-    delete data[mcpName]
-    await Bun.write(Global.Path.authMcp, JSON.stringify(data, null, 2))
-    await fs.chmod(Global.Path.authMcp, 0o600)
+    await mutate(mcpName, (entry) => (entry ? undefined : false))
   }
 
-  export async function updateTokens(mcpName: string, tokens: Tokens, serverUrl?: string): Promise<void> {
-    const entry = (await get(mcpName)) ?? {}
-    entry.tokens = tokens
-    await set(mcpName, entry, serverUrl)
+  export async function updateTokens(
+    mcpName: string,
+    tokens: Tokens,
+    serverUrl?: string,
+    options: MutationOptions = {},
+  ): Promise<void> {
+    await mutate(mcpName, (entry) =>
+      options.isCurrent?.() === false ? false : { ...entry, tokens, serverUrl: serverUrl ?? entry?.serverUrl },
+    )
   }
 
-  export async function updateClientInfo(mcpName: string, clientInfo: ClientInfo, serverUrl?: string): Promise<void> {
-    const entry = (await get(mcpName)) ?? {}
-    entry.clientInfo = clientInfo
-    await set(mcpName, entry, serverUrl)
+  export async function updateClientInfo(
+    mcpName: string,
+    clientInfo: ClientInfo,
+    serverUrl?: string,
+    options: MutationOptions = {},
+  ): Promise<void> {
+    await mutate(mcpName, (entry) =>
+      options.isCurrent?.() === false ? false : { ...entry, clientInfo, serverUrl: serverUrl ?? entry?.serverUrl },
+    )
   }
 
-  export async function updateCodeVerifier(mcpName: string, codeVerifier: string): Promise<void> {
-    const entry = (await get(mcpName)) ?? {}
-    entry.codeVerifier = codeVerifier
-    await set(mcpName, entry)
+  export async function updateCodeVerifier(
+    mcpName: string,
+    codeVerifier: string,
+    options: MutationOptions = {},
+  ): Promise<void> {
+    await mutate(mcpName, (entry) => (options.isCurrent?.() === false ? false : { ...entry, codeVerifier }))
   }
 
-  export async function clearCodeVerifier(mcpName: string): Promise<void> {
-    const entry = await get(mcpName)
-    if (entry) {
-      delete entry.codeVerifier
-      await set(mcpName, entry)
-    }
+  export function clearCodeVerifier(mcpName: string, expected?: string): Promise<boolean> {
+    return mutate(mcpName, (entry) => {
+      if (!entry?.codeVerifier) return false
+      if (expected !== undefined && entry.codeVerifier !== expected) return false
+      const next = { ...entry }
+      delete next.codeVerifier
+      return next
+    })
   }
 
-  export async function updateOAuthState(mcpName: string, oauthState: string): Promise<void> {
-    const entry = (await get(mcpName)) ?? {}
-    entry.oauthState = oauthState
-    await set(mcpName, entry)
+  export async function updateOAuthState(
+    mcpName: string,
+    oauthState: string,
+    options: MutationOptions = {},
+  ): Promise<void> {
+    await mutate(mcpName, (entry) => (options.isCurrent?.() === false ? false : { ...entry, oauthState }))
   }
 
   export async function getOAuthState(mcpName: string): Promise<string | undefined> {
@@ -117,12 +162,14 @@ export namespace McpAuth {
     return entry?.oauthState
   }
 
-  export async function clearOAuthState(mcpName: string): Promise<void> {
-    const entry = await get(mcpName)
-    if (entry) {
-      delete entry.oauthState
-      await set(mcpName, entry)
-    }
+  export function clearOAuthState(mcpName: string, expected?: string): Promise<boolean> {
+    return mutate(mcpName, (entry) => {
+      if (!entry?.oauthState) return false
+      if (expected !== undefined && entry.oauthState !== expected) return false
+      const next = { ...entry }
+      delete next.oauthState
+      return next
+    })
   }
 
   /**

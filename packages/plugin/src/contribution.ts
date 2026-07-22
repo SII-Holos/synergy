@@ -1,7 +1,13 @@
 import z from "zod"
-import type { BlueprintAfterInput, PluginCortexTaskAfterInput, PluginInvocationContext } from "./context.js"
+import type {
+  BlueprintAfterInput,
+  PluginCortexTaskAfterInput,
+  PluginInvocationContext,
+  SessionUserMessageAfterInput,
+} from "./context.js"
 import type { PluginAgent, PluginSkill } from "./plugin-types.js"
 import type { ToolDisplay, ToolResult } from "./tool.js"
+import type { McpServerConfig } from "./mcp.js"
 
 export type PluginJsonSchema = Record<string, unknown>
 export type PluginSchema<T = unknown> = z.ZodType<T> | PluginJsonSchema
@@ -39,9 +45,43 @@ export interface ToolContribution<Input = unknown> extends ContributionBase<"too
   handler(input: Input, context: PluginInvocationContext): Promise<string | ToolResult>
 }
 
+export type PluginCliOption = {
+  type: "boolean" | "string" | "number"
+  description: string
+}
+
+export type PluginCliCommandResult = {
+  stdout?: string
+  stderr?: string
+  exitCode: number
+}
+
+export interface CliCommandContribution extends ContributionBase<"cli.command"> {
+  description: string
+  options: Record<string, PluginCliOption>
+  timeoutMs?: number
+  handler(args: Record<string, unknown>, context: PluginInvocationContext): Promise<PluginCliCommandResult>
+}
+
+export type PluginSystemTransformInput = {
+  phase: "budget" | "final"
+  sessionID: string
+  agent: string
+  model: { providerID: string; modelID: string }
+  messageID?: string
+  small?: boolean
+  system: string[]
+}
+
 export interface PluginHookPointInputs {
   "cortex.task.after": PluginCortexTaskAfterInput
   "blueprint.after": BlueprintAfterInput
+  "session.user-message.after": SessionUserMessageAfterInput
+  "experimental.chat.system.transform": PluginSystemTransformInput
+}
+
+export interface PluginHookPointOutputs {
+  "experimental.chat.system.transform": { system: string[] }
 }
 
 export interface HookContribution<Point extends string = string> extends ContributionBase<"hook"> {
@@ -50,7 +90,7 @@ export interface HookContribution<Point extends string = string> extends Contrib
   handler(
     input: Point extends keyof PluginHookPointInputs ? PluginHookPointInputs[Point] : unknown,
     context: PluginInvocationContext,
-  ): Promise<unknown>
+  ): Promise<Point extends keyof PluginHookPointOutputs ? PluginHookPointOutputs[Point] : unknown>
 }
 
 export interface AgentContribution extends ContributionBase<"agent"> {
@@ -62,7 +102,7 @@ export interface SkillContribution extends ContributionBase<"skill"> {
 }
 
 export interface McpContribution extends ContributionBase<"mcp"> {
-  server: Record<string, unknown>
+  server: McpServerConfig
 }
 
 export interface PluginAuthProviderProfile {
@@ -120,6 +160,27 @@ export interface ComposerActionContribution extends UISurfaceContributionBase<"u
   slot: string
 }
 
+interface HeadlessUIContributionBase<Kind extends string> extends ContributionBase<Kind> {
+  order: number
+  component: TrustedComponentReference
+}
+
+export interface ComposerExtensionContribution extends HeadlessUIContributionBase<"ui.composerExtension"> {}
+
+export interface SelectionExtensionContribution extends HeadlessUIContributionBase<"ui.selectionExtension"> {}
+
+export interface TextActionContribution extends ContributionBase<"ui.textAction"> {
+  label: string
+  icon?: string
+  order: number
+  operation: string
+}
+
+export interface MessageSlotContribution extends HeadlessUIContributionBase<"ui.messageSlot"> {
+  slot: "message.before" | "message.after" | "message.actions"
+  roles?: Array<"user" | "assistant">
+}
+
 export interface SettingsContribution extends UISurfaceContributionBase<"ui.settings"> {
   group: string
   formSchema?: PluginJsonSchema
@@ -148,6 +209,7 @@ export type PluginContribution =
   | EventContribution
   | ToolContribution
   | HookContribution
+  | CliCommandContribution
   | AgentContribution
   | SkillContribution
   | McpContribution
@@ -156,6 +218,10 @@ export type PluginContribution =
   | NavigationItemContribution
   | MessageRendererContribution
   | ComposerActionContribution
+  | ComposerExtensionContribution
+  | SelectionExtensionContribution
+  | TextActionContribution
+  | MessageSlotContribution
   | SettingsContribution
   | ThemeContribution
   | IconContribution
@@ -168,6 +234,7 @@ export const EXECUTABLE_CONTRIBUTION_KINDS = [
   "operation",
   "tool",
   "hook",
+  "cli.command",
   "authProvider",
   "lifecycle.upgrade",
   "lifecycle.uninstall",
@@ -195,6 +262,12 @@ export function event<Payload>(input: Omit<EventContribution<Payload>, "kind">):
 
 export function tool<Input>(input: Omit<ToolContribution<Input>, "kind">): ToolContribution<Input> {
   return { ...input, kind: "tool" }
+}
+
+export function cliCommand(
+  input: Omit<CliCommandContribution, "kind" | "options"> & { options?: Record<string, PluginCliOption> },
+): CliCommandContribution {
+  return { ...input, kind: "cli.command", options: input.options ?? {} }
 }
 
 export function hook<Point extends string>(
@@ -241,6 +314,36 @@ export function composerAction(
   input: Omit<ComposerActionContribution, "kind" | "order"> & { order?: number },
 ): ComposerActionContribution {
   return { ...input, kind: "ui.composerAction", order: input.order ?? 1000 }
+}
+
+export function composerExtension(
+  input: Omit<ComposerExtensionContribution, "kind" | "order"> & { order?: number },
+): ComposerExtensionContribution {
+  return { ...input, kind: "ui.composerExtension", order: input.order ?? 1000 }
+}
+
+export function selectionExtension(
+  input: Omit<SelectionExtensionContribution, "kind" | "order" | "requires"> & {
+    order?: number
+    requires?: ["selection.read"]
+  },
+): SelectionExtensionContribution {
+  return { ...input, kind: "ui.selectionExtension", order: input.order ?? 1000, requires: ["selection.read"] }
+}
+
+export function textAction(
+  input: Omit<TextActionContribution, "kind" | "order" | "requires"> & {
+    order?: number
+    requires?: ["selection.read"]
+  },
+): TextActionContribution {
+  return { ...input, kind: "ui.textAction", order: input.order ?? 1000, requires: ["selection.read"] }
+}
+
+export function messageSlot(
+  input: Omit<MessageSlotContribution, "kind" | "order"> & { order?: number },
+): MessageSlotContribution {
+  return { ...input, kind: "ui.messageSlot", order: input.order ?? 1000 }
 }
 
 export function settings(

@@ -32,6 +32,10 @@ Every Host Service call is bound to the invocation's plugin, Scope, optional Ses
 
 Agent-only services such as delegated tasks and tool invocation require agent/session/message identity and still pass through Synergy's ordinary visibility, control-profile, permission, and enforcement paths.
 
+`asset.write` does not expose an arbitrary host filesystem handle: `context.asset.create()` transfers bytes to the host and returns a host-owned attachment. `shell.execute` exposes only argv-based `context.shell.run()` and still passes through the active control profile, permission system, sandbox, cancellation, and timeout. `settings.write` can replace only the invoking plugin's scoped settings.
+
+Declarative MCP contributions do not execute through the plugin process. The host validates every strict local or remote server declaration before replacing the plugin's complete MCP server set atomically. Local commands remain argv arrays; remote URLs are limited to parseable `http` or `https` endpoints. Global config names may shadow an unqualified plugin server name, but the qualified `${pluginId}::${contributionId}` identity remains stable for resolution, OAuth state, reload, and cleanup.
+
 ## Trusted UI
 
 Trusted components execute in the App context after approval. plugin-kit and the host enforce the shared Solid build contract, named exports, UI API major, package hash, and generation-specific asset URL. This protects lifecycle and consistency; it is not an iframe sandbox.

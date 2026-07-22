@@ -9,14 +9,20 @@ import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
-import { planSessionSyncReload } from "./session-sync-plan"
+import {
+  planSessionSyncReload,
+  refreshSessionAfterPending,
+  trackSessionSync,
+  type SessionSyncTrigger,
+} from "./session-sync-plan"
 import type { MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
+import { findSessionByID, findSessionIndex } from "./session-collection"
 
 type RefreshOptions = { force?: boolean }
-type SessionSyncOptions = { refreshVolatile?: boolean }
+type SessionSyncOptions = { refreshVolatile?: boolean; trigger?: SessionSyncTrigger }
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -42,11 +48,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
     // blueprint loop refetch (issue #331).
     const sessionReconnectVersions = new Map<string, number>()
 
-    const getSession = (sessionID: string) => {
-      const match = Binary.search(store.session, sessionID, (s) => s.id)
-      if (match.found) return store.session[match.index]
-      return undefined
-    }
+    const getSession = (sessionID: string) => findSessionByID(store.session, sessionID)
 
     const terminalCortexStatuses = new Set(["completed", "error", "cancelled"])
 
@@ -70,17 +72,17 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
 
     const upsertSession = (session: Session) => {
       reconcileCortexFromSession(session)
-      const match = Binary.search(store.session, session.id, (s) => s.id)
-      if (match.found) {
+      const index = findSessionIndex(store.session, session.id)
+      if (index !== -1) {
         // reconcile so a re-fetch of an already-present session preserves object
         // identity and doesn't invalidate downstream memos (issue #319).
-        setStore("session", match.index, reconcile(session))
+        setStore("session", index, reconcile(session))
         return
       }
       setStore(
         "session",
         produce((draft) => {
-          draft.splice(match.index, 0, session)
+          draft.unshift(session)
         }),
       )
     }
@@ -379,29 +381,34 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             reconnectVersion: currentReconnectVersion,
             lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
             canUnrollback: session?.history?.rollback?.canUnrollback === true,
+            trigger: options?.trigger,
           })
           const pending = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq =
-            pending ??
-            (plan.ready
-              ? Promise.resolve()
-              : (() => {
-                  const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
-                  const messagesReq = plan.forceMessages
-                    ? loadLatestMessages(sessionID, { force: true })
-                    : Promise.resolve()
-                  const promise = Promise.all([sessionReq, messagesReq])
-                    .then(() => {
-                      // Session-only reloads (no message fetch) still advance the
-                      // reconnect watermark so later sync() calls can short-circuit.
-                      if (!plan.forceMessages) markSessionSynced(sessionID)
-                    })
-                    .finally(() => {
-                      inflight.delete(sessionID)
-                    })
-                  inflight.set(sessionID, promise)
-                  return promise
-                })())
+            pending && options?.trigger?.type === "workspace-transition"
+              ? trackSessionSync(
+                  inflight,
+                  sessionID,
+                  refreshSessionAfterPending(pending, async () => {
+                    await loadSession(sessionID, { force: true })
+                    markSessionSynced(sessionID)
+                  }),
+                )
+              : (pending ??
+                (plan.ready
+                  ? Promise.resolve()
+                  : trackSessionSync(
+                      inflight,
+                      sessionID,
+                      Promise.all([
+                        plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve(),
+                        plan.forceMessages ? loadLatestMessages(sessionID, { force: true }) : Promise.resolve(),
+                      ]).then(() => {
+                        // Session-only reloads (no message fetch) still advance the
+                        // reconnect watermark so later sync() calls can short-circuit.
+                        if (!plan.forceMessages) markSessionSynced(sessionID)
+                      }),
+                    )))
 
           const requests = [baseReq, syncPermissions()]
           if (options?.refreshVolatile) {

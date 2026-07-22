@@ -2679,6 +2679,11 @@ msgstr "已移至隔离工作区"
 msgid "app.layout.worktree.moveFailed"
 msgstr "无法移至隔离工作区"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr "工作区状态刷新失败"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "资产"
@@ -2988,16 +2993,12 @@ msgid "app.library.skills.card.compatLabel"
 msgstr "{level} 兼容性"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.card.diagnosticsCount"
+msgstr "{count, plural, one {# 条诊断} other {# 条诊断}}"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
 msgstr "打开 {name} 的详情"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.referencesCount"
-msgstr "{count} 个参考{plural}"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.scriptsCount"
-msgstr "{count} 个脚本{plural}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.compat.compatible"
@@ -3040,6 +3041,10 @@ msgid "app.library.skills.detail.compatLevel"
 msgstr "级别"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.declaredCompatibility"
+msgstr "声明"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.delete"
 msgstr "删除技能"
 
@@ -3048,32 +3053,40 @@ msgid "app.library.skills.detail.description"
 msgstr "描述"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.diagnostics"
+msgstr "诊断"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.entryFile"
 msgstr "入口文件"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exporting"
+msgstr "正在导出..."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZip"
+msgstr "导出 ZIP"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZipAria"
+msgstr "将 {name} 导出为 ZIP 归档"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocation"
+msgstr "调用"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocationStatus"
+msgstr "状态"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.detail.location"
 msgstr "位置"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.detail.references"
-msgstr "参考"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.scripts"
-msgstr "脚本"
-
-#. js-lingui-explicit-id
 msgid "app.library.skills.detail.skillPath"
 msgstr "技能路径"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.unsupported"
-msgstr "不支持"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.warnings"
-msgstr "警告"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.diagnostics.count"
@@ -3090,6 +3103,34 @@ msgstr "未加载技能"
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.search"
 msgstr "没有技能匹配 \"{query}\""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.generic"
+msgstr "Synergy 无法导出此 Skill。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notFound"
+msgstr "此 Skill 已不可用。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notStandard"
+msgstr "此 Skill 不符合严格导出标准。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.unavailable"
+msgstr "此 Skill 无法导出。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportFailed"
+msgstr "导出失败"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccess"
+msgstr "技能已导出"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccessDesc"
+msgstr "已将 \"{name}\" 下载为 ZIP 归档"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
@@ -3132,12 +3173,56 @@ msgid "app.library.skills.import.button"
 msgstr "导入"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.import.destination"
+msgstr "导入位置"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.actualLabel"
+msgstr "实际"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.codeLabel"
+msgstr "代码"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.conflict"
+msgstr "已存在同名 Skill。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.generic"
+msgstr "Synergy 无法导入此 Skill 归档。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.guidance"
+msgstr "检查包内容，然后使用 .zip 或 .skill 归档重试。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.invalid"
+msgstr "归档不是有效的 Skill 包。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limit"
+msgstr "归档超过 Skill 导入限制。"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limitLabel"
+msgstr "限制"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.nameLabel"
+msgstr "Skill"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.pathLabel"
+msgstr "路径"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrl"
 msgstr "从 URL 导入"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrlDesc"
-msgstr "从网址下载并导入 ZIP 文件"
+msgstr "下载 .zip 或 .skill 归档"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrlHeading"
@@ -3148,28 +3233,24 @@ msgid "app.library.skills.import.label"
 msgstr "导入"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZip"
-msgstr "上传 ZIP"
+msgid "app.library.skills.import.scope.global"
+msgstr "全局"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZipDesc"
-msgstr "从本地 .zip 文件导入"
+msgid "app.library.skills.import.scope.project"
+msgstr "项目"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchive"
+msgstr "上传归档"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchiveDesc"
+msgstr "导入本地 .zip 或 .skill 归档"
 
 #. Skill import URL placeholder
 msgid "app.library.skills.import.urlPlaceholder"
 msgstr "https://example.com/skill.zip"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailed"
-msgstr "导入失败"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedDesc"
-msgstr "请检查 ZIP 是否包含有效的 SKILL.md"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedUrlDesc"
-msgstr "下载或解压失败。请检查 URL。"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.importSuccess"
@@ -3178,6 +3259,22 @@ msgstr "技能已导入"
 #. js-lingui-explicit-id
 msgid "app.library.skills.importSuccessDesc"
 msgstr "已将 \"{name}\" 添加到 {scope}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.modelOnly"
+msgstr "仅模型"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.unavailable"
+msgstr "不可调用"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userModel"
+msgstr "用户和模型"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userOnly"
+msgstr "仅用户"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.reload"
@@ -4540,8 +4637,38 @@ msgstr "长任务"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
-msgstr "内存"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr "完整"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr "部分"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr "cgroup v2"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr "进程汇总"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr "服务端 RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "服务内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
+msgstr "{rss} · {source} · {coverage}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4566,7 +4693,7 @@ msgstr "工具子进程 RSS"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.toolChildRssValue"
-msgstr "{rss} · {count} 个活跃"
+msgstr "{rss} · 已测量 {measured}/{count} 个"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5184,6 +5311,46 @@ msgid "app.plugin.marketplace.version.label"
 msgstr "v{version}"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.description"
+msgstr "向获批的无会话代理发送有长度限制的文本，不启用工具，也不写入会话历史。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.title"
+msgstr "调用 Synergy 代理"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.description"
+msgstr "插件完成交互期间，延迟普通消息进入会话。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.title"
+msgstr "拦截消息提交"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.description"
+msgstr "读取当前 Synergy 输入框中已稳定的文本和选区。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.title"
+msgstr "读取输入框草稿"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.description"
+msgstr "提供补全和标注，或对当前输入框应用编辑。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.title"
+msgstr "修改输入框草稿"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.description"
+msgstr "接收 Synergy 中选取的非敏感文本，并向文本菜单添加操作。"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.title"
+msgstr "读取所选文本"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
 msgstr "数据"
 
@@ -5423,6 +5590,10 @@ msgstr "提交"
 msgid "app.provider.state.failed"
 msgstr "授权失败：{error}"
 
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
+msgstr "正在导入凭据…"
+
 #. States
 msgid "app.provider.state.pending"
 msgstr "正在授权…"
@@ -5437,7 +5608,7 @@ msgstr "已连接"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.modelsAvailable"
-msgstr "{provider} 模型现已可用。"
+msgstr "{provider} 已连接，模型列表将在后台同步。"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
@@ -7133,6 +7304,10 @@ msgid "app.topBar.model.lockedLabel"
 msgstr "模型已锁定"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
+msgstr "该模型已不在最新列表中。"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.select"
 msgstr "选择模型"
 
@@ -8034,7 +8209,7 @@ msgstr "没有快速切换模型"
 
 #. js-lingui-explicit-id
 msgid "model.manager.quick"
-msgstr "快速"
+msgstr "快速切换"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -8055,6 +8230,34 @@ msgstr "工具"
 #. js-lingui-explicit-id
 msgid "nav.tools.title"
 msgstr "工具"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.copy"
+msgstr "复制"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.cut"
+msgstr "剪切"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.failed"
+msgstr "文本操作失败"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.paste"
+msgstr "粘贴"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.selectAll"
+msgstr "全选"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.tooLarge"
+msgstr "所选文本过长，扩展无法处理。"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.unavailable"
+msgstr "此编辑操作当前不可用。"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
@@ -9332,6 +9535,13 @@ msgstr "请等待此会话启动完成，再发送其他消息。"
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.interceptFailed"
+msgstr "输入框扩展已停止发送此消息"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.lightLoop.description"
 msgstr "请先填写任务；附件和引用只能补充上下文。"
 
@@ -9699,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr "已连接"
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr "备用目录"
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr "未连接"
 
@@ -10057,6 +10263,10 @@ msgstr "无法复制消息。"
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
+msgstr "模型 {modelID} 当前无法从 {providerID} 使用。请选择其他模型后继续。"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
@@ -11642,6 +11852,16 @@ msgstr "正在创建隔离工作区并将此会话移入其中。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr "工作区已成功变更，但 Synergy 无法刷新会话状态。{message}"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr "工作区已变更。正在更新会话状态。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr "工作区已就绪，你的第一条消息正在等待处理。"
 
@@ -11683,6 +11903,11 @@ msgstr "正在准备工作树并更新此会话工作区。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
 msgstr "第一条消息已发送。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
+msgstr "正在加载更新后的会话工作区。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11773,6 +11998,11 @@ msgstr "准备会话"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr "刷新工作区状态"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr "切回主工作区"
 
@@ -11804,6 +12034,16 @@ msgstr "无法移至隔离工作区"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
 msgstr "正在将会话移至工作树"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr "工作区状态刷新失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
+msgstr "正在刷新工作区状态"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15106,6 +15346,26 @@ msgid "settings.providers.accountConnected"
 msgstr "凭据已连接。请在用量中查看配额和账单详情。"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr "正在显示默认模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr "正在显示上次同步的模型列表"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr "模型列表待刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr "刷新模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr "正在刷新模型"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.connect"
 msgstr "连接"
 
@@ -15178,12 +15438,12 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "内存建议值：{value}。当前设置仍然生效。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "由环境管理 · 内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "由环境变量管理 · 内存建议值：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
@@ -15538,6 +15798,18 @@ msgid "settings.synergyLink.add.action"
 msgstr "添加目标"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr "正在添加..."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr "关闭添加目标对话框"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr "从 B 复制目标 Agent ID 和 Link ID。首次连接仍需在 B 上批准。"
 
@@ -15696,14 +15968,6 @@ msgstr "连接测试已完成"
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "这些账号被拒绝，并会留在这里，直到其凭据恢复。"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr "没有需要注意的提供商账号"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
-msgstr "当提供商拒绝请求时，凭据恢复操作会显示在这里。"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.title"

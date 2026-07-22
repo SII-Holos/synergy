@@ -117,7 +117,7 @@ export namespace ObservabilitySchema {
   export type SpanKind = z.infer<typeof SpanKind>
 
   export const SpanStatus = z
-    .enum(["running", "ok", "error", "cancelled", "timeout"])
+    .enum(["running", "ok", "error", "cancelled", "timeout", "interrupted"])
     .meta({ ref: "TelemetrySpanStatus" })
   export type SpanStatus = z.infer<typeof SpanStatus>
 
@@ -217,6 +217,23 @@ export namespace ObservabilitySchema {
           arrayBuffersBytes: z.number().optional(),
         })
         .default({}),
+      cgroup: z
+        .object({
+          currentBytes: z.number().optional(),
+          highBytes: z.number().optional(),
+          maxBytes: z.number().optional(),
+          peakBytes: z.number().optional(),
+          oomCount: z.number().optional(),
+          oomKillCount: z.number().optional(),
+        })
+        .optional(),
+      serviceMemory: z
+        .object({
+          rssBytes: z.number().optional(),
+          source: z.enum(["cgroup_v2", "process_api"]),
+          completeness: z.enum(["full", "partial"]),
+        })
+        .optional(),
       eventLoop: z.object({ lagMs: z.number().optional(), sampleWindowMs: z.number() }),
       io: z
         .object({
@@ -274,6 +291,7 @@ export namespace ObservabilitySchema {
     ageMs: z.number(),
     idleMs: z.number(),
     stale: z.boolean(),
+    activeSince: z.number().optional(),
   }).meta({ ref: "TelemetryInflightSpan" })
   export type InflightSpan = z.infer<typeof InflightSpan>
 

@@ -388,6 +388,12 @@ Agent and workflow selections follow the same principle: server session fields a
 
 Variant display resolves the explicit or historical session variant first, then the agent default and configured model-role default. Only the session variant is submitted; displaying a configured fallback never writes it into message history.
 
+## Composer Interaction State
+
+The active Web Composer owns one in-memory document controller. A snapshot contains a monotonic revision, editable text, UTF-16 selection offsets, optional Session identity, and normal/shell mode. File pills and other non-editable nodes remain in the controller's private DOM mapping and edits crossing them are rejected. Completion, decoration, and edit APIs share this revision boundary, so an asynchronous result cannot mutate a newer draft.
+
+Composer snapshots, settled-draft notifications, selected-text snapshots, completion, and decorations are transient interaction state. They are not server snapshots, Scope store buckets, persisted records, global events, replay items, or reconnect-recovery inputs, and their text is not written to diagnostic logs. Scope/Session navigation and component or plugin-generation disposal cancel active callbacks instead of replaying them after remount.
+
 ## Invariants
 
 - One global event WebSocket multiplexes events by owning Scope directory.

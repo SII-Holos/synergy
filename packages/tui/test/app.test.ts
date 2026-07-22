@@ -65,6 +65,7 @@ function bootstrap(sessions: Session[], commands: ScopeBootstrapResponse["comman
       profiles: {},
       authHealth: {},
       runtimeAvailability: {},
+      modelCatalog: {},
     },
     agent: [],
     config: {},

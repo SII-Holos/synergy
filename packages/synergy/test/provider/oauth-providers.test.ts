@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test"
+import { Global } from "../../src/global"
 import { Auth } from "../../src/provider/api-key"
 import { AnthropicOAuthProvider } from "../../src/provider/anthropic-oauth"
 import { CopilotProvider } from "../../src/provider/copilot"
@@ -294,6 +295,15 @@ test("github copilot live catalog changes only image capability and preserves ot
     throw new Error(`unexpected URL ${url}`)
   })
 
+  await ProviderCatalog.refresh(CopilotProvider.PROVIDER_ID)
+  const snapshot = JSON.parse(await Bun.file(Global.Path.providerModelCatalogCache).text()).snapshots.find(
+    (entry: { providerID: string }) => entry.providerID === CopilotProvider.PROVIDER_ID,
+  )
+  expect(snapshot.activeModels).toContainEqual({
+    id: "gemini-2.5-pro",
+    inputImage: true,
+    supportedImageMediaTypes: ["image/png", "image/jpeg"],
+  })
   const catalog = await ProviderCatalog.resolve({
     forceRefresh: true,
     includeLive: true,

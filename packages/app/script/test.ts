@@ -4,8 +4,8 @@ import { readdir } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
-const isolated = "src/app-build-css-contract.test.ts"
-const browserOnly = "src/plugin/builtin-navigation.test.ts"
+const isolated = "test/app-build-css-contract.test.ts"
+const browserOnly = "test/plugin/builtin-navigation.test.ts"
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
@@ -29,7 +29,7 @@ async function run(tests: string[], options: { browser?: boolean } = {}) {
   if (exitCode !== 0) globalThis.process.exit(exitCode)
 }
 
-const tests = (await collectTests("src")).toSorted()
+const tests = (await collectTests("test")).toSorted()
 await run(tests.filter((test) => test !== isolated && test !== browserOnly))
 await run([browserOnly], { browser: true })
 await run([isolated])

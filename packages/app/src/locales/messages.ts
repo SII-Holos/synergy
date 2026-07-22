@@ -806,6 +806,10 @@ export const topBar = {
   modelLockedLabel: { id: "app.topBar.model.lockedLabel", message: "Model locked" },
   selectModel: { id: "app.topBar.model.select", message: "Select model" },
   chooseModel: { id: "app.topBar.model.choose", message: "Choose model" },
+  retainedModel: {
+    id: "app.topBar.model.retained",
+    message: "This model is no longer in the latest provider list.",
+  },
   thinkingEffort: { id: "app.topBar.model.thinkingEffort", message: "Thinking effort" },
   defaultVariant: { id: "app.topBar.model.defaultVariant", message: "Default" },
   openNavigation: { id: "app.topBar.mobile.openNav", message: "Open navigation" },
@@ -1065,6 +1069,7 @@ export const providerFlow = {
   chooseHowToConnect: { id: "app.provider.choice.chooseHow", message: "Choose how to connect" },
   // States
   authInProgress: { id: "app.provider.state.pending", message: "Authorization in progress..." },
+  importInProgress: { id: "app.provider.state.importing", message: "Importing credentials..." },
   authFailed: { id: "app.provider.state.failed", message: "Authorization failed: {error}" },
   tryAnotherMethod: { id: "app.provider.state.tryAnotherMethod", message: "Try another method" },
   // API key
@@ -1112,7 +1117,10 @@ export const providerFlow = {
   // Toast
   connected: { id: "app.provider.toast.connected", message: "connected" },
   reconnected: { id: "app.provider.toast.reconnected", message: "reconnected" },
-  modelsAvailable: { id: "app.provider.toast.modelsAvailable", message: "{provider} models are now available to use." },
+  modelsAvailable: {
+    id: "app.provider.toast.modelsAvailable",
+    message: "{provider} is connected. Models sync in the background.",
+  },
   // Back to providers
   backToProviders: { id: "app.provider.backToProviders", message: "Back to providers" },
 } as const satisfies Record<string, AppMessageDescriptor>
@@ -1234,6 +1242,34 @@ export const pluginPermission = {
   groupNetwork: { id: "app.plugin.permissionGroup.network", message: "Network" },
   groupUi: { id: "app.plugin.permissionGroup.ui", message: "UI" },
   groupRuntime: { id: "app.plugin.permissionGroup.runtime", message: "Runtime" },
+  composerReadTitle: { id: "app.plugin.permission.composerRead.title", message: "Read composer drafts" },
+  composerReadDescription: {
+    id: "app.plugin.permission.composerRead.description",
+    message: "Read settled text and selection from the active Synergy composer.",
+  },
+  composerWriteTitle: { id: "app.plugin.permission.composerWrite.title", message: "Change composer drafts" },
+  composerWriteDescription: {
+    id: "app.plugin.permission.composerWrite.description",
+    message: "Offer completions and annotations or apply edits to the active composer.",
+  },
+  composerInterceptTitle: {
+    id: "app.plugin.permission.composerIntercept.title",
+    message: "Intercept message submission",
+  },
+  composerInterceptDescription: {
+    id: "app.plugin.permission.composerIntercept.description",
+    message: "Delay a normal message before it enters a Session while the plugin finishes its interaction.",
+  },
+  selectionReadTitle: { id: "app.plugin.permission.selectionRead.title", message: "Read selected text" },
+  selectionReadDescription: {
+    id: "app.plugin.permission.selectionRead.description",
+    message: "Receive non-sensitive text selected in Synergy and add text actions to its menu.",
+  },
+  agentCallTitle: { id: "app.plugin.permission.agentCall.title", message: "Call Synergy agents" },
+  agentCallDescription: {
+    id: "app.plugin.permission.agentCall.description",
+    message: "Send bounded text to approved Sessionless Agents without tools or Session history.",
+  },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin risk labels ────────────────────────────────────────────────────────

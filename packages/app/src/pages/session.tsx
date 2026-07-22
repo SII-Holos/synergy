@@ -48,6 +48,8 @@ import { blueprintNoteCreateFocusRequest } from "@/context/plan-blueprint-offer"
 import {
   createWorkspaceTransitionErrorProgress,
   createWorkspaceTransitionLoadingProgress,
+  createWorkspaceTransitionRefreshErrorProgress,
+  createWorkspaceTransitionRefreshProgress,
   createWorkspaceTransitionSuccessProgress,
   defaultNewSessionWorkspaceSelection,
   normalizePathForCompare,
@@ -188,6 +190,40 @@ function SessionPageContent() {
   const sessionTransitionPending = createMemo(() => isSessionTransitionBlocking(visibleSessionTransition()))
   const clearSessionTransition = sessionTransition.clear
   const setSessionTransition = sessionTransition.set
+  const refreshWorkspaceTransition = (input: {
+    request: SessionWorkspaceTransitionRequest
+    success: SessionTransitionProgress
+    toast: { title: string; description: string }
+  }) => {
+    const { request } = input
+    setSessionTransition(request.sessionID, createWorkspaceTransitionRefreshProgress(request))
+    const retry = () => refreshWorkspaceTransition(input)
+    const run = async () => {
+      try {
+        await sync.session.sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+        setSessionTransition(request.sessionID, input.success, {
+          dismiss: () => clearSessionTransition(request.sessionID),
+        })
+        showToast({ type: "info", ...input.toast })
+      } catch (error) {
+        const message = requestErrorMessage(error)
+        setSessionTransition(
+          request.sessionID,
+          createWorkspaceTransitionRefreshErrorProgress({ operation: request.operation, message }),
+          {
+            retry,
+            dismiss: () => clearSessionTransition(request.sessionID),
+          },
+        )
+        showToast({
+          type: "error",
+          title: i18n._(AP.layoutWorktreeRefreshFailed.id),
+          description: message,
+        })
+      }
+    }
+    void run()
+  }
   const startWorkspaceTransition = (request: SessionWorkspaceTransitionRequest) => {
     if (sessionTransition.get(request.sessionID)?.progress.phase === "loading") return
     const retry = () => startWorkspaceTransition(request)
@@ -196,15 +232,13 @@ function SessionPageContent() {
       try {
         if (request.operation === "leave") {
           await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
-          const progress = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
-          await sync.session.sync(request.sessionID).catch(() => undefined)
-          setSessionTransition(request.sessionID, progress, {
-            dismiss: () => clearSessionTransition(request.sessionID),
-          })
-          showToast({
-            type: "info",
-            title: i18n._(AP.layoutLeftWorktree.id),
-            description: i18n._(AP.layoutWorktreeLeftToast.id),
+          refreshWorkspaceTransition({
+            request,
+            success: createWorkspaceTransitionSuccessProgress({ operation: "leave" }),
+            toast: {
+              title: i18n._(AP.layoutLeftWorktree.id),
+              description: i18n._(AP.layoutWorktreeLeftToast.id),
+            },
           })
           return
         }
@@ -222,18 +256,19 @@ function SessionPageContent() {
           await sdk.client.worktree
             .leave({ directory: request.directory, sessionID: request.sessionID })
             .catch(() => undefined)
-          await sync.session.sync(request.sessionID).catch(() => undefined)
+          await sync.session
+            .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+            .catch(() => undefined)
           throw new Error(setupFailure)
         }
         const description = result.data?.name
           ? i18n._(AP.layoutWorktreeDesc.id, { name: result.data.name })
           : i18n._(AP.layoutWorktreeDescDefault.id)
-        const progress = createWorkspaceTransitionSuccessProgress({ operation: "enter", description })
-        await sync.session.sync(request.sessionID).catch(() => undefined)
-        setSessionTransition(request.sessionID, progress, {
-          dismiss: () => clearSessionTransition(request.sessionID),
+        refreshWorkspaceTransition({
+          request,
+          success: createWorkspaceTransitionSuccessProgress({ operation: "enter", description }),
+          toast: { title: i18n._(AP.layoutMovedToWorktree.id), description },
         })
-        showToast({ type: "info", title: i18n._(AP.layoutMovedToWorktree.id), description })
       } catch (error) {
         const message = requestErrorMessage(error)
         setSessionTransition(

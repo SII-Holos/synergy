@@ -84,6 +84,8 @@ bun run --cwd packages/tui typecheck
 bun run --cwd packages/tui compile:smoke
 ```
 
+Every test file lives under the owning package's `test/` directory; repository script and policy tests live under the root `test/` directory. Mirror source-domain subdirectories where useful, but never colocate `*.test.*` or `*.spec.*` beside implementation files. Run `bun run test-layout:check` to validate the repository boundary.
+
 The App and shared UI package scripts are part of the Turbo test graph. The App runner isolates its production CSS build contract from ordinary unit tests. The UI runner executes ordinary suites together and isolates the session-turn timeline suite so its global module mocks cannot contaminate neighboring tests.
 
 Theme source changes also regenerate the static boot fallback, Tailwind color mappings, and JSON schema from the canonical token catalog:
@@ -118,11 +120,12 @@ bun run monorepo:check
 bun run workflow:check
 bun run secrets:check
 bun run package:check
+bun run test-layout:check
 bun run quality:quick
 bun run quality
 ```
 
-`quality:quick` is the default local PR preflight: format, lint, Skill/package-guide checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook runs Bun-version, format, lint, typecheck, and monorepo checks; CI runs the wider matrix.
+`quality:quick` is the default local PR preflight: format, lint, Skill/package-guide/test-layout checks, strict localization contract, typecheck, monorepo consistency, and package validation. `quality` adds all Turbo tests. The pre-push hook runs Bun-version, format, lint, typecheck, and monorepo checks; CI runs the wider matrix.
 
 See [Open-source quality](../operations/open-source-quality.md) for exact jobs and failure guidance.
 

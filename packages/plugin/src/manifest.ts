@@ -1,5 +1,6 @@
 import z from "zod"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { McpServerConfig } from "./mcp.js"
 
 const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
@@ -51,6 +52,21 @@ const ToolContribution = ContributionBase.extend({
     .optional(),
 }).strict()
 
+const CliCommandContribution = ContributionBase.extend({
+  kind: z.literal("cli.command"),
+  description: z.string().min(1),
+  options: z.record(
+    z.string(),
+    z
+      .object({
+        type: z.enum(["boolean", "string", "number"]),
+        description: z.string().min(1),
+      })
+      .strict(),
+  ),
+  timeoutMs: z.number().int().positive().optional(),
+}).strict()
+
 const HookContribution = ContributionBase.extend({
   kind: z.literal("hook"),
   point: z.string().min(1),
@@ -67,7 +83,7 @@ const SkillContribution = ContributionBase.extend({
 }).strict()
 const McpContribution = ContributionBase.extend({
   kind: z.literal("mcp"),
-  server: z.record(z.string(), z.unknown()),
+  server: McpServerConfig,
 }).strict()
 const AuthProviderProfile = z
   .object({
@@ -133,6 +149,33 @@ const ComposerActionContribution = UIBase.extend({
   slot: z.string().min(1),
 }).strict()
 
+const HeadlessUIBase = ContributionBase.extend({
+  order: z.number().int(),
+  component: Component,
+})
+
+const ComposerExtensionContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.composerExtension"),
+}).strict()
+
+const SelectionExtensionContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.selectionExtension"),
+}).strict()
+
+const TextActionContribution = ContributionBase.extend({
+  kind: z.literal("ui.textAction"),
+  label: z.string().min(1),
+  icon: z.string().optional(),
+  order: z.number().int(),
+  operation: ContributionId,
+}).strict()
+
+const MessageSlotContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.messageSlot"),
+  slot: z.enum(["message.before", "message.after", "message.actions"]),
+  roles: z.array(z.enum(["user", "assistant"])).optional(),
+}).strict()
+
 const SettingsContribution = UIBase.extend({
   kind: z.literal("ui.settings"),
   group: z.string().min(1),
@@ -161,6 +204,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   OperationContribution,
   EventContribution,
   ToolContribution,
+  CliCommandContribution,
   HookContribution,
   AgentContribution,
   SkillContribution,
@@ -170,6 +214,10 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   NavigationItemContribution,
   MessageRendererContribution,
   ComposerActionContribution,
+  ComposerExtensionContribution,
+  SelectionExtensionContribution,
+  TextActionContribution,
+  MessageSlotContribution,
   SettingsContribution,
   ThemeContribution,
   IconContribution,
@@ -243,6 +291,42 @@ export const PluginManifest = z
           message: `Undeclared plugin setting ${contribution.enabledWhen.setting}`,
         })
       }
+      if (contribution.kind === "hook" && contribution.point === "session.user-message.after") {
+        if (!contribution.requires?.includes("session.read")) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "requires"],
+            message: "session.user-message.after requires session.read",
+          })
+        }
+      }
+      if (
+        (contribution.kind === "ui.selectionExtension" || contribution.kind === "ui.textAction") &&
+        !contribution.requires?.includes("selection.read")
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "requires"],
+          message: `${contribution.kind} requires selection.read`,
+        })
+      }
+      if (contribution.kind === "ui.textAction") {
+        const operation = manifest.contributions.find(
+          (item) => item.kind === "operation" && item.id === contribution.operation,
+        )
+        if (
+          !operation ||
+          operation.kind !== "operation" ||
+          operation.type !== "command" ||
+          !operation.expose.includes("ui")
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "operation"],
+            message: "Text action must reference a UI-exposed command operation",
+          })
+        }
+      }
       if (contribution.kind === "tool" && contribution.input.type !== "object") {
         context.addIssue({
           code: "custom",
@@ -264,7 +348,9 @@ export const PluginManifest = z
       }
     }
     const needsRuntime = manifest.contributions.some((item) =>
-      ["operation", "tool", "hook", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(item.kind),
+      ["operation", "tool", "hook", "cli.command", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(
+        item.kind,
+      ),
     )
     if (needsRuntime && !manifest.artifacts.runtime) {
       context.addIssue({

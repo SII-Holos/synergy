@@ -4,6 +4,7 @@ export type PluginActor =
   | { type: "ui" }
   | { type: "sdk"; subject?: string }
   | { type: "agent"; agent: string; messageId: string; callId: string }
+  | { type: "cli" }
   | { type: "lifecycle" }
 
 export interface PluginLogger {
@@ -71,6 +72,13 @@ export const PluginHostServiceErrorCode = {
   TASK_PARENT_REQUIRED: "PLUGIN_TASK_PARENT_REQUIRED",
   TASK_PARENT_SCOPE_MISMATCH: "PLUGIN_TASK_PARENT_SCOPE_MISMATCH",
   SESSION_SCOPE_MISMATCH: "PLUGIN_SESSION_SCOPE_MISMATCH",
+  AGENT_NOT_FOUND: "PLUGIN_AGENT_NOT_FOUND",
+  AGENT_NOT_OWNED: "PLUGIN_AGENT_NOT_OWNED",
+  AGENT_MODEL_UNAVAILABLE: "PLUGIN_AGENT_MODEL_UNAVAILABLE",
+  AGENT_INPUT_TOO_LARGE: "PLUGIN_AGENT_INPUT_TOO_LARGE",
+  AGENT_OUTPUT_TOO_LARGE: "PLUGIN_AGENT_OUTPUT_TOO_LARGE",
+  AGENT_TIMEOUT: "PLUGIN_AGENT_TIMEOUT",
+  AGENT_CANCELLED: "PLUGIN_AGENT_CANCELLED",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
 
@@ -90,6 +98,8 @@ export type PluginTaskStartInput = {
     modelID: string
   }
 }
+
+export type PluginTaskRunInput = Omit<PluginTaskStartInput, "correlationId"> & { correlationId?: string }
 
 export type PluginTaskSnapshot = PluginTaskHandle & {
   status: PluginTaskStatus
@@ -111,6 +121,7 @@ export type PluginCortexTaskAfterInput = {
 
 export interface TaskHostService {
   start(input: PluginTaskStartInput): Promise<PluginTaskHandle>
+  run(input: PluginTaskRunInput): Promise<PluginTaskSnapshot>
   current(): Promise<PluginTaskSnapshot | undefined>
   get(handle: PluginTaskHandle): Promise<PluginTaskSnapshot>
   cancel(handle: PluginTaskHandle): Promise<void>
@@ -226,6 +237,47 @@ export interface PluginToolHostService {
   invoke(toolId: string, input: unknown): Promise<ToolResult>
 }
 
+export interface PluginAgentHostService {
+  call(input: { agent: string; text: string; timeoutMs?: number; maxOutputChars?: number }): Promise<{ text: string }>
+}
+
+export interface SessionUserMessageAfterInput {
+  message: {
+    id: string
+    text: string
+    createdAt: number
+  }
+}
+
+export type PluginAssetCreateInput = {
+  data: string | Uint8Array
+  encoding?: "utf8" | "base64"
+  mime: string
+  filename?: string
+  presentation?: import("./tool.js").PluginToolAttachment["presentation"]
+  model?: import("./tool.js").PluginToolAttachment["model"]
+  metadata?: Record<string, unknown>
+}
+
+export interface AssetHostService {
+  create(input: PluginAssetCreateInput): Promise<import("./tool.js").PluginToolAttachment>
+}
+
+export type PluginShellRunInput = {
+  command: [string, ...string[]]
+  timeoutMs?: number
+}
+
+export type PluginShellRunResult = {
+  stdout: string
+  stderr: string
+  exitCode: number
+}
+
+export interface ShellHostService {
+  run(input: PluginShellRunInput): Promise<PluginShellRunResult>
+}
+
 export interface PluginInvocationContext {
   requestId: string
   scopeId: string
@@ -243,6 +295,9 @@ export interface PluginInvocationContext {
   settings?: PluginSettingsService
   secrets?: PluginSecretsService
   tools?: PluginToolHostService
+  agent?: PluginAgentHostService
+  asset?: AssetHostService
+  shell?: ShellHostService
 }
 
 export interface PluginActivationContext {

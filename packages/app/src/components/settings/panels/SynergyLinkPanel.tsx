@@ -1,6 +1,8 @@
 import { useLingui } from "@lingui/solid"
 import type { SynergyLinkTargetView } from "@ericsanchezok/synergy-sdk/client"
 import { Button } from "@ericsanchezok/synergy-ui/button"
+import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
+import { Dialog } from "@ericsanchezok/synergy-ui/dialog"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { Switch } from "@ericsanchezok/synergy-ui/switch"
@@ -12,6 +14,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
+  createTargetRequestController,
   normalizeAllowedAgents,
   reconcileTargetDraft,
   targetFormReady,
@@ -46,6 +49,9 @@ const copy = {
     message: "synergy, build",
   },
   add: { id: "settings.synergyLink.add.action", message: "Add target" },
+  adding: { id: "settings.synergyLink.add.adding", message: "Adding..." },
+  cancel: { id: "settings.synergyLink.add.cancel", message: "Cancel" },
+  close: { id: "settings.synergyLink.add.close", message: "Close add target dialog" },
   targetsTitle: { id: "settings.synergyLink.targets.title", message: "Targets" },
   targetsDescription: {
     id: "settings.synergyLink.targets.description",
@@ -85,13 +91,9 @@ const copy = {
 
 export function SynergyLinkPanel() {
   const { _ } = useLingui()
+  const dialog = useDialog()
   const globalSDK = useGlobalSDK()
   const confirm = useConfirm()
-  const [name, setName] = createSignal("")
-  const [targetAgentID, setTargetAgentID] = createSignal("")
-  const [linkID, setLinkID] = createSignal("")
-  const [allowedAgents, setAllowedAgents] = createSignal("")
-  const [busy, setBusy] = createSignal(false)
   const [targets, { refetch }] = createResource(async () => {
     const response = await globalSDK.client.synergyLink.targets({ throwOnError: true })
     return (response.data ?? []) as SynergyLinkTargetView[]
@@ -104,32 +106,8 @@ export function SynergyLinkPanel() {
   })
   onCleanup(unsubscribe)
 
-  async function addTarget() {
-    if (!targetFormReady({ name: name(), targetAgentID: targetAgentID(), linkID: linkID() })) return
-    setBusy(true)
-    try {
-      await globalSDK.client.synergyLink.targetCreate(
-        {
-          synergyLinkTargetCreateInput: {
-            name: name().trim(),
-            targetAgentID: targetAgentID().trim(),
-            linkID: linkID().trim(),
-            allowedAgents: normalizeAllowedAgents(allowedAgents()),
-          },
-        },
-        { throwOnError: true },
-      )
-      setName("")
-      setTargetAgentID("")
-      setLinkID("")
-      setAllowedAgents("")
-      await refetch()
-      showToast({ type: "success", title: _(copy.created) })
-    } catch (error) {
-      showToast({ type: "error", title: _(copy.failed), description: requestErrorMessage(error) })
-    } finally {
-      setBusy(false)
-    }
+  function openAddTargetDialog() {
+    dialog.push(() => <DialogAddSynergyLinkTarget onCreated={refetch} />)
   }
 
   async function removeTarget(target: SynergyLinkTargetView) {
@@ -156,55 +134,29 @@ export function SynergyLinkPanel() {
       title={_(copy.title)}
       description={_(copy.description)}
       actions={
-        <Button
-          type="button"
-          variant="ghost"
-          size="small"
-          icon={getSemanticIcon("action.refresh")}
-          onClick={() => void refetch()}
-        >
-          {_(copy.refresh)}
-        </Button>
+        <div class="settings-link-page-actions">
+          <Button
+            type="button"
+            variant="secondary"
+            size="small"
+            icon={getSemanticIcon("action.add")}
+            onClick={openAddTargetDialog}
+          >
+            {_(copy.add)}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="small"
+            icon={getSemanticIcon("action.refresh")}
+            onClick={() => void refetch()}
+          >
+            {_(copy.refresh)}
+          </Button>
+        </div>
       }
     >
       <div class="settings-integration-shell">
-        <SettingsSection title={_(copy.addTitle)} description={_(copy.addDescription)}>
-          <div class="settings-integration-form-grid settings-integration-form-grid-two">
-            <TextField label={_(copy.name)} placeholder={_(copy.namePlaceholder)} value={name()} onChange={setName} />
-            <TextField
-              label={_(copy.targetAgentID)}
-              placeholder={_(copy.targetAgentIDPlaceholder)}
-              value={targetAgentID()}
-              onChange={setTargetAgentID}
-            />
-            <TextField
-              label={_(copy.linkID)}
-              placeholder={_(copy.linkIDPlaceholder)}
-              value={linkID()}
-              onChange={setLinkID}
-            />
-            <TextField
-              label={_(copy.allowedAgents)}
-              description={_(copy.allowedAgentsDescription)}
-              placeholder={_(copy.allowedAgentsPlaceholder)}
-              value={allowedAgents()}
-              onChange={setAllowedAgents}
-            />
-          </div>
-          <div class="settings-link-actions">
-            <Button
-              type="button"
-              variant="secondary"
-              size="small"
-              icon={getSemanticIcon("action.add")}
-              disabled={busy() || !targetFormReady({ name: name(), targetAgentID: targetAgentID(), linkID: linkID() })}
-              onClick={() => void addTarget()}
-            >
-              {_(copy.add)}
-            </Button>
-          </div>
-        </SettingsSection>
-
         <SettingsSection title={_(copy.targetsTitle)} description={_(copy.targetsDescription)}>
           <Show when={listState() === "error"}>
             <div class="settings-request-error" role="alert">
@@ -242,6 +194,122 @@ export function SynergyLinkPanel() {
         </SettingsSection>
       </div>
     </SettingsPage>
+  )
+}
+
+function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
+  const { _ } = useLingui()
+  const dialog = useDialog()
+  const globalSDK = useGlobalSDK()
+  const [name, setName] = createSignal("")
+  const [targetAgentID, setTargetAgentID] = createSignal("")
+  const [linkID, setLinkID] = createSignal("")
+  const [allowedAgents, setAllowedAgents] = createSignal("")
+  const [busy, setBusy] = createSignal(false)
+  const isReady = () => targetFormReady({ name: name(), targetAgentID: targetAgentID(), linkID: linkID() })
+  const requests = createTargetRequestController()
+  onCleanup(() => requests.cancel())
+
+  function closeDialog() {
+    requests.cancel()
+    dialog.close()
+  }
+
+  async function addTarget(event: SubmitEvent) {
+    event.preventDefault()
+    if (!isReady() || busy()) return
+    const controller = requests.start()
+    setBusy(true)
+    try {
+      await globalSDK.client.synergyLink.targetCreate(
+        {
+          synergyLinkTargetCreateInput: {
+            name: name().trim(),
+            targetAgentID: targetAgentID().trim(),
+            linkID: linkID().trim(),
+            allowedAgents: normalizeAllowedAgents(allowedAgents()),
+          },
+        },
+        { throwOnError: true, signal: controller.signal },
+      )
+      if (controller.signal.aborted) return
+      showToast({ type: "success", title: _(copy.created) })
+      dialog.close()
+      void Promise.resolve().then(() => props.onCreated())
+    } catch (error) {
+      if (controller.signal.aborted) return
+      showToast({ type: "error", title: _(copy.failed), description: requestErrorMessage(error) })
+    } finally {
+      requests.finish(controller)
+      if (!controller.signal.aborted) setBusy(false)
+    }
+  }
+
+  return (
+    <Dialog
+      title={_(copy.addTitle)}
+      description={_(copy.addDescription)}
+      size="form"
+      class="settings-link-add-dialog"
+      dismissible
+      action={
+        <button
+          type="button"
+          aria-label={_(copy.close)}
+          data-slot="dialog-close-button"
+          data-component="icon-button"
+          data-variant="ghost"
+          onClick={closeDialog}
+        >
+          <Icon name={getSemanticIcon("action.close")} size="small" />
+        </button>
+      }
+    >
+      <form data-slot="dialog-form" onSubmit={addTarget}>
+        <div class="settings-link-dialog-fields">
+          <TextField
+            autofocus
+            label={_(copy.name)}
+            placeholder={_(copy.namePlaceholder)}
+            value={name()}
+            disabled={busy()}
+            onChange={setName}
+          />
+          <TextField
+            label={_(copy.targetAgentID)}
+            placeholder={_(copy.targetAgentIDPlaceholder)}
+            value={targetAgentID()}
+            disabled={busy()}
+            onChange={setTargetAgentID}
+          />
+          <TextField
+            label={_(copy.linkID)}
+            placeholder={_(copy.linkIDPlaceholder)}
+            value={linkID()}
+            disabled={busy()}
+            onChange={setLinkID}
+          />
+          <div class="settings-link-dialog-field-wide">
+            <TextField
+              label={_(copy.allowedAgents)}
+              description={_(copy.allowedAgentsDescription)}
+              placeholder={_(copy.allowedAgentsPlaceholder)}
+              value={allowedAgents()}
+              disabled={busy()}
+              onChange={setAllowedAgents}
+            />
+          </div>
+        </div>
+        <div data-slot="dialog-actions" class="settings-link-dialog-actions">
+          <Button type="button" variant="ghost" size="large" onClick={closeDialog}>
+            {_(copy.cancel)}
+          </Button>
+          <Button type="submit" variant="primary" size="large" disabled={busy() || !isReady()}>
+            {busy() ? _(copy.adding) : _(copy.add)}
+          </Button>
+        </div>
+      </form>
+    </Dialog>
   )
 }
 

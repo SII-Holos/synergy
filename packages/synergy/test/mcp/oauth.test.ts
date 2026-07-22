@@ -6,6 +6,10 @@ import { McpOAuthCallback } from "../../src/mcp/oauth-callback"
 import { MCP } from "../../src/mcp"
 import { PendingOAuth } from "../../src/mcp/pending-oauth"
 import { Global } from "../../src/global"
+import { McpSupervisor } from "../../src/mcp/supervisor"
+import { startForPlugin } from "../../src/plugin/mcp"
+import { ScopeContext } from "../../src/scope/context"
+import { tmpdir } from "../fixture/fixture"
 import { Log } from "../../src/util/log"
 
 Log.init({ print: false })
@@ -70,12 +74,14 @@ describe.serial("McpOAuthProvider", () => {
     mcpName = "test-server",
     serverUrl = "https://mcp.example.com",
     config?: { clientId?: string; clientSecret?: string; scope?: string },
+    isCurrent?: () => boolean,
   ) {
     let capturedUrl: URL | undefined
     const provider = new McpOAuthProvider(mcpName, serverUrl, config ?? {}, {
       onRedirect: async (url) => {
         capturedUrl = url
       },
+      isCurrent,
     })
     return { provider, getCapturedUrl: () => capturedUrl }
   }
@@ -310,6 +316,52 @@ describe.serial("McpOAuthProvider", () => {
     expect(entry!.serverUrl).toBe("https://mcp.example.com")
   })
 
+  test("stale same-name provider cannot overwrite newer tokens or client registration", async () => {
+    const name = "replaced-provider"
+    let currentIdentity = "stale"
+    const stale = createProvider(name, "https://old.example.com/mcp", {}, () => currentIdentity === "stale").provider
+    const current = createProvider(
+      name,
+      "https://new.example.com/mcp",
+      {},
+      () => currentIdentity === "current",
+    ).provider
+    currentIdentity = "current"
+    await current.saveClientInformation({
+      client_id: "current-client",
+      client_secret: "current-client-secret",
+      redirect_uris: [],
+      grant_types: [],
+      response_types: [],
+      token_endpoint_auth_method: "none",
+    })
+    await current.saveTokens({
+      access_token: "current-access-token",
+      token_type: "Bearer",
+      refresh_token: "current-refresh-token",
+    })
+
+    await stale.saveClientInformation({
+      client_id: "stale-client",
+      client_secret: "stale-client-secret",
+      redirect_uris: [],
+      grant_types: [],
+      response_types: [],
+      token_endpoint_auth_method: "none",
+    })
+    await stale.saveTokens({
+      access_token: "stale-access-token",
+      token_type: "Bearer",
+      refresh_token: "stale-refresh-token",
+    })
+
+    expect(await McpAuth.get(name)).toMatchObject({
+      serverUrl: "https://new.example.com/mcp",
+      clientInfo: { clientId: "current-client", clientSecret: "current-client-secret" },
+      tokens: { accessToken: "current-access-token", refreshToken: "current-refresh-token" },
+    })
+  })
+
   test("redirectToAuthorization calls onRedirect callback", async () => {
     let redirectedUrl: URL | undefined
     const provider = new McpOAuthProvider(
@@ -367,9 +419,42 @@ describe.serial("McpOAuthProvider", () => {
     expect(state).toBe("my-state")
   })
 
-  test("state throws when no state saved", async () => {
+  test("state creates and persists state when none is saved", async () => {
     const { provider } = createProvider("no-state-server", "https://mcp.example.com")
-    await expect(provider.state()).rejects.toThrow("No OAuth state saved for MCP server: no-state-server")
+    const state = await provider.state()
+
+    expect(state).not.toBe("")
+    expect((await McpAuth.get("no-state-server"))?.oauthState).toBe(state)
+  })
+
+  test("stale pending owner cleanup preserves a newer verifier and OAuth state", async () => {
+    const name = "replaced-pending-owner"
+    const staleIdentity = "plugin:stale"
+    const currentIdentity = "plugin:current"
+    const staleVerifier = "stale-verifier"
+    const staleState = "stale-state"
+    await McpAuth.set(name, { codeVerifier: staleVerifier, oauthState: staleState })
+    await PendingOAuth.register(name, {
+      identity: staleIdentity,
+      client: { close: async () => {} },
+      transport: { finishAuth: async () => {} },
+      onDispose: async () => {
+        await Promise.all([McpAuth.clearCodeVerifier(name, staleVerifier), McpAuth.clearOAuthState(name, staleState)])
+      },
+    })
+    await McpAuth.set(name, { codeVerifier: "current-verifier", oauthState: "current-state" })
+
+    await PendingOAuth.register(name, {
+      identity: currentIdentity,
+      client: { close: async () => {} },
+      transport: { finishAuth: async () => {} },
+    })
+
+    expect(PendingOAuth.get(name)?.identity).toBe(currentIdentity)
+    expect(await McpAuth.get(name)).toMatchObject({
+      codeVerifier: "current-verifier",
+      oauthState: "current-state",
+    })
   })
 })
 
@@ -521,6 +606,7 @@ describe.serial("McpOAuthCallback", () => {
           throw new Error("token exchange failed")
         },
       },
+      identity: "failed-server:test",
     })
 
     const status = await MCP.finishAuth("failed-server", "invalid-code")
@@ -530,6 +616,59 @@ describe.serial("McpOAuthCallback", () => {
     expect(PendingOAuth.get("failed-server")).toBeUndefined()
   })
 
+  test("finishAuth rejects a plugin server replaced during token exchange", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const name = "demo-plugin::oauth"
+        const declaration = {
+          oauth: {
+            type: "remote" as const,
+            url: "https://plugin.example.com/mcp",
+            oauth: { scope: "mcp:connect" },
+            startup: "manual" as const,
+          },
+        }
+        await startForPlugin("demo-plugin", declaration)
+        const resolved = await MCP.resolveServer(name)
+        expect(resolved).toBeDefined()
+
+        let exchangeStarted!: () => void
+        const started = new Promise<void>((resolve) => {
+          exchangeStarted = resolve
+        })
+        let completeExchange!: () => void
+        const exchange = new Promise<void>((resolve) => {
+          completeExchange = resolve
+        })
+        const close = mock(async () => {})
+        await PendingOAuth.register(name, {
+          client: { close },
+          transport: {
+            finishAuth: async () => {
+              exchangeStarted()
+              await exchange
+            },
+          },
+          identity: resolved!.identity,
+        })
+
+        const completion = MCP.finishAuth(name, "authorization-code")
+        await started
+        await startForPlugin("demo-plugin", declaration)
+        completeExchange()
+
+        expect(await completion).toEqual({
+          status: "failed",
+          error: "MCP server changed while OAuth was in progress; restart authentication",
+        })
+        expect(McpSupervisor.get(name)).toBeDefined()
+        expect(PendingOAuth.get(name)).toBeUndefined()
+      },
+    })
+  })
   test("MCP stop shuts down the OAuth callback server", async () => {
     await McpOAuthCallback.ensureRunning()
 

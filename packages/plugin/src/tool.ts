@@ -72,44 +72,37 @@ export type ToolResultMetadata = Record<string, any> & {
   display?: ToolDisplay
 }
 
+export type PluginToolAttachment = {
+  type: "attachment"
+  id: string
+  sessionID: string
+  messageID: string
+  mime: string
+  filename?: string
+  url: string
+  localPath?: string
+  presentation?: {
+    hidden?: boolean
+    renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
+    size?: "original" | "small" | "medium" | "large"
+    crop?: boolean
+  }
+  model?:
+    | { mode: "summary"; summary?: string }
+    | { mode: "content"; text?: string }
+    | { mode: "provider-file"; summary?: string }
+    | { mode: "none" }
+  metadata?: Record<string, any>
+}
+
 export interface ToolResult {
   title?: string
   output: string
   metadata?: ToolResultMetadata
-  attachments?: Array<{
-    type: "attachment"
-    id: string
-    sessionID: string
-    messageID: string
-    mime: string
-    filename?: string
-    url: string
-    localPath?: string
-    presentation?: {
-      hidden?: boolean
-      renderer?: "image" | "video" | "audio" | "thumbnail" | "file"
-      size?: "original" | "small" | "medium" | "large"
-      crop?: boolean
-    }
-    model?:
-      | {
-          mode: "summary"
-          summary?: string
-        }
-      | {
-          mode: "content"
-          text?: string
-        }
-      | {
-          mode: "provider-file"
-          summary?: string
-        }
-      | {
-          mode: "none"
-        }
-    metadata?: Record<string, any>
-  }>
+  attachments?: PluginToolAttachment[]
 }
+
+export type PluginToolResult = ToolResult
 
 export type ToolExposure =
   | {

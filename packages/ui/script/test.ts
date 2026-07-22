@@ -4,7 +4,10 @@ import { readdir } from "node:fs/promises"
 import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
-const isolated = new Set(["src/components/session-turn-timeline.test.ts", "src/components/tool/renders/task.test.tsx"])
+const isolated = new Set([
+  "test/components/session-turn-timeline.test.ts",
+  "test/components/tool/renders/task.test.tsx",
+])
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
@@ -31,6 +34,6 @@ async function run(files: string[]) {
   if (exitCode !== 0) globalThis.process.exit(exitCode)
 }
 
-const files = [...(await collectTests("test")), ...(await collectTests("src"))].toSorted()
+const files = (await collectTests("test")).toSorted()
 await run(files.filter((file) => !isolated.has(file)))
 for (const file of files.filter((file) => isolated.has(file))) await run([file])

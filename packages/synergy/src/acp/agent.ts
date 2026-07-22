@@ -730,7 +730,7 @@ export namespace ACP {
         return 0
       })
       const availableModels = entries.flatMap((provider) => {
-        const models = Provider.sort(Object.values(provider.models))
+        const models = Provider.sort(Object.values(provider.models).filter(Provider.isSelectableModel))
         return models.map((model) => ({
           modelId: `${provider.id}/${model.id}`,
           name: `${provider.name}/${model.name}`,
@@ -1104,7 +1104,7 @@ export namespace ACP {
 
     if (specified && !providers.length) return specified
 
-    const models = providers.flatMap((p) => Object.values(p.models))
+    const models = providers.flatMap((p) => Object.values(p.models).filter(Provider.isSelectableModel))
     const [best] = Provider.sort(models)
     if (best) {
       return {

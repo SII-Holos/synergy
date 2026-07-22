@@ -33,9 +33,13 @@ export interface McpOAuthConfig {
 
 export interface McpOAuthCallbacks {
   onRedirect: (url: URL) => void | Promise<void>
+  isCurrent?: () => boolean
 }
 
 export class McpOAuthProvider implements OAuthClientProvider {
+  private get mutationOptions(): McpAuth.MutationOptions {
+    return { isCurrent: this.callbacks.isCurrent }
+  }
   constructor(
     private mcpName: string,
     private serverUrl: string,
@@ -55,6 +59,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
       token_endpoint_auth_method: this.config.clientSecret ? "client_secret_post" : "none",
+      scope: this.config.scope,
     }
   }
 
@@ -96,6 +101,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
         clientSecretExpiresAt: info.client_secret_expires_at,
       },
       this.serverUrl,
+      this.mutationOptions,
     )
     log.info("saved dynamically registered client", {
       mcpName: this.mcpName,
@@ -129,6 +135,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
         scope: tokens.scope,
       },
       this.serverUrl,
+      this.mutationOptions,
     )
     log.info("saved oauth tokens", { mcpName: this.mcpName })
   }
@@ -143,7 +150,7 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveCodeVerifier(codeVerifier: string): Promise<void> {
-    await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier)
+    await McpAuth.updateCodeVerifier(this.mcpName, codeVerifier, this.mutationOptions)
   }
 
   async codeVerifier(): Promise<string> {
@@ -155,15 +162,15 @@ export class McpOAuthProvider implements OAuthClientProvider {
   }
 
   async saveState(state: string): Promise<void> {
-    await McpAuth.updateOAuthState(this.mcpName, state)
+    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
   }
 
   async state(): Promise<string> {
     const entry = await McpAuth.get(this.mcpName)
-    if (!entry?.oauthState) {
-      throw new Error(`No OAuth state saved for MCP server: ${this.mcpName}`)
-    }
-    return entry.oauthState
+    if (entry?.oauthState) return entry.oauthState
+    const state = crypto.randomUUID()
+    await McpAuth.updateOAuthState(this.mcpName, state, this.mutationOptions)
+    return state
   }
 }
 

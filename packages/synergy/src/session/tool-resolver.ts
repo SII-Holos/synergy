@@ -45,7 +45,7 @@ import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
 import { ObservabilitySpans } from "@/observability/spans"
-import { SkillPaths } from "@/skill/paths"
+import { SkillSourceProfile } from "@/skill/source-profile"
 import { LightLoopReviewAccess } from "./light-loop-review-access"
 import { BlueprintLoopReviewAccess } from "./blueprint-loop-review-access"
 import { BlueprintLoopStore } from "@/blueprint"
@@ -1469,7 +1469,7 @@ export namespace ToolResolver {
                   agentControlProfile: runtimeInput.agent.controlProfile,
                 })
                 const synergyRoot = Global.Path.root
-                const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
+                const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                 const pluginToolIds = await currentPluginToolIds()
                 const pluginGateData = await currentPluginGateData()
                 const gate = await EnforcementGate.create({
@@ -1680,8 +1680,7 @@ export namespace ToolResolver {
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
-          properties:
-            (((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"]) ?? {},
+          properties: ((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"],
           additionalProperties: false,
         } satisfies JSONSchema7
         result.push({
@@ -1726,7 +1725,7 @@ export namespace ToolResolver {
                     sessionID: runtimeInput.session?.id,
                     agentControlProfile: runtimeInput.agent.controlProfile,
                   })
-                  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(workspace)
+                  const trustedRoots = SkillSourceProfile.allRootPaths(workspace)
                   const pluginToolIds = await currentPluginToolIds()
                   const pluginGateData = await currentPluginGateData()
                   const gate = await EnforcementGate.create({

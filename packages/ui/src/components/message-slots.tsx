@@ -7,6 +7,7 @@ export interface MessageSlotProps {
   slot: MessageSlotName
   sessionId?: string
   messageId?: string
+  role?: "user" | "assistant"
 }
 
 export interface ExternalMessageSlotEntry {

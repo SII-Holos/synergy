@@ -40,6 +40,11 @@ import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
 import { ConfigDomain } from "./config/domain"
 import { parse as parseJsonc } from "jsonc-parser"
+import { Flag } from "./flag/flag"
+import { Scope } from "./scope"
+import { ScopeContext } from "./scope/context"
+import { contributions, getLoadedPlugins } from "./plugin/loader"
+import { createPluginCliCommandModule } from "./plugin/cli-command"
 
 const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
 if (pluginRuntimeRunnerArgIndex >= 0) {
@@ -176,7 +181,34 @@ const cli = yargs(hideBin(process.argv))
   .command(MigrateCommand)
   .command(MigrationCommand)
 
-// Register CLI commands from installed plugins (e.g. `synergy inspire login`)
+type YargsCommandMetadata = {
+  getInternalMethods(): {
+    getCommandInstance(): { getCommands(): string[] }
+  }
+}
+
+async function registerPluginCliCommands() {
+  const directory = Flag.SYNERGY_CWD || process.cwd()
+  const scope = (await Scope.fromDirectory(directory)).scope
+  await ScopeContext.provide({
+    scope,
+    async fn() {
+      const commandMetadata = cli as typeof cli & YargsCommandMetadata
+      const registered = new Set(commandMetadata.getInternalMethods().getCommandInstance().getCommands())
+      const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
+      for (const plugin of plugins) {
+        if (contributions(plugin, "cli.command").length === 0) continue
+        if (registered.has(plugin.id)) throw new Error(`Plugin CLI namespace ${plugin.id} conflicts with Synergy`)
+        registered.add(plugin.id)
+        cli.command(createPluginCliCommandModule({ plugin, scope }))
+      }
+    },
+  })
+}
+
+await registerPluginCliCommands()
+
+// Installed plugin commands are registered from generated manifest metadata.
 
 cli
   .fail((msg, err) => {

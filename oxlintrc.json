@@ -49,7 +49,7 @@
   ],
   "overrides": [
     {
-      "files": ["packages/sdk/js/src/gen/**", "packages/**/test/**", "script/**/*.test.ts"],
+      "files": ["packages/sdk/js/src/gen/**", "packages/**/test/**", "test/**"],
       "rules": {
         "typescript/no-explicit-any": "off"
       }

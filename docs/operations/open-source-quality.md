@@ -35,7 +35,7 @@ The pre-push hook is intentionally fast — it covers the most common issues but
 ### Quick local check
 
 ```bash
-bun run quality:quick    # format + lint + Skills/package guides + localization + typecheck + monorepo/package checks
+bun run quality:quick    # format + lint + Skill/package-guide/test-layout checks + localization + typecheck + monorepo/package checks
 ```
 
 ### Full local check (before opening a PR)
@@ -52,7 +52,7 @@ CI runs on push to `dev` / `main` and on pull requests targeting those branches.
 
 | Job                   | Purpose                                                                |
 | --------------------- | ---------------------------------------------------------------------- |
-| `quality`             | Formatting, lint, localization, monorepo deps, dead code               |
+| `quality`             | Formatting, lint, test layout, localization, monorepo deps, dead code  |
 | `typecheck`           | TypeScript type checking                                               |
 | `test`                | Non-Synergy package tests plus sequential fresh-process Synergy shards |
 | `package-validation`  | publint + attw for publishable packages                                |
@@ -219,14 +219,14 @@ bun run --cwd packages/app i18n:extract
 bun run localization:check
 ```
 
-The App and shared UI packages both expose standard `test` scripts, so `bun turbo test` includes their co-located suites. The App runner isolates its production CSS build contract from the unit-test process; the UI runner isolates the session-turn timeline suite because its process-wide module mocks must not leak into other shared UI tests.
+The App and shared UI packages both expose standard `test` scripts, so `bun turbo test` includes their centralized `test/` suites. The App runner isolates its production CSS build contract from the unit-test process; the UI runner isolates the session-turn timeline suite because its process-wide module mocks must not leak into other shared UI tests.
 
 For theme or color-token work, regenerate and verify the checked-in artifacts before the package suites:
 
 ```bash
 bun run --cwd packages/ui generate:theme
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app src/testing/color-token-contract.test.ts
+bun test --cwd packages/app test/testing/color-token-contract.test.ts
 ```
 
 ## Documentation Sync Rules

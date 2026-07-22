@@ -25,6 +25,7 @@ describe("OpenAPI spec generation", () => {
     const replayComponent = JSON.stringify(spec.components?.schemas?.EventReplayResult)
     expect(replayComponent).toContain('"ok"')
     expect(replayComponent).toContain('"reset"')
+    expect(spec.paths["/provider/{providerID}/models/refresh"]?.post?.operationId).toBe("provider.models.refresh")
   })
 
   test("includes /session/index route with operationId session.index", async () => {

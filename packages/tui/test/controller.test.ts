@@ -35,6 +35,7 @@ function bootstrap(sessions = [session("s1", 1)]): ScopeBootstrapResponse {
       profiles: {},
       authHealth: {},
       runtimeAvailability: {},
+      modelCatalog: {},
     },
     agent: [],
     config: {},

@@ -16,6 +16,7 @@ For core-runtime harness changes or CI-equivalent verification, run `bun run tes
 
 ```bash
 bun run deadcode
+bun run test-layout:check
 bun run workflow:check
 bun run secrets:check
 bun run desktop:test

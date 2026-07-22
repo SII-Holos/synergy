@@ -1,125 +1,82 @@
-import { describe, test, expect, mock } from "bun:test"
-import { Skill } from "../../src/skill"
-import { SkillPaths } from "../../src/skill/paths"
-import { Plugin } from "../../src/plugin"
-import { BUILTIN_SKILLS } from "../../src/skill/builtin"
-import { ScopeContext } from "../../src/scope/context"
-import { tmpdir } from "../fixture/fixture"
-import path from "path"
+import { describe, expect, mock, test } from "bun:test"
 import fs from "fs/promises"
+import path from "path"
+import { Plugin } from "../../src/plugin"
+import { ScopeContext } from "../../src/scope/context"
+import { Skill } from "../../src/skill"
+import { BUILTIN_SKILLS } from "../../src/skill/builtin"
+import { SkillSourceProfile } from "../../src/skill/source-profile"
+import { tmpdir } from "../fixture/fixture"
 
-const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.filter((s) => !s.condition).length
+const BUILTIN_SKILL_COUNT = BUILTIN_SKILLS.length
 
-function normalizedLocation(location: string) {
-  return location.replace(/\\/g, "/")
+function normalizedPath(value: string) {
+  return value.replace(/\\/g, "/")
 }
 
-async function createGlobalSkill(homeDir: string) {
-  const skillDir = path.join(homeDir, ".claude", "skills", "global-test-skill")
-  await fs.mkdir(skillDir, { recursive: true })
+function fileBacking(skill: Skill.Info) {
+  if (skill.backing.kind !== "file") throw new Error(`Expected ${skill.name} to be file-backed`)
+  return skill.backing
+}
+
+function memoryBacking(skill: Skill.Info) {
+  if (skill.backing.kind !== "memory") throw new Error(`Expected ${skill.name} to be memory-backed`)
+  return skill.backing
+}
+
+async function createSkill(
+  baseDir: string,
+  relativeDir: string,
+  input: { name: string; description?: string; entry?: string; fields?: string; body?: string },
+) {
+  const directory = path.join(baseDir, relativeDir)
+  await fs.mkdir(directory, { recursive: true })
   await Bun.write(
-    path.join(skillDir, "SKILL.md"),
-    `---
-name: global-test-skill
-description: A global skill from ~/.claude/skills for testing.
----
-
-# Global Test Skill
-
-This skill is loaded from the global home directory.
-`,
+    path.join(directory, input.entry ?? "SKILL.md"),
+    `---\nname: ${input.name}\ndescription: ${input.description ?? `${input.name} behavior.`}\n${input.fields ?? ""}---\n\n${input.body ?? `# ${input.name}`}\n`,
   )
 }
 
-async function createSkill(baseDir: string, relativeDir: string, content: string, filename = "SKILL.md") {
-  const skillDir = path.join(baseDir, relativeDir)
-  await fs.mkdir(skillDir, { recursive: true })
-  await Bun.write(path.join(skillDir, filename), content)
-}
-
-// Skill discovery tests share global state (process.env, ScopedState)
-// and must run serially to avoid interference between concurrent tests.
 describe.serial("skill discovery", () => {
-  test("runtime skill root candidates include external compatibility roots without requiring directories", async () => {
+  test("derives all runtime roots and existing trusted roots from supported locations", async () => {
     await using tmp = await tmpdir({ git: true })
     const originalHome = process.env.SYNERGY_TEST_HOME
     process.env.SYNERGY_TEST_HOME = tmp.path
-
-    try {
-      const roots = SkillPaths.runtimeSkillRootCandidatesSync(tmp.path).map(normalizedLocation)
-
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "skill")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "config", "skill")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".synergy", "config", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".claude", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".agents", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".openclaw", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, "skills")))
-    } finally {
-      process.env.SYNERGY_TEST_HOME = originalHome
-    }
-  })
-
-  test("runtime skill roots include only existing external compatibility roots", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const originalHome = process.env.SYNERGY_TEST_HOME
-    process.env.SYNERGY_TEST_HOME = tmp.path
-
     try {
       await fs.mkdir(path.join(tmp.path, ".codex", "skills"), { recursive: true })
       await fs.mkdir(path.join(tmp.path, ".agents", "skills"), { recursive: true })
+      const candidates = SkillSourceProfile.allRootPaths(tmp.path).map(normalizedPath)
+      const existing = SkillSourceProfile.existingRootPaths(tmp.path).map(normalizedPath)
+      const filesystemRootCandidate = normalizedPath(path.join(path.parse(tmp.path).root, ".codex", "skills"))
 
-      const roots = SkillPaths.runtimeSkillRootsSync(tmp.path).map(normalizedLocation)
-
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
-      expect(roots).toContain(normalizedLocation(path.join(tmp.path, ".agents", "skills")))
-      expect(roots).not.toContain(normalizedLocation(path.join(tmp.path, ".claude", "skills")))
-      expect(roots).not.toContain(normalizedLocation(path.join(tmp.path, ".openclaw", "skills")))
-    } finally {
-      process.env.SYNERGY_TEST_HOME = originalHome
-    }
-  })
-
-  test("runtimeSkillRootsSync delegates to runtimeSkillRootCandidatesSync", async () => {
-    await using tmp = await tmpdir({ git: true })
-    const originalHome = process.env.SYNERGY_TEST_HOME
-    process.env.SYNERGY_TEST_HOME = tmp.path
-
-    try {
-      const candidates = SkillPaths.runtimeSkillRootCandidatesSync(tmp.path).map(normalizedLocation)
-      const existing = SkillPaths.runtimeSkillRootsSync(tmp.path).map(normalizedLocation)
-
-      // Candidates include ALL well-known paths regardless of existence.
-      expect(candidates).toContain(normalizedLocation(path.join(tmp.path, ".codex", "skills")))
-
-      // Existing only includes directories that exist. Without creating any directories,
-      // only synergy native roots (which exist because .synergy/ dirs are created by
-      // the project structure) should be present.
+      for (const expected of [
+        ".synergy/skill",
+        ".synergy/skills",
+        ".synergy/config/skill",
+        ".claude/skills",
+        ".codex/skills",
+        ".agents/skills",
+        ".openclaw/skills",
+        "skills",
+      ]) {
+        expect(candidates.some((root) => root.endsWith(expected))).toBe(true)
+      }
+      expect(existing).toContain(normalizedPath(path.join(tmp.path, ".codex", "skills")))
+      expect(existing).toContain(normalizedPath(path.join(tmp.path, ".agents", "skills")))
+      expect(candidates).not.toContain(filesystemRootCandidate)
       expect(existing.length).toBeLessThan(candidates.length)
     } finally {
       process.env.SYNERGY_TEST_HOME = originalHome
     }
   })
 
-  test("discovers skills from .synergy/skill/ directory", async () => {
+  test("discovers strict Synergy singular and plural roots without indexing resources", async () => {
     await using tmp = await tmpdir({
       git: true,
-      init: async (dir) => {
-        const skillDir = path.join(dir, ".synergy", "skill", "test-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: test-skill
-description: A test skill for verification.
----
-
-# Test Skill
-
-Instructions here.
-`,
-        )
+      init: async (directory) => {
+        await createSkill(directory, ".synergy/skill/singular-skill", { name: "singular-skill" })
+        await createSkill(directory, ".synergy/skills/plural-skill", { name: "plural-skill" })
+        await Bun.write(path.join(directory, ".synergy/skill/singular-skill/references/guide.md"), "# Guide\n")
       },
     })
 
@@ -127,605 +84,366 @@ Instructions here.
       scope: await tmp.scope(),
       fn: async () => {
         const skills = await Skill.all()
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 1)
-        const testSkill = skills.find((s) => s.name === "test-skill")
-        expect(testSkill).toBeDefined()
-        expect(testSkill!.description).toBe("A test skill for verification.")
-        expect(normalizedLocation(testSkill!.location)).toContain("skill/test-skill/SKILL.md")
-        // Verify builtin skills are also present
-        const builtinSkill = skills.find((s) => s.builtin === true)
-        expect(builtinSkill).toBeDefined()
+        expect(skills).toHaveLength(BUILTIN_SKILL_COUNT + 2)
+        const singular = skills.find((skill) => skill.name === "singular-skill")!
+        const plural = skills.find((skill) => skill.name === "plural-skill")!
+        expect(singular.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
+        expect(normalizedPath(fileBacking(singular).entryFile)).toContain(".synergy/skill/singular-skill/SKILL.md")
+        expect(normalizedPath(fileBacking(plural).entryFile)).toContain(".synergy/skills/plural-skill/SKILL.md")
+        expect(singular).not.toHaveProperty("references")
       },
     })
   })
 
-  test("discovers references from .synergy/skill/ directory", async () => {
+  test("loads legacy Synergy Skill.md entries through the compatibility shim", async () => {
     await using tmp = await tmpdir({
       git: true,
-      init: async (dir) => {
-        const skillDir = path.join(dir, ".synergy", "skill", "reference-skill")
-        await fs.mkdir(path.join(skillDir, "references", "nested"), { recursive: true })
+      init: (directory) =>
+        createSkill(directory, ".synergy/skill/legacy-synergy", {
+          name: "legacy-synergy",
+          entry: "Skill.md",
+          fields: "legacy-field: preserved-by-loader\n",
+        }),
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = await Skill.get("legacy-synergy")
+        expect(skill).toBeDefined()
+        expect(Skill.runtimeCompatibility(skill!)).toBe("partial")
+        expect(skill!.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
+        expect(fileBacking(skill!).entryFile).toMatch(/Skill\.md$/)
+        const shim = skill!.diagnostics.find((diagnostic) => diagnostic.code === "skill.normalization_shim_applied")
+        expect(shim?.reason.id).toBe("synergy-legacy-entry-load")
+      },
+    })
+  })
+
+  test("isolates missing and malformed strict manifests with canonical diagnostics", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (directory) => {
+        await Bun.write(path.join(directory, ".synergy/skill/no-frontmatter/SKILL.md"), "# Missing\n")
         await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: reference-skill
-description: A test skill with references.
----
-
-# Reference Skill
-
-Read the reference files.
-`,
+          path.join(directory, ".synergy/skill/broken-skill/SKILL.md"),
+          "---\nname: broken-skill\ndescription: bad: yaml\n---\n",
         )
-        await Bun.write(path.join(skillDir, "references", "guide.md"), "# Guide\n")
-        await Bun.write(path.join(skillDir, "references", "nested", "extra.md"), "# Extra\n")
+        await createSkill(directory, ".synergy/skill/valid-skill", { name: "valid-skill" })
       },
     })
 
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const skill = await Skill.get("reference-skill")
-        expect(skill).toBeDefined()
-        expect(skill!.references).toEqual({
-          "references/guide.md": "# Guide\n",
-          "references/nested/extra.md": "# Extra\n",
+        const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
+        expect(skills.some((skill) => skill.name === "valid-skill")).toBe(true)
+        expect(skills.some((skill) => skill.name === "no-frontmatter")).toBe(false)
+        expect(skills.some((skill) => skill.name === "broken-skill")).toBe(false)
+        expect(diagnostics.map((diagnostic) => diagnostic.name)).toEqual(
+          expect.arrayContaining(["no-frontmatter", "broken-skill"]),
+        )
+      },
+    })
+  })
+
+  test("discovers project and global Claude compatibility roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalHome = process.env.SYNERGY_TEST_HOME
+    process.env.SYNERGY_TEST_HOME = tmp.path
+    try {
+      await createSkill(tmp.path, ".claude/skills/project-claude", { name: "project-claude" })
+      const project = path.join(tmp.path, "project")
+      await fs.mkdir(project, { recursive: true })
+      await createSkill(tmp.path, ".claude/skills/global-claude", { name: "global-claude" })
+
+      const scope = (await (await import("../../src/scope")).Scope.fromDirectory(project)).scope
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const global = await Skill.get("global-claude")
+          expect(global?.origin).toEqual({ kind: "filesystem", source: "claude", scope: "global" })
+        },
+      })
+    } finally {
+      process.env.SYNERGY_TEST_HOME = originalHome
+    }
+  })
+
+  test("returns canonical memory-backed builtins", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skills = await Skill.all()
+        expect(skills).toHaveLength(BUILTIN_SKILL_COUNT)
+        expect(skills.every((skill) => skill.origin.kind === "builtin")).toBe(true)
+        expect(skills.some((skill) => skill.name === "skill-creator")).toBe(false)
+        const creator = skills.find((skill) => skill.name === "synergy-skill-creator")!
+        expect(Skill.Manifest.safeParse({ name: creator.name, description: creator.description }).success).toBe(true)
+        const creatorBacking = memoryBacking(creator)
+        expect(creatorBacking.content).toContain("Agent Skills standard")
+        expect(creatorBacking.content).toContain("Synergy invocation extensions")
+        expect(creatorBacking.content).toContain("vendor-only fields")
+        expect(creatorBacking.content).toContain("user-invocable")
+        expect(creatorBacking.content).toContain("disable-model-invocation")
+        expect(creatorBacking.content).toContain("$ARGUMENTS[N]")
+        expect(creatorBacking.content).toContain("$N")
+        expect(creatorBacking.content).toContain("no-placeholder fallback")
+        expect(creatorBacking.content).toContain("allowed-tools")
+        expect(creatorBacking.content).toContain("has no authorization effect")
+        expect(creatorBacking.references ?? {}).toEqual({})
+        const config = skills.find((skill) => skill.name === "synergy-config")!
+        const backing = memoryBacking(config)
+        expect(backing.references?.["references/agents.txt"]).toContain("modelRole")
+        expect(backing.references?.["references/models.txt"]).toContain("## Role variants")
+      },
+    })
+  })
+
+  test("builtin creator has no old identity, helper scripts, or generic references", async () => {
+    const names = BUILTIN_SKILLS.map((skill) => skill.name)
+    expect(names).toContain("synergy-skill-creator")
+    expect(names).not.toContain("skill-creator")
+    const creator = BUILTIN_SKILLS.find((skill) => skill.name === "synergy-skill-creator")!
+    expect(Skill.Manifest.safeParse({ name: creator.name, description: creator.description }).success).toBe(true)
+    expect(creator).not.toHaveProperty("scripts")
+    expect(creator.references ?? {}).toEqual({})
+
+    for (const root of [
+      path.resolve(import.meta.dir, "../../src/skill/builtin/skill-creator"),
+      path.resolve(import.meta.dir, "../../src/skill/builtin/synergy-skill-creator"),
+    ]) {
+      await expect(Bun.file(path.join(root, "scripts/init-skill.ts")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(root, "scripts/package-skill.ts")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(root, "scripts/validate-skill.ts")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(root, "references/workflows.txt")).exists()).resolves.toBe(false)
+      await expect(Bun.file(path.join(root, "references/output-patterns.txt")).exists()).resolves.toBe(false)
+    }
+  })
+
+  test("reload discovers a strict project Skill created after initial state", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        expect(await Skill.get("late-skill")).toBeUndefined()
+        await createSkill(tmp.path, ".synergy/skill/late-skill", { name: "late-skill" })
+        await Skill.reload()
+        expect(fileBacking((await Skill.get("late-skill"))!).entryFile).toContain("late-skill/SKILL.md")
+      },
+    })
+  })
+
+  test("canonicalizes and deduplicates a Skill reached through multiple symlinked roots", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const target = path.join(tmp.path, "fixtures", "linked-skill")
+    await createSkill(tmp.path, "fixtures/linked-skill", { name: "linked-skill" })
+    await fs.mkdir(path.join(tmp.path, ".synergy", "skill"), { recursive: true })
+    await fs.mkdir(path.join(tmp.path, ".claude", "skills"), { recursive: true })
+    await fs.symlink(target, path.join(tmp.path, ".synergy", "skill", "linked-skill"), "dir")
+    await fs.symlink(target, path.join(tmp.path, ".claude", "skills", "linked-skill"), "dir")
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = (await Skill.get("linked-skill"))!
+        expect(skill.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
+        expect(fileBacking(skill)).toEqual({
+          kind: "file",
+          baseDir: await fs.realpath(target),
+          entryFile: await fs.realpath(path.join(target, "SKILL.md")),
+        })
+        expect(skill.diagnostics.some((diagnostic) => diagnostic.code === "skill.candidate_shadowed")).toBe(false)
+      },
+    })
+  })
+
+  test("chooses the highest-ranked source when symlinked roots share one canonical Skill", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalHome = process.env.SYNERGY_TEST_HOME
+    process.env.SYNERGY_TEST_HOME = tmp.path
+    try {
+      const project = path.join(tmp.path, "project")
+      const target = path.join(tmp.path, "fixtures", "ranked-link")
+      await createSkill(tmp.path, "fixtures/ranked-link", { name: "ranked-link" })
+      await fs.mkdir(path.join(tmp.path, ".synergy", "skill"), { recursive: true })
+      await fs.mkdir(path.join(project, ".claude", "skills"), { recursive: true })
+      await fs.symlink(target, path.join(tmp.path, ".synergy", "skill", "ranked-link"), "dir")
+      await fs.symlink(target, path.join(project, ".claude", "skills", "ranked-link"), "dir")
+
+      const scope = (await (await import("../../src/scope")).Scope.fromDirectory(project)).scope
+      await ScopeContext.provide({
+        scope,
+        fn: async () => {
+          const skill = (await Skill.get("ranked-link"))!
+          expect(skill.origin).toEqual({ kind: "filesystem", source: "claude", scope: "project" })
+          expect(fileBacking(skill).entryFile).toBe(await fs.realpath(path.join(target, "SKILL.md")))
+          expect(skill.diagnostics.some((diagnostic) => diagnostic.code === "skill.candidate_shadowed")).toBe(false)
+        },
+      })
+    } finally {
+      process.env.SYNERGY_TEST_HOME = originalHome
+    }
+  })
+
+  test("project Synergy candidates win over vendor candidates with a shadow reason", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: async (directory) => {
+        await createSkill(directory, ".claude/skills/shared-name", {
+          name: "shared-name",
+          description: "Claude version.",
+        })
+        await createSkill(directory, ".synergy/skill/shared-name", {
+          name: "shared-name",
+          description: "Synergy version.",
         })
       },
     })
-  })
-
-  test("discovers multiple skills from .synergy/skill/ directory", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        const skillDir1 = path.join(dir, ".synergy", "skill", "skill-one")
-        const skillDir2 = path.join(dir, ".synergy", "skill", "skill-two")
-        await Bun.write(
-          path.join(skillDir1, "SKILL.md"),
-          `---
-name: skill-one
-description: First test skill.
----
-
-# Skill One
-`,
-        )
-        await Bun.write(
-          path.join(skillDir2, "SKILL.md"),
-          `---
-name: skill-two
-description: Second test skill.
----
-
-# Skill Two
-`,
-        )
-      },
-    })
-
     await ScopeContext.provide({
       scope: await tmp.scope(),
       fn: async () => {
-        const skills = await Skill.all()
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 2)
-        expect(skills.find((s) => s.name === "skill-one")).toBeDefined()
-        expect(skills.find((s) => s.name === "skill-two")).toBeDefined()
+        const skill = (await Skill.get("shared-name"))!
+        expect(skill.description).toBe("Synergy version.")
+        expect(skill.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
+        expect(skill.diagnostics).toContainEqual(
+          expect.objectContaining({
+            code: "skill.candidate_shadowed",
+            reason: expect.objectContaining({ kind: "precedence" }),
+          }),
+        )
+        expect(Skill.runtimeCompatibility(skill)).toBe("native")
       },
     })
   })
 
-  test("discovers skills from .synergy/skills/ directory", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        const skillDir = path.join(dir, ".synergy", "skills", "plural-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: plural-skill
-description: A test skill in the plural skills directory.
----
-
-# Plural Skill
-
-Instructions here.
-`,
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skills = await Skill.all()
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 1)
-        const testSkill = skills.find((s) => s.name === "plural-skill")
-        expect(testSkill).toBeDefined()
-        expect(testSkill!.description).toBe("A test skill in the plural skills directory.")
-        expect(normalizedLocation(testSkill!.location)).toContain("skills/plural-skill/SKILL.md")
-      },
-    })
-  })
-
-  test("skips skills with missing frontmatter", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        const skillDir = path.join(dir, ".synergy", "skill", "no-frontmatter")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `# No Frontmatter
-
-Just some content without YAML frontmatter.
-`,
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT)
-        expect(skills.every((s) => s.builtin === true)).toBe(true)
-        expect(diagnostics).toHaveLength(1)
-        expect(diagnostics[0]?.name).toBe("no-frontmatter")
-      },
-    })
-  })
-
-  test("skips malformed skill frontmatter without failing whole catalog", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        const validSkillDir = path.join(dir, ".synergy", "skill", "valid-skill")
-        const brokenSkillDir = path.join(dir, ".synergy", "skill", "broken-skill")
-        await Bun.write(
-          path.join(validSkillDir, "SKILL.md"),
-          `---
-name: valid-skill
-description: Still loads.
----
-
-# Valid Skill
-`,
-        )
-        await Bun.write(
-          path.join(brokenSkillDir, "SKILL.md"),
-          `---
-name: broken-skill
-description: bad: yaml: here
----
-
-# Broken Skill
-`,
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
-        expect(skills.find((s) => s.name === "valid-skill")).toBeDefined()
-        expect(skills.find((s) => s.name === "broken-skill")).toBeUndefined()
-        expect(diagnostics.some((item) => item.name === "broken-skill")).toBe(true)
-      },
-    })
-  })
-
-  test("discovers skills from .claude/skills/ directory", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        const skillDir = path.join(dir, ".claude", "skills", "claude-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: claude-skill
-description: A skill in the .claude/skills directory.
----
-
-# Claude Skill
-`,
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skills = await Skill.all()
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 1)
-        const claudeSkill = skills.find((s) => s.name === "claude-skill")
-        expect(claudeSkill).toBeDefined()
-        expect(normalizedLocation(claudeSkill!.location)).toContain(".claude/skills/claude-skill/SKILL.md")
-      },
-    })
-  })
-
-  test("discovers global skills from ~/.claude/skills/ directory", async () => {
+  test("prefers the nearest ancestor root before singular versus plural root spelling", async () => {
     await using tmp = await tmpdir({ git: true })
+    const project = path.join(tmp.path, "project")
+    await createSkill(tmp.path, ".synergy/skill/ancestor-priority", {
+      name: "ancestor-priority",
+      description: "Parent singular root.",
+    })
+    await createSkill(project, ".synergy/skills/ancestor-priority", {
+      name: "ancestor-priority",
+      description: "Nearest plural root.",
+    })
 
-    const originalHome = process.env.SYNERGY_TEST_HOME
-    process.env.SYNERGY_TEST_HOME = tmp.path
+    const scope = (await (await import("../../src/scope")).Scope.fromDirectory(project)).scope
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const skill = (await Skill.get("ancestor-priority"))!
+        expect(skill.description).toBe("Nearest plural root.")
+        expect(normalizedPath(fileBacking(skill).entryFile)).toContain(
+          "project/.synergy/skills/ancestor-priority/SKILL.md",
+        )
+      },
+    })
+  })
 
+  test("preserves compatible names for programmatic plugin Skills", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalSkillEntries = Plugin.skillEntries
+    ;(Plugin as any).skillEntries = mock(async () => [
+      {
+        name: "Research Helper",
+        description: "Legacy plugin Skill name.",
+        content: "# Research Helper",
+        contributionId: "research-helper",
+        pluginId: "legacy-plugin",
+        pluginDir: path.join(tmp.path, "legacy-plugin"),
+      },
+    ])
     try {
-      await createGlobalSkill(tmp.path)
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
-          const skills = await Skill.all()
-          expect(skills.length).toBe(BUILTIN_SKILL_COUNT + 1)
-          const globalSkill = skills.find((s) => s.name === "global-test-skill")
-          expect(globalSkill).toBeDefined()
-          expect(globalSkill!.description).toBe("A global skill from ~/.claude/skills for testing.")
-          expect(normalizedLocation(globalSkill!.location)).toContain(".claude/skills/global-test-skill/SKILL.md")
+          await Skill.reload()
+          expect(await Skill.get("Research Helper")).toMatchObject({
+            name: "Research Helper",
+            origin: { kind: "plugin", pluginID: "legacy-plugin", contributionID: "research-helper" },
+          })
         },
       })
     } finally {
-      process.env.SYNERGY_TEST_HOME = originalHome
+      ;(Plugin as any).skillEntries = originalSkillEntries
+      await ScopeContext.provide({ scope: await tmp.scope(), fn: () => Skill.reload() })
     }
   })
 
-  test("returns only builtin skills when no user skills exist", async () => {
-    await using tmp = await tmpdir({ git: true })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skills = await Skill.all()
-        // Only builtin skills should be present
-        expect(skills.length).toBe(BUILTIN_SKILL_COUNT)
-        expect(skills.every((s) => s.builtin === true)).toBe(true)
-        // Verify skill-creator is present
-        const skillCreator = skills.find((s) => s.name === "skill-creator")
-        expect(skillCreator).toBeDefined()
-        expect(skillCreator!.content).toBeDefined()
-      },
-    })
-  })
-
-  test("synergy-config documents canonical agent and model settings", async () => {
-    await using tmp = await tmpdir({ git: true })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skill = await Skill.get("synergy-config")
-        if (!skill?.content) throw new Error("Expected the built-in synergy-config skill to have content")
-
-        const agents = skill.references?.["references/agents.txt"]
-        if (!agents) throw new Error("Expected synergy-config to include its agents reference")
-        for (const field of ["modelRole", "visibleTo", "delegationGroups", "controlProfile", "defaultVariant"]) {
-          expect(agents.split("\n").some((line) => line.startsWith(`| \`${field}\` |`))).toBe(true)
-        }
-        for (const field of ["tools", "maxSteps"]) {
-          const row = agents.split("\n").find((line) => line.startsWith(`| \`${field}\` |`))
-          expect(row).toContain("Deprecated")
-        }
-
-        const modelsDomain = skill.content.split("\n").find((line) => line.startsWith("| `10-models.jsonc` |"))
-        expect(modelsDomain).toContain("`quick_switcher`")
-
-        const models = skill.references?.["references/models.txt"]
-        if (!models) throw new Error("Expected synergy-config to include its models reference")
-        expect(models).toContain("## Role variants")
-        expect(models).toContain('"role_variant"')
-        expect(models).toContain('"thinking": "high"')
-      },
-    })
-  })
-
-  test("reload discovers project-local skill created after initial config state", async () => {
-    await using tmp = await tmpdir({ git: true })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const initial = await Skill.all()
-        expect(initial.length).toBe(BUILTIN_SKILL_COUNT)
-
-        const skillDir = path.join(tmp.path, ".synergy", "skill", "late-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: late-skill
-description: A project-local skill created after startup.
----
-
-# Late Skill
-`,
-        )
-
-        await Skill.reload()
-
-        const skills = await Skill.all()
-        const lateSkill = skills.find((s) => s.name === "late-skill")
-        expect(lateSkill).toBeDefined()
-        expect(normalizedLocation(lateSkill!.location)).toContain(".synergy/skill/late-skill/SKILL.md")
-      },
-    })
-  })
-
-  test("reload discovers project-local skill from subdirectory scope", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await fs.mkdir(path.join(dir, "packages", "app"), { recursive: true })
-      },
-    })
-
-    const subdirScope = (
-      await (await import("../../src/scope")).Scope.fromDirectory(path.join(tmp.path, "packages", "app"))
-    ).scope
-
-    await ScopeContext.provide({
-      scope: subdirScope,
-      fn: async () => {
-        const skillDir = path.join(tmp.path, ".synergy", "skill", "root-skill")
-        await Bun.write(
-          path.join(skillDir, "SKILL.md"),
-          `---
-name: root-skill
-description: A root project skill discovered from a nested directory.
----
-
-# Root Skill
-`,
-        )
-
-        await Skill.reload()
-
-        const skills = await Skill.all()
-        const rootSkill = skills.find((s) => s.name === "root-skill")
-        expect(rootSkill).toBeDefined()
-        expect(normalizedLocation(rootSkill!.location)).toContain(".synergy/skill/root-skill/SKILL.md")
-      },
-    })
-  })
-
-  test("discovers OpenClaw global and workspace skills with source metadata", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await createSkill(
-          dir,
-          "skills/workspace-openclaw",
-          `---
-name: workspace-openclaw
-description: Workspace OpenClaw skill.
-metadata: {"openclaw":{"requires":{"env":["OPENCLAW_TOKEN"]}}}
----
-
-# Workspace OpenClaw
-`,
-        )
-      },
-    })
-
-    const originalHome = process.env.SYNERGY_TEST_HOME
-    process.env.SYNERGY_TEST_HOME = tmp.path
-
-    try {
-      await createSkill(
-        tmp.path,
-        ".openclaw/skills/global-openclaw",
-        `---
-name: global-openclaw
-description: Global OpenClaw skill.
-metadata: {"openclaw":{"requires":{"bins":["uv"]}}}
-command-dispatch: tool
----
-
-# Global OpenClaw
-`,
-      )
-
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          const skills = await Skill.all()
-          const workspaceSkill = skills.find((s) => s.name === "workspace-openclaw")
-          const globalSkill = skills.find((s) => s.name === "global-openclaw")
-
-          expect(workspaceSkill).toBeDefined()
-          expect(workspaceSkill!.source).toBe("openclaw")
-          expect(workspaceSkill!.scope).toBe("workspace")
-          expect(workspaceSkill!.compatibility?.level).toBe("partial")
-          expect(workspaceSkill!.rawFrontmatter?.metadata).toBeDefined()
-
-          expect(globalSkill).toBeDefined()
-          expect(globalSkill!.source).toBe("openclaw")
-          expect(globalSkill!.scope).toBe("global")
-          expect(globalSkill!.compatibility?.unsupported).toContain(
-            "OpenClaw command-dispatch is not implemented in Synergy.",
-          )
-        },
-      })
-    } finally {
-      process.env.SYNERGY_TEST_HOME = originalHome
-    }
-  })
-
-  test("discovers Codex skills and supports Skill.md entry files", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await createSkill(
-          dir,
-          ".codex/skills/codex-skill",
-          `---
-name: codex-skill
-description: Codex skill file.
----
-
-# Codex Skill
-`,
-          "Skill.md",
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const skills = await Skill.all()
-        const codexSkill = skills.find((s) => s.name === "codex-skill")
-        expect(codexSkill).toBeDefined()
-        expect(codexSkill!.source).toBe("codex")
-        expect(codexSkill!.scope).toBe("project")
-        expect(normalizedLocation(codexSkill!.location)).toContain(".codex/skills/codex-skill/Skill.md")
-      },
-    })
-  })
-
-  test("higher-precedence Synergy skills override external duplicates", async () => {
-    await using tmp = await tmpdir({
-      git: true,
-      init: async (dir) => {
-        await createSkill(
-          dir,
-          ".claude/skills/shared-name",
-          `---
-name: shared-name
-description: Claude version.
----
-
-# Claude Version
-`,
-        )
-        await createSkill(
-          dir,
-          ".synergy/skills/shared-name",
-          `---
-name: shared-name
-description: Synergy version.
----
-
-# Synergy Version
-`,
-        )
-      },
-    })
-
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
-        const skill = skills.find((s) => s.name === "shared-name")
-        expect(skill).toBeDefined()
-        expect(skill!.source).toBe("synergy")
-        expect(skill!.description).toBe("Synergy version.")
-        expect(diagnostics.some((item) => item.name === "shared-name")).toBe(true)
-      },
-    })
-  })
-
-  test("plugin skill duplicates are resolved with diagnostics", async () => {
+  test("plugin duplicates use stable plugin and contribution identity", async () => {
     await using tmp = await tmpdir({ git: true })
     const originalSkillEntries = Plugin.skillEntries
     ;(Plugin as any).skillEntries = mock(async () => [
       {
         name: "plugin-shared",
-        description: "First plugin skill.",
-        content: "# First Plugin Skill",
-        pluginId: "plugin-one",
-        pluginName: "Plugin One",
-        pluginDir: path.join(tmp.path, "plugin-one"),
+        description: "Second plugin skill.",
+        content: "# Second",
+        contributionId: "skill-two",
+        pluginId: "plugin-two",
+        pluginDir: path.join(tmp.path, "plugin-two"),
       },
       {
         name: "plugin-shared",
-        description: "Second plugin skill.",
-        content: "# Second Plugin Skill",
-        pluginId: "plugin-two",
-        pluginName: "Plugin Two",
-        pluginDir: path.join(tmp.path, "plugin-two"),
+        description: "First plugin skill.",
+        content: "# First",
+        contributionId: "skill-one",
+        pluginId: "plugin-one",
+        pluginDir: path.join(tmp.path, "plugin-one"),
       },
     ])
-
     try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Skill.reload()
-          const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
-          const skill = skills.find((s) => s.name === "plugin-shared")
-          expect(skill).toBeDefined()
-          expect(skill!.source).toBe("plugin")
-          expect(skill!.scope).toBe("external")
-          expect(skill!.pluginId).toBe("plugin-two")
-          expect(skill!.description).toBe("Second plugin skill.")
-          expect(
-            diagnostics.some((item) => item.name === "plugin-shared" && item.message.includes("plugin plugin-one")),
-          ).toBe(true)
+          const skill = (await Skill.get("plugin-shared"))!
+          expect(skill.origin).toEqual({ kind: "plugin", pluginID: "plugin-one", contributionID: "skill-one" })
+          expect(skill.description).toBe("First plugin skill.")
+          expect(skill.diagnostics).toContainEqual(expect.objectContaining({ code: "skill.candidate_shadowed" }))
         },
       })
     } finally {
       ;(Plugin as any).skillEntries = originalSkillEntries
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          await Skill.reload()
-        },
-      })
+      await ScopeContext.provide({ scope: await tmp.scope(), fn: () => Skill.reload() })
     }
   })
 
-  test("project skills override plugin skill duplicates with diagnostics", async () => {
+  test("project filesystem candidates outrank plugin candidates", async () => {
     await using tmp = await tmpdir({
       git: true,
-      init: async (dir) => {
-        await createSkill(
-          dir,
-          ".synergy/skill/plugin-shared",
-          `---
-name: plugin-shared
-description: Project version.
----
-
-# Project Version
-`,
-        )
-      },
+      init: (directory) =>
+        createSkill(directory, ".synergy/skill/plugin-shared", {
+          name: "plugin-shared",
+          description: "Project version.",
+        }),
     })
     const originalSkillEntries = Plugin.skillEntries
     ;(Plugin as any).skillEntries = mock(async () => [
       {
         name: "plugin-shared",
         description: "Plugin version.",
-        content: "# Plugin Version",
+        content: "# Plugin",
+        contributionId: "shared",
         pluginId: "plugin-one",
-        pluginName: "Plugin One",
         pluginDir: path.join(tmp.path, "plugin-one"),
       },
     ])
-
     try {
       await ScopeContext.provide({
         scope: await tmp.scope(),
         fn: async () => {
           await Skill.reload()
-          const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
-          const skill = skills.find((s) => s.name === "plugin-shared")
-          expect(skill).toBeDefined()
-          expect(skill!.source).toBe("synergy")
-          expect(skill!.scope).toBe("project")
-          expect(skill!.description).toBe("Project version.")
-          expect(
-            diagnostics.some((item) => item.name === "plugin-shared" && item.message.includes("plugin plugin-one")),
-          ).toBe(true)
+          const skill = (await Skill.get("plugin-shared"))!
+          expect(skill.description).toBe("Project version.")
+          expect(skill.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
         },
       })
     } finally {
       ;(Plugin as any).skillEntries = originalSkillEntries
-      await ScopeContext.provide({
-        scope: await tmp.scope(),
-        fn: async () => {
-          await Skill.reload()
-        },
-      })
+      await ScopeContext.provide({ scope: await tmp.scope(), fn: () => Skill.reload() })
     }
   })
 })

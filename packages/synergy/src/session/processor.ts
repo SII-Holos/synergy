@@ -1420,7 +1420,7 @@ export namespace SessionProcessor {
               log.error("process", {
                 error: e,
               })
-              const error = MessageV2.fromError(e, { providerID: input.model.providerID })
+              const error = MessageV2.fromError(e, { providerID: input.model.providerID, modelID: input.model.id })
               const retry = fastAbort ? undefined : SessionRetry.retryable(error)
               if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
                 attempt++

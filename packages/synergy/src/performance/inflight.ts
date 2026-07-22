@@ -38,6 +38,7 @@ export namespace PerformanceInflight {
         ageMs: row.age_ms,
         idleMs: row.idle_ms,
         stale: row.stale,
+        activeSince: row.last_activity_time ?? row.start_time,
       }),
     )
     return PerformanceSchema.Inflight.parse({ generatedAt: new Date().toISOString(), spans })

@@ -31,6 +31,7 @@ function bootstrap(): ScopeBootstrapResponse {
       profiles: {},
       authHealth: {},
       runtimeAvailability: {},
+      modelCatalog: {},
     },
     agent: [],
     config: {},
