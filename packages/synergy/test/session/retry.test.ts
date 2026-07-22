@@ -3,6 +3,7 @@ import { SessionRetry } from "../../src/session/retry"
 import { MessageV2 } from "../../src/session/message-v2"
 import { APICallError } from "ai"
 import { ProviderAuthRecovery } from "../../src/provider/auth-recovery"
+import { ProviderModelUnavailableError } from "../../src/provider/model-unavailable-error"
 
 function apiError(headers?: Record<string, string>): MessageV2.APIError {
   return new MessageV2.APIError({
@@ -188,5 +189,23 @@ describe("session.message-v2.fromError", () => {
     expect(MessageV2.APIError.isInstance(result)).toBe(true)
     expect((result as MessageV2.APIError).data.isRetryable).toBe(true)
     expect(SessionRetry.retryable(result)).toBe("Unable to connect. Is the computer able to access the url?")
+  })
+
+  test("preserves the requested model when the provider explicitly rejects it", () => {
+    const error = new APICallError({
+      message: "The requested model is not available",
+      url: "https://api.example.test/v1/chat",
+      requestBodyValues: { model: "model-retained" },
+      statusCode: 404,
+      responseBody: JSON.stringify({ error: { message: "model not found" } }),
+      isRetryable: false,
+    })
+
+    const result = MessageV2.fromError(error, { providerID: "test", modelID: "model-retained" })
+
+    expect(ProviderModelUnavailableError.isInstance(result)).toBe(true)
+    expect(result).toMatchObject({
+      data: { providerID: "test", modelID: "model-retained", reason: "rejected_by_provider" },
+    })
   })
 })
