@@ -9,11 +9,7 @@ import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
-import {
-  planSessionSyncReload,
-  refreshSessionAfterPending,
-  type SessionSyncTrigger,
-} from "./session-sync-plan"
+import { planSessionSyncReload, refreshSessionAfterPending, type SessionSyncTrigger } from "./session-sync-plan"
 import type { MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
