@@ -221,7 +221,7 @@ The compaction job:
 
 1. resolves the dedicated `compaction` agent and its available model, falling back to the root model;
 2. projects the current effective history with no tools;
-3. trims oldest summary input if even the compaction model cannot accept the full history;
+3. trims oldest summary input if even the compaction model cannot accept the full history, advancing the cut past any tool results whose assistant tool calls were omitted;
 4. persists a hidden compaction attempt with `includeInContext = false` and `metadata.compactionAttempt.state = "running"` so streamed output remains auditable without affecting later prompts;
 5. asks only for a structured continuation summary;
 6. records provider or processor failures as `failed` and empty output as `empty`, leaving those terminal attempts hidden and outside model context;
