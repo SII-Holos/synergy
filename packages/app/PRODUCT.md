@@ -228,7 +228,7 @@ Treat brand assets as a hierarchy, not interchangeable decoration. SII is the in
 
 Provider discovery should use provider profile metadata for explanatory copy and external sign-up CTAs. Settings may curate a short Recommended provider set for product guidance; custom providers remain standard alphabetical entries unless they declare metadata.
 
-Online account model discovery accepts future model slugs without a client allowlist. When live discovery cannot be verified because of a transient failure, stable fallback models may remain visible but must be labeled as a fallback catalog; authentication rejection instead makes the provider unavailable and routes to recovery.
+Online account model discovery accepts future model slugs without a client allowlist. Connection, quota, and model-list state are presented independently. While background refresh is pending or fails, Settings explains whether it is showing bundled defaults or the last synced list; it never exposes internal fallback terminology. Existing sessions may show a retained model with an explicit warning, while every new model choice uses only the latest active list.
 
 Clarifying question prompts are decision surfaces, not tool-output cards. Answer options are the primary visual anchor: use a solid outer shell, generous filled option rows, visible keyboard focus and number shortcuts, quiet question context and step chips, clear disabled primary actions, and only the minimum icons needed to show disclosure or selection state. Progress, timeout, and low-frequency actions remain secondary chrome; conversational custom-answer copy should invite the user to tell Synergy how to proceed.
 

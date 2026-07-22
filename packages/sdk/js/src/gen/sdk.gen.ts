@@ -366,6 +366,8 @@ import type {
   ProviderCredentialsImportCredentialsErrors,
   ProviderCredentialsImportCredentialsResponses,
   ProviderListResponses,
+  ProviderModelsRefreshErrors,
+  ProviderModelsRefreshResponses,
   ProviderOauthAuthorizeErrors,
   ProviderOauthAuthorizeResponses,
   ProviderOauthCallbackErrors,
@@ -6623,6 +6625,44 @@ export class Command extends HeyApiClient {
   }
 }
 
+export class Models extends HeyApiClient {
+  /**
+   * Refresh provider models
+   *
+   * Refresh the account-visible model catalog for a provider without discarding the last verified list.
+   */
+  public refresh<ThrowOnError extends boolean = false>(
+    parameters: {
+      providerID: string
+      directory?: string
+      scopeID?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "providerID" },
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<
+      ProviderModelsRefreshResponses,
+      ProviderModelsRefreshErrors,
+      ThrowOnError
+    >({
+      url: "/provider/{providerID}/models/refresh",
+      ...options,
+      ...params,
+    })
+  }
+}
+
 export class Usage extends HeyApiClient {
   /**
    * List provider account usage
@@ -7079,6 +7119,8 @@ export class Provider extends HeyApiClient {
       ...params,
     })
   }
+
+  models = new Models({ client: this.client })
 
   usage = new Usage({ client: this.client })
 

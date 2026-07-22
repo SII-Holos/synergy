@@ -1405,6 +1405,7 @@ export type Model = {
     output: number
   }
   status: "alpha" | "beta" | "deprecated" | "active"
+  catalogState?: "active" | "retained"
   options: {
     [key: string]: unknown
   }
@@ -1472,16 +1473,17 @@ export type ProviderAuthHealth = {
 export type ProviderRuntimeAvailability = {
   providerID: string
   available: boolean
-  reason?:
-    | "connected"
-    | "not_connected"
-    | "disabled"
-    | "no_models"
-    | "authentication_required"
-    | "exhausted"
-    | "fallback_unverified"
+  reason?: "connected" | "not_connected" | "disabled" | "no_models" | "authentication_required" | "exhausted"
   healthCheck?: "models" | "none"
   modelCount: number
+}
+
+export type ProviderModelCatalogState = {
+  source: "live" | "cached" | "bundled"
+  refreshing: boolean
+  modelCount: number
+  lastVerifiedAt?: number
+  failure?: "timeout" | "network" | "rate_limited" | "upstream" | "invalid_response"
 }
 
 export type ProviderListResponse = {
@@ -1500,6 +1502,9 @@ export type ProviderListResponse = {
   }
   runtimeAvailability: {
     [key: string]: ProviderRuntimeAvailability
+  }
+  modelCatalog: {
+    [key: string]: ProviderModelCatalogState
   }
 }
 
@@ -2316,6 +2321,7 @@ export type ProviderConfig = {
       }
       supported_image_media_types?: Array<string>
       status?: "alpha" | "beta" | "deprecated"
+      catalog_state?: "active" | "retained"
       options?: {
         [key: string]: unknown
       }
@@ -4901,6 +4907,15 @@ export type ApiError = {
   }
 }
 
+export type ProviderModelUnavailableError = {
+  name: "ProviderModelUnavailableError"
+  data: {
+    providerID: string
+    modelID: string
+    reason: "not_in_catalog" | "rejected_by_provider"
+  }
+}
+
 export type AssistantMessage = {
   id: string
   sessionID: string
@@ -4912,7 +4927,13 @@ export type AssistantMessage = {
     created: number
     completed?: number
   }
-  error?: ProviderAuthError | UnknownError | MessageOutputLengthError | MessageAbortedError | ApiError
+  error?:
+    | ProviderAuthError
+    | UnknownError
+    | MessageOutputLengthError
+    | MessageAbortedError
+    | ApiError
+    | ProviderModelUnavailableError
   parentID: string
   modelID: string
   providerID: string
@@ -12087,6 +12108,39 @@ export type ProviderListResponses = {
 }
 
 export type ProviderListResponse2 = ProviderListResponses[keyof ProviderListResponses]
+
+export type ProviderModelsRefreshData = {
+  body?: never
+  path: {
+    /**
+     * Provider ID
+     */
+    providerID: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+  }
+  url: "/provider/{providerID}/models/refresh"
+}
+
+export type ProviderModelsRefreshErrors = {
+  /**
+   * Bad request
+   */
+  400: BadRequestError
+}
+
+export type ProviderModelsRefreshError = ProviderModelsRefreshErrors[keyof ProviderModelsRefreshErrors]
+
+export type ProviderModelsRefreshResponses = {
+  /**
+   * Provider model catalog state
+   */
+  200: ProviderModelCatalogState
+}
+
+export type ProviderModelsRefreshResponse = ProviderModelsRefreshResponses[keyof ProviderModelsRefreshResponses]
 
 export type ProviderUsageListData = {
   body?: never

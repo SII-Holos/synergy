@@ -7,6 +7,8 @@ import { Auth } from "../../src/provider/api-key"
 import { CodexProvider } from "../../src/provider/codex"
 import { tmpdir } from "../fixture/fixture"
 import { Provider } from "../../src/provider/provider"
+import { ProviderCatalog } from "../../src/provider/catalog"
+import { Global } from "../../src/global"
 
 const originalCodexHome = process.env.CODEX_HOME
 const originalOpenAIAPIKey = process.env.OPENAI_API_KEY
@@ -54,6 +56,8 @@ async function reset() {
   process.env.CODEX_HOME = isolatedCodexHome
   process.env.OPENAI_API_KEY = "provider-route-openai-key"
   await Auth.remove(CodexProvider.PROVIDER_ID).catch(() => {})
+  await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
+  ProviderCatalog.reset()
   await Provider.reload()
 }
 
@@ -86,6 +90,10 @@ test("/provider returns catalog, auth health, and runtime availability", async (
     available: false,
     reason: "not_connected",
   })
+  expect(body.modelCatalog[CodexProvider.PROVIDER_ID]).toMatchObject({
+    source: "bundled",
+    modelCount: 5,
+  })
   expect(body.profiles[CodexProvider.PROVIDER_ID]).toMatchObject({
     id: CodexProvider.PROVIDER_ID,
     recommendation: {
@@ -106,6 +114,26 @@ test("/provider returns catalog, auth health, and runtime availability", async (
       },
     },
   })
+})
+
+test("POST /provider/:providerID/models/refresh uses the shared catalog refresh path", async () => {
+  await Auth.set(CodexProvider.PROVIDER_ID, {
+    type: "oauth",
+    access: accessToken(),
+    refresh: "refresh-models",
+    expires: nowSeconds() + 3600,
+  })
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify({ models: [{ slug: "gpt-5.6-sol", priority: 1 }] }), {
+      headers: { "content-type": "application/json" },
+    })) as unknown as typeof fetch
+
+  const response = await Server.App().request(`/provider/${CodexProvider.PROVIDER_ID}/models/refresh`, {
+    method: "POST",
+  })
+
+  expect(response.status).toBe(200)
+  expect(await response.json()).toMatchObject({ source: "live", refreshing: false, modelCount: 1 })
 })
 
 test("/provider returns runtime provider models with reasoning effort capabilities", async () => {

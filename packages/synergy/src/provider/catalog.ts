@@ -1,6 +1,7 @@
 import { Global } from "@/global"
 import { Installation } from "@/global/installation"
 import { Log } from "@/util/log"
+import fs from "fs/promises"
 import { mergeDeep } from "remeda"
 import z from "zod"
 import { Auth } from "./api-key"
@@ -17,8 +18,47 @@ export namespace ProviderCatalog {
     "https://raw.githubusercontent.com/SII-Holos/synergy-provider-registry/main/catalog.v1.json"
   export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000
   export const DEFAULT_PUBLIC_KEY = "h4Y782Oylib+BlO2/7AKO5vY6skpCmTZNhqr3GRoBxA="
-  export const FALLBACK_CACHE_TTL_MS = 60 * 1000
-  export const MAX_LAST_KNOWN_GOOD_ENTRIES = 100
+  export const RETRY_DELAY_MS = 60 * 1000
+  export const MAX_SNAPSHOT_ENTRIES = 100
+
+  export const Failure = z.enum(["timeout", "network", "rate_limited", "upstream", "invalid_response"])
+  export type Failure = z.infer<typeof Failure>
+
+  const ModelCatalogEntry = z.object({
+    id: z.string(),
+    rank: z.number().optional(),
+    model: ModelsDev.Model.partial().optional(),
+    inputImage: z.boolean().optional(),
+    supportedImageMediaTypes: z.array(z.string()).optional(),
+  })
+
+  export const Snapshot = z.object({
+    version: z.literal(1),
+    providerID: z.string(),
+    identityHash: z.string(),
+    activeModels: z.array(ModelCatalogEntry),
+    retainedModels: z.array(ModelCatalogEntry),
+    lastVerifiedAt: z.number().optional(),
+    lastAttemptAt: z.number(),
+    failure: Failure.optional(),
+  })
+  export type Snapshot = z.infer<typeof Snapshot>
+
+  const SnapshotStore = z.object({
+    version: z.literal(1),
+    snapshots: z.array(Snapshot),
+  })
+
+  export const ModelCatalogState = z
+    .object({
+      source: z.enum(["live", "cached", "bundled"]),
+      refreshing: z.boolean(),
+      modelCount: z.number(),
+      lastVerifiedAt: z.number().optional(),
+      failure: Failure.optional(),
+    })
+    .meta({ ref: "ProviderModelCatalogState" })
+  export type ModelCatalogState = z.infer<typeof ModelCatalogState>
 
   export const Config = z
     .object({
@@ -58,7 +98,7 @@ export namespace ProviderCatalog {
 
   type LiveDiscoveryContext = {
     auth?: Auth.Info
-    identity: string
+    identityHash: string
   }
 
   type CacheEntry = {
@@ -69,20 +109,86 @@ export namespace ProviderCatalog {
 
   const inFlight = new Map<string, Promise<Record<string, ModelsDev.Provider>>>()
   const memoryCache = new Map<string, CacheEntry>()
-  const liveDiscovery = new Map<string, "verified" | "fallback">()
-  const lastKnownGood = new Map<string, ProviderProfile.ModelCatalogEntry[]>()
+  const refreshInFlight = new Map<string, Promise<ModelCatalogState>>()
+  const catalogStates = new Map<string, ModelCatalogState>()
+  const freshlyVerified = new Set<string>()
+  const scheduledRefreshes = new Set<string>()
+  const retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  let snapshots: Map<string, Snapshot> | undefined
+  let writeQueue = Promise.resolve()
 
-  function rememberLastKnownGood(key: string, entries: ProviderProfile.ModelCatalogEntry[]) {
-    lastKnownGood.delete(key)
-    lastKnownGood.set(
-      key,
-      entries.map((entry) => ({ ...entry })),
+  function snapshotKey(providerID: string, identityHash: string) {
+    return `${providerID}:${identityHash}`
+  }
+
+  async function hashIdentity(providerID: string, identity: string) {
+    const bytes = new TextEncoder().encode(`${providerID}\u0000${identity}`)
+    const digest = await crypto.subtle.digest("SHA-256", bytes)
+    return Buffer.from(digest).toString("hex")
+  }
+
+  async function readSnapshots() {
+    if (snapshots) return snapshots
+    const parsed = SnapshotStore.safeParse(
+      await Bun.file(Global.Path.providerModelCatalogCache)
+        .json()
+        .catch(() => undefined),
     )
-    while (lastKnownGood.size > MAX_LAST_KNOWN_GOOD_ENTRIES) {
-      const oldest = lastKnownGood.keys().next().value
-      if (!oldest) break
-      lastKnownGood.delete(oldest)
+    snapshots = new Map(
+      parsed.success
+        ? parsed.data.snapshots.map((snapshot) => [snapshotKey(snapshot.providerID, snapshot.identityHash), snapshot])
+        : [],
+    )
+    return snapshots
+  }
+
+  async function persistSnapshots(currentKey: string) {
+    const store = await readSnapshots()
+    const protectedKeys = new Set([currentKey])
+    for (const profile of ProviderProfile.all()) {
+      if (!profile.fetchModelCatalog && !profile.fetchModels) continue
+      const context = await resolveLiveDiscoveryContext(profile).catch(() => undefined)
+      if (context?.auth) protectedKeys.add(snapshotKey(profile.id, context.identityHash))
     }
+    if (store.size > MAX_SNAPSHOT_ENTRIES) {
+      const removable = [...store.entries()]
+        .filter(([key]) => !protectedKeys.has(key))
+        .sort(([, left], [, right]) => left.lastAttemptAt - right.lastAttemptAt)
+      while (store.size > MAX_SNAPSHOT_ENTRIES) {
+        const entry = removable.shift()
+        if (!entry) break
+        store.delete(entry[0])
+        freshlyVerified.delete(entry[0])
+      }
+    }
+    const value = SnapshotStore.parse({ version: 1, snapshots: [...store.values()] })
+    writeQueue = writeQueue
+      .catch(() => undefined)
+      .then(async () => {
+        await fs.mkdir(Global.Path.cache, { recursive: true })
+        const temporary = `${Global.Path.providerModelCatalogCache}.${process.pid}.${crypto.randomUUID()}.tmp`
+        await Bun.write(temporary, JSON.stringify(value, null, 2))
+        await fs.rename(temporary, Global.Path.providerModelCatalogCache)
+      })
+    await writeQueue
+  }
+
+  function classifyFailure(error: unknown): Failure {
+    if (error instanceof DOMException && (error.name === "TimeoutError" || error.name === "AbortError"))
+      return "timeout"
+    if (error && typeof error === "object") {
+      const record = error as Record<string, unknown>
+      const status = typeof record.status === "number" ? record.status : undefined
+      const code = typeof record.code === "string" ? record.code : undefined
+      if (status === 429 || code === "rate_limited" || code === "rate_limit_exceeded") return "rate_limited"
+      if (error instanceof TypeError) return "network"
+    }
+    return "upstream"
+  }
+
+  export function retryDelay(input: { failure: Failure; retryAfterMs?: number }) {
+    if (input.failure === "rate_limited" && input.retryAfterMs !== undefined) return Math.max(0, input.retryAfterMs)
+    return RETRY_DELAY_MS
   }
 
   function fallbackModel(provider: ModelsDev.Provider, modelID: string): ModelsDev.Model {
@@ -304,35 +410,51 @@ export namespace ProviderCatalog {
     return parsed.data
   }
 
-  function applyLiveEntries(
+  function applySnapshotEntries(
     provider: ModelsDev.Provider,
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
-    live: ProviderProfile.ModelCatalogEntry[],
+    snapshot: Snapshot,
   ): ModelsDev.Provider {
     const source = modelsDev[profile.modelsDevProviderID ?? profile.id]
     const metadataSource = profile.sourceModelProviderID ? modelsDev[profile.sourceModelProviderID] : undefined
     const npm = profile.aiSdkPackage ?? source?.npm ?? provider.npm ?? "@ai-sdk/openai-compatible"
     const next: ModelsDev.Provider = { ...provider, models: {} }
-    for (const entry of live) {
-      const modelID = entry.id
-      const sourceModel = source?.models?.[modelID] ?? provider.models[modelID] ?? metadataSource?.models?.[modelID]
-      next.models[modelID] = modelFromSource({
-        modelID,
-        provider,
-        sourceModel,
-        profile,
-        npm,
-        patch: entry.model,
-        inputImage: entry.inputImage,
-        supportedImageMediaTypes: entry.supportedImageMediaTypes,
-      })
+    for (const [catalogState, entries] of [
+      ["active", snapshot.activeModels],
+      ["retained", snapshot.retainedModels],
+    ] as const) {
+      for (const entry of entries) {
+        const modelID = entry.id
+        const sourceModel = source?.models?.[modelID] ?? provider.models[modelID] ?? metadataSource?.models?.[modelID]
+        next.models[modelID] = modelFromSource({
+          modelID,
+          provider,
+          sourceModel,
+          profile,
+          npm,
+          patch: entry.model,
+          inputImage: entry.inputImage,
+          supportedImageMediaTypes: entry.supportedImageMediaTypes,
+        })
+        next.models[modelID].catalog_state = catalogState
+      }
     }
     return next
   }
 
-  function liveDiscoveryKey(providerID: string, identity: string) {
-    return JSON.stringify({ providerID, identity })
+  async function resolveLiveDiscoveryContext(profile: ProviderProfile.Profile): Promise<LiveDiscoveryContext> {
+    const selected = await Auth.select(profile.id)
+    const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
+    const customIdentity = await profile.modelCatalogIdentity?.({
+      auth: selected?.auth,
+      credentialID: selected?.credentialID,
+      authUpdatedAt,
+    })
+    const identity =
+      customIdentity ??
+      (selected ? selected.credentialID : profile.authKind === "none" ? "anonymous" : "unauthenticated")
+    return { auth: selected?.auth, identityHash: await hashIdentity(profile.id, identity) }
   }
 
   async function resolveLiveDiscoveryContexts(includeLive: boolean | undefined) {
@@ -342,59 +464,197 @@ export namespace ProviderCatalog {
     registerBuiltinProviderProfiles()
     for (const profile of ProviderProfile.all()) {
       if (!profile.fetchModelCatalog && !profile.fetchModels) continue
-      const selected = await Auth.select(profile.id)
-      const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
-      const identity = await profile.modelCatalogIdentity?.({
-        auth: selected?.auth,
-        credentialID: selected?.credentialID,
-        authUpdatedAt,
-      })
-      contexts.set(profile.id, {
-        auth: selected?.auth,
-        identity:
-          identity ??
-          (selected
-            ? JSON.stringify({ credentialID: selected.credentialID, authUpdatedAt })
-            : profile.authKind === "none"
-              ? "anonymous"
-              : "unauthenticated"),
-      })
+      contexts.set(profile.id, await resolveLiveDiscoveryContext(profile))
     }
     return contexts
   }
 
-  async function applyLiveDiscovery(
+  async function applyCachedDiscovery(
     provider: ModelsDev.Provider,
     profile: ProviderProfile.Profile,
     modelsDev: Record<string, ModelsDev.Provider>,
     context: LiveDiscoveryContext | undefined,
-  ): Promise<{ provider: ModelsDev.Provider; degraded: boolean }> {
-    if (!profile.fetchModelCatalog && !profile.fetchModels) return { provider, degraded: false }
+  ): Promise<ModelsDev.Provider> {
+    if (!profile.fetchModelCatalog && !profile.fetchModels) return provider
     const auth = context?.auth
     if (!auth && profile.authKind !== "none") {
-      liveDiscovery.delete(profile.id)
-      return { provider, degraded: false }
+      catalogStates.delete(profile.id)
+      return provider
     }
-    let live: ProviderProfile.ModelCatalogEntry[] = []
-    try {
-      live = profile.fetchModelCatalog
-        ? await profile.fetchModelCatalog({ auth, fetch, baseURL: profile.baseURL })
-        : (await profile.fetchModels!({ auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
-    } catch (error) {
-      log.warn("failed to fetch live provider models", { providerID: profile.id, error })
+    const key = context ? snapshotKey(profile.id, context.identityHash) : undefined
+    const snapshot = key ? (await readSnapshots()).get(key) : undefined
+    const modelCount = snapshot?.activeModels.length ?? Object.keys(provider.models).length
+    catalogStates.set(profile.id, {
+      source: snapshot && key && freshlyVerified.has(key) ? "live" : snapshot ? "cached" : "bundled",
+      refreshing: refreshInFlight.has(profile.id) || scheduledRefreshes.has(profile.id),
+      modelCount,
+      lastVerifiedAt: snapshot?.lastVerifiedAt,
+      failure: snapshot?.failure,
+    })
+    if (!snapshot) return provider
+    return applySnapshotEntries(provider, profile, modelsDev, snapshot)
+  }
+
+  function retryAfterMs(error: unknown) {
+    if (!error || typeof error !== "object") return undefined
+    const record = error as Record<string, unknown>
+    if (typeof record.retryAfterMs === "number") return record.retryAfterMs
+    if (typeof record.retryAfterSeconds === "number") return record.retryAfterSeconds * 1000
+    return undefined
+  }
+
+  function scheduleRetry(providerID: string, failure: Failure, error?: unknown) {
+    const current = retryTimers.get(providerID)
+    if (current) clearTimeout(current)
+    const timer = setTimeout(
+      () => {
+        retryTimers.delete(providerID)
+        void refreshAndReload(providerID)
+      },
+      retryDelay({ failure, retryAfterMs: retryAfterMs(error) }),
+    )
+    timer.unref()
+    retryTimers.set(providerID, timer)
+  }
+
+  function mergeRefresh(
+    previous: Snapshot | undefined,
+    entries: ProviderProfile.ModelCatalogEntry[],
+    input: {
+      providerID: string
+      identityHash: string
+      now: number
+    },
+  ): Snapshot {
+    const activeIDs = new Set(entries.map((entry) => entry.id))
+    const retained = new Map(
+      [...(previous?.retainedModels ?? []), ...(previous?.activeModels ?? [])]
+        .filter((entry) => !activeIDs.has(entry.id))
+        .map((entry) => [entry.id, entry]),
+    )
+    return {
+      version: 1,
+      providerID: input.providerID,
+      identityHash: input.identityHash,
+      activeModels: entries.map((entry) => ({ ...entry })),
+      retainedModels: [...retained.values()],
+      lastVerifiedAt: input.now,
+      lastAttemptAt: input.now,
     }
-    const lkgKey = context ? liveDiscoveryKey(profile.id, context.identity) : undefined
-    if (!live.length) {
-      liveDiscovery.set(profile.id, "fallback")
-      const previous = lkgKey ? lastKnownGood.get(lkgKey) : undefined
-      return {
-        provider: previous ? applyLiveEntries(provider, profile, modelsDev, previous) : provider,
-        degraded: true,
+  }
+
+  export async function refresh(providerID: string): Promise<ModelCatalogState> {
+    registerBuiltinProviderProfiles()
+    await registerPluginProfiles()
+    const profile = ProviderProfile.get(providerID)
+    if (!profile?.fetchModelCatalog && !profile?.fetchModels) {
+      return { source: "bundled", refreshing: false, modelCount: 0 }
+    }
+    const context = await resolveLiveDiscoveryContext(profile)
+    const key = snapshotKey(profile.id, context.identityHash)
+    const pending = refreshInFlight.get(profile.id)
+    if (pending) return pending
+
+    let request: Promise<ModelCatalogState>
+    request = (async () => {
+      const store = await readSnapshots()
+      const previous = store.get(key)
+      const now = Date.now()
+      catalogStates.set(profile.id, {
+        source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
+        refreshing: true,
+        modelCount: previous?.activeModels.length ?? 0,
+        lastVerifiedAt: previous?.lastVerifiedAt,
+        failure: previous?.failure,
+      })
+
+      let entries: ProviderProfile.ModelCatalogEntry[]
+      try {
+        entries = profile.fetchModelCatalog
+          ? await profile.fetchModelCatalog({ auth: context.auth, fetch, baseURL: profile.baseURL })
+          : (await profile.fetchModels!({ auth: context.auth, fetch, baseURL: profile.baseURL })).map((id) => ({ id }))
+        if (entries.length === 0)
+          throw Object.assign(new Error("provider returned an empty model catalog"), {
+            catalogFailure: "invalid_response",
+          })
+      } catch (error) {
+        const failure =
+          error && typeof error === "object" && (error as Record<string, unknown>).catalogFailure === "invalid_response"
+            ? ("invalid_response" as const)
+            : classifyFailure(error)
+        const failed: Snapshot = {
+          version: 1,
+          providerID: profile.id,
+          identityHash: context.identityHash,
+          activeModels: previous?.activeModels ?? [],
+          retainedModels: previous?.retainedModels ?? [],
+          lastVerifiedAt: previous?.lastVerifiedAt,
+          lastAttemptAt: now,
+          failure,
+        }
+        store.set(key, failed)
+        await persistSnapshots(key)
+        memoryCache.clear()
+        const state: ModelCatalogState = {
+          source: previous ? (freshlyVerified.has(key) ? "live" : "cached") : "bundled",
+          refreshing: false,
+          modelCount: failed.activeModels.length,
+          lastVerifiedAt: failed.lastVerifiedAt,
+          failure,
+        }
+        catalogStates.set(profile.id, state)
+        scheduleRetry(profile.id, failure, error)
+        log.warn("failed to refresh provider model catalog", { providerID: profile.id, failure, error })
+        return state
       }
+
+      const next = mergeRefresh(previous, entries, { providerID: profile.id, identityHash: context.identityHash, now })
+      store.set(key, next)
+      await persistSnapshots(key)
+      memoryCache.clear()
+      freshlyVerified.add(key)
+      const retry = retryTimers.get(profile.id)
+      if (retry) clearTimeout(retry)
+      retryTimers.delete(profile.id)
+      const state: ModelCatalogState = {
+        source: "live",
+        refreshing: false,
+        modelCount: next.activeModels.length,
+        lastVerifiedAt: next.lastVerifiedAt,
+      }
+      catalogStates.set(profile.id, state)
+      return state
+    })().finally(() => {
+      if (refreshInFlight.get(profile.id) === request) refreshInFlight.delete(profile.id)
+      scheduledRefreshes.delete(profile.id)
+    })
+    refreshInFlight.set(profile.id, request)
+    return request
+  }
+
+  async function refreshAndReload(providerID: string) {
+    try {
+      await refresh(providerID)
+      const { RuntimeReload } = await import("@/runtime/reload")
+      await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+    } catch (error) {
+      log.warn("failed to apply provider model catalog refresh", { providerID, error })
     }
-    liveDiscovery.set(profile.id, "verified")
-    if (lkgKey) rememberLastKnownGood(lkgKey, live)
-    return { provider: applyLiveEntries(provider, profile, modelsDev, live), degraded: false }
+  }
+
+  function scheduleRefresh(
+    profile: ProviderProfile.Profile,
+    context: LiveDiscoveryContext,
+    snapshot: Snapshot | undefined,
+  ) {
+    if (!context.auth && profile.authKind !== "none") return
+    const now = Date.now()
+    const verifiedRecently = snapshot?.lastVerifiedAt && now - snapshot.lastVerifiedAt < DEFAULT_CACHE_TTL_MS
+    const failedRecently = snapshot?.failure && now - snapshot.lastAttemptAt < RETRY_DELAY_MS
+    if (verifiedRecently || failedRecently) return
+    if (refreshInFlight.has(profile.id) || scheduledRefreshes.has(profile.id)) return
+    scheduledRefreshes.add(profile.id)
+    queueMicrotask(() => void refreshAndReload(profile.id))
   }
 
   export async function resolve(input?: {
@@ -402,6 +662,8 @@ export namespace ProviderCatalog {
     includeLive?: boolean
     forceRefresh?: boolean
   }): Promise<Record<string, ModelsDev.Provider>> {
+    registerBuiltinProviderProfiles()
+    await registerPluginProfiles()
     const liveContexts = await resolveLiveDiscoveryContexts(input?.includeLive)
     const key = cacheKey(input, liveContexts)
     const cached = memoryCache.get(key)
@@ -424,7 +686,7 @@ export namespace ProviderCatalog {
   ) {
     const providerCatalog = (input?.config as { providerCatalog?: unknown } | undefined)?.providerCatalog ?? {}
     const liveIdentities = Object.fromEntries(
-      [...liveContexts.entries()].map(([providerID, context]) => [providerID, context.identity]),
+      [...liveContexts.entries()].map(([providerID, context]) => [providerID, context.identityHash]),
     )
     return JSON.stringify({ includeLive: input?.includeLive === true, providerCatalog, liveIdentities })
   }
@@ -434,8 +696,6 @@ export namespace ProviderCatalog {
     liveContexts: Map<string, LiveDiscoveryContext>,
     key: string,
   ): Promise<Record<string, ModelsDev.Provider>> {
-    registerBuiltinProviderProfiles()
-    await registerPluginProfiles()
     const config = Config.parse((input?.config as any)?.providerCatalog ?? {})
     const modelsDev = withBuiltinSourceSurfaces(await ModelsDev.get())
     const result: Record<string, ModelsDev.Provider> = { ...modelsDev }
@@ -482,21 +742,23 @@ export namespace ProviderCatalog {
       }
     }
 
-    let degraded = false
     if (input?.includeLive) {
       for (const profile of ProviderProfile.all()) {
         const provider = result[profile.id]
         if (!provider) continue
-        const discovery = await applyLiveDiscovery(provider, profile, modelsDev, liveContexts.get(profile.id))
-        result[profile.id] = discovery.provider
-        degraded ||= discovery.degraded
+        const context = liveContexts.get(profile.id)
+        result[profile.id] = await applyCachedDiscovery(provider, profile, modelsDev, context)
+        if (context && (profile.fetchModelCatalog || profile.fetchModels)) {
+          const snapshot = (await readSnapshots()).get(snapshotKey(profile.id, context.identityHash))
+          scheduleRefresh(profile, context, snapshot)
+        }
       }
     }
 
     memoryCache.set(key, {
       value: result,
       createdAt: Date.now(),
-      ttlMs: degraded ? FALLBACK_CACHE_TTL_MS : DEFAULT_CACHE_TTL_MS,
+      ttlMs: DEFAULT_CACHE_TTL_MS,
     })
     return result
   }
@@ -535,13 +797,18 @@ export namespace ProviderCatalog {
   }
 
   export function reset() {
+    for (const timer of retryTimers.values()) clearTimeout(timer)
+    retryTimers.clear()
+    refreshInFlight.clear()
+    scheduledRefreshes.clear()
     memoryCache.clear()
     inFlight.clear()
-    liveDiscovery.clear()
-    lastKnownGood.clear()
+    catalogStates.clear()
+    freshlyVerified.clear()
+    snapshots = undefined
   }
 
-  export function liveDiscoveryStatus(providerID: string) {
-    return liveDiscovery.get(providerID)
+  export function modelCatalogState(providerID: string) {
+    return catalogStates.get(providerID)
   }
 }

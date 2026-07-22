@@ -13,15 +13,7 @@ export const ProviderRuntimeAvailability = z
     providerID: z.string(),
     available: z.boolean(),
     reason: z
-      .enum([
-        "connected",
-        "not_connected",
-        "disabled",
-        "no_models",
-        "authentication_required",
-        "exhausted",
-        "fallback_unverified",
-      ])
+      .enum(["connected", "not_connected", "disabled", "no_models", "authentication_required", "exhausted"])
       .optional(),
     healthCheck: z.enum(["models", "none"]).optional(),
     modelCount: z.number(),
@@ -38,6 +30,7 @@ export const ProviderListResponse = z
     profiles: z.record(z.string(), ProviderProfile.Metadata),
     authHealth: z.record(z.string(), ProviderAuthHealth.Info),
     runtimeAvailability: z.record(z.string(), ProviderRuntimeAvailability),
+    modelCatalog: z.record(z.string(), ProviderCatalog.ModelCatalogState),
   })
   .meta({ ref: "ProviderListResponse" })
 
@@ -93,7 +86,9 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
   )
   const runtimeAvailability = mapValues(providers, (provider) => {
     const disabledProvider = disabled.has(provider.id)
-    const modelCount = Object.keys(provider.models).length
+    const modelCount = Object.values(provider.models).filter(
+      (model) => model.catalogState !== "retained" && model.status !== "deprecated",
+    ).length
     const health = authHealth[provider.id]
     const authenticationRequired = health?.status === "action_required"
     const credentialExhausted = health?.status === "exhausted"
@@ -104,7 +99,6 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
       Object.prototype.hasOwnProperty.call(connected, provider.id) &&
       modelCount > 0
     const profile = ProviderProfile.get(provider.id)
-    const fallbackUnverified = ProviderCatalog.liveDiscoveryStatus(provider.id) === "fallback"
     return {
       providerID: provider.id,
       available,
@@ -116,18 +110,20 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
             ? ("exhausted" as const)
             : modelCount === 0
               ? ("no_models" as const)
-              : fallbackUnverified && available
-                ? ("fallback_unverified" as const)
-                : available
-                  ? ("connected" as const)
-                  : ("not_connected" as const),
+              : available
+                ? ("connected" as const)
+                : ("not_connected" as const),
       healthCheck: profile?.healthCheck ?? "models",
       modelCount,
     }
   })
   const defaultModels = Object.fromEntries(
     Object.entries(providers).flatMap(([providerID, provider]) => {
-      const model = Provider.sort(Object.values(provider.models))[0]
+      const model = Provider.sort(
+        Object.values(provider.models).filter(
+          (candidate) => candidate.catalogState !== "retained" && candidate.status !== "deprecated",
+        ),
+      )[0]
       return model ? [[providerID, model.id]] : []
     }),
   )
@@ -141,5 +137,17 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     profiles,
     authHealth,
     runtimeAvailability,
+    modelCatalog: Object.fromEntries(
+      Object.keys(providers).map((providerID) => [
+        providerID,
+        ProviderCatalog.modelCatalogState(providerID) ?? {
+          source: "bundled" as const,
+          refreshing: false,
+          modelCount: Object.values(providers[providerID].models).filter(
+            (model) => model.catalogState !== "retained" && model.status !== "deprecated",
+          ).length,
+        },
+      ]),
+    ),
   }
 }
