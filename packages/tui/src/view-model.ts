@@ -15,6 +15,7 @@ export type MessageView = {
   id: string
   label: string
   meta: string
+  compactMeta: string
   blocks: ViewBlock[]
 }
 
@@ -153,10 +154,14 @@ function messageError(message: Message): ViewBlock | undefined {
 }
 
 function messageMeta(message: Message) {
-  if (message.role === "user") return sanitizeTerminalLabel(message.agent, "unknown agent")
+  const agent = sanitizeTerminalLabel(message.agent, "unknown agent")
+  if (message.role === "user") return { full: agent, compact: agent }
   const tokens = message.tokens
-  const completion = message.time.completed ? " · done" : " · streaming"
-  return `${sanitizeTerminalLabel(message.agent, "unknown agent")} · ${tokens.input} in · ${tokens.output} out · ${tokens.reasoning} reasoning · $${message.cost.toFixed(4)}${completion}`
+  const completion = message.time.completed ? "done" : "streaming"
+  return {
+    full: `${agent} · ${tokens.input} in · ${tokens.output} out · ${tokens.reasoning} reasoning · $${message.cost.toFixed(4)} · ${completion}`,
+    compact: `${agent} · ${completion}`,
+  }
 }
 
 export function buildMessageView(message: Message, parts: Part[], options: PartRenderOptions = {}): MessageView {
@@ -167,10 +172,12 @@ export function buildMessageView(message: Message, parts: Part[], options: PartR
   }
   const error = messageError(message)
   if (error) blocks.push(error)
+  const meta = messageMeta(message)
   return {
     id: message.id,
-    label: message.role === "user" ? "YOU" : `SYNERGY · ${sanitizeTerminalLabel(message.agent, "unknown agent")}`,
-    meta: messageMeta(message),
+    label: message.role === "user" ? "YOU" : "SYNERGY",
+    meta: meta.full,
+    compactMeta: meta.compact,
     blocks,
   }
 }

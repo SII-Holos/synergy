@@ -46,6 +46,8 @@ const foreground = () => resolveThemeColor(theme.tokens(), "text-base")
 
 Keep this read inside Solid reactivity so switching between two themes with the same light/dark mode still updates the renderer. Existing App charts use `useChartTheme()` for series, canvas, axes, grids, legends, tooltips, points, hover, borders, and state colors. Note code blocks use the shared CSS-variable Shiki theme, while Mermaid uses `base` plus resolved `themeVariables` and rerenders through the same theme-change event.
 
+The first-party TUI is a separate non-CSS client and keeps a terminal-appropriate semantic palette in `packages/tui/src/theme.ts`. Its `system`, `light`, and `dark` modes preserve the same surface polarity and color roles, but it does not consume CSS custom properties or plugin-installed themes. `resolveThemeColor` remains the path for imperative renderers hosted inside Web or Desktop.
+
 An isolated consumer that cannot use the Solid context may listen for `THEME_CHANGE_EVENT`. This event fires for both color-scheme changes and same-mode theme changes. Do not infer theme identity only from `data-color-scheme` or a dark-mode media query.
 
 ## Choosing Theme Seeds

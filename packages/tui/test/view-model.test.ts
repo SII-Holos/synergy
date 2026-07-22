@@ -140,8 +140,9 @@ describe("TUI message view model", () => {
     const failed = assistant()
     failed.error = { name: "UnknownError", data: { message: "failed\u001b[31m" } }
     const assistantView = buildMessageView(failed, [])
-    expect(assistantView.label).toContain("SYNERGY")
-    expect(assistantView.meta).toContain("20 out")
+    expect(assistantView.label).toBe("SYNERGY")
+    expect(assistantView.meta).toContain("synergy · 10 in · 20 out")
+    expect(assistantView.compactMeta).toBe("synergy · done")
     expect(assistantView.blocks.at(-1)).toMatchObject({ tone: "danger", content: "failed" })
   })
 
@@ -157,8 +158,9 @@ describe("TUI message view model", () => {
       state: { status: "pending", input: {}, raw: "" },
     })
 
-    expect(message.label).toBe("SYNERGY · unknown agent")
+    expect(message.label).toBe("SYNERGY")
     expect(message.meta).toContain("unknown agent")
+    expect(message.compactMeta).toBe("unknown agent · done")
     expect(tool.content).toBe("○ Unknown tool · waiting")
   })
 

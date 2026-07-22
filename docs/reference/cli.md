@@ -87,6 +87,8 @@ The client renders a responsive session list, streamed Markdown and reasoning, t
 | `Ctrl+C`            | Abort active work when the session is busy; otherwise quit and restore terminal state |
 | `Escape`            | Dismiss a modal, or move focus out of the composer                                    |
 
+The footer presents context-sensitive hints rather than every binding at once. Wide idle sessions show create, pin, command, and focus actions; compact terminals prioritize the session picker, and busy sessions prioritize abort. Modal overlays replace the normal hints with navigation controls. The connection indicator uses `●` for live, `○` for offline, and `◐` for transitional states. The bindings above do not change when a hint is hidden.
+
 Permission modals expose allow-once, allow-for-session, persistent allow, and reject decisions supported by the runtime. Question modals support single and multiple selection. All runtime and model strings are sanitized before terminal rendering.
 
 ## One-off Work with `send`

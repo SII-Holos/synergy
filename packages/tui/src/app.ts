@@ -21,64 +21,13 @@ import { resolveKeyCommand } from "./key-commands.js"
 import type { TuiState } from "./reducer.js"
 import { sanitizeTerminalLabel, sanitizeTerminalText } from "./sanitization.js"
 import { buildMessageView, type ViewBlock, type ViewTone } from "./view-model.js"
-
-type TuiPalette = {
-  background: string
-  panel: string
-  border: string
-  borderFocus: string
-  text: string
-  muted: string
-  accent: string
-  success: string
-  warning: string
-  danger: string
-  selected: string
-  selectedText: string
-  addedBackground: string
-  removedBackground: string
-}
-
-const PALETTE: Record<"light" | "dark", TuiPalette> = {
-  dark: {
-    background: "#0d1117",
-    panel: "#161b22",
-    border: "#30363d",
-    borderFocus: "#58a6ff",
-    text: "#e6edf3",
-    muted: "#8b949e",
-    accent: "#58a6ff",
-    success: "#3fb950",
-    warning: "#d29922",
-    danger: "#f85149",
-    selected: "#1f6feb",
-    selectedText: "#ffffff",
-    addedBackground: "#0f2d1c",
-    removedBackground: "#3a1518",
-  },
-  light: {
-    background: "#ffffff",
-    panel: "#f6f8fa",
-    border: "#d0d7de",
-    borderFocus: "#0969da",
-    text: "#1f2328",
-    muted: "#59636e",
-    accent: "#0969da",
-    success: "#1a7f37",
-    warning: "#9a6700",
-    danger: "#cf222e",
-    selected: "#0969da",
-    selectedText: "#ffffff",
-    addedBackground: "#dafbe1",
-    removedBackground: "#ffebe9",
-  },
-}
+import { getTuiPalette, type TuiPalette } from "./theme.js"
 
 function createToneColors(palette: TuiPalette): Record<ViewTone, string> {
   return {
     normal: palette.text,
-    muted: palette.muted,
-    accent: palette.accent,
+    muted: palette.textWeaker,
+    accent: palette.interactive,
     success: palette.success,
     warning: palette.warning,
     danger: palette.danger,
@@ -87,15 +36,15 @@ function createToneColors(palette: TuiPalette): Record<ViewTone, string> {
 
 function createMarkdownStyle(palette: TuiPalette) {
   return SyntaxStyle.fromStyles({
-    "markup.heading": { fg: palette.accent, bold: true },
-    "markup.strong": { fg: palette.text, bold: true },
-    "markup.italic": { fg: palette.muted, italic: true },
-    "markup.quote": { fg: palette.muted, italic: true },
-    "markup.list": { fg: palette.accent },
-    "markup.raw": { fg: palette.warning },
-    "markup.link": { fg: palette.accent, underline: true },
-    "markup.link.url": { fg: palette.muted, underline: true },
-    "markup.link.label": { fg: palette.accent, underline: true },
+    "markup.heading": { fg: palette.textStrong, bold: true },
+    "markup.strong": { fg: palette.textStrong, bold: true },
+    "markup.italic": { fg: palette.textWeak, italic: true },
+    "markup.quote": { fg: palette.textWeaker, italic: true },
+    "markup.list": { fg: palette.textWeak },
+    "markup.raw": { fg: palette.textWeak },
+    "markup.link": { fg: palette.interactive, underline: true },
+    "markup.link.url": { fg: palette.textWeaker, underline: true },
+    "markup.link.label": { fg: palette.interactive, underline: true },
   })
 }
 
@@ -181,8 +130,7 @@ function blockRenderable(
     flexShrink: 0,
     marginTop: 1,
     paddingLeft: 1,
-    border: block.collapsible ? ["left"] : false,
-    borderColor: toneColor[block.tone],
+    ...(block.collapsible ? { border: ["left"] as const, borderColor: toneColor[block.tone] } : {}),
     onMouseDown: block.collapsible ? toggle : undefined,
   })
   if (block.kind === "markdown") {
@@ -213,7 +161,7 @@ function blockRenderable(
           showLineNumbers: false,
           addedBg: palette.addedBackground,
           removedBg: palette.removedBackground,
-          contextBg: palette.panel,
+          contextBg: palette.surface,
           flexShrink: 0,
         }),
       )
@@ -226,7 +174,7 @@ function blockRenderable(
 
 export async function createTuiApp(controller: TuiController, options: TuiAppOptions = {}): Promise<TuiApp> {
   const requestedTheme = options.theme ?? "system"
-  const initialPalette = PALETTE[requestedTheme === "light" ? "light" : "dark"]
+  const initialPalette = getTuiPalette(requestedTheme === "light" ? "light" : "dark")
   const renderer =
     options.renderer ??
     (await createCliRenderer({
@@ -239,7 +187,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
       useKittyKeyboard: { disambiguate: true, alternateKeys: true },
     }))
   const theme = requestedTheme === "system" ? (renderer.themeMode ?? "dark") : requestedTheme
-  const COLOR = PALETTE[theme]
+  const COLOR = getTuiPalette(theme)
   const toneColor = createToneColors(COLOR)
   const markdownStyle = createMarkdownStyle(COLOR)
   const compactBreakpoint = options.compactBreakpoint ?? 84
@@ -248,6 +196,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
   const ignoredInteractions = new Set<string>()
   const messageNodes = new Map<string, { node: BoxRenderable; revision: number }>()
   let messageOrderSignature = ""
+  let compactLayout = renderer.width < compactBreakpoint
   let state = controller.getState()
   let modal: ModalState | undefined
   let unsubscribed = false
@@ -273,13 +222,17 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     height: 3,
     flexShrink: 0,
     border: ["bottom"],
-    borderColor: COLOR.border,
-    paddingX: 1,
+    borderColor: COLOR.borderHairline,
+    paddingX: 2,
     flexDirection: "row",
     justifyContent: "space-between",
   })
-  const brandText = new TextRenderable(renderer, { content: "SYNERGY TUI", fg: COLOR.accent, attributes: 1 })
-  const scopeText = new TextRenderable(renderer, { content: "connecting", fg: COLOR.muted })
+  const brandText = new TextRenderable(renderer, {
+    content: "HOLOS / SYNERGY",
+    fg: COLOR.textStrong,
+    attributes: 1,
+  })
+  const scopeText = new TextRenderable(renderer, { content: "connecting", fg: COLOR.textWeaker })
   header.add(brandText)
   header.add(scopeText)
 
@@ -296,11 +249,16 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     maxWidth: 38,
     flexShrink: 0,
     border: ["right"],
-    borderColor: COLOR.border,
+    borderColor: COLOR.borderHairline,
+    backgroundColor: COLOR.surfaceInset,
     flexDirection: "column",
     padding: 1,
   })
-  const sessionTitle = new TextRenderable(renderer, { content: "SESSIONS", fg: COLOR.muted, attributes: 1 })
+  const sessionTitle = new TextRenderable(renderer, {
+    content: "SESSIONS",
+    fg: COLOR.textWeaker,
+    attributes: 1,
+  })
   const sessionSelect = new SelectRenderable(renderer, {
     id: "tui-sessions",
     flexGrow: 1,
@@ -310,11 +268,11 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     showScrollIndicator: true,
     wrapSelection: true,
     textColor: COLOR.text,
-    descriptionColor: COLOR.muted,
+    descriptionColor: COLOR.textWeaker,
     selectedBackgroundColor: COLOR.selected,
     selectedTextColor: COLOR.selectedText,
-    focusedBackgroundColor: COLOR.panel,
-    focusedTextColor: COLOR.text,
+    focusedBackgroundColor: COLOR.surface,
+    focusedTextColor: COLOR.textStrong,
   })
   sidebar.add(sessionTitle)
   sidebar.add(sessionSelect)
@@ -334,7 +292,7 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     stickyScroll: true,
     stickyStart: "bottom",
     viewportCulling: true,
-    contentOptions: { flexDirection: "column", paddingX: 1, paddingBottom: 1 },
+    contentOptions: { flexDirection: "column", paddingX: 2, paddingBottom: 1 },
     verticalScrollbarOptions: { visible: true },
   })
   const resources = new BoxRenderable(renderer, {
@@ -342,33 +300,38 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     height: 3,
     flexShrink: 0,
     border: ["top"],
-    borderColor: COLOR.border,
-    paddingX: 1,
+    borderColor: COLOR.borderHairline,
+    paddingX: 2,
     flexDirection: "column",
   })
-  const resourcesText = new TextRenderable(renderer, { content: "", fg: COLOR.muted, wrapMode: "word" })
+  const resourcesText = new TextRenderable(renderer, { content: "", fg: COLOR.textWeaker, wrapMode: "word" })
   resources.add(resourcesText)
   const composerBox = new BoxRenderable(renderer, {
     id: "tui-composer-box",
     height: 5,
     flexShrink: 0,
     border: true,
+    borderStyle: "rounded",
     borderColor: COLOR.border,
     focusedBorderColor: COLOR.borderFocus,
-    title: " MESSAGE ",
+    backgroundColor: COLOR.surfaceRaised,
+    title: " ASK SYNERGY ",
+    titleColor: COLOR.textWeak,
+    bottomTitle: " Enter send · Shift+Enter newline · Ctrl+K commands ",
+    bottomTitleAlignment: "right",
     paddingX: 1,
   })
   const composer = new TextareaRenderable(renderer, {
     id: "tui-composer",
     width: "100%",
     height: "100%",
-    placeholder: "Message Synergy · Enter send · Shift+Enter newline · Ctrl+K commands",
+    placeholder: "Write a message or /command…",
     wrapMode: "word",
     textColor: COLOR.text,
-    backgroundColor: COLOR.background,
-    focusedTextColor: COLOR.text,
-    focusedBackgroundColor: COLOR.background,
-    cursorColor: COLOR.accent,
+    backgroundColor: COLOR.surfaceRaised,
+    focusedTextColor: COLOR.textStrong,
+    focusedBackgroundColor: COLOR.surfaceRaised,
+    cursorColor: COLOR.interactive,
   })
   composer.traits = { capture: ["escape", "submit", "tab"] }
   composerBox.add(composer)
@@ -386,10 +349,10 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     flexDirection: "row",
     justifyContent: "space-between",
   })
-  const statusText = new TextRenderable(renderer, { content: "offline", fg: COLOR.muted })
+  const statusText = new TextRenderable(renderer, { content: "offline", fg: COLOR.textWeaker })
   const helpText = new TextRenderable(renderer, {
     content: "Ctrl+N new · Ctrl+P pin · Ctrl+C abort/quit · Tab focus",
-    fg: COLOR.muted,
+    fg: COLOR.textSubtle,
   })
   footer.add(statusText)
   footer.add(helpText)
@@ -404,16 +367,19 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     zIndex: 100,
     visible: false,
     border: true,
-    borderStyle: "double",
-    borderColor: COLOR.accent,
-    backgroundColor: COLOR.panel,
+    borderStyle: "rounded",
+    borderColor: COLOR.borderStrong,
+    backgroundColor: COLOR.surfaceRaised,
+    bottomTitle: " ↑↓ navigate · Enter choose · Esc close ",
+    bottomTitleAlignment: "center",
+    titleColor: COLOR.textWeaker,
     padding: 1,
     flexDirection: "column",
   })
-  const modalTitle = new TextRenderable(renderer, { content: "", fg: COLOR.accent, attributes: 1 })
+  const modalTitle = new TextRenderable(renderer, { content: "", fg: COLOR.textStrong, attributes: 1 })
   const modalBody = new TextRenderable(renderer, {
     content: "",
-    fg: COLOR.text,
+    fg: COLOR.textWeak,
     wrapMode: "word",
     flexShrink: 0,
     marginTop: 1,
@@ -428,11 +394,11 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     showScrollIndicator: true,
     wrapSelection: true,
     textColor: COLOR.text,
-    descriptionColor: COLOR.muted,
+    descriptionColor: COLOR.textWeaker,
     selectedBackgroundColor: COLOR.selected,
     selectedTextColor: COLOR.selectedText,
-    focusedBackgroundColor: COLOR.panel,
-    focusedTextColor: COLOR.text,
+    focusedBackgroundColor: COLOR.surfaceInset,
+    focusedTextColor: COLOR.textStrong,
   })
   overlay.add(modalTitle)
   overlay.add(modalBody)
@@ -516,19 +482,20 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
       id: `message:${view.id}`,
       flexDirection: "column",
       flexShrink: 0,
-      border: ["bottom"],
-      borderColor: COLOR.border,
+      marginTop: 1,
       paddingY: 1,
     })
     const top = new BoxRenderable(renderer, { flexDirection: "row", justifyContent: "space-between", flexShrink: 0 })
     top.add(
       new TextRenderable(renderer, {
-        content: view.label,
-        fg: message.role === "user" ? COLOR.accent : COLOR.success,
+        content: message.role === "user" ? `› ${view.label}` : `◆ ${view.label}`,
+        fg: message.role === "user" ? COLOR.textStrong : COLOR.textWeak,
         attributes: 1,
       }),
     )
-    top.add(new TextRenderable(renderer, { content: view.meta, fg: COLOR.muted }))
+    top.add(
+      new TextRenderable(renderer, { content: compactLayout ? view.compactMeta : view.meta, fg: COLOR.textSubtle }),
+    )
     node.add(top)
     for (const block of view.blocks) {
       node.add(
@@ -543,12 +510,12 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     return { node, revision }
   }
 
-  const refreshMessages = (force = false) => {
+  const refreshMessages = (forceRebuild = false) => {
     const sessionID = state.activeSessionID
     const conversation = sessionID ? state.conversations[sessionID] : undefined
     const order = conversation?.messageOrder ?? []
     const nextOrderSignature = `${sessionID ?? ""}:${order.join(",")}`
-    if (force || nextOrderSignature !== messageOrderSignature) {
+    if (forceRebuild || nextOrderSignature !== messageOrderSignature) {
       resetMessages()
       messageOrderSignature = nextOrderSignature
     }
@@ -579,14 +546,31 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
       empty.destroyRecursively()
     }
     if (order.length === 0 && !empty) {
-      timeline.content.add(
+      const emptyState = new BoxRenderable(renderer, {
+        id: "tui-empty-message",
+        flexGrow: 1,
+        minHeight: 8,
+        alignItems: "center",
+        justifyContent: "center",
+        flexDirection: "column",
+      })
+      emptyState.add(
         new TextRenderable(renderer, {
-          id: "tui-empty-message",
-          content: state.activeSessionID ? "No messages yet. Start the conversation below." : "No session selected.",
-          fg: COLOR.muted,
-          marginTop: 2,
+          content: state.activeSessionID ? "H O L O S\nS Y N E R G Y" : "H O L O S / S Y N E R G Y",
+          fg: COLOR.textStrong,
+          attributes: 1,
         }),
       )
+      emptyState.add(
+        new TextRenderable(renderer, {
+          content: state.activeSessionID
+            ? "Start with a question, command, or plan."
+            : "Create or choose a session to begin.",
+          fg: COLOR.textWeaker,
+          marginTop: 1,
+        }),
+      )
+      timeline.content.add(emptyState)
     }
   }
 
@@ -610,6 +594,8 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
   const renderModal = () => {
     overlay.visible = modal !== undefined
     if (!modal) return
+    overlay.borderColor = COLOR.borderStrong
+    modalTitle.fg = COLOR.textStrong
     if (modal.kind === "sessions") {
       modalTitle.content = "SESSIONS"
       modalBody.content = "Choose a session to open."
@@ -633,9 +619,11 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
         }))
     } else if (modal.kind === "permission") {
       const request = modal.request
+      overlay.borderColor = COLOR.warning
+      modalTitle.fg = COLOR.warning
       modalTitle.content = `PERMISSION · ${sanitizeTerminalLabel(request.permission, "unknown permission")}`
       const patterns = request.patterns.map((pattern) => sanitizeTerminalLabel(pattern, "(hidden pattern)")).join("\n")
-      modalBody.content = `Synergy requests permission for:\n${patterns || "(no pattern details)"}`
+      modalBody.content = `Review the requested capability and affected pattern:\n${patterns || "(no pattern details)"}`
       modalSelect.options = [
         { name: "Allow once", description: "Approve this request only", value: "once" },
         { name: "Allow for session", description: "Approve matching requests in this session", value: "session" },
@@ -645,6 +633,8 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     } else {
       const question = modal.request.questions[modal.index]
       if (!question) return
+      overlay.borderColor = COLOR.interactive
+      modalTitle.fg = COLOR.interactive
       const selected = new Set(modal.answers[modal.index] ?? [])
       modalTitle.content = `QUESTION ${modal.index + 1}/${modal.request.questions.length} · ${sanitizeTerminalLabel(question.header, "Question")}`
       modalBody.content = sanitizeTerminalText(question.question)
@@ -670,11 +660,17 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
     pendingRefresh = false
     if (stopped) return
     syncInteractionModal()
-    sidebar.visible = renderer.width >= compactBreakpoint
-    scopeText.content = `${state.scopeID ? sanitizeTerminalLabel(state.scopeID.slice(0, 12), "unknown scope") : "no scope"} · ${state.sessions.length} sessions`
+    const compact = renderer.width < compactBreakpoint
+    const compactChanged = compact !== compactLayout
+    compactLayout = compact
+    sidebar.visible = !compact
+    scopeText.content = compact
+      ? `${state.sessions.length} sessions`
+      : `${state.scopeID ? sanitizeTerminalLabel(state.scopeID.slice(0, 12), "unknown scope") : "no scope"} · ${state.sessions.length} sessions`
+    const connectionGlyph = state.connection === "live" ? "●" : state.connection === "offline" ? "○" : "◐"
     statusText.content = localError
-      ? `error · ${sanitizeTerminalLabel(localError, "Unknown error")}`
-      : statusLabel(state)
+      ? `✕ error · ${sanitizeTerminalLabel(localError, "Unknown error")}`
+      : `${connectionGlyph} ${statusLabel(state)}`
     statusText.fg = localError
       ? COLOR.danger
       : state.connection === "live"
@@ -682,8 +678,19 @@ export async function createTuiApp(controller: TuiController, options: TuiAppOpt
         : state.connection === "offline"
           ? COLOR.danger
           : COLOR.warning
+    const activeStatus = state.activeSessionID ? state.sessionStatus[state.activeSessionID] : undefined
+    const busy = activeStatus !== undefined && activeStatus.type !== "idle"
+    helpText.content = modal
+      ? "↑↓ navigate · Enter choose · Esc close"
+      : compact
+        ? busy
+          ? "Ctrl+C abort · Ctrl+K commands · Tab sessions"
+          : "Ctrl+K commands · Tab sessions · Ctrl+C quit"
+        : busy
+          ? "Ctrl+C abort · Ctrl+K commands · Tab focus"
+          : "Ctrl+N new · Ctrl+P pin · Ctrl+K commands · Tab focus"
     renderSessions()
-    refreshMessages()
+    refreshMessages(compactChanged)
     renderResources()
     renderModal()
     renderer.requestRender()

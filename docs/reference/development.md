@@ -40,6 +40,22 @@ Managed Desktop rebuilds the Web distribution before launch so packaged-server b
 
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
 
+### Terminal UI
+
+The TUI is a client of an existing server; there is no separate `bun dev tui` orchestrator mode. Start the source server in one terminal:
+
+```bash
+bun dev server
+```
+
+Then run the TUI source in another terminal from the repository root:
+
+```bash
+bun -e 'import { runTui } from "./packages/tui/src/index.ts"; await runTui({ baseUrl: "http://127.0.0.1:4096", directory: process.cwd() })'
+```
+
+Use `synergy tui --attach http://127.0.0.1:4096` instead when testing the installed TUI package against the source server. Run TUI package checks with the commands in [Tests](#tests).
+
 ## Developing Synergy with Synergy
 
 Do not restart or stop the Synergy instance carrying your current session. Run the source checkout against an isolated home and explicit alternate ports:

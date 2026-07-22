@@ -12,7 +12,7 @@ import type {
   SessionInputResult,
   SessionMessagePage,
 } from "@ericsanchezok/synergy-sdk/client"
-import { SelectRenderable, TextareaRenderable } from "@opentui/core"
+import { BoxRenderable, RGBA, SelectRenderable, TextareaRenderable } from "@opentui/core"
 import { createTestRenderer } from "@opentui/core/testing"
 import { createTuiApp } from "../src/app"
 import { createTuiController, type RuntimeAdapter } from "../src/controller"
@@ -160,10 +160,16 @@ class UiAdapter implements RuntimeAdapter {
   }
 }
 
-async function createHarness(adapter: UiAdapter, width = 110, height = 32, onQuit?: () => void) {
+async function createHarness(
+  adapter: UiAdapter,
+  width = 110,
+  height = 32,
+  onQuit?: () => void,
+  theme: "system" | "light" | "dark" = "system",
+) {
   const testRenderer = await createTestRenderer({ width, height, kittyKeyboard: true })
   const controller = createTuiController(adapter)
-  const app = await createTuiApp(controller, { renderer: testRenderer.renderer, onQuit })
+  const app = await createTuiApp(controller, { renderer: testRenderer.renderer, onQuit, theme })
   await app.start()
   await testRenderer.flush()
   return { app, controller, adapter, ...testRenderer }
@@ -183,11 +189,61 @@ describe("Synergy TUI app", () => {
     const harness = await createHarness(adapter)
     const frame = harness.captureCharFrame()
 
-    expect(frame).toContain("SYNERGY TUI")
+    expect(frame).toContain("HOLOS / SYNERGY")
     expect(frame).toContain("第二个会话")
+    expect(frame).toContain("› YOU")
     expect(frame).toContain("Hello Synergy 你好 👋🏽")
     expect(frame).toContain("Ship TUI")
-    expect(frame).toContain("live · idle · seq 7")
+    expect(frame).toContain("● live · idle · seq 7")
+    const messageNode = harness.renderer.root.findDescendantById("message:message-s2")
+    expect(messageNode).toBeInstanceOf(BoxRenderable)
+    if (!(messageNode instanceof BoxRenderable)) throw new Error("message node not found")
+    const messageBody = messageNode.getChildren()[1]
+    expect(messageBody).toBeInstanceOf(BoxRenderable)
+    if (!(messageBody instanceof BoxRenderable)) throw new Error("message body not found")
+    expect(messageBody.border).toBe(false)
+    const composerBox = harness.renderer.root.findDescendantById("tui-composer-box")
+    expect(composerBox).toBeInstanceOf(BoxRenderable)
+    if (!(composerBox instanceof BoxRenderable)) throw new Error("composer box not found")
+    expect(composerBox.borderStyle).toBe("rounded")
+    expect(composerBox.title).toBe(" ASK SYNERGY ")
+    harness.app.stop()
+  })
+
+  test("renders a quiet branded empty state", async () => {
+    const empty: SessionMessagePage = {
+      items: [],
+      referencedRoots: [],
+      nextCursor: null,
+      hasMore: false,
+      total: 0,
+    }
+    const adapter = new UiAdapter(bootstrap([session("s1", 1, "New session")]), { s1: empty })
+    const harness = await createHarness(adapter)
+    const frame = harness.captureCharFrame()
+
+    expect(frame).toContain("H O L O S")
+    expect(frame).toContain("S Y N E R G Y")
+    expect(frame).toContain("Start with a question, command, or plan.")
+    harness.app.stop()
+  })
+
+  test("applies the light workbench surface hierarchy to live components", async () => {
+    const adapter = new UiAdapter(bootstrap([session("s1", 1, "Light session")]))
+    const harness = await createHarness(adapter, 110, 32, undefined, "light")
+    const root = harness.renderer.root.findDescendantById("tui-root")
+    const sidebar = harness.renderer.root.findDescendantById("tui-sidebar")
+    const composerBox = harness.renderer.root.findDescendantById("tui-composer-box")
+
+    expect(root).toBeInstanceOf(BoxRenderable)
+    expect(sidebar).toBeInstanceOf(BoxRenderable)
+    expect(composerBox).toBeInstanceOf(BoxRenderable)
+    if (!(root instanceof BoxRenderable)) throw new Error("root not found")
+    if (!(sidebar instanceof BoxRenderable)) throw new Error("sidebar not found")
+    if (!(composerBox instanceof BoxRenderable)) throw new Error("composer box not found")
+    expect(root.backgroundColor.equals(RGBA.fromHex("#FAFAFA"))).toBe(true)
+    expect(sidebar.backgroundColor.equals(RGBA.fromHex("#F4F4F5"))).toBe(true)
+    expect(composerBox.backgroundColor.equals(RGBA.fromHex("#FFFFFF"))).toBe(true)
     harness.app.stop()
   })
 
@@ -279,7 +335,13 @@ describe("Synergy TUI app", () => {
 
     harness.mockInput.pressKey("k", { ctrl: true })
     await harness.flush()
-    expect(harness.captureCharFrame()).toContain("COMMAND PALETTE")
+    const commandFrame = harness.captureCharFrame()
+    expect(commandFrame).toContain("COMMAND PALETTE")
+    expect(commandFrame).toContain("↑↓ navigate · Enter choose · Esc close")
+    const overlay = harness.renderer.root.findDescendantById("tui-overlay")
+    expect(overlay).toBeInstanceOf(BoxRenderable)
+    if (!(overlay instanceof BoxRenderable)) throw new Error("overlay not found")
+    expect(overlay.borderStyle).toBe("rounded")
     expect(adapter.calls.some((call) => call.startsWith("command:"))).toBe(false)
 
     harness.mockInput.pressEnter()

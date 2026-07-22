@@ -9,7 +9,7 @@ synergy start
 synergy tui
 ```
 
-The TUI is a thin client of a running Synergy server. It presents durable sessions, streaming Markdown and reasoning, tool calls and diffs, Todo/DAG progress, commands, permissions, and questions without duplicating runtime state.
+The TUI is a thin client of a running Synergy server. It presents the quiet Holos / Synergy workbench identity, durable sessions, streaming Markdown and reasoning, tool calls and diffs, Todo/DAG progress, commands, permissions, and questions without duplicating runtime state.
 
 ## Programmatic use
 
