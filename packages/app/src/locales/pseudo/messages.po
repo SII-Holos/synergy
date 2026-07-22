@@ -15178,11 +15178,11 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
 msgstr ""
 
 #. js-lingui-explicit-id

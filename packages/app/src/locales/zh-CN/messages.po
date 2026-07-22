@@ -15178,12 +15178,12 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "内存建议值：{value}。当前设置仍然生效。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "由环境管理 · 内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "由环境变量管理 · 内存建议值：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
