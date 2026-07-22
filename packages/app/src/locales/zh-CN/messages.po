@@ -8166,7 +8166,7 @@ msgstr "没有快速切换模型"
 
 #. js-lingui-explicit-id
 msgid "model.manager.quick"
-msgstr "快速"
+msgstr "快速切换"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -15705,6 +15705,18 @@ msgid "settings.synergyLink.add.action"
 msgstr "添加目标"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr "正在添加..."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr "关闭添加目标对话框"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr "从 B 复制目标 Agent ID 和 Link ID。首次连接仍需在 B 上批准。"
 
@@ -15863,14 +15875,6 @@ msgstr "连接测试已完成"
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "这些账号被拒绝，并会留在这里，直到其凭据恢复。"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr "没有需要注意的提供商账号"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
-msgstr "当提供商拒绝请求时，凭据恢复操作会显示在这里。"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.title"

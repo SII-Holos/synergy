@@ -22,6 +22,12 @@
     }
   }
 
+  input[type="number"][data-slot="input-input"] {
+    font-family: var(--font-family-sans);
+    font-feature-settings: var(--font-family-sans--font-feature-settings);
+    font-variant-numeric: tabular-nums;
+  }
+
   &[data-variant="ghost"] {
     display: flex;
     min-width: 0;

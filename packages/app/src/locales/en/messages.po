@@ -8166,7 +8166,7 @@ msgstr "No quick-switch models"
 
 #. js-lingui-explicit-id
 msgid "model.manager.quick"
-msgstr "Quick"
+msgstr "Quick switch"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -15705,6 +15705,18 @@ msgid "settings.synergyLink.add.action"
 msgstr "Add target"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr "Adding..."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr "Close add target dialog"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr "Copy the target agent ID and Link ID from B. B still approves the first connection."
 
@@ -15863,14 +15875,6 @@ msgstr "Connection test completed"
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "These accounts were rejected and remain here until their credentials are recovered."
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr "No provider accounts need attention"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
-msgstr "Credential recovery actions will appear here when a provider rejects a request."
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.title"
