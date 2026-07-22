@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get the configured, effective, and memory-pressure Cortex task concurrency limits.",
+        "description": "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -20661,7 +20661,7 @@
       "TelemetrySpanStatus": {
         "default": "running",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "TelemetryInflightSpan": {
         "type": "object",
@@ -20764,6 +20764,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": [
@@ -20860,6 +20863,46 @@
                 "type": "number"
               }
             }
+          },
+          "cgroup": {
+            "type": "object",
+            "properties": {
+              "currentBytes": {
+                "type": "number"
+              },
+              "highBytes": {
+                "type": "number"
+              },
+              "maxBytes": {
+                "type": "number"
+              },
+              "peakBytes": {
+                "type": "number"
+              },
+              "oomCount": {
+                "type": "number"
+              },
+              "oomKillCount": {
+                "type": "number"
+              }
+            }
+          },
+          "serviceMemory": {
+            "type": "object",
+            "properties": {
+              "rssBytes": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["cgroup_v2", "process_api"]
+              },
+              "completeness": {
+                "type": "string",
+                "enum": ["full", "partial"]
+              }
+            },
+            "required": ["source", "completeness"]
           },
           "eventLoop": {
             "type": "object",
@@ -21407,6 +21450,28 @@
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
               },
+              "measuredChildProcessCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "serviceMemory": {
+                "type": "object",
+                "properties": {
+                  "rssBytes": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["cgroup_v2", "process_api"]
+                  },
+                  "completeness": {
+                    "type": "string",
+                    "enum": ["full", "partial"]
+                  }
+                },
+                "required": ["source", "completeness"]
+              },
               "childProcessRssBytes": {
                 "type": "number"
               }
@@ -21899,7 +21964,7 @@
       "PerfSpanStatus": {
         "default": "ok",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "PerfInflightSpan": {
         "type": "object",
@@ -21997,6 +22062,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": ["traceId", "spanId", "name", "module", "source", "startTime", "ageMs", "idleMs", "stale"]
@@ -33235,6 +33303,7 @@
         "type": "object",
         "properties": {
           "configured": {
+            "description": "User-configured global limit, or null when unset",
             "anyOf": [
               {
                 "type": "integer",
@@ -33247,6 +33316,7 @@
             ]
           },
           "environment": {
+            "description": "Process environment override, or null when unset",
             "anyOf": [
               {
                 "type": "integer",
@@ -33259,11 +33329,13 @@
             ]
           },
           "effective": {
+            "description": "Actual admission limit from environment, config, or default",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
+            "description": "Advisory limit suggested by current memory pressure; never used for task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33276,24 +33348,29 @@
             ]
           },
           "memoryPressureReason": {
+            "description": "Reason for the advisory memory-pressure limit",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
           "source": {
+            "description": "Source of the effective admission limit",
             "type": "string",
             "enum": ["default", "config", "environment"]
           },
           "perAgentLimit": {
+            "description": "Fixed maximum for each individual agent",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
           "running": {
+            "description": "Currently admitted Cortex tasks",
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991
           },
           "queued": {
+            "description": "Cortex tasks waiting for an admission slot",
             "type": "integer",
             "minimum": 0,
             "maximum": 9007199254740991

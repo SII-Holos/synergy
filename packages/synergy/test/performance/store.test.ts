@@ -147,12 +147,15 @@ describe.serial("performance observability store", () => {
     expect(summary.top.slowLibrary[0]?.label).toBe("select")
   })
 
-  test("dashboard summary separates server RSS from child process RSS contributors", async () => {
+  test("dashboard separates top child detail from complete current child aggregates", async () => {
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 8 * 1024 * 1024 }))
     try {
-      const child = ProcessRegistry.create({ command: "next dev -p 8090 --token=super-secret" })
-      child.pid = 4321
-      ProcessRegistry.markBackgrounded(child)
+      const children = Array.from({ length: 7 }, (_, index) => {
+        const child = ProcessRegistry.create({ command: `next-${index} dev -p 8090 --token=super-secret` })
+        child.pid = 4321 + index
+        ProcessRegistry.markBackgrounded(child)
+        return child
+      })
 
       ObservabilityResources.snapshot()
       ObservabilityStore.flush()
@@ -163,15 +166,29 @@ describe.serial("performance observability store", () => {
       expect(summary.resources.externalBytes).toBeGreaterThanOrEqual(0)
       expect(summary.resources.arrayBuffersBytes).toBeGreaterThanOrEqual(0)
       expect(summary.resources.rssBytes).not.toBe(8 * 1024 * 1024)
-      expect(summary.resources.childProcessCount).toBe(1)
-      expect(summary.resources.childProcessRssBytes).toBe(8 * 1024 * 1024)
-      expect(summary.top.childProcesses[0]).toMatchObject({
-        label: "next",
-        value: 8 * 1024 * 1024,
-        unit: "bytes",
-        processId: child.id,
-        pid: 4321,
+      expect(summary.resources.childProcessCount).toBe(7)
+      expect(summary.resources.measuredChildProcessCount).toBe(7)
+      expect(summary.resources.childProcessRssBytes).toBe(7 * 8 * 1024 * 1024)
+      expect(summary.resources.serviceMemory).toMatchObject({
+        rssBytes: expect.any(Number),
+        source: expect.stringMatching(/^(cgroup_v2|process_api)$/),
+        completeness: expect.stringMatching(/^(full|partial)$/),
       })
+      expect(summary.top.childProcesses).toHaveLength(5)
+      expect(summary.top.childProcesses).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            label: expect.stringMatching(/^next-[0-6]$/),
+            value: 8 * 1024 * 1024,
+            unit: "bytes",
+            processId: expect.stringMatching(/^proc_/),
+            pid: expect.any(Number),
+          }),
+        ]),
+      )
+      expect(summary.top.childProcesses.every((item) => children.some((child) => child.id === item.processId))).toBe(
+        true,
+      )
       expect(JSON.stringify(ObservabilityStore.resourceSince(0))).not.toContain("super-secret")
       const childMetrics = ObservabilityStore.queryMetrics({
         since: 0,
@@ -278,6 +295,38 @@ describe.serial("performance observability store", () => {
     expect(issues[0].occurrenceCount).toBe(2)
   })
 
+  test("bounds issues to the selected window while keeping exact severity counts", async () => {
+    const now = Date.now()
+    ObservabilityIssues.raise({
+      code: "PERF_OLD_WINDOW_ISSUE",
+      severity: "critical",
+      module: "observability",
+      title: "Old issue",
+      message: "Old issue",
+    })
+    ObservabilityStore.flush()
+    ObservabilityStore.initializeForMigration()
+      .query("UPDATE obs_issues SET last_seen_time = ? WHERE code = ?")
+      .run(now - 60_000, "PERF_OLD_WINDOW_ISSUE")
+    for (let index = 0; index < 25; index++) {
+      ObservabilityIssues.raise({
+        code: `PERF_WINDOW_ISSUE_${index}`,
+        severity: index === 0 ? "critical" : "warning",
+        module: "observability",
+        title: `Window issue ${index}`,
+        message: `Window issue ${index}`,
+      })
+    }
+    ObservabilityStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 10_000 })
+
+    expect(summary.issues).toHaveLength(20)
+    expect(summary.health.openIssueCount).toBe(25)
+    expect(summary.health.criticalIssueCount).toBe(1)
+    expect(summary.issues.some((issue) => issue.code === "PERF_OLD_WINDOW_ISSUE")).toBe(false)
+  })
+
   test("records storage operation counters for readMany update remove list and scan", async () => {
     await Storage.write(["perf", "one"], { count: 1 })
     await Storage.write(["perf", "two"], { count: 2 })
@@ -338,6 +387,9 @@ describe.serial("performance observability store", () => {
     expect(Number.isFinite(latest.event_loop_lag_ms)).toBe(true)
     expect(latest.app_read_bytes ?? 0).toBeGreaterThanOrEqual(128)
     expect(latest.app_written_bytes ?? 0).toBeGreaterThanOrEqual(256)
+    expect(Number.isFinite(latest.service_memory_rss_bytes)).toBe(true)
+    expect(latest.service_memory_source).toMatch(/^(cgroup_v2|process_api)$/)
+    expect(latest.service_memory_completeness).toMatch(/^(full|partial)$/)
   })
 
   test("writer buffers, flushes, and records backpressure drops", async () => {

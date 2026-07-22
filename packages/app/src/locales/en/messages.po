@@ -4637,8 +4637,38 @@ msgstr "Long tasks"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
-msgstr "Memory"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr "full"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr "partial"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr "cgroup v2"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr "process sum"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr "Server RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "Service memory"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
+msgstr "{rss} · {source} · {coverage}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4663,7 +4693,7 @@ msgstr "Tool child RSS"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.toolChildRssValue"
-msgstr "{rss} · {count} active"
+msgstr "{rss} · {measured}/{count} measured"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -15377,15 +15407,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure."
+msgstr "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "Memory recommendation: {value}. Your setting remains active."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "Managed by environment · Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "Managed by environment · Memory recommendation: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

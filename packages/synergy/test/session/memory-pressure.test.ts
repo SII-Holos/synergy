@@ -103,7 +103,7 @@ describe("SessionMemoryPressure", () => {
     expect(calls).toEqual([])
   })
 
-  test("forces synchronous GC only for critical pressure", async () => {
+  test("keeps critical pressure behind the process-wide minimum interval", async () => {
     SessionMemoryPressure.resetForTest(1_000)
     const calls: boolean[] = []
 
@@ -120,8 +120,53 @@ describe("SessionMemoryPressure", () => {
       env,
     })
 
-    expect(result.decision.action).toBe("critical_forced")
-    expect(calls).toEqual([true])
+    expect(result.decision).toMatchObject({ action: "skip", critical: true })
+    expect(calls).toEqual([])
+  })
+
+  test("requests asynchronous GC when critical pressure is eligible", async () => {
+    const calls: boolean[] = []
+
+    const result = await SessionMemoryPressure.maybeCollect({
+      phase: "test",
+      now: () => 1_500,
+      snapshot: () => ({
+        ...healthySnapshot,
+        rssBytes: 2_000,
+      }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    expect(result.decision.action).toBe("critical")
+    expect(calls).toEqual([false])
+  })
+
+  test("coalesces concurrent collection requests across sessions", async () => {
+    const calls: boolean[] = []
+    const input = {
+      phase: "test",
+      now: () => 12_000,
+      snapshot: async () => {
+        await Promise.resolve()
+        return { ...healthySnapshot, rssBytes: 2_000 }
+      },
+      collect: async (synchronous: boolean) => {
+        calls.push(synchronous)
+        await Promise.resolve()
+      },
+      env,
+    }
+
+    const results = await Promise.all([
+      SessionMemoryPressure.maybeCollect({ ...input, sessionID: "session_a" }),
+      SessionMemoryPressure.maybeCollect({ ...input, sessionID: "session_b" }),
+    ])
+
+    expect(results.map((result) => result.decision.action)).toEqual(["critical", "critical"])
+    expect(calls).toEqual([false])
   })
 
   test("treats JavaScript heap and external allocations as critical pressure", () => {
@@ -132,19 +177,19 @@ describe("SessionMemoryPressure", () => {
         snapshot: { ...healthySnapshot, heapUsedBytes: 2_000 },
         thresholds,
         now: 1_500,
-        lastGCAt: 1_000,
+        lastGCAt: 0,
         gcAvailable: true,
       }).action,
-    ).toBe("critical_forced")
+    ).toBe("critical")
     expect(
       SessionMemoryPressure.decide({
         snapshot: { ...healthySnapshot, externalBytes: 2_000 },
         thresholds,
         now: 1_500,
-        lastGCAt: 1_000,
+        lastGCAt: 0,
         gcAvailable: true,
       }).action,
-    ).toBe("critical_forced")
+    ).toBe("critical")
   })
 
   test("classifies soft pressure before the critical boundary", () => {

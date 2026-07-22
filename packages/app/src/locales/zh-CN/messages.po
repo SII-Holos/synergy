@@ -4637,8 +4637,38 @@ msgstr "长任务"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
-msgstr "内存"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr "完整"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr "部分"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr "cgroup v2"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr "进程汇总"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr "服务端 RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "服务内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
+msgstr "{rss} · {source} · {coverage}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4663,7 +4693,7 @@ msgstr "工具子进程 RSS"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.toolChildRssValue"
-msgstr "{rss} · {count} 个活跃"
+msgstr "{rss} · 已测量 {measured}/{count} 个"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -15380,12 +15410,12 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "内存建议值：{value}。当前设置仍然生效。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "由环境管理 · 内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "由环境变量管理 · 内存建议值：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"

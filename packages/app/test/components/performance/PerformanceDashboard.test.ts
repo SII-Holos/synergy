@@ -12,6 +12,7 @@ import {
 } from "../../../src/components/performance/chart-model"
 import { P } from "../../../src/components/performance/performance-i18n"
 import { runtimeSupportItems } from "../../../src/components/performance/runtime-support"
+import { performanceSummaryCardModel } from "../../../src/components/performance/summary-card-model"
 import { toolFailureCategories } from "../../../src/components/performance/tool-failure-model"
 import type { PerformanceSummary, PerformanceTimeline } from "../../../src/components/performance/types"
 import type { ChartTheme } from "../../../src/components/visualization/use-chart-theme"
@@ -289,6 +290,33 @@ describe("performance chart model", () => {
       P.qualitySummaryPartial,
     )
     expect(summaryQualityMessage(baseSummary)).toBeUndefined()
+  })
+})
+
+describe("performance summary cards", () => {
+  test("uses exact issue totals and separates service, server, and child memory", () => {
+    const value = summary({ mirrorFiles: 0, recentErrors: 0, pendingSessions: 0 })
+    value.health.openIssueCount = 25
+    value.issues = Array.from(
+      { length: 20 },
+      (_, index) => ({ code: `ISSUE_${index}` }) as PerformanceSummary["issues"][number],
+    )
+    value.resources = {
+      rssBytes: 100,
+      childProcessCount: 7,
+      measuredChildProcessCount: 5,
+      childProcessRssBytes: 50,
+      serviceMemory: { rssBytes: 150, source: "process_api", completeness: "partial" },
+    }
+
+    expect(performanceSummaryCardModel(value)).toEqual({
+      openIssueCount: 25,
+      serverRssBytes: 100,
+      serviceMemory: { rssBytes: 150, source: "process_api", completeness: "partial" },
+      childProcessCount: 7,
+      measuredChildProcessCount: 5,
+      childProcessRssBytes: 50,
+    })
   })
 })
 

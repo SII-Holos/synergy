@@ -44,4 +44,42 @@ describe("ObservabilitySpans", () => {
     expect(inflight[0].span_id).toBe(span.spanId)
     expect(inflight[0].stale).toBe(true)
   })
+
+  test("filters inflight spans by last activity instead of start time", () => {
+    const inactive = ObservabilitySpans.start({ name: "tool.inactive", module: "tool" })!
+    const active = ObservabilitySpans.start({ name: "tool.active", module: "tool" })!
+    ObservabilityStore.flush()
+    const now = Date.now()
+    const db = ObservabilityStore.initializeForMigration()
+    db.query("UPDATE obs_spans SET start_time = ?, last_activity_time = ? WHERE span_id = ?").run(
+      now - 30 * 60_000,
+      now - 20 * 60_000,
+      inactive.spanId,
+    )
+    db.query("UPDATE obs_spans SET start_time = ?, last_activity_time = ? WHERE span_id = ?").run(
+      now - 30 * 60_000,
+      now - 60_000,
+      active.spanId,
+    )
+
+    const inflight = ObservabilityStore.queryInflight({ activeSince: now - 15 * 60_000 })
+
+    expect(inflight.map((row) => row.span_id)).toEqual([active.spanId])
+  })
+
+  test("reconciles persisted running spans as interrupted", () => {
+    const span = ObservabilitySpans.start({ name: "llm.stream", module: "llm" })!
+    ObservabilityStore.flush()
+    const db = ObservabilityStore.initializeForMigration()
+    db.query("UPDATE obs_spans SET last_activity_time = ? WHERE span_id = ?").run(span.startTime + 1234, span.spanId)
+
+    expect(ObservabilityStore.interruptRunningSpans({ reason: "previous_runtime_ended" })).toBe(1)
+    expect(ObservabilityStore.queryInflight()).toEqual([])
+    expect(ObservabilityStore.querySpans({ traceId: span.traceId })[0]).toMatchObject({
+      status: "interrupted",
+      end_time: span.startTime + 1234,
+      duration_ms: 1234,
+      error_code: "PROCESS_INTERRUPTED",
+    })
+  })
 })
