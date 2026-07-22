@@ -28,6 +28,7 @@ description: Add, modify, or review Synergy Channel targets, provider lifecycle,
 4. Persist result and extension outbox records before dispatch. Only `not_dispatched` may retry automatically with a fresh request ID and lineage; `rejected`, `ambiguous`, and `acknowledged` are terminal for automatic retry. Recovered `pending` records become `ambiguous`.
 5. Keep remote Project pause as display/protocol state for already accepted work. Use the standard Session Abort path for local cancellation, and keep accepted-task result, extension, and deadline behavior available while remotely paused.
 6. Use Agenda `session_guidance` only for durable hidden steering into the owning Task Session. It must not create an Agenda execution Session or a visible fake user prompt.
+7. Keep `clarus-agent-participation` available as a memory-backed builtin Skill in a fresh `SYNERGY_HOME`. Its content must describe only the native assignment Session and result/extension tools; do not bundle standalone listener, CLI, daemon, credential, or second-WebSocket workflows.
 
 ## Keep API and Product Projection Complete
 
