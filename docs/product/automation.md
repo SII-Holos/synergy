@@ -50,11 +50,13 @@ Normal execution builds a trigger-aware prompt, invokes the selected agent, obse
 
 `autoDone` is the exception used by one-shot watch-style delivery. It sends the item's prompt directly to the origin session instead of creating and invoking an Agenda session, then completes according to item state rules.
 
+`session_guidance` is a host-owned internal delivery mode for durable reminders attached to an existing Session. It does not create an Agenda execution Session or invoke a model on its own. When the trigger fires, Agenda writes the item's prompt to the origin Session as a deduplicated, hidden, system-authored `steer` inbox item and requests that Session's normal drive loop. This mode is not exposed by the Agenda agent tools; Native Clarus uses it for task-deadline guidance.
+
 ## Delivery
 
 By default, a successful result is delivered back to the origin context. `silent` suppresses result delivery. `wake` controls whether completion may actively wake the origin session; Agenda sessions that can wake their origin receive a narrow `session_send` preauthorization.
 
-Channel-origin Agenda items preserve endpoint context so results can return through the relevant connected surface rather than becoming detached local notifications.
+Channel-origin Agenda items preserve endpoint context so ordinary results can return through the relevant connected surface rather than becoming detached local notifications. `session_guidance` instead requires the concrete origin Session and never routes a fake user prompt through the Channel endpoint.
 
 Failures are retained in run history and increment the consecutive-error count. After five consecutive failures, the next activation auto-pauses the item instead of continuing an unattended failure loop. A successful run resets the streak.
 
@@ -76,3 +78,4 @@ The Agenda UI presents calendar/schedule state, item editing, status controls, e
 - Persistent and ephemeral session policies are explicit and observable.
 - Run history survives changes to the current schedule state.
 - Repeated failures stop automatically instead of retrying forever without intervention.
+- Session guidance remains hidden steering in the owning Session and never creates a second execution Session.

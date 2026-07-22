@@ -42,6 +42,8 @@ Session metadata is not the message transcript. Each has its own storage and eve
 
 Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
 
+New Channel endpoints use typed `chat`, `project`, or `task` targets while existing Feishu records retain their legacy key encoding. A Clarus task target contains the external Project and Task IDs and therefore resolves one stable Task Session inside the owning managed Project Scope. Project targets identify ownership and navigation only; task-only discovery does not create a Project conversation Session.
+
 ## Session Lineage
 
 Synergy records two different relationships:
@@ -309,6 +311,8 @@ Typical mappings:
 - an active-user interruption, Cortex completion, review rejection, or workflow continuation uses `steer`;
 - passive information intended for the next natural model call uses `context`;
 - assistant-role cross-session delivery materializes immediately against the latest root.
+
+Channel routing uses these same inbox semantics rather than a provider-specific mailbox. A new external chat request or Clarus assignment uses `task`; a Task update uses a deduplicated `steer`. Clarus participation instructions and Agenda `session_guidance` deadlines are hidden system-origin `steer` messages in the same Task Session. Project discovery, subscription acknowledgements, and other Project-level protocol events do not deliver Session work.
 
 Promoting a queued user task to guide/steer changes the inbox mode instead of writing permanent guided/no-reply metadata into the message model.
 

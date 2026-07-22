@@ -85,6 +85,7 @@ Read the owning architecture document before changing these areas:
 - Cortex child sessions and task outputs: `cortex.md`
 - Plan, Blueprints, BlueprintLoop, Light Loop, and Lattice: `workflows.md`
 - Browser native/WebRTC presentation and one-session/one-page ownership: `browser-runtime.md`
+- Channels, managed Projects, provider lifecycle, and Native Clarus tasks: `channels.md`
 
 Do not create compatibility paths that violate those contracts. In particular:
 
@@ -169,6 +170,7 @@ Review at least `README.md`, relevant setup/help text, and the owning Skill when
 - `change-server-api`, `change-persistence` — API/SDK and durable-state workflows
 - `change-execution-boundaries` — capabilities, permissions, control profiles, enforcement, and sandboxing
 - `change-browser-runtime` — Browser ownership/control plus Desktop native and WebRTC presentation
+- `change-channel-runtime` — Channel targets, provider lifecycle, managed Projects, native Clarus tasks, diagnostics, and account navigation
 - `change-plugin-runtime` — Plugin API 3 definitions, generated artifacts, installation, runtime generations, Host Services, and UI host
 - `develop-synergy` — run an isolated second instance
 - `testing-guide` — choose fixtures and verification gates

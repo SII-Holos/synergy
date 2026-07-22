@@ -4,24 +4,34 @@ Synergy can connect to model and tool services through providers and MCP, messag
 
 ## Channels
 
-Channels adapt an external messaging account into persistent Synergy sessions. A provider connects one or more configured accounts and normalizes each incoming message into a common context containing account, chat, sender, thread, mention, quote, attachment, and Scope information.
+Channels connect external accounts to the same durable Scope, Session, inbox, and permission model used by interactive clients. Channel core owns account lifecycle, endpoint target identity, Scope and Session routing, managed Project ownership, and diagnostics. Each provider owns its remote protocol and provider-private state.
 
-Synergy derives a stable endpoint key from the provider, account, chat, and optional Scope key. Messages for that endpoint reuse its unattended session instead of creating an unrelated conversation for every inbound message. Incoming commands are handled before ordinary agent invocation.
+A provider declares one messaging shape:
 
-The provider contract supports:
+- `chat` providers map remote conversations to stable unattended Sessions and may support replies, proactive pushes, media, reactions, streaming progress, and provider-owned reconnect.
+- `task_only` providers discover remote Projects and deliver assignments to dedicated Task Sessions. Discovery never creates a Project conversation Session, and Project-level protocol events never invoke a model.
 
-- direct messages and groups
-- replies and proactive pushes
-- text, image, file, audio, and video parts
-- reactions and delivery-status reactions
-- streaming text and tool progress
-- reconnect and account status
-
-Feishu/Lark is the current built-in provider. It owns Feishu-specific deduplication, mentions, group behavior, media transfer, cards, and reconnect handling while the Channel core owns endpoint/session routing and outbound delivery.
+Feishu/Lark is the built-in chat provider. It retains its existing chat endpoint keys, Home-Scope behavior, media and mention handling, cards, and self-connected lifecycle while Channel core owns endpoint and Session routing.
 
 Each Feishu/Lark account can set a default model and one of that model's exposed variants. The account selection is written onto each inbound root message so the session header and provider request agree. A conversation-level `/model` override takes precedence over the account default; because that override selects a different model, it does not inherit the account model's variant.
 
 Channel sessions default to the `autonomous` control profile. An inbound message therefore receives either an allowed result or a clear denial; it never stalls on an approval dialog visible only in another client.
+
+### Native Clarus tasks
+
+Clarus is the built-in task-only provider. A Holos identity creates its matching Channel account disabled by default. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity.
+
+Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
+
+Remote Project state is displayed separately as active, paused, stale, or archived. Remote pause does not interrupt already accepted local work. Remote archive stops new assignment delivery but preserves the managed Scope, files, Sessions, task state, and result history. Active or remotely paused managed Projects cannot be locally archived; stale or remote-archived Projects use the normal local archive workflow.
+
+Only a Clarus task assignment creates or wakes a Session. One external Task ID has one stable unattended Session in its managed Project Scope; another run of that Task reuses the Session, while a retry represented by a new Task ID creates a new Session and preserves lineage. Clarus Task Sessions use the `autonomous` control profile so remote work cannot stall on an approval dialog visible only elsewhere.
+
+Task deadlines use durable Agenda guidance in the same Task Session. The reminder is hidden system-authored steering rather than a visible user prompt or a second Agenda Session. An authoritative extension reschedules the reminder, result acknowledgement cancels it, and the standard Session Abort action stops local execution.
+
+Result submission and deadline extension persist their outbound record before dispatch. Only a request known not to have been sent can retry automatically; rejected or ambiguous requests do not. Account actions expose coalesced **Refresh Projects** and bounded, redacted diagnostics download when the provider supports them.
+
+See [Channels](../architecture/channels.md) for target identity, ownership, lifecycle, recovery, and diagnostics invariants.
 
 ## Holos Identity
 
@@ -103,7 +113,7 @@ When both credentials are present, the Sidebar shows a GitHub section between Ba
 
 ## Boundaries
 
-- Channels translate external conversations into endpoint sessions.
+- Channels translate external conversations and remote task assignments into canonical Synergy Sessions and managed Project Scopes.
 - Holos supplies optional network identity, reachability, contacts, and direct agent messaging.
 - Synergy Link performs typed remote session and process operations over Holos transport.
 - MCP supplies callable external tools; providers supply models.

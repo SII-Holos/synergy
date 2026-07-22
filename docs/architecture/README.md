@@ -27,6 +27,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | [LLM loop and compaction](llm-loop.md)           | Single-writer loop, prompt assembly, model execution, tools, loop jobs, compaction, and terminal behavior.                           |
 | [Frontend data sync](frontend-data-sync.md)      | Scope event sequencing, replay, delta/checkpoint streaming, reconcile writes, compaction swaps, and eviction.                        |
 | [Frontend localization](localization.md)         | Global locale ownership, catalog activation, message IDs, formatting, translation boundaries, and verification.                      |
+| [Channels](channels.md)                          | Channel targets, provider lifecycle, managed Project ownership, task routing, borrowed transports, diagnostics, and projection.      |
 | [Execution boundaries](execution-boundaries.md)  | Tool visibility, capability classification, control profiles, permissions, SmartAllow, and OS sandboxing.                            |
 | [Cortex and delegated work](cortex.md)           | Child sessions, task lifecycle, concurrency, output contracts, background work, and parent delivery.                                 |
 | [Workflow engine](workflows.md)                  | Continuation kernel, Plan, BlueprintLoop, Light Loop, Lattice, review, and recovery.                                                 |
@@ -45,29 +46,31 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 - State events are sequenced per Scope runtime; streaming part deltas are deliberately unsequenced and converge through checkpoints.
 - Frontend updates reconcile changed leaves instead of replacing whole store objects.
 - Product extensions use the same session, event, permission, and workbench contracts as built-in features.
+- Channel core owns Scope and Session integration; task-only providers report remote facts through `ChannelHost` and do not maintain parallel Project or Session models.
 - Persisted schema upgrades run through domain migrations and the central migration runner.
 
 ## Ownership Map
 
-| Area                     | Primary implementation                                                                             |
-| ------------------------ | -------------------------------------------------------------------------------------------------- |
-| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                               |
-| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                                  |
-| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools                  |
-| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                                        |
-| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                                     |
-| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/`                 |
-| Delegation               | `packages/synergy/src/cortex/`                                                                     |
-| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`                            |
-| Knowledge                | `packages/synergy/src/library/`, `note/`                                                           |
-| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                           |
-| Automation               | `packages/synergy/src/agenda/`                                                                     |
-| Connections              | `packages/synergy/src/channel/`, `email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`, `github/` |
-| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                                     |
-| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                            |
-| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes                      |
-| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                           |
-| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI                    |
+| Area                     | Primary implementation                                                                     |
+| ------------------------ | ------------------------------------------------------------------------------------------ |
+| Runtime and server       | `packages/synergy/src/server/`, `daemon/`, `global/`                                       |
+| Scope and workspace      | `packages/synergy/src/scope/`, `session/types.ts`, worktree tools                          |
+| Files and coding harness | `packages/synergy/src/workspace-file/`, `file/`, `hashline/`, anchored file tools          |
+| Sessions and messages    | `packages/synergy/src/session/`, `storage/`                                                |
+| Agents and tools         | `packages/synergy/src/agent/`, `tool/`, `mcp/`                                             |
+| Execution policy         | `packages/synergy/src/enforcement/`, `control-profile/`, `permission/`, `sandbox/`         |
+| Delegation               | `packages/synergy/src/cortex/`                                                             |
+| Workflow loops           | `packages/synergy/src/blueprint/`, `lattice/`, `session/*continuation*`                    |
+| Knowledge                | `packages/synergy/src/library/`, `note/`                                                   |
+| Activity statistics      | `packages/synergy/src/stats/`, server Stats routes, Web Stats components                   |
+| Automation               | `packages/synergy/src/agenda/`                                                             |
+| Channels                 | `packages/synergy/src/channel/`, Channel server routes, and Web Channel account projection |
+| Other connections        | `packages/synergy/src/email/`, `holos/`, `synergy-link/`, `remote/`, `mcp/`, `github/`     |
+| External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                             |
+| Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                    |
+| Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes              |
+| Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                   |
+| Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI            |
 
 ## Related Contracts
 

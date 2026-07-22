@@ -15,6 +15,7 @@ description: Route a Synergy source change to the current repository development
    - HTTP route, OpenAPI, SDK, or Web API client: `change-server-api`
    - durable state, schema, index, or migration: `change-persistence`
    - capabilities, permissions, control profiles, enforcement, or sandboxing: `change-execution-boundaries`
+   - Channel targets, providers, managed Projects, or Native Clarus: `change-channel-runtime`
    - Browser ownership/control, Desktop native presentation, or WebRTC: `change-browser-runtime`
    - plugin manifest, installation, runtime, bridge, marketplace, or UI host: `change-plugin-runtime`
    - built-in agent, CLI command, or first-party tool: `add-agent`, `add-cli-command`, or `add-tool`
