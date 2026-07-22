@@ -461,19 +461,31 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
     synergyRoot: Global.Path.root,
   })
   const envelope = gate.evaluate("bash", { command: renderShellCommand(command), workdir: input.invocation.directory })
-  if (envelope.decision === "deny") {
+  if (envelope.decision !== "allow") {
+    const reason =
+      envelope.refusal?.reason ??
+      (envelope.decision === "ask"
+        ? `Profile "${profileId}" requires approval for shell.run, but plugin Host Service calls cannot request interactive approval`
+        : `Profile "${profileId}" denies shell.run`)
     throw new EnforcementError.PolicyDenied(
-      envelope.refusal?.reason ?? `Profile "${profileId}" denies shell.run`,
+      reason,
       envelope.capabilities.map((capability) => capability.class),
       profileId,
     )
   }
   const sandbox = gate.getSandbox()
+  const sandboxPolicy = gate.getSandboxPolicy()
   const wrapper = SandboxBackend.prepareWrapper({
     command: command[0],
     args: command.slice(1),
     workspace: input.invocation.directory,
-    sandboxMode: "none",
+    executionCwd: input.invocation.directory,
+    sandboxMode: sandbox.mode,
+    extraReadRoots: [Global.Path.root, ...trustedRoots],
+    extraWritableRoots: sandboxPolicy?.fileSystem.writableRoots ?? [],
+    protectedPaths: sandboxPolicy?.fileSystem.protectedPaths,
+    dataDenyRoots: sandboxPolicy?.fileSystem.dataDenyRoots,
+    backend: sandbox.backend,
   })
   const executed = await SandboxBackend.executeAsync(wrapper, {
     cwd: input.invocation.directory,
