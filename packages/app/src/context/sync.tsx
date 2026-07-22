@@ -9,14 +9,14 @@ import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
-import { planSessionSyncReload } from "./session-sync-plan"
+import { planSessionSyncReload, refreshSessionAfterPending, type SessionSyncTrigger } from "./session-sync-plan"
 import type { MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
 import type { SyncResourceRequest } from "./sync-resource-freshness"
 
 type RefreshOptions = { force?: boolean }
-type SessionSyncOptions = { refreshVolatile?: boolean }
+type SessionSyncOptions = { refreshVolatile?: boolean; trigger?: SessionSyncTrigger }
 
 export const { use: useSync, provider: SyncProvider } = createSimpleContext({
   name: "Sync",
@@ -379,29 +379,32 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
             reconnectVersion: currentReconnectVersion,
             lastSyncedReconnectVersion: sessionReconnectVersions.get(sessionID),
             canUnrollback: session?.history?.rollback?.canUnrollback === true,
+            trigger: options?.trigger,
           })
           const pending = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq =
-            pending ??
-            (plan.ready
-              ? Promise.resolve()
-              : (() => {
-                  const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
-                  const messagesReq = plan.forceMessages
-                    ? loadLatestMessages(sessionID, { force: true })
-                    : Promise.resolve()
-                  const promise = Promise.all([sessionReq, messagesReq])
-                    .then(() => {
-                      // Session-only reloads (no message fetch) still advance the
-                      // reconnect watermark so later sync() calls can short-circuit.
-                      if (!plan.forceMessages) markSessionSynced(sessionID)
-                    })
-                    .finally(() => {
-                      inflight.delete(sessionID)
-                    })
-                  inflight.set(sessionID, promise)
-                  return promise
-                })())
+            pending && options?.trigger?.type === "workspace-transition"
+              ? refreshSessionAfterPending(pending, () => loadSession(sessionID, { force: true }))
+              : (pending ??
+                (plan.ready
+                  ? Promise.resolve()
+                  : (() => {
+                      const sessionReq = plan.forceSession ? loadSession(sessionID, { force: true }) : Promise.resolve()
+                      const messagesReq = plan.forceMessages
+                        ? loadLatestMessages(sessionID, { force: true })
+                        : Promise.resolve()
+                      const promise = Promise.all([sessionReq, messagesReq])
+                        .then(() => {
+                          // Session-only reloads (no message fetch) still advance the
+                          // reconnect watermark so later sync() calls can short-circuit.
+                          if (!plan.forceMessages) markSessionSynced(sessionID)
+                        })
+                        .finally(() => {
+                          inflight.delete(sessionID)
+                        })
+                      inflight.set(sessionID, promise)
+                      return promise
+                    })()))
 
           const requests = [baseReq, syncPermissions()]
           if (options?.refreshVolatile) {
