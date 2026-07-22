@@ -162,6 +162,7 @@ export function filterInboundMessage(input: MessageFilterInput): MessageFilterRe
 
 export class FeishuProvider implements ChannelTypes.Provider<Config.ChannelFeishuAccount, Config.ChannelFeishu> {
   readonly type = "feishu"
+  readonly lifecycle = "self_connected" as const
 
   private accounts = new Map<string, AccountState>()
 

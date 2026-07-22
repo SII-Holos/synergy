@@ -20,8 +20,10 @@ import { SessionInvoke, InvokeInput } from "../session/invoke"
 import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
-import { ChannelProjectScope, ProjectScopeConflictError as ProjectScopeConflictErrorType } from "./project-scope"
+import { ManagedProjectOwnership } from "./managed-project-ownership"
 import { externalIdentityHash } from "./identity"
+import { ChannelHost } from "./host"
+import { recording as recordDiagnostic, list as listDiagnostics, DiagnosticRecord } from "./diagnostics"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -61,34 +63,55 @@ export namespace Channel {
   export type MessageHandler = MessageHandlerType
   export type SendResult = SendResultType
   export type StreamingSession = StreamingSessionType
-  export type Provider = ProviderType
-
-  export const toKey = toKeyFn
-  export const ProjectScopeConflictError = ProjectScopeConflictErrorType
+  export type Provider<TAccountConfig = unknown, TChannelConfig = unknown> = ProviderType<
+    TAccountConfig,
+    TChannelConfig
+  >
 
   export async function findProjectScope(input: {
     channelType: string
     accountId: string
-    projectID: string
+    externalProjectId: string
   }): Promise<Scope.Project | undefined> {
-    return ChannelProjectScope.find(input)
+    const record = await ManagedProjectOwnership.find({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
+    if (!record) return undefined
+    const scope = await Scope.fromID(record.scopeID)
+    if (scope?.type !== "project") return undefined
+    return scope
   }
 
   export async function ensureProjectScope(input: {
     channelType: string
     accountId: string
-    projectID: string
+    externalProjectId: string
     projectName?: string
   }): Promise<Scope.Project> {
-    return ChannelProjectScope.ensure(input)
+    const record = await ManagedProjectOwnership.ensure({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+      projectName: input.projectName,
+      remoteState: "active",
+    })
+    const scope = await Scope.fromID(record.scopeID)
+    if (!scope || scope.type !== "project") throw new Error("Channel managed project ownership Scope not found")
+    return scope
   }
 
   export async function archiveProjectScope(input: {
     channelType: string
     accountId: string
-    projectID: string
+    externalProjectId: string
   }): Promise<void> {
-    return ChannelProjectScope.archive(input)
+    await ManagedProjectOwnership.markArchived({
+      channelType: input.channelType,
+      accountId: input.accountId,
+      externalProjectId: input.externalProjectId,
+    })
   }
 
   export const StartError = NamedError.create(
@@ -147,8 +170,10 @@ export namespace Channel {
 
   const providers = new Map<string, Provider>()
 
-  export function registerProvider(provider: Provider): void {
-    providers.set(provider.type, provider)
+  export function registerProvider<TAccountConfig, TChannelConfig>(
+    provider: Provider<TAccountConfig, TChannelConfig>,
+  ): void {
+    providers.set(provider.type, provider as unknown as Provider)
   }
 
   export function getProvider(type: string): Provider | undefined {
@@ -273,12 +298,21 @@ export namespace Channel {
       reconnects.delete(key)
     }
 
+    const host = ChannelHost.create({
+      channelType,
+      accountId,
+      activateTasks: true,
+      onDiagnostic: async (record) => {
+        await recordDiagnostic(channelType, accountId, record)
+      },
+    })
     await provider.connect({
       accountId,
       accountConfig,
       channelConfig,
       onMessage: (ctx, messageScope) => handleMessage(provider, ctx, messageScope, accountConfig),
       signal: abort.signal,
+      host,
       onDisconnect: (reason) => {
         if (abort.signal.aborted) return
         log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
@@ -339,6 +373,7 @@ export namespace Channel {
       attempt,
     } = input
     if (abort.signal.aborted) return
+    if (provider.lifecycle !== "self_connected") return
 
     const key = connectionKey(channelType, accountId)
 
@@ -406,6 +441,14 @@ export namespace Channel {
     scope: Scope,
     accountConfig: unknown,
   ): Promise<void> {
+    if (provider.messaging === "task_only") return
+    const replyMessage = provider.replyMessage?.bind(provider)
+    const addReaction = provider.addReaction?.bind(provider)
+    const createStreamingSession = provider.createStreamingSession?.bind(provider)
+    if (!replyMessage || !addReaction || !createStreamingSession) {
+      log.warn("channel provider is missing chat capabilities", { channelType: provider.type })
+      return
+    }
     await ScopeContext.provide({
       scope,
       fn: async () => {
@@ -441,7 +484,7 @@ export namespace Channel {
 
         if (cmdResult.action === "handled") {
           if (cmdResult.reply) {
-            await provider.replyMessage({
+            await replyMessage({
               accountId: ctx.accountId,
               messageId: ctx.messageId,
               parts: [{ type: "text", text: cmdResult.reply }],
@@ -457,7 +500,7 @@ export namespace Channel {
         const reactionController = createStatusReactionController({
           adapter: {
             setReaction: async (emoji: string) => {
-              const result = await provider.addReaction({
+              const result = await addReaction({
                 accountId: ctx.accountId,
                 messageId: ctx.messageId,
                 emoji,
@@ -478,7 +521,7 @@ export namespace Channel {
         })
         void reactionController.setQueued()
 
-        const streaming = provider.createStreamingSession({
+        const streaming = createStreamingSession({
           accountId: ctx.accountId,
           chatId: ctx.chatId,
           replyToMessageId: ctx.messageId,
@@ -793,6 +836,68 @@ export namespace Channel {
     })
   }
 
+  const refreshInFlight = new Map<string, boolean>()
+
+  const RefreshError = NamedError.create(
+    "ChannelRefreshError",
+    z.object({
+      message: z.string(),
+      channelType: z.string(),
+      accountId: z.string(),
+    }),
+  )
+
+  export async function refreshProjects(channelType: string, accountId: string): Promise<void> {
+    const s = await state()
+    const key = connectionKey(channelType, accountId)
+    const conn = s.connections.get(key)
+    if (!conn) {
+      throw new RefreshError({
+        message: "Channel account is not connected",
+        channelType,
+        accountId,
+      })
+    }
+    if (!conn.provider.refreshProjects) {
+      throw new RefreshError({
+        message: "Channel provider does not support project refresh",
+        channelType,
+        accountId,
+      })
+    }
+    // Coalesce concurrent refresh calls — only one provider sync at a time
+    if (refreshInFlight.has(key)) return
+    refreshInFlight.set(key, true)
+
+    // Fire-and-forget: return immediately ("accepted") and update status
+    // asynchronously so callers don't block on provider discovery
+    void (async () => {
+      try {
+        s.statuses.set(key, { status: "syncing" })
+        await conn.provider.refreshProjects!({
+          accountId,
+          signal: conn.abort.signal,
+          host: ChannelHost.create({
+            channelType,
+            accountId,
+            onDiagnostic: async (record) => {
+              await recordDiagnostic(channelType, accountId, record)
+            },
+          }),
+        })
+        s.statuses.set(key, { status: "connected" })
+      } catch (err) {
+        const error = err instanceof Error ? err.message : String(err)
+        s.statuses.set(key, { status: "failed", error })
+      } finally {
+        refreshInFlight.delete(key)
+      }
+    })()
+  }
+
+  export async function getDiagnostics(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
+    return listDiagnostics(channelType, accountId)
+  }
   export async function init(): Promise<void> {
     await state()
   }

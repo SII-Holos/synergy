@@ -17,6 +17,7 @@ import { LSPServer } from "../lsp/server"
 import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
+import { validateHolosEndpoint } from "../holos/security"
 
 export const McpRetry = McpRetryConfig
 export type McpRetry = McpRetryConfig
@@ -111,7 +112,7 @@ export type ChannelFeishu = z.infer<typeof ChannelFeishu>
 
 export const ChannelClarusAccount = z
   .object({
-    enabled: z.boolean().optional().default(true),
+    enabled: z.boolean().optional().default(false),
     apiUrl: z
       .string()
       .optional()

@@ -201,6 +201,10 @@ export namespace AgendaTypes {
       triggers: z.array(Trigger).default([]).describe("Activation conditions"),
 
       prompt: z.string().describe("Instruction for the agent when triggered"),
+      deliveryMode: z
+        .literal("session_guidance")
+        .optional()
+        .describe("Internal delivery mode that injects hidden system guidance into the origin Session"),
 
       // Advanced execution options
       agent: z.string().optional().describe("Agent to use, defaults to configured default"),

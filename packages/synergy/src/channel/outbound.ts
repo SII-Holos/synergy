@@ -42,13 +42,15 @@ export namespace ChannelOutbound {
         log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
         return
       }
+      const pushMessage = provider.pushMessage?.bind(provider)
+      if (!pushMessage) return
 
       const parts = await MessageV2.parts({ sessionID: msg.sessionID, messageID: msg.id }).catch(() => [])
       const text = MessageV2.extractText(parts, { includeSynthetic: false })
       if (!text) return
 
       try {
-        await provider.pushMessage({
+        await pushMessage({
           accountId: channelInfo.accountId,
           chatId: channelInfo.chatId,
           parts: [{ type: "text", text }],

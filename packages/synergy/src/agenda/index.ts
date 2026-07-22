@@ -60,8 +60,8 @@ export namespace Agenda {
     log.info("agenda stopped")
   }
 
-  export async function create(input: Parameters<typeof AgendaStore.create>[0]) {
-    const item = await AgendaStore.create(input)
+  export async function create(input: AgendaStore.InternalCreateInput, id?: string) {
+    const item = await AgendaStore.create(input, id)
     if (item.status === "active") {
       syncItem(item.origin.scope.id, item)
     }

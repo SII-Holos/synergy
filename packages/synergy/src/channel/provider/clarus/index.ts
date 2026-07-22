@@ -1,26 +1,16 @@
-import { Channel } from "@/channel"
 import type * as ChannelTypes from "@/channel/types"
+import type { ChannelHost } from "@/channel/host"
 import type { Config } from "@/config/config"
 import { HolosAuth } from "@/holos/auth"
 import { HolosRuntime } from "@/holos/runtime"
-import { Session } from "@/session"
-import { SessionEndpoint } from "@/session/endpoint"
-import { SessionInteraction } from "@/session/interaction"
-import { Storage } from "@/storage/storage"
-import { StoragePath } from "@/storage/path"
-import { Lock } from "@/util/lock"
 import { Log } from "@/util/log"
-import type {
-  ClarusAgentTunnelPort,
-  ClarusObservedEvent,
-  ProjectMessageCreatedEvent,
-  RuntimeTaskAssignedEvent,
-} from "./agent-tunnel-port"
-import { ClarusAssignmentStore } from "./assignment-store"
-import { ClarusOutbox } from "./outbox"
+import type { ClarusAgentTunnelPort, ClarusObservedEvent, RuntimeTaskAssignedEvent } from "./agent-tunnel-port"
+import { ClarusAssignmentRuntime } from "./assignment-runtime"
+import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
+import { ClarusDeadlineAgenda } from "./deadline-agenda"
 import { ClarusProjectClient } from "./project-client"
-import { ClarusProjectSync } from "./project-sync"
-import { ClarusResultOutbox, type ClarusResultPayload } from "./result-outbox"
+import { ClarusResultOutbox, type ClarusResultPayload, type ClarusResultSend } from "./result-outbox"
+import { ClarusExtensionOutbox, type ClarusExtendPayload, type ClarusExtensionSend } from "./extension-outbox"
 import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
 
 type AccountConnection = {
@@ -28,8 +18,8 @@ type AccountConnection = {
   config: Config.ChannelClarusAccount
   tunnel: ClarusAgentTunnelPort
   signal: AbortSignal
+  host: ChannelHost.Instance
   projects: Map<string, string>
-  messageProjects: Map<string, string>
   outboundRequests: Set<string>
 }
 
@@ -42,56 +32,10 @@ function hash(...parts: string[]): string {
   return hasher.digest("hex")
 }
 
-function textFromParts(parts: ChannelTypes.OutboundPart[]): string {
-  return parts
-    .map((part) => {
-      if (part.type === "text") return part.text
-      const label = part.filename ?? part.type
-      const location = part.url ?? part.path
-      return location ? `[${label}](${location})` : `[${label}]`
-    })
-    .join("\n")
-}
-
-class ClarusStreamingSession implements ChannelTypes.StreamingSession {
-  private active = false
-  private text = ""
-
-  constructor(
-    private readonly provider: ClarusProvider,
-    private readonly accountId: string,
-    private readonly projectID: string,
-  ) {}
-
-  async start(): Promise<void> {
-    this.active = true
-  }
-
-  async update(text: string): Promise<void> {
-    this.text = text
-  }
-
-  async updateToolProgress(): Promise<void> {}
-
-  async close(finalText?: string): Promise<void> {
-    if (!this.active) return
-    this.active = false
-    const text = finalText ?? this.text
-    if (text)
-      await this.provider.pushMessage({
-        accountId: this.accountId,
-        chatId: this.projectID,
-        parts: [{ type: "text", text }],
-      })
-  }
-
-  isActive(): boolean {
-    return this.active
-  }
-}
-
 export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClarusAccount, Config.ChannelClarus> {
   readonly type = "clarus"
+  readonly lifecycle = "borrowed_transport" as const
+  readonly messaging = "task_only" as const
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
 
@@ -101,6 +45,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     channelConfig: Config.ChannelClarus
     onMessage: ChannelTypes.MessageHandler
     signal: AbortSignal
+    host: ChannelHost.Instance
     onDisconnect?: (reason?: string) => void
   }): Promise<void> {
     const credential = await HolosAuth.getCredentialOrThrow()
@@ -116,8 +61,8 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       config: input.accountConfig,
       tunnel,
       signal: input.signal,
+      host: input.host,
       projects: new Map(),
-      messageProjects: new Map(),
       outboundRequests: new Set(),
     }
     this.connections.set(input.accountId, connection)
@@ -131,7 +76,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     }
     removers.add(
       tunnel.registerEventHandler((event) =>
-        this.handleEvent(connection, event, input.onMessage).catch(() => {
+        this.handleEvent(connection, event).catch(() => {
           this.log.error("failed to handle Clarus event", {
             accountHash: hash(input.accountId),
             eventType: event.kind === "known" ? event.type : event.kind,
@@ -156,95 +101,133 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     }
   }
 
-  async replyMessage(input: {
-    accountId: string
-    messageId: string
-    parts: ChannelTypes.OutboundPart[]
-  }): Promise<ChannelTypes.SendResult> {
-    const connection = this.requireConnection(input.accountId)
-    const projectID = connection.messageProjects.get(input.messageId)
-    if (!projectID) throw new Error("Clarus reply target is unavailable")
-    return this.pushMessage({ accountId: input.accountId, chatId: projectID, parts: input.parts })
-  }
-
-  async pushMessage(input: {
-    accountId: string
-    chatId: string
-    parts: ChannelTypes.OutboundPart[]
-  }): Promise<ChannelTypes.SendResult> {
-    const connection = this.requireConnection(input.accountId)
-    const result = await ClarusOutbox.enqueue({
-      accountHash: hash(input.accountId),
-      projectID: input.chatId,
-      content: textFromParts(input.parts),
-      send: (outbound) => this.sendProjectMessage(connection, outbound),
-    })
-    return { messageId: result.messageID }
-  }
-
-  async addReaction(): Promise<void> {}
-
-  createStreamingSession(input: { accountId: string; chatId: string }): ChannelTypes.StreamingSession {
-    return new ClarusStreamingSession(this, input.accountId, input.chatId)
-  }
-
   async submitTaskResult(input: {
     sessionID: string
     payload: ClarusResultPayload
     signal: AbortSignal
   }): Promise<{ requestID: string }> {
-    return ClarusResultOutbox.submit({
+    const result = await ClarusResultOutbox.submit({
       sessionID: input.sessionID,
       payload: input.payload,
-      send: async ({ requestID, assignment, payload }) => {
-        const connection = this.requireConnection(assignment.accountId)
-        connection.outboundRequests.add(requestID)
-        try {
-          await connection.tunnel.recordTaskResult({
-            requestID,
-            runID: assignment.runID,
-            taskID: assignment.taskID,
-            subtaskID: assignment.subtaskID,
-            success: payload.success,
-            output: payload.output,
-            artifacts: payload.artifacts.map((artifact) => ({
-              artifact_id: artifact.artifactID,
-              name: artifact.name,
-              ...(artifact.description === undefined ? {} : { description: artifact.description }),
-              parts: artifact.parts.map((part) => ({
-                type: part.type,
-                format: part.format,
-                role: part.role,
-                content_kind: part.contentKind,
-                name: part.name,
-                content: part.content,
-              })),
-            })),
-            evidenceRefs: payload.evidenceRefs,
-            notaryRefs: payload.notaryRefs,
-            error: payload.error,
-            payload: { generated_by: payload.submittedBy, submitted_via: "synergy_clarus_tool" },
-            signal: AbortSignal.any([connection.signal, input.signal]),
-          }).response
-        } finally {
-          connection.outboundRequests.delete(requestID)
-        }
+      send: async (outbound) => {
+        const connection = this.requireConnection(outbound.assignment.accountId, outbound.requestID)
+        await this.sendTaskResult(connection, outbound, input.signal)
       },
     })
+    const located = await ClarusAssignmentStore.findBySessionID(input.sessionID)
+    if (located?.assignment.resultState === "acknowledged") {
+      await ClarusDeadlineAgenda.cancel({
+        accountId: located.assignment.accountId,
+        projectID: located.assignment.projectID,
+        taskID: located.assignment.taskID,
+      })
+    }
+    return result
   }
 
-  private requireConnection(accountId: string): AccountConnection {
-    const connection = this.connections.get(accountId)
+  async extendTask(input: {
+    sessionID: string
+    payload: ClarusExtendPayload
+    signal: AbortSignal
+  }): Promise<{ requestID: string }> {
+    const result = await ClarusExtensionOutbox.submit({
+      sessionID: input.sessionID,
+      payload: input.payload,
+      send: async (outbound) => {
+        const connection = this.requireConnection(outbound.assignment.accountId, outbound.requestID)
+        return this.sendTaskExtension(connection, outbound, input.signal)
+      },
+    })
+    const located = await ClarusAssignmentStore.findBySessionID(input.sessionID)
+    if (located) await this.syncAssignmentDeadline(located.assignment)
+    return result
+  }
+
+  private async sendTaskResult(
+    connection: AccountConnection,
+    input: Parameters<ClarusResultSend>[0],
+    signal: AbortSignal = connection.signal,
+  ): Promise<void> {
+    connection.outboundRequests.add(input.requestID)
+    try {
+      await connection.tunnel.recordTaskResult({
+        requestID: input.requestID,
+        runID: input.assignment.runID,
+        taskID: input.assignment.taskID,
+        subtaskID: input.assignment.subtaskID,
+        success: input.payload.success,
+        output: input.payload.output,
+        artifacts: input.payload.artifacts.map((artifact) => ({
+          artifact_id: artifact.artifactID,
+          name: artifact.name,
+          ...(artifact.description === undefined ? {} : { description: artifact.description }),
+          parts: artifact.parts.map((part) => ({
+            type: part.type,
+            format: part.format,
+            role: part.role,
+            content_kind: part.contentKind,
+            name: part.name,
+            content: part.content,
+          })),
+        })),
+        evidenceRefs: input.payload.evidenceRefs,
+        notaryRefs: input.payload.notaryRefs,
+        error: input.payload.error,
+        payload: { generated_by: input.payload.submittedBy, submitted_via: "synergy_clarus_tool" },
+        signal: AbortSignal.any([connection.signal, signal]),
+      }).response
+    } finally {
+      connection.outboundRequests.delete(input.requestID)
+    }
+  }
+  private async sendTaskExtension(
+    connection: AccountConnection,
+    input: Parameters<ClarusExtensionSend>[0],
+    signal: AbortSignal = connection.signal,
+  ): Promise<{ deadlineAt?: string | null }> {
+    connection.outboundRequests.add(input.requestID)
+    try {
+      const event = await connection.tunnel.extendTask({
+        requestID: input.requestID,
+        runID: input.assignment.runID,
+        taskID: input.assignment.taskID,
+        subtaskID: input.assignment.subtaskID,
+        extendSeconds: input.payload.extend_seconds,
+        progress: input.payload.progress,
+        payload: input.payload.payload,
+        signal: AbortSignal.any([connection.signal, signal]),
+      }).response
+      return { deadlineAt: event.task.deadlineAt }
+    } finally {
+      connection.outboundRequests.delete(input.requestID)
+    }
+  }
+
+  async refreshProjects(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void> {
+    const connection = this.connections.get(input.accountId)
     if (!connection || connection.signal.aborted) throw new Error("Clarus channel is not connected")
-    return connection
+    await this.syncProjects(connection)
+  }
+
+  private requireConnection(accountId: string, requestID: string): AccountConnection {
+    const connection = this.connections.get(accountId)
+    if (connection && !connection.signal.aborted) return connection
+    throw {
+      disposition: "not_dispatched" as const,
+      requestID,
+      code: "CLARUS_NOT_CONNECTED",
+      message: "Clarus channel is not connected",
+    }
   }
 
   private async syncProjects(connection: AccountConnection): Promise<void> {
     const accountHash = hash(connection.accountId)
-    const previous = await ClarusProjectSync.load(accountHash)
-    const config = await import("@/config/config").then(({ Config }) => Config.current())
+    const apiUrl =
+      connection.config.apiUrl ??
+      (await import("@/config/config").then(({ Config }) => Config.current())).holos?.apiUrl ??
+      "https://api.holosai.io"
     const rest = new ClarusProjectClient(
-      connection.config.apiUrl ?? config.holos?.apiUrl ?? "https://api.holosai.io",
+      apiUrl,
       async () => {
         const credential = await HolosAuth.getStoredCredential()
         if (!credential) return undefined
@@ -252,159 +235,155 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
       },
       connection.signal,
     )
+    const projects: ChannelHost.ExternalProjectRef[] = []
     let cursor: string | undefined
     do {
       const page = await rest.listProjects({ limit: 50, cursor })
       for (const project of page.projects) {
-        await this.ensureProject(connection, project.projectID, project.projectName)
-        const requestID = crypto.randomUUID()
-        connection.outboundRequests.add(requestID)
-        try {
-          await connection.tunnel.subscribeProject({
-            projectID: project.projectID,
-            requestID,
-            signal: connection.signal,
-          }).response
-        } finally {
-          connection.outboundRequests.delete(requestID)
-        }
+        const name = project.projectName ?? project.projectID
+        projects.push({ externalProjectId: project.projectID, name, isActive: project.status === "active" })
+        connection.projects.set(project.projectID, name)
       }
       cursor = page.nextCursor
     } while (cursor && !connection.signal.aborted)
-    for (const projectID of previous.keys()) {
-      if (connection.projects.has(projectID)) continue
-      await Channel.archiveProjectScope({
-        channelType: this.type,
-        accountId: connection.accountId,
-        projectID,
-      })
-    }
-    await ClarusProjectSync.save(accountHash, connection.projects)
-    await ClarusOutbox.recover({
-      accountHash,
-      send: (outbound) => this.sendProjectMessage(connection, outbound),
-    })
-    await ClarusResultOutbox.recover(accountHash)
-  }
 
-  private async sendProjectMessage(
-    connection: AccountConnection,
-    input: { requestID: string; projectID: string; content: string },
-  ): Promise<{ messageID: string }> {
-    connection.outboundRequests.add(input.requestID)
-    try {
-      const result = await connection.tunnel.sendProjectMessage({
-        projectID: input.projectID,
-        content: input.content,
-        requestID: input.requestID,
-        signal: connection.signal,
-      }).response
-      return { messageID: result.message.messageID }
-    } finally {
-      connection.outboundRequests.delete(input.requestID)
+    await connection.host.projects.reconcile({ projects, complete: !connection.signal.aborted })
+    for (const project of projects) {
+      if (!project.isActive) continue
+      const requestID = crypto.randomUUID()
+      connection.outboundRequests.add(requestID)
+      try {
+        await connection.tunnel.subscribeProject({
+          projectID: project.externalProjectId,
+          requestID,
+          signal: connection.signal,
+        }).response
+      } finally {
+        connection.outboundRequests.delete(requestID)
+      }
+    }
+    await ClarusResultOutbox.recover({
+      accountHash,
+      send: (input) => this.sendTaskResult(connection, input),
+    })
+    const recoveredExtensions = await ClarusExtensionOutbox.recover({
+      accountHash,
+      send: (input) => this.sendTaskExtension(connection, input),
+    })
+    for (const sessionID of recoveredExtensions) {
+      const located = await ClarusAssignmentStore.findBySessionID(sessionID)
+      if (located) await this.syncAssignmentDeadline(located.assignment)
     }
   }
 
   private async ensureProject(connection: AccountConnection, projectID: string, projectName?: string) {
-    const scope = await Channel.ensureProjectScope({
-      channelType: this.type,
-      accountId: connection.accountId,
-      projectID,
-      projectName,
+    const name = projectName ?? connection.projects.get(projectID) ?? "Clarus project"
+    const project = await connection.host.projects.ensure({ externalProjectId: projectID, name, isActive: true })
+    connection.projects.set(projectID, name)
+    return project
+  }
+  private async syncAssignmentDeadline(assignment: ClarusAssignment, active = assignment.status === "running") {
+    await ClarusDeadlineAgenda.sync({
+      accountId: assignment.accountId,
+      projectID: assignment.projectID,
+      taskID: assignment.taskID,
+      sessionID: assignment.sessionID,
+      deadlineAt: assignment.deadlineAt,
+      active: active && assignment.resultState !== "acknowledged",
     })
-    connection.projects.set(projectID, projectName ?? scope.name ?? "Clarus project")
-    const endpoint = SessionEndpoint.fromChannel({
-      type: this.type,
-      accountId: connection.accountId,
-      chatId: projectID,
-      chatType: "group",
-      chatName: projectName,
-    })
-    await Session.getOrCreateForEndpoint(endpoint, {
-      scope,
-      title: projectName,
-      agentOverride: connection.config.agent,
-      controlProfile: "autonomous",
-      interaction: SessionInteraction.unattended("channel:clarus"),
-    })
-    return scope
   }
 
-  private async handleEvent(
-    connection: AccountConnection,
-    event: ClarusObservedEvent,
-    onMessage: ChannelTypes.MessageHandler,
-  ): Promise<void> {
+  private async handleEvent(connection: AccountConnection, event: ClarusObservedEvent): Promise<void> {
     if (connection.signal.aborted || event.agentID !== connection.accountId || event.kind !== "known") return
     if (event.requestID && connection.outboundRequests.has(event.requestID)) return
     switch (event.type) {
       case "projectSubscribed":
         await this.ensureProject(connection, event.projectID, connection.projects.get(event.projectID))
-        await ClarusProjectSync.save(hash(connection.accountId), connection.projects)
         return
       case "projectUnsubscribed":
-        await Channel.archiveProjectScope({
-          channelType: this.type,
-          accountId: connection.accountId,
-          projectID: event.projectID,
-        })
+        await connection.host.projects.markArchived({ externalProjectId: event.projectID })
         connection.projects.delete(event.projectID)
-        await ClarusProjectSync.save(hash(connection.accountId), connection.projects)
-        return
-      case "projectMessageCreated":
-        await this.handleProjectMessage(connection, event, onMessage)
         return
       case "runtimeTaskAssigned":
         await this.handleAssignment(connection, event)
+        return
+      case "runtimeTaskExtended":
+        await this.handleTaskExtended(connection, event)
+        return
+      case "runtimeTaskResultRecorded":
+        await this.handleResultRecorded(connection, event)
         return
       default:
         return
     }
   }
 
-  private async handleProjectMessage(
+  private async handleTaskExtended(
     connection: AccountConnection,
-    event: ProjectMessageCreatedEvent,
-    onMessage: ChannelTypes.MessageHandler,
+    event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskExtended" }>,
   ): Promise<void> {
-    const accountHash = hash(connection.accountId)
-    const messageHash = hash(connection.accountId, event.projectID, event.message.messageID)
-    using _ = await Lock.write(`channel:clarus:message:${accountHash}:${messageHash}`)
-    const dedupKey = StoragePath.clarusProviderDedup(accountHash, messageHash)
-    const duplicate = await Storage.read(dedupKey)
-      .then(() => true)
-      .catch(() => false)
-    if (duplicate) return
+    const located = await ClarusAssignmentStore.findByIdentity({
+      accountId: connection.accountId,
+      projectID: event.projectID,
+      taskID: event.task.taskID,
+    })
+    if (!located) return
+    const assignment = located.assignment
+    if (assignment.runID !== event.runID || assignment.status !== "running") return
+    if (event.requestID && assignment.extensionRequestID && event.requestID !== assignment.extensionRequestID) return
+    if (event.requestID && event.requestID === assignment.extensionRequestID) {
+      if (assignment.extensionState === "rejected") return
+      await ClarusExtensionOutbox.acknowledge({
+        accountHash: located.accountHash,
+        assignmentHash: located.assignmentHash,
+        requestID: event.requestID,
+        deadlineAt: event.task.deadlineAt,
+      })
+    } else {
+      await ClarusAssignmentStore.updateDeadline({
+        accountHash: located.accountHash,
+        assignmentHash: located.assignmentHash,
+        deadlineAt: event.task.deadlineAt,
+      })
+    }
+    const updated = await ClarusAssignmentStore.find(located.accountHash, located.assignmentHash)
+    if (updated) await this.syncAssignmentDeadline(updated.assignment, event.task.status === "running")
+  }
 
-    const projectName = connection.projects.get(event.projectID)
-    const scope = await this.ensureProject(connection, event.projectID, projectName)
-    connection.messageProjects.set(event.message.messageID, event.projectID)
-    await onMessage(
-      {
-        channelType: this.type,
-        accountId: connection.accountId,
-        chatId: event.projectID,
-        chatType: "group",
-        chatName: projectName,
-        senderId: event.message.senderID,
-        senderName: event.message.senderName,
-        text: event.message.content,
-        messageId: event.message.messageID,
-        timestamp: event.message.createdAt ?? Date.now(),
-        messageType: event.message.messageType,
-      },
-      scope,
-    )
-    await Storage.write(dedupKey, { seenAt: Date.now() })
+  private async handleResultRecorded(
+    connection: AccountConnection,
+    event: Extract<ClarusObservedEvent, { kind: "known"; type: "runtimeTaskResultRecorded" }>,
+  ): Promise<void> {
+    const located = await ClarusAssignmentStore.findByIdentity({
+      accountId: connection.accountId,
+      projectID: event.projectID,
+      taskID: event.task.taskID,
+    })
+    if (!located) return
+    const assignment: ClarusAssignment = located.assignment
+    if (assignment.runID !== event.runID || assignment.subtaskID !== event.task.subtaskID) return
+    if (assignment.resultState === "none" || assignment.resultState === "rejected") return
+    if (event.requestID && event.requestID !== assignment.resultRequestID) return
+    const requestID = event.requestID ?? assignment.resultRequestID
+    if (!requestID) return
+    await ClarusResultOutbox.acknowledge({
+      accountHash: located.accountHash,
+      assignmentHash: located.assignmentHash,
+      requestID,
+    })
+    await ClarusDeadlineAgenda.cancel({
+      accountId: assignment.accountId,
+      projectID: assignment.projectID,
+      taskID: assignment.taskID,
+    })
   }
 
   private async handleAssignment(connection: AccountConnection, event: RuntimeTaskAssignedEvent): Promise<void> {
-    const scope = await this.ensureProject(connection, event.projectID, connection.projects.get(event.projectID))
-    await ClarusAssignmentStore.ensure({
+    await ClarusAssignmentRuntime.dispatch({
+      host: connection.host,
       accountId: connection.accountId,
-      scope,
       event,
-      agentOverride: connection.config.agent,
+      agentOverride: connection.config.agent || undefined,
     })
   }
 }

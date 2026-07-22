@@ -103,7 +103,9 @@ export namespace AgendaReactor {
     let error: Error | undefined
     let lastMessage: string | undefined
 
-    if (item.autoDone) {
+    if (item.deliveryMode === "session_guidance") {
+      lastMessage = item.prompt
+    } else if (item.autoDone) {
       // Direct delivery to origin session — no new session, no invoke.
       // Used by agenda_watch: the prompt IS the message the agent sees.
       log.info("autoDone item fired — direct delivery, no new session", { itemID: item.id })

@@ -87,8 +87,12 @@ export namespace AgendaStore {
     return Math.min(...candidates)
   }
 
+  export type InternalCreateInput = AgendaTypes.CreateInput & {
+    deliveryMode?: "session_guidance"
+  }
+
   export async function create(
-    input: AgendaTypes.CreateInput,
+    input: InternalCreateInput,
     id: string = Identifier.ascending("agenda"),
   ): Promise<AgendaTypes.Item> {
     const scope = ScopeContext.current.scope
@@ -110,6 +114,7 @@ export namespace AgendaStore {
       global: input.global ?? false,
       triggers,
       prompt: input.prompt,
+      deliveryMode: input.deliveryMode,
       agent: input.agent,
       model: input.model,
       controlProfile: input.controlProfile,

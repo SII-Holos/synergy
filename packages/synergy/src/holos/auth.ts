@@ -96,7 +96,7 @@ export namespace HolosAuth {
           type: "clarus",
           accounts: {
             ...(existing?.type === "clarus" ? existing.accounts : {}),
-            [credential.agentId]: { enabled: true },
+            [credential.agentId]: { enabled: false },
           },
         },
       },

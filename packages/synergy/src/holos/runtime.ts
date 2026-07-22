@@ -12,6 +12,13 @@ import { HolosAuth } from "./auth"
 import { HolosProfile } from "./profile"
 import { HolosProtocol } from "./protocol"
 import { Presence } from "./presence"
+import type { HolosConnectionEvent, NativeMessage, NativeRequestFailure, NativeTunnelPort, RequestID } from "./native"
+import {
+  NATIVE_FRAME_SIZE_LIMIT,
+  NATIVE_MAX_ID_LENGTH,
+  NATIVE_MAX_OBJECT_DEPTH,
+  NATIVE_MAX_PAYLOAD_BYTES,
+} from "./native"
 
 const log = Log.create({ service: "holos.runtime" })
 const HEARTBEAT_INTERVAL_MS = 30_000
@@ -26,11 +33,21 @@ type PendingSend = {
   targetAgentId: string
 }
 
+type PendingNativeRequest = {
+  requestID: string
+  expectedResponseType: string
+  resolve: (msg: NativeMessage) => void
+  reject: (failure: NativeRequestFailure) => void
+  timeout: ReturnType<typeof setTimeout> | null
+  abortListener: (() => void) | null
+}
+
 type ConnectionState = {
   ws: WebSocket | null
   peerId: string | null
   heartbeatTimer: ReturnType<typeof setInterval> | null
   pendingSends: Map<string, PendingSend>
+  pendingNativeRequests: Map<string, PendingNativeRequest>
 }
 
 type RuntimeConnection = {
@@ -39,6 +56,10 @@ type RuntimeConnection = {
   status: HolosRuntime.Status
   provider: HolosProvider | null
   reconnectTimer: ReturnType<typeof setTimeout> | null
+  generation: number
+  sessionID: string | null
+  agentID: string | null
+  epoch: number
 }
 
 async function fetchWsToken(apiUrl: string, agentSecret: string): Promise<string> {
@@ -78,6 +99,10 @@ export namespace HolosRuntime {
       status: { status: "disconnected" },
       provider: null,
       reconnectTimer: null,
+      generation: 0,
+      sessionID: null,
+      agentID: null,
+      epoch: Date.now(),
     }),
 
     async (s: RuntimeConnection) => {
@@ -119,6 +144,29 @@ export namespace HolosRuntime {
 
   const appEventHandlers = new Set<AppEventHandler>()
 
+  let nativeTunnelPort: NativeTunnelPortImpl | null = null
+
+  export async function getNativeTunnel(): Promise<NativeTunnelPort> {
+    if (!nativeTunnelPort) {
+      nativeTunnelPort = new NativeTunnelPortImpl()
+    }
+    return nativeTunnelPort
+  }
+
+  export async function getNativeIdentity(): Promise<{
+    agentID: string | null
+    sessionID: string | null
+    generation: number
+    epoch: number
+  }> {
+    const current = await state()
+    return {
+      agentID: current.agentID,
+      sessionID: current.sessionID,
+      generation: current.generation,
+      epoch: current.epoch,
+    }
+  }
   export async function getProvider(): Promise<HolosProvider | null> {
     const current = await state()
     return current.provider
@@ -161,6 +209,9 @@ export namespace HolosRuntime {
     current.abort = new AbortController()
     current.holosConfig = holos ?? null
     current.provider = null
+    current.generation = 0
+    current.sessionID = null
+    current.agentID = null
     setStatus(current, { status: "disconnected" })
 
     if (!holos || !holos.enabled) {
@@ -198,18 +249,45 @@ export namespace HolosRuntime {
       signal,
       onDisconnect: (reason) => {
         if (signal.aborted) return
+        const disconnectedGen = current.generation
+        const disconnectEvent: HolosConnectionEvent = {
+          type: "disconnected",
+          agentID: current.agentID ?? "",
+          sessionID: current.sessionID,
+          generation: disconnectedGen,
+          epoch: current.epoch,
+          code: 1000,
+          reason: reason ?? "ws_closed",
+        }
         current.provider = null
+        current.sessionID = null
         void syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
         setStatus(current, { status: "disconnected" })
         scheduleReconnect({ attempt: 0, reason })
+        if (nativeTunnelPort) {
+          nativeTunnelPort.notifyConnectionObservers(disconnectEvent)
+        }
       },
     })
 
     if (signal.aborted) return
 
+    current.generation++
     current.provider = provider
+    current.sessionID = provider.peerId ? `session-${Date.now()}` : null
+    current.agentID = provider.peerId
     setStatus(current, { status: "connected" })
     await syncSynergyLink({ provider })
+
+    if (nativeTunnelPort) {
+      nativeTunnelPort.notifyConnectionObservers({
+        type: "connected",
+        agentID: current.agentID ?? "",
+        sessionID: current.sessionID ?? "",
+        generation: current.generation,
+        epoch: current.epoch,
+      })
+    }
   }
 
   export async function stop(): Promise<void> {
@@ -222,6 +300,17 @@ export namespace HolosRuntime {
     current.abort.abort()
     setStatus(current, { status: "disconnected" })
     await syncSynergyLink(null).catch((err) => log.warn("syncSynergyLink failed", { error: err }))
+    if (nativeTunnelPort) {
+      nativeTunnelPort.notifyConnectionObservers({
+        type: "disconnected",
+        agentID: current.agentID ?? "",
+        sessionID: current.sessionID,
+        generation: current.generation,
+        epoch: current.epoch,
+        code: 1000,
+        reason: "tunnel stopped",
+      })
+    }
   }
 
   export async function reload(): Promise<void> {
@@ -257,6 +346,156 @@ export namespace HolosRuntime {
   }
 }
 
+function validateDepth(value: unknown, depth = NATIVE_MAX_OBJECT_DEPTH): boolean {
+  if (depth <= 0) return false
+  if (value == null || typeof value !== "object") return true
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === "object" && item !== null && !validateDepth(item, depth - 1)) return false
+    }
+    return true
+  }
+  for (const v of Object.values(value as Record<string, unknown>)) {
+    if (typeof v === "object" && v !== null && !validateDepth(v, depth - 1)) return false
+  }
+  return true
+}
+
+function rejectImmediate(
+  requestID: RequestID,
+  template: { disposition: "rejected"; code: string; message: string },
+): { response: Promise<NativeMessage>; requestID: RequestID } {
+  return {
+    requestID,
+    response: Promise.reject({ ...template, requestID } satisfies NativeRequestFailure),
+  }
+}
+
+class NativeTunnelPortImpl implements NativeTunnelPort {
+  private _nativeObservers = new Set<(msg: NativeMessage) => void | Promise<void>>()
+  private _connectionObservers = new Set<(event: HolosConnectionEvent) => void | Promise<void>>()
+
+  registerNativeObserver(handler: (msg: NativeMessage) => void | Promise<void>): () => void {
+    this._nativeObservers.add(handler)
+    return () => {
+      this._nativeObservers.delete(handler)
+    }
+  }
+
+  registerConnectionObserver(handler: (event: HolosConnectionEvent) => void | Promise<void>): () => void {
+    this._connectionObservers.add(handler)
+    return () => {
+      this._connectionObservers.delete(handler)
+    }
+  }
+
+  notifyNativeObservers(msg: NativeMessage): void {
+    for (const observer of this._nativeObservers) {
+      observer(msg)
+    }
+  }
+
+  notifyConnectionObservers(event: HolosConnectionEvent): void {
+    for (const observer of this._connectionObservers) {
+      observer(event)
+    }
+  }
+
+  sendNativeRequest(input: {
+    type: string
+    payload: unknown
+    requestID: RequestID
+    expectedResponseType: string
+    timeoutMs?: number
+    signal?: AbortSignal
+    meta?: Record<string, unknown>
+  }): { response: Promise<NativeMessage>; requestID: RequestID } {
+    const { type, payload, requestID, expectedResponseType, timeoutMs, signal, meta } = input
+
+    if (!type || type.length === 0) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "INVALID_TYPE",
+        message: "type must not be empty",
+      })
+    }
+    if (type.length > NATIVE_MAX_ID_LENGTH) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "INVALID_TYPE",
+        message: `Type exceeds ${NATIVE_MAX_ID_LENGTH} chars`,
+      })
+    }
+
+    let serialized: string
+    try {
+      serialized = JSON.stringify(payload)
+    } catch {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "INVALID_PAYLOAD",
+        message: "Payload cannot be serialized (may contain circular references)",
+      })
+    }
+    if (serialized.length > NATIVE_MAX_PAYLOAD_BYTES) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "PAYLOAD_TOO_LARGE",
+        message: `Payload exceeds ${NATIVE_MAX_PAYLOAD_BYTES} bytes`,
+      })
+    }
+
+    const frameSize = JSON.stringify({ type, payload, requestID, meta }).length
+    if (frameSize > NATIVE_FRAME_SIZE_LIMIT) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "FRAME_TOO_LARGE",
+        message: `Frame exceeds ${NATIVE_FRAME_SIZE_LIMIT} bytes`,
+      })
+    }
+
+    if (!validateDepth(payload)) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "INVALID_PAYLOAD",
+        message: "Payload exceeds max object depth",
+      })
+    }
+
+    const response = new Promise<NativeMessage>((resolve, reject) => {
+      if (signal?.aborted) {
+        reject({
+          disposition: "ambiguous",
+          requestID,
+          reason: "aborted_after_dispatch",
+          message: "Request aborted after dispatch",
+        } satisfies NativeRequestFailure)
+        return
+      }
+
+      HolosRuntime.getProvider()
+        .then((provider) => {
+          if (!provider) {
+            reject({
+              disposition: "not_dispatched",
+              requestID,
+              code: "NOT_CONNECTED",
+              message: "Tunnel is not connected",
+            } satisfies NativeRequestFailure)
+            return
+          }
+          provider
+            .sendNativeRequest({ type, payload, requestID, expectedResponseType, timeoutMs, signal, meta })
+            .then((msg) => resolve(msg))
+            .catch((err) => reject(err))
+        })
+        .catch((err) => reject(err))
+    })
+
+    return { response, requestID }
+  }
+}
+
 type ConnectInput = {
   config: Config.Holos
   signal: AbortSignal
@@ -271,6 +510,7 @@ export class HolosProvider {
     peerId: null,
     heartbeatTimer: null,
     pendingSends: new Map(),
+    pendingNativeRequests: new Map(),
   }
 
   get peerId() {
@@ -300,6 +540,7 @@ export class HolosProvider {
       peerId: credentials.agentId,
       heartbeatTimer: null,
       pendingSends: new Map(),
+      pendingNativeRequests: new Map(),
     }
 
     return new Promise<void>((resolve, reject) => {
@@ -312,6 +553,7 @@ export class HolosProvider {
         if (this.state.heartbeatTimer) clearInterval(this.state.heartbeatTimer)
         for (const pending of this.state.pendingSends.values()) clearTimeout(pending.timer)
         this.state.pendingSends.clear()
+        this.settleNativePending("disconnected", "Tunnel disconnected")
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) ws.close()
         this.state.ws = null
         this.state.peerId = null
@@ -386,7 +628,6 @@ export class HolosProvider {
     if (status === "offline") {
       return { sent: false, reason: "offline" }
     }
-    // unknown or online -> try sending
     const requestId = crypto.randomUUID()
     this.state.ws.send(Envelope.wsSend({ targetAgentId, event, payload, requestId }))
 
@@ -399,6 +640,127 @@ export class HolosProvider {
       }, WS_FAILED_TIMEOUT_MS)
       this.state.pendingSends.set(requestId, { timer, resolve, targetAgentId })
     })
+  }
+
+  async sendNativeRequest(input: {
+    type: string
+    payload: unknown
+    requestID: string
+    expectedResponseType: string
+    timeoutMs?: number
+    signal?: AbortSignal
+    meta?: Record<string, unknown>
+  }): Promise<NativeMessage> {
+    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
+      throw {
+        disposition: "not_dispatched",
+        requestID: input.requestID,
+        code: "NOT_CONNECTED",
+        message: "Tunnel is not connected",
+      } satisfies NativeRequestFailure
+    }
+
+    return HolosRuntime.getNativeIdentity().then((identity) => {
+      const frame = Envelope.nativeRequest({
+        requestID: input.requestID,
+        nativeType: input.type,
+        expectedResponseType: input.expectedResponseType,
+        payload: input.payload,
+        agentID: identity.agentID ?? this.state.peerId ?? "",
+        sessionID: identity.sessionID,
+        generation: identity.generation,
+        epoch: identity.epoch,
+        meta: input.meta,
+      })
+
+      this.state.ws!.send(frame)
+
+      return new Promise<NativeMessage>((resolve, reject) => {
+        let settled = false
+
+        const settleOnce = () => {
+          if (settled) return
+          settled = true
+          if (timeout) clearTimeout(timeout)
+          if (abortListener) {
+            try {
+              input.signal?.removeEventListener("abort", abortListener)
+            } catch {
+              // signal may be gone
+            }
+          }
+          this.state.pendingNativeRequests.delete(input.requestID)
+        }
+
+        let timeout: ReturnType<typeof setTimeout> | null = null
+        if (input.timeoutMs && input.timeoutMs > 0) {
+          timeout = setTimeout(() => {
+            settleOnce()
+            reject({
+              disposition: "ambiguous",
+              requestID: input.requestID,
+              reason: "timeout",
+              message: `Request timed out after ${input.timeoutMs}ms`,
+            } satisfies NativeRequestFailure)
+          }, input.timeoutMs)
+        }
+
+        let abortListener: (() => void) | null = null
+        if (input.signal) {
+          abortListener = () => {
+            settleOnce()
+            reject({
+              disposition: "ambiguous",
+              requestID: input.requestID,
+              reason: "aborted_after_dispatch",
+              message: "Request aborted after dispatch",
+            } satisfies NativeRequestFailure)
+          }
+          if (input.signal.aborted) {
+            abortListener()
+            return
+          }
+          input.signal.addEventListener("abort", abortListener, { once: true })
+        }
+
+        this.state.pendingNativeRequests.set(input.requestID, {
+          requestID: input.requestID,
+          expectedResponseType: input.expectedResponseType,
+          resolve: (msg) => {
+            settleOnce()
+            resolve(msg)
+          },
+          reject: (failure) => {
+            settleOnce()
+            reject(failure)
+          },
+          timeout,
+          abortListener,
+        })
+      })
+    })
+  }
+
+  private settleNativePending(reason: "disconnected" | "timeout" | "aborted_after_dispatch", message: string): void {
+    for (const [requestID, pending] of this.state.pendingNativeRequests) {
+      if (pending.timeout) clearTimeout(pending.timeout)
+      if (pending.abortListener) {
+        pending.reject({
+          disposition: "ambiguous",
+          requestID,
+          reason,
+          message,
+        } satisfies NativeRequestFailure)
+      } else {
+        pending.reject({
+          disposition: "ambiguous",
+          requestID,
+          reason,
+          message,
+        } satisfies NativeRequestFailure)
+      }
+    }
+    this.state.pendingNativeRequests.clear()
   }
 
   private handleParsedMessage(msg: Envelope.Parsed): void {
@@ -416,7 +778,45 @@ export class HolosProvider {
         Presence.markOnline(msg.caller.agent_id)
         this.handleAppEvent(msg.event, msg.payload, msg.caller)
         break
+      case "native":
+        this.handleNativeMessage(msg)
+        break
     }
+  }
+
+  private handleNativeMessage(msg: Extract<Envelope.Parsed, { kind: "native" }>): void {
+    const nativeMsg: NativeMessage = {
+      type: msg.nativeType,
+      requestID: msg.requestId || null,
+      meta: msg.meta,
+      payload: msg.payload,
+      caller: msg.caller ?? null,
+      agentID: msg.agentID,
+      sessionID: msg.sessionID,
+      generation: msg.generation,
+      epoch: msg.epoch,
+    }
+
+    if (msg.requestId) {
+      const pending = this.state.pendingNativeRequests.get(msg.requestId)
+      if (pending) {
+        if (pending.expectedResponseType && msg.nativeType !== pending.expectedResponseType) {
+          pending.reject({
+            disposition: "ambiguous",
+            requestID: msg.requestId,
+            reason: "unexpected_response",
+            message: `Expected response type "${pending.expectedResponseType}" but got "${msg.nativeType}"`,
+          } satisfies NativeRequestFailure)
+          return
+        }
+        pending.resolve(nativeMsg)
+        return
+      }
+    }
+
+    HolosRuntime.getNativeTunnel().then((port) => {
+      ;(port as NativeTunnelPortImpl).notifyNativeObservers(nativeMsg)
+    })
   }
 
   private handleWsFailed(msg: Extract<Envelope.Parsed, { kind: "ws_failed" }>): void {
@@ -449,21 +849,17 @@ export class HolosProvider {
   }
 
   private async handleChatMessage(caller: Envelope.Caller, payload: unknown): Promise<void> {
-    // Silently drop: DO NOT echo our own messages back into the inbox.
-    // In multi-device scenarios, outbox sync is handled by the Mailbox module directly.
     if (!this.state.peerId || caller.agent_id === this.state.peerId) return
 
     const parsed = HolosProtocol.ChatMessagePayload.safeParse(payload)
     if (!parsed.success) return
 
-    // Check blocked list
     const contact = await Contact.get(caller.agent_id)
     if (contact?.blocked) {
       log.info("message blocked", { from: caller.agent_id })
       return
     }
 
-    // Write to inbox
     try {
       const { Mailbox } = await import("./mailbox")
       await Mailbox.receive({
@@ -497,9 +893,6 @@ export class HolosProvider {
     const parsed = HolosProtocol.PresencePongPayload.safeParse(payload)
     if (!parsed.success) return
 
-    // Update the contact name if the peer's profile name changed.
-    // This is a best-effort sync — contacts are manually managed, but
-    // catching name updates from presence pongs keeps the list current.
     void Contact.get(caller.agent_id).then(async (contact) => {
       if (!contact) return
       if (contact.name !== parsed.data.profile.name) {

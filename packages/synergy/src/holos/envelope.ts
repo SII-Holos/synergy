@@ -13,6 +13,18 @@ export namespace Envelope {
     | { kind: "ws_send"; requestId: string; event: string; payload: unknown; caller: Caller }
     | { kind: "ws_failed"; requestId: string; code: string; message: string }
     | {
+        kind: "native"
+        requestId: string
+        nativeType: string
+        payload: unknown
+        meta: Record<string, unknown>
+        agentID: string
+        sessionID: string | null
+        generation: number
+        epoch: number
+        caller: Caller | null
+      }
+    | {
         kind: "http_request"
         requestId: string
         method: string
@@ -82,6 +94,20 @@ export namespace Envelope {
           code: String(meta.code ?? "UNKNOWN"),
           message: String(meta.message ?? "Unknown failure"),
         }
+      case "native": {
+        return {
+          kind: "native",
+          requestId: env.request_id ?? "",
+          nativeType: String(meta.native_type ?? ""),
+          payload: env.payload,
+          meta,
+          agentID: String(meta.agent_id ?? ""),
+          sessionID: meta.session_id != null ? String(meta.session_id) : null,
+          generation: typeof meta.generation === "number" ? meta.generation : 0,
+          epoch: typeof meta.epoch === "number" ? meta.epoch : 0,
+          caller: env.caller ?? null,
+        }
+      }
       case "http_request": {
         if (!env.caller) {
           log.warn("http_request missing caller", { requestId: env.request_id })
@@ -137,6 +163,34 @@ export namespace Envelope {
         status_code: input.statusCode,
         headers: { "content-type": "application/json", ...input.headers },
         content_type: "application/json",
+      },
+      payload: input.payload,
+      caller: null,
+    })
+  }
+
+  export function nativeRequest(input: {
+    requestID: string
+    nativeType: string
+    expectedResponseType: string
+    payload: unknown
+    agentID: string
+    sessionID: string | null
+    generation: number
+    epoch: number
+    meta?: Record<string, unknown>
+  }): string {
+    return JSON.stringify({
+      type: "native",
+      request_id: input.requestID,
+      meta: {
+        agent_id: input.agentID,
+        session_id: input.sessionID,
+        generation: input.generation,
+        epoch: input.epoch,
+        native_type: input.nativeType,
+        expected_response_type: input.expectedResponseType,
+        ...input.meta,
       },
       payload: input.payload,
       caller: null,

@@ -205,7 +205,8 @@ export namespace StoragePath {
     encodeURIComponent(workflowName),
   ]
 
-  export const channelProjectScope = (identityHash: string) => ["channel", "project_scopes", identityHash]
+  export const channelManagedOwnership = (identityHash: string) => ["channel", "managed_ownership", identityHash]
+  export const channelManagedOwnershipReverse = (scopeID: string) => ["channel", "managed_ownership_reverse", scopeID]
   export const clarusProviderAccountRoot = (accountHash: string) => [
     "channel",
     "providers",
@@ -229,20 +230,6 @@ export namespace StoragePath {
     "dedup",
     messageHash,
   ]
-  export const clarusProviderProjectSync = (accountHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "sync",
-    "projects",
-  ]
-  export const clarusProviderMessageOutboxRoot = (accountHash: string) => [
-    ...clarusProviderAccountRoot(accountHash),
-    "outbox",
-    "project_messages",
-  ]
-  export const clarusProviderMessageOutbox = (accountHash: string, recordHash: string) => [
-    ...clarusProviderMessageOutboxRoot(accountHash),
-    recordHash,
-  ]
   export const clarusProviderResultOutboxRoot = (accountHash: string) => [
     ...clarusProviderAccountRoot(accountHash),
     "outbox",
@@ -250,6 +237,15 @@ export namespace StoragePath {
   ]
   export const clarusProviderResultOutbox = (accountHash: string, recordHash: string) => [
     ...clarusProviderResultOutboxRoot(accountHash),
+    recordHash,
+  ]
+  export const clarusProviderExtensionOutboxRoot = (accountHash: string) => [
+    ...clarusProviderAccountRoot(accountHash),
+    "outbox",
+    "extensions",
+  ]
+  export const clarusProviderExtensionOutbox = (accountHash: string, recordHash: string) => [
+    ...clarusProviderExtensionOutboxRoot(accountHash),
     recordHash,
   ]
 
@@ -264,4 +260,7 @@ export namespace StoragePath {
   /** Daily buckets: stats/daily/{YYYY-MM-DD} */
   export const statsDailyRoot = () => ["stats", "daily"]
   export const statsDaily = (day: string) => ["stats", "daily", day]
+  // Channel diagnostics (per-account durable store)
+  export const channelDiagnosticsRoot = () => ["channel", "diagnostics"]
+  export const channelDiagnosticsAccount = (accountHash: string) => ["channel", "diagnostics", accountHash]
 }

@@ -1234,6 +1234,11 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
         icon: "send",
         title: TOOL_TITLE_DESC["clarus_submit_task_result"],
       }
+    case "clarus_extend_task":
+      return {
+        icon: "timer",
+        title: TOOL_TITLE_DESC["clarus_extend_task"],
+      }
     case "email_read": {
       const args: string[] = []
       pushArg(args, input.folder && input.folder !== "INBOX" ? input.folder : undefined)

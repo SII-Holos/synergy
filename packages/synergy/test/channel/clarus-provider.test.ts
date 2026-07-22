@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test"
 import { Channel } from "../../src/channel"
+import { ChannelHost } from "../../src/channel/host"
+import { ClarusAssignmentRuntime } from "../../src/channel/provider/clarus/assignment-runtime"
 import { ClarusAssignmentStore } from "../../src/channel/provider/clarus/assignment-store"
-import { ClarusOutbox } from "../../src/channel/provider/clarus/outbox"
 import { ClarusProjectClient } from "../../src/channel/provider/clarus/project-client"
-import { ClarusProjectSync } from "../../src/channel/provider/clarus/project-sync"
 import { ClarusResultOutbox } from "../../src/channel/provider/clarus/result-outbox"
 import type { RuntimeTaskAssignedEvent } from "../../src/channel/provider/clarus/agent-tunnel-port"
 import { Session } from "../../src/session"
@@ -32,6 +32,11 @@ function assignment(projectID: string): RuntimeTaskAssignedEvent {
   }
 }
 
+async function dispatchAssignment(accountId: string, event: RuntimeTaskAssignedEvent) {
+  const host = ChannelHost.create({ channelType: "clarus", accountId })
+  return ClarusAssignmentRuntime.dispatch({ host, accountId, event })
+}
+
 describe("Clarus Channel provider", () => {
   test("assignment state points to one ordinary Session in the project Scope", async () => {
     await using tmp = await tmpdir({ git: true })
@@ -41,22 +46,23 @@ describe("Clarus Channel provider", () => {
         const scope = await Channel.ensureProjectScope({
           channelType: "clarus",
           accountId: "account-a",
-          projectID: "project-a",
+          externalProjectId: "project-a",
           projectName: "Project A",
         })
         const event = assignment("project-a")
 
-        const first = await ClarusAssignmentStore.ensure({ accountId: "account-a", scope, event })
-        const second = await ClarusAssignmentStore.ensure({ accountId: "account-a", scope, event })
+        const first = await dispatchAssignment("account-a", event)
+        const second = await dispatchAssignment("account-a", event)
         const session = await Session.get(first.assignment.sessionID)
 
         expect(first.created).toBe(true)
         expect(second.created).toBe(false)
         expect(second.assignment.sessionID).toBe(first.assignment.sessionID)
         expect(session.scope.id).toBe(scope.id)
-        expect(session.endpoint).toBeUndefined()
+        expect(session.endpoint).not.toBeUndefined()
+        expect(session.endpoint?.channel?.target?.kind).toBe("task")
         expect(session.interaction).toEqual({ mode: "unattended", source: "channel:clarus" })
-        expect(await SessionInbox.list(session.id)).toHaveLength(1)
+        expect(await SessionInbox.list(session.id)).toHaveLength(2)
         expect(first.assignment).not.toHaveProperty("scopeID")
         expect(first.assignment).not.toHaveProperty("workspacePath")
       },
@@ -93,145 +99,6 @@ describe("Clarus Channel provider", () => {
     }
   })
 
-  test("project discovery snapshot remains provider-private and reloadable", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const accountHash = new Bun.CryptoHasher("sha256").update("sync-account").digest("hex")
-        await ClarusProjectSync.save(
-          accountHash,
-          new Map([
-            ["project-a", "Project A"],
-            ["project-b", undefined],
-          ]),
-        )
-
-        expect(await ClarusProjectSync.load(accountHash)).toEqual(
-          new Map([
-            ["project-a", "Project A"],
-            ["project-b", undefined],
-          ]),
-        )
-      },
-    })
-  })
-
-  test("outbox persists before dispatch and only retries definite non-dispatch", async () => {
-    await using tmp = await tmpdir()
-    await ScopeContext.provide({
-      scope: await tmp.scope(),
-      fn: async () => {
-        const accountHash = new Bun.CryptoHasher("sha256").update("outbox-account").digest("hex")
-        let persistedBeforeSend = false
-        const acknowledged = await ClarusOutbox.enqueue({
-          accountHash,
-          projectID: "project-a",
-          content: "hello",
-          send: async () => {
-            const hashes = await Storage.scan(StoragePath.clarusProviderMessageOutboxRoot(accountHash))
-            const record = await Storage.read<{ state: string }>(
-              StoragePath.clarusProviderMessageOutbox(accountHash, hashes[0]!),
-            )
-            persistedBeforeSend = record.state === "pending"
-            return { messageID: "message-a" }
-          },
-        })
-        expect(acknowledged).toEqual({ messageID: "message-a" })
-        expect(persistedBeforeSend).toBe(true)
-
-        const failure = {
-          disposition: "not_dispatched" as const,
-          requestID: "request-a",
-          code: "NOT_CONNECTED",
-          message: "not connected",
-        }
-        await expect(
-          ClarusOutbox.enqueue({
-            accountHash,
-            projectID: "project-a",
-            content: "retry me",
-            send: async () => {
-              throw failure
-            },
-          }),
-        ).rejects.toEqual(failure)
-
-        const rejected = {
-          disposition: "rejected" as const,
-          requestID: "request-rejected",
-          code: "FORBIDDEN",
-          message: "forbidden",
-        }
-        await expect(
-          ClarusOutbox.enqueue({
-            accountHash,
-            projectID: "project-a",
-            content: "reject me",
-            send: async () => {
-              throw rejected
-            },
-          }),
-        ).rejects.toEqual(rejected)
-        await expect(
-          ClarusOutbox.enqueue({
-            accountHash,
-            projectID: "project-a",
-            content: "ambiguous send",
-            send: async () => {
-              throw new Error("connection ended after dispatch")
-            },
-          }),
-        ).rejects.toThrow("connection ended after dispatch")
-
-        const beforeRecovery = await Storage.scan(StoragePath.clarusProviderMessageOutboxRoot(accountHash))
-        const records = await Promise.all(
-          beforeRecovery.map((recordHash) =>
-            Storage.read<{ state: string; requestID: string; content: string }>(
-              StoragePath.clarusProviderMessageOutbox(accountHash, recordHash),
-            ),
-          ),
-        )
-        const retry = records.find((record) => record.content === "retry me")!
-        expect(retry.state).toBe("not_dispatched")
-        expect(records.find((record) => record.content === "reject me")?.state).toBe("rejected")
-        expect(records.find((record) => record.content === "ambiguous send")?.state).toBe("ambiguous")
-
-        let retriedRequestID: string | undefined
-        await ClarusOutbox.recover({
-          accountHash,
-          send: async (input) => {
-            retriedRequestID = input.requestID
-            return { messageID: "message-retried" }
-          },
-        })
-        expect(retriedRequestID).toBeString()
-        expect(retriedRequestID).not.toBe(retry.requestID)
-
-        await Storage.write(StoragePath.clarusProviderMessageOutbox(accountHash, "crash-pending"), {
-          requestID: "request-pending",
-          projectID: "project-a",
-          content: "possibly sent",
-          state: "pending",
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-        })
-        let unsafeRetries = 0
-        await ClarusOutbox.recover({
-          accountHash,
-          send: async () => {
-            unsafeRetries++
-            return { messageID: "unexpected" }
-          },
-        })
-        expect(unsafeRetries).toBe(0)
-        expect(
-          await Storage.read<{ state: string }>(StoragePath.clarusProviderMessageOutbox(accountHash, "crash-pending")),
-        ).toMatchObject({ state: "ambiguous" })
-      },
-    })
-  })
-
   test("assignment result outbox settles durable states without unsafe retry", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
@@ -240,10 +107,10 @@ describe("Clarus Channel provider", () => {
         const scope = await Channel.ensureProjectScope({
           channelType: "clarus",
           accountId: "result-account",
-          projectID: "result-project",
+          externalProjectId: "result-project",
         })
         const event = { ...assignment("result-project"), agentID: "result-account" }
-        const created = await ClarusAssignmentStore.ensure({ accountId: "result-account", scope, event })
+        const created = await dispatchAssignment("result-account", event)
         const failure = {
           disposition: "not_dispatched" as const,
           requestID: "result-request",
@@ -288,7 +155,7 @@ describe("Clarus Channel provider", () => {
           subtaskID: "subtask-ambiguous",
           runID: "run-ambiguous",
         }
-        const second = await ClarusAssignmentStore.ensure({ accountId: "result-account", scope, event: secondEvent })
+        const second = await dispatchAssignment("result-account", secondEvent)
         await expect(
           ClarusResultOutbox.submit({
             sessionID: second.assignment.sessionID,
@@ -319,11 +186,7 @@ describe("Clarus Channel provider", () => {
           subtaskID: "subtask-rejected",
           runID: "run-rejected",
         }
-        const rejectedAssignment = await ClarusAssignmentStore.ensure({
-          accountId: "result-account",
-          scope,
-          event: rejectedEvent,
-        })
+        const rejectedAssignment = await dispatchAssignment("result-account", rejectedEvent)
         const rejected = {
           disposition: "rejected" as const,
           requestID: "result-rejected",
@@ -349,11 +212,7 @@ describe("Clarus Channel provider", () => {
           subtaskID: "subtask-pending",
           runID: "run-pending",
         }
-        const pendingAssignment = await ClarusAssignmentStore.ensure({
-          accountId: "result-account",
-          scope,
-          event: pendingEvent,
-        })
+        const pendingAssignment = await dispatchAssignment("result-account", pendingEvent)
         const pending = await ClarusAssignmentStore.beginResult(
           pendingAssignment.assignment.sessionID,
           "request-pending",

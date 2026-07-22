@@ -1,3 +1,5 @@
+import { ChannelTarget } from "../channel/types"
+
 import z from "zod"
 import { Identifier } from "../id/id"
 import { Storage } from "../storage/storage"
@@ -22,6 +24,9 @@ export const SessionNavEntry = z
     chatId: z.string().optional(),
     chatName: z.string().optional(),
     chatType: z.enum(["dm", "group"]).optional(),
+    channelType: z.string().optional(),
+    channelAccountId: z.string().optional(),
+    channelTarget: ChannelTarget.optional(),
     completionNotice: z.object({
       unread: z.boolean(),
       unreadCount: z.number().int().nonnegative(),
@@ -56,6 +61,14 @@ export const ScopeNavEntry = z
       .object({
         url: z.string().optional(),
         color: z.string().optional(),
+      })
+      .optional(),
+    managedProject: z
+      .object({
+        channelType: z.string(),
+        accountId: z.string(),
+        externalProjectId: z.string(),
+        remoteState: z.enum(["active", "paused", "stale", "archived"]),
       })
       .optional(),
   })
@@ -95,6 +108,9 @@ export interface SessionNavEntry {
   chatId?: string
   chatName?: string
   chatType?: "dm" | "group"
+  channelType?: string
+  channelAccountId?: string
+  channelTarget?: ChannelTarget
   completionNotice: {
     unread: boolean
     unreadCount: number
@@ -108,6 +124,12 @@ export interface ScopeNavEntry {
   latestActivityAt: number
   sessionCount: number
   icon?: { url?: string; color?: string }
+  managedProject?: {
+    channelType: string
+    accountId: string
+    externalProjectId: string
+    remoteState: "active" | "paused" | "stale" | "archived"
+  }
 }
 export interface ScopeNavIndex {
   version: 1
@@ -194,6 +216,9 @@ export namespace SessionNav {
           chatId: channelEndpoint?.chatId,
           chatName: channelEndpoint?.chatName,
           chatType: channelEndpoint?.chatType,
+          channelType: channelEndpoint?.type,
+          channelAccountId: channelEndpoint?.accountId,
+          channelTarget: channelEndpoint?.target,
           completionNotice: {
             unread: session.completionNotice.unread,
             unreadCount: session.completionNotice.unreadCount ?? (session.completionNotice.unread ? 1 : 0),
@@ -314,6 +339,9 @@ export namespace SessionNav {
 
   export async function buildScopeIndex(): Promise<ScopeNavEntry[]> {
     const scopeIDs = await getAllScopeIDs()
+    const { ManagedProjectOwnership } = await import("../channel/managed-project-ownership")
+    const ownershipRecords = await ManagedProjectOwnership.listAll()
+    const ownershipByScopeID = new Map(ownershipRecords.map((r) => [r.scopeID, r]))
     const results: ScopeNavEntry[] = []
     const { Scope } = await import("../scope")
     const home = Scope.home()
@@ -337,6 +365,7 @@ export namespace SessionNav {
         activeEntries.length > 0
           ? Math.max(...activeEntries.map((e) => e.lastActivityAt))
           : (scopeInfo?.time?.created ?? 0)
+      const ownership = ownershipByScopeID.get(sid)
       results.push({
         scopeID: sid,
         scopeType: sid === "home" ? "home" : "project",
@@ -345,6 +374,16 @@ export namespace SessionNav {
         latestActivityAt,
         sessionCount: activeEntries.length,
         icon: scopeInfo?.icon,
+        ...(ownership
+          ? {
+              managedProject: {
+                channelType: ownership.channelType,
+                accountId: ownership.accountId,
+                externalProjectId: ownership.externalProjectId,
+                remoteState: ownership.remoteState,
+              },
+            }
+          : {}),
       })
     }
     results.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))

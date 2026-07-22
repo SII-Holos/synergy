@@ -237,6 +237,11 @@ test("validates Cortex concurrency as a positive integer", () => {
   expect(() => Config.Info.parse({ cortex: { maxConcurrentTasks: 2.5 } })).toThrow()
 })
 
+test("Clarus account defaults disabled", () => {
+  expect(Config.ChannelClarusAccount.parse({}).enabled).toBe(false)
+  expect(Config.ChannelClarusAccount.parse({ enabled: true }).enabled).toBe(true)
+})
+
 test("throws error for invalid JSON", async () => {
   await using tmp = await tmpdir({
     init: async (dir) => {

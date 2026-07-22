@@ -111,6 +111,7 @@ export const TOOL_TITLE_DESC: Record<string, MessageDescriptor> = {
   email_send: d("tool.title.send-email", "Send Email"),
   email_read: d("tool.title.read-email", "Read Email"),
   clarus_submit_task_result: d("tool.title.clarus-submit-task-result", "Submit Clarus Result"),
+  clarus_extend_task: d("tool.title.clarus-extend-task", "Extend Clarus Task"),
   email_search: d("tool.title.search-email", "Search Email"),
   email_mark_read: d("tool.title.mark-read", "Mark Read"),
   email_inbox: d("tool.title.email-inbox", "View inbox"),

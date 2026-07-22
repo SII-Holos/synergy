@@ -11,13 +11,6 @@ export type ClarusRequestOptions = {
 export type SubscribeProjectInput = ClarusRequestOptions & { projectID: string }
 export type UnsubscribeProjectInput = ClarusRequestOptions & { projectID: string }
 
-export type SendProjectMessageInput = ClarusRequestOptions & {
-  projectID: string
-  content: string
-  messageType?: string
-  fileRefs?: Array<Record<string, unknown>>
-}
-
 export type ExtendTaskInput = ClarusRequestOptions & {
   runID: string
   taskID?: string | null
@@ -98,23 +91,6 @@ export type ProjectUnsubscribedEvent = {
   epoch: number
   generation: number
 }
-export type ProjectMessageCreatedEvent = {
-  kind: "known"
-  type: "projectMessageCreated"
-  agentID: string
-  requestID: string | null
-  projectID: string
-  message: {
-    messageID: string
-    senderID: string
-    senderName?: string
-    messageType?: string
-    content: string
-    createdAt?: number
-  }
-  epoch: number
-  generation: number
-}
 export type RuntimeTaskAssignedEvent = {
   kind: "known"
   type: "runtimeTaskAssigned"
@@ -159,44 +135,12 @@ export type RuntimeTaskResultRecordedEvent = {
   epoch: number
   generation: number
 }
-export type ProjectFileUploadedEvent = {
-  kind: "known"
-  type: "projectFileUploaded"
-  agentID: string
-  requestID: string | null
-  projectID: string
-  epoch: number
-  generation: number
-}
-export type ProjectSystemEvent = {
-  kind: "known"
-  type: "projectSystemEvent"
-  agentID: string
-  requestID: string | null
-  projectID: string
-  eventType: string
-  epoch: number
-  generation: number
-}
-export type NotaryRecordCreatedEvent = {
-  kind: "known"
-  type: "notaryRecordCreated"
-  agentID: string
-  requestID: string | null
-  projectID: string
-  epoch: number
-  generation: number
-}
 export type ClarusKnownEvent =
   | ProjectSubscribedEvent
   | ProjectUnsubscribedEvent
-  | ProjectMessageCreatedEvent
   | RuntimeTaskAssignedEvent
   | RuntimeTaskExtendedEvent
   | RuntimeTaskResultRecordedEvent
-  | ProjectFileUploadedEvent
-  | ProjectSystemEvent
-  | NotaryRecordCreatedEvent
 
 export type ClarusUnknownEvent = {
   kind: "unknown"
@@ -225,7 +169,6 @@ export interface ClarusAgentTunnelPort {
   registerConnectionHandler(handler: HolosConnectionHandler): () => void
   subscribeProject(input: SubscribeProjectInput): ClarusRequestResult<ProjectSubscribedEvent>
   unsubscribeProject(input: UnsubscribeProjectInput): ClarusRequestResult<ProjectUnsubscribedEvent>
-  sendProjectMessage(input: SendProjectMessageInput): ClarusRequestResult<ProjectMessageCreatedEvent>
   extendTask(input: ExtendTaskInput): ClarusRequestResult<RuntimeTaskExtendedEvent>
   recordTaskResult(input: RecordTaskResultInput): ClarusRequestResult<RuntimeTaskResultRecordedEvent>
 }

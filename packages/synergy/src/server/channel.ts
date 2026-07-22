@@ -179,3 +179,84 @@ export const ChannelRoute = new Hono()
       return c.json({ success: true as const })
     },
   )
+  .post(
+    "/:channelType/:accountId/projects/refresh",
+    describeRoute({
+      summary: "Refresh channel account projects",
+      description:
+        "Trigger project discovery and sync for a specific channel account. Returns immediately with accepted confirmation.",
+      operationId: "channel.refreshProjects",
+      responses: {
+        200: {
+          description: "Refresh accepted",
+          content: {
+            "application/json": {
+              schema: resolver(z.object({ accepted: z.literal(true) })),
+            },
+          },
+        },
+      },
+    }),
+    channelKeyParam,
+    async (c) => {
+      const { channelType, accountId } = c.req.valid("param")
+      const { Channel } = await import("../channel")
+      await Channel.refreshProjects(channelType, accountId)
+      return c.json({ accepted: true as const })
+    },
+  )
+  .get(
+    "/:channelType/:accountId/diagnostics.ndjson",
+    describeRoute({
+      summary: "Download channel account diagnostics",
+      description: "Stream the retained diagnostics window as bounded NDJSON. Each line is a valid JSON record.",
+      operationId: "channel.downloadDiagnostics",
+      responses: {
+        200: {
+          description: "NDJSON diagnostic stream",
+          content: {
+            "application/x-ndjson": {
+              schema: resolver(
+                z.array(
+                  z.object({
+                    timestamp: z.number(),
+                    level: z.string(),
+                    message: z.string(),
+                    data: z.record(z.string(), z.unknown()).optional(),
+                  }),
+                ),
+              ),
+            },
+          },
+        },
+      },
+    }),
+    channelKeyParam,
+    async (c) => {
+      const { channelType, accountId } = c.req.valid("param")
+      const { Channel } = await import("../channel")
+      // Validate account/provider exists before attempting to read diagnostics
+      const cfg = await Config.current()
+      const channelConfig = cfg.channel?.[channelType]
+      if (!channelConfig) return c.json({ error: "not found" }, 404)
+      const accounts = "accounts" in channelConfig ? channelConfig.accounts : {}
+      if (!(accountId in accounts)) return c.json({ error: "not found" }, 404)
+      const provider = Channel.getProvider(channelType)
+      if (!provider) return c.json({ error: "not found" }, 404)
+
+      const records = await Channel.getDiagnostics(channelType, accountId)
+      const encoder = new TextEncoder()
+      const body = new ReadableStream({
+        start(controller) {
+          for (const record of records) {
+            controller.enqueue(encoder.encode(JSON.stringify(record) + "\n"))
+          }
+          controller.close()
+        },
+      })
+      return c.newResponse(body, 200, {
+        "Content-Type": "application/x-ndjson",
+        "Content-Disposition": `attachment; filename="channel-${channelType}-${accountId}-diagnostics.ndjson"`,
+      })
+    },
+  )
