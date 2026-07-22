@@ -6355,12 +6355,52 @@ msgstr ""
 msgid "app.sidebar.brand.logo"
 msgstr ""
 
+#. Channel account status
+msgid "app.sidebar.channel.account.connected"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.degraded"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disabled"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.disconnected"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncFailed"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.syncing"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.account.waitingForTransport"
+msgstr ""
+
+#. Channel account section header
+msgid "app.sidebar.channel.accounts"
+msgstr ""
+
+#. ── Sidebar ──────────────────────────────────────────────────────────────────
+msgid "app.sidebar.channel.downloadDiagnostics"
+msgstr ""
+
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
 msgid "app.sidebar.channel.feishu"
 msgstr ""
 
 #. Orphan group
 msgid "app.sidebar.channel.orphan"
+msgstr ""
+
+#. Channel account actions
+msgid "app.sidebar.channel.refreshProjects"
 msgstr ""
 
 #. ── Sidebar ──────────────────────────────────────────────────────────────────
@@ -16751,6 +16791,14 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.claim"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-extend-task"
+msgstr ""
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.clarus-submit-task-result"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

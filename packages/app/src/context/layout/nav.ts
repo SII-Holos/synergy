@@ -119,3 +119,83 @@ export function removeScopeFromIndex(
     removed: true,
   }
 }
+
+export type ChannelAccountStatus =
+  | { kind: "disabled" }
+  | { kind: "waiting_for_transport"; reason?: string }
+  | { kind: "disconnected"; reason?: string }
+  | { kind: "syncing" }
+  | { kind: "connected" }
+  | { kind: "sync_failed"; error?: string; lastGoodAt?: number }
+  | { kind: "degraded"; error?: string }
+
+export interface ChannelAccountActions {
+  canRefreshProjects: boolean
+  canDownloadDiagnostics: boolean
+  hiddenActions: string[]
+}
+
+export interface ChannelAccount {
+  channelType: string
+  accountId: string
+  projects: ScopeNavEntry[]
+  status?: ChannelAccountStatus
+}
+
+export function partitionScopeNavigation(entries: readonly ScopeNavEntry[]): {
+  genericProjects: ScopeNavEntry[]
+  channelAccounts: ChannelAccount[]
+} {
+  const accountsByChannel = new Map<string, Map<string, ChannelAccount>>()
+  const genericProjects: ScopeNavEntry[] = []
+  for (const entry of entries) {
+    if (entry.scopeType !== "project") continue
+    const managedProject = entry.managedProject
+    if (!managedProject) {
+      genericProjects.push(entry)
+      continue
+    }
+    let accounts = accountsByChannel.get(managedProject.channelType)
+    if (!accounts) {
+      accounts = new Map()
+      accountsByChannel.set(managedProject.channelType, accounts)
+    }
+    let account = accounts.get(managedProject.accountId)
+    if (!account) {
+      account = {
+        channelType: managedProject.channelType,
+        accountId: managedProject.accountId,
+        projects: [],
+        status: { kind: "connected" },
+      }
+      accounts.set(managedProject.accountId, account)
+    }
+    account.projects.push(entry)
+  }
+  const channelAccounts = Array.from(accountsByChannel.values()).flatMap((accounts) => Array.from(accounts.values()))
+  for (const account of channelAccounts) {
+    account.projects.sort((a, b) => b.latestActivityAt - a.latestActivityAt || a.scopeID.localeCompare(b.scopeID))
+  }
+  channelAccounts.sort((a, b) => {
+    if (a.channelType !== b.channelType) return a.channelType.localeCompare(b.channelType)
+    return a.accountId.localeCompare(b.accountId)
+  })
+  return { genericProjects, channelAccounts }
+}
+
+const CHANNEL_ACCOUNT_PROVIDER_ACTIONS: Record<string, Partial<ChannelAccountActions>> = {
+  clarus: {
+    canRefreshProjects: true,
+    canDownloadDiagnostics: true,
+  },
+}
+
+export function deriveChannelAccountActions(channelType: string): ChannelAccountActions {
+  const providerActions = CHANNEL_ACCOUNT_PROVIDER_ACTIONS[channelType]
+  const canRefreshProjects = providerActions?.canRefreshProjects ?? false
+  const canDownloadDiagnostics = providerActions?.canDownloadDiagnostics ?? false
+  const hiddenActions: string[] = []
+  if (!canRefreshProjects) hiddenActions.push("refreshProjects")
+  if (!canDownloadDiagnostics) hiddenActions.push("downloadDiagnostics")
+  return { canRefreshProjects, canDownloadDiagnostics, hiddenActions }
+}
