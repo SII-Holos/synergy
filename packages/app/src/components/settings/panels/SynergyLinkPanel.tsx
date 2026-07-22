@@ -14,6 +14,7 @@ import { useGlobalSDK } from "@/context/global-sdk"
 import { requestErrorMessage } from "@/utils/error"
 import { SettingsEntityList, SettingsPage, SettingsSection } from "../components/SettingsPrimitives"
 import {
+  createTargetRequestController,
   normalizeAllowedAgents,
   reconcileTargetDraft,
   targetFormReady,
@@ -206,10 +207,18 @@ function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
   const [allowedAgents, setAllowedAgents] = createSignal("")
   const [busy, setBusy] = createSignal(false)
   const isReady = () => targetFormReady({ name: name(), targetAgentID: targetAgentID(), linkID: linkID() })
+  const requests = createTargetRequestController()
+  onCleanup(() => requests.cancel())
+
+  function closeDialog() {
+    requests.cancel()
+    dialog.close()
+  }
 
   async function addTarget(event: SubmitEvent) {
     event.preventDefault()
     if (!isReady() || busy()) return
+    const controller = requests.start()
     setBusy(true)
     try {
       await globalSDK.client.synergyLink.targetCreate(
@@ -221,14 +230,18 @@ function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
             allowedAgents: normalizeAllowedAgents(allowedAgents()),
           },
         },
-        { throwOnError: true },
+        { throwOnError: true, signal: controller.signal },
       )
+      if (controller.signal.aborted) return
       showToast({ type: "success", title: _(copy.created) })
       dialog.close()
       void Promise.resolve().then(() => props.onCreated())
     } catch (error) {
+      if (controller.signal.aborted) return
       showToast({ type: "error", title: _(copy.failed), description: requestErrorMessage(error) })
-      setBusy(false)
+    } finally {
+      requests.finish(controller)
+      if (!controller.signal.aborted) setBusy(false)
     }
   }
 
@@ -238,7 +251,7 @@ function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
       description={_(copy.addDescription)}
       size="form"
       class="settings-link-add-dialog"
-      dismissible={!busy()}
+      dismissible
       action={
         <button
           type="button"
@@ -246,8 +259,7 @@ function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
           data-slot="dialog-close-button"
           data-component="icon-button"
           data-variant="ghost"
-          disabled={busy()}
-          onClick={() => dialog.close()}
+          onClick={closeDialog}
         >
           <Icon name={getSemanticIcon("action.close")} size="small" />
         </button>
@@ -289,7 +301,7 @@ function DialogAddSynergyLinkTarget(props: { onCreated: () => unknown }) {
           </div>
         </div>
         <div data-slot="dialog-actions" class="settings-link-dialog-actions">
-          <Button type="button" variant="ghost" size="large" disabled={busy()} onClick={() => dialog.close()}>
+          <Button type="button" variant="ghost" size="large" onClick={closeDialog}>
             {_(copy.cancel)}
           </Button>
           <Button type="submit" variant="primary" size="large" disabled={busy() || !isReady()}>

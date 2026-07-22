@@ -1,3 +1,23 @@
+export function createTargetRequestController() {
+  let active: AbortController | undefined
+
+  return {
+    start() {
+      active?.abort()
+      const controller = new AbortController()
+      active = controller
+      return controller
+    },
+    finish(controller: AbortController) {
+      if (active === controller) active = undefined
+    },
+    cancel() {
+      active?.abort()
+      active = undefined
+    },
+  }
+}
+
 export function normalizeAllowedAgents(input: string): string[] {
   return [
     ...new Set(

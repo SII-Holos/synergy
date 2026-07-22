@@ -1117,7 +1117,9 @@
 .settings-model-detail-surface {
   width: min(400px, calc(100vw - 32px));
   max-height: min(480px, calc(100vh - 32px));
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
   border: 1px solid color-mix(in oklch, var(--border-base) 42%, transparent);
   border-radius: 12px;
   background: var(--settings-popover-bg);
@@ -1166,13 +1168,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: 5px;
-}
-
-.settings-model-agent-list {
-  max-height: min(180px, 35vh);
-  align-content: flex-start;
-  overflow-y: auto;
-  padding-right: 2px;
 }
 
 .settings-model-chip,
@@ -1915,10 +1910,8 @@
   gap: 8px;
 }
 
-[data-slot="dialog-content"].settings-link-add-dialog [data-slot="dialog-body"] {
-  padding-right: 0;
-  padding-bottom: 0;
-  padding-left: 0;
+.settings-link-add-dialog {
+  --dialog-body-padding: 0;
 }
 
 .settings-link-add-dialog [data-slot="dialog-form"] {

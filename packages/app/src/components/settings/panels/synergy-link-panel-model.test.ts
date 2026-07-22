@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test"
 import {
+  createTargetRequestController,
   normalizeAllowedAgents,
   reconcileTargetDraft,
   targetFormReady,
@@ -15,6 +16,28 @@ describe("Synergy Link settings form", () => {
     expect(targetFormReady({ name: "Builder", targetAgentID: "agent_builder", linkID: "link_builder" })).toBe(true)
     expect(targetFormReady({ name: "Builder", targetAgentID: "", linkID: "link_builder" })).toBe(false)
     expect(targetFormReady({ name: "Builder", targetAgentID: "agent_builder", linkID: ":local" })).toBe(false)
+  })
+
+  test("cancels an in-flight target request without waiting for the network", () => {
+    const requests = createTargetRequestController()
+    const controller = requests.start()
+
+    requests.cancel()
+
+    expect(controller.signal.aborted).toBe(true)
+  })
+
+  test("keeps a replacement target request active when an older request finishes", () => {
+    const requests = createTargetRequestController()
+    const first = requests.start()
+    const second = requests.start()
+
+    requests.finish(first)
+    expect(first.signal.aborted).toBe(true)
+    expect(second.signal.aborted).toBe(false)
+
+    requests.cancel()
+    expect(second.signal.aborted).toBe(true)
   })
   test("preserves dirty target fields across background refreshes", () => {
     expect(
