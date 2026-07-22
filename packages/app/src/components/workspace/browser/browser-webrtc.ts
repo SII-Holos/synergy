@@ -5,6 +5,7 @@ import {
   BrowserWebRTCSignalSchema,
   type BrowserWebRTCSignal,
 } from "@ericsanchezok/synergy-browser"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 type BrowserWebRTCSignalingUrlOptions = {
   serverUrl: string
@@ -69,7 +70,7 @@ export class BrowserWebRTCClient {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectAttempt = 0
   private negotiating: Promise<void> | null = null
-  private readonly connectionId = crypto.randomUUID()
+  private readonly connectionId = generateUUID()
   private generation = 0
   private signalingAttempt = 0
   private iceSequence = 0
