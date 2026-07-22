@@ -5391,6 +5391,46 @@ msgid "app.plugin.marketplace.version.label"
 msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
 msgstr ""
 
@@ -8263,6 +8303,34 @@ msgstr ""
 msgid "nav.tools.title"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "plugin.textAction.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.cut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.paste"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.selectAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.unavailable"
+msgstr ""
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -9533,6 +9601,13 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.inProgress.description"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.interceptFailed"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.

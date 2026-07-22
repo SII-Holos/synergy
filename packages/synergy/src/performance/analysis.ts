@@ -216,6 +216,7 @@ export namespace PerformanceAnalysis {
         noReply: false,
         tools: {},
         metadata: { source: "performance-analysis" },
+        origin: { type: "system" },
         parts: [
           { type: "text", text: `Analyze current Performance telemetry for the last ${formatWindow(input.windowMs)}.` },
           { type: "text", origin: "system", text: buildPrompt(data) },

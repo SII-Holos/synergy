@@ -94,6 +94,7 @@ function baseToolPermissions(profile: SubagentPermissionProfile): PermissionNext
     "*": "deny",
     expand_tools: "allow",
     search_tools: "allow",
+    "browser_*": "allow",
     question: "deny",
     dagwrite: "deny",
     dagread: "deny",

@@ -5391,6 +5391,46 @@ msgid "app.plugin.marketplace.version.label"
 msgstr "v{version}"
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.description"
+msgstr "Send bounded text to approved Sessionless Agents without tools or Session history."
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.title"
+msgstr "Call Synergy agents"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.description"
+msgstr "Delay a normal message before it enters a Session while the plugin finishes its interaction."
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.title"
+msgstr "Intercept message submission"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.description"
+msgstr "Read settled text and selection from the active Synergy composer."
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.title"
+msgstr "Read composer drafts"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.description"
+msgstr "Offer completions and annotations or apply edits to the active composer."
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.title"
+msgstr "Change composer drafts"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.description"
+msgstr "Receive non-sensitive text selected in Synergy and add text actions to its menu."
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.title"
+msgstr "Read selected text"
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
 msgid "app.plugin.permissionGroup.data"
 msgstr "Data"
 
@@ -8263,6 +8303,34 @@ msgstr "Tools"
 msgid "nav.tools.title"
 msgstr "Tools"
 
+#. js-lingui-explicit-id
+msgid "plugin.textAction.copy"
+msgstr "Copy"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.cut"
+msgstr "Cut"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.failed"
+msgstr "Text action failed"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.paste"
+msgstr "Paste"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.selectAll"
+msgstr "Select all"
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.tooLarge"
+msgstr "This selection is too large for extensions."
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.unavailable"
+msgstr "This editing action is unavailable."
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -9534,6 +9602,13 @@ msgstr "Session start in progress"
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.inProgress.description"
 msgstr "Wait for this session to finish starting before sending another prompt."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.interceptFailed"
+msgstr "A composer extension stopped this message"
 
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
