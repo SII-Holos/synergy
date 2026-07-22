@@ -5432,14 +5432,41 @@ export type SessionImportResult = {
 }
 
 export type CortexConcurrencyStatus = {
+  /**
+   * User-configured global limit, or null when unset
+   */
   configured: number | null
+  /**
+   * Process environment override, or null when unset
+   */
   environment: number | null
+  /**
+   * Actual admission limit from environment, config, or default
+   */
   effective: number
+  /**
+   * Advisory limit suggested by current memory pressure; never used for task admission
+   */
   memoryPressureLimit: number | null
+  /**
+   * Reason for the advisory memory-pressure limit
+   */
   memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  /**
+   * Source of the effective admission limit
+   */
   source: "default" | "config" | "environment"
+  /**
+   * Fixed maximum for each individual agent
+   */
   perAgentLimit: number
+  /**
+   * Currently admitted Cortex tasks
+   */
   running: number
+  /**
+   * Cortex tasks waiting for an admission slot
+   */
   queued: number
 }
 

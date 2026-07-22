@@ -15377,15 +15377,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure."
+msgstr "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "Memory recommendation: {value}. Your setting remains active."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "Managed by environment · Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "Managed by environment · Memory recommendation: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
