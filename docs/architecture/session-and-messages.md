@@ -75,6 +75,8 @@ A session processes a serial sequence of tasks. One root user message `R` owns e
 
 The loop does not change ownership when a user steers it, a Cortex task reports back, compaction continues, or a workflow injects control context.
 
+Skill slash-command fallback preserves that same root. When a Skill template has no placeholder to consume trailing input, the rendered Skill body and the trailing user input are stored as separate user-origin text parts on the same root user message, before attachments. The fallback does not create a second turn, hidden steer, or system-authored prompt fragment.
+
 `SessionProgress.needsModelCall(messages, R.id)` asks whether the latest user message belonging to `R` has a later terminal assistant reply belonging to the same root. Terminal assistant finishes exclude `tool-calls` and `unknown`, which keep the model/tool loop active.
 
 ## Canonical Message Semantics

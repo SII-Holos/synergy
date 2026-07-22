@@ -2,7 +2,7 @@ import path from "path"
 import { ConfigDomain } from "../config/domain"
 import { Global } from "../global"
 import { ScopeContext } from "../scope/context"
-import { SkillPaths } from "../skill/paths"
+import { SkillSourceProfile } from "../skill/source-profile"
 import { isPathContained } from "../util/path-contain"
 import { RuntimeSchema } from "./schema"
 
@@ -20,7 +20,7 @@ export namespace RuntimeReloadPath {
         path.resolve(path.join(Global.Path.config, "command")),
         path.resolve(path.join(Global.Path.config, "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter(
+      skill: SkillSourceProfile.existingRootPaths(ScopeContext.current.directory).filter(
         (root) => !isPathContained(path.resolve(ScopeContext.current.directory), root),
       ),
       tool: [path.resolve(path.join(Global.Path.config, "tool"))],
@@ -37,7 +37,7 @@ export namespace RuntimeReloadPath {
         path.resolve(path.join(ScopeContext.current.directory, ".synergy", "command")),
         path.resolve(path.join(ScopeContext.current.directory, ".synergy", "commands")),
       ],
-      skill: SkillPaths.runtimeSkillRootsSync(ScopeContext.current.directory).filter((root) =>
+      skill: SkillSourceProfile.existingRootPaths(ScopeContext.current.directory).filter((root) =>
         isPathContained(path.resolve(ScopeContext.current.directory), root),
       ),
       tool: [path.resolve(path.join(ScopeContext.current.directory, ".synergy", "tool"))],
@@ -111,8 +111,7 @@ export namespace RuntimeReloadPath {
 
     const globalRoots = globalConfigRoots()
     const projectRoots = projectConfigRoots()
-    const skillRoots = [...globalRoots.skill, ...projectRoots.skill]
-    if (normalized.endsWith(`${path.sep}SKILL.md`) && skillRoots.some((root) => isPathContained(root, normalized))) {
+    if (SkillSourceProfile.matchesEntryFile(normalized, ScopeContext.current.directory)) {
       targets.push("skill")
     }
 
