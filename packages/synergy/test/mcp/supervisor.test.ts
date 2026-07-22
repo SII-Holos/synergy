@@ -6,7 +6,7 @@ import { pathToFileURL } from "url"
 import { Bus } from "../../src/bus"
 import { Config } from "../../src/config/config"
 import { MCP } from "../../src/mcp"
-import { connectClientOrCloseOnFailure, McpSupervisor } from "../../src/mcp/supervisor"
+import { connectClientOrCloseOnFailure, McpSupervisor, probeClientConnection } from "../../src/mcp/supervisor"
 import { PendingOAuth } from "../../src/mcp/pending-oauth"
 import { Plugin } from "../../src/plugin"
 import { computeManifestHash, computePermissionsHash, saveApproval } from "../../src/plugin/consent/approval-store"
@@ -149,6 +149,25 @@ describe.serial("McpSupervisor", () => {
     expect(closed).toBe(true)
   })
 
+  test("closes an MCP client after probing succeeds or fails", async () => {
+    for (const failure of [undefined, new Error("connect failed")]) {
+      let closed = false
+      const client = {
+        connect: async () => {
+          if (failure) throw failure
+        },
+        close: async () => {
+          closed = true
+        },
+      }
+
+      const result = probeClientConnection(client, undefined as never, "probe")
+      if (failure) await expect(result).rejects.toThrow("connect failed")
+      else await result
+      expect(closed).toBe(true)
+    }
+  })
+
   test("disconnect releases a pending OAuth owner", async () => {
     await using tmp = await tmpdir({ config: {} })
 
@@ -168,11 +187,35 @@ describe.serial("McpSupervisor", () => {
             },
           },
           transport: { finishAuth: async () => {} },
+          identity: McpSupervisor.get("auth-server")!.identity,
         })
 
         await McpSupervisor.disconnect("auth-server")
 
         expect(closed).toBe(true)
+      },
+    })
+  })
+
+  test("remove waits for disposal and publishes the final tools change", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const events: string[] = []
+        const unsubscribe = Bus.subscribe(MCP.ToolsChanged, (event) => events.push(event.properties.server))
+        McpSupervisor.add("removed-server", {
+          type: "remote",
+          url: "https://example.com/mcp",
+          startup: "manual",
+        })
+
+        await McpSupervisor.remove("removed-server")
+        unsubscribe()
+
+        expect(McpSupervisor.get("removed-server")).toBeUndefined()
+        expect(events).toEqual(["removed-server"])
       },
     })
   })
@@ -220,6 +263,7 @@ describe.serial("McpSupervisor", () => {
           layout: {
             type: "local",
             command: ["node", serverPath],
+            callTimeout: 2468,
           },
         })
 
@@ -230,11 +274,12 @@ describe.serial("McpSupervisor", () => {
         expect((await MCP.status())["demo-plugin::layout"].status).toBe("connected")
         const entries = await MCP.toolEntries()
         expect(entries.map((entry) => entry.id)).toContain("mcp__demo-plugin__layout__demo_tool")
+        expect(MCP.toolCallTimeout("mcp__demo-plugin__layout__demo_tool")).toBe(2468)
       },
     })
   })
 
-  test("plugin MCP contributions can be re-registered after MCP reload", async () => {
+  test("plugin lifecycle init and reload wait for MCP contributions to stabilize", async () => {
     await using tmp = await tmpdir<{ pluginDir: string; manifest: PluginManifestType }>({
       git: true,
       init: async (dir) => {
@@ -267,14 +312,11 @@ describe.serial("McpSupervisor", () => {
         await Config.update({
           plugin: [pathToFileURL(tmp.extra.pluginDir).href],
         } as any)
+
         await Plugin.init()
-        await Plugin.reloadMcpContributions()
         expect((await MCP.status())["demo-plugin::layout"].status).toBe("uninitialized")
 
-        await MCP.reload()
-        expect((await MCP.status())["demo-plugin::layout"]).toBeUndefined()
-
-        await Plugin.reloadMcpContributions()
+        await Plugin.reload()
         expect((await MCP.status())["demo-plugin::layout"].status).toBe("uninitialized")
       },
     })
@@ -337,6 +379,175 @@ describe.serial("McpSupervisor", () => {
         const handle = McpSupervisor.get("demo-plugin::toolbelt")
         expect(handle?.config.startup).toBe("manual")
         expect(handle?.config.callTimeout).toBe(4321)
+      },
+    })
+  })
+
+  test("replaces a plugin MCP handle set exactly", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await startForPlugin("demo-plugin", {
+          old: {
+            type: "local",
+            command: ["node", "old-server.js"],
+            startup: "manual",
+          },
+          stable: {
+            type: "local",
+            command: ["node", "stable-v1.js"],
+            startup: "manual",
+          },
+        })
+
+        await startForPlugin("demo-plugin", {
+          stable: {
+            type: "local",
+            command: ["node", "stable-v2.js"],
+            startup: "manual",
+          },
+          fresh: {
+            type: "local",
+            command: ["node", "fresh-server.js"],
+            startup: "manual",
+          },
+        })
+
+        expect(McpSupervisor.get("demo-plugin::old")).toBeUndefined()
+        expect(McpSupervisor.get("demo-plugin::stable")?.config).toMatchObject({
+          command: ["node", "stable-v2.js"],
+        })
+        expect(McpSupervisor.get("demo-plugin::fresh")?.config).toMatchObject({
+          command: ["node", "fresh-server.js"],
+        })
+        expect(
+          McpSupervisor.getAll()
+            .map((handle) => handle.name)
+            .filter((name) => name.startsWith("demo-plugin::"))
+            .sort(),
+        ).toEqual(["demo-plugin::fresh", "demo-plugin::stable"])
+      },
+    })
+  })
+
+  test("preserves the previous plugin MCP handle set when replacement validation fails", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await startForPlugin("demo-plugin", {
+          stable: {
+            type: "local",
+            command: ["node", "stable-v1.js"],
+            startup: "manual",
+          },
+          retained: {
+            type: "local",
+            command: ["node", "retained.js"],
+            startup: "manual",
+          },
+        })
+
+        await expect(
+          startForPlugin("demo-plugin", {
+            stable: {
+              type: "local",
+              command: ["node", "stable-v2.js"],
+              startup: "manual",
+            },
+            fresh: {
+              type: "local",
+              command: ["node", "fresh-server.js"],
+              startup: "manual",
+            },
+            broken: {
+              type: "remote",
+              url: "file:///tmp/mcp.sock",
+              startup: "manual",
+            },
+          }),
+        ).rejects.toMatchObject({
+          name: "MCPInvalidPluginServer",
+          data: { pluginId: "demo-plugin", contributionId: "broken" },
+        })
+
+        expect(McpSupervisor.get("demo-plugin::stable")?.config).toMatchObject({
+          command: ["node", "stable-v1.js"],
+        })
+        expect(McpSupervisor.get("demo-plugin::retained")?.config).toMatchObject({
+          command: ["node", "retained.js"],
+        })
+        expect(McpSupervisor.get("demo-plugin::fresh")).toBeUndefined()
+        expect(McpSupervisor.get("demo-plugin::broken")).toBeUndefined()
+      },
+    })
+  })
+  test("validates every plugin candidate before replacing any plugin handles", async () => {
+    await using tmp = await tmpdir({ config: {} })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        await startForPlugin("plugin-a", {
+          stable: {
+            type: "local",
+            command: ["node", "a-v1.js"],
+            startup: "manual",
+          },
+        })
+        await startForPlugin("plugin-b", {
+          stable: {
+            type: "local",
+            command: ["node", "b-v1.js"],
+            startup: "manual",
+          },
+        })
+
+        const events: string[] = []
+        const unsubscribe = Bus.subscribe(MCP.ToolsChanged, (event) => events.push(event.properties.server))
+        const adapter = await import("../../src/plugin/mcp")
+        await expect(
+          adapter.replaceForPlugins([
+            {
+              pluginId: "plugin-a",
+              declarations: {
+                stable: {
+                  type: "local",
+                  command: ["node", "a-v2.js"],
+                  startup: "manual",
+                },
+                fresh: {
+                  type: "local",
+                  command: ["node", "a-fresh.js"],
+                  startup: "manual",
+                },
+              },
+            },
+            {
+              pluginId: "plugin-b",
+              declarations: {
+                broken: {
+                  type: "remote",
+                  url: "file:///tmp/plugin-b.sock",
+                  startup: "manual",
+                },
+              },
+            },
+          ]),
+        ).rejects.toMatchObject({
+          name: "MCPInvalidPluginServer",
+          data: { pluginId: "plugin-b", contributionId: "broken" },
+        })
+        unsubscribe()
+
+        expect(McpSupervisor.get("plugin-a::stable")?.config).toMatchObject({ command: ["node", "a-v1.js"] })
+        expect(McpSupervisor.get("plugin-a::fresh")).toBeUndefined()
+        expect(McpSupervisor.get("plugin-b::stable")?.config).toMatchObject({ command: ["node", "b-v1.js"] })
+        expect(McpSupervisor.get("plugin-b::broken")).toBeUndefined()
+        expect(events).toEqual([])
       },
     })
   })

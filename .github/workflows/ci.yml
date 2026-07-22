@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: bun run lint
 
+      - name: Check test layout
+        run: bun run test-layout:check
+
       - name: Check frontend localization
         run: bun run localization:check
 

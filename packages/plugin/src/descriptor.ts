@@ -177,6 +177,14 @@ function compileContribution(
         ...(contribution.display ? { display: contribution.display as unknown as Record<string, unknown> } : {}),
         ...(contribution.enabledWhen ? { enabledWhen: contribution.enabledWhen } : {}),
       }
+    case "cli.command":
+      return {
+        ...base,
+        kind: "cli.command",
+        description: contribution.description,
+        options: contribution.options,
+        ...(contribution.timeoutMs ? { timeoutMs: contribution.timeoutMs } : {}),
+      }
     case "hook":
       return { ...base, kind: "hook", point: contribution.point, priority: contribution.priority }
     case "agent":

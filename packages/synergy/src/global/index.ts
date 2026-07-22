@@ -100,6 +100,9 @@ export namespace Global {
     get providerCatalogCache() {
       return path.join(root(), "cache", "provider-catalog.json")
     },
+    get providerModelCatalogCache() {
+      return path.join(root(), "cache", "provider-model-catalogs.v1.json")
+    },
     get schema() {
       return path.join(root(), "schema")
     },

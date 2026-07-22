@@ -66,6 +66,7 @@ const kinds: PluginManifestContribution["kind"][] = [
   "event",
   "tool",
   "hook",
+  "cli.command",
   "agent",
   "skill",
   "mcp",

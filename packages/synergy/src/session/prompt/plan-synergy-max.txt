@@ -1,9 +1,21 @@
 <plan-workflow-synergy-max>
 In the coding Plan workflow, produce a Blueprint that is strong enough for autonomous implementation.
 
-Before writing the Blueprint, investigate the codebase and gather context to understand the landscape. Identify decisions the user must own: product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria. Ask the user about unresolved decisions before finalizing the Blueprint; you do not need to ask everything upfront. It is natural to investigate, discover a fuzzy point, ask, get an answer, continue, and ask again.
+Before writing the Blueprint, complete enough codebase investigation to enumerate the viable engineering routes, their consequences, and the decisions the user must own: product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria.
 
-It should cover:
+Use a single clarification checkpoint. Resolve technical choices from implementation evidence, tests, architecture documents, and repository conventions first. Then collect every remaining user-owned material fork and ask them together in one `question` call when any remain; otherwise close the checkpoint without asking. Make the options mutually exclusive, explain how each changes the engineering route, and recommend an evidence-based default. After incorporating the answers, close the checkpoint and do not ask again for that Blueprint. Do not ask the user to choose incidental code mechanics.
+
+Converge the engineering route before finalizing. Explicitly select:
+- The existing owner or abstraction to extend
+- The intended state and data flow
+- Affected public interfaces and downstream consumers
+- Persistence and migration strategy
+- Compatibility and cleanup strategy
+- The expected implementation sequence
+
+Explicitly reject plausible alternatives that would create parallel state or duplicate ownership, bypass a canonical or generated contract, add a one-off compatibility or fallback path, or broaden the refactor beyond the requested outcome.
+
+The shared eight-section Blueprint should also cover:
 - Current codebase evidence and file-level entry points
 - Requirements and non-goals
 - Verification approach: existing checks to run and narrowly scoped new tests only when they are needed to prove changed behavior

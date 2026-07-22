@@ -5590,6 +5590,10 @@ msgstr "提交"
 msgid "app.provider.state.failed"
 msgstr "授权失败：{error}"
 
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
+msgstr "正在导入凭据…"
+
 #. States
 msgid "app.provider.state.pending"
 msgstr "正在授权…"
@@ -5604,7 +5608,7 @@ msgstr "已连接"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.modelsAvailable"
-msgstr "{provider} 模型现已可用。"
+msgstr "{provider} 已连接，模型列表将在后台同步。"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
@@ -7298,6 +7302,10 @@ msgstr "会话开始后，此外部智能体的模型会被锁定"
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.lockedLabel"
 msgstr "模型已锁定"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
+msgstr "该模型已不在最新列表中。"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.select"
@@ -9901,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr "已连接"
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr "备用目录"
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr "未连接"
 
@@ -10259,6 +10263,10 @@ msgstr "无法复制消息。"
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
+msgstr "模型 {modelID} 当前无法从 {providerID} 使用。请选择其他模型后继续。"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
@@ -15336,6 +15344,26 @@ msgstr "账号"
 #. js-lingui-explicit-id
 msgid "settings.providers.accountConnected"
 msgstr "凭据已连接。请在用量中查看配额和账单详情。"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr "正在显示默认模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr "正在显示上次同步的模型列表"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr "模型列表待刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr "刷新模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr "正在刷新模型"
 
 #. js-lingui-explicit-id
 msgid "settings.providers.connect"

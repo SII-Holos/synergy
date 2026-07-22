@@ -1680,8 +1680,7 @@ export namespace ToolResolver {
         const schema = {
           ...((item.inputSchema as JSONSchema7 | undefined) ?? {}),
           type: "object",
-          properties:
-            (((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"]) ?? {},
+          properties: ((item.inputSchema as JSONSchema7 | undefined)?.properties ?? {}) as JSONSchema7["properties"],
           additionalProperties: false,
         } satisfies JSONSchema7
         result.push({

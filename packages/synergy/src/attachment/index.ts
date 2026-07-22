@@ -37,6 +37,10 @@ export namespace Attachment {
     metadata?: MessageV2.AttachmentPart["metadata"]
   }
 
+  export interface BytesPartInput extends Omit<PartInput, "filepath"> {
+    bytes: Uint8Array
+  }
+
   export interface Policy {
     extractText: boolean
     keepBinary: boolean
@@ -170,9 +174,11 @@ export namespace Attachment {
   }
 
   export async function toPart(input: PartInput): Promise<MessageV2.AttachmentPart> {
-    const file = Bun.file(input.filepath)
-    const fallbackPolicy = policy({ filepath: input.filepath, filename: input.filename, mime: input.mime })
-    const bytes = await file.bytes()
+    return fromBytes({ ...input, bytes: await Bun.file(input.filepath).bytes() })
+  }
+
+  export async function fromBytes(input: BytesPartInput): Promise<MessageV2.AttachmentPart> {
+    const fallbackPolicy = policy({ filename: input.filename, mime: input.mime })
     const model = input.model ?? fallbackPolicy.model
     const attachmentMetadata =
       input.metadata?.attachment &&
@@ -182,8 +188,8 @@ export namespace Attachment {
         : {}
     const url =
       model.mode === "provider-file"
-        ? dataUrl(input.mime, bytes)
-        : `asset://${await Asset.write(Buffer.from(bytes), input.mime, input.filename)}`
+        ? dataUrl(input.mime, input.bytes)
+        : `asset://${await Asset.write(Buffer.from(input.bytes), input.mime, input.filename)}`
     return {
       id: input.id ?? Identifier.ascending("part"),
       sessionID: input.sessionID,
@@ -200,7 +206,7 @@ export namespace Attachment {
         ...input.metadata,
         attachment: {
           ...attachmentMetadata,
-          size: bytes.byteLength,
+          size: input.bytes.byteLength,
         },
       },
     }

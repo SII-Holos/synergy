@@ -230,6 +230,11 @@ export function SessionTopBar(props: {
           <TooltipKeybind placement="bottom" title={_(topBar.chooseModel)} keybind={command.keybind("model.choose")}>
             <button type="button" class="stb-selector-btn">
               <span class="stb-selector-label">{local.model.current()?.name ?? _(topBar.selectModel)}</span>
+              <Show when={local.model.current()?.catalogState === "retained"}>
+                <Tooltip placement="bottom" value={_(topBar.retainedModel)}>
+                  <Icon name={getSemanticIcon("state.warning")} size="small" class="text-icon-warning-base" />
+                </Tooltip>
+              </Show>
               <Icon name={getSemanticIcon("navigation.collapse")} size="normal" class="stb-chevron" />
             </button>
           </TooltipKeybind>

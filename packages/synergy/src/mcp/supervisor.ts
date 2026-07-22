@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js"
 import { mergeDeep } from "remeda"
 import z from "zod"
+import { McpServerConfig } from "@ericsanchezok/synergy-plugin"
 import { Config } from "../config/config"
 import { Log } from "../util/log"
 import { ScopeContext } from "../scope/context"
@@ -232,8 +233,43 @@ export async function connectClientOrCloseOnFailure(
   }
 }
 
-function isServerDeclaration(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && "type" in value
+export async function probeClientConnection(
+  client: Pick<Client, "connect" | "close">,
+  transport: Parameters<Client["connect"]>[0],
+  name: string,
+): Promise<void> {
+  try {
+    await client.connect(transport)
+  } finally {
+    await client.close().catch((error) => {
+      log.error("failed to close MCP probe client", { name, error })
+    })
+  }
+}
+
+export const InvalidPluginServer = NamedError.create(
+  "MCPInvalidPluginServer",
+  z.object({
+    pluginId: z.string(),
+    contributionId: z.string(),
+    issues: z.custom<z.core.$ZodIssue[]>(),
+  }),
+)
+
+export type McpServerSource = "config" | "plugin" | "runtime"
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable)
+  if (!value || typeof value !== "object") return value
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, stable(entry)]),
+  )
+}
+
+function configFingerprint(config: Config.Mcp): string {
+  return new Bun.CryptoHasher("sha256").update(JSON.stringify(stable(config))).digest("hex")
 }
 
 // ---------------------------------------------------------------------------
@@ -243,6 +279,10 @@ function isServerDeclaration(value: unknown): value is Record<string, unknown> {
 export interface McpHandle {
   name: string
   config: Config.Mcp
+  source: McpServerSource
+  pluginId?: string
+  fingerprint: string
+  identity: string
   state: HS
   client?: Client
   toolDefs: MCPToolDef[]
@@ -254,10 +294,21 @@ export interface McpHandle {
   startPromise?: Promise<void>
 }
 
-function newHandle(name: string, config: Config.Mcp): McpHandle {
+function newHandle(
+  name: string,
+  config: Config.Mcp,
+  source: McpServerSource,
+  identityGeneration: number,
+  pluginId?: string,
+): McpHandle {
+  const fingerprint = configFingerprint(config)
   return {
     name,
     config,
+    source,
+    pluginId,
+    fingerprint,
+    identity: `${source}:${identityGeneration}:${fingerprint}`,
     state: HS.Uninitialized,
     toolDefs: [],
     prompts: {},
@@ -311,6 +362,8 @@ class McpSupervisorImpl {
   private activeStarts = 0
   private _started = false
   private initPromise?: Promise<void>
+  private mutation = Promise.resolve()
+  private identityGeneration = 0
 
   // ── Public ──────────────────────────────────────────────────────────
 
@@ -333,11 +386,11 @@ class McpSupervisorImpl {
     await this.initPromise
   }
 
-  /** Create or retrieve a handle. Does not auto-start. */
+  /** Create or retrieve a dynamic runtime handle. Does not auto-start. */
   getOrCreate(name: string, config: Config.Mcp): McpHandle {
     const existing = this.handles.get(name)
     if (existing) return existing
-    const handle = newHandle(name, config)
+    const handle = this.createHandle(name, config, "runtime")
     this.handles.set(name, handle)
     return handle
   }
@@ -352,21 +405,21 @@ class McpSupervisorImpl {
     return [...this.handles.values()]
   }
 
-  /** Add a handle and schedule background connect when policy allows it. Returns the handle. */
+  /** Add a dynamic runtime handle and schedule background connect when policy allows it. */
   add(name: string, config: Config.Mcp): McpHandle {
-    const handle = this.getOrCreate(name, config)
-    handle.config = config
-    if (config.enabled === false) {
-      handle.state = HS.Disabled
-      return handle
+    const existing = this.handles.get(name)
+    const handle =
+      existing?.source === "runtime" && existing.fingerprint === configFingerprint(config)
+        ? existing
+        : this.createHandle(name, config, "runtime")
+    if (handle !== existing) {
+      this.handles.set(name, handle)
+      if (existing) {
+        this.invalidateHandle(existing)
+        void this.disposeHandle(existing, "runtime replacement")
+      }
     }
-    if (config.startup === "manual" || config.startup === "lazy") {
-      handle.state = HS.Uninitialized
-      return handle
-    }
-    if (handle.state === HS.Uninitialized || handle.state === HS.Failed) {
-      this.scheduleStart(handle)
-    }
+    this.applyStartupPolicy(handle)
     return handle
   }
 
@@ -374,9 +427,9 @@ class McpSupervisorImpl {
    * Connect a handle and wait for the result.
    * Used by manual connect commands and OAuth finishAuth.
    */
-  async connect(name: string): Promise<McpHandle> {
+  async connect(name: string, identity?: string): Promise<McpHandle> {
     const handle = this.handles.get(name)
-    if (!handle) {
+    if (!handle || (identity && handle.identity !== identity)) {
       throw new Error(`MCP server not found: ${name}`)
     }
     handle.retryCount = 0
@@ -386,29 +439,34 @@ class McpSupervisorImpl {
 
   /** Disconnect a handle. */
   async disconnect(name: string): Promise<void> {
-    await PendingOAuth.dispose(name, "disconnected")
     const handle = this.handles.get(name)
-    if (!handle) return
-    handle.state = HS.Stopping
-    handle.generation++
-    if (handle.client) {
-      await handle.client.close().catch((error) => {
-        log.error("failed to close MCP client", { name, error })
-      })
-      handle.client = undefined
+    if (!handle) {
+      await PendingOAuth.dispose(name, "disconnected")
+      return
     }
-    handle.toolDefs = []
-    handle.prompts = {}
-    handle.resources = {}
+    this.invalidateHandle(handle)
+    await this.disposeHandle(handle, "disconnected")
+    if (!this.isCurrent(handle)) return
     handle.retryCount = 0
     handle.state = HS.Disabled
     Bus.publish(ToolsChanged, { server: name })
   }
 
   /** Remove a handle entirely. */
-  remove(name: string): void {
-    void this.disconnect(name)
-    this.handles.delete(name)
+  async remove(name: string): Promise<void> {
+    await this.serializeMutation(async () => {
+      const handle = this.handles.get(name)
+      this.handles.delete(name)
+      if (!handle) {
+        await PendingOAuth.dispose(name, "removed")
+        return
+      }
+      this.invalidateHandle(handle)
+      await this.disposeHandle(handle, "removed")
+      Bus.publish(ToolsChanged, { server: name })
+      Bus.publish(PromptsChanged, { server: name })
+      Bus.publish(ResourcesChanged, { server: name })
+    })
   }
 
   /** Reset all handles and clear the registry. */
@@ -478,7 +536,7 @@ class McpSupervisorImpl {
       return undefined
     })
 
-    if (handle.generation === gen) {
+    if (this.isCurrent(handle, gen)) {
       if (tools) handle.toolDefs = tools
       if (prompts) handle.prompts = prompts
       if (resources) handle.resources = resources
@@ -524,103 +582,136 @@ class McpSupervisorImpl {
 
   // ── Plugin MCP lifecycle ──────────────────────────────────────────
 
-  /**
-   * Register all MCP server declarations from a plugin manifest.
-   *
-   * - Skips non-server entries (defaults, locked).
-   * - Skips server keys that are already defined in user config (bare-key shadow).
-   * - Deep-merges manifest `defaults` into each server declaration.
-   * - Normalizes each declaration through Config.normalizeMcp (applying
-   *   user mcpDefaults + experimental.mcp_timeout).
-   * - Registers using the namespaced key `{pluginId}::{serverKey}`.
-   *
-   * This method is intentionally async (reads Config) but does NOT call
-   * ensureStarted(). Plugin registrations are fire-and-forget — the
-   * supervisor handles scheduling independently.
-   */
-  async registerPluginServers(pluginId: string, manifestMcp: Record<string, unknown>): Promise<void> {
-    const cfg = await Config.current()
-    const userMcp = cfg.mcp ?? {}
-    const defaults =
-      typeof manifestMcp.defaults === "object" && manifestMcp.defaults !== null
-        ? (manifestMcp.defaults as Record<string, unknown>)
-        : {}
-
-    for (const [serverKey, declaration] of Object.entries(manifestMcp)) {
-      // Skip metadata fields
-      if (serverKey === "defaults" || serverKey === "locked") continue
-      if (!isServerDeclaration(declaration)) continue
-
-      // Bare-key shadow: user config wins
-      if (userMcp[serverKey] !== undefined) {
-        log.info("plugin MCP skipped (user config shadow)", { pluginId, serverKey })
-        continue
-      }
-
-      const scopedKey = PluginId.mcpServerKey(pluginId, serverKey)
-
-      // Skip if already registered (e.g. from a prior init/reload cycle)
-      if (this.get(scopedKey)) {
-        log.info("plugin MCP skipped (already registered)", { pluginId, serverKey })
-        continue
-      }
-
-      const merged = mergeDeep(defaults, declaration as Record<string, unknown>) as Record<string, unknown>
-
-      // Normalize through Config's standard MCP pipeline
-      const normalized = Config.normalizeMcp(merged as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
-
-      this.add(scopedKey, normalized)
-      await Bus.publish(ToolsChanged, { server: scopedKey })
-      log.info("plugin MCP registered", { pluginId, serverKey, scopedKey, startup: normalized.startup })
-    }
+  async replacePluginServers(pluginId: string, declarations: Record<string, unknown>): Promise<void> {
+    await this.replacePluginCandidates([{ pluginId, declarations }], false)
   }
 
-  /**
-   * Unregister all MCP servers contributed by a plugin.
-   * Disconnects and removes every handle whose name starts with `{pluginId}::`.
-   */
-  async unregisterPluginServers(pluginId: string): Promise<void> {
-    const prefix = PluginId.mcpServerKey(pluginId, "")
-    const handles = this.getAll().filter((h) => h.name.startsWith(prefix))
-    await Promise.all(handles.map((h) => this.disconnect(h.name)))
-    for (const h of handles) {
-      this.handles.delete(h.name)
-      await Bus.publish(ToolsChanged, { server: h.name })
+  async replaceAllPluginServers(
+    candidates: Array<{ pluginId: string; declarations: Record<string, unknown> }>,
+  ): Promise<void> {
+    await this.replacePluginCandidates(candidates, true)
+  }
+
+  private async replacePluginCandidates(
+    candidates: Array<{ pluginId: string; declarations: Record<string, unknown> }>,
+    replaceAll: boolean,
+  ): Promise<void> {
+    await this.serializeMutation(async () => {
+      const cfg = await Config.current()
+      const staged = candidates.flatMap(({ pluginId, declarations }) =>
+        this.stagePluginServers(pluginId, declarations, cfg),
+      )
+      const pluginIds = new Set(candidates.map((candidate) => candidate.pluginId))
+      const replaced = [...this.handles.values()].filter(
+        (handle) => handle.source === "plugin" && (replaceAll || (handle.pluginId && pluginIds.has(handle.pluginId))),
+      )
+      const changedNames = new Set([...replaced.map((handle) => handle.name), ...staged.map((handle) => handle.name)])
+
+      for (const handle of replaced) {
+        this.handles.delete(handle.name)
+        this.invalidateHandle(handle)
+      }
+      for (const handle of staged) this.handles.set(handle.name, handle)
+
+      await Promise.all(replaced.map((handle) => this.disposeHandle(handle, "plugin replacement")))
+      for (const handle of staged) this.applyStartupPolicy(handle)
+      await Promise.all([...changedNames].map((server) => Bus.publish(ToolsChanged, { server })))
+    })
+  }
+
+  private stagePluginServers(pluginId: string, declarations: Record<string, unknown>, cfg: Config.Info): McpHandle[] {
+    const userMcp = cfg.mcp ?? {}
+    const defaults =
+      typeof declarations.defaults === "object" && declarations.defaults !== null
+        ? (declarations.defaults as Record<string, unknown>)
+        : {}
+    const staged: McpHandle[] = []
+
+    for (const [serverKey, declaration] of Object.entries(declarations)) {
+      if (serverKey === "defaults" || serverKey === "locked") continue
+      const merged = mergeDeep(defaults, declaration as Record<string, unknown>) as Record<string, unknown>
+      const parsed = McpServerConfig.safeParse(merged)
+      if (!parsed.success) {
+        throw new InvalidPluginServer({
+          pluginId,
+          contributionId: serverKey,
+          issues: parsed.error.issues,
+        })
+      }
+      const name = PluginId.mcpServerKey(pluginId, serverKey)
+      if (userMcp[serverKey] !== undefined || userMcp[name] !== undefined) continue
+      const config = Config.normalizeMcp(parsed.data, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      staged.push(this.createHandle(name, config, "plugin", pluginId))
     }
+    return staged
+  }
+
+  private serializeMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const current = this.mutation.then(mutation, mutation)
+    this.mutation = current.then(
+      () => undefined,
+      () => undefined,
+    )
+    return current
   }
 
   // ── Internal ────────────────────────────────────────────────────────
 
+  private createHandle(name: string, config: Config.Mcp, source: McpServerSource, pluginId?: string): McpHandle {
+    return newHandle(name, config, source, ++this.identityGeneration, pluginId)
+  }
+
+  private isCurrent(handle: McpHandle, generation?: number): boolean {
+    return this.handles.get(handle.name) === handle && (generation === undefined || handle.generation === generation)
+  }
+
+  private invalidateHandle(handle: McpHandle): void {
+    handle.generation++
+    handle.state = HS.Stopping
+    this.pendingStarts = this.pendingStarts.filter((pending) => pending !== handle)
+  }
+
+  private async disposeHandle(handle: McpHandle, reason: string): Promise<void> {
+    const client = handle.client
+    handle.client = undefined
+    handle.toolDefs = []
+    handle.prompts = {}
+    handle.resources = {}
+    await PendingOAuth.disposeIfIdentity(handle.name, handle.identity, reason)
+    if (client) {
+      await client.close().catch((error) => log.error("failed to close MCP client", { name: handle.name, error }))
+    }
+  }
+
+  private applyStartupPolicy(handle: McpHandle): void {
+    if (handle.config.enabled === false) {
+      handle.state = HS.Disabled
+      return
+    }
+    if (handle.config.startup === "manual" || handle.config.startup === "lazy") {
+      handle.state = HS.Uninitialized
+      return
+    }
+    if (handle.state === HS.Uninitialized || handle.state === HS.Failed) this.scheduleStart(handle)
+  }
+
   private async initFromConfig(): Promise<void> {
     const cfg = await Config.current()
-    const config = cfg.mcp ?? {}
-
-    for (const [key, mcp] of Object.entries(config)) {
+    for (const [key, mcp] of Object.entries(cfg.mcp ?? {})) {
       if (typeof mcp !== "object" || mcp === null || !("type" in mcp)) {
-        log.error("Ignoring MCP config entry without type", { key })
+        if (mcp?.enabled !== false) log.error("Ignoring MCP config entry without type", { key })
         continue
       }
-
-      const server = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
-      const handle = this.getOrCreate(key, server)
-
-      if (server.enabled === false) {
-        handle.state = HS.Disabled
-        continue
-      }
-      if (server.startup === "manual" || server.startup === "lazy") {
-        handle.state = HS.Uninitialized
-        continue
-      }
-
-      this.scheduleStart(handle)
+      const config = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
+      const handle = this.createHandle(key, config, "config")
+      this.handles.set(key, handle)
+      this.applyStartupPolicy(handle)
     }
-
     Bus.publish(Ready, {})
   }
 
   private scheduleStart(handle: McpHandle): void {
+    if (!this.isCurrent(handle)) return
     if (handle.state === HS.Connected || handle.state === HS.Starting || handle.state === HS.Connecting) return
     if (this.pendingStarts.includes(handle)) return
 
@@ -645,14 +736,15 @@ class McpSupervisorImpl {
   }
 
   private async connectPipeline(handle: McpHandle): Promise<void> {
+    if (!this.isCurrent(handle)) return
     const gen = ++handle.generation
     handle.state = HS.Connecting
     const config = handle.config
     let client: Client | undefined
+    await PendingOAuth.disposeIfIdentity(handle.name, handle.identity, "connection restarted")
+    if (!this.isCurrent(handle, gen)) return
 
-    // --- Transport setup ---
     if (config.type === "remote") {
-      // OAuth is enabled by default for remote servers
       const oauthDisabled = config.oauth === false
       const oauthConfig = typeof config.oauth === "object" ? config.oauth : undefined
       let authProvider: McpOAuthProvider | undefined
@@ -668,8 +760,10 @@ class McpSupervisorImpl {
           },
           {
             onRedirect: async (url) => {
+              if (!this.isCurrent(handle, gen)) return
               log.info("oauth redirect requested", { key: handle.name, host: url.hostname })
             },
+            isCurrent: () => this.isCurrent(handle, gen),
           },
         )
       }
@@ -694,54 +788,77 @@ class McpSupervisorImpl {
       const connectTimeout = config.connectTimeout ?? config.timeout ?? DEFAULT_TIMEOUT
       let lastError: Error | undefined
 
-      for (const { name: tname, transport } of transports) {
-        const c = new Client({
+      for (const { name: transportName, transport } of transports) {
+        const candidateClient = new Client({
           name: "synergy",
           version: Installation.VERSION,
         })
         try {
-          await withTimeout(c.connect(transport), connectTimeout)
-          registerNotificationHandlers(handle, c)
-          client = c
-          log.info("connected", { key: handle.name, transport: tname })
+          await withTimeout(candidateClient.connect(transport), connectTimeout)
+          if (!this.isCurrent(handle, gen)) {
+            await candidateClient.close().catch(() => {})
+            return
+          }
+          registerNotificationHandlers(handle, candidateClient, (generation) => this.isCurrent(handle, generation))
+          client = candidateClient
+          log.info("connected", { key: handle.name, transport: transportName })
           break
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error))
+          if (!this.isCurrent(handle, gen)) {
+            await closeFailedClient(candidateClient, handle.name, `connect:${transportName}:stale`)
+            return
+          }
 
           if (error instanceof UnauthorizedError) {
-            log.info("mcp server requires authentication", { key: handle.name, transport: tname })
+            log.info("mcp server requires authentication", { key: handle.name, transport: transportName })
 
             if (lastError.message.includes("registration") || lastError.message.includes("client_id")) {
+              await closeFailedClient(candidateClient, handle.name, `connect:${transportName}:registration`)
+              if (!this.isCurrent(handle, gen)) return
               handle.state = HS.NeedsClientRegistration
               handle.lastError =
                 "Server does not support dynamic client registration. Please provide clientId in config."
-              await closeFailedClient(c, handle.name, `connect:${tname}:registration`)
-              log.warn("mcp server requires pre-registered client", { key: handle.name, transport: tname })
+              log.warn("mcp server requires pre-registered client", { key: handle.name, transport: transportName })
             } else {
-              await PendingOAuth.register(handle.name, {
-                client: c,
-                transport,
-                onDispose: async () => {
-                  await Promise.all([
-                    McpAuth.clearCodeVerifier(handle.name).catch(() => undefined),
-                    McpAuth.clearOAuthState(handle.name).catch(() => undefined),
-                  ])
+              const authEntry = await McpAuth.get(handle.name)
+              const codeVerifier = authEntry?.codeVerifier
+              const oauthState = authEntry?.oauthState
+              const registered = await PendingOAuth.register(
+                handle.name,
+                {
+                  client: candidateClient,
+                  transport,
+                  identity: handle.identity,
+                  onDispose: async () => {
+                    await Promise.all([
+                      codeVerifier === undefined
+                        ? undefined
+                        : McpAuth.clearCodeVerifier(handle.name, codeVerifier).catch(() => undefined),
+                      oauthState === undefined
+                        ? undefined
+                        : McpAuth.clearOAuthState(handle.name, oauthState).catch(() => undefined),
+                    ])
+                  },
                 },
-              })
+                { isCurrent: () => this.isCurrent(handle, gen) },
+              )
+              if (!registered) return
               handle.state = HS.NeedsAuth
               log.warn("mcp server requires authentication", {
                 key: handle.name,
-                transport: tname,
+                transport: transportName,
                 command: `synergy mcp auth ${handle.name}`,
               })
             }
             return
           }
 
-          await closeFailedClient(c, handle.name, `connect:${tname}`)
+          await closeFailedClient(candidateClient, handle.name, `connect:${transportName}`)
+          if (!this.isCurrent(handle, gen)) return
           log.debug("transport connection failed", {
             key: handle.name,
-            transport: tname,
+            transport: transportName,
             url: redactUrl(config.url),
             error: lastError.message,
           })
@@ -750,25 +867,30 @@ class McpSupervisorImpl {
     }
 
     if (config.type === "local") {
-      const [cmd, ...args] = config.command
+      const [command, ...args] = config.command
       const cwd = localServerCwd(config)
       const transport = new StdioClientTransport({
         stderr: "ignore",
-        command: cmd,
+        command,
         args,
         cwd,
-        env: buildLocalEnv(cmd, config.environment),
+        env: buildLocalEnv(command, config.environment),
       })
       const connectTimeout = config.connectTimeout ?? config.timeout ?? DEFAULT_TIMEOUT
-      const c = new Client({
+      const candidateClient = new Client({
         name: "synergy",
         version: Installation.VERSION,
       })
       try {
-        await connectClientOrCloseOnFailure(c, transport, connectTimeout, handle.name, "connect:stdio")
-        registerNotificationHandlers(handle, c)
-        client = c
+        await connectClientOrCloseOnFailure(candidateClient, transport, connectTimeout, handle.name, "connect:stdio")
+        if (!this.isCurrent(handle, gen)) {
+          await candidateClient.close().catch(() => {})
+          return
+        }
+        registerNotificationHandlers(handle, candidateClient, (generation) => this.isCurrent(handle, generation))
+        client = candidateClient
       } catch (error) {
+        if (!this.isCurrent(handle, gen)) return
         log.error("local mcp startup failed", {
           key: handle.name,
           command: redactCommand(config.command),
@@ -780,30 +902,28 @@ class McpSupervisorImpl {
     }
 
     if (!client) {
-      await this.handleConnectFailure(handle)
+      this.handleConnectFailure(handle, gen)
       return
     }
 
-    // --- listTools ---
     handle.state = HS.ListingTools
     const listTimeout = config.listTimeout ?? config.timeout ?? DEFAULT_TIMEOUT
-    const toolsResult = await withTimeout(client.listTools(), listTimeout).catch((err) => {
-      log.error("failed to get tools from client", { key: handle.name, error: err })
+    const toolsResult = await withTimeout(client.listTools(), listTimeout).catch((error) => {
+      log.error("failed to get tools from client", { key: handle.name, error })
       return undefined
     })
 
+    if (!this.isCurrent(handle, gen)) {
+      await client.close().catch(() => {})
+      return
+    }
     if (!toolsResult) {
       await client.close().catch((error) => {
         log.error("failed to close MCP client after listTools failure", { name: handle.name, error })
       })
+      if (!this.isCurrent(handle, gen)) return
       handle.lastError = "Failed to get tools"
-      await this.handleConnectFailure(handle)
-      return
-    }
-
-    // Check generation: if handle was reset during listTools, discard
-    if (handle.generation !== gen) {
-      await client.close().catch(() => {})
+      this.handleConnectFailure(handle, gen)
       return
     }
 
@@ -815,12 +935,11 @@ class McpSupervisorImpl {
 
     log.info("MCP server connected", { key: handle.name, toolCount: toolsResult.tools.length })
     Bus.publish(ToolsChanged, { server: handle.name })
-
-    // Prewarm discovery caches (fire and forget)
-    void prewarmDiscoveryCaches(handle)
+    void prewarmDiscoveryCaches(handle, (generation) => this.isCurrent(handle, generation))
   }
 
-  private async handleConnectFailure(handle: McpHandle): Promise<void> {
+  private handleConnectFailure(handle: McpHandle, generation: number): void {
+    if (!this.isCurrent(handle, generation)) return
     handle.client = undefined
     handle.toolDefs = []
 
@@ -852,9 +971,7 @@ class McpSupervisorImpl {
     })
 
     setTimeout(() => {
-      if (handle.state === HS.Reconnecting) {
-        this.scheduleStart(handle)
-      }
+      if (this.isCurrent(handle, generation) && handle.state === HS.Reconnecting) this.scheduleStart(handle)
     }, delay)
   }
 }
@@ -869,41 +986,48 @@ export const McpSupervisor = new McpSupervisorImpl()
 // Notification handlers — self-contained per-handle callbacks
 // ---------------------------------------------------------------------------
 
-function registerNotificationHandlers(handle: McpHandle, client: Client): void {
+function registerNotificationHandlers(
+  handle: McpHandle,
+  client: Client,
+  isCurrent: (generation: number) => boolean,
+): void {
   client.setNotificationHandler(ToolListChangedNotificationSchema, async () => {
+    const generation = handle.generation
+    if (!isCurrent(generation)) return
     log.info("tools list changed notification received", { server: handle.name })
-    const gen = handle.generation
-    const toolsResult = await client.listTools().catch((e) => {
-      log.error("failed to refresh tool defs from notification", { clientName: handle.name, error: e })
+    const toolsResult = await client.listTools().catch((error) => {
+      log.error("failed to refresh tool defs from notification", { clientName: handle.name, error })
       return undefined
     })
-    if (toolsResult && handle.generation === gen && handle.state === HS.Connected) {
+    if (toolsResult && isCurrent(generation) && handle.state === HS.Connected) {
       handle.toolDefs = toolsResult.tools
       Bus.publish(ToolsChanged, { server: handle.name })
     }
   })
 
   client.setNotificationHandler(PromptListChangedNotificationSchema, async () => {
+    const generation = handle.generation
+    if (!isCurrent(generation)) return
     log.info("prompts list changed notification received", { server: handle.name })
-    const gen = handle.generation
-    const prompts = await fetchPromptsForHandle(handle, client).catch((e) => {
-      log.error("failed to refresh prompts from notification", { clientName: handle.name, error: e })
+    const prompts = await fetchPromptsForHandle(handle, client).catch((error) => {
+      log.error("failed to refresh prompts from notification", { clientName: handle.name, error })
       return undefined
     })
-    if (prompts && handle.generation === gen && handle.state === HS.Connected) {
+    if (prompts && isCurrent(generation) && handle.state === HS.Connected) {
       handle.prompts = prompts
       Bus.publish(PromptsChanged, { server: handle.name })
     }
   })
 
   client.setNotificationHandler(ResourceListChangedNotificationSchema, async () => {
+    const generation = handle.generation
+    if (!isCurrent(generation)) return
     log.info("resources list changed notification received", { server: handle.name })
-    const gen = handle.generation
-    const resources = await fetchResourcesForHandle(handle, client).catch((e) => {
-      log.error("failed to refresh resources from notification", { clientName: handle.name, error: e })
+    const resources = await fetchResourcesForHandle(handle, client).catch((error) => {
+      log.error("failed to refresh resources from notification", { clientName: handle.name, error })
       return undefined
     })
-    if (resources && handle.generation === gen && handle.state === HS.Connected) {
+    if (resources && isCurrent(generation) && handle.state === HS.Connected) {
       handle.resources = resources
       Bus.publish(ResourcesChanged, { server: handle.name })
     }
@@ -948,9 +1072,9 @@ async function fetchResourcesForHandle(handle: McpHandle, client: Client): Promi
   return result
 }
 
-async function prewarmDiscoveryCaches(handle: McpHandle): Promise<void> {
+async function prewarmDiscoveryCaches(handle: McpHandle, isCurrent: (generation: number) => boolean): Promise<void> {
   if (handle.state !== HS.Connected || !handle.client) return
-  const gen = handle.generation
+  const generation = handle.generation
   const client = handle.client
 
   const [promptCache, resourceCache] = await Promise.all([
@@ -964,7 +1088,7 @@ async function prewarmDiscoveryCaches(handle: McpHandle): Promise<void> {
     }),
   ])
 
-  if (handle.generation !== gen || handle.state !== HS.Connected) return
+  if (!isCurrent(generation) || handle.state !== HS.Connected) return
   if (promptCache) {
     handle.prompts = promptCache
     Bus.publish(PromptsChanged, { server: handle.name })

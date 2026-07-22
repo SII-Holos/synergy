@@ -270,7 +270,7 @@ export namespace LLM {
 
     const systemTimer = l.time("system.assembly")
 
-    const system: string[] = []
+    let system: string[] = []
     const baseSystem = (input.agent.prompt ? [input.agent.prompt] : SystemPrompt.provider(input.model)).map((prompt) =>
       withPreambleSection(prompt),
     )
@@ -287,7 +287,7 @@ export namespace LLM {
     if (input.user.system) system.push(input.user.system)
 
     const original = clone(system)
-    await Plugin.trigger(
+    const transformed = await Plugin.trigger(
       "experimental.chat.system.transform",
       {
         phase: "final",
@@ -296,13 +296,12 @@ export namespace LLM {
         model: { providerID: input.model.providerID, modelID: input.model.id },
         messageID: input.user.id,
         small: input.small,
+        system: original,
       },
-      { system },
+      { system: original },
     )
-    const emptiedByTransform = system.length === 0
-    if (emptiedByTransform) {
-      system.push(...original)
-    }
+    const emptiedByTransform = transformed.system.length === 0
+    system = emptiedByTransform ? original : transformed.system
     l.debug("system transform final result", {
       sessionID: input.sessionID,
       messageID: input.user.id,

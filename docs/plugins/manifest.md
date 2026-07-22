@@ -31,6 +31,7 @@ Identity and descriptive fields come from `definePlugin()`. `capabilities` is th
 | `operation`             | yes        | `type`, `expose`, input/output JSON Schema, optional timeout                 |
 | `event`                 | no         | payload JSON Schema                                                          |
 | `tool`                  | yes        | object input JSON Schema, exposure, display metadata, optional `enabledWhen` |
+| `cli.command`           | yes        | description, typed options, optional timeout                                 |
 | `hook`                  | yes        | host hook point and priority                                                 |
 | `agent`                 | no         | agent declaration                                                            |
 | `skill`                 | no         | skill declaration                                                            |

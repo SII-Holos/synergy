@@ -1071,16 +1071,35 @@ export namespace SessionProcessor {
                       const match = toolcalls[value.toolCallId]
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
+                      const streamedRaw = generatingAccum[value.toolCallId]
+                      const toolInput = SessionToolInput.normalize(value.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
+                      log.info("tool.stream.tool_call.input_ready", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        source: "ai_sdk_input",
+                        bytes: toolInputBytes,
+                        streamedBytes: streamedRaw === undefined ? undefined : SessionBounds.byteLength(streamedRaw),
+                      })
                       const runningMetadata = ToolTimeout.mergeMetadata(
                         runningToolMetadata(value.toolName, value.providerMetadata),
                         pendingState?.metadata,
                       )
-                      const toolInput = SessionToolInput.normalize(value.input)
+                      log.info("tool.stream.tool_call.metadata_ready", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                      })
                       streamInput.memoryTurn?.observeToolRawChars(
                         value.toolCallId,
-                        LLMTurnMemory.estimateChars(value.input, SessionBounds.TOOL_INPUT_MAX_BYTES),
+                        streamedRaw !== undefined
+                          ? streamedRaw.length
+                          : LLMTurnMemory.estimateChars(toolInput, SessionBounds.TOOL_INPUT_MAX_BYTES),
                       )
-                      if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                      if (toolInputBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
                         const error = SessionBounds.toolInputExceededMessage()
                         const part = await Session.updatePart({
                           ...(match ?? {
@@ -1106,6 +1125,12 @@ export namespace SessionProcessor {
                         delete generatingBytes[value.toolCallId]
                         throw new Error(error)
                       }
+                      log.info("tool.stream.tool_call.persist_running", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                      })
                       const part = await Session.updatePart({
                         ...(match ?? {
                           id: Identifier.ascending("part"),
@@ -1420,7 +1445,7 @@ export namespace SessionProcessor {
               log.error("process", {
                 error: e,
               })
-              const error = MessageV2.fromError(e, { providerID: input.model.providerID })
+              const error = MessageV2.fromError(e, { providerID: input.model.providerID, modelID: input.model.id })
               const retry = fastAbort ? undefined : SessionRetry.retryable(error)
               if (retry !== undefined && attempt < SessionRetry.RETRY_MAX_ATTEMPTS) {
                 attempt++
