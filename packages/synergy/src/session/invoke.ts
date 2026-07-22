@@ -382,17 +382,15 @@ export namespace SessionInvoke {
 
         const agent = await Agent.get(agentName)
 
-        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch(async () => {
-          log.warn("model not found, falling back to agent model", {
-            agent: agentName,
-            requested: `${userModel.providerID}/${userModel.modelID}`,
-          })
-          const agentModel = agent?.model
-          if (agentModel) {
-            return Provider.getModel(agentModel.providerID, agentModel.modelID)
-          }
-          throw new Error(
-            `Model ${userModel.providerID}/${userModel.modelID} not found and no agent fallback available`,
+        const model = await Provider.getModel(userModel.providerID, userModel.modelID).catch((error) => {
+          if (!Provider.ModelNotFoundError.isInstance(error)) throw error
+          throw new Provider.ModelUnavailableError(
+            {
+              providerID: userModel.providerID,
+              modelID: userModel.modelID,
+              reason: "not_in_catalog",
+            },
+            { cause: error },
           )
         })
 
@@ -996,7 +994,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             result = "stop"
           } else {
             log.error("turn deadline exceeded, abandoning turn", { sessionID, timeoutMs: timeoutCfg.invokeMs })
-            processor.message.error = MessageV2.fromError(deadlineError, { providerID: model.providerID })
+            processor.message.error = MessageV2.fromError(deadlineError, {
+              providerID: model.providerID,
+              modelID: model.id,
+            })
             processor.message.finish = "error"
             processor.message.time.completed = Date.now()
             await Session.updateMessage(processor.message)
@@ -1225,7 +1226,10 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       })
     }
 
-    message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
+    message.error = MessageV2.fromError(input.error, {
+      providerID: input.model.providerID,
+      modelID: input.model.id,
+    })
     message.finish = "error"
     message.time.completed = Date.now()
     await Session.updateMessage(message)
@@ -1280,7 +1284,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         completed: Date.now(),
       },
       finish: "error",
-      error: MessageV2.fromError(error, { providerID: user.model.providerID }),
+      error: MessageV2.fromError(error, { providerID: user.model.providerID, modelID: user.model.modelID }),
       sessionID,
     })) as MessageV2.Assistant
 

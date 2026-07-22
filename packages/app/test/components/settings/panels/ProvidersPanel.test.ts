@@ -25,6 +25,13 @@ describe("Providers panel UI contract", () => {
     expect(providersPanel).not.toContain("SettingsFieldGrid")
   })
 
+  test("separates account connection from model catalog state without internal fallback wording", () => {
+    expect(providersPanel).toContain("catalogRefreshing")
+    expect(providersPanel).toContain("catalogBundled")
+    expect(providersPanel).toContain("catalogPending")
+    expect(providersPanel).not.toContain("replace(/_/g")
+  })
+
   test("uses explicit authorization links in provider login flows", () => {
     expect(providerFlow).toContain("providerFlow.openAuthPage")
     expect(providerFlow).toContain("provider-auth-link")

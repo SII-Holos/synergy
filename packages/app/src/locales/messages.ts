@@ -806,6 +806,10 @@ export const topBar = {
   modelLockedLabel: { id: "app.topBar.model.lockedLabel", message: "Model locked" },
   selectModel: { id: "app.topBar.model.select", message: "Select model" },
   chooseModel: { id: "app.topBar.model.choose", message: "Choose model" },
+  retainedModel: {
+    id: "app.topBar.model.retained",
+    message: "This model is no longer in the latest provider list.",
+  },
   thinkingEffort: { id: "app.topBar.model.thinkingEffort", message: "Thinking effort" },
   defaultVariant: { id: "app.topBar.model.defaultVariant", message: "Default" },
   openNavigation: { id: "app.topBar.mobile.openNav", message: "Open navigation" },
@@ -1065,6 +1069,7 @@ export const providerFlow = {
   chooseHowToConnect: { id: "app.provider.choice.chooseHow", message: "Choose how to connect" },
   // States
   authInProgress: { id: "app.provider.state.pending", message: "Authorization in progress..." },
+  importInProgress: { id: "app.provider.state.importing", message: "Importing credentials..." },
   authFailed: { id: "app.provider.state.failed", message: "Authorization failed: {error}" },
   tryAnotherMethod: { id: "app.provider.state.tryAnotherMethod", message: "Try another method" },
   // API key
@@ -1112,7 +1117,10 @@ export const providerFlow = {
   // Toast
   connected: { id: "app.provider.toast.connected", message: "connected" },
   reconnected: { id: "app.provider.toast.reconnected", message: "reconnected" },
-  modelsAvailable: { id: "app.provider.toast.modelsAvailable", message: "{provider} models are now available to use." },
+  modelsAvailable: {
+    id: "app.provider.toast.modelsAvailable",
+    message: "{provider} is connected. Models sync in the background.",
+  },
   // Back to providers
   backToProviders: { id: "app.provider.backToProviders", message: "Back to providers" },
 } as const satisfies Record<string, AppMessageDescriptor>

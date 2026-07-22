@@ -50,6 +50,7 @@ import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
 import { ProvidersPanel } from "./panels/ProvidersPanel"
+import { isSelectableModel } from "@/components/provider/model-catalog"
 import { AccountPanel } from "./panels/AccountPanel"
 import { PersonalizePanel } from "./panels/PersonalizePanel"
 import { createPersonalizeController } from "./panels/personalize-controller"
@@ -226,10 +227,8 @@ export function SettingsPanel(props: SettingsPanelProps) {
     for (const provider of data.all) {
       if (!data.connected.includes(provider.id)) continue
       if (data.runtimeAvailability?.[provider.id]?.available === false) continue
-      for (const [modelId, model] of Object.entries(provider.models) as [
-        string,
-        { name: string; variants?: Record<string, unknown> },
-      ][]) {
+      for (const [modelId, model] of Object.entries(provider.models)) {
+        if (!isSelectableModel(model)) continue
         list.push({
           providerId: provider.id,
           providerName: provider.name,
@@ -271,6 +270,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
         modelCount: availability?.modelCount ?? Object.keys(provider.models).length,
         health,
         availability,
+        catalog: data.modelCatalog?.[provider.id],
         profile: data.profiles?.[provider.id],
       }
     })

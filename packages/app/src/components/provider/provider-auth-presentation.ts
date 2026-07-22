@@ -24,8 +24,6 @@ export function providerStatusLabel(
   }
   if (health?.status === "exhausted")
     return { id: "provider.status.temporarilyUnavailable", message: "Temporarily unavailable" }
-  if (availability?.reason === "fallback_unverified")
-    return { id: "provider.status.fallbackCatalog", message: "Fallback catalog" }
   if (health?.status === "connected")
     return availability?.available === false
       ? { id: "provider.status.unavailable", message: "Unavailable" }

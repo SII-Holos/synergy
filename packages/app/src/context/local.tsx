@@ -11,6 +11,7 @@ import { useProviders } from "@/hooks/use-providers"
 import { Persist, persisted } from "@/utils/persist"
 import { createModelVariantSession } from "./prompt/model-variant"
 import * as ComposerIntent from "./prompt/composer-intent"
+import { isSelectableModel, resolveSessionModel } from "@/components/provider/model-catalog"
 
 export type TextSelection = { startLine: number; startChar: number; endLine: number; endChar: number }
 
@@ -48,8 +49,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const provider = providers.all().find((x) => x.id === model.providerID)
       return (
         !!provider?.models[model.modelID] &&
+        isSelectableModel(provider.models[model.modelID]) &&
         providers
-          .connected()
+          .available()
           .map((p) => p.id)
           .includes(model.providerID)
       )
@@ -226,8 +228,8 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const keyOf = (model: ModelKey) => `${model.providerID}:${model.modelID}`
       const keyOfLocalModel = (model: LocalModel) => keyOf({ providerID: model.provider.id, modelID: model.id })
 
-      const available = createMemo(() =>
-        providers.connected().flatMap((p) =>
+      const catalog = createMemo(() =>
+        providers.available().flatMap((p) =>
           Object.values(p.models).map((m) => ({
             ...m,
             provider: p,
@@ -236,11 +238,13 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       )
 
       const all = createMemo(() =>
-        available().map((m) => ({
-          ...m,
-          name: m.name.replace("(latest)", "").trim(),
-          latest: m.name.includes("(latest)"),
-        })),
+        catalog()
+          .filter(isSelectableModel)
+          .map((m) => ({
+            ...m,
+            name: m.name.replace("(latest)", "").trim(),
+            latest: m.name.includes("(latest)"),
+          })),
       )
 
       const find = (key: ModelKey | undefined) => {
@@ -259,7 +263,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
         }
         const newest = (models: LocalModel[]) => firstBy(models, [(x) => x.release_date, "desc"])
 
-        for (const provider of providers.connected()) {
+        for (const provider of providers.available()) {
           const providerModels = all().filter((model) => model.provider.id === provider.id)
           if (providerModels.length === 0) continue
 
@@ -311,7 +315,7 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
           }
         }
 
-        for (const p of providers.connected()) {
+        for (const p of providers.available()) {
           if (p.id in providers.default()) {
             return {
               providerID: p.id,
@@ -339,12 +343,28 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       const current = createMemo(() => {
         const a = agent.current()
         if (!a) return undefined
-        const key = getFirstValidModel(
-          () => draft.model[intentKey()],
-          () => sessionDefaultModel(),
-          () => a.model,
-          fallbackModel,
-        )
+        const draftModel = draft.model[intentKey()]
+        const activeDraft = find(draftModel)
+        if (activeDraft) return activeDraft
+        const retainedDraft = params.id ? resolveSessionModel(providers.connected(), draftModel) : undefined
+        if (retainedDraft) {
+          return {
+            ...retainedDraft.model,
+            provider: retainedDraft.provider,
+            name: retainedDraft.model.name.replace("(latest)", "").trim(),
+            latest: retainedDraft.model.name.includes("(latest)"),
+          }
+        }
+        const existing = resolveSessionModel(providers.connected(), sessionDefaultModel())
+        if (existing) {
+          return {
+            ...existing.model,
+            provider: existing.provider,
+            name: existing.model.name.replace("(latest)", "").trim(),
+            latest: existing.model.name.includes("(latest)"),
+          }
+        }
+        const key = getFirstValidModel(() => a.model, fallbackModel)
         if (!key) return undefined
         return find(key)
       })
