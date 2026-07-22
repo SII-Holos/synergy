@@ -5525,34 +5525,142 @@ export type ProviderAuthAuthorization = {
   instructions: string
 }
 
-export type SkillList = {
-  items: Array<{
-    name: string
-    description: string
-    location: string
-    builtin?: boolean
-    source?: "builtin" | "plugin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
-    scope: "builtin" | "project" | "global" | "workspace" | "external"
-    compatibility?: {
-      level: "native" | "compatible" | "partial"
-      warnings?: Array<string>
-      unsupported?: Array<string>
-    }
-    entryFile?: string
-    baseDir?: string
-    pluginId?: string
-    pluginName?: string
-    references?: Array<string>
-    scripts?: Array<string>
-  }>
+export type SkillSummary = {
+  name: string
+  description: string
+  location: string
+  builtin?: boolean
+  source: "builtin" | "plugin" | "synergy" | "agents" | "claude" | "codex" | "openclaw"
+  scope: "builtin" | "project" | "global" | "workspace" | "external"
+  compatibility: {
+    level: "native" | "compatible" | "partial"
+    warnings: Array<string>
+    unsupported: Array<string>
+  }
+  declaredCompatibility?: string
+  invocation: {
+    user: boolean
+    model: boolean
+  }
+  exportable: boolean
   diagnostics: Array<{
-    path: string
+    code: string
+    severity: "error" | "warning" | "info"
     name: string
+    source: "builtin" | "plugin" | "synergy" | "agents" | "claude" | "codex" | "openclaw"
+    path?: string
+    field?: string
+    reason: {
+      [key: string]: unknown
+    }
     message: string
-    severity?: "error" | "warning" | "info"
-    code?: string
-    source?: "builtin" | "plugin" | "synergy" | "claude" | "openclaw" | "codex" | "generic"
   }>
+  entryFile?: string
+  baseDir?: string
+  pluginId?: string
+}
+
+export type SkillList = {
+  items: Array<SkillSummary>
+  diagnostics: Array<{
+    code: string
+    severity: "error" | "warning" | "info"
+    name: string
+    source: "builtin" | "plugin" | "synergy" | "agents" | "claude" | "codex" | "openclaw"
+    path?: string
+    field?: string
+    reason: {
+      [key: string]: unknown
+    }
+    message: string
+  }>
+}
+
+export type SkillExportNotStandardError = {
+  name: "SkillExportNotStandardError"
+  data: {
+    code: "skill.export_not_standard"
+    message: string
+    name: string
+    diagnostics: Array<{
+      code: string
+      severity: "error" | "warning" | "info"
+      name: string
+      source: "builtin" | "plugin" | "synergy" | "agents" | "claude" | "codex" | "openclaw"
+      path?: string
+      field?: string
+      reason: {
+        [key: string]: unknown
+      }
+      message: string
+    }>
+  }
+}
+
+export type SkillExportUnavailableError = {
+  name: "SkillExportUnavailableError"
+  data: {
+    code: "skill.export_unavailable"
+    message: string
+    name: string
+  }
+}
+
+export type SkillExportNotFoundError = {
+  name: "SkillExportNotFoundError"
+  data: {
+    code: "skill.export_not_found"
+    message: string
+    name: string
+  }
+}
+
+export type SkillRemoveResult = {
+  success: true
+}
+
+export type SkillRemoveFailure = {
+  error: string
+  name: string
+  pluginId?: string
+}
+
+export type SkillImportResult = {
+  success: true
+  name: string
+  scope: "project" | "global"
+}
+
+export type SkillArchiveInvalidError = {
+  name: "SkillArchiveInvalidError"
+  data: {
+    code: string
+    message: string
+    path?: string
+    limit?: number
+    actual?: number
+  }
+}
+
+export type SkillArchiveConflictError = {
+  name: "SkillArchiveConflictError"
+  data: {
+    code: "skill.archive_conflict"
+    message: string
+    name: string
+    path: string
+  }
+}
+
+export type SkillArchiveLimitError = {
+  name: "SkillArchiveLimitError"
+  data: {
+    code: string
+    message: string
+    path?: string
+    limit?: number
+    actual?: number
+  }
 }
 
 export type WorkspaceFileNode = {
@@ -12263,7 +12371,7 @@ export type SkillListData = {
 
 export type SkillListResponses = {
   /**
-   * List of skills
+   * List of Skills
    */
   200: SkillList
 }
@@ -12289,6 +12397,37 @@ export type SkillReloadResponses = {
 
 export type SkillReloadResponse = SkillReloadResponses[keyof SkillReloadResponses]
 
+export type SkillExportData = {
+  body?: never
+  path: {
+    name: string
+  }
+  query?: {
+    directory?: string
+    scopeID?: string
+    format?: "zip" | "skill"
+  }
+  url: "/skill/{name}/export"
+}
+
+export type SkillExportErrors = {
+  /**
+   * Skill is not exportable or not strict-standard
+   */
+  400: SkillExportNotStandardError | SkillExportUnavailableError | SkillExportNotFoundError
+}
+
+export type SkillExportError = SkillExportErrors[keyof SkillExportErrors]
+
+export type SkillExportResponses = {
+  /**
+   * Skill archive
+   */
+  200: Blob | File
+}
+
+export type SkillExportResponse = SkillExportResponses[keyof SkillExportResponses]
+
 export type SkillRemoveData = {
   body?: never
   path: {
@@ -12303,6 +12442,10 @@ export type SkillRemoveData = {
 
 export type SkillRemoveErrors = {
   /**
+   * Skill cannot be deleted
+   */
+  400: SkillRemoveFailure
+  /**
    * Not found
    */
   404: NotFoundError
@@ -12314,9 +12457,7 @@ export type SkillRemoveResponses = {
   /**
    * Skill deleted successfully
    */
-  200: {
-    success: true
-  }
+  200: SkillRemoveResult
 }
 
 export type SkillRemoveResponse = SkillRemoveResponses[keyof SkillRemoveResponses]
@@ -12336,9 +12477,17 @@ export type SkillImportData = {
 
 export type SkillImportErrors = {
   /**
-   * Bad request
+   * Invalid Skill archive
    */
-  400: BadRequestError
+  400: SkillArchiveInvalidError
+  /**
+   * A Skill with the same name already exists
+   */
+  409: SkillArchiveConflictError
+  /**
+   * Skill archive exceeds an import limit
+   */
+  413: SkillArchiveLimitError
 }
 
 export type SkillImportError = SkillImportErrors[keyof SkillImportErrors]
@@ -12347,11 +12496,7 @@ export type SkillImportResponses = {
   /**
    * Skill imported successfully
    */
-  200: {
-    success: true
-    name: string
-    scope: "global" | "project"
-  }
+  200: SkillImportResult
 }
 
 export type SkillImportResponse = SkillImportResponses[keyof SkillImportResponses]
@@ -12371,9 +12516,17 @@ export type SkillImportUrlData = {
 
 export type SkillImportUrlErrors = {
   /**
-   * Bad request
+   * Invalid URL response or Skill archive
    */
-  400: BadRequestError
+  400: SkillArchiveInvalidError
+  /**
+   * A Skill with the same name already exists
+   */
+  409: SkillArchiveConflictError
+  /**
+   * Downloaded Skill archive exceeds an import limit
+   */
+  413: SkillArchiveLimitError
 }
 
 export type SkillImportUrlError = SkillImportUrlErrors[keyof SkillImportUrlErrors]
@@ -12382,11 +12535,7 @@ export type SkillImportUrlResponses = {
   /**
    * Skill imported successfully
    */
-  200: {
-    success: true
-    name: string
-    scope: "global" | "project"
-  }
+  200: SkillImportResult
 }
 
 export type SkillImportUrlResponse = SkillImportUrlResponses[keyof SkillImportUrlResponses]

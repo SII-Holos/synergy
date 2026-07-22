@@ -4,15 +4,19 @@ Synergy supports two UI paths: host-rendered declarations and user-approved trus
 
 ## Contribution Kinds
 
-| Kind                 | Purpose                                              |
-| -------------------- | ---------------------------------------------------- |
-| `ui.workbenchPanel`  | side or bottom workbench surface                     |
-| `ui.navigationItem`  | sidebar or plugin page destination                   |
-| `ui.messageRenderer` | renderer for a declared message type                 |
-| `ui.composerAction`  | component in a declared composer slot                |
-| `ui.settings`        | schema-driven settings and optional custom component |
-| `ui.theme`           | packaged structured JSON theme                       |
-| `ui.icon`            | packaged SVG icon                                    |
+| Kind                    | Purpose                                              |
+| ----------------------- | ---------------------------------------------------- |
+| `ui.workbenchPanel`     | side or bottom workbench surface                     |
+| `ui.navigationItem`     | sidebar or plugin page destination                   |
+| `ui.messageRenderer`    | renderer for a declared message type                 |
+| `ui.composerAction`     | component in a declared composer slot                |
+| `ui.settings`           | schema-driven settings and optional custom component |
+| `ui.theme`              | packaged structured JSON theme                       |
+| `ui.icon`               | packaged SVG icon                                    |
+| `ui.composerExtension`  | headless lifecycle for Composer document services    |
+| `ui.selectionExtension` | headless lifecycle for settled selected text         |
+| `ui.textAction`         | host-rendered action for the selected-text menu      |
+| `ui.messageSlot`        | additive content around canonical messages           |
 
 The host owns placement, lifecycle, Scope/Session binding, accessibility shell, and disposal. Each registration returns one disposer and is removed before reload.
 
@@ -65,6 +69,24 @@ interface PluginSurfaceContext {
 The operation client is bound to the component's own plugin. It can call only declared operations of the requested type. It never exposes a server URL or raw SDK client.
 
 Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup. `settings` is read-only from the surface; changes continue to use the host-rendered settings page.
+
+## Composer Extensions
+
+`composerExtension()` mounts one headless trusted component for each active Composer. Its specialized context provides the host-owned Composer document service. `composer.read` permits immutable revision/text/selection snapshots and the 700 ms settled hook; `composer.write` permits suffix completion, decorations, and revision-checked edits; `composer.intercept` permits the serial normal-message preflight hook.
+
+Completion inserts only after a collapsed caret. Decorations annotate existing ranges without editing them. `applyEdits()` performs the actual replacement and rejects stale revisions, overlapping/out-of-range edits, and file-pill crossings. A preflight callback returns only `Promise<void>`: a plugin may open its own workbench panel and await its own operation/event protocol, but Synergy defines no review result or language-specific state.
+
+Draft callbacks run in parallel after IME composition settles. Preflight callbacks run serially in contribution order and the next callback reads the previous callback's edits. Shell, commands, and workflow start actions do not enter this Web-only preflight path.
+
+## Selection and Text Actions
+
+`selectionExtension()` receives only `{ text }` after the active selection has remained stable for 250 ms. Password, credential, explicitly excluded, and oversized selections are not distributed. DOM text, the Composer, Notes, Monaco source, and Terminal selection use the same App controller; Browser-page selection remains inside the Browser runtime boundary.
+
+`textAction()` declares a label, order, and a same-plugin UI-exposed command operation. The host adds it to the accessible selected-text menu and invokes that existing operation with the exact `{ text }` snapshot. The host owns copy/edit actions, focus, pending/error/cancel state, narrow-screen placement, and theme behavior; operation output remains plugin-owned.
+
+## Message Slots
+
+`messageSlot()` adds a lazy trusted component at `message.before`, `message.after`, or `message.actions`, optionally filtered to user or assistant roles. `PluginMessageSurfaceContext` contains only message ID and role; a plugin with `session.read` queries any required content through its own operation. Slots cannot replace the native message renderer, and `ui.messageRenderer` remains reserved for declared custom message types.
 
 ## Resource Tabs
 

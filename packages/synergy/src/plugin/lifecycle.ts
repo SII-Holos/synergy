@@ -106,6 +106,7 @@ async function executePluginHooks<Input, Output>(
   input: Input,
   initial: Output,
   plugins: LoadedPlugin[],
+  options?: { sessionId?: string },
 ): Promise<PluginHookExecution<Output>> {
   const point = PluginHookPointRegistry.get(pointName)
   validateHookValue(point.inputSchema, input, `Invalid input for hook point ${pointName}`)
@@ -113,7 +114,17 @@ async function executePluginHooks<Input, Output>(
   let succeededHandlers = 0
   const errors: string[] = []
   const handlers = sortPluginHookHandlers(
-    plugins.flatMap((plugin) => hookContributions(plugin, pointName).map((contribution) => ({ plugin, contribution }))),
+    plugins.flatMap((plugin) =>
+      hookContributions(plugin, pointName)
+        .filter((contribution) => {
+          if (!point.requiredCapability) return true
+          return (
+            contribution.requires?.includes(point.requiredCapability) === true &&
+            plugin.manifest.capabilities.some((capability) => capability.id === point.requiredCapability)
+          )
+        })
+        .map((contribution) => ({ plugin, contribution })),
+    ),
   )
   for (const { plugin, contribution } of handlers) {
     try {
@@ -124,7 +135,7 @@ async function executePluginHooks<Input, Output>(
         value: point.mode === "transform" ? value : input,
         context: {
           scopeId: ScopeContext.current.scope.id,
-          sessionId: sessionId(input),
+          sessionId: options?.sessionId ?? sessionId(input),
           directory: ScopeContext.current.directory,
           actor: { type: "lifecycle" },
         },
@@ -138,14 +149,23 @@ async function executePluginHooks<Input, Output>(
       succeededHandlers++
     } catch (error) {
       if (error instanceof PluginHookDeniedError) throw error
-      const message = error instanceof Error ? error.message : String(error)
+      const message = point.redactErrors
+        ? "Hook handler failed"
+        : error instanceof Error
+          ? error.message
+          : String(error)
       errors.push(`Hook ${pointName} handler ${contribution.id} failed: ${message}`)
-      markContributionDegraded(plugin, contribution.id, error)
+      markContributionDegraded(plugin, contribution.id, point.redactErrors ? new Error(message) : error)
       log.error("plugin contribution failed", {
         pluginId: plugin.id,
         contributionId: contribution.id,
         point: pointName,
-        error: message,
+        messageId:
+          pointName === "session.user-message.after" && input && typeof input === "object" && "message" in input
+            ? (input as { message?: { id?: string } }).message?.id
+            : undefined,
+        status: "failed",
+        ...(point.redactErrors ? {} : { error: message }),
       })
       if (point.failure === "fail") throw error
     }
@@ -158,13 +178,19 @@ async function triggerPlugins<Input, Output>(
   input: Input,
   initial: Output,
   plugins: LoadedPlugin[],
+  options?: { sessionId?: string },
 ): Promise<Output> {
-  return executePluginHooks(pointName, input, initial, plugins).then((result) => result.value)
+  return executePluginHooks(pointName, input, initial, plugins, options).then((result) => result.value)
 }
 
-export async function trigger<Input, Output>(pointName: string, input: Input, initial: Output): Promise<Output> {
+export async function trigger<Input, Output>(
+  pointName: string,
+  input: Input,
+  initial: Output,
+  options?: { sessionId?: string },
+): Promise<Output> {
   const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
-  return triggerPlugins(pointName, input, initial, plugins)
+  return triggerPlugins(pointName, input, initial, plugins, options)
 }
 
 export async function triggerForPlugin<Input, Output>(

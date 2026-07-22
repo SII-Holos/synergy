@@ -290,22 +290,20 @@ function pushUniqueCapability(caps: Capability[], cap: Omit<Capability, "approve
   if (caps.some((existing) => existing.class === cap.class)) return
   caps.push({ ...cap })
 }
-function firstPathArg(args: Record<string, any>): string {
-  return (
-    (args.path as string) ??
-    (args.file_path as string) ??
-    (args.filePath as string) ??
-    (args.output_path as string) ??
-    (args.outputPath as string) ??
-    ""
-  )
+function stringPathArgs(value: unknown): string[] {
+  if (typeof value === "string") return value.length > 0 ? [value] : []
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0)
+}
+
+function pathArgs(args: Record<string, any>): string[] {
+  return [args.path, args.file_path, args.filePath, args.output_path, args.outputPath]
+    .flatMap(stringPathArgs)
+    .filter((item, index, paths) => paths.indexOf(item) === index)
 }
 function imagePathArgs(args: Record<string, any>): { read: string[]; write: string[] } {
-  const read = Array.isArray(args.input_paths)
-    ? args.input_paths.filter((item: unknown): item is string => typeof item === "string" && item.length > 0)
-    : []
-  const outputPath = firstPathArg(args)
-  return { read, write: outputPath ? [outputPath] : [] }
+  const write = [...stringPathArgs(args.output_path), ...stringPathArgs(args.outputPath)]
+  return { read: stringPathArgs(args.input_paths), write: [...new Set(write)] }
 }
 
 function isDestructive(command: string): string | null {
@@ -518,12 +516,11 @@ export namespace EnforcementGate {
       // so secret roots/candidates get profile-aware handling instead of a
       // blanket .synergy/.env hard boundary.
       if (toolName !== "openai_image_gen" && toolName !== "openai_image_edit") {
-        const pathArg = firstPathArg(args)
-        if (pathArg) {
-          const mode =
-            toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
-              ? "write"
-              : "read"
+        const mode =
+          toolName === "write" || toolName === "edit" || toolName === "revise_file" || toolName === "save_file"
+            ? "write"
+            : "read"
+        for (const pathArg of pathArgs(args)) {
           classifyProtectedPathCapability(caps, pathArg, mode, { activeWorkspace, originalCheckout, synergyRoot })
         }
       }
@@ -620,8 +617,7 @@ export namespace EnforcementGate {
             classifyPathCapability(caps, p, { ...pathOptions, write: true })
           }
         } else {
-          const filePath = firstPathArg(args)
-          if (filePath) {
+          for (const filePath of pathArgs(args)) {
             classifyProtectedPathCapability(caps, filePath, "write", { activeWorkspace, originalCheckout, synergyRoot })
             classifyPathCapability(caps, filePath, { ...pathOptions, write: true })
           }
@@ -636,9 +632,7 @@ export namespace EnforcementGate {
         toolName === "view_image" ||
         toolName === "attach"
       ) {
-        const raw = args.filePath ?? args.file_path ?? ""
-        const filePath = Array.isArray(raw) ? (raw[0] ?? "") : raw
-        if (filePath) {
+        for (const filePath of pathArgs(args)) {
           classifyPathCapability(caps, filePath, pathOptions)
         }
         return { capabilities: caps }

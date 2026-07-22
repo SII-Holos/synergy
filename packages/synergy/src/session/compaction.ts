@@ -155,6 +155,7 @@ export namespace SessionCompaction {
       startIndex = i
     }
     startIndex = Math.min(startIndex, Math.max(0, messages.length - 2))
+    while (messages[startIndex]?.role === "tool") startIndex++
     if (startIndex === 0) return messages
     log.info("trimming compaction input", {
       originalMessages: messages.length,
