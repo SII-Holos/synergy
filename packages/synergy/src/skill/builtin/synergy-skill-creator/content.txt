@@ -1,0 +1,66 @@
+# Synergy Skill Creator
+
+Create, update, migrate, or review Agent Skills for Synergy. Follow the Agent Skills standard and default to a portable standard Skill unless the task explicitly needs Synergy-only invocation control.
+
+## Create or Update
+
+1. Clarify the job the Skill should help an agent perform, including representative prompts and the expected durable behavior.
+2. Prefer editing an existing Skill in place. Preserve files that are not part of the requested change, especially user-owned references, scripts, assets, and local notes.
+3. Keep the main `SKILL.md` concise and imperative. Put only reusable, task-critical instructions in the body.
+4. Add resources only when they have a concrete independent need:
+   - `references/` for details the agent should load on demand with `skill(name, reference: "references/file.md")`.
+   - `scripts/` for deterministic helpers the agent runs through existing tools such as `bash`, not through a Skill executor.
+   - `assets/` for templates or output files the body tells the agent to access when needed.
+5. Do not create inventories, generated indexes, README clutter, or placeholder files. If no reference, script, or asset is needed, omit the directory.
+
+## Manifest Contract
+
+Use standard frontmatter fields first:
+
+```yaml
+---
+name: portable-skill-name
+description: Clear trigger and purpose for agents and users.
+license: MIT
+compatibility: Optional runtime or dependency note.
+metadata:
+  owner: optional structured data
+---
+```
+
+Required standard fields are `name` and `description`. Skill names use lowercase letters, digits, and single hyphens. Synergy strict sources require `SKILL.md` and a directory name that matches `name`.
+
+Synergy accepts `allowed-tools` for Agent Skills compatibility, but `allowed-tools` has no authorization effect. Actual permission and tool access still come from the active agent, control profile, and existing tool permission system.
+
+Treat unknown Claude, Codex, or OpenClaw fields as vendor-only fields. Synergy may read them leniently from vendor roots and report diagnostics, but do not add them to portable standard Skills.
+
+## Synergy Invocation Extensions
+
+Use these Synergy invocation extensions only when the Skill must control how it appears:
+
+```yaml
+user-invocable: false
+disable-model-invocation: true
+```
+
+- `user-invocable` defaults to `true`; set it to `false` to hide the Skill from Slash command registration.
+- `disable-model-invocation` defaults to `false`; set it to `true` to make `skill(name)` reject model loading.
+- If both disable user and model invocation, the Skill can still exist in the Library but will not be offered in either invocation directory.
+
+## Slash Arguments
+
+For Skill Slash content, `$N` placeholders are one-based while `$ARGUMENTS[N]` stays zero-based:
+
+- `$ARGUMENTS` expands to the full trailing request text.
+- `$ARGUMENTS[N]` expands to the zero-based positional argument.
+- `$N` expands to the one-based positional argument, and the highest `$N` consumes the remaining arguments.
+- Quoted text is one argument with the outer quotes removed.
+- Out-of-range placeholders become an empty string.
+- If the body has supported placeholders, Synergy only substitutes them.
+- If the body has no placeholders and trailing text exists, Synergy uses the no-placeholder fallback: it adds that text as a separate user request part after the Skill content.
+
+## Verification
+
+After editing, reload Skills through the current Synergy reload path or restart only an isolated development runtime. Verify with `skill(name: "portable-skill-name")`; if the Skill keeps references, also verify each retained reference with `skill(name: "portable-skill-name", reference: "references/file.md")`.
+
+Run the narrowest relevant checks for the location changed. For Synergy source changes, prefer focused Skill tests and `bun run skill:check` before broader gates.

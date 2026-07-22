@@ -9355,10 +9355,10 @@
           }
         ],
         "summary": "List skills",
-        "description": "Get a list of all available skills in the Synergy system.",
+        "description": "Get canonical public summaries and diagnostics for all available Skills.",
         "responses": {
           "200": {
-            "description": "List of skills",
+            "description": "List of Skills",
             "content": {
               "application/json": {
                 "schema": {
@@ -9396,7 +9396,7 @@
           }
         ],
         "summary": "Reload skills",
-        "description": "Reload all skills by rescanning skill directories.",
+        "description": "Reload all Skills by rescanning configured Skill directories.",
         "responses": {
           "200": {
             "description": "Skills reloaded successfully",
@@ -9413,6 +9413,87 @@
           {
             "lang": "js",
             "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.reload({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/skill/{name}/export": {
+      "get": {
+        "operationId": "skill.export",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "name",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            },
+            "required": true
+          },
+          {
+            "in": "query",
+            "name": "format",
+            "schema": {
+              "default": "zip",
+              "type": "string",
+              "enum": ["zip", "skill"]
+            }
+          }
+        ],
+        "summary": "Export a Skill",
+        "description": "Download a strict-standard, file-backed Skill as a ZIP archive.",
+        "responses": {
+          "200": {
+            "description": "Skill archive",
+            "content": {
+              "application/zip": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary",
+                  "contentEncoding": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Skill is not exportable or not strict-standard",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SkillExportNotStandardError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SkillExportUnavailableError"
+                    },
+                    {
+                      "$ref": "#/components/schemas/SkillExportNotFoundError"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.skill.export({\n  ...\n})"
           }
         ]
       }
@@ -9444,22 +9525,25 @@
             "required": true
           }
         ],
-        "summary": "Delete a skill",
-        "description": "Delete a non-builtin skill by removing its directory from disk.",
+        "summary": "Delete a Skill",
+        "description": "Delete a non-builtin, non-plugin Skill from disk.",
         "responses": {
           "200": {
             "description": "Skill deleted successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    }
-                  },
-                  "required": ["success"]
+                  "$ref": "#/components/schemas/SkillRemoveResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Skill cannot be deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillRemoveFailure"
                 }
               }
             }
@@ -9502,39 +9586,45 @@
             }
           }
         ],
-        "summary": "Import a skill",
-        "description": "Import a skill from a .skill or .zip file. Extracts to the project or global skill directory.",
+        "summary": "Import a Skill",
+        "description": "Transactionally import a .zip or .skill ZIP archive into project or global scope.",
         "responses": {
           "200": {
             "description": "Skill imported successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "type": "string",
-                      "enum": ["global", "project"]
-                    }
-                  },
-                  "required": ["success", "name", "scope"]
+                  "$ref": "#/components/schemas/SkillImportResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid Skill archive",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "$ref": "#/components/schemas/SkillArchiveInvalidError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A Skill with the same name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveConflictError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Skill archive exceeds an import limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveLimitError"
                 }
               }
             }
@@ -9584,39 +9674,45 @@
             }
           }
         ],
-        "summary": "Import a skill from URL",
-        "description": "Download a .zip file from a URL and import it as a skill.",
+        "summary": "Import a Skill from URL",
+        "description": "Download a bounded .zip or .skill archive and pass its bytes to the transactional Skill importer.",
         "responses": {
           "200": {
             "description": "Skill imported successfully",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object",
-                  "properties": {
-                    "success": {
-                      "type": "boolean",
-                      "const": true
-                    },
-                    "name": {
-                      "type": "string"
-                    },
-                    "scope": {
-                      "type": "string",
-                      "enum": ["global", "project"]
-                    }
-                  },
-                  "required": ["success", "name", "scope"]
+                  "$ref": "#/components/schemas/SkillImportResult"
                 }
               }
             }
           },
           "400": {
-            "description": "Bad request",
+            "description": "Invalid URL response or Skill archive",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/BadRequestError"
+                  "$ref": "#/components/schemas/SkillArchiveInvalidError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "A Skill with the same name already exists",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveConflictError"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Downloaded Skill archive exceeds an import limit",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillArchiveLimitError"
                 }
               }
             }
@@ -33394,84 +33490,137 @@
         },
         "required": ["url", "method", "instructions"]
       },
+      "SkillSummary": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "location": {
+            "type": "string"
+          },
+          "builtin": {
+            "type": "boolean"
+          },
+          "source": {
+            "type": "string",
+            "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["builtin", "project", "global", "workspace", "external"]
+          },
+          "compatibility": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": ["native", "compatible", "partial"]
+              },
+              "warnings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "unsupported": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["level", "warnings", "unsupported"]
+          },
+          "declaredCompatibility": {
+            "type": "string"
+          },
+          "invocation": {
+            "type": "object",
+            "properties": {
+              "user": {
+                "type": "boolean"
+              },
+              "model": {
+                "type": "boolean"
+              }
+            },
+            "required": ["user", "model"]
+          },
+          "exportable": {
+            "type": "boolean"
+          },
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string"
+                },
+                "severity": {
+                  "type": "string",
+                  "enum": ["error", "warning", "info"]
+                },
+                "name": {
+                  "type": "string"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": ["code", "severity", "name", "source", "reason", "message"]
+            }
+          },
+          "entryFile": {
+            "type": "string"
+          },
+          "baseDir": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "location",
+          "source",
+          "scope",
+          "compatibility",
+          "invocation",
+          "exportable",
+          "diagnostics"
+        ]
+      },
       "SkillList": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "type": "object",
-              "properties": {
-                "name": {
-                  "type": "string"
-                },
-                "description": {
-                  "type": "string"
-                },
-                "location": {
-                  "type": "string"
-                },
-                "builtin": {
-                  "type": "boolean"
-                },
-                "source": {
-                  "type": "string",
-                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
-                },
-                "scope": {
-                  "type": "string",
-                  "enum": ["builtin", "project", "global", "workspace", "external"]
-                },
-                "compatibility": {
-                  "type": "object",
-                  "properties": {
-                    "level": {
-                      "type": "string",
-                      "enum": ["native", "compatible", "partial"]
-                    },
-                    "warnings": {
-                      "default": [],
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    },
-                    "unsupported": {
-                      "default": [],
-                      "type": "array",
-                      "items": {
-                        "type": "string"
-                      }
-                    }
-                  },
-                  "required": ["level"]
-                },
-                "entryFile": {
-                  "type": "string"
-                },
-                "baseDir": {
-                  "type": "string"
-                },
-                "pluginId": {
-                  "type": "string"
-                },
-                "pluginName": {
-                  "type": "string"
-                },
-                "references": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                },
-                "scripts": {
-                  "type": "array",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": ["name", "description", "location", "scope"]
+              "$ref": "#/components/schemas/SkillSummary"
             }
           },
           "diagnostics": {
@@ -33479,32 +33628,292 @@
             "items": {
               "type": "object",
               "properties": {
-                "path": {
-                  "type": "string"
-                },
-                "name": {
-                  "type": "string"
-                },
-                "message": {
+                "code": {
                   "type": "string"
                 },
                 "severity": {
                   "type": "string",
                   "enum": ["error", "warning", "info"]
                 },
-                "code": {
+                "name": {
                   "type": "string"
                 },
                 "source": {
                   "type": "string",
-                  "enum": ["builtin", "plugin", "synergy", "claude", "openclaw", "codex", "generic"]
+                  "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                },
+                "path": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "reason": {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                "message": {
+                  "type": "string"
                 }
               },
-              "required": ["path", "name", "message"]
+              "required": ["code", "severity", "name", "source", "reason", "message"]
             }
           }
         },
         "required": ["items", "diagnostics"]
+      },
+      "SkillExportNotStandardError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportNotStandardError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_not_standard"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "diagnostics": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": ["error", "warning", "info"]
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string",
+                      "enum": ["builtin", "plugin", "synergy", "agents", "claude", "codex", "openclaw"]
+                    },
+                    "path": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "reason": {
+                      "type": "object",
+                      "propertyNames": {
+                        "type": "string"
+                      },
+                      "additionalProperties": {}
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "severity", "name", "source", "reason", "message"]
+                }
+              }
+            },
+            "required": ["code", "message", "name", "diagnostics"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillExportUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_unavailable"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillExportNotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillExportNotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.export_not_found"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillRemoveResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["success"]
+      },
+      "SkillRemoveFailure": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pluginId": {
+            "type": "string"
+          }
+        },
+        "required": ["error", "name"]
+      },
+      "SkillImportResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          },
+          "name": {
+            "type": "string"
+          },
+          "scope": {
+            "type": "string",
+            "enum": ["project", "global"]
+          }
+        },
+        "required": ["success", "name", "scope"]
+      },
+      "SkillArchiveInvalidError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveInvalidError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "number"
+              },
+              "actual": {
+                "type": "number"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillArchiveConflictError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveConflictError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "const": "skill.archive_conflict"
+              },
+              "message": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": ["code", "message", "name", "path"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SkillArchiveLimitError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "SkillArchiveLimitError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "limit": {
+                "type": "number"
+              },
+              "actual": {
+                "type": "number"
+              }
+            },
+            "required": ["code", "message"]
+          }
+        },
+        "required": ["name", "data"]
       },
       "WorkspaceFileNode": {
         "type": "object",

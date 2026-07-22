@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { describeToolPartApply, planSessionSyncReload } from "./session-sync-plan"
+import { describeToolPartApply, planSessionSyncReload, refreshSessionAfterPending } from "./session-sync-plan"
 
 describe("planSessionSyncReload (#509)", () => {
   test("short-circuits when session and messages are current", () => {
@@ -17,6 +17,25 @@ describe("planSessionSyncReload (#509)", () => {
       forceSession: false,
       forceMessages: false,
       ready: true,
+    })
+  })
+
+  test("refreshes only authoritative session metadata after a workspace transition", () => {
+    expect(
+      planSessionSyncReload({
+        hasSessionRecord: true,
+        hasMessages: true,
+        reconnectVersion: 2,
+        lastSyncedReconnectVersion: 2,
+        canUnrollback: false,
+        trigger: { type: "workspace-transition" },
+      }),
+    ).toEqual({
+      versionStale: false,
+      needsDerivedHistoryRefresh: false,
+      forceSession: true,
+      forceMessages: false,
+      ready: false,
     })
   })
 
@@ -88,6 +107,26 @@ describe("planSessionSyncReload (#509)", () => {
       forceMessages: true,
       ready: false,
     })
+  })
+})
+
+describe("refreshSessionAfterPending", () => {
+  test("starts the authoritative refresh only after the stale request settles", async () => {
+    let releasePending!: () => void
+    const pending = new Promise<void>((resolve) => {
+      releasePending = resolve
+    })
+    const calls: string[] = []
+
+    const refresh = refreshSessionAfterPending(pending, async () => {
+      calls.push("refresh")
+    })
+    await Promise.resolve()
+
+    expect(calls).toEqual([])
+    releasePending()
+    await refresh
+    expect(calls).toEqual(["refresh"])
   })
 })
 
