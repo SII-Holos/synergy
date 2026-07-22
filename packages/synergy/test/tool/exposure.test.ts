@@ -306,6 +306,7 @@ describe("tool exposure", () => {
         expect(ids.has("search_tools")).toBe(true)
         expect(ids.has("expand_tools")).toBe(true)
         expect(ids.has("note_read")).toBe(false)
+        expect(ids.has("browser_navigation")).toBe(false)
 
         await Session.update(session.id, (draft) => {
           draft.toolState = { expandedGroups: ["note", "browser"] }
@@ -313,7 +314,9 @@ describe("tool exposure", () => {
 
         ids = await definitionIDs(await Session.get(session.id), { agent })
         expect(ids.has("note_read")).toBe(true)
-        expect(ids.has("browser_navigation")).toBe(false)
+        expect(ids.has("browser_navigation")).toBe(true)
+        expect(ids.has("browser_action")).toBe(true)
+        expect(ids.has("browser_upload")).toBe(true)
       },
     })
   })

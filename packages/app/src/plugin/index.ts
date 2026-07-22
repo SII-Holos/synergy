@@ -57,7 +57,7 @@ export {
 export { type PartRenderer, registerPartRenderer, getPartRenderer, hasPartRenderer } from "./registries/part-registry"
 export { type PluginContribution } from "./api"
 export { loadPluginExport, isCompatibleUIVersion, CURRENT_UI_API_VERSION } from "./loaders"
-export { PluginComposerSlotBridge, PluginThemeConfigBridge } from "./bridge"
+export { PluginComposerSlotBridge, PluginThemeConfigBridge, PluginTextInteractionBridge } from "./bridge"
 export { PluginErrorBoundary } from "./components/plugin-error-boundary"
 export { initDevReload } from "./dev-reload"
 export { PluginHostProvider, usePluginHost, type PluginUIStatus, type PluginUIError } from "./host"

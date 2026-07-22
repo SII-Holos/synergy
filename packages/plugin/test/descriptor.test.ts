@@ -4,15 +4,20 @@ import {
   PLUGIN_API_VERSION,
   PluginManifest,
   capability,
+  composerExtension,
   compilePluginManifest,
   definePlugin,
   event,
   hasUnlinkedSolidRuntimeImport,
   hasUnsupportedSolidRuntimeImport,
   operation,
+  messageSlot,
+  hook,
+  selectionExtension,
   settings,
   rewritePluginSolidImports,
   tool,
+  textAction,
   workbenchPanel,
 } from "../src/index"
 
@@ -243,5 +248,90 @@ describe("definePlugin", () => {
         contributions: [],
       }),
     ).toThrow('Duplicate plugin asset target "runtime/prompts"')
+  })
+
+  test("compiles headless interaction extensions and validates text action operations", () => {
+    const plugin = definePlugin({
+      id: "interaction",
+      version: "1.0.0",
+      description: "Interaction surfaces",
+      capabilities: [capability("composer.read"), capability("selection.read")],
+      contributions: [
+        operation({
+          id: "translate",
+          type: "command",
+          expose: ["ui"],
+          input: z.object({ text: z.string() }),
+          output: z.object({}),
+          handler: async () => ({}),
+        }),
+        composerExtension({
+          id: "composer",
+          requires: ["composer.read"],
+          component: { source: "src/composer.tsx" },
+        }),
+        selectionExtension({ id: "selection", component: { source: "src/selection.tsx" } }),
+        textAction({ id: "translate-action", label: "Translate", operation: "translate" }),
+        messageSlot({ id: "message", slot: "message.after", component: { source: "src/message.tsx" } }),
+      ],
+    })
+    const manifest = compilePluginManifest(plugin, {
+      generation: "generation-1",
+      runtime: { entry: "runtime/index.js", sha256: "a".repeat(64) },
+      ui: {
+        entry: "ui/index.js",
+        sha256: "b".repeat(64),
+        exports: {
+          "ui.composerExtension:composer": "Composer",
+          "ui.selectionExtension:selection": "Selection",
+          "ui.messageSlot:message": "Message",
+        },
+      },
+    })
+    expect(() => PluginManifest.parse(manifest)).not.toThrow()
+    expect(manifest.contributions.slice(1)).toMatchObject([
+      { kind: "ui.composerExtension", order: 1000, component: { exportName: "Composer" } },
+      { kind: "ui.selectionExtension", requires: ["selection.read"] },
+      { kind: "ui.textAction", operation: "translate", requires: ["selection.read"] },
+      { kind: "ui.messageSlot", slot: "message.after", component: { exportName: "Message" } },
+    ])
+
+    expect(() =>
+      definePlugin({
+        id: "bad-action",
+        version: "1.0.0",
+        description: "Bad action",
+        capabilities: [capability("selection.read")],
+        contributions: [textAction({ id: "bad", label: "Bad", operation: "missing" })],
+      }),
+    ).toThrow("must reference a UI-exposed command operation")
+  })
+
+  test("requires session.read on persisted user message observers", () => {
+    expect(() =>
+      definePlugin({
+        id: "message-observer",
+        version: "1.0.0",
+        description: "Message observer",
+        capabilities: [capability("session.read")],
+        contributions: [hook({ id: "observe", point: "session.user-message.after", handler: async () => undefined })],
+      }),
+    ).toThrow("requires session.read")
+    expect(() =>
+      definePlugin({
+        id: "message-observer",
+        version: "1.0.0",
+        description: "Message observer",
+        capabilities: [capability("session.read")],
+        contributions: [
+          hook({
+            id: "observe",
+            point: "session.user-message.after",
+            requires: ["session.read"],
+            handler: async () => undefined,
+          }),
+        ],
+      }),
+    ).not.toThrow()
   })
 })

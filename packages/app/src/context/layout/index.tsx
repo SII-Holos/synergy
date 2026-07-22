@@ -10,7 +10,6 @@ import { Scope, Session } from "@ericsanchezok/synergy-sdk"
 import { Persist, persisted, removePersisted } from "@/utils/persist"
 import { same } from "@/utils/same"
 import { createScrollPersistence, type SessionScroll } from "./scroll"
-import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { retry } from "@ericsanchezok/synergy-util/retry"
 import { computeDefaultWorkspaceWidth } from "./workspace"
 import type { WorkbenchPanelSurface, WorkbenchPanelTab } from "@/plugin/registries/workbench-panel-registry"
@@ -28,6 +27,7 @@ import {
 import { createDesktopBadgeSync } from "./desktop-badge"
 import { HOME_SCOPE_KEY } from "@/utils/scope"
 import { planMessagePageApply } from "../session-message-page"
+import { findSessionIndex } from "../session-collection"
 
 const AVATAR_COLOR_KEYS = ["pink", "mint", "orange", "purple", "cyan", "lime"] as const
 export type AvatarColorKey = (typeof AVATAR_COLOR_KEYS)[number]
@@ -1106,8 +1106,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
       setChildStore(
         produce((draft) => {
-          const match = Binary.search(draft.session, session.id, (s) => s.id)
-          if (match.found) draft.session.splice(match.index, 1)
+          const index = findSessionIndex(draft.session, session.id)
+          if (index !== -1) draft.session.splice(index, 1)
         }),
       )
       const existing = navEntries[scopeKey]
@@ -1127,8 +1127,8 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       const value = pinned ? Date.now() : 0
       setChildStore(
         produce((draft) => {
-          const match = Binary.search(draft.session, session.id, (s) => s.id)
-          if (match.found) draft.session[match.index].pinned = value
+          const index = findSessionIndex(draft.session, session.id)
+          if (index !== -1) draft.session[index].pinned = value
         }),
       )
       const existing = navEntries[scopeKey]

@@ -26,6 +26,11 @@ export function inlineText(parts: Prompt): string {
     .join("")
 }
 
+// The editor's DOM offset counts file-pill content, matching inlineText's coordinate space.
+export function inlineCompletionPrefix(parts: Prompt, domOffset: number): string {
+  return inlineText(parts).slice(0, domOffset)
+}
+
 export function inlineLength(parts: Prompt): number {
   return parts.filter(isInlinePart).reduce((len, p) => len + p.content.length, 0)
 }

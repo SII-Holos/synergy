@@ -25,7 +25,7 @@ An active tool-created headless page migrates to the selected Host presentation 
 
 Browser state persists under the Synergy data directory by Scope and owner. It includes page identity and metadata, annotations, storage-state path, and profile directory. A restored saved page keeps its prior page ID and navigates through the user-navigation safety path.
 
-When a session is archived or deleted, the Browser runtime reaper disposes its live session. Runtime shutdown disposes every Browser session and stops the driver.
+When a session is archived or deleted, or a Cortex child session reaches a terminal task status, the Browser runtime reaper disposes its live session. Disposal closes the live page and owner context while preserving suspended Browser state for later restoration. Runtime shutdown disposes every Browser session and stops the driver.
 
 ## Canonical Control Model
 
@@ -95,4 +95,4 @@ Tool actions keep failures atomic and results directly useful to the agent. Sele
 - Host connection state is not page state and does not create a fallback page.
 - The network gateway authenticates and forwards; Chromium owns webpage network policy.
 - Workspace resize semantics are CSS width and height across presentations.
-- Session archive or deletion releases its live Browser resources.
+- Session archive or deletion, and terminal Cortex child status, release live Browser resources while preserving restorable state.

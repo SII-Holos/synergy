@@ -5,10 +5,9 @@ import { LibraryDB } from "./database"
 import { ExperienceRecall } from "./experience-recall"
 import { Intent } from "./intent"
 import { Script } from "./script"
-import { Agent } from "../agent/agent"
+import { AgentCall } from "../agent/call"
 import { ENCODER_LLM_TIMEOUT_MS, ENCODER_MAX_OUTPUT_CHARS, INTENT_MAX_CHARS } from "./encoder-constants"
 import { Provider } from "../provider/provider"
-import { LLM } from "../session/llm"
 import { Turn } from "../session/turn"
 import { Session } from "../session"
 import { Scope } from "../scope"
@@ -523,97 +522,30 @@ export namespace ExperienceEncoder {
     }
   }
 
-  export async function collectBoundedText(input: {
-    textStream: AsyncIterable<string>
-    maxChars: number
-    abort?: AbortController
-  }): Promise<string> {
-    let text = ""
-    for await (const chunk of input.textStream) {
-      if (!chunk) continue
-      text += chunk
-      if (text.length > input.maxChars) {
-        input.abort?.abort()
-        throw new EncoderStreamError("oversized", `encoder stream exceeded ${input.maxChars} characters`)
-      }
-    }
-    return text
-  }
-
-  export async function callAgentForTest(agentName: string, ctx: AgentContext, content: string): Promise<string> {
-    return callAgent(agentName, ctx, content)
-  }
-
-  async function callAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
-    if (ctx.signal?.aborted) {
-      throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
-    }
-    const agent = await Agent.get(agentName)
-    if (!agent || !ctx.userMsg) return ""
-
-    const agentModel = await Agent.getAvailableModel(agent)
-    const model = agentModel ? await Provider.getModel(agentModel.providerID, agentModel.modelID) : ctx.model
-    if (!model) return ""
-    if (ctx.signal?.aborted) {
-      throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
-    }
-
-    const timeoutMs = ctx.learning.encoderTimeoutMs ?? ENCODER_LLM_TIMEOUT_MS
-    const maxChars = ctx.learning.encoderMaxOutputChars ?? ENCODER_MAX_OUTPUT_CHARS
-    const abort = new AbortController()
-    const timeout = new AbortController()
-    const combined = ctx.signal
-      ? AbortSignal.any([ctx.signal, timeout.signal, abort.signal])
-      : AbortSignal.any([timeout.signal, abort.signal])
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let onCancel: (() => void) | undefined
-    const interrupted = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        timeout.abort()
-        reject(new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`))
-      }, timeoutMs)
-      timer.unref?.()
-      if (ctx.signal) {
-        onCancel = () => reject(new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`))
-        ctx.signal.addEventListener("abort", onCancel, { once: true })
-      }
-    })
-    const waitForInterruption = <T>(promise: Promise<T>) => Promise.race([promise, interrupted])
-
+  async function runAgent(agentName: string, ctx: AgentContext, content: string): Promise<string> {
+    if (!ctx.userMsg) return ""
     try {
-      const stream = await waitForInterruption(
-        LLM.stream({
-          agent,
-          user: ctx.userMsg,
-          tools: {},
-          model,
-          small: true,
-          messages: [{ role: "user" as const, content }],
-          abort: combined,
-          sessionID: ctx.sessionID,
-          system: [],
-          retries: ctx.learning.encoderRetries,
-        }),
-      )
-
-      const textStream = LLM.takeTextStream(stream)
-      try {
-        return await waitForInterruption(collectBoundedText({ textStream: textStream.stream, maxChars, abort }))
-      } finally {
-        await textStream.dispose()
-      }
+      const result = await AgentCall.text({
+        agent: agentName,
+        user: ctx.userMsg,
+        sessionId: ctx.sessionID,
+        fallbackModel: ctx.model,
+        messages: [{ role: "user", content }],
+        signal: ctx.signal,
+        timeoutMs: ctx.learning.encoderTimeoutMs ?? ENCODER_LLM_TIMEOUT_MS,
+        retries: ctx.learning.encoderRetries,
+        maxOutputChars: ctx.learning.encoderMaxOutputChars ?? ENCODER_MAX_OUTPUT_CHARS,
+      })
+      return result.text
     } catch (error) {
-      if (error instanceof EncoderStreamError) throw error
-      if (ctx.signal?.aborted) {
-        throw new EncoderStreamError("aborted", `encoder ${agentName} was cancelled`)
+      if (!(error instanceof AgentCall.Error)) throw error
+      if (error.code === "agent_not_found" || error.code === "model_unavailable") return ""
+      if (error.code === "output_too_large") {
+        throw new EncoderStreamError("oversized", error.message)
       }
-      if (timeout.signal.aborted) {
-        throw new EncoderStreamError("timeout", `encoder ${agentName} timed out after ${timeoutMs}ms`)
-      }
+      if (error.code === "timeout") throw new EncoderStreamError("timeout", error.message)
+      if (error.code === "cancelled") throw new EncoderStreamError("aborted", error.message)
       throw error
-    } finally {
-      if (timer !== undefined) clearTimeout(timer)
-      if (ctx.signal && onCancel) ctx.signal.removeEventListener("abort", onCancel)
     }
   }
 
@@ -631,11 +563,11 @@ export namespace ExperienceEncoder {
     ]
     if (history) parts.push("<context>", history, "</context>", "")
     parts.push("<current_request>", userInput, "</current_request>")
-    return callAgent("intent", ctx, parts.join("\n"))
+    return runAgent("intent", ctx, parts.join("\n"))
   }
 
   async function generateScript(ctx: AgentContext, content: string): Promise<string> {
-    return callAgent("script", ctx, content)
+    return runAgent("script", ctx, content)
   }
 
   async function generateRewards(
@@ -643,7 +575,7 @@ export namespace ExperienceEncoder {
     content: string,
   ): Promise<LibraryDB.Experience.Rewards | undefined> {
     try {
-      const result = await callAgent("reward", ctx, content)
+      const result = await runAgent("reward", ctx, content)
       const trimmed = result.trim()
 
       const jsonMatch = trimmed.match(/\{[\s\S]*\}/)

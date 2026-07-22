@@ -74,6 +74,11 @@ describe("plugin Host Service capability boundary", () => {
   test("classifies Blueprint and LightLoop delegation as high risk", () => {
     expect(riskForCapabilities(["blueprint.delegate"])).toBe("high")
     expect(riskForCapabilities(["lightloop.delegate"])).toBe("high")
+    expect(riskForCapabilities(["composer.write"])).toBe("high")
+    expect(riskForCapabilities(["composer.intercept"])).toBe("high")
+    expect(riskForCapabilities(["agent.call"])).toBe("high")
+    expect(riskForCapabilities(["composer.read"])).toBe("medium")
+    expect(riskForCapabilities(["selection.read"])).toBe("medium")
   })
 
   test("accepts declared Blueprint and LightLoop capabilities without constraints", async () => {
