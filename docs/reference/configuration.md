@@ -134,13 +134,11 @@ Do not copy credentials or billing assumptions between them. Use `synergy auth` 
 
 ### Live provider model discovery
 
-Providers that support live model catalog discovery (e.g. `openai-codex`, `github-copilot`) fetch account-visible model slugs at resolution time. Each provider profile may supply a `modelCatalogIdentity()` function that derives a non-secret account identity — for Codex, the runtime base URL plus the ChatGPT account ID — from the authenticated credential. This identity, rather than the raw credential, is used as the cache key for live results.
+Providers that support live model discovery use one versioned `ProviderCatalog` snapshot per opaque account-identity hash. Snapshots are stored atomically under `cache/`, never contain credentials or raw account identifiers, and retain at most 100 provider/identity entries while protecting the current identity from eviction.
 
-The bounded in-memory `lastKnownGood` map stores the most recent successful live entry set per `(providerID, identity)` key, retaining at most 100 entries total across all unique provider/identity pairs and evicting the least recently written entry when full. On a successful live fetch the result is stored as the new LKG and the provider is marked `verified`. If a live fetch fails, the provider is marked `fallback` and the previous LKG entries are used if available. The overall resolution cache uses a normal 1-hour TTL when all live fetches succeed and a short 60-second retry TTL when any provider degraded.
+Startup reads the snapshot immediately and refreshes it asynchronously. A successful non-empty response becomes the active catalog; models missing from that response are retained only so existing sessions can continue to resolve their selected model. New sessions, defaults, role selectors, recommendations, and quick switching use active, non-deprecated models only. A timeout, network error, rate limit, upstream error, empty response, or corrupt cache never replaces the last verified model set.
 
-LKG is purely in-memory: restart or `ProviderCatalog.reset()` discards all entries. Degraded results automatically retry on the next resolution cycle. The `liveDiscoveryStatus(providerID)` function exposes the current `"verified"` or `"fallback"` state per provider.
-
-Static provider catalogs and live account-backed model discovery use separate cache entries. Authentication health is driven by real provider requests rather than startup or periodic probes.
+Authentication, account usage, and model-catalog health are independent states. `POST /provider/{providerID}/models/refresh` runs the same single-flight refresh path used by background discovery. Missing models and explicit upstream model rejection produce `ProviderModelUnavailableError`; session execution does not silently switch to another model.
 
 ### Model variants and role variants
 

@@ -2,8 +2,10 @@ import { useLingui } from "@lingui/solid"
 import type {
   ProviderAuthHealth,
   ProviderAuthResponse,
+  ProviderListResponse,
   ProviderRuntimeAvailability,
 } from "@ericsanchezok/synergy-sdk/client"
+import { Button } from "@ericsanchezok/synergy-ui/button"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { ProviderIcon } from "@ericsanchezok/synergy-ui/provider-icon"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
@@ -25,6 +27,8 @@ import {
   providerStatusLabel,
 } from "@/components/provider/provider-auth-presentation"
 import { groupProviderConnections } from "./provider-groups"
+import { useGlobalSDK } from "@/context/global-sdk"
+import { useGlobalSync } from "@/context/global-sync"
 
 const SETTINGS_RECOMMENDED_PROVIDER_IDS = [
   "deepseek",
@@ -69,6 +73,11 @@ const envRecoveryFallbackDesc = {
   message:
     "Update the server environment, restart Synergy, then refresh this page. Environment values are never overwritten by Settings.",
 }
+const catalogRefreshing = { id: "settings.providers.catalog.refreshing", message: "Refreshing model list" }
+const catalogBundled = { id: "settings.providers.catalog.bundled", message: "Showing default models" }
+const catalogPending = { id: "settings.providers.catalog.pending", message: "Model list needs refresh" }
+const catalogCached = { id: "settings.providers.catalog.cached", message: "Showing the last synced model list" }
+const catalogRefreshAction = { id: "settings.providers.catalog.refresh", message: "Refresh models" }
 
 function modelCount(count: number) {
   return {
@@ -85,6 +94,7 @@ export type ProviderConnectionSummary = {
   modelCount: number
   health?: ProviderAuthHealth
   availability?: ProviderRuntimeAvailability
+  catalog?: ProviderListResponse["modelCatalog"][string]
   profile?: ProviderRecommendationMetadata
 }
 
@@ -94,8 +104,11 @@ export function ProvidersPanel(props: {
   providerFocusID?: string
 }) {
   const { _, i18n } = useLingui()
+  const globalSDK = useGlobalSDK()
+  const globalSync = useGlobalSync()
   const [query, setQuery] = createSignal("")
   const [selectedID, setSelectedID] = createSignal<string | undefined>(props.providerFocusID)
+  const [refreshingID, setRefreshingID] = createSignal<string | undefined>()
 
   createEffect(() => {
     if (props.providerFocusID) setSelectedID(props.providerFocusID)
@@ -135,6 +148,25 @@ export function ProvidersPanel(props: {
 
   const statusLabel = (provider: ProviderConnectionSummary) =>
     translateDescriptor(providerStatusLabel(provider.health, provider.availability), i18n())
+
+  const catalogLabel = (provider: ProviderConnectionSummary) => {
+    if (refreshingID() === provider.id || provider.catalog?.refreshing) return _(catalogRefreshing)
+    if (provider.catalog?.failure)
+      return provider.catalog.source === "bundled" ? `${_(catalogPending)} · ${_(catalogBundled)}` : _(catalogPending)
+    if (provider.catalog?.source === "bundled") return _(catalogBundled)
+    return _(catalogCached)
+  }
+
+  async function refreshModels(providerID: string) {
+    setRefreshingID(providerID)
+    try {
+      await globalSDK.client.provider.models.refresh({ providerID }, { throwOnError: true })
+    } catch {
+    } finally {
+      await globalSync.refreshProviders()
+      setRefreshingID(undefined)
+    }
+  }
 
   return (
     <SettingsPage title={_(pageTitle)} description={_(pageDescription)}>
@@ -221,10 +253,23 @@ export function ProvidersPanel(props: {
                   <Show when={props.authMethods[provider().id]?.length}>
                     <span>{props.authMethods[provider().id].map((method) => method.label).join(", ")}</span>
                   </Show>
-                  <Show when={provider().availability?.reason && provider().availability?.reason !== "connected"}>
-                    <span>{provider().availability?.reason?.replace(/_/g, " ")}</span>
-                  </Show>
                 </div>
+
+                <Show when={provider().connected && provider().catalog}>
+                  <div class="providers-auth-warning" role="status">
+                    <Icon name={getSemanticIcon("action.refresh")} size="small" />
+                    <span>{catalogLabel(provider())}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="small"
+                      disabled={refreshingID() === provider().id || provider().catalog?.refreshing}
+                      onClick={() => void refreshModels(provider().id)}
+                    >
+                      {_(catalogRefreshAction)}
+                    </Button>
+                  </div>
+                </Show>
 
                 <Show when={providerNeedsAction(provider().health)}>
                   <div class="providers-auth-warning" role="status">

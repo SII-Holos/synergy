@@ -35,6 +35,7 @@ import {
   type ChartDatasetSpec,
 } from "./chart-model"
 import { P } from "./performance-i18n"
+import { performanceSummaryCardModel } from "./summary-card-model"
 import { usePerformance } from "./use-performance"
 import { runtimeSupportItems } from "./runtime-support"
 import { toolFailureCategories, type ToolFailureItem } from "./tool-failure-model"
@@ -157,7 +158,7 @@ export function PerformanceDashboard() {
         starting={perf.analysisStarting()}
         onCancel={() => void perf.cancelAnalysis()}
       />
-      <SummaryCards _={_} summary={summary()} issues={issues()} />
+      <SummaryCards _={_} summary={summary()} />
       <RuntimeSupport _={_} summary={summary()} />
 
       <div class="performance-chart-grid">
@@ -451,15 +452,16 @@ function SummaryQualityNotice(props: {
   )
 }
 
-function SummaryCards(props: {
-  _: ReturnType<typeof useLingui>["_"]
-  summary: PerformanceSummary | null | undefined
-  issues: PerformanceIssue[]
-}) {
+function SummaryCards(props: { _: ReturnType<typeof useLingui>["_"]; summary: PerformanceSummary | null | undefined }) {
   const { _ } = props
   const summary = () => props.summary
+  const cards = () => performanceSummaryCardModel(summary())
   const resources = () => summary()?.resources
   const frontend = () => summary()?.frontend
+  const serviceMemorySource = () =>
+    cards().serviceMemory?.source === "cgroup_v2" ? _(P.summaryMemorySourceCgroup) : _(P.summaryMemorySourceProcess)
+  const serviceMemoryCoverage = () =>
+    cards().serviceMemory?.completeness === "full" ? _(P.summaryMemoryCoverageFull) : _(P.summaryMemoryCoveragePartial)
   return (
     <div class="performance-summary-grid">
       <MetricCard
@@ -486,9 +488,9 @@ function SummaryCards(props: {
       <MetricCard
         _={_}
         label={P.summaryIssues}
-        value={String(props.issues.length)}
+        value={String(cards().openIssueCount)}
         icon="performance.issue"
-        tone={props.issues.length > 0 ? "warning" : "default"}
+        tone={cards().openIssueCount > 0 ? "warning" : "default"}
       />
       <MetricCard
         _={_}
@@ -498,8 +500,22 @@ function SummaryCards(props: {
       />
       <MetricCard
         _={_}
-        label={P.summaryMemory}
-        value={formatChartBytes(resources()?.rssBytes)}
+        label={P.summaryServiceMemory}
+        value={
+          cards().serviceMemory
+            ? _(P.summaryServiceMemoryValue.id, {
+                rss: formatChartBytes(cards().serviceMemory?.rssBytes),
+                source: serviceMemorySource(),
+                coverage: serviceMemoryCoverage(),
+              })
+            : "—"
+        }
+        icon="performance.memory"
+      />
+      <MetricCard
+        _={_}
+        label={P.summaryServerRss}
+        value={formatChartBytes(cards().serverRssBytes)}
         icon="performance.memory"
       />
       <MetricCard
@@ -524,11 +540,12 @@ function SummaryCards(props: {
         _={_}
         label={P.summaryToolChildRss}
         value={_(P.summaryToolChildRssValue.id, {
-          rss: formatChartBytes(resources()?.childProcessRssBytes),
-          count: String(resources()?.childProcessCount ?? 0),
+          rss: formatChartBytes(cards().childProcessRssBytes),
+          measured: String(cards().measuredChildProcessCount),
+          count: String(cards().childProcessCount),
         })}
         icon="performance.memory"
-        tone={(resources()?.childProcessRssBytes ?? 0) > 0 ? "warning" : "default"}
+        tone={cards().measuredChildProcessCount < cards().childProcessCount ? "warning" : "default"}
       />
       <MetricCard
         _={_}

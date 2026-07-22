@@ -12,6 +12,87 @@ export namespace ProviderStream {
     return headers.get("content-type")?.toLowerCase().includes("text/event-stream") === true
   }
 
+  export function withIdleTimeout(
+    stream: ReadableStream<Uint8Array>,
+    input: {
+      controller: AbortController
+      signal: AbortSignal
+      timeoutMs: number
+    },
+  ): ReadableStream<Uint8Array> {
+    let idleTimer: ReturnType<typeof setTimeout> | undefined
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
+    let readerReleased = false
+    let settled = false
+    let rejectAbort!: (reason: unknown) => void
+    const aborted = new Promise<never>((_, reject) => {
+      rejectAbort = reject
+    })
+    const onAbort = () => rejectAbort(input.signal.reason ?? new DOMException("Aborted", "AbortError"))
+    if (input.signal.aborted) onAbort()
+    else input.signal.addEventListener("abort", onAbort, { once: true })
+    aborted.catch(() => {})
+
+    const cleanup = () => {
+      if (settled) return
+      settled = true
+      if (idleTimer) clearTimeout(idleTimer)
+      input.signal.removeEventListener("abort", onAbort)
+    }
+    const releaseReader = () => {
+      if (!reader || readerReleased) return
+      readerReleased = true
+      try {
+        reader.releaseLock()
+      } catch {}
+    }
+    const resetIdle = () => {
+      if (idleTimer) clearTimeout(idleTimer)
+      idleTimer = setTimeout(() => {
+        input.controller.abort(
+          new DOMException(`Idle timeout: no data received within ${input.timeoutMs}ms`, "TimeoutError"),
+        )
+      }, input.timeoutMs).unref()
+    }
+
+    // Keep provider reads pull-based so downstream demand bounds queued bytes,
+    // and release the owned reader on every terminal path.
+    return new ReadableStream({
+      async pull(controller) {
+        reader ??= stream.getReader()
+        try {
+          const { done, value } = await Promise.race([reader.read(), aborted])
+          if (done) {
+            cleanup()
+            releaseReader()
+            controller.close()
+            return
+          }
+          resetIdle()
+          controller.enqueue(value)
+        } catch (error) {
+          cleanup()
+          try {
+            await reader.cancel(error)
+          } catch {
+          } finally {
+            releaseReader()
+          }
+          controller.error(error)
+        }
+      },
+      async cancel(reason) {
+        cleanup()
+        if (!reader) return stream.cancel(reason)
+        try {
+          await reader.cancel(reason)
+        } finally {
+          releaseReader()
+        }
+      },
+    })
+  }
+
   export function enforceSSEEventParserBound(
     stream: ReadableStream<Uint8Array>,
     parserBoundBytes = SSE_EVENT_PARSER_BOUND_BYTES,

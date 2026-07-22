@@ -201,7 +201,9 @@ export function ProviderConnectionFlow(props: {
           <Match when={store.state === "pending"}>
             <div class="provider-flow-message">
               <Spinner />
-              <span>{_(providerFlow.authInProgress)}</span>
+              <span>
+                {_(method()?.type === "import" ? providerFlow.importInProgress : providerFlow.authInProgress)}
+              </span>
             </div>
           </Match>
           <Match when={store.state === "error"}>

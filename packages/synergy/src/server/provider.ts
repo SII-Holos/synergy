@@ -10,6 +10,7 @@ import { ProviderUsage } from "@/provider/usage-service"
 import { AccountUsage } from "@/provider/usage"
 import { GitHubProvider } from "@/provider/github"
 import { listProvidersForClient, ProviderListResponse } from "./provider-view"
+import { ProviderCatalog } from "@/provider/catalog"
 
 const log = Log.create({ service: "provider" })
 
@@ -34,6 +35,37 @@ export const ProviderRoute = new Hono()
     async (c) => {
       using _ = log.time("providers")
       return c.json(await listProvidersForClient())
+    },
+  )
+  .post(
+    "/:providerID/models/refresh",
+    describeRoute({
+      summary: "Refresh provider models",
+      description:
+        "Refresh the account-visible model catalog for a provider without discarding the last verified list.",
+      operationId: "provider.models.refresh",
+      responses: {
+        200: {
+          description: "Provider model catalog state",
+          content: {
+            "application/json": {
+              schema: resolver(ProviderCatalog.ModelCatalogState),
+            },
+          },
+        },
+        ...errors(400),
+      },
+    }),
+    validator(
+      "param",
+      z.object({
+        providerID: z.string().meta({ description: "Provider ID" }),
+      }),
+    ),
+    async (c) => {
+      const state = await ProviderCatalog.refresh(c.req.valid("param").providerID)
+      await RuntimeReload.reload({ targets: ["provider"], reason: "provider model catalog refreshed" })
+      return c.json(state)
     },
   )
   .get(

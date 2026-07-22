@@ -61,6 +61,25 @@ function trustedComponents(contributions: PluginContribution[]) {
   })
 }
 
+function runtimeSourceLoader(): Bun.BunPlugin {
+  return {
+    name: "plugin-runtime-source-loader",
+    setup(builder) {
+      builder.onLoad({ filter: /\.[cm]?[jt]sx?$/ }, ({ path: sourcePath }) => {
+        const extension = path.extname(sourcePath)
+        const loader = extension.endsWith("x")
+          ? extension.includes("t")
+            ? "tsx"
+            : "jsx"
+          : extension.includes("t")
+            ? "ts"
+            : "js"
+        return { contents: fs.readFileSync(sourcePath, "utf8"), loader }
+      })
+    },
+  }
+}
+
 async function buildRuntime(entry: string, distDir: string, required: boolean) {
   if (!required) return undefined
   const outputDirectory = path.join(distDir, path.dirname(PluginArtifact.runtimeEntry))
@@ -70,6 +89,7 @@ async function buildRuntime(entry: string, distDir: string, required: boolean) {
     target: "bun",
     naming: "index.js",
     define: { "process.env.SYNERGY_PLUGIN_BUNDLE_TARGET": JSON.stringify("runtime") },
+    plugins: [runtimeSourceLoader()],
   })
   if (!result.success) throw new AggregateError(result.logs, "Plugin runtime build failed")
   const output = path.join(distDir, PluginArtifact.runtimeEntry)

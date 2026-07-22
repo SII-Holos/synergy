@@ -60,6 +60,7 @@ interface PluginSurfaceContext {
   }
   settings: {
     get(): Promise<Record<string, JsonValue>>
+    replace(values: Record<string, JsonValue>): Promise<void>
     subscribe(listener: (settings: Record<string, JsonValue>) => void): () => void
   }
   host: PluginUIHostActions
@@ -68,7 +69,7 @@ interface PluginSurfaceContext {
 
 The operation client is bound to the component's own plugin. It can call only declared operations of the requested type. It never exposes a server URL or raw SDK client.
 
-Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup. `settings` is read-only from the surface; changes continue to use the host-rendered settings page.
+Use queries for complete snapshots and commands for intent. Subscribe to events to learn when a snapshot is stale, and dispose subscriptions during component cleanup. `settings.get()` and `subscribe()` are always bound to the component's plugin and Scope. `settings.replace()` is available only when `settings.write` was approved; it persists the complete settings object through the generated client and publishes the scoped settings change.
 
 ## Composer Extensions
 

@@ -5,9 +5,10 @@ import { Global } from "@/global"
 import { ObservabilityConfig } from "@/observability/config"
 import { ObservabilitySchema } from "./schema"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
+import { ObservabilityResourceSchema } from "./resource-schema"
 
 export namespace ObservabilityStore {
-  export const schemaVersion = 4
+  export const schemaVersion = 5
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
   const SIZE_CAP_TABLES = [
@@ -300,6 +301,7 @@ export namespace ObservabilityStore {
   export function querySpans(opts: {
     since?: number
     until?: number
+    activeSince?: number
     traceId?: string
     correlationId?: string
     limit?: number
@@ -320,6 +322,10 @@ export namespace ObservabilityStore {
     if (opts.since !== undefined) {
       filters.push("start_time >= ?")
       params.push(opts.since)
+    }
+    if (opts.activeSince !== undefined) {
+      filters.push("last_activity_time >= ?")
+      params.push(opts.activeSince)
     }
     if (opts.until !== undefined) {
       filters.push("start_time <= ?")
@@ -379,8 +385,11 @@ export namespace ObservabilityStore {
     )
   }
 
-  export function queryInflight(opts: { limit?: number; staleMs?: number; scopeID?: string; sessionID?: string } = {}) {
+  export function queryInflight(
+    opts: { activeSince?: number; limit?: number; staleMs?: number; scopeID?: string; sessionID?: string } = {},
+  ) {
     const rows = querySpans({
+      activeSince: opts.activeSince,
       status: "running",
       scopeID: opts.scopeID,
       sessionID: opts.sessionID,
@@ -394,6 +403,24 @@ export namespace ObservabilityStore {
       idle_ms: now - (row.last_activity_time ?? row.start_time),
       stale: now - (row.last_activity_time ?? row.start_time) >= staleMs,
     }))
+  }
+
+  export function interruptRunningSpans(opts: { reason: "previous_runtime_ended" | "runtime_shutdown" }) {
+    flush()
+    const conn = open()
+    if (!conn) return 0
+    return conn
+      .query(
+        `UPDATE obs_spans
+         SET end_time = COALESCE(last_activity_time, start_time),
+             duration_ms = MAX(0, COALESCE(last_activity_time, start_time) - start_time),
+             last_activity_time = COALESCE(last_activity_time, start_time),
+             status = 'interrupted',
+             error_code = 'PROCESS_INTERRUPTED',
+             error_message = ?
+         WHERE status = 'running'`,
+      )
+      .run(opts.reason).changes
   }
 
   export function queryIssues(
@@ -447,6 +474,40 @@ export namespace ObservabilityStore {
       `SELECT * FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY last_seen_time DESC LIMIT ?`,
       ...params,
     )
+  }
+  export function countIssues(opts: { status?: string; scopeID?: string; since?: number; until?: number } = {}) {
+    flush()
+    const conn = open()
+    if (!conn) return { total: 0, info: 0, warning: 0, error: 0, critical: 0 }
+    const filters: string[] = []
+    const params: Array<string | number> = []
+    if (opts.status) {
+      filters.push("status = ?")
+      params.push(opts.status)
+    }
+    if (opts.since !== undefined) {
+      filters.push("last_seen_time >= ?")
+      params.push(opts.since)
+    }
+    if (opts.until !== undefined) {
+      filters.push("last_seen_time < ?")
+      params.push(opts.until)
+    }
+    if (opts.scopeID) {
+      filters.push("(scope_id = ? OR json_extract(evidence_json, '$.scopeID') = ?)")
+      params.push(opts.scopeID, opts.scopeID)
+    }
+    const rows = allRows<{ severity: ObservabilitySchema.IssueSeverity; count: number }>(
+      conn,
+      `SELECT severity, COUNT(*) AS count FROM obs_issues ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} GROUP BY severity`,
+      ...params,
+    )
+    const result = { total: 0, info: 0, warning: 0, error: 0, critical: 0 }
+    for (const row of rows) {
+      result[row.severity] += row.count
+      result.total += row.count
+    }
+    return result
   }
 
   export function latestResource(opts: { scopeID?: string } = {}) {
@@ -555,6 +616,7 @@ export namespace ObservabilityStore {
     conn.exec("PRAGMA busy_timeout=5000")
     conn.exec("PRAGMA foreign_keys=ON")
     initialize(conn)
+    if (fresh) ObservabilityResourceSchema.applyV5(conn)
     return conn
   }
 
@@ -712,8 +774,8 @@ export namespace ObservabilityStore {
   function insertResourceSync(sample: ObservabilitySchema.ResourceSample) {
     open()
       ?.query(
-        `INSERT OR REPLACE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,labels_json,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)`,
+        `INSERT OR REPLACE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,cgroup_current_bytes,cgroup_high_bytes,cgroup_max_bytes,cgroup_peak_bytes,cgroup_oom_count,cgroup_oom_kill_count,service_memory_rss_bytes,service_memory_source,service_memory_completeness,labels_json,redaction_json)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32,?33,?34,?35,?36,?37,?38,?39)`,
       )
       .run(
         sample.sampleId,
@@ -744,6 +806,15 @@ export namespace ObservabilityStore {
         sample.io.osReadBytes ?? null,
         sample.io.osWrittenBytes ?? null,
         sample.io.osAvailable ? 1 : 0,
+        sample.cgroup?.currentBytes ?? null,
+        sample.cgroup?.highBytes ?? null,
+        sample.cgroup?.maxBytes ?? null,
+        sample.cgroup?.peakBytes ?? null,
+        sample.cgroup?.oomCount ?? null,
+        sample.cgroup?.oomKillCount ?? null,
+        sample.serviceMemory?.rssBytes ?? null,
+        sample.serviceMemory?.source ?? null,
+        sample.serviceMemory?.completeness ?? null,
         JSON.stringify(sample.labels ?? {}),
         JSON.stringify(sample.redaction),
       )
@@ -950,6 +1021,15 @@ export namespace ObservabilityStore {
     os_read_bytes?: number | null
     os_written_bytes?: number | null
     os_available?: number | null
+    cgroup_current_bytes?: number | null
+    cgroup_high_bytes?: number | null
+    cgroup_max_bytes?: number | null
+    cgroup_peak_bytes?: number | null
+    cgroup_oom_count?: number | null
+    cgroup_oom_kill_count?: number | null
+    service_memory_rss_bytes?: number | null
+    service_memory_source?: "cgroup_v2" | "process_api" | null
+    service_memory_completeness?: "full" | "partial" | null
     labels_json?: string | null
     redaction_json?: string | null
   }

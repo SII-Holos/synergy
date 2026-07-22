@@ -1,5 +1,6 @@
 import z from "zod"
 import { PLUGIN_API_VERSION, PLUGIN_MANIFEST_VERSION } from "./version.js"
+import { McpServerConfig } from "./mcp.js"
 
 const Id = z.string().regex(/^[a-z][a-z0-9.-]*$/)
 const ContributionId = z.string().regex(/^[a-z][A-Za-z0-9._-]*$/)
@@ -51,6 +52,21 @@ const ToolContribution = ContributionBase.extend({
     .optional(),
 }).strict()
 
+const CliCommandContribution = ContributionBase.extend({
+  kind: z.literal("cli.command"),
+  description: z.string().min(1),
+  options: z.record(
+    z.string(),
+    z
+      .object({
+        type: z.enum(["boolean", "string", "number"]),
+        description: z.string().min(1),
+      })
+      .strict(),
+  ),
+  timeoutMs: z.number().int().positive().optional(),
+}).strict()
+
 const HookContribution = ContributionBase.extend({
   kind: z.literal("hook"),
   point: z.string().min(1),
@@ -67,7 +83,7 @@ const SkillContribution = ContributionBase.extend({
 }).strict()
 const McpContribution = ContributionBase.extend({
   kind: z.literal("mcp"),
-  server: z.record(z.string(), z.unknown()),
+  server: McpServerConfig,
 }).strict()
 const AuthProviderProfile = z
   .object({
@@ -188,6 +204,7 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   OperationContribution,
   EventContribution,
   ToolContribution,
+  CliCommandContribution,
   HookContribution,
   AgentContribution,
   SkillContribution,
@@ -331,7 +348,9 @@ export const PluginManifest = z
       }
     }
     const needsRuntime = manifest.contributions.some((item) =>
-      ["operation", "tool", "hook", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(item.kind),
+      ["operation", "tool", "hook", "cli.command", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(
+        item.kind,
+      ),
     )
     if (needsRuntime && !manifest.artifacts.runtime) {
       context.addIssue({

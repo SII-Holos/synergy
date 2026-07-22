@@ -8854,6 +8854,66 @@
         ]
       }
     },
+    "/provider/{providerID}/models/refresh": {
+      "post": {
+        "operationId": "provider.models.refresh",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "providerID",
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "description": "Provider ID"
+          }
+        ],
+        "summary": "Refresh provider models",
+        "description": "Refresh the account-visible model catalog for a provider without discarding the last verified list.",
+        "responses": {
+          "200": {
+            "description": "Provider model catalog state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProviderModelCatalogState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.provider.models.refresh({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/provider/usage": {
       "get": {
         "operationId": "provider.usage.list",
@@ -20661,7 +20721,7 @@
       "TelemetrySpanStatus": {
         "default": "running",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "TelemetryInflightSpan": {
         "type": "object",
@@ -20764,6 +20824,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": [
@@ -20860,6 +20923,46 @@
                 "type": "number"
               }
             }
+          },
+          "cgroup": {
+            "type": "object",
+            "properties": {
+              "currentBytes": {
+                "type": "number"
+              },
+              "highBytes": {
+                "type": "number"
+              },
+              "maxBytes": {
+                "type": "number"
+              },
+              "peakBytes": {
+                "type": "number"
+              },
+              "oomCount": {
+                "type": "number"
+              },
+              "oomKillCount": {
+                "type": "number"
+              }
+            }
+          },
+          "serviceMemory": {
+            "type": "object",
+            "properties": {
+              "rssBytes": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string",
+                "enum": ["cgroup_v2", "process_api"]
+              },
+              "completeness": {
+                "type": "string",
+                "enum": ["full", "partial"]
+              }
+            },
+            "required": ["source", "completeness"]
           },
           "eventLoop": {
             "type": "object",
@@ -21407,6 +21510,28 @@
                 "minimum": -9007199254740991,
                 "maximum": 9007199254740991
               },
+              "measuredChildProcessCount": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "serviceMemory": {
+                "type": "object",
+                "properties": {
+                  "rssBytes": {
+                    "type": "number"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["cgroup_v2", "process_api"]
+                  },
+                  "completeness": {
+                    "type": "string",
+                    "enum": ["full", "partial"]
+                  }
+                },
+                "required": ["source", "completeness"]
+              },
               "childProcessRssBytes": {
                 "type": "number"
               }
@@ -21899,7 +22024,7 @@
       "PerfSpanStatus": {
         "default": "ok",
         "type": "string",
-        "enum": ["running", "ok", "error", "cancelled", "timeout"]
+        "enum": ["running", "ok", "error", "cancelled", "timeout", "interrupted"]
       },
       "PerfInflightSpan": {
         "type": "object",
@@ -21997,6 +22122,9 @@
           },
           "stale": {
             "type": "boolean"
+          },
+          "activeSince": {
+            "type": "number"
           }
         },
         "required": ["traceId", "spanId", "name", "module", "source", "startTime", "ageMs", "idleMs", "stale"]
@@ -23989,6 +24117,10 @@
             "type": "string",
             "enum": ["alpha", "beta", "deprecated", "active"]
           },
+          "catalogState": {
+            "type": "string",
+            "enum": ["active", "retained"]
+          },
           "options": {
             "type": "object",
             "propertyNames": {
@@ -24199,15 +24331,7 @@
           },
           "reason": {
             "type": "string",
-            "enum": [
-              "connected",
-              "not_connected",
-              "disabled",
-              "no_models",
-              "authentication_required",
-              "exhausted",
-              "fallback_unverified"
-            ]
+            "enum": ["connected", "not_connected", "disabled", "no_models", "authentication_required", "exhausted"]
           },
           "healthCheck": {
             "type": "string",
@@ -24218,6 +24342,29 @@
           }
         },
         "required": ["providerID", "available", "modelCount"]
+      },
+      "ProviderModelCatalogState": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": ["live", "cached", "bundled"]
+          },
+          "refreshing": {
+            "type": "boolean"
+          },
+          "modelCount": {
+            "type": "number"
+          },
+          "lastVerifiedAt": {
+            "type": "number"
+          },
+          "failure": {
+            "type": "string",
+            "enum": ["timeout", "network", "rate_limited", "upstream", "invalid_response"]
+          }
+        },
+        "required": ["source", "refreshing", "modelCount"]
       },
       "ProviderListResponse": {
         "type": "object",
@@ -24281,6 +24428,15 @@
             "additionalProperties": {
               "$ref": "#/components/schemas/ProviderRuntimeAvailability"
             }
+          },
+          "modelCatalog": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProviderModelCatalogState"
+            }
           }
         },
         "required": [
@@ -24291,7 +24447,8 @@
           "catalogProviders",
           "profiles",
           "authHealth",
-          "runtimeAvailability"
+          "runtimeAvailability",
+          "modelCatalog"
         ]
       },
       "PermissionAction": {
@@ -25801,6 +25958,10 @@
                 "status": {
                   "type": "string",
                   "enum": ["alpha", "beta", "deprecated"]
+                },
+                "catalog_state": {
+                  "type": "string",
+                  "enum": ["active", "retained"]
                 },
                 "options": {
                   "type": "object",
@@ -31617,6 +31778,32 @@
         },
         "required": ["name", "data"]
       },
+      "ProviderModelUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "ProviderModelUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "providerID": {
+                "type": "string"
+              },
+              "modelID": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "enum": ["not_in_catalog", "rejected_by_provider"]
+              }
+            },
+            "required": ["providerID", "modelID", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "AssistantMessage": {
         "type": "object",
         "properties": {
@@ -31667,6 +31854,9 @@
               },
               {
                 "$ref": "#/components/schemas/APIError"
+              },
+              {
+                "$ref": "#/components/schemas/ProviderModelUnavailableError"
               }
             ]
           },

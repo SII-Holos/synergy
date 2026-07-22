@@ -242,7 +242,7 @@ export namespace ConfigSetup {
 
     const runtimeModelInfo = (provider: Provider.Info): ModelInfo[] =>
       Object.values(provider.models)
-        .filter((model) => model.status !== "deprecated")
+        .filter(Provider.isSelectableModel)
         .map((model) => ({
           id: model.id,
           name: model.name,

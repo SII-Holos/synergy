@@ -4637,7 +4637,37 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
 msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
@@ -5558,6 +5588,10 @@ msgstr ""
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.state.failed"
+msgstr ""
+
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
 msgstr ""
 
 #. States
@@ -7267,6 +7301,10 @@ msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.lockedLabel"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
 msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
@@ -9871,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr ""
 
@@ -10228,6 +10262,10 @@ msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
@@ -15305,6 +15343,26 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.providers.accountConnected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
 msgstr ""
 
 #. js-lingui-explicit-id

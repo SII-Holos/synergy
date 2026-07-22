@@ -12,6 +12,7 @@ import type { Scope } from "@/scope"
 import { ScopeContext } from "@/scope/context"
 import { Info, type StatusInfo } from "./types"
 import { SessionEndpoint } from "./endpoint"
+import { SessionMemoryPressure } from "./memory-pressure"
 import { SessionInbox } from "./inbox"
 
 const log = Log.create({ service: "session.manager" })
@@ -147,25 +148,12 @@ export namespace SessionManager {
   const IDLE_SWEEP_INTERVAL_MS = 5 * 60 * 1000
   const USER_IDLE_TTL_MS = 30 * 60 * 1000
   const CHILD_SESSION_IDLE_TTL_MS = 5 * 60 * 1000
-  const RUNTIME_GC_MIN_INTERVAL_MS = 10 * 1000
 
-  let runtimeGcTimer: Timer | undefined
-  let lastRuntimeGcAt = 0
-
-  function scheduleRuntimeGC(reason: string, sessionID: string) {
-    if (runtimeGcTimer) return
-    const now = Date.now()
-    const delay = Math.max(0, RUNTIME_GC_MIN_INTERVAL_MS - (now - lastRuntimeGcAt))
-    runtimeGcTimer = setTimeout(() => {
-      runtimeGcTimer = undefined
-      lastRuntimeGcAt = Date.now()
-      try {
-        if (typeof Bun.gc === "function") Bun.gc(true)
-      } catch (error) {
-        log.warn("runtime gc failed", { reason, sessionID, error })
-      }
-    }, delay)
-    runtimeGcTimer.unref()
+  function signalRuntimeRelease(reason: string, sessionID: string) {
+    SessionMemoryPressure.signalRelease({
+      phase: `session.runtime.${reason}`,
+      sessionID,
+    })
   }
 
   const sweepTimer = setInterval(() => {
@@ -176,7 +164,7 @@ export namespace SessionManager {
       if (now - runtime.lastActiveAt < ttl) continue
       runtimes.delete(sessionID)
       log.info("swept idle runtime", { sessionID, isChild: runtime.isChild })
-      scheduleRuntimeGC("idle_sweep", sessionID)
+      signalRuntimeRelease("idle_sweep", sessionID)
     }
   }, IDLE_SWEEP_INTERVAL_MS)
   sweepTimer.unref()
@@ -292,7 +280,7 @@ export namespace SessionManager {
     if (!runtime) return
     runtimes.delete(sessionID)
     log.info("unregistered runtime", { sessionID })
-    scheduleRuntimeGC("unregister", sessionID)
+    signalRuntimeRelease("unregister", sessionID)
   }
 
   export function getRuntime(sessionID: string): SessionRuntime | undefined {
