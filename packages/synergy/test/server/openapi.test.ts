@@ -21,6 +21,10 @@ describe("OpenAPI spec generation", () => {
     expect(JSON.stringify(providerSchema)).toContain("#/components/schemas/Model")
     expect(JSON.stringify(modelSchema)).toContain("reasoningEfforts")
     expect(JSON.stringify(modelSchema)).not.toContain("reasoning_options")
+    expect(JSON.stringify(spec.components?.schemas?.EventStreamPayload)).toContain("EventMessagePartDelta")
+    const replayComponent = JSON.stringify(spec.components?.schemas?.EventReplayResult)
+    expect(replayComponent).toContain('"ok"')
+    expect(replayComponent).toContain('"reset"')
   })
 
   test("includes /session/index route with operationId session.index", async () => {
@@ -225,6 +229,32 @@ describe("OpenAPI spec generation", () => {
     const conflict = JSON.stringify(responseSchema(apply, "409"))
     expect(conflict).toContain("ConfigImportRevisionConflictError")
     expect(conflict).toContain("ConfigImportLockedError")
+  })
+
+  test("types delta event streams and replay recovery", async () => {
+    const spec = await Server.openapi()
+    const subscribe = spec.paths["/event"]?.get
+    const parameters = subscribe?.parameters ?? []
+    expect(parameters.map((item) => ("name" in item ? item.name : undefined))).toEqual([
+      "directory",
+      "scopeID",
+      "stream",
+    ])
+
+    const subscribeResponse = subscribe?.responses?.["200"]
+    const subscribeSchema = JSON.stringify(
+      subscribeResponse && "content" in subscribeResponse
+        ? subscribeResponse.content?.["text/event-stream"]?.schema
+        : undefined,
+    )
+    expect(subscribeSchema).toContain("EventStreamPayload")
+
+    const replay = spec.paths["/event/replay"]?.get
+    const replayResponse = replay?.responses?.["200"]
+    const replaySchema = JSON.stringify(
+      replayResponse && "content" in replayResponse ? replayResponse.content?.["application/json"]?.schema : undefined,
+    )
+    expect(replaySchema).toContain("EventReplayResult")
   })
 
   test("does not expose legacy file or find routes", async () => {

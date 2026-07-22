@@ -1661,15 +1661,10 @@ function createGlobalSync() {
   const unsub = globalSDK.event.listen((e) => {
     // Retired-epoch events must not affect either the store or watermark.
     // Streaming events carry no seq and pass through without changing either
-    // freshness or watermark state. seq/epoch are additive envelope fields not
-    // present in the generated Event type, so read them structurally.
-    const sequencedDetails = e.details as unknown as { epoch?: unknown; seq?: unknown }
-    const version =
-      typeof sequencedDetails.epoch === "string" && typeof sequencedDetails.seq === "number"
-        ? parseSyncVersion(sequencedDetails)
-        : undefined
+    // freshness or watermark state.
+    const version = parseSyncVersion(e.details)
     if (!resourceFreshness.acceptScopeEvent(e.name, version)) return
-    const observed = observeWatermark(watermarks.get(e.name), sequencedDetails as { epoch?: string; seq?: number })
+    const observed = observeWatermark(watermarks.get(e.name), e.details)
     if (observed.next) watermarks.set(e.name, observed.next)
     if (observed.epochChanged || observed.gap) {
       void replayOrResync(e.name, observed.replayFrom)
@@ -1704,11 +1699,7 @@ function createGlobalSync() {
     replayInFlight.add(scopeKey)
     try {
       const sdk = createScopedClient(scopeKey)
-      const res = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
-      const data = res.data as
-        | { status: "ok"; epoch: string; seq: number; events: any[] }
-        | { status: "reset"; epoch: string; seq: number }
-        | undefined
+      const { data } = await sdk.event.replay({ since: wm.seq, epoch: wm.epoch })
       if (!data || data.status === "reset") {
         watermarks.delete(scopeKey)
         if (data) resourceFreshness.resetScope(scopeKey, data.epoch, data.seq)

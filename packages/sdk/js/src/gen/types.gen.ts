@@ -7200,6 +7200,9 @@ export type Auth = OAuth | ApiAuth | WellKnownAuth | HolosAuth
 export type EventScopeUpdated = {
   type: "scope.updated"
   properties: Scope
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventScopeRemoved = {
@@ -7208,6 +7211,9 @@ export type EventScopeRemoved = {
     id: string
     directory?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventScopeRuntimeDisposed = {
@@ -7216,6 +7222,9 @@ export type EventScopeRuntimeDisposed = {
     scopeID: string
     directory?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventProviderAuthUpdated = {
@@ -7223,6 +7232,9 @@ export type EventProviderAuthUpdated = {
   properties: {
     health: ProviderAuthHealth
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventInstallationUpdated = {
@@ -7230,6 +7242,9 @@ export type EventInstallationUpdated = {
   properties: {
     version: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventInstallationUpdateAvailable = {
@@ -7237,6 +7252,9 @@ export type EventInstallationUpdateAvailable = {
   properties: {
     version: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventConfigUpdated = {
@@ -7245,6 +7263,9 @@ export type EventConfigUpdated = {
     scope: "global" | "project"
     changedFields: Array<string>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMcpToolsChanged = {
@@ -7252,6 +7273,9 @@ export type EventMcpToolsChanged = {
   properties: {
     server: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMcpPromptsChanged = {
@@ -7259,6 +7283,9 @@ export type EventMcpPromptsChanged = {
   properties: {
     server: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMcpResourcesChanged = {
@@ -7266,6 +7293,9 @@ export type EventMcpResourcesChanged = {
   properties: {
     server: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMcpReady = {
@@ -7273,6 +7303,9 @@ export type EventMcpReady = {
   properties: {
     [key: string]: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMcpFailed = {
@@ -7281,6 +7314,9 @@ export type EventMcpFailed = {
     server: string
     error: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMessageUpdated = {
@@ -7288,6 +7324,9 @@ export type EventMessageUpdated = {
   properties: {
     info: Message
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMessageRemoved = {
@@ -7296,6 +7335,9 @@ export type EventMessageRemoved = {
     sessionID: string
     messageID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMessagePartUpdated = {
@@ -7304,6 +7346,9 @@ export type EventMessagePartUpdated = {
     part: Part
     delta?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventMessagePartRemoved = {
@@ -7313,11 +7358,17 @@ export type EventMessagePartRemoved = {
     messageID: string
     partID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPermissionAsked = {
   type: "permission.asked"
   properties: PermissionRequest
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPermissionReplied = {
@@ -7327,6 +7378,9 @@ export type EventPermissionReplied = {
     requestID: string
     reply: "once" | "session" | "always" | "reject"
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionUpdated = {
@@ -7335,6 +7389,9 @@ export type EventSessionUpdated = {
     info: Session
     navEntry?: SessionNavEntry
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionDeleted = {
@@ -7342,6 +7399,9 @@ export type EventSessionDeleted = {
   properties: {
     info: Session
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionDiff = {
@@ -7350,6 +7410,9 @@ export type EventSessionDiff = {
     sessionID: string
     diff: Array<FileDiff>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionError = {
@@ -7358,6 +7421,9 @@ export type EventSessionError = {
     sessionID?: string
     error?: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionStatus = {
@@ -7366,6 +7432,9 @@ export type EventSessionStatus = {
     sessionID: string
     status: SessionStatus
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionCompletion = {
@@ -7374,6 +7443,9 @@ export type EventSessionCompletion = {
     sessionID: string
     unreadCount: number
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionIdle = {
@@ -7381,6 +7453,9 @@ export type EventSessionIdle = {
   properties: {
     sessionID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventRuntimeReloaded = {
@@ -7390,6 +7465,9 @@ export type EventRuntimeReloaded = {
     cascaded: Array<RuntimeReloadTarget>
     changedFields: Array<string>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionInboxUpdated = {
@@ -7398,6 +7476,9 @@ export type EventSessionInboxUpdated = {
     sessionID: string
     items: Array<SessionInboxItem>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopCreated = {
@@ -7405,6 +7486,9 @@ export type EventBlueprintLoopCreated = {
   properties: {
     loop: BlueprintLoopInfo
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopUpdated = {
@@ -7412,6 +7496,9 @@ export type EventBlueprintLoopUpdated = {
   properties: {
     loop: BlueprintLoopInfo
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopCompleted = {
@@ -7419,6 +7506,9 @@ export type EventBlueprintLoopCompleted = {
   properties: {
     loopID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopFailed = {
@@ -7427,6 +7517,9 @@ export type EventBlueprintLoopFailed = {
     loopID: string
     error: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopCancelled = {
@@ -7434,6 +7527,9 @@ export type EventBlueprintLoopCancelled = {
   properties: {
     loopID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopAuditing = {
@@ -7441,6 +7537,9 @@ export type EventBlueprintLoopAuditing = {
   properties: {
     loopID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventBlueprintLoopRejected = {
@@ -7449,6 +7548,9 @@ export type EventBlueprintLoopRejected = {
     loopID: string
     reason: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventNoteCreated = {
@@ -7458,6 +7560,9 @@ export type EventNoteCreated = {
     note: NoteInfo
     meta: NoteMetaInfo
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventNoteUpdated = {
@@ -7468,6 +7573,9 @@ export type EventNoteUpdated = {
     meta: NoteMetaInfo
     changed: Array<"title" | "content" | "tags" | "pinned" | "global" | "kind" | "blueprint" | "archived">
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventNoteDeleted = {
@@ -7476,6 +7584,9 @@ export type EventNoteDeleted = {
     id: string
     scopeID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventNoteArchived = {
@@ -7485,6 +7596,9 @@ export type EventNoteArchived = {
     scopeID: string
     metas: Array<NoteMetaInfo>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventNoteUnarchived = {
@@ -7494,6 +7608,9 @@ export type EventNoteUnarchived = {
     scopeID: string
     metas: Array<NoteMetaInfo>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventLatticeRunCreated = {
@@ -7501,6 +7618,9 @@ export type EventLatticeRunCreated = {
   properties: {
     run: LatticeRun
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventLatticeRunUpdated = {
@@ -7508,6 +7628,9 @@ export type EventLatticeRunUpdated = {
   properties: {
     run: LatticeRun
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventLatticeEventAppended = {
@@ -7515,11 +7638,17 @@ export type EventLatticeEventAppended = {
   properties: {
     event: LatticeEvent
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventQuestionAsked = {
   type: "question.asked"
   properties: QuestionRequest
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventQuestionReplied = {
@@ -7529,6 +7658,9 @@ export type EventQuestionReplied = {
     requestID: string
     answers: Array<QuestionAnswer>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventQuestionRejected = {
@@ -7537,6 +7669,9 @@ export type EventQuestionRejected = {
     sessionID: string
     requestID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventQuestionTimedOut = {
@@ -7545,6 +7680,9 @@ export type EventQuestionTimedOut = {
     sessionID: string
     requestID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSessionCompacted = {
@@ -7552,6 +7690,9 @@ export type EventSessionCompacted = {
   properties: {
     sessionID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventFileEdited = {
@@ -7559,6 +7700,9 @@ export type EventFileEdited = {
   properties: {
     file: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventLspClientDiagnostics = {
@@ -7567,6 +7711,9 @@ export type EventLspClientDiagnostics = {
     serverID: string
     path: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventLspUpdated = {
@@ -7574,6 +7721,9 @@ export type EventLspUpdated = {
   properties: {
     [key: string]: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventDagUpdated = {
@@ -7583,6 +7733,9 @@ export type EventDagUpdated = {
     nodes: Array<DagNode>
     ready: Array<string>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventTodoUpdated = {
@@ -7591,6 +7744,9 @@ export type EventTodoUpdated = {
     sessionID: string
     todos: Array<Todo>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventAgendaItemCreated = {
@@ -7598,6 +7754,9 @@ export type EventAgendaItemCreated = {
   properties: {
     item: AgendaItem
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventAgendaItemUpdated = {
@@ -7605,6 +7764,9 @@ export type EventAgendaItemUpdated = {
   properties: {
     item: AgendaItem
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventAgendaItemDeleted = {
@@ -7613,6 +7775,9 @@ export type EventAgendaItemDeleted = {
     id: string
     scopeID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventCortexTaskCreated = {
@@ -7620,6 +7785,9 @@ export type EventCortexTaskCreated = {
   properties: {
     task: CortexTask
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventCortexTaskCompleted = {
@@ -7627,6 +7795,9 @@ export type EventCortexTaskCompleted = {
   properties: {
     task: CortexTask
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventCortexTasksUpdated = {
@@ -7634,6 +7805,9 @@ export type EventCortexTasksUpdated = {
   properties: {
     tasks: Array<CortexTask>
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSynergyLinkTargetCreated = {
@@ -7641,6 +7815,9 @@ export type EventSynergyLinkTargetCreated = {
   properties: {
     target: SynergyLinkTarget
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSynergyLinkTargetUpdated = {
@@ -7648,6 +7825,9 @@ export type EventSynergyLinkTargetUpdated = {
   properties: {
     target: SynergyLinkTarget
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventSynergyLinkTargetRemoved = {
@@ -7655,6 +7835,9 @@ export type EventSynergyLinkTargetRemoved = {
   properties: {
     id: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPluginEvent = {
@@ -7670,6 +7853,9 @@ export type EventPluginEvent = {
     timestamp: number
     payload: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventCommandExecuted = {
@@ -7680,6 +7866,9 @@ export type EventCommandExecuted = {
     arguments: string
     messageID: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventFileWatcherUpdated = {
@@ -7694,6 +7883,9 @@ export type EventFileWatcherUpdated = {
     node?: unknown
     resync?: boolean
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventVcsBranchUpdated = {
@@ -7701,6 +7893,9 @@ export type EventVcsBranchUpdated = {
   properties: {
     branch?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPtyCreated = {
@@ -7708,6 +7903,9 @@ export type EventPtyCreated = {
   properties: {
     info: Pty
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPtyUpdated = {
@@ -7715,6 +7913,9 @@ export type EventPtyUpdated = {
   properties: {
     info: Pty
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPtyExited = {
@@ -7723,6 +7924,9 @@ export type EventPtyExited = {
     id: string
     exitCode: number
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventPtyDeleted = {
@@ -7730,6 +7934,9 @@ export type EventPtyDeleted = {
   properties: {
     id: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventChannelCommandExecuted = {
@@ -7741,6 +7948,9 @@ export type EventChannelCommandExecuted = {
     chatId: string
     userId?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventChannelConnected = {
@@ -7749,6 +7959,9 @@ export type EventChannelConnected = {
     channelType: string
     accountId: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventChannelDisconnected = {
@@ -7758,6 +7971,9 @@ export type EventChannelDisconnected = {
     accountId: string
     reason?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventChannelMessageReceived = {
@@ -7768,6 +7984,9 @@ export type EventChannelMessageReceived = {
     chatId: string
     text: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosContactAdded = {
@@ -7775,6 +7994,9 @@ export type EventHolosContactAdded = {
   properties: {
     contact: Contact
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosContactRemoved = {
@@ -7782,6 +8004,9 @@ export type EventHolosContactRemoved = {
   properties: {
     id: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosContactUpdated = {
@@ -7789,6 +8014,9 @@ export type EventHolosContactUpdated = {
   properties: {
     contact: Contact
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosConnected = {
@@ -7796,6 +8024,9 @@ export type EventHolosConnected = {
   properties: {
     peerId: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosConnectionStatusChanged = {
@@ -7804,6 +8035,9 @@ export type EventHolosConnectionStatusChanged = {
     status: string
     error?: string
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventHolosPresence = {
@@ -7812,6 +8046,9 @@ export type EventHolosPresence = {
     peerId: string
     status: "online" | "offline"
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventServerConnected = {
@@ -7819,6 +8056,9 @@ export type EventServerConnected = {
   properties: {
     [key: string]: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type EventGlobalDisposed = {
@@ -7826,6 +8066,9 @@ export type EventGlobalDisposed = {
   properties: {
     [key: string]: unknown
   }
+  seq?: number
+  epoch?: string
+  streaming?: boolean
 }
 
 export type Event =
@@ -7910,6 +8153,32 @@ export type Event =
   | EventHolosPresence
   | EventServerConnected
   | EventGlobalDisposed
+
+export type EventReplayResult =
+  | {
+      status: "ok"
+      epoch: string
+      seq: number
+      events: Array<Event>
+    }
+  | {
+      status: "reset"
+      epoch: string
+      seq: number
+    }
+
+export type EventMessagePartDelta = {
+  type: "message.part.delta"
+  properties: {
+    sessionID: string
+    messageID: string
+    partID: string
+    kind: "text" | "reasoning"
+    delta: string
+  }
+}
+
+export type EventStreamPayload = Event | EventMessagePartDelta
 
 export type GlobalHealthData = {
   body?: never
@@ -16998,8 +17267,10 @@ export type EventReplayResponses = {
   /**
    * Replay result
    */
-  200: unknown
+  200: EventReplayResult
 }
+
+export type EventReplayResponse = EventReplayResponses[keyof EventReplayResponses]
 
 export type EventSubscribeData = {
   body?: never
@@ -17007,6 +17278,7 @@ export type EventSubscribeData = {
   query?: {
     directory?: string
     scopeID?: string
+    stream?: "delta"
   }
   url: "/event"
 }
@@ -17015,7 +17287,7 @@ export type EventSubscribeResponses = {
   /**
    * Event stream
    */
-  200: Event
+  200: EventStreamPayload
 }
 
 export type EventSubscribeResponse = EventSubscribeResponses[keyof EventSubscribeResponses]

@@ -10621,6 +10621,7 @@ export class Event extends HeyApiClient {
     parameters?: {
       directory?: string
       scopeID?: string
+      stream?: "delta"
     },
     options?: Options<never, ThrowOnError>,
   ) {
@@ -10631,6 +10632,7 @@ export class Event extends HeyApiClient {
           args: [
             { in: "query", key: "directory" },
             { in: "query", key: "scopeID" },
+            { in: "query", key: "stream" },
           ],
         },
       ],
