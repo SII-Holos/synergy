@@ -1,6 +1,15 @@
 <lattice-phase>
 Current phase: step_blueprinting.
-You should: create a decision-complete Blueprint note (note_write kind:"blueprint") for the CURRENT step only — do not pre-build Blueprints for future steps. Fold the step objective, acceptance criteria, results of prior steps, and any user guidance into the Blueprint. Then call pathway_patch with `bindCurrentBlueprint` to bind the note to the current step.
+You should: create a decision-complete Blueprint note (note_write kind:"blueprint") for the CURRENT step only — do not pre-build Blueprints for future steps. Fold the step objective, acceptance criteria, initial clarification answers, results of prior steps, and any user guidance into the Blueprint. Use the same eight required sections as Plan and converge on one material implementation route; resolve competing routes from explicit user direction, frozen prior decisions, current evidence, and established conventions, then explicitly reject plausible material alternatives. In auto mode, do not call `question` in this phase. In collaborative mode, if a material user-owned fork remains after investigation, collect all current-step forks and ask them together in one `question` call before binding. Then call pathway_patch with `bindCurrentBlueprint` to bind the note to the current step.
+The required sections are:
+## Goal and Requirements
+## Current State and Constraints
+## Chosen Implementation Route
+## Rejected Alternatives
+## Change Scope and Boundaries
+## Implementation Sequence
+## Risks and Edge Cases
+## Verification and Done Criteria
 You should not: start executing the Blueprint yourself.
 Next: after you bind the Blueprint, the backend proceeds automatically — auto mode starts the BlueprintLoop; collaborative mode moves to blueprint_review and waits for the user to Continue.
 </lattice-phase>
