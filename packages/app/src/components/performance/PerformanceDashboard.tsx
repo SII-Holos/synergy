@@ -625,6 +625,10 @@ function ServiceMemoryBreakdown(props: {
           { label: P.serviceMemoryFile, value: formatChartBytes(memory().fileBytes) },
           { label: P.serviceMemoryKernel, value: formatChartBytes(memory().kernelBytes) },
           { label: P.serviceMemorySlab, value: formatChartBytes(memory().slabBytes) },
+          { label: P.serviceMemoryWorkingSet, value: formatChartBytes(memory().workingSetBytes) },
+          { label: P.serviceMemoryReclaimable, value: formatChartBytes(memory().reclaimableBytes) },
+          { label: P.serviceMemorySlabReclaimable, value: formatChartBytes(memory().slabReclaimableBytes) },
+          { label: P.serviceMemorySlabUnreclaimable, value: formatChartBytes(memory().slabUnreclaimableBytes) },
           { label: P.serviceMemorySwap, value: formatChartBytes(memory().swapBytes) },
           {
             label: P.serviceMemoryProcessRss,
@@ -650,6 +654,56 @@ function ServiceMemoryBreakdown(props: {
               oom: String(memory().events?.oom ?? 0),
               oomKill: String(memory().events?.oomKill ?? 0),
             }),
+          },
+          {
+            label: P.serviceMemoryEventDeltas,
+            value: props._(P.serviceMemoryEventsValue.id, {
+              high: String(memory().eventDeltas?.high ?? 0),
+              max: String(memory().eventDeltas?.max ?? 0),
+              oom: String(memory().eventDeltas?.oom ?? 0),
+              oomKill: String(memory().eventDeltas?.oomKill ?? 0),
+            }),
+          },
+          {
+            label: P.serviceMemoryPsiSome,
+            value: props._(P.serviceMemoryPsiValue.id, {
+              value: ((memory().pressure?.some?.avg10Ratio ?? 0) * 100).toFixed(2),
+            }),
+          },
+          {
+            label: P.serviceMemoryPsiFull,
+            value: props._(P.serviceMemoryPsiValue.id, {
+              value: ((memory().pressure?.full?.avg10Ratio ?? 0) * 100).toFixed(2),
+            }),
+          },
+          {
+            label: P.serviceMemoryJscHeap,
+            value: props._(P.serviceMemoryJscHeapValue.id, {
+              used: formatChartBytes(memory().runtime?.jscHeapSizeBytes),
+              capacity: formatChartBytes(memory().runtime?.jscHeapCapacityBytes),
+            }),
+          },
+          { label: P.serviceMemoryJscExtra, value: formatChartBytes(memory().runtime?.jscExtraMemoryBytes) },
+          { label: P.serviceMemoryJscObjects, value: String(memory().runtime?.objectCount ?? 0) },
+          {
+            label: P.serviceMemoryJscTopTypes,
+            value:
+              memory()
+                .runtime?.topObjectTypes.slice(0, 3)
+                .map((item) => `${item.type} ${item.count}`)
+                .join(" · ") || "—",
+          },
+          {
+            label: P.serviceMemoryJscGrowingTypes,
+            value:
+              memory()
+                .runtime?.growingObjectTypes.slice(0, 3)
+                .map((item) => `${item.type} +${item.delta}`)
+                .join(" · ") || "—",
+          },
+          {
+            label: P.serviceMemoryAllocatorCommitted,
+            value: formatChartBytes(memory().runtime?.allocatorCommittedBytes),
           },
         ]
         return (

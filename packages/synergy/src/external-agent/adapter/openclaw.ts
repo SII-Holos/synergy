@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
 import { ExternalAgent } from "../bridge"
+import { ExternalAgentProcessTracker } from "../process-tracker"
 
 import path from "node:path"
 const log = Log.create({ service: "external-agent.openclaw" })
@@ -85,6 +86,12 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
       stderr: "ignore",
     })
     this.currentProc = proc
+    const tracked = ExternalAgentProcessTracker.attach({
+      adapter: this.name,
+      pid: proc.pid,
+      cwd: this.cwd,
+      context,
+    })
 
     const onAbort = () => {
       log.warn("turn aborted via signal")
@@ -144,6 +151,7 @@ class OpenClawAdapter implements ExternalAgent.Adapter {
         yield { type: "error", message: "OpenClaw turn was aborted" }
       }
     } finally {
+      tracked.dispose()
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
       // Cleanup temp files

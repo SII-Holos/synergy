@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import type { LinuxRuntimeMemory } from "./linux-runtime-memory"
 
 export namespace ServiceMemory {
   export type Source = "cgroup-v2" | "process-sum" | "unknown"
@@ -8,6 +9,30 @@ export namespace ServiceMemory {
     pid?: number
     processId?: string
     rssBytes?: number
+    owner?: {
+      sessionID?: string
+      messageID?: string
+      callID?: string
+      tool?: string
+      traceId?: string
+    }
+  }
+
+  export interface PressureWindow {
+    avg10Ratio?: number
+    avg60Ratio?: number
+    avg300Ratio?: number
+    totalMicros?: number
+  }
+
+  export interface Pressure {
+    some?: PressureWindow
+    full?: PressureWindow
+  }
+
+  export interface PressureDelta {
+    someMicros?: number
+    fullMicros?: number
   }
 
   export interface ProcessSample {
@@ -17,6 +42,7 @@ export namespace ServiceMemory {
     name?: string
     rssBytes?: number
     pssBytes?: number
+    owner?: KnownProcess["owner"]
   }
 
   export interface Events {
@@ -40,12 +66,22 @@ export namespace ServiceMemory {
     fileBytes?: number
     kernelBytes?: number
     slabBytes?: number
+    activeFileBytes?: number
+    inactiveFileBytes?: number
+    slabReclaimableBytes?: number
+    slabUnreclaimableBytes?: number
+    reclaimableBytes?: number
+    workingSetBytes?: number
     processCount: number
     rssProcessCount: number
     pssProcessCount: number
     processRssBytes?: number
     processPssBytes?: number
     events: Events
+    eventDeltas: Events
+    pressure: Pressure
+    pressureDelta: PressureDelta
+    runtime?: LinuxRuntimeMemory.Snapshot
     processes: ProcessSample[]
   }
 
@@ -59,6 +95,12 @@ export namespace ServiceMemory {
     pid?: number
     processMemory?: NodeJS.MemoryUsage
     knownProcesses?: KnownProcess[]
+  }
+
+  export interface ReclaimResult {
+    requestedBytes: number
+    supported: boolean
+    error?: string
   }
 
   type CgroupSnapshot = Omit<
@@ -116,8 +158,43 @@ export namespace ServiceMemory {
     }
 
     const processes = fallbackProcesses({ pid, processMemory, knownProcesses, procRoot: options.procRoot, platform })
-    const result = finalize({ source: processes.length > 0 ? "process-sum" : "unknown", processes, events: {} })
+    const result = finalize({
+      source: processes.length > 0 ? "process-sum" : "unknown",
+      processes,
+      events: {},
+      eventDeltas: {},
+      pressure: {},
+      pressureDelta: {},
+    })
     return { ...result, currentBytes: result.processRssBytes }
+  }
+
+  export async function reclaim(bytes: number, options: ReadOptions = {}): Promise<ReclaimResult> {
+    const requestedBytes = Math.max(0, Math.floor(bytes))
+    if ((options.platform ?? process.platform) !== "linux" || requestedBytes === 0) {
+      return { requestedBytes, supported: false }
+    }
+    const cgroup = readLinuxCgroup(options)
+    if (!cgroup) return { requestedBytes, supported: false }
+    try {
+      await fs.promises.writeFile(path.join(cgroup.directory, "memory.reclaim"), String(requestedBytes))
+      return { requestedBytes, supported: true }
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "unknown"
+      return { requestedBytes, supported: true, error: code }
+    }
+  }
+
+  export function withDeltas(current: Snapshot, previous?: Snapshot): Snapshot {
+    if (!previous || current.source !== previous.source) return current
+    return {
+      ...current,
+      eventDeltas: subtractEvents(current.events, previous.events),
+      pressureDelta: {
+        someMicros: subtractCounter(current.pressure.some?.totalMicros, previous.pressure.some?.totalMicros),
+        fullMicros: subtractCounter(current.pressure.full?.totalMicros, previous.pressure.full?.totalMicros),
+      },
+    }
   }
 
   function readLinuxCgroup(options: ReadOptions): CgroupSnapshot | undefined {
@@ -142,6 +219,7 @@ export namespace ServiceMemory {
     const limitBytes = highBytes ?? maxBytes
     const stat = parseKeyValues(readText(path.join(directory, "memory.stat")))
     const events = parseKeyValues(readText(path.join(directory, "memory.events")))
+    const reclaimableBytes = sumDefined(stat.inactive_file, stat.slab_reclaimable)
     return {
       directory,
       currentBytes,
@@ -154,6 +232,12 @@ export namespace ServiceMemory {
       fileBytes: stat.file,
       kernelBytes: stat.kernel,
       slabBytes: stat.slab,
+      activeFileBytes: stat.active_file,
+      inactiveFileBytes: stat.inactive_file,
+      slabReclaimableBytes: stat.slab_reclaimable,
+      slabUnreclaimableBytes: stat.slab_unreclaimable,
+      reclaimableBytes,
+      workingSetBytes: reclaimableBytes === undefined ? undefined : Math.max(0, currentBytes - reclaimableBytes),
       events: {
         low: events.low,
         high: events.high,
@@ -162,6 +246,9 @@ export namespace ServiceMemory {
         oomKill: events.oom_kill,
         oomGroupKill: events.oom_group_kill,
       },
+      eventDeltas: {},
+      pressure: parsePressure(readText(path.join(directory, "memory.pressure"))),
+      pressureDelta: {},
     }
   }
 
@@ -223,6 +310,7 @@ export namespace ServiceMemory {
           processId: known.processId,
           role: "child" as const,
           rssBytes: known.rssBytes,
+          owner: known.owner,
         }),
       ]
     })
@@ -246,6 +334,7 @@ export namespace ServiceMemory {
       name: readText(path.join(procRoot, String(input.pid), "comm"))?.trim() || undefined,
       rssBytes: parseKb(status, "VmRSS") ?? input.processMemory?.rss ?? input.known?.rssBytes,
       pssBytes: parseKb(rollup, "Pss"),
+      owner: input.known?.owner,
     })
   }
 
@@ -253,6 +342,9 @@ export namespace ServiceMemory {
     source: Source
     processes: ProcessSample[]
     events: Events
+    eventDeltas?: Events
+    pressure?: Pressure
+    pressureDelta?: PressureDelta
     currentBytes?: number
     peakBytes?: number
     highBytes?: number
@@ -263,6 +355,12 @@ export namespace ServiceMemory {
     fileBytes?: number
     kernelBytes?: number
     slabBytes?: number
+    activeFileBytes?: number
+    inactiveFileBytes?: number
+    slabReclaimableBytes?: number
+    slabUnreclaimableBytes?: number
+    reclaimableBytes?: number
+    workingSetBytes?: number
     directory?: string
   }): Snapshot {
     const rss = input.processes.flatMap((item) => (item.rssBytes === undefined ? [] : [item.rssBytes]))
@@ -279,14 +377,64 @@ export namespace ServiceMemory {
       fileBytes: input.fileBytes,
       kernelBytes: input.kernelBytes,
       slabBytes: input.slabBytes,
+      activeFileBytes: input.activeFileBytes,
+      inactiveFileBytes: input.inactiveFileBytes,
+      slabReclaimableBytes: input.slabReclaimableBytes,
+      slabUnreclaimableBytes: input.slabUnreclaimableBytes,
+      reclaimableBytes: input.reclaimableBytes,
+      workingSetBytes: input.workingSetBytes,
       processCount: input.processes.length,
       rssProcessCount: rss.length,
       pssProcessCount: pss.length,
       processRssBytes: rss.length > 0 ? rss.reduce((sum, value) => sum + value, 0) : undefined,
       processPssBytes: pss.length > 0 ? pss.reduce((sum, value) => sum + value, 0) : undefined,
       events: compact(input.events),
+      eventDeltas: compact(input.eventDeltas ?? {}),
+      pressure: compact(input.pressure ?? {}),
+      pressureDelta: compact(input.pressureDelta ?? {}),
       processes: input.processes,
     }
+  }
+
+  function parsePressure(value: string | undefined): Pressure {
+    const result: Pressure = {}
+    for (const line of value?.split("\n") ?? []) {
+      const [kind, ...fields] = line.trim().split(/\s+/)
+      if (kind !== "some" && kind !== "full") continue
+      const parsed: PressureWindow = {}
+      for (const field of fields) {
+        const [key, raw] = field.split("=", 2)
+        const number = Number(raw)
+        if (!Number.isFinite(number) || number < 0) continue
+        if (key === "avg10") parsed.avg10Ratio = number / 100
+        if (key === "avg60") parsed.avg60Ratio = number / 100
+        if (key === "avg300") parsed.avg300Ratio = number / 100
+        if (key === "total") parsed.totalMicros = number
+      }
+      result[kind] = compact(parsed)
+    }
+    return compact(result)
+  }
+
+  function subtractEvents(current: Events, previous: Events): Events {
+    return compact({
+      low: subtractCounter(current.low, previous.low),
+      high: subtractCounter(current.high, previous.high),
+      max: subtractCounter(current.max, previous.max),
+      oom: subtractCounter(current.oom, previous.oom),
+      oomKill: subtractCounter(current.oomKill, previous.oomKill),
+      oomGroupKill: subtractCounter(current.oomGroupKill, previous.oomGroupKill),
+    })
+  }
+
+  function subtractCounter(current: number | undefined, previous: number | undefined) {
+    if (current === undefined || previous === undefined) return undefined
+    return current >= previous ? current - previous : current
+  }
+
+  function sumDefined(...values: Array<number | undefined>) {
+    const present = values.filter((value): value is number => value !== undefined)
+    return present.length === 0 ? undefined : present.reduce((sum, value) => sum + value, 0)
   }
 
   function parseKeyValues(value: string | undefined) {

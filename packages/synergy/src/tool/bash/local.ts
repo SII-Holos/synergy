@@ -356,6 +356,16 @@ export const LocalBashBackend = {
         command: params.command,
         description: params.description,
         cwd,
+        owner:
+          process.platform === "linux"
+            ? {
+                sessionID: ctx.sessionID,
+                messageID: ctx.messageID,
+                callID: ctx.callID,
+                tool: "bash",
+                traceId: (ctx.extra as { traceId?: string } | undefined)?.traceId,
+              }
+            : undefined,
       })
     } catch (error) {
       cleanupExecutionArtifacts()

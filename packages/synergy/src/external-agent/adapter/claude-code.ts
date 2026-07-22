@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
 import { ExternalAgent } from "../bridge"
+import { ExternalAgentProcessTracker } from "../process-tracker"
 
 const log = Log.create({ service: "external-agent.claude-code" })
 
@@ -81,6 +82,12 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
       stderr: "pipe",
     })
     this.currentProc = proc
+    const tracked = ExternalAgentProcessTracker.attach({
+      adapter: this.name,
+      pid: proc.pid,
+      cwd: this.cwd,
+      context,
+    })
 
     try {
       proc.stdin.end()
@@ -113,6 +120,7 @@ class ClaudeCodeAdapter implements ExternalAgent.Adapter {
         })
       }
     } finally {
+      tracked.dispose()
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
 

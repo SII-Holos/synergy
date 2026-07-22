@@ -4559,6 +4559,11 @@ msgstr "未知"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.allocatorCommitted"
+msgstr "分配器已提交内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.serviceMemory.anon"
 msgstr "匿名内存"
 
@@ -4579,6 +4584,11 @@ msgstr "Linux cgroup v2 服务总量及完整 Synergy 服务的进程归因。"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.eventDeltas"
+msgstr "本次采样间事件"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.serviceMemory.events"
 msgstr "内存压力事件"
 
@@ -4596,6 +4606,36 @@ msgstr "文件缓存"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.serviceMemory.high"
 msgstr "软限制"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscExtra"
+msgstr "JSC 额外内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscGrowingTypes"
+msgstr "增长中的 JSC 类型"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscHeap"
+msgstr "JSC 堆"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscHeapValue"
+msgstr "{used} / {capacity}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscObjects"
+msgstr "JSC 对象数"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.jscTopTypes"
+msgstr "JSC 类型排行"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4624,8 +4664,38 @@ msgstr "进程 RSS"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.psiFull"
+msgstr "PSI 完全阻塞（10 秒）"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.psiSome"
+msgstr "PSI 部分阻塞（10 秒）"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.psiValue"
+msgstr "{value}%"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.reclaimable"
+msgstr "可回收缓存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.serviceMemory.slab"
 msgstr "Slab"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.slabReclaimable"
+msgstr "可回收 Slab"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.slabUnreclaimable"
+msgstr "不可回收 Slab"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4641,6 +4711,11 @@ msgstr "交换空间"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.serviceMemory.title"
 msgstr "服务内存归因"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.workingSet"
+msgstr "估算工作集"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.

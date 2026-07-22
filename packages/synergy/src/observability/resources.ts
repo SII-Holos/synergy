@@ -8,6 +8,7 @@ import { ObservabilityStore } from "./store"
 import { ObservabilityRedaction } from "./redaction"
 import { ProcessRegistry } from "@/process/registry"
 import { ServiceMemory } from "./service-memory"
+import { LinuxRuntimeMemory } from "./linux-runtime-memory"
 
 export namespace ObservabilityResources {
   let timer: Timer | undefined
@@ -15,6 +16,8 @@ export namespace ObservabilityResources {
   let lastTime = performance.now()
   let eventLoopExpected = Date.now()
   let sampleIntervalMs: number | undefined
+  let lastServiceMemory: ServiceMemory.Snapshot | undefined
+  let lastRuntimeMetricSampleAt: number | undefined
   const io = { appReadBytes: 0, appWrittenBytes: 0, appReadOps: 0, appWriteOps: 0 }
   const rssWindow: Array<{ time: number; rss: number }> = []
 
@@ -41,14 +44,21 @@ export namespace ObservabilityResources {
     const now = ObservabilityClock.now()
     const memory = process.memoryUsage()
     const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
-    const serviceMemory = ServiceMemory.sample({
+    const rawServiceMemory = ServiceMemory.sample({
       processMemory: memory,
       knownProcesses: childProcesses.map((child) => ({
         pid: child.pid,
         processId: child.id,
         rssBytes: child.rssBytes,
+        owner: child.owner,
       })),
     })
+    const runtimeMemory = LinuxRuntimeMemory.sample({ now })
+    const serviceMemory = {
+      ...ServiceMemory.withDeltas(rawServiceMemory, lastServiceMemory),
+      ...(runtimeMemory ? { runtime: runtimeMemory } : {}),
+    }
+    lastServiceMemory = rawServiceMemory
     const mainProcess = serviceMemory.processes.find((item) => item.role === "main")
     const cpu = process.cpuUsage()
     const elapsedMs = Math.max(1, performance.now() - lastTime)
@@ -107,6 +117,8 @@ export namespace ObservabilityResources {
     if (timer) clearInterval(timer)
     timer = undefined
     sampleIntervalMs = undefined
+    lastServiceMemory = undefined
+    lastRuntimeMetricSampleAt = undefined
   }
 
   export function reconfigure() {
@@ -154,12 +166,17 @@ export namespace ObservabilityResources {
         labels.outputChars = known.outputChars
         labels.truncated = known.truncated
       }
+      if (child.owner?.messageID) labels.messageID = child.owner.messageID
+      if (child.owner?.callID) labels.callID = child.owner.callID
+      if (child.owner?.tool) labels.tool = child.owner.tool
       ObservabilityStore.insertResource(
         ObservabilitySchema.ResourceSample.parse({
           sampleId: ObservabilityClock.id("res"),
           time: now,
           iso: ObservabilityClock.iso(now),
           source: "process",
+          traceId: child.owner?.traceId,
+          sessionID: child.owner?.sessionID,
           process: {
             pid: child.pid,
             processId: child.processId,
@@ -178,6 +195,11 @@ export namespace ObservabilityResources {
           unit: "bytes",
           module: "process",
           source: "process",
+          traceId: child.owner?.traceId,
+          sessionID: child.owner?.sessionID,
+          messageID: child.owner?.messageID,
+          callID: child.owner?.callID,
+          tool: child.owner?.tool,
           processId: child.processId,
           pid: child.pid,
           labels: { command: commandFamily, backgrounded: known?.backgrounded ?? false },
@@ -190,6 +212,11 @@ export namespace ObservabilityResources {
           unit: "bytes",
           module: "process",
           source: "process",
+          traceId: child.owner?.traceId,
+          sessionID: child.owner?.sessionID,
+          messageID: child.owner?.messageID,
+          callID: child.owner?.callID,
+          tool: child.owner?.tool,
           processId: child.processId,
           pid: child.pid,
           labels: { command: commandFamily, backgrounded: known?.backgrounded ?? false },
@@ -254,10 +281,11 @@ export namespace ObservabilityResources {
       source: "process",
     })
     recordServiceMemoryMetrics(serviceMemory)
+    recordLinuxRuntimeMetrics(serviceMemory)
   }
 
   function recordServiceMemoryMetrics(sample: ServiceMemory.Snapshot) {
-    const metrics: Array<[string, number | undefined, "bytes" | "ratio" | "count"]> = [
+    const metrics: Array<[string, number | undefined, "bytes" | "ratio" | "count" | "microseconds"]> = [
       ["service.memory.current", sample.currentBytes, "bytes"],
       ["service.memory.peak", sample.peakBytes, "bytes"],
       ["service.memory.high", sample.highBytes, "bytes"],
@@ -268,12 +296,26 @@ export namespace ObservabilityResources {
       ["service.memory.file", sample.fileBytes, "bytes"],
       ["service.memory.kernel", sample.kernelBytes, "bytes"],
       ["service.memory.slab", sample.slabBytes, "bytes"],
+      ["service.memory.file.active", sample.activeFileBytes, "bytes"],
+      ["service.memory.file.inactive", sample.inactiveFileBytes, "bytes"],
+      ["service.memory.slab.reclaimable", sample.slabReclaimableBytes, "bytes"],
+      ["service.memory.slab.unreclaimable", sample.slabUnreclaimableBytes, "bytes"],
+      ["service.memory.reclaimable", sample.reclaimableBytes, "bytes"],
+      ["service.memory.working_set", sample.workingSetBytes, "bytes"],
       ["service.process.rss", sample.processRssBytes, "bytes"],
       ["service.process.pss", sample.processPssBytes, "bytes"],
       ["service.memory.events.high", sample.events.high, "count"],
       ["service.memory.events.max", sample.events.max, "count"],
       ["service.memory.events.oom", sample.events.oom, "count"],
       ["service.memory.events.oom_kill", sample.events.oomKill, "count"],
+      ["service.memory.events.high_delta", sample.eventDeltas.high, "count"],
+      ["service.memory.events.max_delta", sample.eventDeltas.max, "count"],
+      ["service.memory.events.oom_delta", sample.eventDeltas.oom, "count"],
+      ["service.memory.events.oom_kill_delta", sample.eventDeltas.oomKill, "count"],
+      ["service.memory.pressure.some.avg10", sample.pressure.some?.avg10Ratio, "ratio"],
+      ["service.memory.pressure.full.avg10", sample.pressure.full?.avg10Ratio, "ratio"],
+      ["service.memory.pressure.some_delta", sample.pressureDelta.someMicros, "microseconds"],
+      ["service.memory.pressure.full_delta", sample.pressureDelta.fullMicros, "microseconds"],
     ]
     for (const [name, value, unit] of metrics) {
       if (value === undefined) continue
@@ -284,6 +326,42 @@ export namespace ObservabilityResources {
         module: "process",
         source: "process",
         labels: { source: sample.source },
+      })
+    }
+  }
+
+  function recordLinuxRuntimeMetrics(sample: ServiceMemory.Snapshot) {
+    if (!sample.runtime || sample.runtime.sampledAt === lastRuntimeMetricSampleAt) return
+    lastRuntimeMetricSampleAt = sample.runtime.sampledAt
+    for (const [name, value] of Object.entries({
+      "runtime.jsc.heap_size": sample.runtime.jscHeapSizeBytes,
+      "runtime.jsc.heap_capacity": sample.runtime.jscHeapCapacityBytes,
+      "runtime.jsc.extra_memory": sample.runtime.jscExtraMemoryBytes,
+      "runtime.jsc.object_count": sample.runtime.objectCount,
+      "runtime.jsc.protected_object_count": sample.runtime.protectedObjectCount,
+      "runtime.allocator.rss": sample.runtime.allocatorRssBytes,
+      "runtime.allocator.committed": sample.runtime.allocatorCommittedBytes,
+      "runtime.allocator.reserved": sample.runtime.allocatorReservedBytes,
+      "runtime.allocator.abandoned_pages": sample.runtime.allocatorAbandonedPages,
+    })) {
+      if (value === undefined) continue
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit: name.endsWith("count") || name.endsWith("pages") ? "count" : "bytes",
+        module: "process",
+        source: "process",
+        labels: { platform: "linux" },
+      })
+    }
+    for (const item of sample.runtime.growingObjectTypes) {
+      ObservabilityMetrics.record({
+        name: "runtime.jsc.object_type.growth",
+        value: item.delta,
+        unit: "count",
+        module: "process",
+        source: "process",
+        labels: { platform: "linux", objectType: item.type, total: item.count },
       })
     }
   }

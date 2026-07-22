@@ -204,6 +204,12 @@ export namespace ObservabilitySchema {
       fileBytes: z.number().optional(),
       kernelBytes: z.number().optional(),
       slabBytes: z.number().optional(),
+      activeFileBytes: z.number().optional(),
+      inactiveFileBytes: z.number().optional(),
+      slabReclaimableBytes: z.number().optional(),
+      slabUnreclaimableBytes: z.number().optional(),
+      reclaimableBytes: z.number().optional(),
+      workingSetBytes: z.number().optional(),
       processCount: z.number().int().nonnegative(),
       rssProcessCount: z.number().int().nonnegative(),
       pssProcessCount: z.number().int().nonnegative(),
@@ -219,6 +225,62 @@ export namespace ObservabilitySchema {
           oomGroupKill: z.number().int().nonnegative().optional(),
         })
         .default({}),
+      eventDeltas: z
+        .object({
+          low: z.number().int().nonnegative().optional(),
+          high: z.number().int().nonnegative().optional(),
+          max: z.number().int().nonnegative().optional(),
+          oom: z.number().int().nonnegative().optional(),
+          oomKill: z.number().int().nonnegative().optional(),
+          oomGroupKill: z.number().int().nonnegative().optional(),
+        })
+        .default({}),
+      pressure: z
+        .object({
+          some: z
+            .object({
+              avg10Ratio: z.number().nonnegative().optional(),
+              avg60Ratio: z.number().nonnegative().optional(),
+              avg300Ratio: z.number().nonnegative().optional(),
+              totalMicros: z.number().nonnegative().optional(),
+            })
+            .optional(),
+          full: z
+            .object({
+              avg10Ratio: z.number().nonnegative().optional(),
+              avg60Ratio: z.number().nonnegative().optional(),
+              avg300Ratio: z.number().nonnegative().optional(),
+              totalMicros: z.number().nonnegative().optional(),
+            })
+            .optional(),
+        })
+        .default({}),
+      pressureDelta: z
+        .object({
+          someMicros: z.number().nonnegative().optional(),
+          fullMicros: z.number().nonnegative().optional(),
+        })
+        .default({}),
+      runtime: z
+        .object({
+          sampledAt: z.number(),
+          jscHeapSizeBytes: z.number().nonnegative(),
+          jscHeapCapacityBytes: z.number().nonnegative(),
+          jscExtraMemoryBytes: z.number().nonnegative(),
+          objectCount: z.number().int().nonnegative(),
+          protectedObjectCount: z.number().int().nonnegative(),
+          allocatorRssBytes: z.number().nonnegative().optional(),
+          allocatorCommittedBytes: z.number().nonnegative().optional(),
+          allocatorReservedBytes: z.number().nonnegative().optional(),
+          allocatorAbandonedPages: z.number().int().nonnegative().optional(),
+          topObjectTypes: z.array(
+            z.object({ type: z.string(), count: z.number().int().nonnegative(), delta: z.number().int() }),
+          ),
+          growingObjectTypes: z.array(
+            z.object({ type: z.string(), count: z.number().int().nonnegative(), delta: z.number().int() }),
+          ),
+        })
+        .optional(),
     })
     .meta({ ref: "TelemetryServiceMemory" })
   export type ServiceMemory = z.infer<typeof ServiceMemory>

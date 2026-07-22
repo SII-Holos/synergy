@@ -140,7 +140,14 @@ describe("ProcessRegistry lifecycle", () => {
 
   test("resource snapshot reports inspected child process RSS", () => {
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
-    const proc = ProcessRegistry.create({ command: "node server.js" })
+    const owner = {
+      sessionID: "ses_owner",
+      messageID: "msg_owner",
+      callID: "call_owner",
+      tool: "bash",
+      traceId: "trace_owner",
+    }
+    const proc = ProcessRegistry.create({ command: "node server.js", owner })
     proc.pid = 1234
     ProcessRegistry.markBackgrounded(proc)
 
@@ -156,6 +163,7 @@ describe("ProcessRegistry lifecycle", () => {
       ageMs: 1000,
       alive: true,
       rssBytes: 4096,
+      owner,
     })
   })
 

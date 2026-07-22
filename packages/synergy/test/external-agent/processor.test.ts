@@ -24,6 +24,7 @@ describe("ExternalAgentProcessor", () => {
           model: { providerID: "openai-codex", modelID: "gpt-5.5" },
           time: { created: Date.now() },
         })
+        let turnContext: ExternalAgent.TurnContext | undefined
         const adapter: ExternalAgent.Adapter = {
           name: "codex",
           started: true,
@@ -32,7 +33,8 @@ describe("ExternalAgentProcessor", () => {
             return { available: true }
           },
           async start() {},
-          async *turn() {
+          async *turn(context) {
+            turnContext = context
             yield { type: "text_delta", text: "Codex finished successfully." }
             yield { type: "turn_complete" }
           },
@@ -52,6 +54,7 @@ describe("ExternalAgentProcessor", () => {
         })
 
         expect(result.info.visible).toBe(true)
+        expect(turnContext?.messageID).toBe(result.info.id)
         expect(result.parts.some((part) => part.type === "text" && part.text.includes("Codex finished"))).toBe(true)
 
         const messages = await Session.messages({ sessionID: session.id })

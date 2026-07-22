@@ -128,6 +128,14 @@ class BoundedTextBuffer {
 export namespace ProcessRegistry {
   export type Status = "running" | "completed" | "failed" | "killed"
 
+  export interface Owner {
+    sessionID?: string
+    messageID?: string
+    callID?: string
+    tool?: string
+    traceId?: string
+  }
+
   export interface Stdin {
     write: (data: string, cb?: (err?: Error | null) => void) => void
     end: () => void
@@ -152,6 +160,7 @@ export namespace ProcessRegistry {
     exited: boolean
     backgrounded: boolean
     lastOutputAt?: number
+    owner?: Owner
   }
 
   export interface FinishedProcess {
@@ -167,6 +176,7 @@ export namespace ProcessRegistry {
     output: string
     tail: string
     truncated: boolean
+    owner?: Owner
   }
 
   export interface ProcessInspection {
@@ -188,6 +198,7 @@ export namespace ProcessRegistry {
     lastOutputAt?: number
     alive?: boolean
     rssBytes?: number
+    owner?: Owner
   }
 
   export type ProcessInspector = (pid: number, proc: Process) => ProcessInspection
@@ -205,6 +216,7 @@ export namespace ProcessRegistry {
     cwd?: string
     child?: ChildProcess
     stdin?: Stdin
+    owner?: Owner
   }): Process {
     const id = Identifier.short("process")
     const outputBuffer = new BoundedTextBuffer()
@@ -217,6 +229,7 @@ export namespace ProcessRegistry {
       stdin: opts.stdin,
       pid: opts.child?.pid,
       startedAt: Date.now(),
+      owner: opts.owner ? { ...opts.owner } : undefined,
       maxOutputChars: MAX_OUTPUT_CHARS,
       get output() {
         return outputBuffer.text()
@@ -233,6 +246,7 @@ export namespace ProcessRegistry {
     startSweeper()
     log.info("process created", { id, commandFamily: ObservabilityRedaction.commandFamily(opts.command) })
     void Observability.emit("process.created", {
+      ...proc.owner,
       processId: id,
       pid: proc.pid,
       cwd: opts.cwd,
@@ -307,6 +321,7 @@ export namespace ProcessRegistry {
       output: proc.output,
       tail: proc.tail,
       truncated: proc.truncated,
+      owner: proc.owner,
     })
 
     ObservabilityMetrics.record({
@@ -321,6 +336,7 @@ export namespace ProcessRegistry {
     })
     log.info("process exited", { id: proc.id, status, exitCode, exitSignal })
     void Observability.emit("process.exit", {
+      ...proc.owner,
       processId: proc.id,
       pid: proc.pid,
       cwd: proc.cwd,
@@ -341,6 +357,7 @@ export namespace ProcessRegistry {
     finished.delete(id)
     if (proc) {
       void Observability.emit("process.removed", {
+        ...proc.owner,
         processId: proc.id,
         pid: proc.pid,
         cwd: proc.cwd,
@@ -392,6 +409,7 @@ export namespace ProcessRegistry {
         lastOutputAt: proc.lastOutputAt,
         alive: inspection.alive,
         rssBytes: inspection.rssBytes,
+        owner: proc.owner,
       })
     }
     return result.sort((a, b) => (b.rssBytes ?? -1) - (a.rssBytes ?? -1) || b.startedAt - a.startedAt)

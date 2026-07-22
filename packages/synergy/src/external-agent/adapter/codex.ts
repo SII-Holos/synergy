@@ -1,5 +1,6 @@
 import { Log } from "@/util/log"
 import { ExternalAgent } from "../bridge"
+import { ExternalAgentProcessTracker } from "../process-tracker"
 
 const log = Log.create({ service: "external-agent.codex" })
 
@@ -154,6 +155,12 @@ class CodexAdapter implements ExternalAgent.Adapter {
       stderr: "pipe",
     })
     this.currentProc = proc
+    const tracked = ExternalAgentProcessTracker.attach({
+      adapter: this.name,
+      pid: proc.pid,
+      cwd: this.cwd,
+      context,
+    })
 
     try {
       proc.stdin.write(prompt)
@@ -187,6 +194,7 @@ class CodexAdapter implements ExternalAgent.Adapter {
         })
       }
     } finally {
+      tracked.dispose()
       signal?.removeEventListener("abort", onAbort)
       this.currentProc = undefined
 

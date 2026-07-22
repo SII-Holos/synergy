@@ -82,7 +82,7 @@ export namespace ExternalAgentProcessor {
     let reasoningPart: MessageV2.ReasoningPart | undefined
 
     try {
-      for await (const event of adapter.turn(context, abort)) {
+      for await (const event of adapter.turn({ ...context, messageID: assistantMessage.id }, abort)) {
         if (abort.aborted) break
 
         switch (event.type) {

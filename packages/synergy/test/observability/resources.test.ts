@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test"
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
 import { ObservabilityConfig } from "../../src/observability/config"
 import { ObservabilityResources } from "../../src/observability/resources"
 import { ObservabilityStore } from "../../src/observability/store"
 import { cleanupObservabilityHomes, resetObservabilityHome } from "./fixture"
+import { LinuxRuntimeMemory } from "../../src/observability/linux-runtime-memory"
 
 describe("ObservabilityResources", () => {
   beforeEach(() => resetObservabilityHome())
@@ -58,6 +59,32 @@ describe("ObservabilityResources", () => {
     expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_RSS")).toBe(true)
     expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_HEAP_RATIO")).toBe(true)
     expect(openIssues.some((row) => row.code === "PERF_EVENT_LOOP_LAG")).toBe(true)
+  })
+
+  test("records a cached Linux runtime sample only once", () => {
+    const original = LinuxRuntimeMemory.sample
+    try {
+      ;(LinuxRuntimeMemory.sample as any) = mock(() => ({
+        sampledAt: 1_000,
+        jscHeapSizeBytes: 100,
+        jscHeapCapacityBytes: 200,
+        jscExtraMemoryBytes: 30,
+        objectCount: 10,
+        protectedObjectCount: 2,
+        topObjectTypes: [{ type: "Array", count: 5, delta: 1 }],
+        growingObjectTypes: [{ type: "Array", count: 5, delta: 1 }],
+      }))
+
+      ObservabilityResources.snapshot({ role: "server" })
+      ObservabilityResources.snapshot({ role: "server" })
+      ObservabilityStore.flush()
+
+      const metrics = ObservabilityStore.queryMetrics({ since: 0 })
+      expect(metrics.filter((row) => row.name === "runtime.jsc.heap_size")).toHaveLength(1)
+      expect(metrics.filter((row) => row.name === "runtime.jsc.object_type.growth")).toHaveLength(1)
+    } finally {
+      ;(LinuxRuntimeMemory.sample as any) = original
+    }
   })
 
   test("reconfigures resource and store maintenance timers without restart", () => {

@@ -152,7 +152,10 @@ describe.serial("performance observability store", () => {
     const childRss = 8 * 1024 * 1024 * 1024
     const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: childRss }))
     try {
-      const child = ProcessRegistry.create({ command: "next dev -p 8090 --token=super-secret" })
+      const child = ProcessRegistry.create({
+        command: "next dev -p 8090 --token=super-secret",
+        owner: { sessionID: "ses_child", messageID: "msg_child", tool: "external-agent:codex" },
+      })
       child.pid = 4321
       ProcessRegistry.markBackgrounded(child)
 
@@ -175,6 +178,8 @@ describe.serial("performance observability store", () => {
         label: "next",
         value: childRss,
         unit: "bytes",
+        sessionID: "ses_child",
+        tool: "external-agent:codex",
         processId: child.id,
         pid: 4321,
       })

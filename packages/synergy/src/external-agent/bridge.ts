@@ -58,6 +58,8 @@ export namespace ExternalAgent {
   export interface TurnContext {
     /** The Synergy session ID — used for per-session thread isolation. */
     sessionID: string
+    /** The assistant message receiving this turn, used for resource attribution. */
+    messageID?: string
     /** The user's current message text. */
     prompt: string
     /** Project-level instruction files (AGENTS.md, etc.), joined. */

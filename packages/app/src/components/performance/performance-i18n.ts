@@ -86,10 +86,35 @@ export const P = {
   serviceMemoryFile: { id: "app.performance.serviceMemory.file", message: "File cache" },
   serviceMemoryKernel: { id: "app.performance.serviceMemory.kernel", message: "Kernel" },
   serviceMemorySlab: { id: "app.performance.serviceMemory.slab", message: "Slab" },
+  serviceMemoryWorkingSet: { id: "app.performance.serviceMemory.workingSet", message: "Estimated working set" },
+  serviceMemoryReclaimable: { id: "app.performance.serviceMemory.reclaimable", message: "Reclaimable cache" },
+  serviceMemorySlabReclaimable: {
+    id: "app.performance.serviceMemory.slabReclaimable",
+    message: "Reclaimable slab",
+  },
+  serviceMemorySlabUnreclaimable: {
+    id: "app.performance.serviceMemory.slabUnreclaimable",
+    message: "Unreclaimable slab",
+  },
   serviceMemorySwap: { id: "app.performance.serviceMemory.swap", message: "Swap" },
   serviceMemoryProcessRss: { id: "app.performance.serviceMemory.processRss", message: "Process RSS" },
   serviceMemoryProcessPss: { id: "app.performance.serviceMemory.processPss", message: "Process PSS" },
   serviceMemoryEvents: { id: "app.performance.serviceMemory.events", message: "Pressure events" },
+  serviceMemoryEventDeltas: { id: "app.performance.serviceMemory.eventDeltas", message: "Events since sample" },
+  serviceMemoryPsiSome: { id: "app.performance.serviceMemory.psiSome", message: "PSI some (10s)" },
+  serviceMemoryPsiFull: { id: "app.performance.serviceMemory.psiFull", message: "PSI full (10s)" },
+  serviceMemoryJscHeap: { id: "app.performance.serviceMemory.jscHeap", message: "JSC heap" },
+  serviceMemoryJscExtra: { id: "app.performance.serviceMemory.jscExtra", message: "JSC extra memory" },
+  serviceMemoryJscObjects: { id: "app.performance.serviceMemory.jscObjects", message: "JSC objects" },
+  serviceMemoryJscTopTypes: { id: "app.performance.serviceMemory.jscTopTypes", message: "Top JSC types" },
+  serviceMemoryJscGrowingTypes: {
+    id: "app.performance.serviceMemory.jscGrowingTypes",
+    message: "Growing JSC types",
+  },
+  serviceMemoryAllocatorCommitted: {
+    id: "app.performance.serviceMemory.allocatorCommitted",
+    message: "Allocator committed",
+  },
   serviceMemoryCoverage: {
     id: "app.performance.serviceMemory.coverage",
     message: "{value} · {covered}/{total} processes",
@@ -97,6 +122,11 @@ export const P = {
   serviceMemoryEventsValue: {
     id: "app.performance.serviceMemory.eventsValue",
     message: "high {high} · max {max} · OOM {oom} · killed {oomKill}",
+  },
+  serviceMemoryPsiValue: { id: "app.performance.serviceMemory.psiValue", message: "{value}%" },
+  serviceMemoryJscHeapValue: {
+    id: "app.performance.serviceMemory.jscHeapValue",
+    message: "{used} / {capacity}",
   },
 
   // runtime support

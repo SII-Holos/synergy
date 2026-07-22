@@ -20,6 +20,10 @@ describe("ServiceMemory", () => {
     await write(path.join(serviceDir, "memory.swap.current"), "400\n")
     await write(path.join(serviceDir, "memory.stat"), "anon 6000\nfile 3000\nkernel 1000\nslab 700\n")
     await write(path.join(serviceDir, "memory.events"), "low 1\nhigh 2\nmax 3\noom 4\noom_kill 5\n")
+    await write(
+      path.join(serviceDir, "memory.pressure"),
+      "some avg10=1.25 avg60=0.50 avg300=0.10 total=1200\nfull avg10=0.25 avg60=0.10 avg300=0.00 total=300\n",
+    )
     await write(path.join(serviceDir, "cgroup.procs"), "100\n101\n")
     await write(path.join(childDir, "cgroup.procs"), "102\n")
 
@@ -54,6 +58,10 @@ describe("ServiceMemory", () => {
       processRssBytes: 600 * 1024,
       processPssBytes: 480 * 1024,
       events: { low: 1, high: 2, max: 3, oom: 4, oomKill: 5 },
+      pressure: {
+        some: { avg10Ratio: 0.0125, avg60Ratio: 0.005, avg300Ratio: 0.001, totalMicros: 1200 },
+        full: { avg10Ratio: 0.0025, avg60Ratio: 0.001, avg300Ratio: 0, totalMicros: 300 },
+      },
     })
     expect(sample.processes).toEqual([
       { pid: 100, role: "main", name: "bun", rssBytes: 100 * 1024, pssBytes: 80 * 1024 },
@@ -90,6 +98,49 @@ describe("ServiceMemory", () => {
       })
       expect(sample.processes).toHaveLength(3)
     }
+  })
+
+  test("reports counter deltas without treating a cgroup reset as negative pressure", () => {
+    const previous = ServiceMemory.sample({ platform: "darwin", pid: 10, processMemory: memoryUsage(1000) })
+    const current = {
+      ...previous,
+      source: "cgroup-v2" as const,
+      events: { high: 7, max: 3, oom: 1 },
+      pressure: { some: { totalMicros: 1_500 }, full: { totalMicros: 400 } },
+    }
+    const baseline = {
+      ...current,
+      events: { high: 5, max: 4, oom: 0 },
+      pressure: { some: { totalMicros: 1_000 }, full: { totalMicros: 500 } },
+    }
+
+    expect(ServiceMemory.withDeltas(current, baseline)).toMatchObject({
+      eventDeltas: { high: 2, max: 3, oom: 1 },
+      pressureDelta: { someMicros: 500, fullMicros: 400 },
+    })
+  })
+
+  test("requests cgroup reclaim only on Linux cgroup v2", async () => {
+    await using tmp = await tmpdir()
+    const procRoot = path.join(tmp.path, "proc")
+    const cgroupRoot = path.join(tmp.path, "cgroup")
+    const serviceDir = path.join(cgroupRoot, "user.slice", "synergy.service")
+    await write(path.join(procRoot, "self", "cgroup"), "0::/user.slice/synergy.service\n")
+    await write(path.join(serviceDir, "memory.current"), "10000\n")
+    await write(path.join(serviceDir, "memory.stat"), "anon 6000\ninactive_file 3000\n")
+    await write(path.join(serviceDir, "memory.reclaim"), "")
+    const result = await ServiceMemory.reclaim(4096, {
+      platform: "linux",
+      procRoot,
+      cgroupRoot,
+    })
+
+    expect(result).toEqual({ requestedBytes: 4096, supported: true })
+    expect(await Bun.file(path.join(serviceDir, "memory.reclaim")).text()).toBe("4096")
+    expect(await ServiceMemory.reclaim(4096, { platform: "darwin" })).toEqual({
+      requestedBytes: 4096,
+      supported: false,
+    })
   })
 })
 

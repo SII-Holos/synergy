@@ -337,6 +337,12 @@ export type TelemetryServiceMemory = {
   fileBytes?: number
   kernelBytes?: number
   slabBytes?: number
+  activeFileBytes?: number
+  inactiveFileBytes?: number
+  slabReclaimableBytes?: number
+  slabUnreclaimableBytes?: number
+  reclaimableBytes?: number
+  workingSetBytes?: number
   processCount: number
   rssProcessCount: number
   pssProcessCount: number
@@ -349,6 +355,54 @@ export type TelemetryServiceMemory = {
     oom?: number
     oomKill?: number
     oomGroupKill?: number
+  }
+  eventDeltas?: {
+    low?: number
+    high?: number
+    max?: number
+    oom?: number
+    oomKill?: number
+    oomGroupKill?: number
+  }
+  pressure?: {
+    some?: {
+      avg10Ratio?: number
+      avg60Ratio?: number
+      avg300Ratio?: number
+      totalMicros?: number
+    }
+    full?: {
+      avg10Ratio?: number
+      avg60Ratio?: number
+      avg300Ratio?: number
+      totalMicros?: number
+    }
+  }
+  pressureDelta?: {
+    someMicros?: number
+    fullMicros?: number
+  }
+  runtime?: {
+    sampledAt: number
+    jscHeapSizeBytes: number
+    jscHeapCapacityBytes: number
+    jscExtraMemoryBytes: number
+    objectCount: number
+    protectedObjectCount: number
+    allocatorRssBytes?: number
+    allocatorCommittedBytes?: number
+    allocatorReservedBytes?: number
+    allocatorAbandonedPages?: number
+    topObjectTypes: Array<{
+      type: string
+      count: number
+      delta: number
+    }>
+    growingObjectTypes: Array<{
+      type: string
+      count: number
+      delta: number
+    }>
   }
 }
 
@@ -459,6 +513,12 @@ export type PerfServiceMemory = {
   fileBytes?: number
   kernelBytes?: number
   slabBytes?: number
+  activeFileBytes?: number
+  inactiveFileBytes?: number
+  slabReclaimableBytes?: number
+  slabUnreclaimableBytes?: number
+  reclaimableBytes?: number
+  workingSetBytes?: number
   processCount: number
   rssProcessCount: number
   pssProcessCount: number
@@ -471,6 +531,54 @@ export type PerfServiceMemory = {
     oom?: number
     oomKill?: number
     oomGroupKill?: number
+  }
+  eventDeltas?: {
+    low?: number
+    high?: number
+    max?: number
+    oom?: number
+    oomKill?: number
+    oomGroupKill?: number
+  }
+  pressure?: {
+    some?: {
+      avg10Ratio?: number
+      avg60Ratio?: number
+      avg300Ratio?: number
+      totalMicros?: number
+    }
+    full?: {
+      avg10Ratio?: number
+      avg60Ratio?: number
+      avg300Ratio?: number
+      totalMicros?: number
+    }
+  }
+  pressureDelta?: {
+    someMicros?: number
+    fullMicros?: number
+  }
+  runtime?: {
+    sampledAt: number
+    jscHeapSizeBytes: number
+    jscHeapCapacityBytes: number
+    jscExtraMemoryBytes: number
+    objectCount: number
+    protectedObjectCount: number
+    allocatorRssBytes?: number
+    allocatorCommittedBytes?: number
+    allocatorReservedBytes?: number
+    allocatorAbandonedPages?: number
+    topObjectTypes: Array<{
+      type: string
+      count: number
+      delta: number
+    }>
+    growingObjectTypes: Array<{
+      type: string
+      count: number
+      delta: number
+    }>
   }
 }
 

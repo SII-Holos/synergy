@@ -330,6 +330,8 @@ export namespace PerformanceDashboard {
             module: "process" as const,
             value: row.memory_rss_bytes ?? 0,
             unit: "bytes" as const,
+            sessionID: row.session_id ?? undefined,
+            tool: stringLabel(labels.tool),
             processId: row.process_id ?? undefined,
             pid: row.pid ?? undefined,
             status: row.process_role ?? undefined,
