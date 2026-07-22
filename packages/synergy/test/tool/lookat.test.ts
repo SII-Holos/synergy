@@ -187,18 +187,20 @@ describe("tool.look_at", () => {
       const originalAgentGet = Agent.get
       const originalGetAvailableModel = Agent.getAvailableModel
       const originalCancel = SessionInvoke.cancel
-      let invokeParts: InvokePart[] = []
-
+      const originalInvokeInternal = SessionInvoke.invokeInternal
+      let invokeInput: { parts?: InvokePart[]; origin?: { type: string } } | undefined
       ;(Agent.get as any) = mock(async () => ({ name: "multimodal-looker" }))
       ;(Agent.getAvailableModel as any) = mock(async () => ({ providerID: "test", modelID: "model" }))
       ;(Session.create as any) = mock(async (input?: Parameters<typeof Session.create>[0]) => {
         sessionCreateCalls.push(input)
         return { id: "ses_batch" }
       })
-      ;(SessionInvoke.invoke as any) = mock(async (input: { parts?: InvokePart[] }) => {
-        invokeParts = input.parts ?? []
-        return { parts: [{ type: "text", text: "## a.png\n...\n\n## b.png\n...\n\n## c.png\n..." }] }
-      })
+      ;(SessionInvoke.invokeInternal as any) = mock(
+        async (input: { parts?: InvokePart[]; origin?: { type: string } }) => {
+          invokeInput = input
+          return { parts: [{ type: "text", text: "## a.png\n...\n\n## b.png\n...\n\n## c.png\n..." }] }
+        },
+      )
       ;(SessionInvoke.cancel as any) = mock(() => {})
 
       try {
@@ -218,8 +220,8 @@ describe("tool.look_at", () => {
             expect(sessionCreateCalls).toHaveLength(1)
 
             // It contains one text part + three provider-file attachment parts
-            const textParts = invokeParts.filter((p) => p.type === "text")
-            const attachmentParts = invokeParts.filter((p) => p.type === "attachment")
+            const textParts = invokeInput?.parts?.filter((p) => p.type === "text") ?? []
+            const attachmentParts = invokeInput?.parts?.filter((p) => p.type === "attachment") ?? []
             expect(textParts).toHaveLength(1)
             expect(attachmentParts).toHaveLength(3)
             expect(attachmentParts.map((p) => p.filename)).toEqual(["a.png", "b.png", "c.png"])
@@ -229,6 +231,7 @@ describe("tool.look_at", () => {
               "provider-file",
               "provider-file",
             ])
+            expect(invokeInput?.origin).toEqual({ type: "system" })
 
             expect(result.title).toBe("Analyzed 3 files")
             expect(result.output).toContain("## a.png")
@@ -237,7 +240,7 @@ describe("tool.look_at", () => {
       } finally {
         ;(Agent.get as any) = originalAgentGet
         ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-        ;(SessionInvoke.invoke as any) = mock(() => {})
+        ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
         ;(SessionInvoke.cancel as any) = originalCancel
       }
     })
@@ -258,7 +261,7 @@ describe("tool.look_at", () => {
 
       const originalAgentGet = Agent.get
       const originalGetAvailableModel = Agent.getAvailableModel
-      const originalInvoke = SessionInvoke.invoke
+      const originalInvokeInternal = SessionInvoke.invokeInternal
       const originalCancel = SessionInvoke.cancel
 
       ;(Agent.get as any) = mock(async () => ({ name: "multimodal-looker" }))
@@ -267,7 +270,7 @@ describe("tool.look_at", () => {
         sessionCreateCalls.push(input)
         return { id: "ses_child" }
       })
-      ;(SessionInvoke.invoke as any) = mock(async () => ({ parts: [{ type: "text", text: "one pixel" }] }))
+      ;(SessionInvoke.invokeInternal as any) = mock(async () => ({ parts: [{ type: "text", text: "one pixel" }] }))
       ;(SessionInvoke.cancel as any) = mock(() => {})
 
       try {
@@ -291,7 +294,7 @@ describe("tool.look_at", () => {
       } finally {
         ;(Agent.get as any) = originalAgentGet
         ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-        ;(SessionInvoke.invoke as any) = originalInvoke
+        ;(SessionInvoke.invokeInternal as any) = originalInvokeInternal
         ;(SessionInvoke.cancel as any) = originalCancel
       }
     })

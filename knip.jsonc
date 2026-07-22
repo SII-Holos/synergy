@@ -101,7 +101,7 @@
     "pkg",
     "HEAD",
   ],
-  "ignoreUnresolved": [".json", ".svg", "\\.po\\?lingui$"],
+  "ignoreUnresolved": [".json", ".svg"],
   "rules": {
     "catalog": "off",
   },

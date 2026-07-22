@@ -824,6 +824,15 @@ export function SessionTurn(
     emptyDisplayItems,
     { equals: same },
   )
+  const timelineMessageBoundaries = createMemo(() => {
+    const result = new Map<string, { first: number; last: number; role: "user" | "assistant" }>()
+    timelineItems().forEach((item, index) => {
+      const current = result.get(item.message.id)
+      if (current) current.last = index
+      else result.set(item.message.id, { first: index, last: index, role: item.message.role })
+    })
+    return result
+  })
   const hasCompactionEvent = createMemo(() =>
     timelineItems().some((item) => isAssistantTimelineDisplayItem(item) && timelineVisualKind(item) === "compaction"),
   )
@@ -925,6 +934,9 @@ export function SessionTurn(
   const renderMessageSlot = (slot: MessageSlotName) => (
     <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={props.messageID} />
   )
+  const renderCoreMessageSlot = (slot: MessageSlotName, messageId: string, role: "user" | "assistant") => (
+    <MessageSlotOutlet slot={slot} sessionId={props.sessionID} messageId={messageId} role={role} />
+  )
   const hasTimelineItems = createMemo(() => timelineItems().length > 0)
   const sessionStatus = createMemo(() => data.store.session_status[props.sessionID])
   const [providerPreludeNow, setProviderPreludeNow] = createSignal(Date.now())
@@ -995,6 +1007,7 @@ export function SessionTurn(
                   <Match when={true}>
                     <Show when={showUserChrome()}>{renderMessageSlot("message.before-user")}</Show>
                     <Show when={showUserChrome()}>
+                      {renderCoreMessageSlot("message.before", msg().id, "user")}
                       {/* Mailbox source annotation */}
                       <Show when={(msg() as UserMessage).metadata?.mailbox && !specialUserMessageRenderer()}>
                         <MailboxSourceBadge message={msg() as UserMessage} />
@@ -1023,7 +1036,9 @@ export function SessionTurn(
                             <span>{_(SESSION_TURN_DESC.rewind)}</span>
                           </button>
                         </Show>
+                        {renderCoreMessageSlot("message.actions", msg().id, "user")}
                       </div>
+                      {renderCoreMessageSlot("message.after", msg().id, "user")}
                       {renderMessageSlot("message.after-user")}
                     </Show>
                     <Show
@@ -1038,10 +1053,21 @@ export function SessionTurn(
                         <For each={timelineItemKeys()}>
                           {(key, index) => {
                             const item = () => timelineItemMap().get(key)
+                            const boundary = () => {
+                              const current = item()
+                              return current ? timelineMessageBoundaries().get(current.message.id) : undefined
+                            }
                             return (
                               <Show when={item()}>
                                 {(current) => (
                                   <>
+                                    <Show when={boundary()?.first === index()}>
+                                      {renderCoreMessageSlot(
+                                        "message.before",
+                                        current().message.id,
+                                        current().message.role,
+                                      )}
+                                    </Show>
                                     <Show when={index() === timelineSlotIndexes().firstReasoning}>
                                       {renderMessageSlot("message.before-reasoning")}
                                     </Show>
@@ -1064,6 +1090,18 @@ export function SessionTurn(
                                     </Show>
                                     <Show when={index() === timelineSlotIndexes().lastTool}>
                                       {renderMessageSlot("message.after-tools")}
+                                    </Show>
+                                    <Show when={boundary()?.last === index()}>
+                                      {renderCoreMessageSlot(
+                                        "message.actions",
+                                        current().message.id,
+                                        current().message.role,
+                                      )}
+                                      {renderCoreMessageSlot(
+                                        "message.after",
+                                        current().message.id,
+                                        current().message.role,
+                                      )}
                                     </Show>
                                   </>
                                 )}

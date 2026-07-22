@@ -4,7 +4,6 @@ import { createSimpleContext } from "@ericsanchezok/synergy-ui/context"
 import { useGlobalSDK } from "./global-sdk"
 import { useGlobalSync } from "./global-sync"
 import { usePlatform } from "@/context/platform"
-import { Binary } from "@ericsanchezok/synergy-util/binary"
 import { EventSessionError } from "@ericsanchezok/synergy-sdk"
 import { makeAudioPlayer } from "@solid-primitives/audio"
 import completionSound from "@ericsanchezok/synergy-ui/audio/staplebops-01.aac"
@@ -13,6 +12,7 @@ import { Persist, persisted } from "@/utils/persist"
 import { resolveNotificationEvent } from "./notification-event"
 import { useLingui } from "@lingui/solid"
 import { messages as AP } from "@/locales/messages"
+import { findSessionByID } from "./session-collection"
 
 type NotificationBase = {
   directory?: string
@@ -93,8 +93,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         case "session.completion": {
           const sessionID = event.properties.sessionID
           const [syncStore] = globalSync.ensureScopeState(directory)
-          const match = Binary.search(syncStore.session, sessionID, (s) => s.id)
-          const session = match.found ? syncStore.session[match.index] : undefined
+          const session = findSessionByID(syncStore.session, sessionID)
           const notification = resolveNotificationEvent({
             directory,
             event,
@@ -120,8 +119,7 @@ export const { use: useNotification, provider: NotificationProvider } = createSi
         case "session.error": {
           const sessionID = event.properties.sessionID
           const [syncStore] = globalSync.ensureScopeState(directory)
-          const match = sessionID ? Binary.search(syncStore.session, sessionID, (s) => s.id) : undefined
-          const session = sessionID && match?.found ? syncStore.session[match.index] : undefined
+          const session = sessionID ? findSessionByID(syncStore.session, sessionID) : undefined
           const notification = resolveNotificationEvent({
             directory,
             event,

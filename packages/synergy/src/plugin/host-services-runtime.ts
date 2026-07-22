@@ -8,6 +8,8 @@ import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import { Session } from "../session"
 import { SessionInvoke } from "../session/invoke"
+import { Agent } from "../agent/agent"
+import { AgentCall } from "../agent/call"
 import { isPathContained } from "../util/path-contain"
 import { getPluginConfig, replacePluginConfig } from "./config-store"
 import { createAuthStore } from "./store"
@@ -48,7 +50,12 @@ const capabilityByMethod = {
   "secrets.set": "secrets",
   "secrets.delete": "secrets",
   "tool.invoke": "tool.invoke",
+  "agent.call": "agent.call",
 } as const
+
+const AGENT_CALL_MAX_INPUT_CHARS = 32_000
+const AGENT_CALL_MAX_OUTPUT_CHARS = 16_000
+const AGENT_CALL_MAX_RUNTIME_MS = 120_000
 
 function pluginHostServiceError(code: string, message: string) {
   return Object.assign(new Error(message), { name: "PluginHostServiceError", code })
@@ -62,11 +69,97 @@ function assertCapability(input: PluginHostServiceInvocationInput) {
   const required = capabilityByMethod[input.method]
   const granted = input.manifest.capabilities.some((capability) => capability.id === required)
   if (!granted) throw new Error(`Plugin ${input.pluginId} does not declare capability "${required}"`)
+  if (required !== "agent.call") return
+  const contribution = input.manifest.contributions.find((item) => `${item.kind}:${item.id}` === input.handlerId)
+  if (!contribution?.requires?.includes(required)) {
+    throw new Error(`Plugin contribution ${input.handlerId ?? "unknown"} does not declare capability "${required}"`)
+  }
 }
 
 function params(input: PluginHostServiceInvocationInput): Record<string, unknown> {
   if (!input.params || typeof input.params !== "object" || Array.isArray(input.params)) return {}
   return input.params as Record<string, unknown>
+}
+
+function positiveConstraint(value: unknown, fallback: number, hardMaximum: number) {
+  if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return fallback
+  return Math.min(value, hardMaximum)
+}
+
+async function callPluginAgent(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  const name = value.agent
+  const text = value.text
+  if (typeof name !== "string" || !name) throw new Error("agent.call requires agent")
+  if (typeof text !== "string") throw new Error("agent.call requires text")
+  const capability = input.manifest.capabilities.find((item) => item.id === "agent.call")
+  const constraints = capability?.constraints ?? {}
+  const maxInputChars = positiveConstraint(
+    constraints.maxInputChars,
+    AGENT_CALL_MAX_INPUT_CHARS,
+    AGENT_CALL_MAX_INPUT_CHARS,
+  )
+  const maxOutputChars = positiveConstraint(
+    constraints.maxOutputChars,
+    AGENT_CALL_MAX_OUTPUT_CHARS,
+    AGENT_CALL_MAX_OUTPUT_CHARS,
+  )
+  const requestedOutput = positiveConstraint(value.maxOutputChars, maxOutputChars, maxOutputChars)
+  const maxRuntimeMs = positiveConstraint(
+    constraints.maxRuntimeMs,
+    AGENT_CALL_MAX_RUNTIME_MS,
+    AGENT_CALL_MAX_RUNTIME_MS,
+  )
+  const timeoutMs = positiveConstraint(value.timeoutMs, maxRuntimeMs, maxRuntimeMs)
+  const agent = await Agent.get(name)
+  if (!agent) {
+    throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, `Plugin Agent is unavailable: ${name}`)
+  }
+  const owner = Agent.pluginOwner(agent)
+  const owned =
+    agent.hidden === true &&
+    owner?.pluginId === input.pluginId &&
+    owner.pluginGeneration === input.manifest.artifacts.generation
+  const allowlist = Array.isArray(constraints.agents)
+    ? constraints.agents.filter((item): item is string => typeof item === "string")
+    : []
+  if (!owned && !allowlist.includes(name)) {
+    throw pluginHostServiceError(
+      PluginHostServiceErrorCode.AGENT_NOT_OWNED,
+      `Plugin is not approved to call Agent: ${name}`,
+    )
+  }
+  try {
+    return await AgentCall.text({
+      agent: name,
+      messages: [{ role: "user", content: text }],
+      signal: input.signal,
+      timeoutMs,
+      retries: 1,
+      maxInputChars,
+      maxOutputChars: requestedOutput,
+    })
+  } catch (error) {
+    if (!(error instanceof AgentCall.Error)) throw error
+    if (error.code === "agent_not_found") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_NOT_FOUND, error.message)
+    }
+    if (error.code === "model_unavailable") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_MODEL_UNAVAILABLE, error.message)
+    }
+    if (error.code === "input_too_large") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_INPUT_TOO_LARGE, error.message)
+    }
+    if (error.code === "output_too_large") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_OUTPUT_TOO_LARGE, error.message)
+    }
+    if (error.code === "timeout") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_TIMEOUT, error.message)
+    }
+    if (error.code === "cancelled") {
+      throw pluginHostServiceError(PluginHostServiceErrorCode.AGENT_CANCELLED, error.message)
+    }
+    throw error
+  }
 }
 
 async function inScope<T>(input: PluginHostServiceInvocationInput, fn: () => Promise<T>): Promise<T> {
@@ -198,6 +291,7 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
   return inScope(input, async () => {
     const value = params(input)
     if (input.method === "event.publish") return publishEvent(input)
+    if (input.method === "agent.call") return callPluginAgent(input, value)
     if (input.method === "session.get") {
       const sessionId = value.sessionId
       if (typeof sessionId !== "string") throw new Error("session.get requires sessionId")

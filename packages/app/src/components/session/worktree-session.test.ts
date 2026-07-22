@@ -9,6 +9,8 @@ import {
   createNewSessionWorkspaceSuccessProgress,
   createWorkspaceTransitionErrorProgress,
   createWorkspaceTransitionLoadingProgress,
+  createWorkspaceTransitionRefreshErrorProgress,
+  createWorkspaceTransitionRefreshProgress,
   createWorkspaceTransitionSuccessProgress,
   defaultNewSessionWorkspaceSelection,
   isSessionRunningForWorkspaceChange,
@@ -119,6 +121,23 @@ describe("workspace transition progress model", () => {
     expect("retry" in error).toBe(false)
     expect("dismiss" in error).toBe(false)
     expect(JSON.parse(JSON.stringify(error))).toEqual(error)
+  })
+
+  test("models status refresh separately after the workspace operation succeeds", () => {
+    const i18n = englishI18n()
+    const refreshing = createWorkspaceTransitionRefreshProgress({ operation: "enter" })
+
+    expect(refreshing).toMatchObject({ phase: "loading", kind: "enter-worktree" })
+    expect(translateProgressCopy(refreshing.title)).toBe("Refreshing workspace status")
+    expect(refreshing.steps.map((step) => [translateDescriptor(step.label, i18n), step.state])).toEqual([
+      ["Refresh workspace status", "active"],
+    ])
+
+    const failed = createWorkspaceTransitionRefreshErrorProgress({ operation: "enter", message: "Network error" })
+    expect(failed).toMatchObject({ phase: "error", kind: "enter-worktree" })
+    expect(translateProgressCopy(failed.title)).toBe("Workspace status refresh failed")
+    expect(translateProgressCopy(failed.description)).toContain("changed successfully")
+    expect(translateProgressCopy(failed.description)).toContain("Network error")
   })
 
   test("creates existing-session leave loading and success states", () => {

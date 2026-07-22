@@ -11,9 +11,17 @@ import {
   isPromptEqual,
   usePrompt,
 } from "@/context/prompt"
-import { createFilePill, createTextFragment, getCursorPosition, getNodeLength, setCursorPosition } from "./editor-dom"
-import { inlineText, isInlinePart } from "./content"
+import {
+  createFilePill,
+  createTextFragment,
+  getCursorPosition,
+  getNodeLength,
+  getSelectionRange,
+  setCursorPosition,
+} from "./editor-dom"
+import { inlineCompletionPrefix, inlineText, isInlinePart } from "./content"
 import type { PromptInputStore } from "./types"
+import type { ComposerEdit, TextRange } from "./composer-document"
 
 type PromptEditorInput = {
   editor: () => HTMLDivElement
@@ -25,10 +33,18 @@ type PromptEditorInput = {
   atOnInput: (query: string) => void
   slashOnInput: (query: string) => void
   queueScroll: () => void
+  onDocumentChange?: () => void
 }
 
 export function usePromptEditor(input: PromptEditorInput) {
   const prompt = usePrompt()
+  let documentTextValue = prompt
+    .current()
+    .filter((part) => part.type === "text")
+    .map((part) => part.content)
+    .join("")
+  let suppressDocumentChange = false
+  let applyingDocumentEdits = false
 
   const isNormalizedEditor = () =>
     Array.from(input.editor().childNodes).every((node) => {
@@ -132,6 +148,15 @@ export function usePromptEditor(input: PromptEditorInput) {
     on(
       () => prompt.current(),
       (currentParts) => {
+        const nextDocumentText = currentParts
+          .filter((part) => part.type === "text")
+          .map((part) => part.content)
+          .join("")
+        if (nextDocumentText !== documentTextValue) {
+          documentTextValue = nextDocumentText
+          if (suppressDocumentChange) suppressDocumentChange = false
+          else input.onDocumentChange?.()
+        }
         const editor = input.editor()
         const inputParts = currentParts.filter(isInlinePart) as Prompt
         const domParts = parseFromDOM()
@@ -294,8 +319,125 @@ export function usePromptEditor(input: PromptEditorInput) {
     input.setStore("popover", null)
   }
 
+  const documentMapping = () => {
+    const segments: Array<{ text: TextRange; dom: TextRange }> = []
+    let textOffset = 0
+    let domOffset = 0
+    for (const part of prompt.current().filter(isInlinePart)) {
+      const length = part.content.length
+      if (part.type === "text") {
+        segments.push({
+          text: { start: textOffset, end: textOffset + length },
+          dom: { start: domOffset, end: domOffset + length },
+        })
+        textOffset += length
+      }
+      domOffset += length
+    }
+    return { segments, textLength: textOffset }
+  }
+
+  const toTextOffset = (domOffset: number) => {
+    const mapping = documentMapping()
+    let lastTextOffset = 0
+    for (const segment of mapping.segments) {
+      if (domOffset < segment.dom.start) return lastTextOffset
+      if (domOffset <= segment.dom.end) return segment.text.start + domOffset - segment.dom.start
+      lastTextOffset = segment.text.end
+    }
+    return mapping.textLength
+  }
+
+  const documentSelection = () => {
+    const selection = getSelectionRange(input.editor())
+    return { start: toTextOffset(selection.start), end: toTextOffset(selection.end) }
+  }
+
+  const isEditableRange = (range: TextRange) => {
+    const mapping = documentMapping()
+    if (range.start === range.end) {
+      return mapping.segments.some((segment) => range.start >= segment.text.start && range.start <= segment.text.end)
+    }
+    return mapping.segments.some((segment) => range.start >= segment.text.start && range.end <= segment.text.end)
+  }
+
+  const domRangeFor = (edit: ComposerEdit) => {
+    const selection = getSelectionRange(input.editor())
+    const active = documentSelection()
+    if (edit.range.start === edit.range.end && active.start === edit.range.start && active.end === edit.range.end) {
+      return { start: selection.start, end: selection.end }
+    }
+    const segment = documentMapping().segments.find(
+      (candidate) => edit.range.start >= candidate.text.start && edit.range.end <= candidate.text.end,
+    )
+    if (!segment) return
+    return {
+      start: segment.dom.start + edit.range.start - segment.text.start,
+      end: segment.dom.start + edit.range.end - segment.text.start,
+    }
+  }
+
+  const applyDocumentEdits = (edits: ComposerEdit[]) => {
+    suppressDocumentChange = true
+    const selection = window.getSelection()
+    if (!selection) {
+      suppressDocumentChange = false
+      return
+    }
+    applyingDocumentEdits = true
+    try {
+      for (const edit of edits) {
+        const offsets = domRangeFor(edit)
+        if (!offsets) throw new Error("Composer edit crossed a non-editable node")
+        const range = document.createRange()
+        setRangeEdge(range, "start", offsets.start)
+        setRangeEdge(range, "end", offsets.end)
+        selection.removeAllRanges()
+        selection.addRange(range)
+        if (document.execCommand("insertText", false, edit.text)) continue
+        range.deleteContents()
+        const fragment = createTextFragment(edit.text)
+        const last = fragment.lastChild
+        range.insertNode(fragment)
+        if (last) range.setStartAfter(last)
+        range.collapse(true)
+        selection.removeAllRanges()
+        selection.addRange(range)
+      }
+      handleInput()
+    } finally {
+      applyingDocumentEdits = false
+      queueMicrotask(() => {
+        suppressDocumentChange = false
+      })
+    }
+  }
+
+  const documentRange = (textRange: TextRange) => {
+    const offsets = domRangeFor({ range: textRange, text: "" })
+    if (!offsets) return
+    const range = document.createRange()
+    setRangeEdge(range, "start", offsets.start)
+    setRangeEdge(range, "end", offsets.end)
+    return range
+  }
+
+  const documentText = () =>
+    prompt
+      .current()
+      .filter((part) => part.type === "text")
+      .map((part) => part.content)
+      .join("")
+
   return {
     addPart,
     handleInput,
+    documentText,
+    documentSelection,
+    isEditableRange,
+    applyDocumentEdits,
+    isApplyingDocumentEdits: () => applyingDocumentEdits,
+    completionPrefix: () => inlineCompletionPrefix(prompt.current(), getCursorPosition(input.editor())),
+    documentRange,
   }
 }

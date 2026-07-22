@@ -1,9 +1,10 @@
 import katex from "katex"
 import type { MarkedExtension, TokenizerAndRendererExtension } from "marked"
 import type { MarkedKatexOptions } from "marked-katex-extension"
+import { generateUUID } from "@ericsanchezok/synergy-util/uuid"
 
 const generatedKatexAttribute = "data-synergy-katex-generated"
-const generatedKatexMarker = globalThis.crypto.randomUUID()
+const generatedKatexMarker = generateUUID()
 const blockLatexRule = /^[ \t]{0,3}(\\{1,2})\[([\s\S]*?)\1\][ \t]*(?:\n|$)/
 const blockLatexStartRule = /\n[ \t]{0,3}\\{1,2}\[/
 const inlineDisplayLatexRule = /^(\\{1,2})\[([^\n]*?)\1\]/

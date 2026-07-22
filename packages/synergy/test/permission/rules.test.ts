@@ -27,6 +27,13 @@ describe("PermissionRules.extractPattern", () => {
     ).toBe("assets/input/*")
   })
 
+  test("extracts the first valid path from file_path arrays", () => {
+    expect(PermissionRules.extractPattern("attach", { file_path: ["reports/a.pdf", "reports/b.pdf"] })).toBe(
+      "reports/*",
+    )
+    expect(PermissionRules.extractPattern("look_at", { file_path: ["images/a.png", "images/b.png"] })).toBe("images/*")
+  })
+
   test("returns wildcard for unknown tool shapes", () => {
     expect(PermissionRules.extractPattern("webfetch", { url: "https://example.com" })).toBe("*")
     expect(PermissionRules.extractPattern("unknown", {})).toBe("*")

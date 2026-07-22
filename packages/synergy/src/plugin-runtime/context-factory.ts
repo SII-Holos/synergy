@@ -99,5 +99,8 @@ export function createPluginInvocationContext(input: {
     tools: capabilities.has("tool.invoke")
       ? { invoke: (toolId, value) => input.invokeHost("tool.invoke", { toolId, input: value }) as never }
       : undefined,
+    agent: capabilities.has("agent.call")
+      ? { call: (value) => input.invokeHost("agent.call", value) as Promise<{ text: string }> }
+      : undefined,
   }
 }

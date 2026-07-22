@@ -88,6 +88,32 @@ export function definePlugin(input: PluginDefinitionInput): PluginDefinition {
     }
     const handlerId = contributionHandlerId(contribution)
     if (handlerId) handlerIds.push(handlerId)
+    if (contribution.kind === "hook" && contribution.point === "session.user-message.after") {
+      if (!contribution.requires?.includes("session.read")) {
+        throw new Error(`Hook contribution "${contribution.id}" requires session.read`)
+      }
+    }
+    if (
+      (contribution.kind === "ui.selectionExtension" || contribution.kind === "ui.textAction") &&
+      !contribution.requires?.includes("selection.read")
+    ) {
+      throw new Error(`Contribution "${contribution.id}" requires selection.read`)
+    }
+  }
+
+  for (const contribution of input.contributions) {
+    if (contribution.kind !== "ui.textAction") continue
+    const operation = input.contributions.find(
+      (item) => item.kind === "operation" && item.id === contribution.operation,
+    )
+    if (
+      !operation ||
+      operation.kind !== "operation" ||
+      operation.type !== "command" ||
+      !operation.expose.includes("ui")
+    ) {
+      throw new Error(`Text action "${contribution.id}" must reference a UI-exposed command operation`)
+    }
   }
 
   const settings = input.contributions.find((item) => item.kind === "ui.settings")
@@ -208,6 +234,32 @@ function compileContribution(
         order: contribution.order,
         slot: contribution.slot,
         component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`),
+      }
+    case "ui.composerExtension":
+    case "ui.selectionExtension":
+      return {
+        ...base,
+        kind: contribution.kind,
+        order: contribution.order,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
+      }
+    case "ui.textAction":
+      return {
+        ...base,
+        kind: "ui.textAction",
+        label: contribution.label,
+        icon: contribution.icon,
+        order: contribution.order,
+        operation: contribution.operation,
+      }
+    case "ui.messageSlot":
+      return {
+        ...base,
+        kind: "ui.messageSlot",
+        order: contribution.order,
+        slot: contribution.slot,
+        roles: contribution.roles,
+        component: compiledComponent(contribution.component, artifacts, `${contribution.kind}:${contribution.id}`)!,
       }
     case "ui.settings":
       return {

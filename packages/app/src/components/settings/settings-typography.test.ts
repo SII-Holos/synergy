@@ -36,6 +36,13 @@ describe("settings typography contract", () => {
     expect(css).toContain("var(--type-ui-body-size)")
   })
 
+  test("shared number fields keep semantic control typography with stable numerals", async () => {
+    const css = await Bun.file(new URL("../../../../ui/src/components/text-field.css", import.meta.url)).text()
+    expect(css).toContain('input[type="number"][data-slot="input-input"]')
+    expect(css).toContain("font-feature-settings: var(--font-family-sans--font-feature-settings)")
+    expect(css).toContain("font-variant-numeric: tabular-nums")
+  })
+
   test("settings CSS uses tokenized weights instead of temporary numeric weights", async () => {
     const css = await readSettingsFile("settings-panel.css")
     expect(css).not.toMatch(/font-weight:\s*(?:400|500|550|600|650|700)\b/)

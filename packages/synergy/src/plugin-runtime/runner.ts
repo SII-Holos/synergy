@@ -92,6 +92,7 @@ function contextFor(
   requestId: string,
   data: RuntimeInvocationContextData,
   abort: AbortSignal,
+  contribution: PluginContribution,
 ): PluginInvocationContext {
   return createPluginInvocationContext({
     requestId,
@@ -103,7 +104,11 @@ function contextFor(
       protocolVersion: activation?.protocolVersion ?? PLUGIN_RUNTIME_PROTOCOL_VERSION,
     },
     signal: abort,
-    capabilities: new Set(activation?.capabilities ?? []),
+    capabilities: new Set(
+      (activation?.capabilities ?? []).filter(
+        (capability) => capability !== "agent.call" || contribution.requires?.includes(capability),
+      ),
+    ),
     log: logger(),
     invokeHost: (method, params) => hostRequest(requestId, method, params),
   })
@@ -127,11 +132,11 @@ async function invoke(message: Extract<HostToPlugin, { type: "invoke" }>) {
   try {
     const contribution = handler(message.handlerId)
     if (contribution.kind === "lifecycle.uninstall") {
-      return await contribution.handler(contextFor(message.requestId, message.context, controller.signal))
+      return await contribution.handler(contextFor(message.requestId, message.context, controller.signal, contribution))
     }
     return await contribution.handler(
       message.input as never,
-      contextFor(message.requestId, message.context, controller.signal) as never,
+      contextFor(message.requestId, message.context, controller.signal, contribution) as never,
     )
   } finally {
     aborts.delete(message.requestId)

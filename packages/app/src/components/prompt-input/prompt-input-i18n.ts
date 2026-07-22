@@ -47,6 +47,7 @@ export const PI = {
   submitFailedCommand: { id: "prompt.submit.failedCommand", message: "Failed to send command" },
   submitFailedExitWorkflow: { id: "prompt.submit.failedExitWorkflow", message: "Failed to exit {workflow}" },
   submitFailedSend: { id: "prompt.submit.failedSend", message: "Failed to send prompt" },
+  submitInterceptFailed: { id: "prompt.submit.interceptFailed", message: "A composer extension stopped this message" },
   submitFailedLightLoop: { id: "prompt.submit.failedLightLoop", message: "Failed to enable Light Loop" },
   submitFailedTogglePlan: { id: "prompt.submit.failedTogglePlan", message: "Failed to toggle Plan" },
   submitFailedEnableLattice: { id: "prompt.submit.failedEnableLattice", message: "Failed to enable Lattice" },

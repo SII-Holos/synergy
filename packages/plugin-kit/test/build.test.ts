@@ -55,18 +55,26 @@ export default definePlugin({
       fs.writeFileSync(
         path.join(root, "src", "index.ts"),
         `
-import { definePlugin, workbenchPanel } from "@ericsanchezok/synergy-plugin"
+import { capability, composerExtension, definePlugin, workbenchPanel } from "@ericsanchezok/synergy-plugin"
 export default definePlugin({
   id: "solid-fixture",
   version: "1.0.0",
   description: "Reactive UI build fixture",
-  contributions: [workbenchPanel({
-    id: "panel",
-    label: "Panel",
-    surface: "side",
-    cardinality: "singleton",
-    component: { source: "src/panel.tsx" },
-  })],
+  capabilities: [capability("composer.read")],
+  contributions: [
+    workbenchPanel({
+      id: "panel",
+      label: "Panel",
+      surface: "side",
+      cardinality: "singleton",
+      component: { source: "src/panel.tsx" },
+    }),
+    composerExtension({
+      id: "composer",
+      requires: ["composer.read"],
+      component: { source: "src/panel.tsx" },
+    }),
+  ],
 })
 `,
       )
@@ -83,6 +91,11 @@ export default function Panel() {
       )
 
       expect(await buildPluginProject(root)).toBe(true)
+      const manifest = PluginManifest.parse(JSON.parse(fs.readFileSync(path.join(root, "dist", "plugin.json"), "utf8")))
+      expect(manifest.contributions[1]).toMatchObject({
+        kind: "ui.composerExtension",
+        component: { entry: "ui/index.js", exportName: "plugin_component_1" },
+      })
       const runner = path.join(root, "verify.mjs")
       fs.writeFileSync(
         runner,

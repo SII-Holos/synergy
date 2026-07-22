@@ -15,3 +15,19 @@ export function resolvePromptSubmitIntent(input: {
 export function canSubmitPrompt(input: { text: string; working: boolean; hasBlueprintSlot: boolean }) {
   return resolvePromptSubmitIntent(input) !== "blocked"
 }
+
+export function shouldRunComposerBeforeSubmit(input: {
+  intent: PromptSubmitIntent
+  mode: "normal" | "shell"
+  slashKind: "none" | "backend-prompt" | "backend-action" | "ui"
+  hasBlueprintSlot: boolean
+  pendingLightLoop: boolean
+}) {
+  return (
+    input.intent === "message" &&
+    input.mode === "normal" &&
+    input.slashKind === "none" &&
+    !input.hasBlueprintSlot &&
+    !input.pendingLightLoop
+  )
+}

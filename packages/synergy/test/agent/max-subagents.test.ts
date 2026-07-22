@@ -59,9 +59,15 @@ describe("synergy-max subagents", () => {
     }
   })
 
-  test("all max subagents can discover and expand deferred tools", () => {
+  test("all max subagents can discover, expand, and use deferred Browser tools", () => {
     for (const [name, agent] of Object.entries(agents)) {
-      for (const permission of ["search_tools", "expand_tools"]) {
+      for (const permission of [
+        "search_tools",
+        "expand_tools",
+        "browser_navigation",
+        "browser_action",
+        "browser_upload",
+      ]) {
         expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
       }
     }
@@ -155,9 +161,15 @@ describe("synergy-max subagents", () => {
 describe("synergy subagents", () => {
   const agents = createBuiltinLegacySubagents(ctx)
 
-  test("all classic subagents can discover and expand deferred tools", () => {
+  test("all classic subagents can discover, expand, and use deferred Browser tools", () => {
     for (const [name, agent] of Object.entries(agents)) {
-      for (const permission of ["search_tools", "expand_tools"]) {
+      for (const permission of [
+        "search_tools",
+        "expand_tools",
+        "browser_navigation",
+        "browser_action",
+        "browser_upload",
+      ]) {
         expect(action(agent, permission), `${name}:${permission}`).toBe("allow")
       }
     }

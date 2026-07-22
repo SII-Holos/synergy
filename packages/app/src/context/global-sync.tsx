@@ -37,6 +37,7 @@ import {
 } from "./sync-resource-freshness"
 import { planBucketEviction } from "./message-eviction"
 import { describeToolPartApply } from "./session-sync-plan"
+import { findSessionByID, findSessionIndex } from "./session-collection"
 import { createSessionMessageLoader } from "./session-message-loader"
 import { SessionPartSnapshotFreshness, type SessionPartSnapshotRequest } from "./session-part-snapshot-freshness"
 import {
@@ -155,11 +156,6 @@ type State = {
   part: {
     [messageID: string]: Part[]
   }
-}
-
-function findSessionByID(sessions: Session[], sessionID: string): Session | undefined {
-  const result = Binary.search(sessions, sessionID, (s) => s.id)
-  return result.found ? sessions[result.index] : undefined
 }
 
 function setPlanBlueprintOfferState(
@@ -1186,13 +1182,13 @@ function createGlobalSync() {
       case "session.updated": {
         const info = event.properties.info as Session
         reconcileCortexFromSession(store, setStore, info)
-        const result = Binary.search(store.session, info.id, (s) => s.id)
+        const index = findSessionIndex(store.session, info.id)
         if (info.time.archived) {
-          if (result.found) {
+          if (index !== -1) {
             setStore(
               "session",
               produce((draft) => {
-                draft.splice(result.index, 1)
+                draft.splice(index, 1)
               }),
             )
             setStore("sessionTotal", Math.max(0, store.sessionTotal - 1))
@@ -1200,11 +1196,11 @@ function createGlobalSync() {
           updatePlanBlueprintOfferState(store, setStore, info.id, { type: "session_removed" })
           break
         }
-        if (result.found) {
+        if (index !== -1) {
           // reconcile (not whole-object replace) so unchanged fields keep their
           // identity; a session.updated that only bumps time.updated must not
           // invalidate memos reading title/status/etc. (issue #319).
-          setStore("session", result.index, reconcile(info))
+          setStore("session", index, reconcile(info))
           if (info.workflow?.kind !== "plan")
             updatePlanBlueprintOfferState(store, setStore, info.id, { type: "plan_exited" })
           else refreshPlanBlueprintOfferFromLoadedParts(store, setStore, info.id)
@@ -1213,7 +1209,7 @@ function createGlobalSync() {
         setStore(
           "session",
           produce((draft) => {
-            draft.splice(result.index, 0, info)
+            draft.unshift(info)
           }),
         )
         setStore("sessionTotal", store.sessionTotal + 1)
@@ -1460,16 +1456,16 @@ function createGlobalSync() {
         // handler; in practice the events carry identical data so the race is benign.
         const transition = resolveWorkspaceTransition(part)
         if (transition.kind !== "none") {
-          const idx = Binary.search(store.session, part.sessionID, (s) => s.id)
-          if (idx.found) {
+          const index = findSessionIndex(store.session, part.sessionID)
+          if (index !== -1) {
             if (transition.kind === "enter") {
-              setStore("session", idx.index, "workspace", transition.workspace)
+              setStore("session", index, "workspace", transition.workspace)
             } else {
               const workspace: SessionWorkspace = {
                 ...transition.workspace,
-                scopeID: store.session[idx.index].scope.id,
+                scopeID: store.session[index].scope.id,
               }
-              setStore("session", idx.index, "workspace", workspace)
+              setStore("session", index, "workspace", workspace)
             }
           }
         }
