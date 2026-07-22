@@ -806,7 +806,6 @@ export namespace Provider {
         let ttfbController: AbortController | null = null
         let ttfbTimer: ReturnType<typeof setTimeout> | null = null
         let idleController: AbortController | null = null
-        let idleTimer: ReturnType<typeof setTimeout> | null = null
 
         // TTFB timeout — covers time from fetch start to first byte (accommodates reasoning models)
         if (timeoutCfg.providerTtfbMs > 0) {
@@ -843,7 +842,6 @@ export namespace Provider {
         // Clean up all timers when outer signal aborts (e.g. user cancel)
         const cleanupTimers = () => {
           if (ttfbTimer) clearTimeout(ttfbTimer)
-          if (idleTimer) clearTimeout(idleTimer)
         }
         opts.signal?.addEventListener("abort", cleanupTimers, { once: true })
 
@@ -904,60 +902,10 @@ export namespace Provider {
 
         // For streaming responses, wrap the body to reset idle timer on each chunk
         if (idleController && responseBody) {
-          const originalBody = responseBody
-          const idleSignal = idleController.signal
-          // Aborting the fetch signal does not reliably reject a pending body
-          // read on a half-open connection, so the idle timeout must also win
-          // a race against the read itself.
-          let rejectIdle!: (reason: unknown) => void
-          const idleAborted = new Promise<never>((_, reject) => {
-            rejectIdle = reject
-          })
-          const onIdleAbort = () => rejectIdle(idleSignal.reason)
-          idleSignal.addEventListener("abort", onIdleAbort, { once: true })
-          idleAborted.catch(() => {})
-          const cleanupStream = () => {
-            if (idleTimer) clearTimeout(idleTimer)
-            idleSignal.removeEventListener("abort", onIdleAbort)
-          }
-          const resetIdle = () => {
-            if (idleTimer) clearTimeout(idleTimer)
-            idleTimer = setTimeout(() => {
-              idleController!.abort(
-                new DOMException("Idle timeout: no data received within " + timeoutMs + "ms", "TimeoutError"),
-              )
-            }, timeoutMs as number).unref()
-          }
-
-          let reader: ReadableStreamDefaultReader<Uint8Array> | undefined
-          const wrappedStream = new ReadableStream({
-            // Pull-based so provider bytes stay bounded by downstream demand
-            // (AI SDK / SessionProcessor). The previous eager start() pump could
-            // enqueue far ahead of a slow fanout path and inflate native buffers
-            // (#524 / #498).
-            async pull(controller) {
-              reader ??= originalBody.getReader()
-              try {
-                const { done, value } = await Promise.race([reader.read(), idleAborted])
-                if (done) {
-                  cleanupStream()
-                  controller.close()
-                  return
-                }
-                resetIdle()
-                controller.enqueue(value)
-              } catch (err) {
-                cleanupStream()
-                controller.error(err)
-                try {
-                  await reader.cancel(err)
-                } catch {}
-              }
-            },
-            cancel(reason) {
-              cleanupStream()
-              return reader ? reader.cancel(reason) : originalBody.cancel(reason)
-            },
+          const wrappedStream = ProviderStream.withIdleTimeout(responseBody, {
+            controller: idleController,
+            signal: opts.signal ?? idleController.signal,
+            timeoutMs: timeoutMs as number,
           })
 
           return new Response(wrappedStream, {

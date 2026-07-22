@@ -6469,7 +6469,7 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex concurrency status
    *
-   * Get the configured, effective, and memory-pressure Cortex task concurrency limits.
+   * Get Cortex admission limits and advisory memory-pressure concurrency guidance.
    */
   public concurrency<ThrowOnError extends boolean = false>(
     parameters?: {

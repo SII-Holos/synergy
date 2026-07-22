@@ -287,7 +287,7 @@ export type TelemetrySpanKind =
   | "diagnostic"
   | "runtime"
 
-export type TelemetrySpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+export type TelemetrySpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout" | "interrupted"
 
 export type TelemetryInflightSpan = {
   traceId: string
@@ -321,6 +321,7 @@ export type TelemetryInflightSpan = {
   ageMs: number
   idleMs: number
   stale: boolean
+  activeSince?: number
 }
 
 export type TelemetryResourceSample = {
@@ -348,6 +349,19 @@ export type TelemetryResourceSample = {
     heapUsedBytes?: number
     externalBytes?: number
     arrayBuffersBytes?: number
+  }
+  cgroup?: {
+    currentBytes?: number
+    highBytes?: number
+    maxBytes?: number
+    peakBytes?: number
+    oomCount?: number
+    oomKillCount?: number
+  }
+  serviceMemory?: {
+    rssBytes?: number
+    source: "cgroup_v2" | "process_api"
+    completeness: "full" | "partial"
   }
   eventLoop: {
     lagMs?: number
@@ -529,6 +543,12 @@ export type PerfDashboardSummary = {
     appReadOps?: number
     appWriteOps?: number
     childProcessCount?: number
+    measuredChildProcessCount?: number
+    serviceMemory?: {
+      rssBytes?: number
+      source: "cgroup_v2" | "process_api"
+      completeness: "full" | "partial"
+    }
     childProcessRssBytes?: number
   }
   sessions: {
@@ -637,7 +657,7 @@ export type PerformanceAnalysisRequest = {
 
 export type PerfSource = "backend" | "frontend" | "electron-main" | "electron-renderer" | "process" | "browser"
 
-export type PerfSpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout"
+export type PerfSpanStatus = "running" | "ok" | "error" | "cancelled" | "timeout" | "interrupted"
 
 export type PerfInflightSpan = {
   traceId: string
@@ -670,6 +690,7 @@ export type PerfInflightSpan = {
   ageMs: number
   idleMs: number
   stale: boolean
+  activeSince?: number
 }
 
 export type PerfInflight = {
@@ -5453,14 +5474,41 @@ export type SessionImportResult = {
 }
 
 export type CortexConcurrencyStatus = {
+  /**
+   * User-configured global limit, or null when unset
+   */
   configured: number | null
+  /**
+   * Process environment override, or null when unset
+   */
   environment: number | null
+  /**
+   * Actual admission limit from environment, config, or default
+   */
   effective: number
+  /**
+   * Advisory limit suggested by current memory pressure; never used for task admission
+   */
   memoryPressureLimit: number | null
+  /**
+   * Reason for the advisory memory-pressure limit
+   */
   memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
+  /**
+   * Source of the effective admission limit
+   */
   source: "default" | "config" | "environment"
+  /**
+   * Fixed maximum for each individual agent
+   */
   perAgentLimit: number
+  /**
+   * Currently admitted Cortex tasks
+   */
   running: number
+  /**
+   * Cortex tasks waiting for an admission slot
+   */
   queued: number
 }
 

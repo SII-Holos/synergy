@@ -22,15 +22,22 @@ export namespace CortexConcurrency {
 
   export const GlobalStatus = z
     .object({
-      configured: z.number().int().positive().nullable(),
-      environment: z.number().int().positive().nullable(),
-      effective: z.number().int().positive(),
-      memoryPressureLimit: z.number().int().positive().nullable(),
-      memoryPressureReason: z.enum(["normal", "memory_pressure", "critical_memory_pressure"]),
-      source: z.enum(["default", "config", "environment"]),
-      perAgentLimit: z.number().int().positive(),
-      running: z.number().int().nonnegative(),
-      queued: z.number().int().nonnegative(),
+      configured: z.number().int().positive().nullable().describe("User-configured global limit, or null when unset"),
+      environment: z.number().int().positive().nullable().describe("Process environment override, or null when unset"),
+      effective: z.number().int().positive().describe("Actual admission limit from environment, config, or default"),
+      memoryPressureLimit: z
+        .number()
+        .int()
+        .positive()
+        .nullable()
+        .describe("Advisory limit suggested by current memory pressure; never used for task admission"),
+      memoryPressureReason: z
+        .enum(["normal", "memory_pressure", "critical_memory_pressure"])
+        .describe("Reason for the advisory memory-pressure limit"),
+      source: z.enum(["default", "config", "environment"]).describe("Source of the effective admission limit"),
+      perAgentLimit: z.number().int().positive().describe("Fixed maximum for each individual agent"),
+      running: z.number().int().nonnegative().describe("Currently admitted Cortex tasks"),
+      queued: z.number().int().nonnegative().describe("Cortex tasks waiting for an admission slot"),
     })
     .meta({ ref: "CortexConcurrencyStatus" })
   export type GlobalStatus = z.infer<typeof GlobalStatus>
@@ -40,15 +47,13 @@ export namespace CortexConcurrency {
   }
 
   export function configure(limit: number | undefined): void {
-    const previous = getGlobalLimit()
+    const previous = desiredGlobalLimit()
     configuredGlobalLimit = normalizeLimit(limit)
-    if (getGlobalLimit() > previous) wakeAllQueues()
+    if (desiredGlobalLimit() > previous) wakeAllQueues()
   }
 
-  export function getGlobalLimit(snapshot = currentMemorySnapshot()): number {
-    const desired = desiredGlobalLimit()
-    const memoryPressureLimit = getMemoryPressureLimit(snapshot)
-    return memoryPressureLimit === undefined ? desired : Math.min(desired, memoryPressureLimit)
+  export function getGlobalLimit(): number {
+    return desiredGlobalLimit()
   }
 
   export function getMemoryPressure(snapshot = currentMemorySnapshot()) {
@@ -142,7 +147,7 @@ export namespace CortexConcurrency {
     return {
       configured: configuredGlobalLimit ?? null,
       environment: environment ?? null,
-      effective: getGlobalLimit(snapshot),
+      effective: getGlobalLimit(),
       memoryPressureLimit: memoryPressure.limit,
       memoryPressureReason: memoryPressure.reason,
       source:

@@ -63,7 +63,7 @@ Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplica
 1. Register optional built-in workbench panels with `WorkbenchPanelEntry.loader`; do not statically import Notes, Files, Browser, Terminal, or Review implementations into the route shell.
 2. Keep heavyweight feature engines behind the interaction that needs them: Tiptap and Mermaid behind Notes, Monaco behind file Source view, and Ghostty behind Terminal.
 3. Import only fonts used by the active product typography contract. A dormant family must not be emitted by the default App build.
-4. Preserve `packages/app/src/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
+4. Preserve `packages/app/test/app-build-css-contract.test.ts` as the production build regression gate for initial module preloads, emitted product fonts, and core compiled CSS.
 
 ## Change Themes and Color Tokens
 
@@ -79,7 +79,7 @@ Read `docs/reference/frontend-theming.md` before changing the color contract, ad
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app src/testing/color-token-contract.test.ts
+bun test --cwd packages/app test/testing/color-token-contract.test.ts
 ```
 
 ## Verify
