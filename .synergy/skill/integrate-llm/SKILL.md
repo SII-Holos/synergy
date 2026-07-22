@@ -18,17 +18,15 @@ Do not choose by convenience. If users or parent agents must inspect, resume, ca
 
 ## Sessionless Internal-Agent Calls
 
-Current sessionless callers resolve a hidden agent and model, then call `LLM.stream()` without creating a durable session or persisting the inference exchange. They may pass an existing or request-scoped session/message identity because the shared API requires context. Examples include title/turn summary, Experience intent/script/reward encoding, SmartAllow classification, and agent generation.
-
-The `callAgent()` in `library/experience-encoder.ts` is currently private to that module; it is not a repository-wide API. Do not copy another local wrapper. When adding a new sessionless caller, reuse or extract a shared internal-agent-call helper and migrate adjacent boilerplate when the scope permits. Until that helper exists, follow the established `LLM.stream()` boundary rather than calling the AI SDK directly.
+Text-only sessionless callers use `AgentCall.text()` without creating a durable session or persisting the inference exchange. Experience intent/script/reward encoding already uses this boundary. Title/turn summary, SmartAllow classification, agent generation, and GitHub classification remain direct `LLM.stream()` callers that must be migrated with domain-specific behavior tests rather than copied as templates.
 
 For every sessionless call:
 
 1. Define or reuse a hidden internal agent with the correct model role, prompt, temperature, and no unnecessary tools.
-2. Resolve it through `Agent.get()`, `Agent.getAvailableModel()`, and `Provider.getModel()` so role configuration and availability remain authoritative.
-3. Use `LLM.stream()` so provider transforms, variants, prompt-cache policy, plugin chat hooks, telemetry, and reasoning normalization still apply.
-4. Consume the result through `LLM.collectText()`, `LLM.takeTextStream()`, or `LLM.takeFullStream()`. Dispose owned streams in `finally`; do not access AI SDK stream/text getters directly because each getter retains a tee branch until explicitly cancelled.
-5. Supply a bounded abort timeout, explicit retry count, and `tools: {}` unless tool execution is intentionally part of the contract.
+2. Call `AgentCall.text()` with the Agent name, messages, explicit retry/timeout/input/output bounds, caller signal, and only a domain-owned fallback model when required. It owns Agent/model resolution, `tools: {}`, bounded collection, combined cancellation, and stream disposal.
+3. Keep prompt construction, fallback choice, retry count, structured parsing, persistence, and error mapping in the owning domain.
+4. Do not access AI SDK stream/text getters directly because each getter retains a tee branch until explicitly cancelled.
+5. Use a Session or Cortex instead when tools, durable history, resumability, progress, or completion delivery are part of the contract.
 6. Bound input and output, treat tagged/untrusted content as data, and redact secrets before policy/classification calls.
 7. Parse and validate structured output with Zod or an equivalent explicit schema. Define whether timeout, unavailable model, malformed output, or provider error fails soft or propagates.
 8. Test model-role fallback, timeout/cancellation, stream disposal, parsing, redaction, and failure semantics without making a live provider call.

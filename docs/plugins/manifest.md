@@ -26,25 +26,29 @@ Identity and descriptive fields come from `definePlugin()`. `capabilities` is th
 
 ## Contribution Kinds
 
-| Kind                  | Executable | Important generated fields                                                   |
-| --------------------- | ---------- | ---------------------------------------------------------------------------- |
-| `operation`           | yes        | `type`, `expose`, input/output JSON Schema, optional timeout                 |
-| `event`               | no         | payload JSON Schema                                                          |
-| `tool`                | yes        | object input JSON Schema, exposure, display metadata, optional `enabledWhen` |
-| `hook`                | yes        | host hook point and priority                                                 |
-| `agent`               | no         | agent declaration                                                            |
-| `skill`               | no         | skill declaration                                                            |
-| `mcp`                 | no         | MCP server declaration                                                       |
-| `authProvider`        | yes        | provider profile                                                             |
-| `ui.workbenchPanel`   | no         | surface, cardinality, optional default resource and trusted component        |
-| `ui.navigationItem`   | no         | placement and optional trusted component                                     |
-| `ui.messageRenderer`  | no         | message type and optional trusted component                                  |
-| `ui.composerAction`   | no         | slot and optional trusted component                                          |
-| `ui.settings`         | no         | group, form schema, visibility, optional trusted component                   |
-| `ui.theme`            | no         | label and packaged structured-theme JSON path                                |
-| `ui.icon`             | no         | packaged SVG path                                                            |
-| `lifecycle.upgrade`   | yes        | handler identity                                                             |
-| `lifecycle.uninstall` | yes        | handler identity                                                             |
+| Kind                    | Executable | Important generated fields                                                   |
+| ----------------------- | ---------- | ---------------------------------------------------------------------------- |
+| `operation`             | yes        | `type`, `expose`, input/output JSON Schema, optional timeout                 |
+| `event`                 | no         | payload JSON Schema                                                          |
+| `tool`                  | yes        | object input JSON Schema, exposure, display metadata, optional `enabledWhen` |
+| `hook`                  | yes        | host hook point and priority                                                 |
+| `agent`                 | no         | agent declaration                                                            |
+| `skill`                 | no         | skill declaration                                                            |
+| `mcp`                   | no         | MCP server declaration                                                       |
+| `authProvider`          | yes        | provider profile                                                             |
+| `ui.workbenchPanel`     | no         | surface, cardinality, optional default resource and trusted component        |
+| `ui.navigationItem`     | no         | placement and optional trusted component                                     |
+| `ui.messageRenderer`    | no         | message type and optional trusted component                                  |
+| `ui.composerAction`     | no         | slot and optional trusted component                                          |
+| `ui.composerExtension`  | no         | ordered trusted headless Composer lifecycle                                  |
+| `ui.selectionExtension` | no         | ordered trusted headless selection lifecycle                                 |
+| `ui.textAction`         | no         | host-rendered selected-text action and command operation reference           |
+| `ui.messageSlot`        | no         | message slot, optional role filter, and trusted component                    |
+| `ui.settings`           | no         | group, form schema, visibility, optional trusted component                   |
+| `ui.theme`              | no         | label and packaged structured-theme JSON path                                |
+| `ui.icon`               | no         | packaged SVG path                                                            |
+| `lifecycle.upgrade`     | yes        | handler identity                                                             |
+| `lifecycle.uninstall`   | yes        | handler identity                                                             |
 
 Contribution IDs are unique across the whole plugin, not only within one kind. Every `requires` entry must name a top-level capability. Executable declarations require a runtime artifact. A trusted component requires a UI artifact.
 

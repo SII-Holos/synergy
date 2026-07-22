@@ -52,6 +52,7 @@ import { withTimeout } from "@/util/timeout"
 import { lastModel, InvokeInput, resolveInputParts, createUserMessage } from "./input"
 import { SessionProgress } from "./progress"
 import * as SessionWorking from "./working"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
 import {
   buildMemoryContext,
   buildAlwaysOnlyMemoryContext,
@@ -129,6 +130,7 @@ export namespace SessionInvoke {
   type InternalInvokeInput = InvokeInput & {
     ephemeralTools?: ToolResolver.EphemeralTool[]
     maxOutputTokens?: number
+    origin?: MessageV2.OriginUser
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
@@ -166,7 +168,7 @@ export namespace SessionInvoke {
   export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
 
   export async function invokeInternal(input: InternalInvokeInput) {
-    return invokeWithInternalTools(input)
+    return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
   }
 
   async function recallMemory(
@@ -1691,7 +1693,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       : ((await lastModel(input.sessionID).catch(() => undefined)) ?? { providerID: "system", modelID: "command" })
     const metadata = commandMetadata(command)
 
-    const user = await Session.updateMessage({
+    const userInfo: MessageV2.User = {
       id: userID,
       role: "user",
       sessionID: input.sessionID,
@@ -1707,15 +1709,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       // only as a frontend hint for action-command rendering.
       includeInContext: command.promptVisible !== false,
       metadata,
-    })
-    await Session.updatePart({
+    }
+    const userPart: MessageV2.TextPart = {
       id: Identifier.ascending("part"),
-      messageID: user.id,
+      messageID: userInfo.id,
       sessionID: input.sessionID,
       type: "text",
       origin: "user",
       text: `/${input.command}${input.arguments ? ` ${input.arguments}` : ""}`,
-    })
+    }
+    const { info: user } = await SessionUserMessageMaterialization.write({ info: userInfo, parts: [userPart] })
 
     const msg: MessageV2.Assistant = {
       id: Identifier.ascending("message"),

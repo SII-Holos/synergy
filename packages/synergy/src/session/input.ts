@@ -18,6 +18,7 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { Tool } from "@/tool/tool"
 import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import { SessionHistory } from "./history"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
 
 const log = Log.create({ service: "session.input" })
 
@@ -169,7 +170,11 @@ function attachmentExtractionFailure(input: {
   }
 }
 
-export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
+export type CreateUserMessageInput = InvokeInput & {
+  origin?: MessageV2.OriginUser
+}
+
+export async function createUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -196,7 +201,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   })
   const externalMetadata = WorkflowUserWrapper.stripReservedMetadata(input.metadata)
   const messageID = input.messageID ?? Identifier.ascending("message")
-  const origin = MessageV2.originFromMetadata(input.metadata)
+  const origin = input.origin ?? MessageV2.originFromMetadata(input.metadata)
   const isRoot = input.noReply !== true
   const rootID = rootIDOverride ?? messageID
   // A reply-requiring message is always shown; a noReply injection is shown
@@ -691,20 +696,12 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   // remaining text part is the user's own input. Rendering/visibility of the
   // whole message is carried by info.visible/origin, so no metadata.synthetic
   // flag is needed.
-  // Persist the message envelope first so subscribers never receive orphaned parts.
-  await Session.updateMessage(info)
-
   for (const part of parts) {
     if (part.type === "text" && !part.origin) {
       ;(part as MessageV2.TextPart).origin = "user"
     }
-    await Session.updatePart(part)
   }
-
-  return {
-    info,
-    parts,
-  }
+  return SessionUserMessageMaterialization.write({ info, parts })
 }
 
 async function effectiveMessages(sessionID: string) {

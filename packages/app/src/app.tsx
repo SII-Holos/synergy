@@ -34,6 +34,7 @@ import {
   PluginRouteScope,
   BuiltinNavigationPage,
   PluginNavigationPage,
+  PluginTextInteractionBridge,
 } from "@/plugin"
 import { iife } from "@ericsanchezok/synergy-util/iife"
 import { base64Encode } from "@ericsanchezok/synergy-util/encode"
@@ -227,6 +228,7 @@ function ConnectedApp() {
                             <GlobalSyncProvider>
                               <PluginComposerSlotBridge />
                               <PluginThemeConfigBridge />
+                              <PluginTextInteractionBridge />
                               <LayoutProvider>
                                 <NotificationProvider>
                                   <CommandProvider>
