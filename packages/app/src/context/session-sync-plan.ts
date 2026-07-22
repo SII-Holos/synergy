@@ -1,9 +1,12 @@
+export type SessionSyncTrigger = { type: "workspace-transition" }
+
 export type SessionSyncPlanInput = {
   hasSessionRecord: boolean
   hasMessages: boolean
   reconnectVersion: number
   lastSyncedReconnectVersion: number | undefined
   canUnrollback: boolean
+  trigger?: SessionSyncTrigger
 }
 
 export type SessionSyncPlan = {
@@ -22,9 +25,10 @@ export type SessionSyncPlan = {
 export function planSessionSyncReload(input: SessionSyncPlanInput): SessionSyncPlan {
   const versionStale = input.lastSyncedReconnectVersion !== input.reconnectVersion
   const needsDerivedHistoryRefresh = input.canUnrollback
-  const forceSession = !input.hasSessionRecord || versionStale || needsDerivedHistoryRefresh
+  const workspaceTransition = input.trigger?.type === "workspace-transition"
+  const forceSession = !input.hasSessionRecord || versionStale || needsDerivedHistoryRefresh || workspaceTransition
   const forceMessages = !input.hasMessages || versionStale || needsDerivedHistoryRefresh
-  const ready = input.hasSessionRecord && input.hasMessages && !versionStale && !needsDerivedHistoryRefresh
+  const ready = !forceSession && !forceMessages
   return {
     versionStale,
     needsDerivedHistoryRefresh,

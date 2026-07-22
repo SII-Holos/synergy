@@ -20,6 +20,25 @@ describe("planSessionSyncReload (#509)", () => {
     })
   })
 
+  test("refreshes only authoritative session metadata after a workspace transition", () => {
+    expect(
+      planSessionSyncReload({
+        hasSessionRecord: true,
+        hasMessages: true,
+        reconnectVersion: 2,
+        lastSyncedReconnectVersion: 2,
+        canUnrollback: false,
+        trigger: { type: "workspace-transition" },
+      }),
+    ).toEqual({
+      versionStale: false,
+      needsDerivedHistoryRefresh: false,
+      forceSession: true,
+      forceMessages: false,
+      ready: false,
+    })
+  })
+
   test("forces message snapshot reload when reconnectVersion advances", () => {
     expect(
       planSessionSyncReload({
