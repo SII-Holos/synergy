@@ -188,12 +188,70 @@ export namespace PerformanceCatalog {
       "command",
       "backgrounded",
     ]),
+    metric("process.child.memory.pss", "Child process PSS memory", "bytes", "gauge", "latest", "process", "process", [
+      "command",
+      "backgrounded",
+    ]),
     metric("process.memory.heap_used", "Heap used", "bytes", "gauge", "latest", "process", "process", []),
     metric("process.memory.heap_total", "Heap total", "bytes", "gauge", "latest", "process", "process", [], {
       status: "derived",
     }),
     metric("process.memory.external", "External memory", "bytes", "gauge", "latest", "process", "process", []),
     metric("process.memory.array_buffers", "ArrayBuffer memory", "bytes", "gauge", "latest", "process", "process", []),
+    metric("service.memory.current", "Service cgroup memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.peak", "Service peak memory", "bytes", "gauge", "latest", "process", "process", ["source"]),
+    metric("service.memory.high", "Service memory high threshold", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.max", "Service memory maximum", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric(
+      "service.memory.usage_ratio",
+      "Service memory usage ratio",
+      "ratio",
+      "ratio",
+      "latest",
+      "process",
+      "process",
+      ["source"],
+    ),
+    metric("service.memory.swap", "Service swap memory", "bytes", "gauge", "latest", "process", "process", ["source"]),
+    metric("service.memory.anon", "Service anonymous memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.file", "Service file memory", "bytes", "gauge", "latest", "process", "process", ["source"]),
+    metric("service.memory.kernel", "Service kernel memory", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.slab", "Service slab memory", "bytes", "gauge", "latest", "process", "process", ["source"]),
+    metric("service.process.rss", "All service processes RSS", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.process.pss", "All service processes PSS", "bytes", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric(
+      "service.memory.events.high",
+      "Service memory high events",
+      "count",
+      "gauge",
+      "latest",
+      "process",
+      "process",
+      ["source"],
+    ),
+    metric("service.memory.events.max", "Service memory max events", "count", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.events.oom", "Service OOM events", "count", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
+    metric("service.memory.events.oom_kill", "Service OOM kills", "count", "gauge", "latest", "process", "process", [
+      "source",
+    ]),
     metric("process.cpu.utilization", "CPU utilization", "ratio", "ratio", "avg", "process", "process", []),
     metric("process.event_loop.lag", "Event-loop lag", "ms", "duration", "p95", "process", "process", []),
     metric("process.active.count", "Active processes", "count", "gauge", "latest", "process", "process", [], {
@@ -328,6 +386,7 @@ export namespace PerformanceCatalog {
   export const chartMetricNames = [
     "process.cpu.utilization",
     "process.event_loop.lag",
+    "service.memory.current",
     "process.memory.rss",
     "process.memory.heap_used",
     "process.memory.heap_total",
@@ -343,6 +402,7 @@ export namespace PerformanceCatalog {
   ]
   export const defaultMetricNames = [
     "http.request.duration",
+    "service.memory.current",
     "process.memory.rss",
     "process.memory.heap_used",
     "process.cpu.utilization",

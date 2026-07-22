@@ -20780,6 +20780,106 @@
           "stale"
         ]
       },
+      "TelemetryServiceMemorySource": {
+        "type": "string",
+        "enum": ["cgroup-v2", "process-sum", "unknown"]
+      },
+      "TelemetryServiceMemory": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/TelemetryServiceMemorySource"
+          },
+          "currentBytes": {
+            "type": "number"
+          },
+          "peakBytes": {
+            "type": "number"
+          },
+          "highBytes": {
+            "type": "number"
+          },
+          "maxBytes": {
+            "type": "number"
+          },
+          "usageRatio": {
+            "type": "number"
+          },
+          "swapBytes": {
+            "type": "number"
+          },
+          "anonBytes": {
+            "type": "number"
+          },
+          "fileBytes": {
+            "type": "number"
+          },
+          "kernelBytes": {
+            "type": "number"
+          },
+          "slabBytes": {
+            "type": "number"
+          },
+          "processCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rssProcessCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pssProcessCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "processRssBytes": {
+            "type": "number"
+          },
+          "processPssBytes": {
+            "type": "number"
+          },
+          "events": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "low": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "high": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oom": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oomKill": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oomGroupKill": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        },
+        "required": ["source", "processCount", "rssProcessCount", "pssProcessCount"]
+      },
       "TelemetryResourceSample": {
         "type": "object",
         "properties": {
@@ -20820,7 +20920,7 @@
               },
               "role": {
                 "type": "string",
-                "enum": ["server", "tool", "pty", "mcp", "plugin", "desktop", "browser", "unknown"]
+                "enum": ["server", "tool", "service-child", "pty", "mcp", "plugin", "desktop", "browser", "unknown"]
               }
             },
             "required": ["role"]
@@ -20847,6 +20947,9 @@
               "rssBytes": {
                 "type": "number"
               },
+              "pssBytes": {
+                "type": "number"
+              },
               "heapTotalBytes": {
                 "type": "number"
               },
@@ -20860,6 +20963,9 @@
                 "type": "number"
               }
             }
+          },
+          "serviceMemory": {
+            "$ref": "#/components/schemas/TelemetryServiceMemory"
           },
           "eventLoop": {
             "type": "object",
@@ -21073,6 +21179,102 @@
             "type": "string"
           }
         }
+      },
+      "PerfServiceMemory": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/TelemetryServiceMemorySource"
+          },
+          "currentBytes": {
+            "type": "number"
+          },
+          "peakBytes": {
+            "type": "number"
+          },
+          "highBytes": {
+            "type": "number"
+          },
+          "maxBytes": {
+            "type": "number"
+          },
+          "usageRatio": {
+            "type": "number"
+          },
+          "swapBytes": {
+            "type": "number"
+          },
+          "anonBytes": {
+            "type": "number"
+          },
+          "fileBytes": {
+            "type": "number"
+          },
+          "kernelBytes": {
+            "type": "number"
+          },
+          "slabBytes": {
+            "type": "number"
+          },
+          "processCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "rssProcessCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "pssProcessCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "processRssBytes": {
+            "type": "number"
+          },
+          "processPssBytes": {
+            "type": "number"
+          },
+          "events": {
+            "default": {},
+            "type": "object",
+            "properties": {
+              "low": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "high": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "max": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oom": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oomKill": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "oomGroupKill": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        },
+        "required": ["source", "processCount", "rssProcessCount", "pssProcessCount"]
       },
       "PerfModule": {
         "type": "string",
@@ -21368,6 +21570,9 @@
               "rssBytes": {
                 "type": "number"
               },
+              "pssBytes": {
+                "type": "number"
+              },
               "heapUsedBytes": {
                 "type": "number"
               },
@@ -21409,8 +21614,14 @@
               },
               "childProcessRssBytes": {
                 "type": "number"
+              },
+              "childProcessPssBytes": {
+                "type": "number"
               }
             }
+          },
+          "serviceMemory": {
+            "$ref": "#/components/schemas/PerfServiceMemory"
           },
           "sessions": {
             "type": "object",

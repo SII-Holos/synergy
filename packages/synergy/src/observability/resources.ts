@@ -7,6 +7,7 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { ObservabilityRedaction } from "./redaction"
 import { ProcessRegistry } from "@/process/registry"
+import { ServiceMemory } from "./service-memory"
 
 export namespace ObservabilityResources {
   let timer: Timer | undefined
@@ -39,6 +40,16 @@ export namespace ObservabilityResources {
     const ctx = ObservabilityContext.current()
     const now = ObservabilityClock.now()
     const memory = process.memoryUsage()
+    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+    const serviceMemory = ServiceMemory.sample({
+      processMemory: memory,
+      knownProcesses: childProcesses.map((child) => ({
+        pid: child.pid,
+        processId: child.id,
+        rssBytes: child.rssBytes,
+      })),
+    })
+    const mainProcess = serviceMemory.processes.find((item) => item.role === "main")
     const cpu = process.cpuUsage()
     const elapsedMs = Math.max(1, performance.now() - lastTime)
     const userDelta = cpu.user - lastCpu.user
@@ -65,18 +76,20 @@ export namespace ObservabilityResources {
       cpu: { userMicros: cpu.user, systemMicros: cpu.system, utilizationRatio },
       memory: {
         rssBytes: memory.rss,
+        pssBytes: mainProcess?.pssBytes,
         heapTotalBytes: memory.heapTotal,
         heapUsedBytes: memory.heapUsed,
         externalBytes: memory.external,
         arrayBuffersBytes: memory.arrayBuffers,
       },
+      serviceMemory: serviceMemorySample(serviceMemory),
       eventLoop: { lagMs, sampleWindowMs: config.resourceSampleIntervalMs },
       io: { ...io, osAvailable: false },
       labels: {},
     })
+    recordChildProcesses(now, config.resourceSampleIntervalMs, childProcesses, serviceMemory, sample.sampleId)
     ObservabilityStore.insertResource(sample)
-    recordChildProcesses(now, config.resourceSampleIntervalMs)
-    recordResourceMetrics(memory, utilizationRatio, lagMs)
+    recordResourceMetrics(memory, serviceMemory, utilizationRatio, lagMs)
     detectPressure(sample, config)
   }
 
@@ -101,8 +114,18 @@ export namespace ObservabilityResources {
     start()
   }
 
-  function recordChildProcesses(now: number, sampleWindowMs: number) {
-    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+  function recordChildProcesses(
+    now: number,
+    sampleWindowMs: number,
+    registered: ProcessRegistry.ResourceSnapshot[],
+    serviceMemory: ServiceMemory.Snapshot,
+    serviceSampleId: string,
+  ) {
+    const childProcesses = serviceMemory.processes.filter((item) => item.role === "child")
+    const registeredByPid = new Map(
+      registered.flatMap((item) => (item.pid === undefined ? [] : ([[item.pid, item]] as const))),
+    )
+    const registeredById = new Map(registered.map((item) => [item.id, item]))
     ObservabilityMetrics.record({
       name: "process.active.count",
       value: childProcesses.length,
@@ -112,14 +135,24 @@ export namespace ObservabilityResources {
       labels: { role: "tool-child" },
     })
     for (const child of childProcesses) {
-      if (child.rssBytes === undefined) continue
-      const commandFamily = ObservabilityRedaction.commandFamily(child.command)
+      if (child.rssBytes === undefined && child.pssBytes === undefined) continue
+      const known =
+        (child.pid === undefined ? undefined : registeredByPid.get(child.pid)) ??
+        (child.processId === undefined ? undefined : registeredById.get(child.processId))
+      const commandFamily = known
+        ? ObservabilityRedaction.commandFamily(known.command)
+        : ObservabilityRedaction.text(child.name ?? "service-child", 64)
       const labels: Record<string, string | number | boolean> = {
         command: commandFamily,
-        backgrounded: child.backgrounded,
-        ageMs: child.ageMs,
-        outputChars: child.outputChars,
-        truncated: child.truncated,
+        serviceSampleId,
+        source: serviceMemory.source,
+        registered: !!known,
+      }
+      if (known) {
+        labels.backgrounded = known.backgrounded
+        labels.ageMs = known.ageMs
+        labels.outputChars = known.outputChars
+        labels.truncated = known.truncated
       }
       ObservabilityStore.insertResource(
         ObservabilitySchema.ResourceSample.parse({
@@ -127,27 +160,50 @@ export namespace ObservabilityResources {
           time: now,
           iso: ObservabilityClock.iso(now),
           source: "process",
-          process: { pid: child.pid, processId: child.id, role: "tool" },
-          memory: { rssBytes: child.rssBytes },
+          process: {
+            pid: child.pid,
+            processId: child.processId,
+            role: known ? "tool" : "service-child",
+          },
+          memory: { rssBytes: child.rssBytes, pssBytes: child.pssBytes },
           eventLoop: { sampleWindowMs },
           io: { osAvailable: true },
           labels,
         }),
       )
-      ObservabilityMetrics.record({
-        name: "process.child.memory.rss",
-        value: child.rssBytes,
-        unit: "bytes",
-        module: "process",
-        source: "process",
-        processId: child.id,
-        pid: child.pid,
-        labels: { command: commandFamily, backgrounded: child.backgrounded },
-      })
+      if (child.rssBytes !== undefined) {
+        ObservabilityMetrics.record({
+          name: "process.child.memory.rss",
+          value: child.rssBytes,
+          unit: "bytes",
+          module: "process",
+          source: "process",
+          processId: child.processId,
+          pid: child.pid,
+          labels: { command: commandFamily, backgrounded: known?.backgrounded ?? false },
+        })
+      }
+      if (child.pssBytes !== undefined) {
+        ObservabilityMetrics.record({
+          name: "process.child.memory.pss",
+          value: child.pssBytes,
+          unit: "bytes",
+          module: "process",
+          source: "process",
+          processId: child.processId,
+          pid: child.pid,
+          labels: { command: commandFamily, backgrounded: known?.backgrounded ?? false },
+        })
+      }
     }
   }
 
-  function recordResourceMetrics(memory: NodeJS.MemoryUsage, utilizationRatio: number, lagMs: number) {
+  function recordResourceMetrics(
+    memory: NodeJS.MemoryUsage,
+    serviceMemory: ServiceMemory.Snapshot,
+    utilizationRatio: number,
+    lagMs: number,
+  ) {
     ObservabilityMetrics.record({
       name: "process.memory.rss",
       value: memory.rss,
@@ -197,6 +253,44 @@ export namespace ObservabilityResources {
       module: "process",
       source: "process",
     })
+    recordServiceMemoryMetrics(serviceMemory)
+  }
+
+  function recordServiceMemoryMetrics(sample: ServiceMemory.Snapshot) {
+    const metrics: Array<[string, number | undefined, "bytes" | "ratio" | "count"]> = [
+      ["service.memory.current", sample.currentBytes, "bytes"],
+      ["service.memory.peak", sample.peakBytes, "bytes"],
+      ["service.memory.high", sample.highBytes, "bytes"],
+      ["service.memory.max", sample.maxBytes, "bytes"],
+      ["service.memory.usage_ratio", sample.usageRatio, "ratio"],
+      ["service.memory.swap", sample.swapBytes, "bytes"],
+      ["service.memory.anon", sample.anonBytes, "bytes"],
+      ["service.memory.file", sample.fileBytes, "bytes"],
+      ["service.memory.kernel", sample.kernelBytes, "bytes"],
+      ["service.memory.slab", sample.slabBytes, "bytes"],
+      ["service.process.rss", sample.processRssBytes, "bytes"],
+      ["service.process.pss", sample.processPssBytes, "bytes"],
+      ["service.memory.events.high", sample.events.high, "count"],
+      ["service.memory.events.max", sample.events.max, "count"],
+      ["service.memory.events.oom", sample.events.oom, "count"],
+      ["service.memory.events.oom_kill", sample.events.oomKill, "count"],
+    ]
+    for (const [name, value, unit] of metrics) {
+      if (value === undefined) continue
+      ObservabilityMetrics.record({
+        name,
+        value,
+        unit,
+        module: "process",
+        source: "process",
+        labels: { source: sample.source },
+      })
+    }
+  }
+
+  function serviceMemorySample(sample: ServiceMemory.Snapshot): ObservabilitySchema.ServiceMemory {
+    const { processes: _, ...summary } = sample
+    return ObservabilitySchema.ServiceMemory.parse(summary)
   }
 
   function detectPressure(

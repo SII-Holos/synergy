@@ -71,7 +71,7 @@ describe("ObservabilityMigration", () => {
     const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
     const status = await getMigrationStatus("observability")
 
-    expect(summary.completed).toBe(4)
+    expect(summary.completed).toBe(5)
     expect(status.observability.pending).toHaveLength(0)
     expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
   })
@@ -128,6 +128,19 @@ describe("ObservabilityMigration", () => {
 
     const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
     expect(row.value).toBe(String(ObservabilityStore.schemaVersion))
+  })
+
+  test("adds service memory resource columns to an existing canonical database", async () => {
+    const db = ObservabilityStore.initializeForMigration()
+    db.exec("ALTER TABLE obs_resource_samples DROP COLUMN memory_pss_bytes")
+    db.exec("ALTER TABLE obs_resource_samples DROP COLUMN service_memory_json")
+
+    await ObservabilityMigration.addServiceMemoryColumns()
+    await ObservabilityMigration.addServiceMemoryColumns()
+
+    const columns = allRows<{ name: string }>(db, "PRAGMA table_info(obs_resource_samples)").map((row) => row.name)
+    expect(columns).toContain("memory_pss_bytes")
+    expect(columns).toContain("service_memory_json")
   })
 
   test("backfills redaction across previously written canonical tables idempotently", async () => {

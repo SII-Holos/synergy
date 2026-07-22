@@ -17,6 +17,9 @@ export namespace PerformanceSchema {
   export const Labels = ObservabilitySchema.Labels.meta({ ref: "PerfLabels" })
   export type Labels = z.infer<typeof Labels>
 
+  export const ServiceMemory = ObservabilitySchema.ServiceMemory.meta({ ref: "PerfServiceMemory" })
+  export type ServiceMemory = z.infer<typeof ServiceMemory>
+
   export const Metric = z
     .object({
       metricId: z.string(),
@@ -96,12 +99,14 @@ export namespace PerformanceSchema {
       memory: z
         .object({
           rssBytes: z.number().optional(),
+          pssBytes: z.number().optional(),
           heapTotalBytes: z.number().optional(),
           heapUsedBytes: z.number().optional(),
           externalBytes: z.number().optional(),
           arrayBuffersBytes: z.number().optional(),
         })
         .default({}),
+      serviceMemory: ServiceMemory.optional(),
       eventLoop: z.object({ lagMs: z.number().optional(), sampleWindowMs: z.number() }),
       io: z
         .object({
@@ -224,6 +229,7 @@ export namespace PerformanceSchema {
       }),
       resources: z.object({
         rssBytes: z.number().optional(),
+        pssBytes: z.number().optional(),
         heapUsedBytes: z.number().optional(),
         heapTotalBytes: z.number().optional(),
         externalBytes: z.number().optional(),
@@ -236,7 +242,9 @@ export namespace PerformanceSchema {
         appWriteOps: z.number().int().optional(),
         childProcessCount: z.number().int().optional(),
         childProcessRssBytes: z.number().optional(),
+        childProcessPssBytes: z.number().optional(),
       }),
+      serviceMemory: ServiceMemory.optional(),
       sessions: z.object({
         turnCount: z.number().int(),
         p95TurnMs: z.number().optional(),

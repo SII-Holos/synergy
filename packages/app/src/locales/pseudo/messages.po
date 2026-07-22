@@ -4236,6 +4236,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.chart.memory.serviceDesc"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.title"
 msgstr ""
 
@@ -4307,6 +4312,11 @@ msgstr ""
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.rss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.serviceMemory"
 msgstr ""
 
 #. empty states
@@ -4549,6 +4559,91 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.anon"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.coverage"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.current"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.desc"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.events"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.eventsValue"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.file"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.high"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.kernel"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.max"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.peak"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.processPss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.processRss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.slab"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.source"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.swap"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.title"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.severity.info"
 msgstr ""
 
@@ -4632,7 +4727,27 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.mainRss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.memory"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceChildMemory"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceChildMemoryValue"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
 msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.

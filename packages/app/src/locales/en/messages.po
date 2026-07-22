@@ -4236,6 +4236,11 @@ msgstr "RSS, heap, external, and ArrayBuffer memory gauges in MB"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.chart.memory.serviceDesc"
+msgstr "Service total, main-process RSS, heap, external, and ArrayBuffer memory gauges in MB"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.title"
 msgstr "Memory"
 
@@ -4308,6 +4313,11 @@ msgstr "Heap used"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.dataset.rss"
 msgstr "RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.serviceMemory"
+msgstr "Service total"
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -4549,6 +4559,91 @@ msgstr "Unknown"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.anon"
+msgstr "Anonymous"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.coverage"
+msgstr "{value} · {covered}/{total} processes"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.current"
+msgstr "Current"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.desc"
+msgstr "Linux cgroup v2 totals and process attribution for the complete Synergy service."
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.events"
+msgstr "Pressure events"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.eventsValue"
+msgstr "high {high} · max {max} · OOM {oom} · killed {oomKill}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.file"
+msgstr "File cache"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.high"
+msgstr "High threshold"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.kernel"
+msgstr "Kernel"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.max"
+msgstr "Maximum"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.peak"
+msgstr "Peak"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.processPss"
+msgstr "Process PSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.processRss"
+msgstr "Process RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.slab"
+msgstr "Slab"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.source"
+msgstr "Source"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.swap"
+msgstr "Swap"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.serviceMemory.title"
+msgstr "Service memory attribution"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.severity.info"
 msgstr "info"
 
@@ -4632,8 +4727,28 @@ msgstr "Long tasks"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.mainRss"
+msgstr "Main process RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.memory"
 msgstr "Memory"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceChildMemory"
+msgstr "Service child memory"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceChildMemoryValue"
+msgstr "{rss} RSS · {pss} PSS · {count} active"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "Service memory"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.

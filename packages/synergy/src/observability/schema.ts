@@ -186,6 +186,43 @@ export namespace ObservabilitySchema {
     .meta({ ref: "TelemetryEvent" })
   export type Event = z.infer<typeof Event>
 
+  export const ServiceMemorySource = z
+    .enum(["cgroup-v2", "process-sum", "unknown"])
+    .meta({ ref: "TelemetryServiceMemorySource" })
+  export type ServiceMemorySource = z.infer<typeof ServiceMemorySource>
+
+  export const ServiceMemory = z
+    .object({
+      source: ServiceMemorySource,
+      currentBytes: z.number().optional(),
+      peakBytes: z.number().optional(),
+      highBytes: z.number().optional(),
+      maxBytes: z.number().optional(),
+      usageRatio: z.number().optional(),
+      swapBytes: z.number().optional(),
+      anonBytes: z.number().optional(),
+      fileBytes: z.number().optional(),
+      kernelBytes: z.number().optional(),
+      slabBytes: z.number().optional(),
+      processCount: z.number().int().nonnegative(),
+      rssProcessCount: z.number().int().nonnegative(),
+      pssProcessCount: z.number().int().nonnegative(),
+      processRssBytes: z.number().optional(),
+      processPssBytes: z.number().optional(),
+      events: z
+        .object({
+          low: z.number().int().nonnegative().optional(),
+          high: z.number().int().nonnegative().optional(),
+          max: z.number().int().nonnegative().optional(),
+          oom: z.number().int().nonnegative().optional(),
+          oomKill: z.number().int().nonnegative().optional(),
+          oomGroupKill: z.number().int().nonnegative().optional(),
+        })
+        .default({}),
+    })
+    .meta({ ref: "TelemetryServiceMemory" })
+  export type ServiceMemory = z.infer<typeof ServiceMemory>
+
   export const ResourceSample = z
     .object({
       sampleId: z.string(),
@@ -199,7 +236,7 @@ export namespace ObservabilitySchema {
       process: z.object({
         pid: z.number().int().optional(),
         processId: z.string().optional(),
-        role: z.enum(["server", "tool", "pty", "mcp", "plugin", "desktop", "browser", "unknown"]),
+        role: z.enum(["server", "tool", "service-child", "pty", "mcp", "plugin", "desktop", "browser", "unknown"]),
       }),
       cpu: z
         .object({
@@ -211,12 +248,14 @@ export namespace ObservabilitySchema {
       memory: z
         .object({
           rssBytes: z.number().optional(),
+          pssBytes: z.number().optional(),
           heapTotalBytes: z.number().optional(),
           heapUsedBytes: z.number().optional(),
           externalBytes: z.number().optional(),
           arrayBuffersBytes: z.number().optional(),
         })
         .default({}),
+      serviceMemory: ServiceMemory.optional(),
       eventLoop: z.object({ lagMs: z.number().optional(), sampleWindowMs: z.number() }),
       io: z
         .object({

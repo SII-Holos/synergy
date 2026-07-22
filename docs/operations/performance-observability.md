@@ -9,8 +9,8 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 - health status, health score, and open performance issues;
 - HTTP request count, error rate, and p50/p95/p99 latency;
 - session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
-- CPU, RSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
-- registered tool child process count, RSS total, and top child process memory contributors;
+- CPU, service memory, main-process RSS/PSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
+- all service child process count, RSS/PSS totals and coverage, and top child process memory contributors;
 - session runtime counts, MessageCache footprint and eviction counters, active LLM turn/stream counts, and retained Cortex task counts, including retained prompt/output/error character totals;
 - frontend session-switch timing, token receive/apply/paint timing, browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
 - slow routes, sessions, tools, providers, storage operations, child processes, and trace drill-downs.
@@ -21,7 +21,9 @@ Every record is stored with low-cardinality attribution such as source, module, 
 
 Permission evaluation logs contain only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks remain bounded and do not expose command or path contents through observability.
 
-Server resource samples are kept separate from registered tool child process samples. Linux hosts report child RSS from `/proc/<pid>/status`; unsupported hosts still report registered child process counts. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
+Server resource samples are kept separate from child process samples. On Linux with cgroup v2, the service-memory headline uses `memory.current` and the panel reports `memory.peak`, `memory.high`, `memory.max`, `memory.swap.current`, anonymous/file/kernel/slab attribution, pressure and OOM event counters, plus RSS/PSS coverage for every process in the service cgroup and its descendant cgroups. The source is explicitly reported as `cgroup-v2`.
+
+On macOS, Windows, and Linux systems without cgroup v2 memory accounting, existing process behavior is unchanged: the primary panel value remains the main-process RSS. An additional `process-sum` telemetry fallback sums that RSS with all known ProcessRegistry children, but it does not alter GC, concurrency, process lifecycle, or memory limits. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
 
 ## AI analysis
 
@@ -82,7 +84,7 @@ After each model/tool turn, and at selected checkpoints during a long model stre
 - `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES` (default `1 GiB`)
 
-Critical pressure bypasses the GC interval when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
+Critical pressure bypasses the GC interval when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds. The Linux cgroup threshold uses the same shared cgroup reader as Performance telemetry; other platforms retain the existing process-only pressure behavior:
 
 - `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
 - `SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES` (default `1.75 GiB`)

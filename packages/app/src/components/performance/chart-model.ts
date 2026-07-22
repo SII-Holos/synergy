@@ -8,6 +8,7 @@ import type { ChartTheme } from "../visualization/use-chart-theme"
 export const CHART_METRICS = [
   "process.cpu.utilization",
   "process.event_loop.lag",
+  "service.memory.current",
   "process.memory.rss",
   "process.memory.heap_used",
   "process.memory.heap_total",
@@ -132,6 +133,7 @@ export function memoryPoints(
   summary?: PerformanceSummary | null,
 ): PerformanceMetricPoint[] {
   const points = pointsFromTimeline(timeline, {
+    "service.memory.current": (value, point) => ({ ...point, serviceMemory: value / 1024 / 1024 }),
     "process.memory.rss": (value, point) => ({ ...point, memory: value / 1024 / 1024 }),
     "process.memory.heap_used": (value, point) => ({ ...point, heapUsed: value / 1024 / 1024 }),
     "process.memory.heap_total": (value, point) => ({ ...point, heapTotal: value / 1024 / 1024 }),
@@ -143,6 +145,7 @@ export function memoryPoints(
   return [
     {
       timestamp: summary.generatedAt,
+      serviceMemory: bytesToMegabytes(summary.serviceMemory?.currentBytes),
       memory: bytesToMegabytes(summary.resources.rssBytes),
       heapUsed: bytesToMegabytes(summary.resources.heapUsedBytes),
       heapTotal: bytesToMegabytes(summary.resources.heapTotalBytes),

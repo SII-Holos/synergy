@@ -32,9 +32,12 @@ export namespace Diagnostics {
       .slice(0, 50)
     const issues = ObservabilityIssues.list({ status: "open", limit: 50 })
     const inflight = ObservabilityStore.queryInflight({ limit: 100 }).map(inflightFromRow)
-    const resourceRows = ObservabilityStore.resourceSince(Date.now() - 15 * 60_000, { limit: 500 })
+    const resourceRows = ObservabilityStore.resourceSince(Date.now() - 15 * 60_000, {
+      processRole: "server",
+      limit: 500,
+    })
     const resourceSamples = resourceRows.map(resourceFromRow)
-    const latest = ObservabilityStore.latestResource()
+    const latest = ObservabilityStore.latestResource({ processRole: "server" })
     if (latest && !resourceRows.some((row) => row.sample_id === latest.sample_id)) {
       resourceSamples.push(resourceFromRow(latest))
     }
@@ -245,11 +248,13 @@ export namespace Diagnostics {
       },
       memory: {
         rssBytes: row.memory_rss_bytes ?? undefined,
+        pssBytes: row.memory_pss_bytes ?? undefined,
         heapTotalBytes: row.memory_heap_total_bytes ?? undefined,
         heapUsedBytes: row.memory_heap_used_bytes ?? undefined,
         externalBytes: row.memory_external_bytes ?? undefined,
         arrayBuffersBytes: row.memory_array_buffers_bytes ?? undefined,
       },
+      serviceMemory: parseServiceMemory(row.service_memory_json),
       eventLoop: { lagMs: row.event_loop_lag_ms ?? undefined, sampleWindowMs: row.event_loop_sample_window_ms ?? 0 },
       io: {
         appReadBytes: row.app_read_bytes ?? undefined,
@@ -281,6 +286,24 @@ export namespace Diagnostics {
     if (latest.cpu.utilizationRatio !== undefined) pressure.cpuUtilizationRatio = latest.cpu.utilizationRatio
     if (latest.eventLoop.lagMs !== undefined) pressure.eventLoopLagMs = latest.eventLoop.lagMs
     if (latest.memory.rssBytes !== undefined) pressure.rssBytes = latest.memory.rssBytes
+    if (latest.memory.pssBytes !== undefined) pressure.pssBytes = latest.memory.pssBytes
+    if (latest.serviceMemory) {
+      pressure.serviceMemorySource = latest.serviceMemory.source
+      if (latest.serviceMemory.currentBytes !== undefined)
+        pressure.serviceMemoryCurrentBytes = latest.serviceMemory.currentBytes
+      if (latest.serviceMemory.highBytes !== undefined) pressure.serviceMemoryHighBytes = latest.serviceMemory.highBytes
+      if (latest.serviceMemory.maxBytes !== undefined) pressure.serviceMemoryMaxBytes = latest.serviceMemory.maxBytes
+      if (latest.serviceMemory.swapBytes !== undefined) pressure.serviceMemorySwapBytes = latest.serviceMemory.swapBytes
+      if (latest.serviceMemory.anonBytes !== undefined) pressure.serviceMemoryAnonBytes = latest.serviceMemory.anonBytes
+      if (latest.serviceMemory.fileBytes !== undefined) pressure.serviceMemoryFileBytes = latest.serviceMemory.fileBytes
+      if (latest.serviceMemory.kernelBytes !== undefined)
+        pressure.serviceMemoryKernelBytes = latest.serviceMemory.kernelBytes
+      if (latest.serviceMemory.slabBytes !== undefined) pressure.serviceMemorySlabBytes = latest.serviceMemory.slabBytes
+      pressure.serviceMemoryEventHigh = latest.serviceMemory.events.high ?? 0
+      pressure.serviceMemoryEventMax = latest.serviceMemory.events.max ?? 0
+      pressure.serviceMemoryEventOom = latest.serviceMemory.events.oom ?? 0
+      pressure.serviceMemoryEventOomKill = latest.serviceMemory.events.oomKill ?? 0
+    }
     const first = samples.find((sample) => sample.memory.rssBytes !== undefined)
     if (first?.memory.rssBytes !== undefined && latest.memory.rssBytes !== undefined && latest.time > first.time) {
       pressure.rssGrowthBytesPerMin =
@@ -407,8 +430,14 @@ export namespace Diagnostics {
   }
 
   function resourceRole(input: string | null | undefined): ObservabilitySchema.ResourceSample["process"]["role"] {
-    const roles = new Set(["server", "tool", "pty", "mcp", "plugin", "desktop", "browser", "unknown"])
+    const roles = new Set(["server", "tool", "service-child", "pty", "mcp", "plugin", "desktop", "browser", "unknown"])
     return input && roles.has(input) ? (input as ObservabilitySchema.ResourceSample["process"]["role"]) : "unknown"
+  }
+
+  function parseServiceMemory(value: string | null | undefined) {
+    if (!value) return undefined
+    const result = ObservabilitySchema.ServiceMemory.safeParse(parseJson(value))
+    return result.success ? result.data : undefined
   }
 
   function unique(items: string[]) {

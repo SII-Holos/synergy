@@ -17,6 +17,7 @@ import { ObservabilityWriter } from "../../src/observability/writer"
 import { PerformanceTraceDetail } from "../../src/performance/trace-detail"
 import { PerformanceTimeline } from "../../src/performance/timeline"
 import { ProcessRegistry } from "../../src/process/registry"
+import { ObservabilitySchema } from "../../src/observability/schema"
 
 const homes: string[] = []
 const originalTestHome = process.env.SYNERGY_TEST_HOME
@@ -148,7 +149,8 @@ describe.serial("performance observability store", () => {
   })
 
   test("dashboard summary separates server RSS from child process RSS contributors", async () => {
-    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 8 * 1024 * 1024 }))
+    const childRss = 8 * 1024 * 1024 * 1024
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: childRss }))
     try {
       const child = ProcessRegistry.create({ command: "next dev -p 8090 --token=super-secret" })
       child.pid = 4321
@@ -162,12 +164,16 @@ describe.serial("performance observability store", () => {
       expect(summary.resources.heapUsedBytes).toBeGreaterThanOrEqual(0)
       expect(summary.resources.externalBytes).toBeGreaterThanOrEqual(0)
       expect(summary.resources.arrayBuffersBytes).toBeGreaterThanOrEqual(0)
-      expect(summary.resources.rssBytes).not.toBe(8 * 1024 * 1024)
-      expect(summary.resources.childProcessCount).toBe(1)
-      expect(summary.resources.childProcessRssBytes).toBe(8 * 1024 * 1024)
+      const serviceMemory = summary.serviceMemory
+      expect(serviceMemory).toBeDefined()
+      expect(["cgroup-v2", "process-sum"]).toContain(serviceMemory!.source)
+      expect(serviceMemory!.currentBytes).toBeGreaterThan(0)
+      expect(summary.resources.rssBytes).not.toBe(childRss)
+      expect(summary.resources.childProcessCount).toBeGreaterThanOrEqual(1)
+      expect(summary.resources.childProcessRssBytes).toBeGreaterThanOrEqual(childRss)
       expect(summary.top.childProcesses[0]).toMatchObject({
         label: "next",
-        value: 8 * 1024 * 1024,
+        value: childRss,
         unit: "bytes",
         processId: child.id,
         pid: 4321,
@@ -181,6 +187,74 @@ describe.serial("performance observability store", () => {
     } finally {
       restore()
     }
+  })
+
+  test("dashboard child totals include every process while ranking only the top five", async () => {
+    const now = Date.now()
+    for (let index = 1; index <= 7; index++) {
+      ObservabilityStore.insertResource(
+        ObservabilitySchema.ResourceSample.parse({
+          sampleId: `resource-child-${index}`,
+          time: now,
+          iso: new Date(now).toISOString(),
+          source: "process",
+          process: { pid: 5000 + index, processId: `child-${index}`, role: "tool" },
+          memory: { rssBytes: index * 1024 },
+          eventLoop: { sampleWindowMs: 5000 },
+          labels: { command: `tool-${index}` },
+        }),
+      )
+    }
+    ObservabilityStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+    expect(summary.resources.childProcessCount).toBe(7)
+    expect(summary.resources.childProcessRssBytes).toBe(28 * 1024)
+    expect(summary.top.childProcesses).toHaveLength(5)
+    expect(summary.top.childProcesses.map((item) => item.value)).toEqual([7, 6, 5, 4, 3].map((n) => n * 1024))
+  })
+
+  test("dashboard excludes child rows from an older service sample", async () => {
+    const now = Date.now()
+    ObservabilityStore.insertResource(
+      ObservabilitySchema.ResourceSample.parse({
+        sampleId: "resource-stale-child",
+        time: now - 1,
+        iso: new Date(now - 1).toISOString(),
+        source: "process",
+        process: { pid: 6001, processId: "stale-child", role: "service-child" },
+        memory: { rssBytes: 1024 },
+        eventLoop: { sampleWindowMs: 5000 },
+        labels: { command: "stale", serviceSampleId: "old-service-sample" },
+      }),
+    )
+    ObservabilityStore.insertResource(
+      ObservabilitySchema.ResourceSample.parse({
+        sampleId: "new-service-sample",
+        time: now,
+        iso: new Date(now).toISOString(),
+        source: "process",
+        process: { pid: process.pid, role: "server" },
+        memory: { rssBytes: 2048 },
+        serviceMemory: {
+          source: "cgroup-v2",
+          currentBytes: 2048,
+          processCount: 1,
+          rssProcessCount: 1,
+          pssProcessCount: 0,
+          processRssBytes: 2048,
+          events: {},
+        },
+        eventLoop: { sampleWindowMs: 5000 },
+        labels: {},
+      }),
+    )
+    ObservabilityStore.flush()
+
+    const summary = await PerformanceDashboard.summary({ windowMs: 300_000 })
+    expect(summary.resources.childProcessCount).toBe(0)
+    expect(summary.resources.childProcessRssBytes).toBe(0)
+    expect(summary.top.childProcesses).toEqual([])
   })
 
   test("trace detail projects observability events without raw event data", async () => {

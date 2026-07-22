@@ -13,6 +13,7 @@ export namespace ObservabilityMigration {
   export const redactionBackfillId = "20260711-observability-redaction-backfill"
   export const incrementalVacuumId = "20260711-observability-incremental-vacuum"
   export const schemaMetadataId = "20260712-observability-schema-metadata-v4"
+  export const serviceMemoryId = "20260722-observability-service-memory-v5"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -77,6 +78,25 @@ export namespace ObservabilityMigration {
       "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
       String(schemaVersion),
     )
+    progress(1, 1)
+  }
+
+  export async function addServiceMemoryColumns(progress: (current: number, total: number) => void = () => {}) {
+    const target = ObservabilityStore.initializeForMigration()
+    const columns = tableColumns(target, "obs_resource_samples")
+    target.transaction(() => {
+      if (!columns.has("memory_pss_bytes")) {
+        target.exec("ALTER TABLE obs_resource_samples ADD COLUMN memory_pss_bytes INTEGER")
+      }
+      if (!columns.has("service_memory_json")) {
+        target.exec("ALTER TABLE obs_resource_samples ADD COLUMN service_memory_json TEXT")
+      }
+      runStatement(
+        target,
+        "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
+        String(schemaVersion),
+      )
+    })()
     progress(1, 1)
   }
 
@@ -707,6 +727,16 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.incrementalVacuumId],
     async up(progress) {
       await ObservabilityMigration.synchronizeSchemaMetadata(progress)
+    },
+  },
+  {
+    id: ObservabilityMigration.serviceMemoryId,
+    description: "Add layered service memory telemetry to observability resources",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.schemaMetadataId],
+    async up(progress) {
+      await ObservabilityMigration.addServiceMemoryColumns(progress)
     },
   },
 ]

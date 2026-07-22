@@ -323,6 +323,35 @@ export type TelemetryInflightSpan = {
   stale: boolean
 }
 
+export type TelemetryServiceMemorySource = "cgroup-v2" | "process-sum" | "unknown"
+
+export type TelemetryServiceMemory = {
+  source: TelemetryServiceMemorySource
+  currentBytes?: number
+  peakBytes?: number
+  highBytes?: number
+  maxBytes?: number
+  usageRatio?: number
+  swapBytes?: number
+  anonBytes?: number
+  fileBytes?: number
+  kernelBytes?: number
+  slabBytes?: number
+  processCount: number
+  rssProcessCount: number
+  pssProcessCount: number
+  processRssBytes?: number
+  processPssBytes?: number
+  events?: {
+    low?: number
+    high?: number
+    max?: number
+    oom?: number
+    oomKill?: number
+    oomGroupKill?: number
+  }
+}
+
 export type TelemetryResourceSample = {
   sampleId: string
   time: number
@@ -335,7 +364,7 @@ export type TelemetryResourceSample = {
   process: {
     pid?: number
     processId?: string
-    role: "server" | "tool" | "pty" | "mcp" | "plugin" | "desktop" | "browser" | "unknown"
+    role: "server" | "tool" | "service-child" | "pty" | "mcp" | "plugin" | "desktop" | "browser" | "unknown"
   }
   cpu?: {
     userMicros?: number
@@ -344,11 +373,13 @@ export type TelemetryResourceSample = {
   }
   memory?: {
     rssBytes?: number
+    pssBytes?: number
     heapTotalBytes?: number
     heapUsedBytes?: number
     externalBytes?: number
     arrayBuffersBytes?: number
   }
+  serviceMemory?: TelemetryServiceMemory
   eventLoop: {
     lagMs?: number
     sampleWindowMs: number
@@ -414,6 +445,33 @@ export type PerfTimelineQuality = {
   partial?: boolean
   retentionLimited?: boolean
   unavailableReason?: string
+}
+
+export type PerfServiceMemory = {
+  source: TelemetryServiceMemorySource
+  currentBytes?: number
+  peakBytes?: number
+  highBytes?: number
+  maxBytes?: number
+  usageRatio?: number
+  swapBytes?: number
+  anonBytes?: number
+  fileBytes?: number
+  kernelBytes?: number
+  slabBytes?: number
+  processCount: number
+  rssProcessCount: number
+  pssProcessCount: number
+  processRssBytes?: number
+  processPssBytes?: number
+  events?: {
+    low?: number
+    high?: number
+    max?: number
+    oom?: number
+    oomKill?: number
+    oomGroupKill?: number
+  }
 }
 
 export type PerfModule =
@@ -518,6 +576,7 @@ export type PerfDashboardSummary = {
   }
   resources: {
     rssBytes?: number
+    pssBytes?: number
     heapUsedBytes?: number
     heapTotalBytes?: number
     externalBytes?: number
@@ -530,7 +589,9 @@ export type PerfDashboardSummary = {
     appWriteOps?: number
     childProcessCount?: number
     childProcessRssBytes?: number
+    childProcessPssBytes?: number
   }
+  serviceMemory?: PerfServiceMemory
   sessions: {
     turnCount: number
     p95TurnMs?: number

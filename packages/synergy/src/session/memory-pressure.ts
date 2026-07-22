@@ -1,4 +1,5 @@
 import { Log } from "@/util/log"
+import { ServiceMemory } from "@/observability/service-memory"
 
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
@@ -57,7 +58,6 @@ export namespace SessionMemoryPressure {
   type ReleaseResult = CollectionResult & { releaseCount: number }
 
   let lastGCAt = 0
-  let cachedCgroupDir: string | undefined | null
   let pendingRelease: { count: number; input: CollectionInput } | undefined
   let releaseTimer: ReturnType<typeof setTimeout> | undefined
   let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
@@ -74,9 +74,12 @@ export namespace SessionMemoryPressure {
   }
 
   export async function currentSnapshotWithCgroup(): Promise<Snapshot> {
+    const cgroup = ServiceMemory.readCgroup()
     return {
       ...currentSnapshot(),
-      ...(await cgroupMemory()),
+      ...(cgroup?.currentBytes !== undefined ? { cgroupCurrentBytes: cgroup.currentBytes } : {}),
+      ...(cgroup?.highBytes !== undefined ? { cgroupHighBytes: cgroup.highBytes } : {}),
+      ...(cgroup?.maxBytes !== undefined ? { cgroupMaxBytes: cgroup.maxBytes } : {}),
     }
   }
 
@@ -243,7 +246,6 @@ export namespace SessionMemoryPressure {
   export function resetForTest(lastRunAt = 0) {
     if (releaseTimer) clearTimeout(releaseTimer)
     lastGCAt = lastRunAt
-    cachedCgroupDir = undefined
     pendingRelease = undefined
     releaseTimer = undefined
     releaseFlushInFlight = undefined
@@ -251,54 +253,6 @@ export namespace SessionMemoryPressure {
 
   async function defaultCollect(synchronous: boolean) {
     Bun.gc(synchronous)
-  }
-
-  async function cgroupMemory() {
-    const dir = await cgroupDir()
-    if (!dir) return {}
-    const [current, high, max] = await Promise.all([
-      readNumberFile(`${dir}/memory.current`),
-      readNumberFile(`${dir}/memory.high`),
-      readNumberFile(`${dir}/memory.max`),
-    ])
-    return {
-      ...(current !== undefined ? { cgroupCurrentBytes: current } : {}),
-      ...(high !== undefined ? { cgroupHighBytes: high } : {}),
-      ...(max !== undefined ? { cgroupMaxBytes: max } : {}),
-    }
-  }
-
-  async function cgroupDir() {
-    if (cachedCgroupDir !== undefined) return cachedCgroupDir
-    if (process.platform !== "linux") {
-      cachedCgroupDir = null
-      return cachedCgroupDir
-    }
-    try {
-      const text = await Bun.file("/proc/self/cgroup").text()
-      const unified = text
-        .split("\n")
-        .map((line) => line.trim())
-        .find((line) => line.startsWith("0::"))
-      const relative = unified?.slice("0::".length).replace(/^\/+/, "")
-      cachedCgroupDir = relative ? `/sys/fs/cgroup/${relative}` : "/sys/fs/cgroup"
-    } catch {
-      cachedCgroupDir = null
-    }
-    return cachedCgroupDir
-  }
-
-  async function readNumberFile(path: string) {
-    try {
-      const file = Bun.file(path)
-      if (!(await file.exists())) return undefined
-      const text = (await file.text()).trim()
-      if (!text || text === "max") return undefined
-      const value = Number(text)
-      return Number.isFinite(value) && value > 0 ? value : undefined
-    } catch {
-      return undefined
-    }
   }
 
   function envNumber(value: string | undefined) {

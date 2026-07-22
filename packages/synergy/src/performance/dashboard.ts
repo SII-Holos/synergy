@@ -24,10 +24,21 @@ export namespace PerformanceDashboard {
       ...row,
       labels: parseJson(row.labels_json),
     }))
-    const resourceRows = ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
-    const serverResourceRows = resourceRows.filter((row) => row.process_role === "server")
+    const serverResourceRows = ObservabilityStore.resourceSince(since, {
+      scopeID: input.scopeID,
+      processRole: "server",
+      limit: 20_000,
+      newestFirst: true,
+    }).reverse()
     const resources = serverResourceRows.at(-1)
-    const childProcesses = rankChildProcesses(resourceRows)
+    const resourceRows = resources
+      ? ObservabilityStore.resourceSince(resources.time, { scopeID: input.scopeID, limit: 5000 })
+      : ObservabilityStore.resourceSince(since, { scopeID: input.scopeID })
+    const serviceMemory = serviceMemoryFromRow(resources)
+    const childProcessSummary = summarizeChildProcesses(resourceRows, {
+      serviceSampleId: resources?.sample_id,
+      grouped: !!resources?.service_memory_json,
+    })
     const issues = ObservabilityIssues.list({
       status: "open",
       scopeID: input.scopeID,
@@ -107,6 +118,7 @@ export namespace PerformanceDashboard {
       },
       resources: {
         rssBytes: resources?.memory_rss_bytes ?? undefined,
+        pssBytes: resources?.memory_pss_bytes ?? undefined,
         heapUsedBytes: resources?.memory_heap_used_bytes ?? undefined,
         heapTotalBytes: resources?.memory_heap_total_bytes ?? undefined,
         externalBytes: resources?.memory_external_bytes ?? undefined,
@@ -120,9 +132,11 @@ export namespace PerformanceDashboard {
         appWrittenBytes: resources?.app_written_bytes ?? undefined,
         appReadOps: resources?.app_read_ops ?? undefined,
         appWriteOps: resources?.app_write_ops ?? undefined,
-        childProcessCount: childProcesses.length,
-        childProcessRssBytes: childProcesses.reduce((sum, item) => sum + item.value, 0),
+        childProcessCount: childProcessSummary.totalCount,
+        childProcessRssBytes: childProcessSummary.totalRssBytes,
+        childProcessPssBytes: childProcessSummary.totalPssBytes,
       },
+      serviceMemory,
       sessions: {
         turnCount: turns.length,
         p95TurnMs: ObservabilityMetrics.percentile(
@@ -214,7 +228,7 @@ export namespace PerformanceDashboard {
         slowProviders: rank(llm, "providerID", "provider", "modelID", "model"),
         slowStorage: rank(storage, "operation"),
         slowLibrary: rank(library, "operation"),
-        childProcesses,
+        childProcesses: childProcessSummary.top,
         slowFrontend: rank(
           [...frontendResources, ...frontendLongTasks],
           "routeName",
@@ -281,32 +295,53 @@ export namespace PerformanceDashboard {
     return typeof value === "string" && value.length > 0 ? value : undefined
   }
 
-  function rankChildProcesses(rows: ObservabilityStore.StoredResource[]): PerformanceSchema.RankedItem[] {
+  function summarizeChildProcesses(
+    rows: ObservabilityStore.StoredResource[],
+    options: { serviceSampleId?: string; grouped: boolean },
+  ) {
     const latest = new Map<string, ObservabilityStore.StoredResource>()
     for (const row of rows) {
-      if (!row.process_role?.startsWith("tool")) continue
-      if (row.memory_rss_bytes === undefined || row.memory_rss_bytes === null) continue
+      if (row.process_role !== "tool" && row.process_role !== "service-child") continue
+      const labels = parseJson(row.labels_json)
+      if (options.grouped && labels.serviceSampleId !== options.serviceSampleId) continue
+      if (
+        (row.memory_rss_bytes === undefined || row.memory_rss_bytes === null) &&
+        (row.memory_pss_bytes === undefined || row.memory_pss_bytes === null)
+      )
+        continue
       const id = row.process_id ?? (row.pid === undefined || row.pid === null ? undefined : `pid:${row.pid}`)
       if (!id) continue
       const existing = latest.get(id)
       if (!existing || row.time > existing.time) latest.set(id, row)
     }
-    return Array.from(latest.values())
-      .sort((a, b) => (b.memory_rss_bytes ?? 0) - (a.memory_rss_bytes ?? 0))
-      .slice(0, 5)
-      .map((row, index) => {
-        const labels = parseJson(row.labels_json)
-        return {
-          id: `${row.sample_id}-${index}`,
-          label: String(labels.command ?? labels.description ?? row.process_id ?? row.pid ?? "tool child process"),
-          module: "process" as const,
-          value: row.memory_rss_bytes ?? 0,
-          unit: "bytes" as const,
-          processId: row.process_id ?? undefined,
-          pid: row.pid ?? undefined,
-          status: row.process_role ?? undefined,
-        }
-      })
+    const processes = Array.from(latest.values())
+    return {
+      totalCount: processes.length,
+      totalRssBytes: processes.reduce((sum, row) => sum + (row.memory_rss_bytes ?? 0), 0),
+      totalPssBytes: processes.reduce((sum, row) => sum + (row.memory_pss_bytes ?? 0), 0),
+      top: processes
+        .sort((a, b) => (b.memory_rss_bytes ?? 0) - (a.memory_rss_bytes ?? 0))
+        .slice(0, 5)
+        .map((row, index) => {
+          const labels = parseJson(row.labels_json)
+          return {
+            id: `${row.sample_id}-${index}`,
+            label: String(labels.command ?? labels.description ?? row.process_id ?? row.pid ?? "tool child process"),
+            module: "process" as const,
+            value: row.memory_rss_bytes ?? 0,
+            unit: "bytes" as const,
+            processId: row.process_id ?? undefined,
+            pid: row.pid ?? undefined,
+            status: row.process_role ?? undefined,
+          }
+        }),
+    }
+  }
+
+  function serviceMemoryFromRow(row: ObservabilityStore.StoredResource | undefined) {
+    if (!row?.service_memory_json) return undefined
+    const parsed = PerformanceSchema.ServiceMemory.safeParse(parseJson(row.service_memory_json))
+    return parsed.success ? parsed.data : undefined
   }
 
   function firstLabel(labels: Record<string, unknown>, keys: string[]) {

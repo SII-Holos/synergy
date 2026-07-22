@@ -13,6 +13,7 @@ export type PerformanceMetricPoint = {
   value?: number
   cpu?: number
   memory?: number
+  serviceMemory?: number
   heapUsed?: number
   heapTotal?: number
   external?: number

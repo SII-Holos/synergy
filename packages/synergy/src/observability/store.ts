@@ -7,7 +7,7 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilitySqliteMaintenance } from "./sqlite-maintenance"
 
 export namespace ObservabilityStore {
-  export const schemaVersion = 4
+  export const schemaVersion = 5
   const MAX_PENDING = 10_000
   const FLUSH_MS = 1000
   const SIZE_CAP_TABLES = [
@@ -449,39 +449,51 @@ export namespace ObservabilityStore {
     )
   }
 
-  export function latestResource(opts: { scopeID?: string } = {}) {
+  export function latestResource(opts: { scopeID?: string; processRole?: string } = {}) {
     flush()
     const conn = open()
     if (!conn) return undefined
+    const filters: string[] = []
+    const params: Array<string | number> = []
     if (opts.scopeID) {
-      return getRow<StoredResource>(
-        conn,
-        "SELECT * FROM obs_resource_samples WHERE scope_id = ? ORDER BY time DESC LIMIT 1",
-        opts.scopeID,
-      )
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
     }
-    return getRow<StoredResource>(conn, "SELECT * FROM obs_resource_samples ORDER BY time DESC LIMIT 1")
+    if (opts.processRole) {
+      filters.push("process_role = ?")
+      params.push(opts.processRole)
+    }
+    return getRow<StoredResource>(
+      conn,
+      `SELECT * FROM obs_resource_samples ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""} ORDER BY time DESC, rowid DESC LIMIT 1`,
+      ...params,
+    )
   }
 
-  export function resourceSince(since: number, opts: { scopeID?: string; limit?: number; newestFirst?: boolean } = {}) {
+  export function resourceSince(
+    since: number,
+    opts: { scopeID?: string; processRole?: string; limit?: number; newestFirst?: boolean } = {},
+  ) {
     flush()
     const limit = opts.limit ?? 10_000
     const conn = open()
     if (!conn) return []
+    const filters = ["time >= ?"]
+    const params: Array<string | number> = [since]
     if (opts.scopeID) {
-      return allRows<StoredResource>(
-        conn,
-        `SELECT * FROM obs_resource_samples WHERE time >= ? AND scope_id = ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-        since,
-        opts.scopeID,
-        limit,
-      )
+      filters.push("scope_id = ?")
+      params.push(opts.scopeID)
     }
+    if (opts.processRole) {
+      filters.push("process_role = ?")
+      params.push(opts.processRole)
+    }
+    params.push(limit)
+    const direction = opts.newestFirst ? "DESC" : "ASC"
     return allRows<StoredResource>(
       conn,
-      `SELECT * FROM obs_resource_samples WHERE time >= ? ORDER BY time ${opts.newestFirst ? "DESC" : "ASC"} LIMIT ?`,
-      since,
-      limit,
+      `SELECT * FROM obs_resource_samples WHERE ${filters.join(" AND ")} ORDER BY time ${direction}, rowid ${direction} LIMIT ?`,
+      ...params,
     )
   }
 
@@ -712,8 +724,8 @@ export namespace ObservabilityStore {
   function insertResourceSync(sample: ObservabilitySchema.ResourceSample) {
     open()
       ?.query(
-        `INSERT OR REPLACE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,labels_json,redaction_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30)`,
+        `INSERT OR REPLACE INTO obs_resource_samples (sample_id,time,iso,source,correlation_id,trace_id,scope_id,session_id,pid,process_id,process_role,cpu_user_micros,cpu_system_micros,cpu_utilization_ratio,memory_rss_bytes,memory_pss_bytes,memory_heap_total_bytes,memory_heap_used_bytes,memory_external_bytes,memory_array_buffers_bytes,service_memory_json,event_loop_lag_ms,event_loop_sample_window_ms,app_read_bytes,app_written_bytes,app_read_ops,app_write_ops,os_read_bytes,os_written_bytes,os_available,labels_json,redaction_json)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23,?24,?25,?26,?27,?28,?29,?30,?31,?32)`,
       )
       .run(
         sample.sampleId,
@@ -731,10 +743,12 @@ export namespace ObservabilityStore {
         sample.cpu.systemMicros ?? null,
         sample.cpu.utilizationRatio ?? null,
         sample.memory.rssBytes ?? null,
+        sample.memory.pssBytes ?? null,
         sample.memory.heapTotalBytes ?? null,
         sample.memory.heapUsedBytes ?? null,
         sample.memory.externalBytes ?? null,
         sample.memory.arrayBuffersBytes ?? null,
+        sample.serviceMemory ? JSON.stringify(sample.serviceMemory) : null,
         sample.eventLoop.lagMs ?? null,
         sample.eventLoop.sampleWindowMs,
         sample.io.appReadBytes ?? null,
@@ -937,10 +951,12 @@ export namespace ObservabilityStore {
     cpu_system_micros?: number | null
     cpu_utilization_ratio?: number | null
     memory_rss_bytes?: number | null
+    memory_pss_bytes?: number | null
     memory_heap_total_bytes?: number | null
     memory_heap_used_bytes?: number | null
     memory_external_bytes?: number | null
     memory_array_buffers_bytes?: number | null
+    service_memory_json?: string | null
     event_loop_lag_ms?: number | null
     event_loop_sample_window_ms?: number | null
     app_read_bytes?: number | null
@@ -1011,7 +1027,7 @@ CREATE INDEX IF NOT EXISTS idx_obs_events_trace_time ON obs_events(trace_id,time
 CREATE INDEX IF NOT EXISTS idx_obs_events_correlation_time ON obs_events(correlation_id,time);
 CREATE INDEX IF NOT EXISTS idx_obs_events_session_time ON obs_events(session_id,time);
 CREATE INDEX IF NOT EXISTS idx_obs_events_scope_time ON obs_events(scope_id,time);
-CREATE TABLE IF NOT EXISTS obs_resource_samples (sample_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,source TEXT NOT NULL,correlation_id TEXT,trace_id TEXT,scope_id TEXT,session_id TEXT,pid INTEGER,process_id TEXT,process_role TEXT NOT NULL DEFAULT 'unknown',cpu_user_micros REAL,cpu_system_micros REAL,cpu_utilization_ratio REAL,memory_rss_bytes INTEGER,memory_heap_total_bytes INTEGER,memory_heap_used_bytes INTEGER,memory_external_bytes INTEGER,memory_array_buffers_bytes INTEGER,event_loop_lag_ms REAL,event_loop_sample_window_ms INTEGER,app_read_bytes INTEGER,app_written_bytes INTEGER,app_read_ops INTEGER,app_write_ops INTEGER,os_read_bytes INTEGER,os_written_bytes INTEGER,os_available INTEGER NOT NULL DEFAULT 0,labels_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
+CREATE TABLE IF NOT EXISTS obs_resource_samples (sample_id TEXT PRIMARY KEY,time INTEGER NOT NULL,iso TEXT NOT NULL,source TEXT NOT NULL,correlation_id TEXT,trace_id TEXT,scope_id TEXT,session_id TEXT,pid INTEGER,process_id TEXT,process_role TEXT NOT NULL DEFAULT 'unknown',cpu_user_micros REAL,cpu_system_micros REAL,cpu_utilization_ratio REAL,memory_rss_bytes INTEGER,memory_pss_bytes INTEGER,memory_heap_total_bytes INTEGER,memory_heap_used_bytes INTEGER,memory_external_bytes INTEGER,memory_array_buffers_bytes INTEGER,service_memory_json TEXT,event_loop_lag_ms REAL,event_loop_sample_window_ms INTEGER,app_read_bytes INTEGER,app_written_bytes INTEGER,app_read_ops INTEGER,app_write_ops INTEGER,os_read_bytes INTEGER,os_written_bytes INTEGER,os_available INTEGER NOT NULL DEFAULT 0,labels_json TEXT NOT NULL DEFAULT '{}',redaction_json TEXT NOT NULL DEFAULT '{}');
 CREATE INDEX IF NOT EXISTS idx_obs_resource_time ON obs_resource_samples(time);
 CREATE INDEX IF NOT EXISTS idx_obs_resource_role_time ON obs_resource_samples(process_role,time);
 CREATE INDEX IF NOT EXISTS idx_obs_resource_trace_time ON obs_resource_samples(trace_id,time);

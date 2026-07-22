@@ -213,10 +213,16 @@ describe("performance chart model", () => {
   })
 
   test("memory chart includes external and ArrayBuffer categories", () => {
+    expect(CHART_METRICS).toContain("service.memory.current")
     expect(CHART_METRICS).toContain("process.memory.external")
     expect(CHART_METRICS).toContain("process.memory.array_buffers")
     const points = memoryPoints(
       timeline([
+        {
+          name: "service.memory.current",
+          unit: "bytes",
+          points: [{ time: 1000, value: 3 * 1048576, sampleCount: 1 }],
+        },
         {
           name: "process.memory.external",
           unit: "bytes",
@@ -230,7 +236,7 @@ describe("performance chart model", () => {
       ]),
     )
 
-    expect(points).toEqual([{ timestamp: 1000, external: 2, arrayBuffers: 1 }])
+    expect(points).toEqual([{ timestamp: 1000, serviceMemory: 3, external: 2, arrayBuffers: 1 }])
   })
 
   test("browser metric chart uses separate axes for heap DOM nodes and navigation latency", () => {

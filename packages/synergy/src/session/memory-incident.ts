@@ -142,8 +142,11 @@ export namespace SessionMemoryIncident {
       thresholds,
       pressure,
     }
-    const resources = ObservabilityStore.resourceSince(now - 30_000, { limit: 64, newestFirst: true })
-      .filter((row) => row.process_role === "server")
+    const resources = ObservabilityStore.resourceSince(now - 30_000, {
+      processRole: "server",
+      limit: 64,
+      newestFirst: true,
+    })
       .reverse()
       .map((row) => ({
         time: row.time,

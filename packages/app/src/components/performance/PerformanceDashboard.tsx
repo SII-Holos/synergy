@@ -64,6 +64,7 @@ export function PerformanceDashboard() {
     const colors = chartTheme()
     return {
       cpu: colors.color("text-interactive-base"),
+      service: colors.color("text-on-info-base"),
       memory: colors.color("text-on-success-base"),
       request: colors.color("text-on-warning-base"),
       browser: colors.color("syntax-type"),
@@ -158,6 +159,7 @@ export function PerformanceDashboard() {
         onCancel={() => void perf.cancelAnalysis()}
       />
       <SummaryCards _={_} summary={summary()} issues={issues()} />
+      <ServiceMemoryBreakdown _={_} summary={summary()} />
       <RuntimeSupport _={_} summary={summary()} />
 
       <div class="performance-chart-grid">
@@ -181,9 +183,19 @@ export function PerformanceDashboard() {
         <PerformanceLineChart
           _={_}
           title={P.chartMemory}
-          description={P.chartMemoryDesc}
+          description={summary()?.serviceMemory?.source === "cgroup-v2" ? P.chartServiceMemoryDesc : P.chartMemoryDesc}
           points={memoryPoints(perf.timeline(), summary())}
           datasets={[
+            ...(summary()?.serviceMemory?.source === "cgroup-v2"
+              ? [
+                  megabytesDataset(
+                    _(P.datasetServiceMemory),
+                    "serviceMemory",
+                    chartColors().service,
+                    "Timeline service.memory.current",
+                  ),
+                ]
+              : []),
             megabytesDataset(_(P.datasetRss), "memory", chartColors().memory, "Timeline process.memory.rss"),
             megabytesDataset(
               _(P.datasetHeapUsed),
@@ -211,6 +223,7 @@ export function PerformanceDashboard() {
             ),
           ]}
           quality={timelineQuality(perf.timeline(), [
+            ...(summary()?.serviceMemory?.source === "cgroup-v2" ? ["service.memory.current"] : []),
             "process.memory.rss",
             "process.memory.heap_used",
             "process.memory.heap_total",
@@ -459,6 +472,8 @@ function SummaryCards(props: {
   const { _ } = props
   const summary = () => props.summary
   const resources = () => summary()?.resources
+  const serviceMemory = () => summary()?.serviceMemory
+  const linuxServiceMemory = () => serviceMemory()?.source === "cgroup-v2"
   const frontend = () => summary()?.frontend
   return (
     <div class="performance-summary-grid">
@@ -498,10 +513,19 @@ function SummaryCards(props: {
       />
       <MetricCard
         _={_}
-        label={P.summaryMemory}
-        value={formatChartBytes(resources()?.rssBytes)}
+        label={linuxServiceMemory() ? P.summaryServiceMemory : P.summaryMemory}
+        value={formatChartBytes(linuxServiceMemory() ? serviceMemory()?.currentBytes : resources()?.rssBytes)}
         icon="performance.memory"
+        tone={linuxServiceMemory() && (serviceMemory()?.usageRatio ?? 0) >= 0.8 ? "warning" : "default"}
       />
+      <Show when={linuxServiceMemory()}>
+        <MetricCard
+          _={_}
+          label={P.summaryMainRss}
+          value={formatChartBytes(resources()?.rssBytes)}
+          icon="performance.memory"
+        />
+      </Show>
       <MetricCard
         _={_}
         label={P.summaryHeapUsed}
@@ -522,11 +546,19 @@ function SummaryCards(props: {
       />
       <MetricCard
         _={_}
-        label={P.summaryToolChildRss}
-        value={_(P.summaryToolChildRssValue.id, {
-          rss: formatChartBytes(resources()?.childProcessRssBytes),
-          count: String(resources()?.childProcessCount ?? 0),
-        })}
+        label={linuxServiceMemory() ? P.summaryServiceChildMemory : P.summaryToolChildRss}
+        value={
+          linuxServiceMemory()
+            ? _(P.summaryServiceChildMemoryValue.id, {
+                rss: formatChartBytes(resources()?.childProcessRssBytes),
+                pss: formatChartBytes(resources()?.childProcessPssBytes),
+                count: String(resources()?.childProcessCount ?? 0),
+              })
+            : _(P.summaryToolChildRssValue.id, {
+                rss: formatChartBytes(resources()?.childProcessRssBytes),
+                count: String(resources()?.childProcessCount ?? 0),
+              })
+        }
         icon="performance.memory"
         tone={(resources()?.childProcessRssBytes ?? 0) > 0 ? "warning" : "default"}
       />
@@ -573,6 +605,78 @@ function SummaryCards(props: {
         icon="performance.frontend"
       />
     </div>
+  )
+}
+
+function ServiceMemoryBreakdown(props: {
+  _: ReturnType<typeof useLingui>["_"]
+  summary: PerformanceSummary | null | undefined
+}) {
+  return (
+    <Show when={props.summary?.serviceMemory?.source === "cgroup-v2" ? props.summary.serviceMemory : undefined}>
+      {(memory) => {
+        const items = () => [
+          { label: P.serviceMemorySource, value: memory().source },
+          { label: P.serviceMemoryCurrent, value: formatChartBytes(memory().currentBytes) },
+          { label: P.serviceMemoryPeak, value: formatChartBytes(memory().peakBytes) },
+          { label: P.serviceMemoryHigh, value: formatChartBytes(memory().highBytes) },
+          { label: P.serviceMemoryMax, value: formatChartBytes(memory().maxBytes) },
+          { label: P.serviceMemoryAnon, value: formatChartBytes(memory().anonBytes) },
+          { label: P.serviceMemoryFile, value: formatChartBytes(memory().fileBytes) },
+          { label: P.serviceMemoryKernel, value: formatChartBytes(memory().kernelBytes) },
+          { label: P.serviceMemorySlab, value: formatChartBytes(memory().slabBytes) },
+          { label: P.serviceMemorySwap, value: formatChartBytes(memory().swapBytes) },
+          {
+            label: P.serviceMemoryProcessRss,
+            value: props._(P.serviceMemoryCoverage.id, {
+              value: formatChartBytes(memory().processRssBytes),
+              covered: String(memory().rssProcessCount),
+              total: String(memory().processCount),
+            }),
+          },
+          {
+            label: P.serviceMemoryProcessPss,
+            value: props._(P.serviceMemoryCoverage.id, {
+              value: formatChartBytes(memory().processPssBytes),
+              covered: String(memory().pssProcessCount),
+              total: String(memory().processCount),
+            }),
+          },
+          {
+            label: P.serviceMemoryEvents,
+            value: props._(P.serviceMemoryEventsValue.id, {
+              high: String(memory().events?.high ?? 0),
+              max: String(memory().events?.max ?? 0),
+              oom: String(memory().events?.oom ?? 0),
+              oomKill: String(memory().events?.oomKill ?? 0),
+            }),
+          },
+        ]
+        return (
+          <div class="performance-card rounded-xl p-4">
+            <div class="mb-3 flex items-center gap-2">
+              <Icon name={getSemanticIcon("performance.memory")} size="small" class="text-icon-weak-base" />
+              <div>
+                <h3 class="text-14-semibold text-text-strong">{props._(P.serviceMemoryTitle)}</h3>
+                <p class="mt-1 text-11-regular text-text-weak">{props._(P.serviceMemoryDesc)}</p>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-3 xl:grid-cols-5">
+              <For each={items()}>
+                {(item) => (
+                  <div class="performance-card-soft rounded-lg px-3 py-2">
+                    <div class="text-10-medium uppercase tracking-[0.1em] text-text-weaker">{props._(item.label)}</div>
+                    <div class="mt-1 truncate text-13-medium text-text-strong tabular-nums" title={item.value}>
+                      {item.value}
+                    </div>
+                  </div>
+                )}
+              </For>
+            </div>
+          </div>
+        )
+      }}
+    </Show>
   )
 }
 
