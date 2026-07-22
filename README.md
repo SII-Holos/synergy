@@ -139,6 +139,8 @@ bun run --cwd packages/app test
 bun run --cwd packages/ui test
 ```
 
+Tests live under each package's `test/` directory; repository-level tests live under the root `test/` directory. `bun run quality:quick` enforces this layout.
+
 Frontend product copy is extracted into English and Simplified Chinese catalogs, plus a development-only pseudo catalog. Changes to visible text or locale formatting also run:
 
 ```bash

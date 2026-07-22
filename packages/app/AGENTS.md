@@ -45,6 +45,8 @@ Read [PRODUCT.md](PRODUCT.md) before changing interaction structure, visual hier
 
 ## Verification
 
+Keep App tests under `test/`, mirroring the relevant `src/` or `script/` domain. Never colocate `*.test.*` or `*.spec.*` files with App implementation files.
+
 Run the narrow UI/context test first, then:
 
 ```bash

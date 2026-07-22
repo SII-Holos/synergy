@@ -60,7 +60,7 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run quality:quick
    ```
 
-   This checks formatting, linting, type-checking, monorepo dependency consistency, localization and package-guide contracts, and package publishing validation. For a full check including all tests:
+   This checks formatting, linting, type-checking, monorepo dependency consistency, localization, package-guide and test-layout contracts, and package publishing validation. For a full check including all tests:
 
    ```bash
    bun run quality
