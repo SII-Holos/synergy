@@ -50,7 +50,7 @@ Clarus accounts live in the Channel domain and reuse Holos credentials:
       "type": "clarus",
       "accounts": {
         "<holos-agent-id>": {
-          "enabled": true,
+          "enabled": false,
           "agent": "synergy",
         },
       },

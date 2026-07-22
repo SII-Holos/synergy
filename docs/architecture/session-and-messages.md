@@ -42,6 +42,8 @@ Session metadata is not the message transcript. Each has its own storage and eve
 
 Channel endpoint lookup is a secondary global index from endpoint key to candidate `sessionID` values. The endpoint facade requires the provider's resolved Scope and verifies that the active Session belongs to it. A mismatch fails without moving, reusing, or creating a second Session in another Scope. Endpoint creation and archive share one hashed lock, so one endpoint has at most one active Session while retaining archived history.
 
+New Channel endpoints use typed `chat`, `project`, or `task` targets while existing Feishu records retain their legacy key encoding. A Clarus task target contains the external Project and Task IDs and therefore resolves one stable Task Session inside the owning managed Project Scope. Project targets identify ownership and navigation only; task-only discovery does not create a Project conversation Session.
+
 ## Session Lineage
 
 Synergy records two different relationships:
@@ -351,6 +353,8 @@ Typical mappings:
 Ordinary `session.input` acceptance persists a `task` item before scheduling execution, including when the session is idle. The response returns that durable queued item; Scope initialization and the model loop begin asynchronously through `SessionDrive`. Idle `noReply` input retains its direct materialization path because a steer item cannot create an independent root.
 
 The loop peeks the next task without deleting it, materializes its pre-allocated message ID as a root, and commits the inbox item only after that root write succeeds. A failure before materialization therefore leaves the task available for explicit retry or restart recovery. A read taken during startup always sees either the pending inbox item, the materialized root, or both; consumers deduplicate the overlap by message ID.
+
+Channel routing uses these same inbox semantics rather than a provider-specific mailbox. A new external chat request or Clarus assignment uses `task`; a Task update uses a deduplicated `steer`. Clarus participation instructions and Agenda `session_guidance` deadlines are hidden system-origin `steer` messages in the same Task Session. Project discovery, subscription acknowledgements, and other Project-level protocol events do not deliver Session work.
 
 Promoting a queued user task to guide/steer changes the inbox mode instead of writing permanent guided/no-reply metadata into the message model.
 

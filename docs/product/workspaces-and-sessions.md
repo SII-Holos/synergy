@@ -47,6 +47,14 @@ A session is the durable unit users navigate, resume, archive, fork, export, and
 
 Only one LLM loop writes a session at a time. New reply-requiring work waits as the next task; steering input can influence the active task; context input can join model context without demanding another reply.
 
+### Channel-managed Projects and Task Sessions
+
+A task-only Channel provider can provision a managed Project Scope from a remote Project identity. The directory is deterministic and locally owned by Synergy, and the resulting Scope uses the same Git, files, LSP, configuration, archive, and Session services as a user-added Project. Navigation groups the Scope under its Channel account and excludes it from the generic Projects section so there is one canonical Project object rather than a provider-owned duplicate.
+
+Remote lifecycle and local archive are separate. Active and remotely paused managed Projects remain locally usable and are protected from local archive. Stale or remote-archived Projects preserve their directory, files, and Sessions and can later follow the normal local archive workflow.
+
+A Clarus assignment creates one dedicated unattended Task Session in that managed Project Scope. The external Task ID is the stable Session target: redelivery or a new run reuses it, while a retry with a new Task ID creates another Session with lineage. Project discovery alone never creates a conversation Session.
+
 ### Completion notices
 
 When background or unattended work finishes, the session records a completion. Each unacknowledged completion increments the session's cumulative unread count, and the global session navigation response sums those counts across non-archived root sessions in every Scope. Viewing the session clears its accumulated completions. The aggregated count is independent of navigation pagination.
