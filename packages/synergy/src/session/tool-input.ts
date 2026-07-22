@@ -20,4 +20,14 @@ export namespace SessionToolInput {
 
     return { value: input }
   }
+
+  export function fromStream(raw: string | undefined): Record<string, unknown> | undefined {
+    if (!raw) return
+    try {
+      const parsed: unknown = JSON.parse(raw)
+      return isRecord(parsed) ? parsed : undefined
+    } catch {
+      return
+    }
+  }
 }

@@ -373,6 +373,46 @@ describe("SessionProcessor context usage persistence", () => {
   })
 })
 describe("SessionProcessor tool input bounds", () => {
+  test("prefers bounded streamed JSON over traversing the provider input", async () => {
+    let runningInput: Record<string, unknown> | undefined
+    const providerInput = new Proxy(
+      {},
+      {
+        get() {
+          throw new Error("provider input must not be traversed")
+        },
+        ownKeys() {
+          throw new Error("provider input must not be traversed")
+        },
+      },
+    )
+
+    await runSettlementScenario({
+      messageID: "msg_streamed_tool_input",
+      async updatePart(input) {
+        const part = "part" in input ? input.part : input
+        if (part.type === "tool" && part.state.status === "running") runningInput = part.state.input
+        return part
+      },
+      async *stream() {
+        yield { type: "tool-input-start", id: "call_streamed", toolName: "bash" }
+        yield {
+          type: "tool-input-delta",
+          id: "call_streamed",
+          delta: '{"command":"git status","workdir":"/tmp"}',
+        }
+        yield {
+          type: "tool-call",
+          toolCallId: "call_streamed",
+          toolName: "bash",
+          input: providerInput,
+        }
+      },
+    })
+
+    expect(runningInput).toEqual({ command: "git status", workdir: "/tmp" })
+  })
+
   test("terminates a tool part when streamed input exceeds the byte limit", async () => {
     const parts = await runSettlementScenario({
       messageID: "msg_tool_input_limit",
