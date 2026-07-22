@@ -13,14 +13,12 @@ import type { NativeMessage, NativeTunnelPort } from "@/holos/native"
 import type {
   SubscribeProjectInput,
   UnsubscribeProjectInput,
-  SendProjectMessageInput,
   ExtendTaskInput,
   RecordTaskResultInput,
   ClarusRequestResult,
   ClarusRequestFailure,
   ProjectSubscribedEvent,
   ProjectUnsubscribedEvent,
-  ProjectMessageCreatedEvent,
   RuntimeTaskAssignedEvent,
   RuntimeTaskExtendedEvent,
   RuntimeTaskResultRecordedEvent,
@@ -56,27 +54,6 @@ const NonBlankRunID = z.string().refine((value) => value.trim().length > 0, { me
 
 const ProjectSubscribedPayload = z.object({ project_id: z.string(), subscribed: z.literal(true) }).passthrough()
 const ProjectUnsubscribedPayload = z.object({ project_id: z.string(), subscribed: z.literal(false) }).passthrough()
-
-const ClarusMessageWire = z
-  .object({
-    message_id: z.string(),
-    project_id: z.string(),
-    channel_id: z.string(),
-    sender_type: z.string(),
-    sender_id: z.string(),
-    sender_name: z.string().nullable().optional(),
-    message_type: z.string(),
-    content: z.string(),
-    file_refs: z.unknown(),
-    metadata: z.record(z.string(), z.unknown()),
-    created_at: z.string().nullable(),
-  })
-  .passthrough()
-
-const ProjectMessageCreatedPayload = z.object({ project_id: z.string(), message: ClarusMessageWire }).passthrough()
-const ProjectFileUploadedPayload = z.object({ project_id: z.string() }).passthrough()
-const ProjectSystemEventPayload = z.object({ project_id: z.string(), event_type: z.string() }).passthrough()
-const NotaryRecordCreatedPayload = z.object({ project_id: z.string() }).passthrough()
 
 const RuntimeTaskAssignedPayload = z
   .object({
@@ -128,10 +105,6 @@ const RuntimeTaskResultRecordedPayload = z
 const knownPayloadSchemas = {
   "clarus.project.subscribed": ProjectSubscribedPayload,
   "clarus.project.unsubscribed": ProjectUnsubscribedPayload,
-  "clarus.project.message.created": ProjectMessageCreatedPayload,
-  "clarus.project.file.uploaded": ProjectFileUploadedPayload,
-  "clarus.project.system.event": ProjectSystemEventPayload,
-  "clarus.notary.record.created": NotaryRecordCreatedPayload,
   "clarus.runtime.task.assigned": RuntimeTaskAssignedPayload,
   "clarus.runtime.task.extended": RuntimeTaskExtendedPayload,
   "clarus.runtime.task.result.recorded": RuntimeTaskResultRecordedPayload,
@@ -140,7 +113,6 @@ const knownPayloadSchemas = {
 const OUTBOUND_OPERATIONS = {
   subscribeProject: { wireType: "clarus.project.subscribe", responseType: "clarus.project.subscribed" },
   unsubscribeProject: { wireType: "clarus.project.unsubscribe", responseType: "clarus.project.unsubscribed" },
-  sendProjectMessage: { wireType: "clarus.project.message.send", responseType: "clarus.project.message.created" },
   extendTask: { wireType: "clarus.runtime.task.extend", responseType: "clarus.runtime.task.extended" },
   recordTaskResult: { wireType: "clarus.runtime.task.result", responseType: "clarus.runtime.task.result.recorded" },
 } as const
@@ -238,44 +210,6 @@ function toSemanticDTO(
     case "clarus.project.unsubscribed": {
       const p = parsed.payload as { project_id: string; subscribed: boolean }
       dto = { ...base, type: "projectUnsubscribed", projectID: Bounds.id(p.project_id) }
-      break
-    }
-    case "clarus.project.message.created": {
-      const p = parsed.payload
-      const createdAt = p.message.created_at ? Date.parse(p.message.created_at) : Number.NaN
-      dto = {
-        ...base,
-        type: "projectMessageCreated",
-        projectID: Bounds.id(p.project_id),
-        message: {
-          messageID: Bounds.id(p.message.message_id),
-          senderID: Bounds.id(p.message.sender_id),
-          ...(p.message.sender_name ? { senderName: Bounds.string(p.message.sender_name) } : {}),
-          ...(p.message.message_type ? { messageType: Bounds.id(p.message.message_type) } : {}),
-          content: Bounds.string(p.message.content),
-          ...(Number.isFinite(createdAt) ? { createdAt } : {}),
-        },
-      }
-      break
-    }
-    case "clarus.project.file.uploaded": {
-      const p = parsed.payload
-      dto = { ...base, type: "projectFileUploaded", projectID: Bounds.id(p.project_id) }
-      break
-    }
-    case "clarus.project.system.event": {
-      const p = parsed.payload
-      dto = {
-        ...base,
-        type: "projectSystemEvent",
-        projectID: Bounds.id(p.project_id),
-        eventType: Bounds.id(p.event_type),
-      }
-      break
-    }
-    case "clarus.notary.record.created": {
-      const p = parsed.payload
-      dto = { ...base, type: "notaryRecordCreated", projectID: Bounds.id(p.project_id) }
       break
     }
     case "clarus.runtime.task.assigned": {
@@ -507,33 +441,6 @@ export function createClarusAgentTunnelAdapter(tunnel: NativeTunnelPort): Clarus
             epoch: msg.epoch,
             generation: msg.generation,
             projectID: p.project_id,
-          }
-        },
-      )
-    },
-    sendProjectMessage(input: SendProjectMessageInput) {
-      const payload: Record<string, unknown> = { project_id: input.projectID, content: input.content }
-      if (input.messageType != null) payload.message_type = input.messageType
-      if (input.fileRefs != null) payload.file_refs = input.fileRefs
-      return makeRequest(
-        tunnel,
-        OUTBOUND_OPERATIONS.sendProjectMessage.wireType,
-        OUTBOUND_OPERATIONS.sendProjectMessage.responseType,
-        payload,
-        input.requestID,
-        input.timeoutMs,
-        input.signal,
-        (msg) => {
-          const p = ProjectMessageCreatedPayload.parse(msg.payload)
-          return {
-            kind: "known" as const,
-            type: "projectMessageCreated" as const,
-            agentID: msg.agentID,
-            requestID: msg.requestID,
-            epoch: msg.epoch,
-            generation: msg.generation,
-            projectID: p.project_id,
-            message: { messageID: p.message.message_id, senderID: p.message.sender_id, content: p.message.content },
           }
         },
       )

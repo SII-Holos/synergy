@@ -295,7 +295,7 @@ describe("Holos profile routes", () => {
     })
     expect(calls.some((call) => call.url.endsWith("/api/v1/holos/agent_tunnel/me/profile"))).toBe(false)
     expect((await HolosAccounts.getActiveAccount())?.agentId).toBe("agent_imported")
-    expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_imported).toEqual({ enabled: true })
+    expect((await Config.globalResolved()).channel?.clarus?.accounts.agent_imported).toEqual({ enabled: false })
   })
 
   test("profile update route preserves unknown fields and returns normalized profile", async () => {

@@ -1,6 +1,7 @@
 import z from "zod"
 import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
+import { Lock } from "@/util/lock"
 import { parseClarusRequestFailure } from "./agent-tunnel-port"
 import { ClarusAssignmentStore, type ClarusAssignment } from "./assignment-store"
 
@@ -33,6 +34,7 @@ export type ClarusResultPayload = z.infer<typeof ClarusResultPayload>
 
 const ResultRecord = z.object({
   requestID: z.string(),
+  previousRequestID: z.string().optional(),
   assignmentHash: z.string(),
   sessionID: z.string(),
   payload: ClarusResultPayload,
@@ -42,17 +44,27 @@ const ResultRecord = z.object({
 })
 export type ClarusResultRecord = z.infer<typeof ResultRecord>
 
-type Send = (input: { requestID: string; assignment: ClarusAssignment; payload: ClarusResultPayload }) => Promise<void>
+export type ClarusResultSend = (input: {
+  requestID: string
+  assignment: ClarusAssignment
+  payload: ClarusResultPayload
+}) => Promise<void>
 
 function hash(value: string): string {
   return new Bun.CryptoHasher("sha256").update(value).digest("hex")
+}
+
+async function readRecord(accountHash: string, recordHash: string): Promise<ClarusResultRecord | undefined> {
+  return Storage.read<unknown>(StoragePath.clarusProviderResultOutbox(accountHash, recordHash))
+    .then((value) => ResultRecord.parse(value))
+    .catch(() => undefined)
 }
 
 export namespace ClarusResultOutbox {
   export async function submit(input: {
     sessionID: string
     payload: ClarusResultPayload
-    send: Send
+    send: ClarusResultSend
   }): Promise<{ requestID: string }> {
     const located = await ClarusAssignmentStore.findBySessionID(input.sessionID)
     if (!located) {
@@ -100,24 +112,99 @@ export namespace ClarusResultOutbox {
     }
   }
 
-  export async function recover(accountHash: string): Promise<void> {
+  export async function recover(input: string | { accountHash: string; send: ClarusResultSend }): Promise<void> {
+    const accountHash = typeof input === "string" ? input : input.accountHash
+    const send = typeof input === "string" ? undefined : input.send
+    using _ = await Lock.write(`channel:clarus:result-outbox:${accountHash}`)
     const recordHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(accountHash))
     for (const recordHash of recordHashes) {
       const key = StoragePath.clarusProviderResultOutbox(accountHash, recordHash)
-      const record = await Storage.read<unknown>(key)
-        .then((value) => ResultRecord.parse(value))
-        .catch(() => undefined)
+      const record = await readRecord(accountHash, recordHash)
       if (!record) continue
-      const state = record.state === "pending" ? "ambiguous" : record.state
-      if (state !== record.state) {
-        await Storage.write(key, { ...record, state, updatedAt: Date.now() })
+      const located = await ClarusAssignmentStore.find(accountHash, record.assignmentHash)
+
+      if (record.state === "pending") {
+        await Storage.write(key, { ...record, state: "ambiguous", updatedAt: Date.now() })
+        if (located?.assignment.resultRequestID === record.requestID) {
+          await ClarusAssignmentStore.settleResult({
+            accountHash,
+            assignmentHash: record.assignmentHash,
+            requestID: record.requestID,
+            state: "ambiguous",
+          })
+        }
+        continue
       }
-      await ClarusAssignmentStore.settleResult({
-        accountHash,
-        assignmentHash: record.assignmentHash,
-        requestID: record.requestID,
-        state,
-      })
+
+      if (record.state === "not_dispatched" && send) {
+        if (
+          !located ||
+          located.assignment.resultState !== "not_dispatched" ||
+          located.assignment.resultRequestID !== record.requestID
+        ) {
+          continue
+        }
+        const requestID = crypto.randomUUID()
+        const retry: ClarusResultRecord = {
+          ...record,
+          requestID,
+          previousRequestID: record.requestID,
+          state: "pending",
+          updatedAt: Date.now(),
+        }
+        await Storage.write(key, retry)
+        const pending = await ClarusAssignmentStore.beginResult(record.sessionID, requestID)
+        try {
+          await send({ requestID, assignment: pending.assignment, payload: retry.payload })
+          await Storage.write(key, { ...retry, state: "acknowledged", updatedAt: Date.now() })
+          await ClarusAssignmentStore.settleResult({
+            accountHash,
+            assignmentHash: retry.assignmentHash,
+            requestID,
+            state: "acknowledged",
+          })
+        } catch (error) {
+          const failure = parseClarusRequestFailure(error)
+          const state = failure?.disposition ?? "ambiguous"
+          await Storage.write(key, { ...retry, state, updatedAt: Date.now() })
+          await ClarusAssignmentStore.settleResult({
+            accountHash,
+            assignmentHash: retry.assignmentHash,
+            requestID,
+            state,
+          })
+        }
+        continue
+      }
+
+      if (located?.assignment.resultRequestID === record.requestID) {
+        await ClarusAssignmentStore.settleResult({
+          accountHash,
+          assignmentHash: record.assignmentHash,
+          requestID: record.requestID,
+          state: record.state,
+        })
+      }
     }
+  }
+
+  export async function acknowledge(input: {
+    accountHash: string
+    assignmentHash: string
+    requestID: string
+  }): Promise<void> {
+    using _ = await Lock.write(`channel:clarus:result-outbox:${input.accountHash}`)
+    const recordHashes = await Storage.scan(StoragePath.clarusProviderResultOutboxRoot(input.accountHash))
+    for (const recordHash of recordHashes) {
+      const record = await readRecord(input.accountHash, recordHash)
+      if (!record || record.assignmentHash !== input.assignmentHash || record.requestID !== input.requestID) continue
+      await Storage.write(StoragePath.clarusProviderResultOutbox(input.accountHash, recordHash), {
+        ...record,
+        state: "acknowledged",
+        updatedAt: Date.now(),
+      })
+      break
+    }
+    await ClarusAssignmentStore.settleResult({ ...input, state: "acknowledged" })
   }
 }

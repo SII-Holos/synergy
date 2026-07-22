@@ -1,11 +1,20 @@
 import z from "zod"
 import type { Scope } from "@/scope"
+import type { ChannelHost } from "./host"
+
+export const ChannelTarget = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("chat"), chatId: z.string() }),
+  z.object({ kind: z.literal("project"), externalProjectId: z.string() }),
+  z.object({ kind: z.literal("task"), externalProjectId: z.string(), externalTaskId: z.string() }),
+])
+export type ChannelTarget = z.infer<typeof ChannelTarget>
 
 export const Info = z
   .object({
     type: z.string(),
     accountId: z.string().optional(),
-    chatId: z.string(),
+    chatId: z.string().optional(),
+    target: ChannelTarget.optional(),
     chatType: z.enum(["dm", "group"]).optional(),
     chatName: z.string().optional(),
     senderId: z.string().optional(),
@@ -13,13 +22,32 @@ export const Info = z
     scopeKey: z.string().optional(),
     createdAt: z.number().optional(),
   })
+  .superRefine((value, ctx) => {
+    const hasLegacyIdentity = value.chatId !== undefined || value.scopeKey !== undefined
+    if (hasLegacyIdentity === (value.target !== undefined)) {
+      ctx.addIssue({
+        code: "custom",
+        message: "Channel info must define exactly one legacy chat identity or target",
+      })
+    }
+  })
   .meta({
     ref: "ChannelInfo",
   })
 export type Info = z.infer<typeof Info>
 
-export function toKey(input: Pick<Info, "type" | "accountId" | "chatId" | "scopeKey">) {
+export function toKey(input: Pick<Info, "type" | "accountId" | "chatId" | "scopeKey"> & { target?: ChannelTarget }) {
   const base = input.accountId ? `${input.type}:${input.accountId}` : input.type
+  if (input.target) {
+    switch (input.target.kind) {
+      case "chat":
+        return `${base}:chat:${input.target.chatId}`
+      case "project":
+        return `${base}:project:${input.target.externalProjectId}`
+      case "task":
+        return `${base}:project:${input.target.externalProjectId}:task:${input.target.externalTaskId}`
+    }
+  }
   if (input.scopeKey) {
     return `${base}:scope:${input.scopeKey}`
   }
@@ -32,6 +60,7 @@ export const Status = z
     z.object({ status: z.literal("connecting") }),
     z.object({ status: z.literal("disconnected") }),
     z.object({ status: z.literal("disabled") }),
+    z.object({ status: z.literal("syncing") }),
     z.object({ status: z.literal("failed"), error: z.string() }),
   ])
   .meta({ ref: "ChannelStatus" })
@@ -132,8 +161,12 @@ export interface StreamingSession {
   isActive(): boolean
 }
 
+export type ProviderLifecycle = "self_connected" | "borrowed_transport"
+
 export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
+  readonly lifecycle: ProviderLifecycle
+  readonly messaging?: "chat" | "task_only"
 
   connect(input: {
     accountId: string
@@ -141,16 +174,18 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
     channelConfig: TChannelConfig
     onMessage: MessageHandler
     signal: AbortSignal
+    host: ChannelHost.Instance
     onDisconnect?: (reason?: string) => void
   }): Promise<void>
 
-  replyMessage(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
+  replyMessage?(input: { accountId: string; messageId: string; parts: OutboundPart[] }): Promise<SendResult>
 
-  pushMessage(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
+  pushMessage?(input: { accountId: string; chatId: string; parts: OutboundPart[] }): Promise<SendResult>
 
-  addReaction(input: { accountId: string; messageId: string; emoji: string }): Promise<{ reactionId: string } | void>
+  addReaction?(input: { accountId: string; messageId: string; emoji: string }): Promise<{ reactionId: string } | void>
 
   removeReaction?(input: { accountId: string; messageId: string; reactionId: string }): Promise<void>
 
-  createStreamingSession(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+  createStreamingSession?(input: { accountId: string; chatId: string; replyToMessageId?: string }): StreamingSession
+  refreshProjects?(input: { accountId: string; signal: AbortSignal; host: ChannelHost.Instance }): Promise<void>
 }

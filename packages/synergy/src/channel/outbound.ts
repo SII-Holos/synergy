@@ -65,6 +65,8 @@ export namespace ChannelOutbound {
         log.warn("no provider for channel type", { type: channelInfo.type, sessionID: msg.sessionID })
         return
       }
+      const pushMessage = provider.pushMessage?.bind(provider)
+      if (!pushMessage) return
 
       const text = MessageV2.extractText(current.parts, { includeSynthetic: false })
       if (!text) return
@@ -77,7 +79,7 @@ export namespace ChannelOutbound {
             parts: [{ type: "text", text }],
           })
         } else {
-          await provider.pushMessage({
+          await pushMessage({
             accountId: channelInfo.accountId,
             chatId: channelInfo.chatId,
             parts: [{ type: "text", text }],

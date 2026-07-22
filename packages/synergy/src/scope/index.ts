@@ -28,6 +28,14 @@ export namespace Scope {
     Updated: BusEvent.define("scope.updated", Info),
     Removed: BusEvent.define("scope.removed", z.object({ id: z.string(), directory: z.string().optional() })),
   }
+  export type ArchiveGuard = (scopeID: string) => void | Promise<void>
+
+  const archiveGuards = new Set<ArchiveGuard>()
+
+  export function registerArchiveGuard(guard: ArchiveGuard): () => void {
+    archiveGuards.add(guard)
+    return () => archiveGuards.delete(guard)
+  }
 
   export function contains(scope: Scope, targetPath: string): boolean {
     return Filesystem.contains(scope.directory, targetPath)
@@ -408,6 +416,9 @@ export namespace Scope {
     archived?: number | null
   }) {
     if (input.scopeID === "home") return undefined
+    if (input.archived !== undefined && input.archived !== null) {
+      for (const guard of archiveGuards) await guard(input.scopeID)
+    }
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(input.scopeID)), (draft) => {
       if (input.name !== undefined) draft.name = input.name
       if (input.icon !== undefined) {
@@ -434,6 +445,7 @@ export namespace Scope {
 
   export async function remove(scopeID: string) {
     if (scopeID === "home") return undefined
+    for (const guard of archiveGuards) await guard(scopeID)
     const result = await Storage.update<z.infer<typeof Info>>(StoragePath.scope(pid(scopeID)), (draft) => {
       draft.time.archived = Date.now()
     })
