@@ -86,6 +86,7 @@ export const ChannelFeishuAccount = z
       .string()
       .optional()
       .describe("Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)"),
+    variant: z.string().optional().describe("Model variant to use with this account model (e.g. low, high, max)"),
     resolveSenderNames: z
       .boolean()
       .optional()

@@ -36,6 +36,8 @@ Channels integrate Synergy with external messaging platforms.
           "streamingThrottleMs": 100,
           "groupSessionScope": "group",
           "inboundDebounceMs": 0,
+          "model": "openai/gpt-5",
+          "variant": "high",
           "resolveSenderNames": true,
           "replyInThread": false
         }
@@ -52,6 +54,7 @@ Channels integrate Synergy with external messaging platforms.
 | `domain` | auto | `"feishu"` (China) or `"lark"` (international) |
 | `botOpenId` | (none) | Bot open_id used to verify real @mentions in group chats |
 | `model` | (none) | Model override in `providerID/modelID` format (e.g. `openai/gpt-4o`) |
+| `variant` | (none) | Variant exposed by the selected account model (e.g. `low`, `high`, `max`) |
 | `enabled` | true | Enable this account |
 | `allowDM` | true | Allow direct messages |
 | `allowGroup` | true | Allow group messages |
@@ -115,4 +118,6 @@ Holos config belongs in `100-holos.jsonc`, not in channels. Do not edit model, p
 - **Bot not responding in DM** — check `allowDM` is true; verify the user has permission to message the bot
 - **Streaming not working** — check `streaming` is true; clients without streaming-card support can use `streaming: false`
 - **Sender names showing as IDs** — set `resolveSenderNames: true` and ensure the app has `contact:user.base:readonly` scope
+- **Account model ignored** — verify `model` uses `providerID/modelID`; a conversation-level `/model` command overrides the account default until a new conversation is started
+- **Effort selector missing** — the selected account model must expose variants in the active provider catalog; models without variants use provider defaults
 - **Webhook not receiving events** — verify the Feishu app's event subscription URL is correct and publicly accessible; check the server is running and the `/api/channel/feishu/webhook` endpoint responds

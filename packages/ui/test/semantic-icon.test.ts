@@ -26,6 +26,8 @@ const rawIconExceptionReasons: Record<string, string> = {
     "Settings select trigger uses a structural disclosure chevron.",
   "packages/app/src/components/settings/components/ModelRoleRow.tsx":
     "Settings model selectors use structural disclosure chevrons.",
+  "packages/app/src/components/settings/components/ModelVariantPicker.tsx":
+    "Settings variant selectors use a structural disclosure chevron.",
   "packages/ui/src/components/collapsible.tsx": "Shared primitive drag/disclosure affordance.",
   "packages/ui/src/components/dialog.tsx": "Shared dialog primitive close affordance.",
   "packages/ui/src/components/dag-graph.tsx": "Graph node detail uses a structural drag/grip affordance.",
