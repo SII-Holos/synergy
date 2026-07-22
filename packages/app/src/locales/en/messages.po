@@ -2679,6 +2679,11 @@ msgstr "Moved to worktree"
 msgid "app.layout.worktree.moveFailed"
 msgstr "Move to worktree failed"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr "Workspace status refresh failed"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "Asset"
@@ -11809,6 +11814,16 @@ msgstr "Creating an isolated checkout and binding this session to it."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr "The workspace changed successfully, but Synergy couldn’t refresh the session status. {message}"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr "The workspace changed. Updating the session status."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr "The workspace is ready and your first message is queued for processing."
 
@@ -11850,6 +11865,11 @@ msgstr "Preparing the worktree and updating this session workspace."
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
 msgstr "First prompt dispatched."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
+msgstr "Loading the updated session workspace."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11940,6 +11960,11 @@ msgstr "Prepare session"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr "Refresh workspace status"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr "Return to main checkout"
 
@@ -11971,6 +11996,16 @@ msgstr "Move to worktree failed"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
 msgstr "Moving session to worktree"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr "Workspace status refresh failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
+msgstr "Refreshing workspace status"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

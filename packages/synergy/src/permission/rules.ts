@@ -24,18 +24,24 @@ export namespace PermissionRules {
 
   const sessionRules = new Map<string, Rule[]>()
 
+  function firstStringPath(value: unknown): string | undefined {
+    if (typeof value === "string") return value.length > 0 ? value : undefined
+    if (!Array.isArray(value)) return undefined
+    return value.find((item): item is string => typeof item === "string" && item.length > 0)
+  }
+
   function firstPathArg(args: Record<string, any>): string | undefined {
-    const inputPath = Array.isArray(args.input_paths)
-      ? args.input_paths.find((item: unknown): item is string => typeof item === "string" && item.length > 0)
-      : undefined
-    return (
-      (args.path as string) ??
-      (args.file_path as string) ??
-      (args.filePath as string) ??
-      inputPath ??
-      (args.output_path as string) ??
-      (args.outputPath as string)
-    )
+    for (const value of [
+      args.path,
+      args.file_path,
+      args.filePath,
+      args.input_paths,
+      args.output_path,
+      args.outputPath,
+    ]) {
+      const path = firstStringPath(value)
+      if (path) return path
+    }
   }
 
   export function extractPattern(toolName: string, args: Record<string, any>): string {

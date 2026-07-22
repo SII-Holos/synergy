@@ -3,6 +3,7 @@ import {
   describeToolPartApply,
   planSessionSyncReload,
   refreshSessionAfterPending,
+  trackSessionSync,
 } from "../../src/context/session-sync-plan"
 
 describe("planSessionSyncReload (#509)", () => {
@@ -131,6 +132,56 @@ describe("refreshSessionAfterPending", () => {
     releasePending()
     await refresh
     expect(calls).toEqual(["refresh"])
+  })
+
+  test("still refreshes authoritative metadata after the stale request fails", async () => {
+    const calls: string[] = []
+
+    await refreshSessionAfterPending(Promise.reject(new Error("stale request failed")), async () => {
+      calls.push("refresh")
+    })
+
+    expect(calls).toEqual(["refresh"])
+  })
+
+  test("propagates an authoritative refresh failure", async () => {
+    const failure = new Error("refresh failed")
+
+    expect(refreshSessionAfterPending(Promise.resolve(), async () => Promise.reject(failure))).rejects.toBe(failure)
+  })
+})
+
+describe("trackSessionSync", () => {
+  test("keeps the replacement request tracked until it settles", async () => {
+    const inflight = new Map<string, Promise<void>>()
+    let releaseFirst!: () => void
+    let releaseReplacement!: () => void
+    const first = trackSessionSync(
+      inflight,
+      "ses_1",
+      new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      }),
+    )
+    const replacement = trackSessionSync(
+      inflight,
+      "ses_1",
+      first.then(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseReplacement = resolve
+          }),
+      ),
+    )
+
+    releaseFirst()
+    await first
+    await Promise.resolve()
+    expect(inflight.get("ses_1")).toBe(replacement)
+
+    releaseReplacement()
+    await replacement
+    expect(inflight.has("ses_1")).toBe(false)
   })
 })
 
