@@ -91,6 +91,54 @@ describe("performance refresh", () => {
     }
   })
 
+  test("releases initial loading state so manual refresh becomes available", async () => {
+    const originalHydrationContext = sharedConfig.context
+    let releaseSummary: () => void = () => undefined
+    const pendingSummary = new Promise<void>((resolve) => {
+      releaseSummary = resolve
+    })
+    sharedConfig.context = { id: "", count: 0, async: true, resources: {} } as never
+
+    const sdk = {
+      url: "http://localhost",
+      client: {
+        performance: {
+          summary: async () => {
+            await pendingSummary
+            return { data: null }
+          },
+          timeline: async () => ({ data: null }),
+          traces: {
+            list: async () => ({ data: { items: [] } }),
+            detail: async () => ({ data: null }),
+          },
+          analysis: {
+            start: async () => ({ data: null }),
+            get: async () => ({ data: null }),
+            cancel: async () => ({ data: null }),
+          },
+        },
+      },
+    }
+    let dispose: (() => void) | undefined
+    let perf: ReturnType<typeof usePerformance> | undefined
+
+    try {
+      createRoot((rootDispose) => {
+        dispose = rootDispose
+        perf = (usePerformance as unknown as (input: typeof sdk) => ReturnType<typeof usePerformance>)(sdk)
+      })
+
+      expect(perf!.loading).toBe(true)
+      releaseSummary()
+      await settle()
+      expect(perf!.loading).toBe(false)
+    } finally {
+      dispose?.()
+      sharedConfig.context = originalHydrationContext
+    }
+  })
+
   test("continues polling an active analysis after a transient read failure", async () => {
     const scheduledTimeouts: Array<{ callback: () => void; delay: number }> = []
     const originalSetTimeout = window.setTimeout
