@@ -74,12 +74,14 @@ describe.serial("McpOAuthProvider", () => {
     mcpName = "test-server",
     serverUrl = "https://mcp.example.com",
     config?: { clientId?: string; clientSecret?: string; scope?: string },
+    isCurrent?: () => boolean,
   ) {
     let capturedUrl: URL | undefined
     const provider = new McpOAuthProvider(mcpName, serverUrl, config ?? {}, {
       onRedirect: async (url) => {
         capturedUrl = url
       },
+      isCurrent,
     })
     return { provider, getCapturedUrl: () => capturedUrl }
   }
@@ -316,8 +318,15 @@ describe.serial("McpOAuthProvider", () => {
 
   test("stale same-name provider cannot overwrite newer tokens or client registration", async () => {
     const name = "replaced-provider"
-    const stale = createProvider(name, "https://old.example.com/mcp").provider
-    const current = createProvider(name, "https://new.example.com/mcp").provider
+    let currentIdentity = "stale"
+    const stale = createProvider(name, "https://old.example.com/mcp", {}, () => currentIdentity === "stale").provider
+    const current = createProvider(
+      name,
+      "https://new.example.com/mcp",
+      {},
+      () => currentIdentity === "current",
+    ).provider
+    currentIdentity = "current"
     await current.saveClientInformation({
       client_id: "current-client",
       client_secret: "current-client-secret",
@@ -422,13 +431,15 @@ describe.serial("McpOAuthProvider", () => {
     const name = "replaced-pending-owner"
     const staleIdentity = "plugin:stale"
     const currentIdentity = "plugin:current"
-    await McpAuth.set(name, { codeVerifier: "stale-verifier", oauthState: "stale-state" })
+    const staleVerifier = "stale-verifier"
+    const staleState = "stale-state"
+    await McpAuth.set(name, { codeVerifier: staleVerifier, oauthState: staleState })
     await PendingOAuth.register(name, {
       identity: staleIdentity,
       client: { close: async () => {} },
       transport: { finishAuth: async () => {} },
       onDispose: async () => {
-        await Promise.all([McpAuth.clearCodeVerifier(name), McpAuth.clearOAuthState(name)])
+        await Promise.all([McpAuth.clearCodeVerifier(name, staleVerifier), McpAuth.clearOAuthState(name, staleState)])
       },
     })
     await McpAuth.set(name, { codeVerifier: "current-verifier", oauthState: "current-state" })

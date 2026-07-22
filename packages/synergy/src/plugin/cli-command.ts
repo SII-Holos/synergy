@@ -1,4 +1,6 @@
 import type { PluginCliCommandResult, PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import type { CommandModule } from "yargs"
+import type { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
 import type { RuntimeInvocationContextData } from "../plugin-runtime/protocol"
 import type { LoadedPlugin } from "./loader"
@@ -18,6 +20,68 @@ export function resolvePluginCliCommand(
   }) as PluginCliCommand | undefined
   if (!command) throw new Error(`Plugin CLI command not found: ${commandId}`)
   return command
+}
+
+type InvokePluginCliCommand = typeof invokePluginCliCommand
+
+interface PluginCliWriter {
+  write(chunk: string): unknown
+}
+
+export function createPluginCliCommandModule(input: {
+  plugin: LoadedPlugin
+  scope: Scope
+  invoke?: InvokePluginCliCommand
+  stdout?: PluginCliWriter
+  stderr?: PluginCliWriter
+}): CommandModule {
+  const invoke = input.invoke ?? invokePluginCliCommand
+  const stdout = input.stdout ?? process.stdout
+  const stderr = input.stderr ?? process.stderr
+  const commands = input.plugin.manifest.contributions
+    .filter((item): item is PluginCliCommand => item.kind === "cli.command")
+    .toSorted((left, right) => left.id.localeCompare(right.id))
+
+  return {
+    command: input.plugin.id,
+    describe: `${input.plugin.manifest.name} plugin commands`,
+    builder: (yargs) => {
+      for (const command of commands) {
+        yargs.command({
+          command: command.id,
+          describe: command.description,
+          builder: (commandYargs) => {
+            for (const [name, option] of Object.entries(command.options)) {
+              commandYargs.option(name, { type: option.type, describe: option.description })
+            }
+            return commandYargs
+          },
+          handler: async (args) => {
+            await ScopeContext.provide({
+              scope: input.scope,
+              async fn() {
+                const options = Object.fromEntries(
+                  Object.keys(command.options).flatMap((name) =>
+                    args[name] === undefined ? [] : [[name, args[name]]],
+                  ),
+                )
+                const output = await invoke({
+                  pluginId: input.plugin.id,
+                  commandId: command.id,
+                  args: options,
+                })
+                if (output.stdout) stdout.write(output.stdout)
+                if (output.stderr) stderr.write(output.stderr)
+                process.exitCode = output.exitCode
+              },
+            })
+          },
+        })
+      }
+      return yargs.demandCommand()
+    },
+    handler() {},
+  }
 }
 
 interface PluginCliCommandServices {

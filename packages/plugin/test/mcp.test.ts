@@ -127,39 +127,25 @@ describe("PluginManifest MCP contributions", () => {
 })
 
 describe("Plugin MCP trust boundary", () => {
-  test("rejects an eager MCP declaration without the mcp_spawn capability", () => {
-    expect(() =>
-      definePlugin({
-        id: "unapproved-mcp",
-        version: "1.0.0",
-        description: "MCP startup must be capability approved",
-        capabilities: [],
-        contributions: [
-          mcp({
-            id: "local",
-            server: { type: "local", command: ["frontend-kit-mcp"], startup: "eager" },
-          }),
-        ],
-      }),
-    ).toThrow(/mcp\.spawn/)
-  })
-
-  test("accepts an MCP declaration explicitly bound to mcp_spawn approval", () => {
+  test("accepts host-owned declarative MCP without plugin process capabilities", () => {
     const plugin = definePlugin({
-      id: "approved-mcp",
+      id: "declarative-mcp",
       version: "1.0.0",
-      description: "Approved MCP startup",
-      capabilities: [{ id: "mcp.spawn" }],
+      description: "Host-owned MCP declaration",
+      capabilities: [],
       contributions: [
         mcp({
           id: "local",
-          requires: ["mcp.spawn"],
           server: { type: "local", command: ["frontend-kit-mcp"], startup: "eager" },
         }),
       ],
     })
 
-    expect(plugin.capabilities).toEqual([{ id: "mcp.spawn" }])
-    expect(plugin.contributions[0]?.requires).toEqual(["mcp.spawn"])
+    expect(plugin.capabilities).toEqual([])
+    expect(plugin.contributions[0]).toMatchObject({
+      kind: "mcp",
+      id: "local",
+      server: { type: "local", command: ["frontend-kit-mcp"], startup: "eager" },
+    })
   })
 })

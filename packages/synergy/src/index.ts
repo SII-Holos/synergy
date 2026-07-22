@@ -43,7 +43,7 @@ import { Flag } from "./flag/flag"
 import { Scope } from "./scope"
 import { ScopeContext } from "./scope/context"
 import { contributions, getLoadedPlugins } from "./plugin/loader"
-import { invokePluginCliCommand } from "./plugin/cli-command"
+import { createPluginCliCommandModule } from "./plugin/cli-command"
 
 const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
 if (pluginRuntimeRunnerArgIndex >= 0) {
@@ -192,51 +192,13 @@ async function registerPluginCliCommands() {
     scope,
     async fn() {
       const commandMetadata = cli as typeof cli & YargsCommandMetadata
-      const registered = new Map(
-        commandMetadata
-          .getInternalMethods()
-          .getCommandInstance()
-          .getCommands()
-          .map((command) => [command, "Synergy"]),
-      )
+      const registered = new Set(commandMetadata.getInternalMethods().getCommandInstance().getCommands())
       const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
       for (const plugin of plugins) {
-        const commands = contributions(plugin, "cli.command").sort((left, right) => left.id.localeCompare(right.id))
-        for (const command of commands) {
-          const owner = registered.get(command.id)
-          if (owner) throw new Error(`Plugin CLI command ${command.id} conflicts with ${owner}`)
-          registered.set(command.id, plugin.id)
-          cli.command({
-            command: command.id,
-            describe: command.description,
-            builder: (yargs) => {
-              for (const [name, option] of Object.entries(command.options)) {
-                yargs.option(name, { type: option.type, describe: option.description })
-              }
-              return yargs
-            },
-            handler: async (args) => {
-              await ScopeContext.provide({
-                scope,
-                async fn() {
-                  const options = Object.fromEntries(
-                    Object.keys(command.options).flatMap((name) =>
-                      args[name] === undefined ? [] : [[name, args[name]]],
-                    ),
-                  )
-                  const output = await invokePluginCliCommand({
-                    pluginId: plugin.id,
-                    commandId: command.id,
-                    args: options,
-                  })
-                  if (output.stdout) process.stdout.write(output.stdout)
-                  if (output.stderr) process.stderr.write(output.stderr)
-                  process.exitCode = output.exitCode
-                },
-              })
-            },
-          })
-        }
+        if (contributions(plugin, "cli.command").length === 0) continue
+        if (registered.has(plugin.id)) throw new Error(`Plugin CLI namespace ${plugin.id} conflicts with Synergy`)
+        registered.add(plugin.id)
+        cli.command(createPluginCliCommandModule({ plugin, scope }))
       }
     },
   })

@@ -763,6 +763,7 @@ class McpSupervisorImpl {
               if (!this.isCurrent(handle, gen)) return
               log.info("oauth redirect requested", { key: handle.name, host: url.hostname })
             },
+            isCurrent: () => this.isCurrent(handle, gen),
           },
         )
       }
@@ -820,6 +821,9 @@ class McpSupervisorImpl {
                 "Server does not support dynamic client registration. Please provide clientId in config."
               log.warn("mcp server requires pre-registered client", { key: handle.name, transport: transportName })
             } else {
+              const authEntry = await McpAuth.get(handle.name)
+              const codeVerifier = authEntry?.codeVerifier
+              const oauthState = authEntry?.oauthState
               const registered = await PendingOAuth.register(
                 handle.name,
                 {
@@ -828,8 +832,12 @@ class McpSupervisorImpl {
                   identity: handle.identity,
                   onDispose: async () => {
                     await Promise.all([
-                      McpAuth.clearCodeVerifier(handle.name).catch(() => undefined),
-                      McpAuth.clearOAuthState(handle.name).catch(() => undefined),
+                      codeVerifier === undefined
+                        ? undefined
+                        : McpAuth.clearCodeVerifier(handle.name, codeVerifier).catch(() => undefined),
+                      oauthState === undefined
+                        ? undefined
+                        : McpAuth.clearOAuthState(handle.name, oauthState).catch(() => undefined),
                     ])
                   },
                 },

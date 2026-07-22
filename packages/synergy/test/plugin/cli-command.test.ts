@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import type { PluginManifestType } from "@ericsanchezok/synergy-plugin"
-import { invokePluginCliCommand, resolvePluginCliCommand } from "../../src/plugin/cli-command"
+import yargs from "yargs"
+import {
+  createPluginCliCommandModule,
+  invokePluginCliCommand,
+  resolvePluginCliCommand,
+} from "../../src/plugin/cli-command"
 
 const command = {
   kind: "cli.command",
@@ -34,6 +39,50 @@ describe("plugin CLI command domain", () => {
   test("resolves only exact declared CLI command metadata", () => {
     expect(resolvePluginCliCommand(manifest(), "setup")).toEqual(command)
     expect(() => resolvePluginCliCommand(manifest(), "missing")).toThrow("Plugin CLI command not found: missing")
+  })
+
+  test("registers commands below the plugin ID namespace", async () => {
+    const calls: unknown[] = []
+    const output: string[] = []
+    const plugin = {
+      id: "frontend-kit",
+      name: "Frontend Kit",
+      pluginDir: "/plugin",
+      manifest: manifest(),
+      enabledScopes: new Set(["scope-one"]),
+      contributionHealth: new Map(),
+    }
+    const previousExitCode = process.exitCode
+
+    try {
+      await yargs(["frontend-kit", "setup", "--dry-run", "--json"])
+        .exitProcess(false)
+        .command(
+          createPluginCliCommandModule({
+            plugin: plugin as never,
+            scope: { id: "scope-one", directory: "/workspace" } as never,
+            invoke: async (input) => {
+              calls.push(input)
+              return { stdout: "configured\n", exitCode: 0 }
+            },
+            stdout: { write: (chunk) => output.push(chunk) },
+            stderr: { write: () => undefined },
+          }),
+        )
+        .strict()
+        .parseAsync()
+    } finally {
+      process.exitCode = previousExitCode
+    }
+
+    expect(calls).toEqual([
+      {
+        pluginId: "frontend-kit",
+        commandId: "setup",
+        args: { "dry-run": true, json: true },
+      },
+    ])
+    expect(output).toEqual(["configured\n"])
   })
 
   test("invokes the active process generation with a CLI actor and preserves process output", async () => {

@@ -362,11 +362,25 @@ export namespace MCP {
 
   // ── OAuth helpers ──────────────────────────────────────────────────
 
-  async function clearPendingOAuthState(mcpName: string): Promise<void> {
-    McpOAuthCallback.cancelPending(mcpName)
+  async function clearPendingOAuthState(
+    mcpName: string,
+    expected?: { codeVerifier?: string; oauthState?: string },
+  ): Promise<void> {
+    McpOAuthCallback.cancelPending(mcpName, expected?.oauthState)
+    if (!expected) {
+      await Promise.all([
+        McpAuth.clearCodeVerifier(mcpName).catch(() => undefined),
+        McpAuth.clearOAuthState(mcpName).catch(() => undefined),
+      ])
+      return
+    }
     await Promise.all([
-      McpAuth.clearCodeVerifier(mcpName).catch(() => undefined),
-      McpAuth.clearOAuthState(mcpName).catch(() => undefined),
+      expected.codeVerifier === undefined
+        ? undefined
+        : McpAuth.clearCodeVerifier(mcpName, expected.codeVerifier).catch(() => undefined),
+      expected.oauthState === undefined
+        ? undefined
+        : McpAuth.clearOAuthState(mcpName, expected.oauthState).catch(() => undefined),
     ])
   }
 
@@ -384,7 +398,8 @@ export namespace MCP {
     const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("")
-    await McpAuth.updateOAuthState(mcpName, oauthState)
+    const isCurrent = () => McpSupervisor.get(mcpName)?.identity === server.identity
+    await McpAuth.updateOAuthState(mcpName, oauthState, { isCurrent })
 
     const oauthConfig = typeof mcpConfig.oauth === "object" ? mcpConfig.oauth : undefined
     let capturedUrl: URL | undefined
@@ -400,6 +415,7 @@ export namespace MCP {
         onRedirect: async (url) => {
           capturedUrl = url
         },
+        isCurrent,
       },
     )
 
@@ -415,19 +431,21 @@ export namespace MCP {
       await client.close().catch((closeError) => {
         log.warn("failed to close MCP client after OAuth probe", { mcpName, closeError })
       })
-      await clearPendingOAuthState(mcpName)
+      const codeVerifier = (await McpAuth.get(mcpName))?.codeVerifier
+      await clearPendingOAuthState(mcpName, { codeVerifier, oauthState })
       return { authorizationUrl: "" }
     } catch (error) {
       if (error instanceof UnauthorizedError && capturedUrl) {
+        const codeVerifier = (await McpAuth.get(mcpName))?.codeVerifier
         const registered = await PendingOAuth.register(
           mcpName,
           {
             client,
             transport,
             identity: server.identity,
-            onDispose: () => clearPendingOAuthState(mcpName),
+            onDispose: () => clearPendingOAuthState(mcpName, { codeVerifier, oauthState }),
           },
-          { isCurrent: () => McpSupervisor.get(mcpName)?.identity === server.identity },
+          { isCurrent },
         )
         if (!registered) throw new Error("MCP server changed while OAuth was in progress; restart authentication")
         return { authorizationUrl: capturedUrl.toString() }
@@ -435,7 +453,8 @@ export namespace MCP {
       await client.close().catch((closeError) => {
         log.warn("failed to close MCP client after OAuth probe", { mcpName, closeError })
       })
-      await clearPendingOAuthState(mcpName)
+      const codeVerifier = (await McpAuth.get(mcpName))?.codeVerifier
+      await clearPendingOAuthState(mcpName, { codeVerifier, oauthState })
       throw error
     }
   }
