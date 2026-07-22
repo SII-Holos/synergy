@@ -3,11 +3,13 @@ import fs from "fs/promises"
 import { Global } from "../../src/global"
 import { ProviderCatalog } from "../../src/provider/catalog"
 import { ProviderProfile } from "../../src/provider/profile"
+import { Auth } from "../../src/provider/api-key"
 
 const config = { providerCatalog: { enabled: false, offlineCache: false } }
 const providerID = `catalog-stability-${Math.random().toString(36).slice(2)}`
 let identity = "account-a"
 let fetchCatalog: () => Promise<ProviderProfile.ModelCatalogEntry[]>
+const credentialProviderID = `catalog-credentials-${Math.random().toString(36).slice(2)}`
 
 ProviderProfile.register({
   id: providerID,
@@ -19,9 +21,21 @@ ProviderProfile.register({
   fetchModelCatalog: () => fetchCatalog(),
 })
 
+ProviderProfile.register({
+  id: credentialProviderID,
+  name: "Catalog Credential Isolation Test",
+  authKind: "api_key",
+  modelsDevProviderID: "openai",
+  fallbackModels: ["gpt-5.5"],
+  fetchModelCatalog: async ({ auth }) => [
+    { id: auth?.type === "api" && auth.key === "account-b-key" ? "model-b" : "model-a" },
+  ],
+})
+
 async function reset() {
   identity = "account-a"
   fetchCatalog = async () => []
+  await Auth.remove(credentialProviderID).catch(() => {})
   ProviderCatalog.reset()
   await fs.rm(Global.Path.providerModelCatalogCache, { force: true })
 }
@@ -139,6 +153,29 @@ test("catalog snapshots are isolated by opaque identity hashes", async () => {
   const accountA = await ProviderCatalog.resolve({ config, includeLive: true })
   expect(accountA[providerID].models["model-a"].catalog_state).toBe("active")
   expect(accountA[providerID].models["model-b"]).toBeUndefined()
+})
+
+test("reconnecting a provider does not reuse the previous credential's catalog", async () => {
+  const originalNow = Date.now
+  Date.now = () => 1_000
+  try {
+    await Auth.set(credentialProviderID, { type: "api", key: "account-a-key" })
+    await ProviderCatalog.refresh(credentialProviderID)
+
+    await Auth.set(credentialProviderID, { type: "api", key: "account-b-key" })
+    await ProviderCatalog.refresh(credentialProviderID)
+
+    const persisted = await Bun.file(Global.Path.providerModelCatalogCache).text()
+    expect(persisted).not.toContain("account-a-key")
+    expect(persisted).not.toContain("account-b-key")
+
+    ProviderCatalog.reset()
+    const accountB = await ProviderCatalog.resolve({ config, includeLive: true })
+    expect(accountB[credentialProviderID].models["model-b"].catalog_state).toBe("active")
+    expect(accountB[credentialProviderID].models["model-a"]).toBeUndefined()
+  } finally {
+    Date.now = originalNow
+  }
 })
 
 test("retry delays are deterministic and honor Retry-After", () => {

@@ -138,16 +138,22 @@ export async function listProvidersForClient(): Promise<z.infer<typeof ProviderL
     authHealth,
     runtimeAvailability,
     modelCatalog: Object.fromEntries(
-      Object.keys(providers).map((providerID) => [
-        providerID,
-        ProviderCatalog.modelCatalogState(providerID) ?? {
-          source: "bundled" as const,
-          refreshing: false,
-          modelCount: Object.values(providers[providerID].models).filter(
-            (model) => model.catalogState !== "retained" && model.status !== "deprecated",
-          ).length,
-        },
-      ]),
+      Object.entries(providers).flatMap(([providerID, provider]) => {
+        const profile = ProviderProfile.get(providerID)
+        if (!profile?.fetchModelCatalog && !profile?.fetchModels) return []
+        return [
+          [
+            providerID,
+            ProviderCatalog.modelCatalogState(providerID) ?? {
+              source: "bundled" as const,
+              refreshing: false,
+              modelCount: Object.values(provider.models).filter(
+                (model) => model.catalogState !== "retained" && model.status !== "deprecated",
+              ).length,
+            },
+          ] as const,
+        ]
+      }),
     ),
   }
 }

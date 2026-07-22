@@ -94,6 +94,7 @@ test("/provider returns catalog, auth health, and runtime availability", async (
     source: "bundled",
     modelCount: 5,
   })
+  expect(body.modelCatalog.openai).toBeUndefined()
   expect(body.profiles[CodexProvider.PROVIDER_ID]).toMatchObject({
     id: CodexProvider.PROVIDER_ID,
     recommendation: {

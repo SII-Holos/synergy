@@ -443,6 +443,29 @@ export namespace ProviderCatalog {
     return next
   }
 
+  function defaultCredentialIdentity(credentialID: string, auth: Auth.Info) {
+    let credential: Record<string, unknown>
+    switch (auth.type) {
+      case "api":
+        credential = { type: auth.type, key: auth.key }
+        break
+      case "oauth":
+        credential = { type: auth.type, refresh: auth.refresh, enterpriseUrl: auth.enterpriseUrl }
+        break
+      case "wellknown":
+        credential = { type: auth.type, key: auth.key, token: auth.token }
+        break
+      case "holos":
+        credential = { type: auth.type, agentId: auth.agentId, agentSecret: auth.agentSecret }
+        break
+      default: {
+        const unsupported: never = auth
+        throw new Error(`Unsupported auth type: ${String(unsupported)}`)
+      }
+    }
+    return JSON.stringify({ credentialID, credential })
+  }
+
   async function resolveLiveDiscoveryContext(profile: ProviderProfile.Profile): Promise<LiveDiscoveryContext> {
     const selected = await Auth.select(profile.id)
     const authUpdatedAt = selected?.poolEntry?.updatedAt ?? selected?.entry.updatedAt
@@ -453,7 +476,11 @@ export namespace ProviderCatalog {
     })
     const identity =
       customIdentity ??
-      (selected ? selected.credentialID : profile.authKind === "none" ? "anonymous" : "unauthenticated")
+      (selected
+        ? defaultCredentialIdentity(selected.credentialID, selected.auth)
+        : profile.authKind === "none"
+          ? "anonymous"
+          : "unauthenticated")
     return { auth: selected?.auth, identityHash: await hashIdentity(profile.id, identity) }
   }
 
@@ -486,7 +513,7 @@ export namespace ProviderCatalog {
     const modelCount = snapshot?.activeModels.length ?? Object.keys(provider.models).length
     catalogStates.set(profile.id, {
       source: snapshot && key && freshlyVerified.has(key) ? "live" : snapshot ? "cached" : "bundled",
-      refreshing: refreshInFlight.has(profile.id) || scheduledRefreshes.has(profile.id),
+      refreshing: key ? refreshInFlight.has(key) || scheduledRefreshes.has(key) : false,
       modelCount,
       lastVerifiedAt: snapshot?.lastVerifiedAt,
       failure: snapshot?.failure,
@@ -552,7 +579,7 @@ export namespace ProviderCatalog {
     }
     const context = await resolveLiveDiscoveryContext(profile)
     const key = snapshotKey(profile.id, context.identityHash)
-    const pending = refreshInFlight.get(profile.id)
+    const pending = refreshInFlight.get(key)
     if (pending) return pending
 
     let request: Promise<ModelCatalogState>
@@ -625,10 +652,10 @@ export namespace ProviderCatalog {
       catalogStates.set(profile.id, state)
       return state
     })().finally(() => {
-      if (refreshInFlight.get(profile.id) === request) refreshInFlight.delete(profile.id)
-      scheduledRefreshes.delete(profile.id)
+      if (refreshInFlight.get(key) === request) refreshInFlight.delete(key)
+      scheduledRefreshes.delete(key)
     })
-    refreshInFlight.set(profile.id, request)
+    refreshInFlight.set(key, request)
     return request
   }
 
@@ -652,9 +679,12 @@ export namespace ProviderCatalog {
     const verifiedRecently = snapshot?.lastVerifiedAt && now - snapshot.lastVerifiedAt < DEFAULT_CACHE_TTL_MS
     const failedRecently = snapshot?.failure && now - snapshot.lastAttemptAt < RETRY_DELAY_MS
     if (verifiedRecently || failedRecently) return
-    if (refreshInFlight.has(profile.id) || scheduledRefreshes.has(profile.id)) return
-    scheduledRefreshes.add(profile.id)
-    queueMicrotask(() => void refreshAndReload(profile.id))
+    const key = snapshotKey(profile.id, context.identityHash)
+    if (refreshInFlight.has(key) || scheduledRefreshes.has(key)) return
+    scheduledRefreshes.add(key)
+    queueMicrotask(() => {
+      void refreshAndReload(profile.id).finally(() => scheduledRefreshes.delete(key))
+    })
   }
 
   export async function resolve(input?: {
