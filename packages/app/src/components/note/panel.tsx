@@ -1535,7 +1535,6 @@ function NoteEditor(props: {
   const [baseNote, setBaseNote] = createSignal<NoteInfo | null>(null)
   const [title, setTitle] = createSignal("")
   const [tags, setTags] = createSignal<string[]>([])
-  const [tagInput, setTagInput] = createSignal("")
   const [saving, setSaving] = createSignal(false)
   const [dirty, setDirty] = createSignal<NoteDirtyRevisions>(EMPTY_DIRTY_REVISIONS)
   const [conflict, setConflict] = createSignal<NoteConflictState | null>(null)
@@ -1863,31 +1862,6 @@ function NoteEditor(props: {
       return false
     } finally {
       setSaving(false)
-    }
-  }
-
-  function addTag(tag: string) {
-    const t = tag.trim().toLowerCase()
-    if (!t || tags().includes(t)) return
-    setTags([...tags(), t])
-    markDirty("tags")
-    scheduleSave()
-    setTagInput("")
-  }
-
-  function removeTag(tag: string) {
-    setTags(tags().filter((t) => t !== tag))
-    markDirty("tags")
-    scheduleSave()
-  }
-
-  function handleTagKeyDown(e: KeyboardEvent) {
-    if (e.key === "Enter" || e.key === ",") {
-      e.preventDefault()
-      addTag(tagInput())
-    }
-    if (e.key === "Backspace" && !tagInput() && tags().length > 0) {
-      removeTag(tags()[tags().length - 1])
     }
   }
 
@@ -2355,32 +2329,6 @@ function NoteEditor(props: {
             sdkUrl={sdk.url}
             saving={saving()}
           />
-
-          <div class="flex flex-wrap items-center gap-1.5">
-            <For each={tags()}>
-              {(tag) => (
-                <span class="inline-flex items-center gap-1 rounded-full bg-surface-inset-base px-2.5 py-1 text-11-medium text-text-weak ring-1 ring-inset ring-border-base/35">
-                  {tag}
-                  <button
-                    type="button"
-                    class="flex size-3 items-center justify-center rounded-full text-text-weaker hover:text-text-base"
-                    onClick={() => removeTag(tag)}
-                    aria-label={`Remove tag ${tag}`}
-                  >
-                    <Icon name={getSemanticIcon("action.close")} size="small" class="size-2.5" />
-                  </button>
-                </span>
-              )}
-            </For>
-            <input
-              type="text"
-              class="min-w-[80px] flex-1 border-none bg-transparent text-12-regular text-text-weak outline-none placeholder:text-text-weaker"
-              placeholder={lingui._({ id: N.addTags.id, message: N.addTags.message })}
-              value={tagInput()}
-              onInput={(e) => setTagInput(e.currentTarget.value)}
-              onKeyDown={handleTagKeyDown}
-            />
-          </div>
         </div>
       </Show>
 
