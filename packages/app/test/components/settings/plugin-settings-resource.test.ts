@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { pluginSettingsResourceKey } from "./plugin-settings-resource"
+import { pluginSettingsResourceKey } from "../../../src/components/settings/plugin-settings-resource"
 
 describe("plugin settings resource", () => {
   test("includes Scope identity when keying the same plugin", () => {

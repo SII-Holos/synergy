@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createPluginSurfaceSettings } from "./surface-settings"
+import { createPluginSurfaceSettings } from "../../src/plugin/surface-settings"
 
 describe("trusted plugin surface settings", () => {
   test("reads and replaces only the owning plugin settings in the active Scope", async () => {
