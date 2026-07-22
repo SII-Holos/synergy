@@ -6,6 +6,7 @@ import { Global } from "@/global"
 import { DaemonPaths } from "@/daemon/paths"
 import { ServerProcessLock } from "@/daemon/server-process-lock"
 import { ProcessRegistry } from "@/process/registry"
+import { ProcessMemory } from "@/process/memory-usage"
 import { Observability } from "."
 import { ObservabilityEvents } from "./events"
 import { ObservabilityIssues } from "./issues"
@@ -275,9 +276,12 @@ export namespace Diagnostics {
     pressure.observabilityCapExceededBytes = store.capExceededBytes
     if (store.lastOpenError) pressure.observabilityStoreError = ObservabilityRedaction.text(store.lastOpenError, 160)
     if (!latest) return pressure
-    const heapUsed = latest.memory.heapUsedBytes ?? 0
-    const heapTotal = latest.memory.heapTotalBytes ?? 0
-    if (heapTotal > 0) pressure.heapUsedRatio = heapUsed / heapTotal
+    const heapRatio = ProcessMemory.heapUsageRatio({
+      heapUsedBytes: latest.memory.heapUsedBytes,
+      heapTotalBytes: latest.memory.heapTotalBytes,
+    })
+    if (heapRatio.available) pressure.heapUsedRatio = heapRatio.ratio
+    else pressure.heapUsedRatioUnavailableReason = heapRatio.reason
     if (latest.cpu.utilizationRatio !== undefined) pressure.cpuUtilizationRatio = latest.cpu.utilizationRatio
     if (latest.eventLoop.lagMs !== undefined) pressure.eventLoopLagMs = latest.eventLoop.lagMs
     if (latest.memory.rssBytes !== undefined) pressure.rssBytes = latest.memory.rssBytes

@@ -32,7 +32,7 @@ describe("SessionMemoryIncident", () => {
         externalBytes: 4,
         arrayBuffersBytes: 5,
       },
-      gc: { decision: { action: "critical_forced", reason: "critical_pressure", critical: true } },
+      gc: { decision: { action: "critical", reason: "critical_pressure", critical: true } },
       resources: Array.from({ length: 20 }, (_, index) => ({ time: index, rssBytes: index })),
       spans: Array.from({ length: 30 }, (_, index) => ({ name: `span-${index}`, ageMs: index })),
       cache: {

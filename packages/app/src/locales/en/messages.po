@@ -2679,6 +2679,11 @@ msgstr "Moved to worktree"
 msgid "app.layout.worktree.moveFailed"
 msgstr "Move to worktree failed"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr "Workspace status refresh failed"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "Asset"
@@ -4632,8 +4637,38 @@ msgstr "Long tasks"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
-msgstr "Memory"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr "full"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr "partial"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr "cgroup v2"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr "process sum"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr "Server RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "Service memory"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
+msgstr "{rss} · {source} · {coverage}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4658,7 +4693,7 @@ msgstr "Tool child RSS"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.toolChildRssValue"
-msgstr "{rss} · {count} active"
+msgstr "{rss} · {measured}/{count} measured"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5555,6 +5590,10 @@ msgstr "Submit"
 msgid "app.provider.state.failed"
 msgstr "Authorization failed: {error}"
 
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
+msgstr "Importing credentials..."
+
 #. States
 msgid "app.provider.state.pending"
 msgstr "Authorization in progress..."
@@ -5569,7 +5608,7 @@ msgstr "connected"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.modelsAvailable"
-msgstr "{provider} models are now available to use."
+msgstr "{provider} is connected. Models sync in the background."
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
@@ -7265,6 +7304,10 @@ msgid "app.topBar.model.lockedLabel"
 msgstr "Model locked"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
+msgstr "This model is no longer in the latest provider list."
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.select"
 msgstr "Select model"
 
@@ -8166,7 +8209,7 @@ msgstr "No quick-switch models"
 
 #. js-lingui-explicit-id
 msgid "model.manager.quick"
-msgstr "Quick"
+msgstr "Quick switch"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -9866,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr "Connected"
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr "Fallback catalog"
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr "Not connected"
 
@@ -10224,6 +10263,10 @@ msgstr "Unable to copy the message."
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "Copy Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
+msgstr "Model {modelID} is unavailable from {providerID}. Choose another model to continue."
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
@@ -11809,6 +11852,16 @@ msgstr "Creating an isolated checkout and binding this session to it."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr "The workspace changed successfully, but Synergy couldn’t refresh the session status. {message}"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr "The workspace changed. Updating the session status."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr "The workspace is ready and your first message is queued for processing."
 
@@ -11850,6 +11903,11 @@ msgstr "Preparing the worktree and updating this session workspace."
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
 msgstr "First prompt dispatched."
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
+msgstr "Loading the updated session workspace."
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11940,6 +11998,11 @@ msgstr "Prepare session"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr "Refresh workspace status"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr "Return to main checkout"
 
@@ -11971,6 +12034,16 @@ msgstr "Move to worktree failed"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
 msgstr "Moving session to worktree"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr "Workspace status refresh failed"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
+msgstr "Refreshing workspace status"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15273,6 +15346,26 @@ msgid "settings.providers.accountConnected"
 msgstr "Credentials are connected. Use Usage for quota and billing details."
 
 #. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr "Showing default models"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr "Showing the last synced model list"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr "Model list needs refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr "Refresh models"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr "Refreshing model list"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.connect"
 msgstr "Connect"
 
@@ -15342,15 +15435,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure."
+msgstr "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "Memory recommendation: {value}. Your setting remains active."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "Managed by environment · Memory safety limit: {value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "Managed by environment · Memory recommendation: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
@@ -15705,6 +15798,18 @@ msgid "settings.synergyLink.add.action"
 msgstr "Add target"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr "Adding..."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr "Cancel"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr "Close add target dialog"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr "Copy the target agent ID and Link ID from B. B still approves the first connection."
 
@@ -15863,14 +15968,6 @@ msgstr "Connection test completed"
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "These accounts were rejected and remain here until their credentials are recovered."
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr "No provider accounts need attention"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
-msgstr "Credential recovery actions will appear here when a provider rejects a request."
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.title"

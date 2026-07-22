@@ -68,7 +68,9 @@ export function usePerformance(input?: ReturnType<typeof useGlobalSDK>) {
 
   return {
     summary,
-    loading: summary.loading,
+    get loading() {
+      return summary.loading
+    },
     error,
     windowMs,
     setWindowMs,

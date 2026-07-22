@@ -758,6 +758,17 @@ export function SessionTurn(
   const lastAssistantMessage = createMemo(() => assistantMessages().at(-1))
 
   const error = createMemo(() => assistantMessages().find((m) => m.error)?.error)
+  const errorMessage = createMemo(() => {
+    const value = error()
+    if (!value) return ""
+    if (value.name === "ProviderModelUnavailableError") {
+      return _({
+        ...SESSION_TURN_DESC.modelUnavailable,
+        values: { modelID: value.data.modelID, providerID: value.data.providerID },
+      })
+    }
+    return "message" in value.data && typeof value.data.message === "string" ? value.data.message : ""
+  })
 
   const permissions = createMemo(() => data.store.permission?.[props.sessionID] ?? emptyPermissions)
   const permissionCount = createMemo(() => permissions().length)
@@ -1167,7 +1178,7 @@ export function SessionTurn(
                       </div>
                     </Show>
                     <Show when={error()}>
-                      <ErrorCard error={(error()?.data?.message as string) ?? ""} compact />
+                      <ErrorCard error={errorMessage()} compact />
                     </Show>
                     {renderMessageSlot("message.after-message")}
                   </Match>

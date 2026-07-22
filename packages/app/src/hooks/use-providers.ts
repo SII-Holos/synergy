@@ -15,7 +15,8 @@ export function useProviders() {
     }
     return globalSync.data.provider
   })
-  const connected = createMemo(() =>
+  const connected = createMemo(() => providers().all.filter((provider) => providers().connected.includes(provider.id)))
+  const available = createMemo(() =>
     providers().all.filter((provider) => {
       if (!providers().connected.includes(provider.id)) return false
       return providers().runtimeAvailability?.[provider.id]?.available ?? true
@@ -27,5 +28,6 @@ export function useProviders() {
     default: createMemo(() => providers().default),
     popular,
     connected,
+    available,
   }
 }

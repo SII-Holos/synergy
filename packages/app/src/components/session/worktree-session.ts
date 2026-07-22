@@ -121,6 +121,24 @@ export function createWorkspaceTransitionLoadingProgress(
     ],
   }
 }
+export function createWorkspaceTransitionRefreshProgress(input: {
+  operation: "enter" | "leave"
+}): SessionTransitionProgress {
+  return {
+    kind: input.operation === "leave" ? "leave-worktree" : "enter-worktree",
+    phase: "loading",
+    title: S.worktreeTitleRefreshing,
+    description: S.worktreeDescRefreshing,
+    steps: [
+      {
+        id: "refresh",
+        label: S.worktreeStepRefreshStatus,
+        detail: S.worktreeDetailRefreshingStatus,
+        state: "active",
+      },
+    ],
+  }
+}
 
 export function createWorkspaceTransitionSuccessProgress(input: {
   operation: "enter" | "leave"
@@ -168,6 +186,18 @@ export function createWorkspaceTransitionErrorProgress(input: {
     phase: "error",
     title: input.operation === "leave" ? S.worktreeTitleLeaveFailed : S.worktreeTitleMoveFailed,
     description: input.message,
+    steps: [],
+  }
+}
+export function createWorkspaceTransitionRefreshErrorProgress(input: {
+  operation: "enter" | "leave"
+  message: string
+}): SessionTransitionProgress {
+  return {
+    kind: input.operation === "leave" ? "leave-worktree" : "enter-worktree",
+    phase: "error",
+    title: S.worktreeTitleRefreshFailed,
+    description: { ...S.worktreeDescRefreshFailed, values: { message: input.message } },
     steps: [],
   }
 }

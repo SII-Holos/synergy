@@ -64,6 +64,7 @@ export namespace ModelsDev {
       .optional(),
     supported_image_media_types: z.array(z.string()).optional(),
     status: z.enum(["alpha", "beta", "deprecated"]).optional(),
+    catalog_state: z.enum(["active", "retained"]).optional(),
     options: z.record(z.string(), z.any()),
     headers: z.record(z.string(), z.string()).optional(),
     provider: z.object({ npm: z.string() }).optional(),

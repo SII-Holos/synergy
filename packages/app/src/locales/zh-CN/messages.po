@@ -2679,6 +2679,11 @@ msgstr "已移至隔离工作区"
 msgid "app.layout.worktree.moveFailed"
 msgstr "无法移至隔离工作区"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr "工作区状态刷新失败"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "资产"
@@ -4632,8 +4637,38 @@ msgstr "长任务"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
-msgstr "内存"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr "完整"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr "部分"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr "cgroup v2"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr "进程汇总"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr "服务端 RSS"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr "服务内存"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
+msgstr "{rss} · {source} · {coverage}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4658,7 +4693,7 @@ msgstr "工具子进程 RSS"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.toolChildRssValue"
-msgstr "{rss} · {count} 个活跃"
+msgstr "{rss} · 已测量 {measured}/{count} 个"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -5555,6 +5590,10 @@ msgstr "提交"
 msgid "app.provider.state.failed"
 msgstr "授权失败：{error}"
 
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
+msgstr "正在导入凭据…"
+
 #. States
 msgid "app.provider.state.pending"
 msgstr "正在授权…"
@@ -5569,7 +5608,7 @@ msgstr "已连接"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.modelsAvailable"
-msgstr "{provider} 模型现已可用。"
+msgstr "{provider} 已连接，模型列表将在后台同步。"
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.toast.reconnected"
@@ -7265,6 +7304,10 @@ msgid "app.topBar.model.lockedLabel"
 msgstr "模型已锁定"
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
+msgstr "该模型已不在最新列表中。"
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.select"
 msgstr "选择模型"
 
@@ -8166,7 +8209,7 @@ msgstr "没有快速切换模型"
 
 #. js-lingui-explicit-id
 msgid "model.manager.quick"
-msgstr "快速"
+msgstr "快速切换"
 
 #. js-lingui-explicit-id
 msgid "model.manager.search.placeholder"
@@ -9866,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr "已连接"
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr "备用目录"
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr "未连接"
 
@@ -10224,6 +10263,10 @@ msgstr "无法复制消息。"
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
 msgstr "复制 Markdown"
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
+msgstr "模型 {modelID} 当前无法从 {providerID} 使用。请选择其他模型后继续。"
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.rewind"
@@ -11809,6 +11852,16 @@ msgstr "正在创建隔离工作区并将此会话移入其中。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr "工作区已成功变更，但 Synergy 无法刷新会话状态。{message}"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr "工作区已变更。正在更新会话状态。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr "工作区已就绪，你的第一条消息正在等待处理。"
 
@@ -11850,6 +11903,11 @@ msgstr "正在准备工作树并更新此会话工作区。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
 msgstr "第一条消息已发送。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
+msgstr "正在加载更新后的会话工作区。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11940,6 +11998,11 @@ msgstr "准备会话"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr "刷新工作区状态"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr "切回主工作区"
 
@@ -11971,6 +12034,16 @@ msgstr "无法移至隔离工作区"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
 msgstr "正在将会话移至工作树"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr "工作区状态刷新失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
+msgstr "正在刷新工作区状态"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -15273,6 +15346,26 @@ msgid "settings.providers.accountConnected"
 msgstr "凭据已连接。请在用量中查看配额和账单详情。"
 
 #. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr "正在显示默认模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr "正在显示上次同步的模型列表"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr "模型列表待刷新"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr "刷新模型"
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr "正在刷新模型"
+
+#. js-lingui-explicit-id
 msgid "settings.providers.connect"
 msgstr "连接"
 
@@ -15345,12 +15438,12 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr "同时运行的 Cortex 子智能体任务最大数量。内存压力建议不会覆盖此值。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
-msgstr "内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
+msgstr "内存建议值：{value}。当前设置仍然生效。"
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
-msgstr "由环境管理 · 内存安全限制：{value}"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
+msgstr "由环境变量管理 · 内存建议值：{value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
@@ -15705,6 +15798,18 @@ msgid "settings.synergyLink.add.action"
 msgstr "添加目标"
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr "正在添加..."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr "取消"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr "关闭添加目标对话框"
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr "从 B 复制目标 Agent ID 和 Link ID。首次连接仍需在 B 上批准。"
 
@@ -15863,14 +15968,6 @@ msgstr "连接测试已完成"
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
 msgstr "这些账号被拒绝，并会留在这里，直到其凭据恢复。"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr "没有需要注意的提供商账号"
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
-msgstr "当提供商拒绝请求时，凭据恢复操作会显示在这里。"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.title"

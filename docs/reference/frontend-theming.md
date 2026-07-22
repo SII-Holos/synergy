@@ -144,8 +144,8 @@ Run the focused contract checks first:
 
 ```bash
 bun test --cwd packages/ui test/theme.test.ts test/theme-application.test.ts test/theme-generation.test.ts
-bun test --cwd packages/app src/testing/color-token-contract.test.ts
-bun test --cwd packages/app src/components/note/theme-adapters.test.ts src/components/visualization/use-chart-theme.test.ts
+bun test --cwd packages/app test/testing/color-token-contract.test.ts
+bun test --cwd packages/app test/components/note/theme-adapters.test.ts test/components/visualization/use-chart-theme.test.ts
 bun test --cwd packages/desktop test/theme.test.ts test/startup-page.test.ts
 bun test --cwd packages/plugin-kit test/create.test.ts test/build.test.ts
 bun run --cwd packages/ui typecheck

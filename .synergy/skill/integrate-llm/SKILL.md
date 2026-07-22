@@ -63,6 +63,8 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 
 Provider SSE protection is a per-event parser bound, not a total response, transport chunk, or process-memory limit. Keep code identifiers, error names, tests, and architecture documentation explicit about `SSE event parser bound` semantics. Test LF and CRLF event delimiters across chunk boundaries, including consecutive events exactly at the bound.
 
+Any provider stream wrapper that calls `getReader()` owns that reader lock. Keep reads pull-based, cancel the reader when the wrapper fails or is cancelled, and release the lock after normal completion, failure, timeout, and downstream cancellation. Test the lifecycle against a real `ReadableStream` by asserting that the upstream stream is unlocked after every terminal path.
+
 Tool-call input has a separate serialized-input bound. Enforce it for incremental argument deltas, final-only provider tool calls, and immediately before executor dispatch so providers cannot bypass it by omitting delta events.
 
 Treat streamed tool argument deltas as transport/progress data, not canonical tool input. Use them for incremental byte limits, memory accounting, and diagnostics. Once the AI SDK emits `tool-call`, use its final `input` consistently for the final serialized-input bound, persisted tool part, loop guards, permission evaluation, and execution. Test providers that omit deltas and cases where streamed raw arguments differ from the final AI SDK input.

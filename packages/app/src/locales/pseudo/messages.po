@@ -2679,6 +2679,11 @@ msgstr ""
 msgid "app.layout.worktree.moveFailed"
 msgstr ""
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr ""
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr ""
@@ -4632,7 +4637,37 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
 msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
@@ -5553,6 +5588,10 @@ msgstr ""
 
 #. ── Provider Connection Flow ─────────────────────────────────────────────────
 msgid "app.provider.state.failed"
+msgstr ""
+
+#. ── Provider Connection Flow ─────────────────────────────────────────────────
+msgid "app.provider.state.importing"
 msgstr ""
 
 #. States
@@ -7262,6 +7301,10 @@ msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
 msgid "app.topBar.model.lockedLabel"
+msgstr ""
+
+#. ── Top Bar ──────────────────────────────────────────────────────────────────
+msgid "app.topBar.model.retained"
 msgstr ""
 
 #. ── Top Bar ──────────────────────────────────────────────────────────────────
@@ -9866,10 +9909,6 @@ msgid "provider.status.connected"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "provider.status.fallbackCatalog"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "provider.status.notConnected"
 msgstr ""
 
@@ -10223,6 +10262,10 @@ msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
 msgid "session-turn.copy-markdown"
+msgstr ""
+
+#. ── Session turn chrome ─────────────────────────────────────────────
+msgid "session-turn.model-unavailable"
 msgstr ""
 
 #. ── Session turn chrome ─────────────────────────────────────────────
@@ -11809,6 +11852,16 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr ""
 
@@ -11849,6 +11902,11 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -11940,6 +11998,11 @@ msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr ""
 
@@ -11970,6 +12033,16 @@ msgstr ""
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr ""
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
 msgstr ""
 
 #. Runtime Lingui descriptors for session component strings.
@@ -15273,6 +15346,26 @@ msgid "settings.providers.accountConnected"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.providers.catalog.bundled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.cached"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.pending"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.providers.catalog.refreshing"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.providers.connect"
 msgstr ""
 
@@ -15345,11 +15438,11 @@ msgid "settings.runtime.agents.concurrency.desc"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafety"
+msgid "settings.runtime.agents.concurrency.memoryAdvisory"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
+msgid "settings.runtime.agents.concurrency.memoryAdvisoryManaged"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -15705,6 +15798,18 @@ msgid "settings.synergyLink.add.action"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr ""
 
@@ -15862,14 +15967,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
