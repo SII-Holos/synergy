@@ -186,6 +186,7 @@ describe("tool.look_at", () => {
 
       const originalAgentGet = Agent.get
       const originalGetAvailableModel = Agent.getAvailableModel
+      const originalInvoke = SessionInvoke.invoke
       const originalCancel = SessionInvoke.cancel
       let invokeParts: InvokePart[] = []
 
@@ -237,7 +238,7 @@ describe("tool.look_at", () => {
       } finally {
         ;(Agent.get as any) = originalAgentGet
         ;(Agent.getAvailableModel as any) = originalGetAvailableModel
-        ;(SessionInvoke.invoke as any) = mock(() => {})
+        ;(SessionInvoke.invoke as any) = originalInvoke
         ;(SessionInvoke.cancel as any) = originalCancel
       }
     })
