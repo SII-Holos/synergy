@@ -362,6 +362,42 @@ export namespace PerformanceCatalog {
       "backend",
       ["phase", "providerID", "modelID"],
     ),
+    metric(
+      "llm.turn.retention.target_bytes",
+      "Released LLM owner payload size",
+      "bytes",
+      "size",
+      "latest",
+      "llm",
+      "backend",
+      ["owner"],
+    ),
+    metric(
+      "llm.turn.retention.alive",
+      "Released LLM owners still reachable",
+      "count",
+      "gauge",
+      "latest",
+      "llm",
+      "backend",
+      ["owner", "phase", "afterGC"],
+    ),
+    metric("llm.turn.retention.age", "Released LLM owner retention age", "ms", "duration", "latest", "llm", "backend", [
+      "owner",
+      "phase",
+      "alive",
+      "afterGC",
+    ]),
+    metric(
+      "llm.turn.retention.collected",
+      "Released LLM owner collection latency",
+      "ms",
+      "duration",
+      "p95",
+      "llm",
+      "backend",
+      ["owner"],
+    ),
   ] satisfies MetricInfo[]
 
   export const metrics = metricList

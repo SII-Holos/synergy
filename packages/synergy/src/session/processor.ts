@@ -794,6 +794,9 @@ export namespace SessionProcessor {
       dispose,
       async process(streamInput: LLM.StreamInput) {
         log.info("process")
+        streamInput.memoryTurn?.trackOwner("processor.toolcalls", toolcalls)
+        streamInput.memoryTurn?.trackOwner("processor.executions", executions)
+        streamInput.memoryTurn?.trackOwner("processor.tool_raw", generatingAccum)
         const turnTraceId = ObservabilityContext.current().traceId ?? Observability.traceId("turn")
         const turnStartedAt = Date.now()
         await Observability.emit("session.turn.start", {
@@ -820,6 +823,7 @@ export namespace SessionProcessor {
                 messageID: input.assistantMessage.id,
               })
               const stream = await LLM.stream(streamInput)
+              streamInput.memoryTurn?.trackOwner("provider.stream_result", stream)
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
                 sessionID: input.sessionID,
@@ -884,6 +888,7 @@ export namespace SessionProcessor {
               }
 
               const ownedStream = LLM.takeFullStream(stream)
+              streamInput.memoryTurn?.trackOwner("provider.full_stream", ownedStream.stream)
               try {
                 for await (const value of ownedStream.stream) {
                   input.abort.throwIfAborted()
@@ -1071,11 +1076,22 @@ export namespace SessionProcessor {
                       const match = toolcalls[value.toolCallId]
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
+                      const toolInput = SessionToolInput.normalize(value.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
+                      streamInput.memoryTurn?.trackOwner("provider.tool_call_event", value, toolInputBytes)
+                      streamInput.memoryTurn?.trackOwner("tool.parsed_input", toolInput, toolInputBytes)
+                      log.info("tool.stream.tool_call.input_ready", {
+                        sessionID: input.sessionID,
+                        messageID: input.assistantMessage.id,
+                        callID: value.toolCallId,
+                        tool: value.toolName,
+                        source: "provider_input",
+                        bytes: toolInputBytes,
+                      })
                       const runningMetadata = ToolTimeout.mergeMetadata(
                         runningToolMetadata(value.toolName, value.providerMetadata),
                         pendingState?.metadata,
                       )
-                      const toolInput = SessionToolInput.normalize(value.input)
                       streamInput.memoryTurn?.observeToolRawChars(
                         value.toolCallId,
                         LLMTurnMemory.estimateChars(value.input, SessionBounds.TOOL_INPUT_MAX_BYTES),
