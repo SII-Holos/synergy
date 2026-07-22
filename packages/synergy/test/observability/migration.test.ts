@@ -71,7 +71,7 @@ describe("ObservabilityMigration", () => {
     const summary = await runMigrations({ output: "silent", targetDomain: "observability" })
     const status = await getMigrationStatus("observability")
 
-    expect(summary.completed).toBe(4)
+    expect(summary.completed).toBe(5)
     expect(status.observability.pending).toHaveLength(0)
     expect(status.observability.completed.map((migration) => migration.id)).toContain(ObservabilityMigration.id)
   })
@@ -127,7 +127,38 @@ describe("ObservabilityMigration", () => {
     await ObservabilityMigration.synchronizeSchemaMetadata()
 
     const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
-    expect(row.value).toBe(String(ObservabilityStore.schemaVersion))
+    expect(row.value).toBe("4")
+  })
+
+  test("adds resource cgroup columns to a v4 database idempotently", async () => {
+    seedV4ObservabilityStore()
+
+    await ObservabilityMigration.addResourceCgroupColumns()
+    await ObservabilityMigration.addResourceCgroupColumns()
+
+    const db = ObservabilityStore.initializeForMigration()
+    const columns = new Set(
+      allRows<{ name: string }>(db, "PRAGMA table_info(obs_resource_samples)").map((row) => row.name),
+    )
+    expect([...columns]).toEqual(
+      expect.arrayContaining([
+        "cgroup_current_bytes",
+        "cgroup_high_bytes",
+        "cgroup_max_bytes",
+        "cgroup_peak_bytes",
+        "cgroup_oom_count",
+        "cgroup_oom_kill_count",
+        "service_memory_rss_bytes",
+        "service_memory_source",
+        "service_memory_completeness",
+      ]),
+    )
+    const indexes = new Set(
+      allRows<{ name: string }>(db, "SELECT name FROM sqlite_master WHERE type = 'index'").map((row) => row.name),
+    )
+    expect(indexes).toContain("idx_obs_issues_status_last_seen")
+    const row = getRow<{ value: string }>(db, "SELECT value FROM obs_meta WHERE key = 'schemaVersion'")
+    expect(row.value).toBe("5")
   })
 
   test("backfills redaction across previously written canonical tables idempotently", async () => {
@@ -211,6 +242,28 @@ describe("ObservabilityMigration", () => {
     expect(row.count).toBe(0)
   })
 })
+
+function seedV4ObservabilityStore() {
+  const initialized = ObservabilityStore.initializeForMigration()
+  initialized.query("INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', '4')").run()
+  ObservabilityStore.close()
+  const db = new Database(ObservabilityStore.pathName())
+  db.exec("DROP INDEX IF EXISTS idx_obs_issues_status_last_seen")
+  for (const column of [
+    "cgroup_current_bytes",
+    "cgroup_high_bytes",
+    "cgroup_max_bytes",
+    "cgroup_peak_bytes",
+    "cgroup_oom_count",
+    "cgroup_oom_kill_count",
+    "service_memory_rss_bytes",
+    "service_memory_source",
+    "service_memory_completeness",
+  ]) {
+    db.exec(`ALTER TABLE obs_resource_samples DROP COLUMN ${column}`)
+  }
+  db.close(true)
+}
 
 function seedLegacyPerformanceStore(traceShape: "snake" | "camel" | "both" = "snake") {
   const legacyPath = ObservabilityStore.legacyPerformancePath()

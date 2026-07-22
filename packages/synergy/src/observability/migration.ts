@@ -4,15 +4,18 @@ import { MigrationRegistry } from "@/migration/registry"
 import type { Migration } from "@/migration/types"
 import { sha256Content } from "@/util/crypto"
 import { ObservabilityRedaction } from "./redaction"
+import { ObservabilityResourceSchema } from "./resource-schema"
 import { ObservabilityStore } from "./store"
 
 export namespace ObservabilityMigration {
   const BATCH_SIZE = 500
   export const schemaVersion = ObservabilityStore.schemaVersion
+  const schemaMetadataVersion = 4
   export const id = "20260705-observability-store-v2"
   export const redactionBackfillId = "20260711-observability-redaction-backfill"
   export const incrementalVacuumId = "20260711-observability-incremental-vacuum"
   export const schemaMetadataId = "20260712-observability-schema-metadata-v4"
+  export const resourceCgroupId = "20260722-observability-resource-cgroup-v5"
 
   export async function migrateLegacyPerformance(progress: (current: number, total: number) => void = () => {}) {
     const target = ObservabilityStore.initializeForMigration()
@@ -75,8 +78,21 @@ export namespace ObservabilityMigration {
     runStatement(
       target,
       "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
-      String(schemaVersion),
+      String(schemaMetadataVersion),
     )
+    progress(1, 1)
+  }
+
+  export async function addResourceCgroupColumns(progress: (current: number, total: number) => void = () => {}) {
+    const target = ObservabilityStore.initializeForMigration()
+    target.transaction(() => {
+      ObservabilityResourceSchema.applyV5(target)
+      runStatement(
+        target,
+        "INSERT OR REPLACE INTO obs_meta (key,value) VALUES ('schemaVersion', ?)",
+        String(schemaVersion),
+      )
+    })()
     progress(1, 1)
   }
 
@@ -707,6 +723,16 @@ const migrations: Migration[] = [
     dependsOn: [ObservabilityMigration.incrementalVacuumId],
     async up(progress) {
       await ObservabilityMigration.synchronizeSchemaMetadata(progress)
+    },
+  },
+  {
+    id: ObservabilityMigration.resourceCgroupId,
+    description: "Add cgroup and service memory resource fields",
+    domain: "observability",
+    version: String(ObservabilityMigration.schemaVersion),
+    dependsOn: [ObservabilityMigration.schemaMetadataId],
+    async up(progress) {
+      await ObservabilityMigration.addResourceCgroupColumns(progress)
     },
   },
 ]

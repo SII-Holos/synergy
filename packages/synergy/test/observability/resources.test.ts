@@ -34,7 +34,7 @@ describe("ObservabilityResources", () => {
     expect(metricNames).toContain("process.event_loop.lag")
   })
 
-  test("raises deterministic memory pressure issue when thresholds are exceeded", () => {
+  test("raises supported memory pressure issues without Bun heap false positives", () => {
     ObservabilityConfig.refresh({
       observability: {
         performance: {
@@ -52,7 +52,7 @@ describe("ObservabilityResources", () => {
 
     const openIssues = ObservabilityStore.queryIssues({ status: "open", module: "process" })
     expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_RSS")).toBe(true)
-    expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_HEAP_RATIO")).toBe(true)
+    expect(openIssues.some((row) => row.code === "PERF_MEMORY_HIGH_HEAP_RATIO")).toBe(false)
     expect(openIssues.some((row) => row.code === "PERF_EVENT_LOOP_LAG")).toBe(true)
   })
 
