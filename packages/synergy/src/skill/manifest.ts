@@ -25,6 +25,11 @@ export namespace SkillManifest {
 
   export type Parsed = z.infer<typeof Schema>
 
+  const ProgrammaticSchema = Schema.extend({
+    name: z.string().min(1),
+    description: z.string().min(1),
+  })
+
   export const Diagnostic = z.object({
     code: z.string(),
     severity: z.enum(["error", "warning", "info"]),
@@ -107,7 +112,7 @@ export namespace SkillManifest {
     }
     source: "builtin" | "plugin"
   }): { value?: Omit<Normalized, "content">; diagnostics: Diagnostic[] } {
-    const result = Schema.safeParse({
+    const result = (input.source === "plugin" ? ProgrammaticSchema : Schema).safeParse({
       name: input.manifest.name,
       description: input.manifest.description,
       license: input.manifest.license,

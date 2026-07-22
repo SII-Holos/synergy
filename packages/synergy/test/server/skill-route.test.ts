@@ -270,6 +270,33 @@ description: bad: yaml: here
     }
   })
 
+  test("follows bounded URL redirects before importing an archive", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const bytes = await zip([{ name: "SKILL.md", content: manifest("redirect-import") }])
+    using server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        const url = new URL(request.url)
+        if (url.pathname === "/redirect-import.skill") {
+          return Response.redirect(`${url.origin}/redirected/redirect-import.skill`, 302)
+        }
+        return new Response(bytes, { status: 200, headers: { "content-length": String(bytes.length) } })
+      },
+    })
+
+    const response = await Server.App().request(scopedUrl(tmp.path, "/skill/import-url"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        url: `http://127.0.0.1:${server.port}/redirect-import.skill`,
+        scope: "project",
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ success: true, name: "redirect-import", scope: "project" })
+  })
+
   test("exports ZIP and .skill aliases and completes import-export-delete-import round trip", async () => {
     await using tmp = await tmpdir({ git: true })
     const app = Server.App()

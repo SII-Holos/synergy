@@ -75,6 +75,49 @@ function validateArchiveName(filename: string) {
   })
 }
 
+const MAX_URL_REDIRECTS = 5
+
+function validateDownloadUrl(url: URL) {
+  if (url.protocol === "http:" || url.protocol === "https:") return
+  throw new SkillArchive.InvalidError({
+    code: "skill.archive_url_invalid",
+    message: "Skill archive URLs must use HTTP or HTTPS",
+    path: url.toString(),
+  })
+}
+
+async function fetchArchive(url: URL) {
+  const signal = AbortSignal.timeout(15_000)
+  let current = url
+  for (let redirects = 0; redirects <= MAX_URL_REDIRECTS; redirects++) {
+    validateDownloadUrl(current)
+    const response = await fetch(current, {
+      redirect: "manual",
+      signal,
+      headers: { Accept: "application/zip, application/octet-stream" },
+    })
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response
+    const location = response.headers.get("location")
+    await response.body?.cancel().catch(() => {})
+    if (!location) {
+      throw new SkillArchive.InvalidError({
+        code: "skill.archive_url_fetch_failed",
+        message: `Skill archive redirect is missing a Location header: HTTP ${response.status}`,
+        path: current.toString(),
+      })
+    }
+    if (redirects === MAX_URL_REDIRECTS) {
+      throw new SkillArchive.InvalidError({
+        code: "skill.archive_url_redirect_limit",
+        message: `Skill archive URL exceeded ${MAX_URL_REDIRECTS} redirects`,
+        path: url.toString(),
+      })
+    }
+    current = new URL(location, current)
+  }
+  throw new Error("Unreachable redirect state")
+}
+
 async function readBoundedResponse(response: Response, source: string) {
   const declared = Number(response.headers.get("content-length") ?? 0)
   if (Number.isFinite(declared) && declared > SkillArchive.Policy.maxArchiveBytes) {
@@ -142,7 +185,7 @@ export const SkillRoute = new Hono()
     async (c) => {
       const [skills, diagnostics] = await Promise.all([Skill.all(), Skill.diagnostics()])
       return c.json({
-        items: await Promise.all(skills.map((skill) => SkillSummary.from(skill, ScopeContext.current.directory))),
+        items: skills.map(SkillSummary.from),
         diagnostics,
       })
     },
@@ -336,15 +379,13 @@ export const SkillRoute = new Hono()
       const { url, scope: requestedScope } = c.req.valid("json")
       try {
         const parsed = new URL(url)
+        validateDownloadUrl(parsed)
         validateArchiveName(parsed.pathname)
         let response: Response
         try {
-          response = await fetch(parsed, {
-            redirect: "error",
-            signal: AbortSignal.timeout(15_000),
-            headers: { Accept: "application/zip, application/octet-stream" },
-          })
+          response = await fetchArchive(parsed)
         } catch (error) {
+          if (error instanceof SkillArchive.InvalidError) throw error
           throw new SkillArchive.InvalidError({
             code: "skill.archive_url_fetch_failed",
             message: error instanceof Error ? error.message : "Unable to download Skill archive",

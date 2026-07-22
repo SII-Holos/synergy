@@ -1,5 +1,4 @@
 import { z } from "zod"
-import { SkillArchive } from "./archive"
 import { Skill } from "./skill"
 
 export namespace SkillSummary {
@@ -36,7 +35,7 @@ export namespace SkillSummary {
     })
     .meta({ ref: "SkillList" })
 
-  export async function from(skill: Skill.Info, instanceDirectory: string): Promise<Info> {
+  export function from(skill: Skill.Info): Info {
     const warnings = skill.diagnostics
       .filter((diagnostic) => diagnostic.severity === "warning")
       .map((diagnostic) => diagnostic.message)
@@ -62,7 +61,7 @@ export namespace SkillSummary {
       },
       declaredCompatibility: skill.declaredCompatibility,
       invocation: skill.invocation,
-      exportable: await SkillArchive.exportable(skill, instanceDirectory),
+      exportable: Skill.isExportable(skill),
       diagnostics: skill.diagnostics,
       entryFile: skill.backing.kind === "file" ? skill.backing.entryFile : undefined,
       baseDir: skill.backing.kind === "file" ? skill.backing.baseDir : undefined,

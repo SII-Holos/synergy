@@ -17,26 +17,26 @@ describe("SkillRenderer", () => {
       expected: ["one | two three"],
     },
     {
-      name: "uses zero-based $N placeholders without greedy swallowing",
-      template: "$0 | $1",
+      name: "uses one-based $N placeholders and lets the highest position consume the remaining arguments",
+      template: "$1 | $2",
       arguments: "one two three",
-      expected: ["one | two"],
+      expected: ["one | two three"],
     },
     {
       name: "treats single and double quoted arguments as one value",
-      template: "$0 | $1 | $2",
+      template: "$1 | $2 | $3",
       arguments: `"double value" 'single value' plain`,
       expected: ["double value | single value | plain"],
     },
     {
       name: "replaces out-of-range positions with empty strings",
-      template: "<$0><$3><$ARGUMENTS[4]>",
+      template: "<$1><$4><$ARGUMENTS[4]>",
       arguments: "only",
       expected: ["<only><><>"],
     },
     {
       name: "substitutes empty arguments without appending an empty request",
-      template: "Request: <$ARGUMENTS> <$0>",
+      template: "Request: <$ARGUMENTS> <$1>",
       arguments: "",
       expected: ["Request: <> <>"],
     },
@@ -54,13 +54,13 @@ describe("SkillRenderer", () => {
     },
     {
       name: "does not duplicate trailing text when any supported placeholder exists",
-      template: "First: $0",
+      template: "First: $1",
       arguments: "one two",
-      expected: ["First: one"],
+      expected: ["First: one two"],
     },
     {
       name: "keeps dynamic shell syntax literal",
-      template: "Never execute !`touch forbidden`; use $0.",
+      template: "Never execute !`touch forbidden`; use $1.",
       arguments: "literal",
       expected: ["Never execute !`touch forbidden`; use literal."],
     },
@@ -74,8 +74,8 @@ describe("SkillRenderer", () => {
     })
   }
 
-  test("advertises the supported zero-based placeholder grammar", () => {
-    expect(SkillRenderer.hints()).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (zero-based)"])
+  test("advertises zero-based indexed arguments and one-based positional placeholders", () => {
+    expect(SkillRenderer.hints()).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"])
   })
 })
 

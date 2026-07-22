@@ -94,6 +94,11 @@ export namespace Skill {
   const PROGRAMMATIC_SCOPE_RANK = 10
   const PLUGIN_SOURCE_RANK = 90
   const BUILTIN_SCOPE_RANK = 0
+  const exportability = new WeakMap<Info, boolean>()
+
+  export function isExportable(skill: Info) {
+    return exportability.get(skill) ?? false
+  }
 
   function compareRanks(left: Candidate, right: Candidate) {
     for (let index = 0; index < left.rank.length; index++) {
@@ -345,7 +350,13 @@ export namespace Skill {
       source: candidate.source,
       mode: candidate.validation,
     })
-    if (normalized.value || !candidate.normalizationShim) return normalized
+    if (
+      normalized.value ||
+      !candidate.normalizationShim ||
+      !candidate.normalizationShim.acceptedEntryNames.includes(path.basename(candidate.entryFile))
+    ) {
+      return normalized
+    }
 
     const fallback = await SkillManifest.normalizeFile({
       entryFile: candidate.entryFile,
@@ -374,27 +385,39 @@ export namespace Skill {
     }
   }
 
+  async function computeExportable(skill: Info) {
+    if (skill.backing.kind !== "file") return false
+    const baseDir = path.resolve(skill.backing.baseDir)
+    const entryFile = path.resolve(skill.backing.entryFile)
+    if (entryFile !== path.join(baseDir, "SKILL.md")) return false
+    if (!(await SkillSourceProfile.containsCanonicalPath(baseDir, ScopeContext.current.directory))) return false
+    const normalized = await SkillManifest.normalizeFile({ entryFile, source: "synergy", mode: "strict" })
+    return normalized.value?.name === skill.name && normalized.diagnostics.length === 0
+  }
+
   async function materialize(candidate: Candidate): Promise<{ info?: Info; diagnostics: Diagnostic[] }> {
-    if (candidate.kind === "programmatic") return { info: candidate.info, diagnostics: [] }
+    if (candidate.kind === "programmatic") {
+      exportability.set(candidate.info, false)
+      return { info: candidate.info, diagnostics: [] }
+    }
     const normalized = await normalizeFilesystemCandidate(candidate)
     if (!normalized.value) return { diagnostics: normalized.diagnostics }
-    return {
-      info: {
-        name: normalized.value.name,
-        description: normalized.value.description,
-        declaredLicense: normalized.value.declaredLicense,
-        declaredCompatibility: normalized.value.declaredCompatibility,
-        invocation: normalized.value.invocation,
-        origin: { kind: "filesystem", source: candidate.source, scope: candidate.scope },
-        backing: {
-          kind: "file",
-          baseDir: candidate.baseDir,
-          entryFile: candidate.entryFile,
-        },
-        diagnostics: normalized.value.diagnostics,
+    const info: Info = {
+      name: normalized.value.name,
+      description: normalized.value.description,
+      declaredLicense: normalized.value.declaredLicense,
+      declaredCompatibility: normalized.value.declaredCompatibility,
+      invocation: normalized.value.invocation,
+      origin: { kind: "filesystem", source: candidate.source, scope: candidate.scope },
+      backing: {
+        kind: "file",
+        baseDir: candidate.baseDir,
+        entryFile: candidate.entryFile,
       },
-      diagnostics: normalized.diagnostics,
+      diagnostics: normalized.value.diagnostics,
     }
+    exportability.set(info, await computeExportable(info).catch(() => false))
+    return { info, diagnostics: normalized.diagnostics }
   }
 
   export const state = ScopedState.create(async () => {

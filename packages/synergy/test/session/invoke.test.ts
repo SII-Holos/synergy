@@ -272,7 +272,7 @@ describe("SessionInvoke Skill command rendering", () => {
           )
           await Command.reload()
           const command = await Command.require("integration-skill")
-          expect(command.hints).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (zero-based)"])
+          expect(command.hints).toEqual(["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"])
 
           const session = await Session.create({})
           activeSessionID = session.id

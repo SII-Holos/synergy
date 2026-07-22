@@ -28,7 +28,7 @@ disable-model-invocation: false
 Write the instructions the model should receive when the Skill is loaded.
 ```
 
-For strict Skill sources, the entry file must be named exactly `SKILL.md`, and the containing directory name must match the manifest `name`. Lenient compatibility sources may also use `Skill.md`; they still normalize into the same runtime record. Existing `.agents/skills` entries created before this standardization remain loadable through the named `agents-pre-standardization-load` compatibility shim when they use `Skill.md`, unknown vendor fields, or another previously accepted non-standard shape.
+Canonical strict Skills use `SKILL.md`, and the containing directory name must match the manifest `name`. For backward compatibility, existing Synergy and Agent Skills entries named `Skill.md` remain loadable through named lenient shims; other lenient compatibility sources also accept that casing. These compatibility paths normalize into the same runtime record and do not weaken strict import or export validation.
 
 The body after frontmatter is the Skill content. Files under `references/`, `scripts/`, `assets/`, or any other child directory stay as resources inside the Skill directory. References are not embedded into the canonical Skill record; they load on demand through the `skill` tool.
 
@@ -57,7 +57,7 @@ One `SkillSourceProfile` registry defines every filesystem source Synergy scans.
 
 | Source       | Validation | Source rank | Accepted entries                   | Roots                                                                                                                                                                        |
 | ------------ | ---------- | ----------: | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Synergy      | strict     |         100 | `SKILL.md`                         | Project ancestors: `.synergy/skill`, `.synergy/skills`; global config: `skill`, `skills`; home: `.synergy/skill`, `.synergy/skills`; `SYNERGY_CONFIG_DIR`: `skill`, `skills` |
+| Synergy      | strict     |         100 | `SKILL.md`; legacy `Skill.md` shim | Project ancestors: `.synergy/skill`, `.synergy/skills`; global config: `skill`, `skills`; home: `.synergy/skill`, `.synergy/skills`; `SYNERGY_CONFIG_DIR`: `skill`, `skills` |
 | Agent Skills | strict     |          80 | `SKILL.md`; legacy `Skill.md` shim | Project ancestors: `.agents/skills`; home: `.agents/skills`                                                                                                                  |
 | OpenClaw     | lenient    |          80 | `SKILL.md`, `Skill.md`             | Workspace ancestors: `skills`; home: `.openclaw/skills`                                                                                                                      |
 | Claude       | lenient    |          70 | `SKILL.md`, `Skill.md`             | Project ancestors: `.claude/skills`; home: `.claude/skills`                                                                                                                  |
@@ -80,13 +80,13 @@ Other source roots are compatibility inputs, not import destinations. Reusing an
 
 Strict and lenient sources share one parsing and normalization pipeline.
 
-Strict sources are Synergy and Agent Skills. They require the strict manifest schema, reject unknown frontmatter keys, require `SKILL.md`, and require the directory name to match `name`. Invalid strict Synergy Skills do not enter the catalog; their diagnostics remain visible through Skill listing and reload results.
+Strict sources are Synergy and Agent Skills. Canonical entries require the strict manifest schema, reject unknown frontmatter keys, require `SKILL.md`, and require the directory name to match `name`. Invalid canonical strict Skills do not enter the catalog; their diagnostics remain visible through Skill listing and reload results.
 
-For backward compatibility, an Agent Skills candidate that fails strict validation is retried through the same lenient normalization pipeline only when the `agents-pre-standardization-load` shim declared by its SourceProfile applies. A loaded legacy entry receives both the field diagnostics and `skill.normalization_shim_applied`, remains non-standard for export, and does not weaken strict validation for new imports or Synergy roots.
+For backward compatibility, a strict-source candidate is retried through lenient normalization only when its SourceProfile names the entry casing in a normalization shim. Synergy's `synergy-legacy-entry-load` and Agent Skills' `agents-pre-standardization-load` shims accept legacy `Skill.md` entries. A loaded legacy entry receives field diagnostics plus `skill.normalization_shim_applied`, remains non-standard for export, and does not weaken strict validation for canonical `SKILL.md` entries or imports.
 
 Lenient sources are Claude, Codex, and OpenClaw. They require only a non-empty `name` and `description` to load. Supported Synergy fields normalize when their types are valid. Unknown vendor fields are ignored and reported as warnings. Invalid optional fields also produce warnings rather than inventing alternate runtime state.
 
-Programmatic built-in and plugin Skills normalize through the same manifest rules before they enter the catalog. The built-in creator Skill is `synergy-skill-creator`, invoked as `/synergy-skill-creator` when user invocation is enabled by the command catalog.
+Programmatic built-in Skills use strict manifest normalization. Programmatic plugin Skills retain the public plugin contract's compatible non-empty names and descriptions rather than inheriting filesystem filename constraints. The built-in creator Skill is `synergy-skill-creator`, invoked as `/synergy-skill-creator` when user invocation is enabled by the command catalog.
 
 ## Deterministic Precedence
 
@@ -99,7 +99,7 @@ Synergy groups all valid candidates by normalized `name` and chooses one winner 
 
 Scope ranks are `project` 40, `workspace` 35, `global` 20. Plugin and built-in programmatic candidates use lower scope ranks than filesystem project/workspace/global Skills, so a project Skill can override a plugin or built-in Skill with the same name.
 
-Source rank breaks ties inside the same scope: Synergy outranks Agent Skills and OpenClaw, Agent Skills and OpenClaw outrank Claude, and Claude outranks Codex. Root rank follows the order in the source profile. The final path/identifier comparison makes ties stable.
+Source rank breaks ties inside the same scope: Synergy outranks Agent Skills and OpenClaw, Agent Skills and OpenClaw outrank Claude, and Claude outranks Codex. For ancestor-backed roots within one source, the nearest ancestor wins before singular/plural root spelling; root definition order then breaks same-distance ties. The final path/identifier comparison makes ties stable.
 
 Shadowed candidates do not disappear silently. The winning Skill receives `skill.candidate_shadowed` diagnostics that name the winner, the shadowed candidate, and their ranks.
 
@@ -112,13 +112,13 @@ Two manifest flags control how a Skill can be invoked:
 
 The flags are independent. A Skill may be user-only, model-only, both, or neither.
 
-When a user invokes a Skill slash command, Synergy renders the Skill body with the Skill renderer, not the ordinary Command renderer. Skill placeholders are zero-based:
+When a user invokes a Skill slash command, Synergy renders the Skill body with the Skill renderer, not the ordinary Command renderer. `$N` placeholders remain one-based for compatibility, while `$ARGUMENTS[N]` is zero-based:
 
-| Placeholder                      | Meaning                                                                                      |
-| -------------------------------- | -------------------------------------------------------------------------------------------- |
-| `$0`, `$1`, `$2`                 | Positional quoted argument by zero-based index. Missing positions render as an empty string. |
-| `$ARGUMENTS[0]`, `$ARGUMENTS[1]` | Positional quoted argument by zero-based index. Missing positions render as an empty string. |
-| `$ARGUMENTS`                     | Raw trailing argument text exactly as entered.                                               |
+| Placeholder                      | Meaning                                                                                                                            |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `$1`, `$2`, `$3`                 | Positional quoted argument by one-based index. The highest position consumes the remaining arguments; missing positions are empty. |
+| `$ARGUMENTS[0]`, `$ARGUMENTS[1]` | Positional quoted argument by zero-based index. Missing positions render as an empty string.                                       |
+| `$ARGUMENTS`                     | Raw trailing argument text exactly as entered.                                                                                     |
 
 Single-quoted and double-quoted arguments are treated as one value for indexed placeholders. Raw `$ARGUMENTS` preserves the original trailing text, including quotes.
 
@@ -175,9 +175,9 @@ When the archive stores `SKILL.md` at the ZIP root, the importer reads the stric
 
 The importer rejects absolute paths, Windows drive paths, parent traversal, backslash paths, duplicate normalized paths, encrypted entries, non-regular entries, symlink metadata, hardlink metadata, invalid expanded sizes, entry-size mismatches, and paths that escape the staging directory.
 
-Extraction is transactional. Synergy extracts into a temporary `.skill-import-*` staging directory beside the destination, validates before final placement, uses a per-Skill install lock, refuses to overwrite an existing Skill directory, and removes staging and owned locks on success or failure.
+Extraction is transactional. Synergy extracts into a temporary `.skill-import-*` staging directory beside the destination, validates before final placement, uses a per-Skill owner lock, refuses to overwrite an existing Skill directory, and removes staging and owned locks on success or failure. Dead or expired owner locks are recovered without deleting a live importer's lock.
 
-`POST /skill/import` imports an uploaded archive into `global` scope by default or the requested `project`/`global` scope. `POST /skill/import-url` downloads a bounded archive with redirects disabled and a 15-second timeout, then passes the bytes through the same importer.
+`POST /skill/import` imports an uploaded archive into `global` scope by default or the requested `project`/`global` scope. `POST /skill/import-url` downloads a bounded archive with a shared 15-second timeout, follows at most five HTTP(S) redirects, and then passes the bytes through the same importer.
 
 A successful import reloads the Skill catalog and cascades to the Command catalog.
 
@@ -193,12 +193,12 @@ Export writes one top-level directory named after the Skill and preserves regula
 
 `POST /skill/reload` runs the `skill` reload target. The runtime clears scoped Skill state, rescans all live source roots, collects diagnostics, and cascades to the Command catalog so slash-command registration reflects the new invocation flags and Skill bodies.
 
-The runtime file watcher detects Skill changes when a changed file matches an accepted entry name inside a live Skill root. Synergy strict roots watch only `SKILL.md`; lenient roots and the Agent Skills legacy shim also watch `Skill.md`. Detection assigns project or global scope from the root location, debounces by scope, and reloads the union of affected targets.
+The runtime file watcher detects Skill changes when a changed file matches an accepted entry name inside a live Skill root. Canonical strict entries use `SKILL.md`; the Synergy and Agent Skills compatibility shims also watch legacy `Skill.md`, as do lenient roots. Detection assigns project or global scope from the root location, debounces by scope, and reloads the union of affected targets.
 
 Editing built-in source files under `packages/synergy/src` still requires restarting the backend process. Runtime reload refreshes runtime state; it does not reload already-imported module code.
 
 ## Compatibility Commitment
 
-Synergy preserves discovery of existing Claude, Codex, OpenClaw, and pre-standardization `.agents/skills` entries with their previously accepted entry names. Compatibility Skills load through the same catalog and `skill` tool as native Skills, with diagnostics for fields or legacy normalization Synergy ignores.
+Synergy preserves discovery of existing Synergy, Claude, Codex, OpenClaw, and pre-standardization `.agents/skills` entries with their previously accepted entry names. Compatibility Skills load through the same catalog and `skill` tool as native Skills, with diagnostics for fields or legacy normalization Synergy ignores.
 
 Compatibility does not create a second Skill system. The canonical runtime record, invocation flags, permission boundary, resource lookup, import/export validation, reload target, and precedence rules above are the supported Skill contract.

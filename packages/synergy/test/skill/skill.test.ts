@@ -95,6 +95,31 @@ describe.serial("skill discovery", () => {
     })
   })
 
+  test("loads legacy Synergy Skill.md entries through the compatibility shim", async () => {
+    await using tmp = await tmpdir({
+      git: true,
+      init: (directory) =>
+        createSkill(directory, ".synergy/skill/legacy-synergy", {
+          name: "legacy-synergy",
+          entry: "Skill.md",
+          fields: "legacy-field: preserved-by-loader\n",
+        }),
+    })
+
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const skill = await Skill.get("legacy-synergy")
+        expect(skill).toBeDefined()
+        expect(Skill.runtimeCompatibility(skill!)).toBe("partial")
+        expect(skill!.origin).toEqual({ kind: "filesystem", source: "synergy", scope: "project" })
+        expect(fileBacking(skill!).entryFile).toMatch(/Skill\.md$/)
+        const shim = skill!.diagnostics.find((diagnostic) => diagnostic.code === "skill.normalization_shim_applied")
+        expect(shim?.reason.id).toBe("synergy-legacy-entry-load")
+      },
+    })
+  })
+
   test("isolates missing and malformed strict manifests with canonical diagnostics", async () => {
     await using tmp = await tmpdir({
       git: true,
@@ -291,6 +316,61 @@ describe.serial("skill discovery", () => {
         expect(Skill.runtimeCompatibility(skill)).toBe("native")
       },
     })
+  })
+
+  test("prefers the nearest ancestor root before singular versus plural root spelling", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const project = path.join(tmp.path, "project")
+    await createSkill(tmp.path, ".synergy/skill/ancestor-priority", {
+      name: "ancestor-priority",
+      description: "Parent singular root.",
+    })
+    await createSkill(project, ".synergy/skills/ancestor-priority", {
+      name: "ancestor-priority",
+      description: "Nearest plural root.",
+    })
+
+    const scope = (await (await import("../../src/scope")).Scope.fromDirectory(project)).scope
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const skill = (await Skill.get("ancestor-priority"))!
+        expect(skill.description).toBe("Nearest plural root.")
+        expect(normalizedPath(fileBacking(skill).entryFile)).toContain(
+          "project/.synergy/skills/ancestor-priority/SKILL.md",
+        )
+      },
+    })
+  })
+
+  test("preserves compatible names for programmatic plugin Skills", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const originalSkillEntries = Plugin.skillEntries
+    ;(Plugin as any).skillEntries = mock(async () => [
+      {
+        name: "Research Helper",
+        description: "Legacy plugin Skill name.",
+        content: "# Research Helper",
+        contributionId: "research-helper",
+        pluginId: "legacy-plugin",
+        pluginDir: path.join(tmp.path, "legacy-plugin"),
+      },
+    ])
+    try {
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          await Skill.reload()
+          expect(await Skill.get("Research Helper")).toMatchObject({
+            name: "Research Helper",
+            origin: { kind: "plugin", pluginID: "legacy-plugin", contributionID: "research-helper" },
+          })
+        },
+      })
+    } finally {
+      ;(Plugin as any).skillEntries = originalSkillEntries
+      await ScopeContext.provide({ scope: await tmp.scope(), fn: () => Skill.reload() })
+    }
   })
 
   test("plugin duplicates use stable plugin and contribution identity", async () => {

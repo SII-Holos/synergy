@@ -278,10 +278,12 @@ describe.serial("skill standardization", () => {
         { root: path.join(tmp.path, ".openclaw", "skills"), scope: "global" },
       ] as const
       const supported = [
-        ...strictRoots.map(({ root, scope }, index) => ({
-          file: path.join(root, `strict-${index}`, "SKILL.md"),
-          scope,
-        })),
+        ...strictRoots.flatMap(({ root, scope }, index) =>
+          (["SKILL.md", "Skill.md"] as const).map((entry) => ({
+            file: path.join(root, `strict-${index}-${entry}`, entry),
+            scope,
+          })),
+        ),
         ...agentsRoots.flatMap(({ root, scope }, index) =>
           (["SKILL.md", "Skill.md"] as const).map((entry) => ({
             file: path.join(root, `agents-${index}-${entry}`, entry),
@@ -298,10 +300,8 @@ describe.serial("skill standardization", () => {
       await Promise.all(
         supported.map(({ file }) => Bun.write(file, "---\nname: reload-live\ndescription: live\n---\n")),
       )
-      const rejected = strictRoots.map(({ root }, index) => path.join(root, `strict-rejected-${index}`, "Skill.md"))
-      await Promise.all(
-        rejected.map((file) => Bun.write(file, "---\nname: reload-rejected\ndescription: rejected\n---\n")),
-      )
+      const rejected = strictRoots.map(({ root }, index) => path.join(root, `strict-rejected-${index}`, "README.md"))
+      await Promise.all(rejected.map((file) => Bun.write(file, "# Not a Skill entry\n")))
 
       const scope = (await (await import("../../src/scope")).Scope.fromDirectory(project)).scope
       await ScopeContext.provide({

@@ -68,6 +68,13 @@ export namespace SkillSourceProfile {
       validation: "strict",
       sourceRank: 100,
       acceptedEntryNames: ["SKILL.md"],
+      normalizationShim: {
+        id: "synergy-legacy-entry-load",
+        owner: "skill",
+        deleteWhen: "All supported releases have migrated legacy Synergy Skill.md entries to SKILL.md",
+        validation: "lenient",
+        acceptedEntryNames: ["Skill.md"],
+      },
       roots: [
         { scope: "project", anchor: "ancestor", path: ".synergy/skill" },
         { scope: "project", anchor: "ancestor", path: ".synergy/skills" },
@@ -179,7 +186,7 @@ export namespace SkillSourceProfile {
             scope: definition.scope,
             sourceRank: profile.sourceRank,
             scopeRank: SCOPE_RANKS[definition.scope],
-            rootRank: (profile.roots.length - definitionIndex) * 10_000 - anchorIndex,
+            rootRank: profile.roots.length - definitionIndex - anchorIndex * 10_000,
             path: resolved,
             acceptedEntryNames: [
               ...new Set([...profile.acceptedEntryNames, ...(profile.normalizationShim?.acceptedEntryNames ?? [])]),

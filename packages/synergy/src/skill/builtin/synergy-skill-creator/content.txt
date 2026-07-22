@@ -49,13 +49,13 @@ disable-model-invocation: true
 
 ## Slash Arguments
 
-For Skill Slash content, placeholders are zero-based:
+For Skill Slash content, `$N` placeholders are one-based while `$ARGUMENTS[N]` stays zero-based:
 
 - `$ARGUMENTS` expands to the full trailing request text.
-- `$ARGUMENTS[N]` and `$N` expand to the zero-based positional argument.
+- `$ARGUMENTS[N]` expands to the zero-based positional argument.
+- `$N` expands to the one-based positional argument, and the highest `$N` consumes the remaining arguments.
 - Quoted text is one argument with the outer quotes removed.
 - Out-of-range placeholders become an empty string.
-- A highest positional placeholder does not consume the rest of the request.
 - If the body has supported placeholders, Synergy only substitutes them.
 - If the body has no placeholders and trailing text exists, Synergy uses the no-placeholder fallback: it adds that text as a separate user request part after the Skill content.
 

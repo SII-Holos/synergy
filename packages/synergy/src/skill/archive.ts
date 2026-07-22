@@ -316,6 +316,75 @@ export namespace SkillArchive {
     return normalized.value
   }
 
+  const InstallLockOwner = z.object({
+    pid: z.number().int().positive(),
+    createdAt: z.number().int().nonnegative(),
+    token: z.string().min(1),
+  })
+
+  type InstallLock = { path: string; token: string }
+  const INSTALL_LOCK_STALE_MS = 15 * 60 * 1_000
+
+  function isProcessAlive(pid: number) {
+    try {
+      process.kill(pid, 0)
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  async function readInstallLock(lockPath: string) {
+    return Bun.file(path.join(lockPath, "owner.json"))
+      .json()
+      .then((value) => InstallLockOwner.safeParse(value))
+      .then((result) => (result.success ? result.data : undefined))
+      .catch(() => undefined)
+  }
+
+  async function acquireInstallLock(lockPath: string): Promise<InstallLock | undefined> {
+    const token = crypto.randomUUID()
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        await fs.mkdir(lockPath)
+        try {
+          await Bun.write(
+            path.join(lockPath, "owner.json"),
+            JSON.stringify({ pid: process.pid, createdAt: Date.now(), token }),
+          )
+        } catch (error) {
+          await fs.rm(lockPath, { recursive: true, force: true }).catch(() => {})
+          throw error
+        }
+        return { path: lockPath, token }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error
+        const owner = await readInstallLock(lockPath)
+        const age = owner
+          ? Date.now() - owner.createdAt
+          : await fs
+              .stat(lockPath)
+              .then((stat) => Date.now() - stat.mtimeMs)
+              .catch(() => 0)
+        if (age <= INSTALL_LOCK_STALE_MS && (!owner || isProcessAlive(owner.pid))) return undefined
+        const stalePath = `${lockPath}.stale-${token}`
+        try {
+          await fs.rename(lockPath, stalePath)
+          await fs.rm(stalePath, { recursive: true, force: true })
+        } catch (renameError) {
+          if ((renameError as NodeJS.ErrnoException).code !== "ENOENT") throw renameError
+        }
+      }
+    }
+    return undefined
+  }
+
+  async function releaseInstallLock(lock: InstallLock) {
+    const owner = await readInstallLock(lock.path)
+    if (owner?.token !== lock.token) return
+    await fs.rm(lock.path, { recursive: true, force: true }).catch(() => {})
+  }
+
   export async function install(input: {
     bytes: ArrayBuffer | Uint8Array
     destination: string
@@ -333,7 +402,7 @@ export namespace SkillArchive {
     await fs.mkdir(input.destination, { recursive: true })
     const staging = await fs.mkdtemp(path.join(path.dirname(input.destination), ".skill-import-"))
     let reader: ZipReader<Uint8Array> | undefined
-    let lock: string | undefined
+    let lock: InstallLock | undefined
     try {
       reader = new ZipReader(new Uint8ArrayReader(bytes), {
         useWebWorkers: false,
@@ -356,19 +425,14 @@ export namespace SkillArchive {
       const normalized = await validateStrict(stagedRoot, parsedName)
       const target = path.join(input.destination, normalized.name)
       const lockPath = path.join(input.destination, `.${normalized.name}.skill-install.lock`)
-      try {
-        await fs.mkdir(lockPath)
-        lock = lockPath
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
-          throw new ConflictError({
-            code: "skill.archive_conflict",
-            message: `Skill '${normalized.name}' is already being installed`,
-            name: normalized.name,
-            path: target,
-          })
-        }
-        throw error
+      lock = await acquireInstallLock(lockPath)
+      if (!lock) {
+        throw new ConflictError({
+          code: "skill.archive_conflict",
+          message: `Skill '${normalized.name}' is already being installed`,
+          name: normalized.name,
+          path: target,
+        })
       }
       if (
         await fs
@@ -408,7 +472,7 @@ export namespace SkillArchive {
       })
     } finally {
       if (reader) await reader.close().catch(() => {})
-      if (lock) await fs.rm(lock, { recursive: true, force: true }).catch(() => {})
+      if (lock) await releaseInstallLock(lock)
       await fs.rm(staging, { recursive: true, force: true }).catch(() => {})
     }
   }

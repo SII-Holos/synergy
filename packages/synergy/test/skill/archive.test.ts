@@ -268,6 +268,26 @@ describe("skill archive", () => {
     expect(await stagingEntries(destination)).toEqual([])
   })
 
+  test("recovers an install lock whose recorded owner is no longer alive", async () => {
+    await using tmp = await tmpdir()
+    const destination = path.join(tmp.path, "skills")
+    const lock = path.join(destination, ".stale-lock-skill.skill-install.lock")
+    await fs.mkdir(lock, { recursive: true })
+    await Bun.write(
+      path.join(lock, "owner.json"),
+      JSON.stringify({ pid: 2_147_483_647, createdAt: 0, token: "dead-owner" }),
+    )
+
+    const result = await SkillArchive.install({
+      bytes: await archive([{ name: "SKILL.md", content: standardManifest("stale-lock-skill") }]),
+      destination,
+    })
+
+    expect(result).toEqual({ name: "stale-lock-skill", directory: path.join(destination, "stale-lock-skill") })
+    expect(await Bun.file(path.join(destination, "stale-lock-skill", "SKILL.md")).exists()).toBe(true)
+    expect(await Bun.file(path.join(lock, "owner.json")).exists()).toBe(false)
+  })
+
   test("exports strict file-backed skills unchanged under one top-level directory", async () => {
     await using tmp = await tmpdir({ git: true })
     const baseDir = path.join(tmp.path, ".synergy", "skill", "export-skill")

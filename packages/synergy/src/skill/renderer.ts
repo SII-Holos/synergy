@@ -2,7 +2,7 @@ export namespace SkillRenderer {
   const argumentPattern = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
   const quotePattern = /^["']|["']$/g
   const placeholderPattern = /\$ARGUMENTS\[(\d+)\]|\$ARGUMENTS|\$(\d+)/g
-  const supportedHints = ["$ARGUMENTS", "$ARGUMENTS[N]", "$N (zero-based)"]
+  const supportedHints = ["$ARGUMENTS", "$ARGUMENTS[N]", "$N (one-based)"]
 
   export function hints() {
     return [...supportedHints]
@@ -16,10 +16,18 @@ export namespace SkillRenderer {
     }
 
     const args = (input.arguments.match(argumentPattern) ?? []).map((argument) => argument.replace(quotePattern, ""))
+    const highestPosition = placeholders.reduce(
+      (highest, placeholder) => Math.max(highest, Number(placeholder[2] ?? 0)),
+      0,
+    )
     const rendered = template.replaceAll(placeholderPattern, (placeholder, indexed, positional) => {
       if (placeholder === "$ARGUMENTS") return input.arguments
-      const index = Number(indexed ?? positional)
-      return args[index] ?? ""
+      if (indexed !== undefined) return args[Number(indexed)] ?? ""
+      const position = Number(positional)
+      const argumentIndex = position - 1
+      if (argumentIndex < 0 || argumentIndex >= args.length) return ""
+      if (position === highestPosition) return args.slice(argumentIndex).join(" ")
+      return args[argumentIndex] ?? ""
     })
     return [rendered]
   }
