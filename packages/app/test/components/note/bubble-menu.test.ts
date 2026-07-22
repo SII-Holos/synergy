@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { createBubbleMenu } from "./bubble-menu"
+import { createBubbleMenu } from "../../../src/components/note/bubble-menu"
 
 describe("Note bubble menu", () => {
   test("stays hidden and out of document flow until Floating UI positions it", () => {
