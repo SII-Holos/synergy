@@ -76,13 +76,13 @@ Session turns establish the root observability context. LLM and concurrent tool 
 
 ## Session memory pressure
 
-After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may run Bun GC. Normal GC is throttled by `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
+After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples process memory and may request Bun GC. Collection is coordinated process-wide: concurrent session requests share one in-flight collection, every pressure level observes `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`), and GC is scheduled asynchronously so a large heap cannot turn a periodic checkpoint into a stop-the-world server stall. Soft pressure is tracked separately from critical pressure so the runtime can start converging before critical thresholds:
 
 - `SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES` (default `1.25 GiB`)
 - `SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES` (default `1 GiB`)
 - `SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES` (default `1 GiB`)
 
-Critical pressure bypasses the GC interval when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds:
+Critical pressure is reported when RSS, JavaScript heap, external allocations, ArrayBuffers, or Linux cgroup memory crosses the configured thresholds. It remains subject to the process-wide collection interval:
 
 - `SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES` (default `9.5 GiB`)
 - `SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES` (default `1.75 GiB`)

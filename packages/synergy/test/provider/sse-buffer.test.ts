@@ -43,3 +43,92 @@ describe("ProviderStream.enforceSSEEventParserBound", () => {
     await expect(read(stream)).rejects.toThrow("SSE event parser bound of 32 bytes exceeded")
   })
 })
+
+describe("ProviderStream.withIdleTimeout", () => {
+  test("releases the upstream reader after normal completion", async () => {
+    const input = source("data")
+    const idle = new AbortController()
+
+    await expect(
+      read(
+        ProviderStream.withIdleTimeout(input, {
+          controller: idle,
+          signal: idle.signal,
+          timeoutMs: 100,
+        }),
+      ),
+    ).resolves.toBe("data")
+    expect(input.locked).toBe(false)
+  })
+
+  test("cancels and releases the upstream reader after downstream cancellation", async () => {
+    let cancelled: unknown
+    const input = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode("data"))
+      },
+      cancel(reason) {
+        cancelled = reason
+      },
+    })
+    const idle = new AbortController()
+    const reader = ProviderStream.withIdleTimeout(input, {
+      controller: idle,
+      signal: idle.signal,
+      timeoutMs: 100,
+    }).getReader()
+
+    await reader.read()
+    await reader.cancel("stop")
+
+    expect(cancelled).toBe("stop")
+    expect(input.locked).toBe(false)
+  })
+
+  test("cancels and releases the upstream reader after an upstream error", async () => {
+    const input = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.error(new Error("broken stream"))
+      },
+    })
+    const idle = new AbortController()
+
+    await expect(
+      read(
+        ProviderStream.withIdleTimeout(input, {
+          controller: idle,
+          signal: idle.signal,
+          timeoutMs: 100,
+        }),
+      ),
+    ).rejects.toThrow("broken stream")
+    expect(input.locked).toBe(false)
+  })
+
+  test("cancels and releases the upstream reader after an idle timeout", async () => {
+    let cancelled: unknown
+    let sent = false
+    const input = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (sent) return
+        sent = true
+        controller.enqueue(encoder.encode("data"))
+      },
+      cancel(reason) {
+        cancelled = reason
+      },
+    })
+    const idle = new AbortController()
+    const reader = ProviderStream.withIdleTimeout(input, {
+      controller: idle,
+      signal: idle.signal,
+      timeoutMs: 20,
+    }).getReader()
+
+    await reader.read()
+    await expect(reader.read()).rejects.toMatchObject({ name: "TimeoutError" })
+
+    expect(cancelled).toMatchObject({ name: "TimeoutError" })
+    expect(input.locked).toBe(false)
+  })
+})

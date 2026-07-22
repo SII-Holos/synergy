@@ -30,9 +30,9 @@ export namespace SessionMemoryPressure {
 
   export type Decision =
     | { action: "unavailable"; reason: "gc_unavailable"; critical: boolean }
-    | { action: "skip"; reason: "interval"; critical: false; nextEligibleAt: number }
+    | { action: "skip"; reason: "interval"; critical: boolean; nextEligibleAt: number }
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
-    | { action: "critical_forced"; reason: "critical_pressure"; critical: true }
+    | { action: "critical"; reason: "critical_pressure"; critical: true }
 
   type PressureLevel = "normal" | "soft" | "critical"
 
@@ -57,6 +57,7 @@ export namespace SessionMemoryPressure {
   type ReleaseResult = CollectionResult & { releaseCount: number }
 
   let lastGCAt = 0
+  let collectionInFlight: Promise<CollectionResult> | undefined
   let cachedCgroupDir: string | undefined | null
   let pendingRelease: { count: number; input: CollectionInput } | undefined
   let releaseTimer: ReturnType<typeof setTimeout> | undefined
@@ -109,13 +110,13 @@ export namespace SessionMemoryPressure {
     const critical = pressureLevel(input.snapshot, input.thresholds) === "critical"
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
-    if (critical) return { action: "critical_forced", reason: "critical_pressure", critical: true }
 
     const nextEligibleAt = input.lastGCAt + input.thresholds.minIntervalMs
     if (input.lastGCAt > 0 && input.now < nextEligibleAt) {
-      return { action: "skip", reason: "interval", critical: false, nextEligibleAt }
+      return { action: "skip", reason: "interval", critical, nextEligibleAt }
     }
 
+    if (critical) return { action: "critical", reason: "critical_pressure", critical: true }
     return { action: "normal", reason: "interval_elapsed", critical: false }
   }
 
@@ -138,6 +139,18 @@ export namespace SessionMemoryPressure {
   }
 
   export async function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
+    if (collectionInFlight) return collectionInFlight
+
+    const pending = collectOnce(input)
+    collectionInFlight = pending
+    try {
+      return await pending
+    } finally {
+      if (collectionInFlight === pending) collectionInFlight = undefined
+    }
+  }
+
+  async function collectOnce(input: CollectionInput): Promise<CollectionResult> {
     const now = input.now?.() ?? Date.now()
     const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
@@ -152,7 +165,7 @@ export namespace SessionMemoryPressure {
     })
 
     if (decision.action === "skip" || decision.action === "unavailable") {
-      log.info("gc skipped", {
+      log.debug("gc skipped", {
         sessionID: input.sessionID,
         messageID: input.messageID,
         phase: input.phase,
@@ -163,7 +176,7 @@ export namespace SessionMemoryPressure {
       return { decision, before, thresholds, pressure }
     }
 
-    await collect(decision.action === "critical_forced")
+    await collect(false)
     lastGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
     log.info("gc completed", {
@@ -243,14 +256,15 @@ export namespace SessionMemoryPressure {
   export function resetForTest(lastRunAt = 0) {
     if (releaseTimer) clearTimeout(releaseTimer)
     lastGCAt = lastRunAt
+    collectionInFlight = undefined
     cachedCgroupDir = undefined
     pendingRelease = undefined
     releaseTimer = undefined
     releaseFlushInFlight = undefined
   }
 
-  async function defaultCollect(synchronous: boolean) {
-    Bun.gc(synchronous)
+  async function defaultCollect() {
+    Bun.gc(false)
   }
 
   async function cgroupMemory() {
