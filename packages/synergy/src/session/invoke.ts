@@ -1903,30 +1903,34 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
     const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
-      const session = await SessionManager.getSession(sessionID)
-      if (!session) continue
-      if (session.agenda) continue
+      try {
+        const session = await SessionManager.getSession(sessionID)
+        if (!session) continue
+        if (session.agenda) continue
 
-      const messages = await effectiveCompactedMessages(sessionID)
-      const pendingReply = SessionProgress.pendingReply(messages)
+        const messages = await effectiveCompactedMessages(sessionID)
+        const pendingReply = SessionProgress.pendingReply(messages)
 
-      if (session.pendingReply !== pendingReply) {
-        await Session.update(sessionID, (draft) => {
-          draft.pendingReply = pendingReply || undefined
-        })
-      }
-
-      if (!pendingReply) continue
-
-      if (!SessionManager.isRunning(sessionID)) {
-        const repaired = await repairAfterAbort(sessionID)
-        if (repaired) {
-          log.info("repaired incomplete assistant during startup recovery", { sessionID })
-          continue
+        if (session.pendingReply !== pendingReply) {
+          await Session.update(sessionID, (draft) => {
+            draft.pendingReply = pendingReply || undefined
+          })
         }
-      }
 
-      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+        if (!pendingReply) continue
+
+        if (!SessionManager.isRunning(sessionID)) {
+          const repaired = await repairAfterAbort(sessionID)
+          if (repaired) {
+            log.info("repaired incomplete assistant during startup recovery", { sessionID })
+            continue
+          }
+        }
+
+        log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+      } catch (error) {
+        log.warn("pending session startup recovery failed", { sessionID, error })
+      }
     }
   }
 

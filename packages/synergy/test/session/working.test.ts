@@ -569,6 +569,45 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("resumePending isolates unreadable sessions during startup recovery", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const corrupt = await Session.create({ id: Identifier.create("session", false, 1) })
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: corrupt.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: corrupt.id,
+            messageID: user.id,
+            type: "attachment",
+            mime: "application/octet-stream",
+            url: "data:broken",
+          })
+          await Session.update(corrupt.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          const stale = await Session.create({ id: Identifier.create("session", false, 2) })
+          await Session.update(stale.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+
+          expect((await Session.get(corrupt.id)).pendingReply).toBe(true)
+          expect((await Session.get(stale.id)).pendingReply).toBeUndefined()
+        },
+      })
+    })
+
     test("resumePending reconciles interrupted Cortex delegation state after restart", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
