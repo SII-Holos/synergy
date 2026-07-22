@@ -39,11 +39,11 @@ export class TextSelectionController {
     if (this.#timer) clearTimeout(this.#timer)
     const raw = options?.excluded ? "" : (text ?? "")
     const normalized = raw.trim() ? raw : ""
+    this.#tooLarge = normalized.length > this.#maxChars
+    this.#current = normalized && !this.#tooLarge ? { text: normalized } : undefined
     this.#timer = setTimeout(() => {
       if (generation !== this.#generation) return
       this.#timer = undefined
-      this.#tooLarge = normalized.length > this.#maxChars
-      this.#current = normalized && !this.#tooLarge ? { text: normalized } : undefined
       for (const listener of this.#listeners) listener(this.current())
     }, this.#settleMs)
   }

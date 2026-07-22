@@ -52,6 +52,7 @@ export namespace AgentCall {
         input.timeout.abort(new DOMException("Agent call timed out", "TimeoutError"))
         reject(new Error("timeout", `Agent ${input.agent} timed out after ${input.timeoutMs}ms`))
       }, input.timeoutMs)
+      timer.unref?.()
       if (input.signal) {
         onCancel = () => reject(new Error("cancelled", `Agent ${input.agent} was cancelled`))
         if (input.signal.aborted) onCancel()

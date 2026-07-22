@@ -15,6 +15,19 @@ describe("TextSelectionController", () => {
     expect(values).toEqual([" second ", undefined])
   })
 
+  test("exposes the latest selection immediately while notifications settle", async () => {
+    const controller = new TextSelectionController({ settleMs: 10 })
+    const values: Array<string | undefined> = []
+    controller.onSettled((snapshot) => values.push(snapshot?.text))
+
+    controller.update("latest")
+
+    expect(controller.current()).toEqual({ text: "latest" })
+    expect(values).toEqual([])
+    await Bun.sleep(15)
+    expect(values).toEqual(["latest"])
+  })
+
   test("excludes sensitive and oversized text without truncation", async () => {
     const controller = new TextSelectionController({ settleMs: 1, maxChars: 4 })
     controller.update("secret", { excluded: true })

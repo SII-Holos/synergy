@@ -130,6 +130,7 @@ export namespace SessionInvoke {
   type InternalInvokeInput = InvokeInput & {
     ephemeralTools?: ToolResolver.EphemeralTool[]
     maxOutputTokens?: number
+    origin?: MessageV2.OriginUser
   }
 
   async function invokeWithInternalTools(input: InternalInvokeInput) {
@@ -167,7 +168,7 @@ export namespace SessionInvoke {
   export const invoke = fn(InvokeInput, async (input) => invokeWithInternalTools(input))
 
   export async function invokeInternal(input: InternalInvokeInput) {
-    return invokeWithInternalTools(input)
+    return invokeWithInternalTools({ ...input, origin: input.origin ?? { type: "system" } })
   }
 
   async function recallMemory(

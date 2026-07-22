@@ -19,7 +19,7 @@ import {
   getSelectionRange,
   setCursorPosition,
 } from "./editor-dom"
-import { inlineText, isInlinePart } from "./content"
+import { inlineCompletionPrefix, inlineText, isInlinePart } from "./content"
 import type { PromptInputStore } from "./types"
 import type { ComposerEdit, TextRange } from "./composer-document"
 
@@ -437,6 +437,7 @@ export function usePromptEditor(input: PromptEditorInput) {
     isEditableRange,
     applyDocumentEdits,
     isApplyingDocumentEdits: () => applyingDocumentEdits,
+    completionPrefix: () => inlineCompletionPrefix(prompt.current(), getCursorPosition(input.editor())),
     documentRange,
   }
 }

@@ -15,7 +15,7 @@ function observerInput(message: MessageV2.WithParts) {
     .trim()
   if (!text) return
   const origin = derived.info.origin?.type
-  if (origin === "system" || origin === "cortex" || origin === "compaction" || origin === "blueprint") return
+  if (origin !== "user" && origin !== "channel" && origin !== "agenda") return
   return {
     message: {
       id: derived.info.id,

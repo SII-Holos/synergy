@@ -1642,7 +1642,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
     editor: () => editorRef,
     queueScroll,
     onWorktreeUnavailable: () => workflowDialog.show(() => <WorktreeUnavailableDialog />),
-    beforeSubmit: (signal) => composerDocument!.beforeSubmit(signal),
+    beforeSubmit: () => composerDocument!.beforeSubmit(),
   })
 
   createEffect(() => {
@@ -1837,7 +1837,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
           <Show when={activeCompletion()}>
             {(completion) => (
               <div class="absolute top-0 inset-x-0 px-5 py-3 pr-12 text-14-regular pointer-events-none whitespace-pre-wrap text-text-subtle">
-                <span class="invisible">{editor.documentText().slice(0, completion().position)}</span>
+                <span class="invisible">{editor.completionPrefix()}</span>
                 <span>{completion().text}</span>
               </div>
             )}

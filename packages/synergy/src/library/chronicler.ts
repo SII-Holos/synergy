@@ -58,11 +58,12 @@ export namespace Chronicler {
 
     ctx.abort.addEventListener("abort", () => SessionInvoke.cancel(childSessionID))
 
-    await SessionInvoke.invoke({
+    await SessionInvoke.invokeInternal({
       messageID: Identifier.ascending("message"),
       sessionID: childSessionID,
       model: { providerID: model.providerID, modelID: model.id },
       agent: "chronicler",
+      origin: { type: "system" },
       parts: [
         {
           type: "text",

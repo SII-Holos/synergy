@@ -9,6 +9,7 @@ const originalAgentModel = Agent.getAvailableModel
 const originalProviderGetModel = Provider.getModel
 const originalStream = LLM.stream
 const originalTakeTextStream = LLM.takeTextStream
+const originalSetTimeout = globalThis.setTimeout
 
 afterEach(() => {
   ;(Agent.get as any) = originalAgentGet
@@ -16,6 +17,7 @@ afterEach(() => {
   ;(Provider.getModel as any) = originalProviderGetModel
   ;(LLM.stream as any) = originalStream
   ;(LLM.takeTextStream as any) = originalTakeTextStream
+  globalThis.setTimeout = originalSetTimeout
 })
 
 function installAgent() {
@@ -115,6 +117,32 @@ describe("AgentCall", () => {
     const controller = new AbortController()
     const pending = call({ signal: controller.signal })
     await Bun.sleep(0)
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ code: "cancelled" })
+  })
+
+  test("does not keep the process alive while a call timeout is pending", async () => {
+    installAgent()
+    let callTimer: { hasRef?: () => boolean } | undefined
+    globalThis.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: unknown[]) => {
+      const timer = originalSetTimeout(handler, timeout, ...args)
+      if (timeout === 1_000) callTimer = timer as unknown as { hasRef?: () => boolean }
+      return timer
+    }) as typeof setTimeout
+    const streamStarted = Promise.withResolvers<void>()
+    ;(LLM.stream as any) = mock(async () => {
+      streamStarted.resolve()
+      return {
+        textStream: (async function* () {
+          if (false) yield ""
+          await new Promise(() => {})
+        })(),
+      }
+    })
+    const controller = new AbortController()
+    const pending = call({ signal: controller.signal })
+    await streamStarted.promise
+    expect(callTimer?.hasRef?.()).toBe(false)
     controller.abort()
     await expect(pending).rejects.toMatchObject({ code: "cancelled" })
   })

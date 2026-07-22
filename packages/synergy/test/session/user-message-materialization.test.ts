@@ -40,11 +40,19 @@ describe("SessionUserMessageMaterialization.input", () => {
     expect(Object.keys(input!)).toEqual(["message"])
   })
 
-  test("excludes system, cortex, and compaction messages", () => {
+  test("allows only user-authored and user-delivered origins", () => {
     expect(SessionUserMessageMaterialization.input(message({ partOrigin: "system" }))).toBeUndefined()
-    expect(
-      SessionUserMessageMaterialization.input(message({ origin: { type: "cortex", sessionID: "session_child" } })),
-    ).toBeUndefined()
+    const excluded: MessageV2.User["origin"][] = [
+      { type: "system" },
+      { type: "cortex", sessionID: "session_child" },
+      { type: "blueprint", detail: "review" },
+      { type: "compaction" },
+      { type: "agent", sessionID: "session_agent" },
+      { type: "plugin", pluginID: "example" },
+    ]
+    for (const origin of excluded) {
+      expect(SessionUserMessageMaterialization.input(message({ origin }))).toBeUndefined()
+    }
     expect(
       SessionUserMessageMaterialization.input(
         message({

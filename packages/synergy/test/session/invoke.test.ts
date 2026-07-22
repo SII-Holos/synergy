@@ -250,6 +250,40 @@ async function removeWorktreeSession(sessionID: string, worktreeID: string | und
   await Session.remove(sessionID).catch(() => undefined)
 }
 
+describe("SessionInvoke internal message origins", () => {
+  test("persists system provenance by default and preserves explicit internal provenance", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        try {
+          const system = await SessionInvoke.invokeInternal({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            parts: [{ type: "text", text: "internal prompt" }],
+          })
+          expect((system.info as MessageV2.User).origin).toEqual({ type: "system" })
+
+          const plugin = await SessionInvoke.invokeInternal({
+            sessionID: session.id,
+            agent: "synergy",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            noReply: true,
+            origin: { type: "plugin", pluginID: "example" },
+            parts: [{ type: "text", text: "plugin prompt" }],
+          })
+          expect((plugin.info as MessageV2.User).origin).toEqual({ type: "plugin", pluginID: "example" })
+        } finally {
+          await Session.remove(session.id)
+        }
+      },
+    })
+  })
+})
+
 describe("SessionInvoke workspace execution context", () => {
   test("direct loop restores the persisted worktree workspace without ambient scope", async () => {
     await using tmp = await tmpdir({ git: true })

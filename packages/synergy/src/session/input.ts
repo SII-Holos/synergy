@@ -170,7 +170,11 @@ function attachmentExtractionFailure(input: {
   }
 }
 
-export async function createUserMessage(input: InvokeInput, rootIDOverride?: string) {
+export type CreateUserMessageInput = InvokeInput & {
+  origin?: MessageV2.OriginUser
+}
+
+export async function createUserMessage(input: CreateUserMessageInput, rootIDOverride?: string) {
   const { Session } = await import(".")
   const { Agent } = await import("@/agent/agent")
   const session = await Session.get(input.sessionID).catch(() => undefined)
@@ -197,7 +201,7 @@ export async function createUserMessage(input: InvokeInput, rootIDOverride?: str
   })
   const externalMetadata = WorkflowUserWrapper.stripReservedMetadata(input.metadata)
   const messageID = input.messageID ?? Identifier.ascending("message")
-  const origin = MessageV2.originFromMetadata(input.metadata)
+  const origin = input.origin ?? MessageV2.originFromMetadata(input.metadata)
   const isRoot = input.noReply !== true
   const rootID = rootIDOverride ?? messageID
   // A reply-requiring message is always shown; a noReply injection is shown

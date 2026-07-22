@@ -61,6 +61,7 @@ import { PI } from "./prompt-input-i18n"
 import { reconcileMessage, removeMessageFromWindow, type MessageWindowState } from "@/context/session-message-window"
 import { nextMessageWindowTotal, nextMessageWindowTotalAfterRemoval } from "@/context/session-message-total"
 import { promptSubmitFailure } from "./submit-failure"
+import { runComposerPreflight } from "./composer-preflight"
 
 type PromptSubmitInput = {
   props: Pick<
@@ -95,7 +96,7 @@ type PromptSubmitInput = {
   editor: () => HTMLDivElement
   queueScroll: () => void
   onWorktreeUnavailable: () => void
-  beforeSubmit: (signal: AbortSignal) => Promise<void>
+  beforeSubmit: () => Promise<void>
 }
 
 export function usePromptSubmit(input: PromptSubmitInput) {
@@ -251,16 +252,18 @@ export function usePromptSubmit(input: PromptSubmitInput) {
       pendingLightLoop: input.pendingLightLoop(),
     })
     if (runsBeforeSubmit) {
-      const controller = new AbortController()
-      try {
-        await input.beforeSubmit(controller.signal)
-      } catch (error) {
+      const completed = await runComposerPreflight({
+        beforeSubmit: input.beforeSubmit,
+        restore: restoreInput,
+        onNonAbortError: (error) =>
+          showToast({
+            type: "error",
+            title: i18n._(PI.submitInterceptFailed),
+            description: errorMessage(error),
+          }),
+      })
+      if (!completed) {
         releaseNewSessionSubmit()
-        showToast({
-          type: "error",
-          title: i18n._(PI.submitInterceptFailed),
-          description: errorMessage(error),
-        })
         return
       }
       ;({
