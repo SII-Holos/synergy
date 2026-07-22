@@ -41,6 +41,7 @@ import { textSelectionController } from "@/context/text-selection"
 import { registerSelectionExtension } from "./registries/selection-extension-registry"
 import { registerMessageSlot } from "./registries/message-slot-registry"
 import type { MessageSlotProps } from "@ericsanchezok/synergy-ui/message-slots"
+import { createPluginSurfaceSettings } from "./surface-settings"
 
 export type PluginUIStatus = PluginLifecycleState
 export interface PluginUIError {
@@ -75,6 +76,7 @@ function surfaceContext(input: {
   contributionId: string
   kind: string
   serverUrl: string
+  client: ReturnType<typeof useGlobalSDK>["client"]
   events: ReturnType<typeof useGlobalSDK>["event"]
   scopeKey: string
   sessionId?: string
@@ -137,23 +139,13 @@ function surfaceContext(input: {
         })
       },
     },
-    settings: {
-      async get() {
-        const response = await fetch(`${input.serverUrl}/plugin/${encodeURIComponent(pluginId)}/config`, {
-          headers: { "x-synergy-scope-id": encodeURIComponent(input.contribution.scopeId) },
-        })
-        if (!response.ok) throw new Error(`Plugin settings request failed (${response.status})`)
-        return (await response.json()) as Record<string, unknown>
-      },
-      subscribe(listener) {
-        const onChange = (event: Event) => {
-          const detail = (event as CustomEvent<{ pluginId?: string; values?: Record<string, unknown> }>).detail
-          if (detail?.pluginId === pluginId && detail.values) listener(detail.values)
-        }
-        window.addEventListener("synergy:plugin-config-changed", onChange)
-        return () => window.removeEventListener("synergy:plugin-config-changed", onChange)
-      },
-    },
+    settings: createPluginSurfaceSettings({
+      client: input.client,
+      pluginId,
+      scopeId: input.contribution.scopeId,
+      canWrite: input.contribution.capabilities.includes("settings.write"),
+      events: window,
+    }),
     host: {
       openSession(sessionId) {
         requireHostActions()
@@ -193,6 +185,7 @@ function surfaceContext(input: {
 function registerPluginSurfaces(input: {
   contributions: PluginContribution[]
   serverUrl: string
+  client: ReturnType<typeof useGlobalSDK>["client"]
   events: ReturnType<typeof useGlobalSDK>["event"]
   scopeKey: string
   assets: PluginUIAssets
@@ -225,6 +218,7 @@ function registerPluginSurfaces(input: {
             contributionId: item.id,
             kind: item.kind,
             serverUrl: input.serverUrl,
+            client: input.client,
             events: input.events,
             scopeKey: input.scopeKey,
             sessionId: session(props),
@@ -446,6 +440,7 @@ function registerPluginSurfaces(input: {
             formSchema: item.formSchema,
             visibility: item.visibility,
             pluginId: plugin.pluginId,
+            scopeId: plugin.scopeId,
             loader: loader as never,
           }),
         )
@@ -496,6 +491,7 @@ export function PluginHostProvider(props: ParentProps<{ scopeKey: Accessor<strin
       const registered = registerPluginSurfaces({
         contributions: next,
         serverUrl: server.url,
+        client: globalSDK.client,
         events: globalSDK.event,
         scopeKey: scopeKey(),
         assets,

@@ -7,6 +7,7 @@ import { BUILTIN_SETTINGS_SECTIONS } from "@/components/settings/catalog"
 export interface SettingsSection extends SurfaceEntry {
   iconToken?: SemanticIconTokenName
   group: string
+  scopeId?: string
   formSchema?: Record<string, unknown>
   description?: string
   keywords?: string[]

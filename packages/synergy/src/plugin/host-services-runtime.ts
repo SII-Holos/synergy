@@ -1,8 +1,21 @@
 import path from "path"
 import fs from "fs/promises"
 import Ajv2020 from "ajv/dist/2020"
-import { PluginHostServiceErrorCode, type PluginManifestType } from "@ericsanchezok/synergy-plugin"
+import {
+  PluginHostServiceErrorCode,
+  type PluginAssetCreateInput,
+  type PluginManifestType,
+  type PluginTaskRunInput,
+} from "@ericsanchezok/synergy-plugin"
 import type { PluginHostServiceInvocationInput } from "../plugin-runtime/manager"
+import { Attachment } from "../attachment"
+import { Cortex } from "../cortex"
+import { EnforcementError } from "../enforcement/errors"
+import { EnforcementGate } from "../enforcement/gate"
+import { Global } from "../global"
+import { Identifier } from "../id/id"
+import { SandboxBackend } from "../sandbox/backend"
+import { SkillPaths } from "../skill/paths"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -32,6 +45,7 @@ const capabilityByMethod = {
   "session.get": "session.read",
   "session.abort": "session.control",
   "task.start": "task.delegate",
+  "task.run": "task.delegate",
   "task.current": "task.delegate",
   "task.get": "task.delegate",
   "task.cancel": "task.delegate",
@@ -51,6 +65,8 @@ const capabilityByMethod = {
   "secrets.delete": "secrets",
   "tool.invoke": "tool.invoke",
   "agent.call": "agent.call",
+  "asset.create": "asset.write",
+  "shell.run": "shell.execute",
 } as const
 
 const AGENT_CALL_MAX_INPUT_CHARS = 32_000
@@ -286,6 +302,188 @@ async function resolveStartParent(
   }
 }
 
+const MAX_PLUGIN_ASSET_BYTES = 10 * 1024 * 1024
+
+function abortError(signal: AbortSignal) {
+  return signal.reason instanceof Error ? signal.reason : new DOMException("Plugin invocation aborted", "AbortError")
+}
+
+async function runPluginTask(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  const request = {
+    ...(value as PluginTaskRunInput),
+    correlationId:
+      typeof value.correlationId === "string" && value.correlationId.trim()
+        ? value.correlationId.trim()
+        : Identifier.ascending("cortex"),
+  }
+  const handle = await startPluginTask({
+    pluginId: input.pluginId,
+    pluginGeneration: input.manifest.artifacts.generation,
+    scopeId: input.invocation.scopeId,
+    pluginDir: input.pluginDir,
+    context: await resolveStartParent(input, "task.run", value),
+    request,
+  })
+  const active = Cortex.get(handle.taskId)
+  const timeoutSeconds = Math.ceil(((active?.timeoutMs ?? request.timeoutMs ?? 120_000) + 5_000) / 1_000)
+  const completed = Cortex.waitFor(handle.taskId, timeoutSeconds)
+  const onAbort = () => {
+    void cancelPluginTask({
+      pluginId: input.pluginId,
+      pluginGeneration: input.manifest.artifacts.generation,
+      scopeId: input.invocation.scopeId,
+      handle,
+    }).catch(() => {})
+  }
+  if (input.signal.aborted) onAbort()
+  else input.signal.addEventListener("abort", onAbort, { once: true })
+  try {
+    await completed
+  } finally {
+    input.signal.removeEventListener("abort", onAbort)
+  }
+  if (input.signal.aborted) {
+    await cancelPluginTask({
+      pluginId: input.pluginId,
+      pluginGeneration: input.manifest.artifacts.generation,
+      scopeId: input.invocation.scopeId,
+      handle,
+    })
+    throw abortError(input.signal)
+  }
+  return getPluginTask({
+    pluginId: input.pluginId,
+    pluginGeneration: input.manifest.artifacts.generation,
+    scopeId: input.invocation.scopeId,
+    handle,
+  })
+}
+
+function decodePluginAsset(value: Record<string, unknown>): Uint8Array {
+  if (value.data instanceof Uint8Array) {
+    if (value.encoding !== undefined) {
+      throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create encoding applies only to string data")
+    }
+    if (value.data.byteLength > MAX_PLUGIN_ASSET_BYTES) {
+      throw pluginHostServiceError("PLUGIN_ASSET_TOO_LARGE", "asset.create exceeds the 10 MB size limit")
+    }
+    return value.data
+  }
+  if (typeof value.data !== "string") {
+    throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create requires string or Uint8Array data")
+  }
+  const encoding = value.encoding ?? "utf8"
+  if (encoding !== "utf8" && encoding !== "base64") {
+    throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create encoding must be utf8 or base64")
+  }
+  if (encoding === "utf8") {
+    const size = Buffer.byteLength(value.data, "utf8")
+    if (size > MAX_PLUGIN_ASSET_BYTES) {
+      throw pluginHostServiceError("PLUGIN_ASSET_TOO_LARGE", "asset.create exceeds the 10 MB size limit")
+    }
+    return Buffer.from(value.data, "utf8")
+  }
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value.data)) {
+    throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create data is not valid base64")
+  }
+  const size =
+    Math.floor((value.data.length * 3) / 4) - (value.data.endsWith("==") ? 2 : value.data.endsWith("=") ? 1 : 0)
+  if (size > MAX_PLUGIN_ASSET_BYTES) {
+    throw pluginHostServiceError("PLUGIN_ASSET_TOO_LARGE", "asset.create exceeds the 10 MB size limit")
+  }
+  const bytes = Buffer.from(value.data, "base64")
+  if (bytes.toString("base64") !== value.data) {
+    throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create data is not valid base64")
+  }
+  return bytes
+}
+
+async function createPluginAsset(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  const actor = input.invocation.actor
+  if (actor.type !== "agent" || !input.invocation.sessionId) {
+    throw new Error("asset.create requires an agent invocation context with Session identity")
+  }
+  await sessionInInvocationScope(input, input.invocation.sessionId)
+  if (typeof value.mime !== "string" || !value.mime.trim()) {
+    throw pluginHostServiceError("PLUGIN_ASSET_INPUT_INVALID", "asset.create requires mime")
+  }
+  input.signal.throwIfAborted()
+  const bytes = decodePluginAsset(value)
+  input.signal.throwIfAborted()
+  const asset = value as PluginAssetCreateInput
+  return Attachment.fromBytes({
+    id: `part_${crypto.randomUUID()}`,
+    bytes,
+    mime: value.mime.trim(),
+    filename: typeof asset.filename === "string" ? asset.filename : undefined,
+    sessionID: input.invocation.sessionId,
+    messageID: actor.messageId,
+    presentation: asset.presentation,
+    model: asset.model ?? { mode: "summary" },
+    metadata: asset.metadata,
+  })
+}
+
+function renderShellCommand(command: string[]) {
+  return command.map((argument) => `'${argument.replaceAll("'", `'\\''`)}'`).join(" ")
+}
+
+async function runPluginShell(input: PluginHostServiceInvocationInput, value: Record<string, unknown>) {
+  const allowedKeys = new Set(["command", "timeoutMs"])
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    throw new Error("shell.run accepts only command and timeoutMs")
+  }
+  if (
+    !Array.isArray(value.command) ||
+    value.command.length === 0 ||
+    value.command.some((part) => typeof part !== "string")
+  ) {
+    throw new Error("shell.run requires a non-empty argv command")
+  }
+  const command = value.command as [string, ...string[]]
+  if (!command[0]) throw new Error("shell.run requires a non-empty executable")
+  const timeoutMs = value.timeoutMs ?? 120_000
+  if (!Number.isSafeInteger(timeoutMs) || Number(timeoutMs) <= 0) {
+    throw new Error("shell.run timeoutMs must be a positive integer")
+  }
+  input.signal.throwIfAborted()
+  const session = input.invocation.sessionId ? await Session.get(input.invocation.sessionId) : undefined
+  const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
+  const workspace = ScopeContext.current.workspace
+  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(input.invocation.directory)
+  const gate = await EnforcementGate.create({
+    activeWorkspace: input.invocation.directory,
+    workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",
+    originalCheckout: (workspace as { originalCheckout?: string } | undefined)?.originalCheckout,
+    profileId,
+    readRoots: [Global.Path.root, ...trustedRoots],
+    trustedRoots,
+    synergyRoot: Global.Path.root,
+  })
+  const envelope = gate.evaluate("bash", { command: renderShellCommand(command), workdir: input.invocation.directory })
+  if (envelope.decision === "deny") {
+    throw new EnforcementError.PolicyDenied(
+      envelope.refusal?.reason ?? `Profile "${profileId}" denies shell.run`,
+      envelope.capabilities.map((capability) => capability.class),
+      profileId,
+    )
+  }
+  const sandbox = gate.getSandbox()
+  const wrapper = SandboxBackend.prepareWrapper({
+    command: command[0],
+    args: command.slice(1),
+    workspace: input.invocation.directory,
+    sandboxMode: "none",
+  })
+  const executed = await SandboxBackend.executeAsync(wrapper, {
+    cwd: input.invocation.directory,
+    fallbackPolicy: sandbox.fallback,
+    signal: input.signal,
+    timeoutMs: Number(timeoutMs),
+  })
+  return { stdout: executed.stdout, stderr: executed.stderr, exitCode: executed.exitCode }
+}
+
 export async function executePluginHostService(input: PluginHostServiceInvocationInput): Promise<unknown> {
   assertCapability(input)
   return inScope(input, async () => {
@@ -330,6 +528,9 @@ export async function executePluginHostService(input: PluginHostServiceInvocatio
       if (typeof value.value !== "string") throw new Error("secrets.set requires string value")
       return store.set(key, value.value)
     }
+    if (input.method === "shell.run") return runPluginShell(input, value)
+    if (input.method === "asset.create") return createPluginAsset(input, value)
+    if (input.method === "task.run") return runPluginTask(input, value)
     if (input.method === "task.current") {
       return getCurrentPluginTask({
         pluginId: input.pluginId,

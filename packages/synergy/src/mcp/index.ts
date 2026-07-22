@@ -14,7 +14,7 @@ import { McpOAuthCallback } from "./oauth-callback"
 import { McpAuth } from "./auth"
 import open from "open"
 import { McpSupervisor, mapStatus } from "./supervisor"
-import type { McpHandle, PromptCache, ResourceCache } from "./supervisor"
+import type { PromptCache, ResourceCache } from "./supervisor"
 import { ToolExposure } from "@/tool/exposure"
 import { PendingOAuth } from "./pending-oauth"
 
@@ -58,6 +58,13 @@ export namespace MCP {
   export const Status = _Status
   export type Status = z.infer<typeof _Status>
 
+  export interface Server {
+    name: string
+    config: Config.Mcp
+    source: "config" | "plugin" | "runtime"
+    status: Status
+    identity: string
+  }
   const DEFAULT_TIMEOUT = 30_000
 
   export interface ToolEntry {
@@ -68,16 +75,9 @@ export namespace MCP {
   }
 
   async function resolveMcpTimeout(serverName?: string): Promise<number> {
-    const cfg = await Config.current()
-    const perServer = serverName ? (cfg.mcp?.[serverName] as Config.Mcp | undefined)?.timeout : undefined
-    return perServer ?? cfg.experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
-  }
-
-  async function resolveCallTimeout(serverName: string): Promise<number | undefined> {
-    const cfg = await Config.current()
-    const server = cfg.mcp?.[serverName] as Config.Mcp | undefined
-    if (!server || typeof server !== "object") return undefined
-    return server.callTimeout ?? cfg.experimental?.mcp_timeout
+    const server = serverName ? await resolveServer(serverName) : undefined
+    if (server) return server.config.listTimeout ?? server.config.timeout ?? DEFAULT_TIMEOUT
+    return (await Config.current()).experimental?.mcp_timeout ?? DEFAULT_TIMEOUT
   }
 
   async function convertMcpTool(mcpTool: MCPToolDef, client: Client, callTimeout: number | undefined): Promise<Tool> {
@@ -132,24 +132,72 @@ export namespace MCP {
 
   // ── Status / clients ───────────────────────────────────────────────
 
-  export async function status(): Promise<Record<string, Status>> {
+  export async function resolveServer(name: string): Promise<Server | undefined> {
     await McpSupervisor.ready()
     const cfg = await Config.current()
-    const config = cfg.mcp ?? {}
-    const result: Record<string, Status> = {}
+    const configured = cfg.mcp?.[name]
+    if (configured && typeof configured === "object" && "type" in configured && configured.enabled !== false) {
+      const handle = McpSupervisor.get(name)
+      if (!handle || handle.source !== "config") return undefined
+      return {
+        name,
+        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout),
+        source: "config",
+        status: mapStatus(handle),
+        identity: handle.identity,
+      }
+    }
 
-    for (const [key, mcp] of Object.entries(config)) {
-      if (typeof mcp !== "object" || mcp === null || !("type" in mcp)) continue
-      const handle = McpSupervisor.get(key)
-      result[key] = handle ? mapStatus(handle) : { status: "disabled" }
+    const handle = McpSupervisor.get(name)
+    if (!handle || handle.config.enabled === false || handle.source === "config") return undefined
+    return {
+      name: handle.name,
+      config: handle.config,
+      source: handle.source,
+      status: mapStatus(handle),
+      identity: handle.identity,
+    }
+  }
+
+  export async function listServers(): Promise<Server[]> {
+    await McpSupervisor.ready()
+    const cfg = await Config.current()
+    const servers = new Map<string, Server>()
+
+    for (const [name, configured] of Object.entries(cfg.mcp ?? {})) {
+      if (!configured || typeof configured !== "object" || !("type" in configured) || configured.enabled === false)
+        continue
+      const handle = McpSupervisor.get(name)
+      if (!handle || handle.source !== "config") continue
+      servers.set(name, {
+        name,
+        config: Config.normalizeMcp(configured as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout),
+        source: "config",
+        status: mapStatus(handle),
+        identity: handle.identity,
+      })
     }
 
     for (const handle of McpSupervisor.getAll()) {
-      if (handle.name in result) continue
-      result[handle.name] = mapStatus(handle)
+      if (servers.has(handle.name) || handle.source === "config" || handle.config.enabled === false) continue
+      servers.set(handle.name, {
+        name: handle.name,
+        config: handle.config,
+        source: handle.source,
+        status: mapStatus(handle),
+        identity: handle.identity,
+      })
     }
+    return [...servers.values()]
+  }
 
-    return result
+  export async function status(): Promise<Record<string, Status>> {
+    const cfg = await Config.current()
+    const statuses = Object.fromEntries((await listServers()).map((server) => [server.name, server.status]))
+    for (const [name, configured] of Object.entries(cfg.mcp ?? {})) {
+      if (configured?.enabled === false) statuses[name] = { status: "disabled" }
+    }
+    return statuses
   }
 
   export async function clients(): Promise<Record<string, Client>> {
@@ -163,30 +211,15 @@ export namespace MCP {
 
   export async function connect(name: string) {
     ensureStarted()
-    await McpSupervisor.ready()
-    const cfg = await Config.current()
-    const config = cfg.mcp ?? {}
-    const mcp = config[name]
-    if (!mcp) {
-      const existing = McpSupervisor.get(name)
-      if (existing) {
-        existing.retryCount = 0
-        await McpSupervisor.connect(name)
-        return
-      }
-      log.error("MCP config not found", { name })
+    const server = await resolveServer(name)
+    if (!server) {
+      log.error("MCP server not found", { name })
       return
     }
-    if (typeof mcp !== "object" || mcp === null || !("type" in mcp)) {
-      log.error("Ignoring MCP connect request for config without type", { name })
-      return
-    }
-
-    const server = Config.normalizeMcp(mcp as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
-    const handle = McpSupervisor.getOrCreate(name, server)
+    const handle = McpSupervisor.get(name)
+    if (!handle || handle.identity !== server.identity) return
     handle.retryCount = 0
-    handle.config = server
-    await McpSupervisor.connect(name)
+    await McpSupervisor.connect(name, server.identity)
   }
 
   export async function disconnect(name: string) {
@@ -241,17 +274,15 @@ export namespace MCP {
     await McpSupervisor.ready()
     const result: ToolEntry[] = []
     toolCallTimeouts.clear()
-    const cfg = await Config.current()
-    const callTimeout = cfg.experimental?.mcp_timeout
+    const callTimeout = (await Config.current()).experimental?.mcp_timeout
 
     for (const handle of McpSupervisor.getAll()) {
       if (mapStatus(handle).status !== "connected") continue
       if (!handle.client || handle.toolDefs.length === 0) continue
 
       for (const mcpTool of handle.toolDefs) {
-        const perServerCallTimeout = await resolveCallTimeout(handle.name)
         const toolName = ToolExposure.mcpToolID(handle.name, mcpTool.name)
-        const effectiveCallTimeout = perServerCallTimeout ?? callTimeout
+        const effectiveCallTimeout = handle.config.callTimeout ?? callTimeout
         toolCallTimeouts.set(toolName, effectiveCallTimeout)
         result.push({
           id: toolName,
@@ -341,12 +372,9 @@ export namespace MCP {
 
   export async function startAuth(mcpName: string): Promise<{ authorizationUrl: string }> {
     ensureStarted()
-    const cfg = await Config.current()
-    const mcpConfig = cfg.mcp?.[mcpName]
-    if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
-    if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) {
-      throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
-    }
+    const server = await resolveServer(mcpName)
+    if (!server) throw new Error(`MCP server not found: ${mcpName}`)
+    const mcpConfig = server.config
     if (mcpConfig.type !== "remote") throw new Error(`MCP server ${mcpName} is not a remote server`)
     if (mcpConfig.oauth === false) throw new Error(`MCP server ${mcpName} has OAuth explicitly disabled`)
 
@@ -354,7 +382,7 @@ export namespace MCP {
     await McpOAuthCallback.ensureRunning()
 
     const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(32)))
-      .map((b) => b.toString(16).padStart(2, "0"))
+      .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("")
     await McpAuth.updateOAuthState(mcpName, oauthState)
 
@@ -381,6 +409,9 @@ export namespace MCP {
     try {
       const connectTimeout = await resolveMcpTimeout(mcpName)
       await withTimeout(client.connect(transport), connectTimeout)
+      if (McpSupervisor.get(mcpName)?.identity !== server.identity) {
+        throw new Error("MCP server changed while OAuth was in progress; restart authentication")
+      }
       await client.close().catch((closeError) => {
         log.warn("failed to close MCP client after OAuth probe", { mcpName, closeError })
       })
@@ -388,11 +419,17 @@ export namespace MCP {
       return { authorizationUrl: "" }
     } catch (error) {
       if (error instanceof UnauthorizedError && capturedUrl) {
-        await PendingOAuth.register(mcpName, {
-          client,
-          transport,
-          onDispose: () => clearPendingOAuthState(mcpName),
-        })
+        const registered = await PendingOAuth.register(
+          mcpName,
+          {
+            client,
+            transport,
+            identity: server.identity,
+            onDispose: () => clearPendingOAuthState(mcpName),
+          },
+          { isCurrent: () => McpSupervisor.get(mcpName)?.identity === server.identity },
+        )
+        if (!registered) throw new Error("MCP server changed while OAuth was in progress; restart authentication")
         return { authorizationUrl: capturedUrl.toString() }
       }
       await client.close().catch((closeError) => {
@@ -437,21 +474,33 @@ export namespace MCP {
 
     try {
       await pending.transport.finishAuth(authorizationCode)
-
-      const cfg = await Config.current()
-      const mcpConfig = cfg.mcp?.[mcpName]
-      if (!mcpConfig) throw new Error(`MCP server not found: ${mcpName}`)
-      if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) {
-        throw new Error(`MCP server ${mcpName} is disabled or missing configuration`)
+      const handle = McpSupervisor.get(mcpName)
+      if (!handle || handle.identity !== pending.identity || handle.config.enabled === false) {
+        await PendingOAuth.disposeIfCurrent(mcpName, pending, "stale OAuth owner")
+        return {
+          status: "failed",
+          error: "MCP server changed while OAuth was in progress; restart authentication",
+        }
       }
 
-      await PendingOAuth.dispose(mcpName, "OAuth completed")
-      const server = Config.normalizeMcp(mcpConfig as Config.Mcp, cfg.mcpDefaults, cfg.experimental?.mcp_timeout)
-      McpSupervisor.add(mcpName, { ...server, enabled: true })
-      const handle = await McpSupervisor.connect(mcpName)
-      return mapStatus(handle)
+      await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth completed")
+      const connected = await McpSupervisor.connect(mcpName, pending.identity)
+      if (McpSupervisor.get(mcpName) !== connected || connected.identity !== pending.identity) {
+        return {
+          status: "failed",
+          error: "MCP server changed while OAuth was in progress; restart authentication",
+        }
+      }
+      return mapStatus(connected)
     } catch (error) {
       await PendingOAuth.disposeIfCurrent(mcpName, pending, "OAuth failed")
+      const handle = McpSupervisor.get(mcpName)
+      if (handle && handle.identity !== pending.identity) {
+        return {
+          status: "failed",
+          error: "MCP server changed while OAuth was in progress; restart authentication",
+        }
+      }
       log.error("failed to finish oauth", { mcpName, error })
       return { status: "failed", error: error instanceof Error ? error.message : String(error) }
     }
@@ -465,11 +514,8 @@ export namespace MCP {
   }
 
   export async function supportsOAuth(mcpName: string): Promise<boolean> {
-    const cfg = await Config.current()
-    const mcpConfig = cfg.mcp?.[mcpName]
-    if (!mcpConfig) return false
-    if (typeof mcpConfig !== "object" || mcpConfig === null || !("type" in mcpConfig)) return false
-    return mcpConfig.type === "remote" && mcpConfig.oauth !== false
+    const server = await resolveServer(mcpName)
+    return server?.config.type === "remote" && server.config.oauth !== false
   }
 
   export async function hasStoredTokens(mcpName: string): Promise<boolean> {

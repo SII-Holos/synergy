@@ -39,6 +39,11 @@ import { DataCommand, MigrateCommand } from "./cli/cmd/data"
 import { MigrationCommand } from "./cli/cmd/migration"
 import { ConfigDomain } from "./config/domain"
 import { parse as parseJsonc } from "jsonc-parser"
+import { Flag } from "./flag/flag"
+import { Scope } from "./scope"
+import { ScopeContext } from "./scope/context"
+import { contributions, getLoadedPlugins } from "./plugin/loader"
+import { invokePluginCliCommand } from "./plugin/cli-command"
 
 const pluginRuntimeRunnerArgIndex = process.argv.indexOf("__plugin-runtime-runner")
 if (pluginRuntimeRunnerArgIndex >= 0) {
@@ -174,7 +179,72 @@ const cli = yargs(hideBin(process.argv))
   .command(MigrateCommand)
   .command(MigrationCommand)
 
-// Register CLI commands from installed plugins (e.g. `synergy inspire login`)
+type YargsCommandMetadata = {
+  getInternalMethods(): {
+    getCommandInstance(): { getCommands(): string[] }
+  }
+}
+
+async function registerPluginCliCommands() {
+  const directory = Flag.SYNERGY_CWD || process.cwd()
+  const scope = (await Scope.fromDirectory(directory)).scope
+  await ScopeContext.provide({
+    scope,
+    async fn() {
+      const commandMetadata = cli as typeof cli & YargsCommandMetadata
+      const registered = new Map(
+        commandMetadata
+          .getInternalMethods()
+          .getCommandInstance()
+          .getCommands()
+          .map((command) => [command, "Synergy"]),
+      )
+      const plugins = [...(await getLoadedPlugins())].sort((left, right) => left.id.localeCompare(right.id))
+      for (const plugin of plugins) {
+        const commands = contributions(plugin, "cli.command").sort((left, right) => left.id.localeCompare(right.id))
+        for (const command of commands) {
+          const owner = registered.get(command.id)
+          if (owner) throw new Error(`Plugin CLI command ${command.id} conflicts with ${owner}`)
+          registered.set(command.id, plugin.id)
+          cli.command({
+            command: command.id,
+            describe: command.description,
+            builder: (yargs) => {
+              for (const [name, option] of Object.entries(command.options)) {
+                yargs.option(name, { type: option.type, describe: option.description })
+              }
+              return yargs
+            },
+            handler: async (args) => {
+              await ScopeContext.provide({
+                scope,
+                async fn() {
+                  const options = Object.fromEntries(
+                    Object.keys(command.options).flatMap((name) =>
+                      args[name] === undefined ? [] : [[name, args[name]]],
+                    ),
+                  )
+                  const output = await invokePluginCliCommand({
+                    pluginId: plugin.id,
+                    commandId: command.id,
+                    args: options,
+                  })
+                  if (output.stdout) process.stdout.write(output.stdout)
+                  if (output.stderr) process.stderr.write(output.stderr)
+                  process.exitCode = output.exitCode
+                },
+              })
+            },
+          })
+        }
+      }
+    },
+  })
+}
+
+await registerPluginCliCommands()
+
+// Installed plugin commands are registered from generated manifest metadata.
 
 cli
   .fail((msg, err) => {

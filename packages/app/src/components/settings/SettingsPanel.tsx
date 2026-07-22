@@ -820,7 +820,7 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   const [values, { mutate }] = createResource(
     () => section().pluginId,
     async (pluginId) => {
-      const result = await globalSDK.client.plugin.getConfig({ pluginId })
+      const result = await globalSDK.client.plugin.getConfig({ pluginId, scopeID: section().scopeId })
       return result.data ?? {}
     },
   )
@@ -828,10 +828,18 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   async function updateValues(next: Record<string, unknown>) {
     const pluginId = section().pluginId
     if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({ pluginId, pluginConfigUpdate: next })
+    const result = await globalSDK.client.plugin.updateConfig({
+      pluginId,
+      scopeID: section().scopeId,
+      pluginConfigUpdate: next,
+    })
     const saved = result.data ?? next
     mutate(saved)
-    window.dispatchEvent(new CustomEvent("synergy:plugin-config-changed", { detail: { pluginId, values: saved } }))
+    window.dispatchEvent(
+      new CustomEvent("synergy:plugin-config-changed", {
+        detail: { pluginId, scopeId: section().scopeId, values: saved },
+      }),
+    )
   }
 
   onMount(() => {

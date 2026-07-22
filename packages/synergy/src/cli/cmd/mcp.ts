@@ -13,6 +13,7 @@ import { ConfigDomain } from "../../config/domain"
 import { ScopeContext } from "../../scope/context"
 import { Scope } from "@/scope"
 import { Installation } from "../../global/installation"
+import { probeClientConnection } from "../../mcp/supervisor"
 
 function getAuthStatusIcon(status: MCP.AuthStatus): string {
   switch (status) {
@@ -36,16 +37,12 @@ function getAuthStatusText(status: MCP.AuthStatus): string {
   }
 }
 
-type McpEntry = NonNullable<Config.Info["mcp"]>[string]
-
-type McpConfigured = Config.Mcp
-function isMcpConfigured(config: McpEntry): config is McpConfigured {
-  return typeof config === "object" && config !== null && "type" in config
+type McpRemoteServer = MCP.Server & {
+  config: Extract<Config.Mcp, { type: "remote" }>
 }
 
-type McpRemote = Extract<McpConfigured, { type: "remote" }>
-function isMcpRemote(config: McpEntry): config is McpRemote {
-  return isMcpConfigured(config) && config.type === "remote"
+function isOAuthServer(server: MCP.Server): server is McpRemoteServer {
+  return server.config.type === "remote" && server.config.oauth !== false
 }
 
 export const McpCommand = cmd({
@@ -73,13 +70,7 @@ export const McpListCommand = cmd({
         UI.empty()
         prompts.intro("MCP Servers")
 
-        const config = await Config.current()
-        const mcpServers = config.mcp ?? {}
-        const statuses = await MCP.status()
-
-        const servers = Object.entries(mcpServers).filter((entry): entry is [string, McpConfigured] =>
-          isMcpConfigured(entry[1]),
-        )
+        const servers = await MCP.listServers()
 
         if (servers.length === 0) {
           prompts.log.warn("No MCP servers configured")
@@ -87,24 +78,19 @@ export const McpListCommand = cmd({
           return
         }
 
-        for (const [name, serverConfig] of servers) {
-          const status = statuses[name]
-          const hasOAuth = isMcpRemote(serverConfig) && !!serverConfig.oauth
+        for (const server of servers) {
+          const { name, config: serverConfig, status } = server
+          const hasOAuth = serverConfig.type === "remote" && serverConfig.oauth !== false
           const hasStoredTokens = await MCP.hasStoredTokens(name)
 
           let statusIcon: string
           let statusText: string
           let hint = ""
 
-          if (!status) {
-            statusIcon = "○"
-            statusText = "not initialized"
-          } else if (status.status === "connected") {
+          if (status.status === "connected") {
             statusIcon = "✓"
             statusText = "connected"
-            if (hasOAuth && hasStoredTokens) {
-              hint = " (OAuth)"
-            }
+            if (hasOAuth && hasStoredTokens) hint = " (OAuth)"
           } else if (status.status === "disabled") {
             statusIcon = "○"
             statusText = "disabled"
@@ -168,13 +154,7 @@ export const McpAuthCommand = cmd({
         UI.empty()
         prompts.intro("MCP OAuth Authentication")
 
-        const config = await Config.current()
-        const mcpServers = config.mcp ?? {}
-
-        // Get OAuth-capable servers (remote servers with oauth not explicitly disabled)
-        const oauthServers = Object.entries(mcpServers).filter(
-          (entry): entry is [string, McpRemote] => isMcpRemote(entry[1]) && entry[1].oauth !== false,
-        )
+        const oauthServers = (await MCP.listServers()).filter(isOAuthServer)
 
         if (oauthServers.length === 0) {
           prompts.log.warn("No OAuth-capable MCP servers configured")
@@ -192,17 +172,13 @@ export const McpAuthCommand = cmd({
 
         let serverName = args.name
         if (!serverName) {
-          // Build options with auth status
           const options = await Promise.all(
-            oauthServers.map(async ([name, cfg]) => {
-              const authStatus = await MCP.getAuthStatus(name)
-              const icon = getAuthStatusIcon(authStatus)
-              const statusText = getAuthStatusText(authStatus)
-              const url = cfg.url
+            oauthServers.map(async (server) => {
+              const authStatus = await MCP.getAuthStatus(server.name)
               return {
-                label: `${icon} ${name} (${statusText})`,
-                value: name,
-                hint: url,
+                label: `${getAuthStatusIcon(authStatus)} ${server.name} (${getAuthStatusText(authStatus)})`,
+                value: server.name,
+                hint: server.config.url,
               }
             }),
           )
@@ -215,18 +191,19 @@ export const McpAuthCommand = cmd({
           serverName = selected
         }
 
-        const serverConfig = mcpServers[serverName]
-        if (!serverConfig) {
+        const server = await MCP.resolveServer(serverName)
+        if (!server) {
           prompts.log.error(`MCP server not found: ${serverName}`)
           prompts.outro("Done")
           return
         }
 
-        if (!isMcpRemote(serverConfig) || serverConfig.oauth === false) {
+        if (!isOAuthServer(server)) {
           prompts.log.error(`MCP server ${serverName} is not an OAuth-capable remote server`)
           prompts.outro("Done")
           return
         }
+        const serverConfig = server.config
 
         // Check if already authenticated
         const authStatus = await MCP.getAuthStatus(serverName)
@@ -293,13 +270,7 @@ export const McpAuthListCommand = cmd({
         UI.empty()
         prompts.intro("MCP OAuth Status")
 
-        const config = await Config.current()
-        const mcpServers = config.mcp ?? {}
-
-        // Get OAuth-capable servers
-        const oauthServers = Object.entries(mcpServers).filter(
-          (entry): entry is [string, McpRemote] => isMcpRemote(entry[1]) && entry[1].oauth !== false,
-        )
+        const oauthServers = (await MCP.listServers()).filter(isOAuthServer)
 
         if (oauthServers.length === 0) {
           prompts.log.warn("No OAuth-capable MCP servers configured")
@@ -307,13 +278,13 @@ export const McpAuthListCommand = cmd({
           return
         }
 
-        for (const [name, serverConfig] of oauthServers) {
-          const authStatus = await MCP.getAuthStatus(name)
+        for (const server of oauthServers) {
+          const authStatus = await MCP.getAuthStatus(server.name)
           const icon = getAuthStatusIcon(authStatus)
           const statusText = getAuthStatusText(authStatus)
-          const url = serverConfig.url
-
-          prompts.log.info(`${icon} ${name} ${UI.Style.TEXT_DIM}${statusText}\n    ${UI.Style.TEXT_DIM}${url}`)
+          prompts.log.info(
+            `${icon} ${server.name} ${UI.Style.TEXT_DIM}${statusText}\n    ${UI.Style.TEXT_DIM}${server.config.url}`,
+          )
         }
 
         prompts.outro(`${oauthServers.length} OAuth-capable server(s)`)
@@ -507,10 +478,11 @@ export const McpAddCommand = cmd({
           version: "1.0.0",
         })
         const transport = new StreamableHTTPClientTransport(new URL(url))
-        await client.connect(transport)
+        await probeClientConnection(client, transport, String(name))
         const entry = {
           type: "remote",
           url: String(url),
+          oauth: false,
         } satisfies Config.Mcp
         await Config.domainUpdate("mcp", { mcp: { [String(name)]: entry } } as Config.Info)
         prompts.log.info(`Remote MCP server "${name}" configured with URL: ${url}`)
@@ -538,18 +510,16 @@ export const McpDebugCommand = cmd({
         UI.empty()
         prompts.intro("MCP OAuth Debug")
 
-        const config = await Config.current()
-        const mcpServers = config.mcp ?? {}
         const serverName = args.name
-
-        const serverConfig = mcpServers[serverName]
-        if (!serverConfig) {
+        const server = await MCP.resolveServer(serverName)
+        if (!server) {
           prompts.log.error(`MCP server not found: ${serverName}`)
           prompts.outro("Done")
           return
         }
 
-        if (!isMcpRemote(serverConfig)) {
+        const serverConfig = server.config
+        if (serverConfig.type !== "remote") {
           prompts.log.error(`MCP server ${serverName} is not a remote server`)
           prompts.outro("Done")
           return

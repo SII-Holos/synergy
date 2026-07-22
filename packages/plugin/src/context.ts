@@ -4,6 +4,7 @@ export type PluginActor =
   | { type: "ui" }
   | { type: "sdk"; subject?: string }
   | { type: "agent"; agent: string; messageId: string; callId: string }
+  | { type: "cli" }
   | { type: "lifecycle" }
 
 export interface PluginLogger {
@@ -98,6 +99,8 @@ export type PluginTaskStartInput = {
   }
 }
 
+export type PluginTaskRunInput = Omit<PluginTaskStartInput, "correlationId"> & { correlationId?: string }
+
 export type PluginTaskSnapshot = PluginTaskHandle & {
   status: PluginTaskStatus
   owner: PluginTaskOwner
@@ -118,6 +121,7 @@ export type PluginCortexTaskAfterInput = {
 
 export interface TaskHostService {
   start(input: PluginTaskStartInput): Promise<PluginTaskHandle>
+  run(input: PluginTaskRunInput): Promise<PluginTaskSnapshot>
   current(): Promise<PluginTaskSnapshot | undefined>
   get(handle: PluginTaskHandle): Promise<PluginTaskSnapshot>
   cancel(handle: PluginTaskHandle): Promise<void>
@@ -245,6 +249,35 @@ export interface SessionUserMessageAfterInput {
   }
 }
 
+export type PluginAssetCreateInput = {
+  data: string | Uint8Array
+  encoding?: "utf8" | "base64"
+  mime: string
+  filename?: string
+  presentation?: import("./tool.js").PluginToolAttachment["presentation"]
+  model?: import("./tool.js").PluginToolAttachment["model"]
+  metadata?: Record<string, unknown>
+}
+
+export interface AssetHostService {
+  create(input: PluginAssetCreateInput): Promise<import("./tool.js").PluginToolAttachment>
+}
+
+export type PluginShellRunInput = {
+  command: [string, ...string[]]
+  timeoutMs?: number
+}
+
+export type PluginShellRunResult = {
+  stdout: string
+  stderr: string
+  exitCode: number
+}
+
+export interface ShellHostService {
+  run(input: PluginShellRunInput): Promise<PluginShellRunResult>
+}
+
 export interface PluginInvocationContext {
   requestId: string
   scopeId: string
@@ -263,6 +296,8 @@ export interface PluginInvocationContext {
   secrets?: PluginSecretsService
   tools?: PluginToolHostService
   agent?: PluginAgentHostService
+  asset?: AssetHostService
+  shell?: ShellHostService
 }
 
 export interface PluginActivationContext {
