@@ -103,6 +103,8 @@ Do not create compatibility paths that violate those contracts. In particular:
 
 Write a failing behavioral test first for new behavior and bug fixes. Test public invariants, not source text or incidental implementation. Use real temporary Scope/storage fixtures instead of broad mocks. Load `testing-guide` for detailed selection and isolation rules.
 
+Every test file must live under the `test/` directory of its owning package, mirroring the relevant source domain when useful. Repository-level script and policy tests belong under the root `test/` directory. Do not colocate `*.test.*` or `*.spec.*` files beside files in `src/`, `script/`, or other implementation directories; `bun run test-layout:check` enforces this boundary.
+
 Core tests run from `packages/synergy`:
 
 ```bash
