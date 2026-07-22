@@ -4540,7 +4540,37 @@ msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
-msgid "app.performance.summary.memory"
+msgid "app.performance.summary.memoryCoverageFull"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memoryCoveragePartial"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceCgroup"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.memorySourceProcess"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serverRss"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemory"
+msgstr ""
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.serviceMemoryValue"
 msgstr ""
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
