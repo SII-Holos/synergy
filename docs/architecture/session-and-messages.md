@@ -75,6 +75,8 @@ A session processes a serial sequence of tasks. One root user message `R` owns e
 
 The loop does not change ownership when a user steers it, a Cortex task reports back, compaction continues, or a workflow injects control context.
 
+Skill slash-command fallback preserves that same root. When a Skill template has no placeholder to consume trailing input, the rendered Skill body and the trailing user input are stored as separate user-origin text parts on the same root user message, before attachments. The fallback does not create a second turn, hidden steer, or system-authored prompt fragment.
+
 `SessionProgress.needsModelCall(messages, R.id)` asks whether the latest user message belonging to `R` has a later terminal assistant reply belonging to the same root. Terminal assistant finishes exclude `tool-calls` and `unknown`, which keep the model/tool loop active.
 
 ## Canonical Message Semantics
@@ -358,6 +360,8 @@ Recovery covers:
 - stale note `activeLoopID` and session loop metadata
 
 An interrupted assistant that never reached terminal persistence is completed with an explicit error during repair. Recovery state is surfaced as `recovering`; it is not presented as ordinary busy work.
+
+Startup pending-reply reconciliation isolates failures by session. An unreadable history remains pending and is reported as a warning, while recovery continues for other sessions so one corrupt record cannot prevent the global runtime from starting.
 
 ### Abort status synchronization
 

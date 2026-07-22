@@ -41,6 +41,8 @@ Search has three independent modes:
 - content — bounded fixed-string ripgrep results
 - symbol — active LSP workspace-symbol results, with an explicit unavailable capability when no LSP client is active
 
+File-index scans preserve complete paths collected before a subprocess output limit or scan timeout and mark the search response as truncated. A workspace that is too large for one bounded index scan therefore returns partial file matches instead of failing the route with a 500 response.
+
 The current public workspace-file routes are read/browse/search/status contracts. Agent write operations use the governed tool pipeline rather than an unguarded file-service write route.
 
 ## File Workbench Ownership and Bounds

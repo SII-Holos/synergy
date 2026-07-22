@@ -2988,16 +2988,12 @@ msgid "app.library.skills.card.compatLabel"
 msgstr "{level} compatibility"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.card.diagnosticsCount"
+msgstr "{count, plural, one {# diagnostic} other {# diagnostics}}"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
 msgstr "Open details for {name}"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.referencesCount"
-msgstr "{count} reference{plural}"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.scriptsCount"
-msgstr "{count} script{plural}"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.compat.compatible"
@@ -3040,6 +3036,10 @@ msgid "app.library.skills.detail.compatLevel"
 msgstr "Level"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.declaredCompatibility"
+msgstr "Declared"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.delete"
 msgstr "Delete skill"
 
@@ -3048,32 +3048,40 @@ msgid "app.library.skills.detail.description"
 msgstr "Description"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.diagnostics"
+msgstr "Diagnostics"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.entryFile"
 msgstr "Entry file"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exporting"
+msgstr "Exporting..."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZip"
+msgstr "Export ZIP"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZipAria"
+msgstr "Export {name} as a ZIP archive"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocation"
+msgstr "Invocation"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocationStatus"
+msgstr "Status"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.detail.location"
 msgstr "Location"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.detail.references"
-msgstr "References"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.scripts"
-msgstr "Scripts"
-
-#. js-lingui-explicit-id
 msgid "app.library.skills.detail.skillPath"
 msgstr "Skill path"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.unsupported"
-msgstr "Unsupported"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.warnings"
-msgstr "Warnings"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.diagnostics.count"
@@ -3090,6 +3098,34 @@ msgstr "No skills loaded"
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.search"
 msgstr "No skills match \"{query}\""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.generic"
+msgstr "Synergy could not export this Skill."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notFound"
+msgstr "The Skill is no longer available."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notStandard"
+msgstr "This Skill does not meet the strict export standard."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.unavailable"
+msgstr "This Skill cannot be exported."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportFailed"
+msgstr "Export failed"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccess"
+msgstr "Skill exported"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccessDesc"
+msgstr "Downloaded \"{name}\" as a ZIP archive"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.filter.all"
@@ -3132,12 +3168,56 @@ msgid "app.library.skills.import.button"
 msgstr "Import"
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.import.destination"
+msgstr "Destination"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.actualLabel"
+msgstr "Actual"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.codeLabel"
+msgstr "Code"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.conflict"
+msgstr "A Skill with this name already exists."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.generic"
+msgstr "Synergy could not import this Skill archive."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.guidance"
+msgstr "Check the package, then try again with a .zip or .skill archive."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.invalid"
+msgstr "The archive is not a valid Skill package."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limit"
+msgstr "The archive exceeds the Skill import limits."
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limitLabel"
+msgstr "Limit"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.nameLabel"
+msgstr "Skill"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.pathLabel"
+msgstr "Path"
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrl"
 msgstr "From URL"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrlDesc"
-msgstr "Download and import a .zip URL"
+msgstr "Download a .zip or .skill archive"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrlHeading"
@@ -3148,28 +3228,24 @@ msgid "app.library.skills.import.label"
 msgstr "Import"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZip"
-msgstr "Upload ZIP"
+msgid "app.library.skills.import.scope.global"
+msgstr "Global"
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZipDesc"
-msgstr "Import from a local .zip file"
+msgid "app.library.skills.import.scope.project"
+msgstr "Project"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchive"
+msgstr "Upload archive"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchiveDesc"
+msgstr "Import a local .zip or .skill archive"
 
 #. Skill import URL placeholder
 msgid "app.library.skills.import.urlPlaceholder"
 msgstr "https://example.com/skill.zip"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailed"
-msgstr "Import failed"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedDesc"
-msgstr "Check that the ZIP contains a valid SKILL.md"
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedUrlDesc"
-msgstr "Failed to download or extract. Check the URL."
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.importSuccess"
@@ -3178,6 +3254,22 @@ msgstr "Skill imported"
 #. js-lingui-explicit-id
 msgid "app.library.skills.importSuccessDesc"
 msgstr "\"{name}\" added to {scope}"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.modelOnly"
+msgstr "Model only"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.unavailable"
+msgstr "Invocation unavailable"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userModel"
+msgstr "User and model"
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userOnly"
+msgstr "User only"
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.reload"

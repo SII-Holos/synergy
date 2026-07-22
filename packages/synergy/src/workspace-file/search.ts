@@ -70,6 +70,7 @@ async function searchFiles(input: {
     ? fuzzysort.go(input.query, filtered, { limit: searchLimit })
     : filtered.slice(0, searchLimit).map((target, index) => ({ target, score: -index }))
   const page = matches.slice(offset, offset + input.limit)
+  const pageLimited = offset + page.length < matches.length
   const output = await Promise.all(
     page.map(async (match) => {
       const target = match.target
@@ -92,8 +93,8 @@ async function searchFiles(input: {
     kind: "files",
     query: input.query,
     items: output,
-    nextCursor: offset + page.length < matches.length ? String(offset + page.length) : undefined,
-    truncated: offset + page.length < matches.length,
+    nextCursor: pageLimited ? String(offset + page.length) : undefined,
+    truncated: snapshot.truncated || pageLimited,
   }
 }
 
