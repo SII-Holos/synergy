@@ -247,6 +247,9 @@ export namespace SessionInvoke {
       if (LatticeModelCalls.peek(sessionID) > 0) {
         await LatticeModelCalls.flush(scopeID, sessionID).catch(() => undefined)
       }
+      if (process.platform === "linux") {
+        SessionMemoryPressure.signalRelease({ sessionID, phase: "session.loop.released" })
+      }
     })
 
     const runtime = SessionManager.registerRuntime(sessionID)

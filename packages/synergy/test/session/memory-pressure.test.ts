@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, test } from "bun:test"
+import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { SessionMemoryPressure } from "../../src/session/memory-pressure"
+import { ServiceMemory } from "../../src/observability/service-memory"
 
 const env = {
   SYNERGY_SESSION_GC_MIN_INTERVAL_MS: "10000",
@@ -59,6 +60,48 @@ describe("SessionMemoryPressure", () => {
     })
 
     expect(result.decision.action).toBe("normal")
+    expect(calls).toEqual([false])
+  })
+
+  test("uses synchronous GC only at Linux release boundaries without changing non-Linux behavior", async () => {
+    const calls: boolean[] = []
+
+    await SessionMemoryPressure.maybeCollect({
+      phase: "session.loop.released",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, platform: "linux", heapUsedBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+    SessionMemoryPressure.resetForTest()
+    await SessionMemoryPressure.maybeCollect({
+      phase: "session.loop.released",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, platform: "darwin", heapUsedBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
+    expect(calls).toEqual([true, false])
+  })
+
+  test("keeps Linux soft-pressure collection asynchronous during an active stream", async () => {
+    const calls: boolean[] = []
+
+    await SessionMemoryPressure.maybeCollect({
+      phase: "llm.turn.stream.periodic",
+      now: () => 12_000,
+      snapshot: () => ({ ...healthySnapshot, platform: "linux", heapUsedBytes: 700 }),
+      collect: (synchronous) => {
+        calls.push(synchronous)
+      },
+      env,
+    })
+
     expect(calls).toEqual([false])
   })
 
@@ -151,6 +194,50 @@ describe("SessionMemoryPressure", () => {
     const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
     expect(SessionMemoryPressure.pressureLevel({ ...healthySnapshot, heapUsedBytes: 700 }, thresholds)).toBe("soft")
     expect(SessionMemoryPressure.pressureLevel(healthySnapshot, thresholds)).toBe("normal")
+  })
+
+  test("uses PSI pressure only for Linux snapshots", () => {
+    const thresholds = SessionMemoryPressure.resolveThresholds(env, healthySnapshot)
+    const pressure = { ...healthySnapshot, cgroupPressureSomeAvg10Ratio: 0.5 }
+
+    expect(SessionMemoryPressure.pressureLevel({ ...pressure, platform: "linux" }, thresholds)).toBe("soft")
+    expect(SessionMemoryPressure.pressureLevel({ ...pressure, platform: "darwin" }, thresholds)).toBe("normal")
+  })
+
+  test("keeps Linux cgroup reclaim opt-in", async () => {
+    const originalReadCgroup = ServiceMemory.readCgroup
+    const originalReclaim = ServiceMemory.reclaim
+    const requests: number[] = []
+    try {
+      ;(ServiceMemory.readCgroup as any) = mock(() => ({ reclaimableBytes: 1024 ** 3 }))
+      ;(ServiceMemory.reclaim as any) = mock(async (bytes: number) => {
+        requests.push(bytes)
+        return { requestedBytes: bytes, supported: true }
+      })
+      const signal = (enabled: boolean) => {
+        SessionMemoryPressure.signalRelease({
+          phase: "session.loop.released",
+          now: () => 12_000,
+          snapshot: () => ({ ...healthySnapshot, platform: "linux", heapUsedBytes: 700 }),
+          collect: () => {},
+          env: {
+            ...env,
+            ...(enabled ? { SYNERGY_LINUX_MEMORY_RECLAIM_ENABLED: "true" } : {}),
+          },
+        })
+      }
+
+      signal(false)
+      await SessionMemoryPressure.flushReleaseSignalsForTest()
+      SessionMemoryPressure.resetForTest()
+      signal(true)
+      await SessionMemoryPressure.flushReleaseSignalsForTest()
+
+      expect(requests).toEqual([512 * 1024 * 1024])
+    } finally {
+      ;(ServiceMemory.readCgroup as any) = originalReadCgroup
+      ;(ServiceMemory.reclaim as any) = originalReclaim
+    }
   })
 
   test("uses cgroup high memory as the default cgroup critical threshold", () => {
