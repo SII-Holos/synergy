@@ -113,6 +113,8 @@ The provider accepts only subscription state and runtime Task events. Legacy Pro
 
 `clarus.runtime.task.assigned` dispatches a Task Session through `ChannelHost`. The visible assignment prompt contains supplied task identity, goal, instructions, input, context, attempt mode, and retry lineage in deterministic order. Separate hidden guidance explains participation rules without pretending to be user-authored text.
 
+Every installation ships `clarus-agent-participation` as a memory-backed builtin Skill. It documents only the native assignment Session workflow and the `clarus_submit_task_result` / `clarus_extend_task` tools; it does not install a standalone listener, open another WebSocket, own credentials, or depend on external scripts.
+
 Each running assignment may have one deterministic deadline Agenda item. The item belongs to the assignment Session's Project Scope and uses `session_guidance` delivery: when it fires, it injects hidden system-origin `steer` guidance into the same Task Session instead of creating a visible user prompt or a second Agenda Session. Authoritative extension events update the assignment deadline and reschedule the same Agenda item. Result acknowledgement or explicit Session abort cancels the reminder.
 
 ## Results and Extensions
