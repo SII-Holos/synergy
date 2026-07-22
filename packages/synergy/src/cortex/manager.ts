@@ -927,7 +927,7 @@ export namespace Cortex {
   }
 
   function isTerminal(status: CortexTypes.TaskStatus): boolean {
-    return status === "completed" || status === "error" || status === "cancelled" || status === "interrupted"
+    return CortexTypes.isTerminalStatus(status)
   }
 
   export type TaskHealth = "queued" | "active" | "tool-running" | "stale" | "terminal"

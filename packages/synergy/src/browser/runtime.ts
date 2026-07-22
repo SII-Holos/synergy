@@ -1,5 +1,6 @@
 import { Log } from "../util/log"
 import { GlobalBus } from "../bus/global"
+import { CortexTypes } from "../cortex/types"
 import { BrowserOwner } from "./owner.js"
 import { PlaywrightBrowserDriver } from "./playwright-driver.js"
 import type { BrowserDriver } from "./driver.js"
@@ -17,6 +18,7 @@ export namespace BrowserRuntime {
 
   const sessions = new Map<string, BrowserSession>()
   const sessionPromises = new Map<string, Promise<BrowserSession>>()
+  const disposalPromises = new Map<string, Promise<void>>()
   let running = false
   let driver: BrowserDriver.Driver | null = null
 
@@ -30,7 +32,8 @@ export namespace BrowserRuntime {
       if (!info?.id) return
       const archived = payload.type === "session.updated" && info.time?.archived
       const deleted = payload.type === "session.deleted"
-      if (!archived && !deleted) return
+      const cortexTerminal = payload.type === "session.updated" && CortexTypes.isTerminalStatus(info.cortex?.status)
+      if (!archived && !deleted && !cortexTerminal) return
       const scopeID = info.scope?.id
       if (!scopeID) return
       const owner: BrowserOwner.Info = {
@@ -57,6 +60,7 @@ export namespace BrowserRuntime {
 
   export async function stop(): Promise<void> {
     const failures: unknown[] = []
+    collectFailures(await Promise.allSettled(Array.from(disposalPromises.values())), failures)
     collectFailures(await Promise.allSettled(Array.from(sessionPromises.values())), failures)
     const { BrowserCommandService } = await import("./command-service.js")
     collectFailures(
@@ -98,15 +102,26 @@ export namespace BrowserRuntime {
   }
 
   /** Dispose a specific BrowserSession. */
-  export async function disposeSession(owner: BrowserOwner.Info): Promise<void> {
+  export function disposeSession(owner: BrowserOwner.Info): Promise<void> {
     const k = BrowserOwner.key(owner)
-    const pending = sessionPromises.get(k)
+    const active = disposalPromises.get(k)
+    if (active) return active
+
+    const operation = disposeSessionOnce(owner, k).finally(() => {
+      if (disposalPromises.get(k) === operation) disposalPromises.delete(k)
+    })
+    disposalPromises.set(k, operation)
+    return operation
+  }
+
+  async function disposeSessionOnce(owner: BrowserOwner.Info, key: string): Promise<void> {
+    const pending = sessionPromises.get(key)
     if (pending) await pending
-    const s = sessions.get(k)
-    if (!s) return
+    const session = sessions.get(key)
+    if (!session) return
     const { BrowserCommandService } = await import("./command-service.js")
-    await BrowserCommandService.disposeOwner(owner, () => s.dispose())
-    sessions.delete(k)
+    await BrowserCommandService.disposeOwner(owner, () => session.dispose())
+    sessions.delete(key)
     BrowserNetworkGateway.revoke(owner)
     BrowserBroker.release(owner)
     BrowserEvent.remove(owner)
@@ -117,6 +132,8 @@ export namespace BrowserRuntime {
     BrowserOwner.assertValid(owner)
     installSessionReaper()
     const k = BrowserOwner.key(owner)
+    const disposing = disposalPromises.get(k)
+    if (disposing) await disposing
     const existing = sessions.get(k)
     if (existing) return existing
     const pending = sessionPromises.get(k)
