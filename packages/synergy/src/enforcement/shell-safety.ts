@@ -821,10 +821,8 @@ export namespace ShellSafety {
 
     function recurse(cmd: string, depth: number): BashRisk {
       if (Date.now() - start > 200) return "shell"
-      if (depth >= MAX_COMPOUND_DEPTH) return ShellSafety.classifyBashRisk(cmd)
-      if (visited.has(cmd)) return ShellSafety.classifyBashRisk(cmd)
-      visited.add(cmd)
 
+      if (ShellSafety.isHardline(cmd)) return "shell_hardline"
       if (ShellSafety.hasPipeToShell(cmd)) return "shell_destructive"
       if (ShellSafety.hasArgumentInjection(cmd)) return "shell_destructive"
       if (ShellSafety.hasDownloadExecuteChain(cmd)) return "shell_destructive"
@@ -833,9 +831,14 @@ export namespace ShellSafety {
         return ShellSafety.classifyBashRisk(cmd)
       }
 
+      if (depth >= MAX_COMPOUND_DEPTH || visited.has(cmd)) return "shell"
+      visited.add(cmd)
+
       const segments = splitCompound(cmd)
       if (segments.length <= 1) {
-        return ShellSafety.classifyBashRisk(cmd)
+        const segment = segments[0]
+        if (!segment || segment === cmd) return "shell"
+        return recurse(segment, depth + 1)
       }
 
       let highest: BashRisk = "shell_read"

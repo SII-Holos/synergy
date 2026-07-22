@@ -1121,6 +1121,17 @@ describe("ShellSafety compound command recursion", () => {
     expect(typeof ShellSafety.classifyCompoundRisk("ls && ls && ls")).toBe("string")
   })
 
+  test("trailing separators make progress instead of re-entering the classifier", () => {
+    expect(ShellSafety.classifyBashRisk("ls;")).toBe("shell_read")
+    expect(ShellSafety.classifyBashRisk(`printf '%s\\n' "$line";`)).toBe("shell")
+    expect(ShellSafety.classifyBashRisk(";")).toBe("shell")
+  })
+
+  test("classifies a while/case command with a trailing case separator", () => {
+    const command = `pid=$(lsof -t -iTCP:18081 -sTCP:LISTEN) && lsof -nP -a -p "$pid" -iTCP | while read -r line; do case "$line" in *"api.holosai.io"*|*"clarus.holosai.io"*) printf '%s\\n' "$line";; esac; done`
+    expect(ShellSafety.classifyBashRisk(command)).toBe("shell")
+  })
+
   test("depth limit: deep nesting returns some result", () => {
     const deep = Array(10).fill("ls").join(" && ")
     const result = ShellSafety.classifyCompoundRisk(deep)
