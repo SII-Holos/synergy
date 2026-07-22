@@ -11,6 +11,7 @@ import { WorkspaceFileService } from "../../src/workspace-file/service"
 import { WorkspaceFileStatus } from "../../src/workspace-file/status"
 import { LSP } from "../../src/lsp"
 import { Ripgrep } from "../../src/file/ripgrep"
+import { ProcessOutput } from "../../src/process/output"
 import { tmpdir } from "../fixture/fixture"
 
 function isSymlinkPrivilegeError(error: unknown) {
@@ -328,6 +329,31 @@ describe("WorkspaceFileSearch", () => {
         })
         expect(result.items.some((item) => item.kind === "file" && item.type === "directory")).toBe(true)
         expect(result.items.some((item) => item.kind === "file" && item.path.endsWith(".md"))).toBe(false)
+      },
+    )
+  })
+
+  test("returns partial file results when the index output safety limit is reached", async () => {
+    await withWorkspace(
+      async (dir) => {
+        await Bun.write(path.join(dir, "partial.ts"), "export const partial = true")
+      },
+      async () => {
+        const originalFiles = Ripgrep.files
+        ;(Ripgrep as any).files = async function* () {
+          yield "partial.ts"
+          throw new ProcessOutput.LimitError("max_output_bytes", 20 * 1024 * 1024)
+        }
+
+        try {
+          const result = await WorkspaceFileSearch.search({ kind: "files", query: "partial", limit: 10 })
+          expect(result.items).toHaveLength(1)
+          expect(result.items[0]).toMatchObject({ kind: "file", path: "partial.ts" })
+          expect(result.truncated).toBe(true)
+          expect(result.nextCursor).toBeUndefined()
+        } finally {
+          ;(Ripgrep as any).files = originalFiles
+        }
       },
     )
   })

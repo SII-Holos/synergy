@@ -3,10 +3,12 @@ import { ScopedState } from "../scope/scoped-state"
 import { ScopeContext } from "../scope/context"
 import { Ripgrep } from "../file/ripgrep"
 import { WorkspaceFileService } from "./service"
+import { ProcessOutput } from "../process/output"
 
 type Entry = {
   files: string[]
   dirs: string[]
+  truncated: boolean
   fetching: boolean
   fetchedAt: number
 }
@@ -36,20 +38,29 @@ function scanSignal(signal: AbortSignal | undefined) {
   return signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)
 }
 
-async function scan(input?: { signal?: AbortSignal }): Promise<{ files: string[]; dirs: string[] }> {
+async function scan(input?: {
+  signal?: AbortSignal
+}): Promise<{ files: string[]; dirs: string[]; truncated: boolean }> {
   const files: string[] = []
   const dirs = new Set<string>()
   const signal = scanSignal(input?.signal)
-  for await (const file of Ripgrep.files({ cwd: root(), signal })) {
-    if (signal.aborted) break
-    const relative = cleanRelative(file)
-    if (!relative) continue
-    files.push(relative)
-    addParents(dirs, relative)
+  let truncated = false
+  try {
+    for await (const file of Ripgrep.files({ cwd: root(), signal })) {
+      if (signal.aborted) break
+      const relative = cleanRelative(file)
+      if (!relative) continue
+      files.push(relative)
+      addParents(dirs, relative)
+    }
+  } catch (error) {
+    if (error instanceof ProcessOutput.LimitError) truncated = true
+    else throw error
   }
   return {
     files: files.toSorted(),
     dirs: Array.from(dirs).toSorted(),
+    truncated: truncated || signal.aborted,
   }
 }
 
@@ -57,6 +68,7 @@ export namespace WorkspaceFileIndexer {
   const state = ScopedState.create<Entry>(() => ({
     files: [],
     dirs: [],
+    truncated: false,
     fetching: false,
     fetchedAt: 0,
   }))
@@ -68,6 +80,7 @@ export namespace WorkspaceFileIndexer {
       const next = await scan({ signal: options?.signal })
       entry.files = next.files
       entry.dirs = next.dirs
+      entry.truncated = next.truncated
       entry.fetchedAt = Date.now()
     } finally {
       entry.fetching = false
@@ -83,6 +96,7 @@ export namespace WorkspaceFileIndexer {
     return {
       files: entry.files,
       dirs: entry.dirs,
+      truncated: entry.truncated,
       fetching: entry.fetching,
       fetchedAt: entry.fetchedAt,
     }

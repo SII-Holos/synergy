@@ -359,6 +359,8 @@ Recovery covers:
 
 An interrupted assistant that never reached terminal persistence is completed with an explicit error during repair. Recovery state is surfaced as `recovering`; it is not presented as ordinary busy work.
 
+Startup pending-reply reconciliation isolates failures by session. An unreadable history remains pending and is reported as a warning, while recovery continues for other sessions so one corrupt record cannot prevent the global runtime from starting.
+
 ### Abort status synchronization
 
 When a running session is aborted, `signalAbort()` signals the owning controller and sets the phase to `stopping` but does not publish events or repair durable state. The abort HTTP route additionally calls `repairAfterAbort()` to repair the persisted incomplete assistant message and synchronize the frontend status.
