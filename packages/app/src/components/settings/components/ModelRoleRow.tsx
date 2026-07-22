@@ -3,7 +3,6 @@ import { Popover as KobaltePopover } from "@kobalte/core/popover"
 import { Icon } from "@ericsanchezok/synergy-ui/icon"
 import { List } from "@ericsanchezok/synergy-ui/list"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
-import { Tooltip } from "@ericsanchezok/synergy-ui/tooltip"
 import type { ModelRoleSummary } from "@ericsanchezok/synergy-sdk/client"
 import { createMemo, createSignal, For, Show } from "solid-js"
 import { Portal } from "solid-js/web"
@@ -74,6 +73,7 @@ export function ModelRoleRow(props: {
   const { _ } = useLingui()
   const [pickerOpen, setPickerOpen] = createSignal(false)
   const [variantPickerOpen, setVariantPickerOpen] = createSignal(false)
+  const [detailsOpen, setDetailsOpen] = createSignal(false)
 
   const providerIndex = createMemo(() => createProviderModelIndex(props.providers))
   const roleCopy = createMemo(() => modelRoleCopy(props.summary, _))
@@ -149,61 +149,65 @@ export function ModelRoleRow(props: {
       <div class="settings-model-copy">
         <div class="settings-model-title-line">
           <span class="settings-model-title">{roleCopy().label}</span>
-          <Tooltip
-            placement="right"
-            value={
-              <div class="settings-model-detail-popover">
-                <div>
-                  <div class="settings-model-detail-title">{roleCopy().label}</div>
-                  <div class="settings-model-detail-muted">{roleCopy().description}</div>
-                </div>
-                <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">{_(usedByLabel)}</div>
-                  <Show
-                    when={props.summary.usedBy.length > 0}
-                    fallback={<div class="settings-model-detail-muted">{_(noAgentsUse)}</div>}
-                  >
-                    <div class="settings-model-agent-list">
-                      <For each={props.summary.usedBy.slice(0, 8)}>
-                        {(agent) => (
-                          <span class="settings-model-chip">
-                            {agent.name}
-                            <Show when={agent.hidden}>
-                              <span class="settings-model-chip-muted">{_(systemAgentLabel)}</span>
-                            </Show>
-                            <Show when={agent.modelSource === "explicit"}>
-                              <span class="settings-model-chip-muted">{_(overrideAgentLabel)}</span>
-                            </Show>
-                          </span>
-                        )}
-                      </For>
-                      <Show when={props.summary.usedBy.length > 8}>
-                        <span class="settings-model-chip">+{props.summary.usedBy.length - 8}</span>
-                      </Show>
-                    </div>
-                  </Show>
-                </div>
-                <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">{_(fallbackChainLabel)}</div>
-                  <div class="settings-model-fallback-chain">
-                    <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field, _)}</span>}</For>
-                  </div>
-                </div>
-                <div class="settings-model-detail-block">
-                  <div class="settings-model-detail-label">{_(resolutionLabel)}</div>
-                  <div class="settings-model-detail-muted">{display().resolutionDescription}</div>
-                </div>
-              </div>
-            }
-          >
-            <button
+          <KobaltePopover open={detailsOpen()} onOpenChange={setDetailsOpen} placement="right-start" gutter={8}>
+            <KobaltePopover.Trigger
               type="button"
               class="settings-model-info-button"
               aria-label={_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
             >
               <Icon name={getSemanticIcon("action.info")} size="small" />
-            </button>
-          </Tooltip>
+            </KobaltePopover.Trigger>
+            <Show when={props.popoverLayer}>
+              {(layer) => (
+                <Portal mount={layer()}>
+                  <KobaltePopover.Content class="settings-model-detail-surface outline-none">
+                    <KobaltePopover.Title class="sr-only">
+                      {_({ ...detailsAriaLabel, values: { label: roleCopy().label } })}
+                    </KobaltePopover.Title>
+                    <div class="settings-model-detail-popover">
+                      <div>
+                        <div class="settings-model-detail-title">{roleCopy().label}</div>
+                        <div class="settings-model-detail-muted">{roleCopy().description}</div>
+                      </div>
+                      <div class="settings-model-detail-block">
+                        <div class="settings-model-detail-label">{_(usedByLabel)}</div>
+                        <Show
+                          when={props.summary.usedBy.length > 0}
+                          fallback={<div class="settings-model-detail-muted">{_(noAgentsUse)}</div>}
+                        >
+                          <div class="settings-model-agent-list">
+                            <For each={props.summary.usedBy}>
+                              {(agent) => (
+                                <span class="settings-model-chip">
+                                  {agent.name}
+                                  <Show when={agent.hidden}>
+                                    <span class="settings-model-chip-muted">{_(systemAgentLabel)}</span>
+                                  </Show>
+                                  <Show when={agent.modelSource === "explicit"}>
+                                    <span class="settings-model-chip-muted">{_(overrideAgentLabel)}</span>
+                                  </Show>
+                                </span>
+                              )}
+                            </For>
+                          </div>
+                        </Show>
+                      </div>
+                      <div class="settings-model-detail-block">
+                        <div class="settings-model-detail-label">{_(fallbackChainLabel)}</div>
+                        <div class="settings-model-fallback-chain">
+                          <For each={props.summary.fallbackChain}>{(field) => <span>{fieldLabel(field, _)}</span>}</For>
+                        </div>
+                      </div>
+                      <div class="settings-model-detail-block">
+                        <div class="settings-model-detail-label">{_(resolutionLabel)}</div>
+                        <div class="settings-model-detail-muted">{display().resolutionDescription}</div>
+                      </div>
+                    </div>
+                  </KobaltePopover.Content>
+                </Portal>
+              )}
+            </Show>
+          </KobaltePopover>
         </div>
         <span class="settings-model-description">{roleCopy().description}</span>
       </div>

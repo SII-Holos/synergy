@@ -47,11 +47,6 @@ const attentionDescription = {
   id: "settings.usage.attention.description",
   message: "These accounts were rejected and remain here until their credentials are recovered.",
 }
-const attentionEmptyTitle = { id: "settings.usage.attention.empty", message: "No provider accounts need attention" }
-const attentionEmptyDescription = {
-  id: "settings.usage.attention.emptyDesc",
-  message: "Credential recovery actions will appear here when a provider rejects a request.",
-}
 const connectableTitle = { id: "settings.usage.connectable.title", message: "Connectable providers" }
 const connectableDescription = {
   id: "settings.usage.connectable.description",
@@ -208,12 +203,8 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
           </div>
         </Show>
 
-        <SettingsSection title={_(attentionTitle)} description={_(attentionDescription)}>
-          <SettingsEntityList
-            isEmpty={needsAttention().length === 0}
-            emptyTitle={_(attentionEmptyTitle)}
-            emptyDescription={_(attentionEmptyDescription)}
-          >
+        <Show when={needsAttention().length > 0}>
+          <SettingsSection title={_(attentionTitle)} description={_(attentionDescription)}>
             <div class="usage-panel-list">
               <For each={needsAttention()}>
                 {(item) => (
@@ -228,8 +219,8 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
                 )}
               </For>
             </div>
-          </SettingsEntityList>
-        </SettingsSection>
+          </SettingsSection>
+        </Show>
 
         <SettingsSection title={_(connectableTitle)} description={_(connectableDescription)}>
           <SettingsEntityList
