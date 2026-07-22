@@ -1096,7 +1096,7 @@ export namespace SessionProcessor {
                         value.toolCallId,
                         LLMTurnMemory.estimateChars(value.input, SessionBounds.TOOL_INPUT_MAX_BYTES),
                       )
-                      if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
+                      if (toolInputBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
                         const error = SessionBounds.toolInputExceededMessage()
                         const part = await Session.updatePart({
                           ...(match ?? {

@@ -317,7 +317,10 @@ LoopJob.register({
       directory: ScopeContext.current.directory,
     }
   },
-  async execute(input) {
+  key(input) {
+    return input.directory
+  },
+  async execute(input, _signal) {
     GitHealth.invalidate(input.directory)
     return "pass"
   },

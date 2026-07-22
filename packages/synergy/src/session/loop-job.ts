@@ -47,7 +47,8 @@ export namespace LoopJob {
     blocking: false
     capture(ctx: Context, instance: JobInstance): Payload
     key?(payload: Payload): string
-    execute(payload: Payload): Promise<FlowResult>
+    timeoutMs?: number
+    execute(payload: Payload, signal: AbortSignal): Promise<FlowResult>
   }
 
   export type Job<Payload extends JobInstance = JobInstance> = BlockingJob | BackgroundJob<Payload>
@@ -80,6 +81,8 @@ export namespace LoopJob {
   const registry = new Map<string, RegisteredJob>()
   const signals = new Map<string, Signal>()
   const background = new Map<string, BackgroundState>()
+  let backgroundSequence = 0
+  const DEFAULT_BACKGROUND_TIMEOUT_MS = 180_000
 
   export function register<Payload extends JobInstance>(job: Job<Payload>) {
     registry.set(job.type, job as RegisteredJob)
@@ -163,7 +166,8 @@ export namespace LoopJob {
 
   function scheduleBackground(job: RegisteredBackgroundJob, payload: JobInstance, fallbackSessionID: string) {
     const sessionID = typeof payload.sessionID === "string" ? payload.sessionID : fallbackSessionID
-    const key = `${job.type}:${job.key?.(payload) ?? sessionID}`
+    const coalescingKey = job.key?.(payload)
+    const key = coalescingKey === undefined ? `${job.type}:run:${++backgroundSequence}` : `${job.type}:${coalescingKey}`
     const run = {
       job,
       payload,
@@ -187,7 +191,7 @@ export namespace LoopJob {
       current: run,
     }
     background.set(key, state)
-    recordMetric("session.loop_job.background.active", background.size, "count", job.type, sessionID)
+    recordMetric("session.loop_job.background.active", activeCount(job.type), "count", job.type, sessionID)
     void runBackground(state)
   }
 
@@ -201,10 +205,10 @@ export namespace LoopJob {
       })
       let outcome = "success"
       try {
-        await run.job.execute(run.payload)
+        await executeWithTimeout(run)
       } catch (error) {
-        outcome = "error"
-        log.error("job failed", { type: state.type, error })
+        outcome = error instanceof DOMException && error.name === "TimeoutError" ? "timeout" : "error"
+        log.error("job failed", { type: state.type, outcome, error })
       } finally {
         recordMetric(
           "session.loop_job.background.duration",
@@ -219,7 +223,49 @@ export namespace LoopJob {
       state.pending = undefined
     }
     if (background.get(state.key) === state) background.delete(state.key)
-    recordMetric("session.loop_job.background.active", background.size, "count", state.type, state.current.sessionID)
+    recordMetric(
+      "session.loop_job.background.active",
+      activeCount(state.type),
+      "count",
+      state.type,
+      state.current.sessionID,
+    )
+  }
+
+  async function executeWithTimeout(run: BackgroundRun) {
+    const controller = new AbortController()
+    const timeoutMs = backgroundTimeoutMs(run.job)
+    const timeout = setTimeout(
+      () => controller.abort(new DOMException(`Background job timed out after ${timeoutMs}ms.`, "TimeoutError")),
+      timeoutMs,
+    )
+    timeout.unref()
+    let onAbort: (() => void) | undefined
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(controller.signal.reason)
+      controller.signal.addEventListener("abort", onAbort, { once: true })
+    })
+    try {
+      return await Promise.race([run.job.execute(run.payload, controller.signal), aborted])
+    } finally {
+      clearTimeout(timeout)
+      if (onAbort) controller.signal.removeEventListener("abort", onAbort)
+    }
+  }
+
+  function backgroundTimeoutMs(job: RegisteredBackgroundJob) {
+    const timeoutMs = job.timeoutMs
+    return typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+      ? timeoutMs
+      : DEFAULT_BACKGROUND_TIMEOUT_MS
+  }
+
+  function activeCount(jobType: string) {
+    let count = 0
+    for (const state of background.values()) {
+      if (state.type === jobType) count++
+    }
+    return count
   }
 
   function recordMetric(

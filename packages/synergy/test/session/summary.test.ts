@@ -8,6 +8,7 @@ import { Session } from "../../src/session"
 import { LoopJob } from "../../src/session/loop-job"
 import { MessageV2 } from "../../src/session/message-v2"
 import { SessionSummary } from "../../src/session/summary"
+import { SessionHistory } from "../../src/session/history"
 import { Snapshot } from "../../src/session/snapshot"
 import { SnapshotSchema } from "../../src/session/snapshot-schema"
 import { tmpdir } from "../fixture/fixture"
@@ -17,6 +18,7 @@ import { StoragePath } from "../../src/storage/path"
 const originalDiffSummary = Snapshot.diffSummary
 const originalGetModel = Provider.getModel
 const originalSessionMessages = Session.messages
+const originalDetachedModelMessages = SessionHistory.detachedModelMessages
 
 function summarizeFromLoop(input: { sessionID: string; messageID: string; messages: MessageV2.WithParts[] }) {
   return SessionSummary.summarize(input)
@@ -26,6 +28,7 @@ afterEach(() => {
   ;(Snapshot.diffSummary as any) = originalDiffSummary
   ;(Provider.getModel as any) = originalGetModel
   ;(Session.messages as any) = originalSessionMessages
+  ;(SessionHistory.detachedModelMessages as any) = originalDetachedModelMessages
 })
 
 function testModel(providerID: string, modelID: string) {
@@ -317,10 +320,12 @@ describe("SessionSummary", () => {
           options: {},
         }))
         let historyReads = 0
-        ;(Session.messages as any) = mock(async (input: Parameters<typeof Session.messages>[0]) => {
-          historyReads++
-          return originalSessionMessages(input)
-        })
+        ;(SessionHistory.detachedModelMessages as any) = mock(
+          async (input: Parameters<typeof SessionHistory.detachedModelMessages>[0]) => {
+            historyReads++
+            return originalDetachedModelMessages(input)
+          },
+        )
 
         await LoopJob.execute([{ type: "summarize" }], {
           session,

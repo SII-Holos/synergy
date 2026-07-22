@@ -4,7 +4,7 @@ import { RetentionProbe } from "../../src/session/retention-probe"
 describe("RetentionProbe", () => {
   beforeEach(() => RetentionProbe.resetForTest())
 
-  test("marks tracked owners without retaining them strongly in its public state", () => {
+  test("tracks owners without modifying observed objects", () => {
     const target = { payload: "test" }
     const probe = RetentionProbe.begin({
       sessionID: "ses_probe",
@@ -14,7 +14,7 @@ describe("RetentionProbe", () => {
 
     probe.track("stream.input", target, 1_024)
     expect(String(RetentionProbe.markerForTest(target))).toContain("stream.input")
-    expect(Object.keys(target)).toEqual(["payload"])
+    expect(Object.getOwnPropertyNames(target)).toEqual(["payload"])
     expect(RetentionProbe.stats()).toEqual({ groups: 1, releasedGroups: 0, targets: 1 })
 
     probe.release()
@@ -32,6 +32,17 @@ describe("RetentionProbe", () => {
     probe.track("prompt.messages", target, 1_024)
     probe.release()
     expect(RetentionProbe.markerForTest(target)).toBeUndefined()
+    expect(RetentionProbe.stats()).toEqual({ groups: 0, releasedGroups: 0, targets: 0 })
+
+    const emptyTarget = { payload: "empty" }
+    const emptyProbe = RetentionProbe.begin({
+      sessionID: "ses_empty",
+      messageID: "msg_empty",
+      env: { SYNERGY_RETENTION_PROBE_ENABLED: "" },
+    })
+    emptyProbe.track("prompt.messages", emptyTarget, 1_024)
+    emptyProbe.release()
+    expect(RetentionProbe.markerForTest(emptyTarget)).toBeUndefined()
     expect(RetentionProbe.stats()).toEqual({ groups: 0, releasedGroups: 0, targets: 0 })
   })
 })

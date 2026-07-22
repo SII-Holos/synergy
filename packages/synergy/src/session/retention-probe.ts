@@ -1,16 +1,26 @@
 import { ObservabilityMetrics } from "@/observability/metrics"
 
 export namespace RetentionProbe {
-  const MARKER = "__synergy_retention_owner__"
   const CHECKPOINTS_MS = [30_000, 120_000] as const
   const MAX_GROUPS = 256
   const MAX_TARGETS_PER_GROUP = 32
+
+  interface FinalizedTarget {
+    groupID: string
+    targetID: string
+    owner: string
+    sessionID: string
+    messageID: string
+    releasedAt?: number
+  }
 
   interface Target {
     id: string
     owner: string
     ref: WeakRef<object>
     estimatedBytes: number
+    unregisterToken: object
+    finalized: FinalizedTarget
   }
 
   interface GroupState {
@@ -29,17 +39,19 @@ export namespace RetentionProbe {
   }
 
   const groups = new Map<string, GroupState>()
+  let markers = new WeakMap<object, string>()
   let sequence = 0
   let timer: ReturnType<typeof setTimeout> | undefined
-  const finalized = new FinalizationRegistry<{ groupID: string; targetID: string }>((held) => {
+  const finalized = new FinalizationRegistry<FinalizedTarget>((held) => {
     const group = groups.get(held.groupID)
     const target = group?.targets.get(held.targetID)
-    if (!group || !target) return
-    group.targets.delete(held.targetID)
-    if (group.releasedAt !== undefined) {
-      recordCollected(group, target, Date.now() - group.releasedAt)
+    if (group && target) {
+      group.targets.delete(held.targetID)
+      if (held.releasedAt !== undefined) recordCollected(group, target, Date.now() - held.releasedAt)
+      if (group.releasedAt !== undefined && group.targets.size === 0) groups.delete(group.id)
+      return
     }
-    if (group.releasedAt !== undefined && group.targets.size === 0) groups.delete(group.id)
+    if (held.releasedAt !== undefined) recordCollectedHeld(held, Date.now() - held.releasedAt)
   })
 
   export function begin(input: { sessionID: string; messageID: string; env?: NodeJS.ProcessEnv }): Handle {
@@ -62,28 +74,31 @@ export namespace RetentionProbe {
         if (group.targets.size >= MAX_TARGETS_PER_GROUP) return
         const target = value as object
         const targetID = `${id}:${owner}:${group.targets.size + 1}`
-        try {
-          Object.defineProperty(target, MARKER, {
-            value: targetID,
-            configurable: true,
-            enumerable: false,
-          })
-        } catch {
-          // Frozen provider objects can still be tracked weakly without a heap marker.
+        markers.set(target, targetID)
+        const unregisterToken = {}
+        const held: FinalizedTarget = {
+          groupID: id,
+          targetID,
+          owner,
+          sessionID: group.sessionID,
+          messageID: group.messageID,
         }
         const record: Target = {
           id: targetID,
           owner,
           ref: new WeakRef(target),
           estimatedBytes: finite(estimatedBytes),
+          unregisterToken,
+          finalized: held,
         }
         group.targets.set(targetID, record)
-        finalized.register(target, { groupID: id, targetID })
+        finalized.register(target, held, unregisterToken)
       },
       release() {
         if (released) return
         released = true
         group.releasedAt = Date.now()
+        for (const target of group.targets.values()) target.finalized.releasedAt = group.releasedAt
         for (const target of group.targets.values()) {
           ObservabilityMetrics.record({
             name: "llm.turn.retention.target_bytes",
@@ -122,12 +137,14 @@ export namespace RetentionProbe {
   export function resetForTest() {
     if (timer) clearTimeout(timer)
     timer = undefined
+    for (const group of groups.values()) unregisterGroup(group)
     groups.clear()
+    markers = new WeakMap<object, string>()
     sequence = 0
   }
 
   export function markerForTest(value: object) {
-    return (value as Record<string, unknown>)[MARKER]
+    return markers.get(value)
   }
 
   function checkGroup(group: GroupState, phase: string, afterGC: boolean, now: number) {
@@ -152,7 +169,11 @@ export namespace RetentionProbe {
         messageID: group.messageID,
         labels: { owner: target.owner, phase, alive, afterGC },
       })
-      if (!alive) group.targets.delete(id)
+      if (!alive) {
+        finalized.unregister(target.unregisterToken)
+        recordCollected(group, target, ageMs)
+        group.targets.delete(id)
+      }
     }
     if (group.targets.size === 0) groups.delete(group.id)
   }
@@ -179,7 +200,7 @@ export namespace RetentionProbe {
       if (now < dueAt) continue
       checkGroup(group, `release.${CHECKPOINTS_MS[group.checkpoint] / 1000}s`, false, now)
       group.checkpoint++
-      if (group.checkpoint >= CHECKPOINTS_MS.length) groups.delete(group.id)
+      if (group.checkpoint >= CHECKPOINTS_MS.length) dropGroup(group)
     }
     scheduleSweep()
   }
@@ -189,7 +210,7 @@ export namespace RetentionProbe {
     const remove = [...groups.values()]
       .sort((a, b) => (a.releasedAt ?? a.createdAt) - (b.releasedAt ?? b.createdAt))
       .slice(0, groups.size - MAX_GROUPS + 1)
-    for (const group of remove) groups.delete(group.id)
+    for (const group of remove) dropGroup(group)
   }
 
   function recordCollected(group: GroupState, target: Target, durationMs: number) {
@@ -204,9 +225,32 @@ export namespace RetentionProbe {
     })
   }
 
+  function recordCollectedHeld(target: FinalizedTarget, durationMs: number) {
+    ObservabilityMetrics.record({
+      name: "llm.turn.retention.collected",
+      value: Math.max(0, durationMs),
+      unit: "ms",
+      module: "llm",
+      sessionID: target.sessionID,
+      messageID: target.messageID,
+      labels: { owner: target.owner },
+    })
+  }
+
+  function unregisterGroup(group: GroupState) {
+    for (const target of group.targets.values()) finalized.unregister(target.unregisterToken)
+  }
+
+  function dropGroup(group: GroupState) {
+    unregisterGroup(group)
+    groups.delete(group.id)
+  }
+
   function enabled(env: NodeJS.ProcessEnv = process.env) {
     const value = env.SYNERGY_RETENTION_PROBE_ENABLED
-    return value === undefined || (value !== "0" && value.toLowerCase() !== "false")
+    if (value === undefined) return true
+    const normalized = value.trim().toLowerCase()
+    return normalized !== "" && normalized !== "0" && normalized !== "false"
   }
 
   function finite(value: number) {

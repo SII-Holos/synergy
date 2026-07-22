@@ -11,6 +11,7 @@ export namespace Chronicler {
     const { Provider } = await import("@/provider/provider")
     const { MessageV2 } = await import("../session/message-v2")
     const { Session } = await import("../session")
+    const { SessionHistory } = await import("../session/history")
     const { SessionInvoke } = await import("../session/invoke")
     const { Identifier } = await import("../id/id")
 
@@ -28,7 +29,7 @@ export namespace Chronicler {
     }
     const model = await Provider.getModel(agentModel.providerID, agentModel.modelID)
 
-    const messages = await Session.messages({ sessionID: ctx.sessionID })
+    const messages = await SessionHistory.detachedModelMessages({ sessionID: ctx.sessionID, signal: ctx.abort })
     if (messages.length === 0) return
 
     const modelMessages = MessageV2.toModelMessage(messages)
@@ -90,9 +91,13 @@ export namespace Chronicler {
     capture(ctx) {
       return { type: "chronicle", sessionID: ctx.sessionID, abort: ctx.abort }
     },
-    async execute(input) {
-      await run(input)
-      return "continue"
+    key(input) {
+      return input.sessionID
+    },
+    timeoutMs: 180_000,
+    async execute(input, signal) {
+      await run({ sessionID: input.sessionID, abort: AbortSignal.any([input.abort, signal]) })
+      return "pass"
     },
   })
 }

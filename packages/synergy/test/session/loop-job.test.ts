@@ -80,6 +80,9 @@ describe("LoopJob background execution", () => {
       capture(ctx, instance) {
         return { type, sessionID: ctx.sessionID, revision: Number(instance.revision) }
       },
+      key(payload) {
+        return payload.sessionID
+      },
       async execute(payload) {
         seen.push(payload.revision)
         if (payload.revision === 1) {
@@ -101,5 +104,76 @@ describe("LoopJob background execution", () => {
     releaseFirst.resolve()
     await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
     expect(seen).toEqual([1, 3])
+  })
+
+  test("runs every payload unless a job explicitly opts into coalescing", async () => {
+    const release = Promise.withResolvers<void>()
+    const seen: number[] = []
+    const type = `test_distinct_${Date.now()}_${Math.random()}`
+    LoopJob.register({
+      type,
+      phase: "post",
+      blocking: false,
+      collect() {
+        return []
+      },
+      capture(ctx, instance) {
+        return { type, sessionID: ctx.sessionID, revision: Number(instance.revision) }
+      },
+      async execute(payload) {
+        seen.push(payload.revision)
+        await release.promise
+        return "pass"
+      },
+    })
+
+    const ctx = context("ses_distinct")
+    await LoopJob.execute([{ type, revision: 1 }], ctx)
+    await LoopJob.execute([{ type, revision: 2 }], ctx)
+    await LoopJob.execute([{ type, revision: 3 }], ctx)
+    await waitUntil(() => seen.length === 3)
+
+    release.resolve()
+    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
+    expect(seen).toEqual([1, 2, 3])
+  })
+
+  test("times out a stuck run and advances its pending payload", async () => {
+    const firstStarted = Promise.withResolvers<void>()
+    const seen: number[] = []
+    const type = `test_timeout_${Date.now()}_${Math.random()}`
+    LoopJob.register({
+      type,
+      phase: "post",
+      blocking: false,
+      timeoutMs: 20,
+      collect() {
+        return []
+      },
+      capture(ctx, instance) {
+        return { type, sessionID: ctx.sessionID, revision: Number(instance.revision) }
+      },
+      key(payload) {
+        return payload.sessionID
+      },
+      async execute(payload, signal) {
+        seen.push(payload.revision)
+        if (payload.revision === 1) {
+          firstStarted.resolve()
+          await new Promise<void>((_, reject) =>
+            signal.addEventListener("abort", () => reject(signal.reason), { once: true }),
+          )
+        }
+        return "pass"
+      },
+    })
+
+    const ctx = context("ses_timeout")
+    await LoopJob.execute([{ type, revision: 1 }], ctx)
+    await firstStarted.promise
+    await LoopJob.execute([{ type, revision: 2 }], ctx)
+
+    await waitUntil(() => !LoopJob.backgroundStats().jobs.some((job) => job.type === type))
+    expect(seen).toEqual([1, 2])
   })
 })
