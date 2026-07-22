@@ -7,6 +7,7 @@ import { MessageV2 } from "../../src/session/message-v2"
 import { Config } from "../../src/config/config"
 import type { Provider } from "../../src/provider/provider"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
+import type { ModelMessage } from "ai"
 
 Log.init({ print: false })
 
@@ -343,6 +344,43 @@ describe("util.token.estimateJSON", () => {
   test("estimates arrays", () => {
     const arr = [1, 2, 3]
     expect(Token.estimateJSON(arr)).toBe(Token.estimate(JSON.stringify(arr)))
+  })
+})
+
+describe("session.compaction.trimMessagesForContext", () => {
+  test("does not retain a tool result after trimming away its assistant tool call", async () => {
+    const assistantToolCall = {
+      role: "assistant",
+      content: [
+        {
+          type: "tool-call",
+          toolCallId: "call_1",
+          toolName: "read",
+          input: { payload: "x".repeat(4_000) },
+        },
+      ],
+    } satisfies ModelMessage
+    const toolResult = {
+      role: "tool",
+      content: [
+        {
+          type: "tool-result",
+          toolCallId: "call_1",
+          toolName: "read",
+          output: { type: "text", value: "result" },
+        },
+      ],
+    } satisfies ModelMessage
+    const latestUser = {
+      role: "user",
+      content: [{ type: "text", text: "continue" }],
+    } satisfies ModelMessage
+    const messages = [assistantToolCall, toolResult, latestUser]
+    const budget = Token.estimateJSON(toolResult) + Token.estimateJSON(latestUser) + 10
+
+    const trimmed = await SessionCompaction.trimMessagesForContext(messages, budget)
+
+    expect(trimmed.map((message) => message.role)).toEqual(["system", "user"])
   })
 })
 
