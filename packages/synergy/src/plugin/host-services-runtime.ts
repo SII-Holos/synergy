@@ -15,7 +15,7 @@ import { EnforcementGate } from "../enforcement/gate"
 import { Global } from "../global"
 import { Identifier } from "../id/id"
 import { SandboxBackend } from "../sandbox/backend"
-import { SkillPaths } from "../skill/paths"
+import { SkillSourceProfile } from "../skill/source-profile"
 import { Bus } from "../bus"
 import { Scope } from "../scope"
 import { ScopeContext } from "../scope/context"
@@ -450,7 +450,7 @@ async function runPluginShell(input: PluginHostServiceInvocationInput, value: Re
   const session = input.invocation.sessionId ? await Session.get(input.invocation.sessionId) : undefined
   const profileId = await Session.resolveEffectiveControlProfile({ sessionID: session?.id })
   const workspace = ScopeContext.current.workspace
-  const trustedRoots = SkillPaths.runtimeSkillRootCandidatesSync(input.invocation.directory)
+  const trustedRoots = SkillSourceProfile.allRootPaths(input.invocation.directory)
   const gate = await EnforcementGate.create({
     activeWorkspace: input.invocation.directory,
     workspaceType: workspace?.type === "git_worktree" ? "worktree" : "main",

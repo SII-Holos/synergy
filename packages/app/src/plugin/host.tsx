@@ -391,6 +391,7 @@ function registerPluginSurfaces(input: {
                 contributionId: item.id,
                 kind: item.kind,
                 serverUrl: input.serverUrl,
+                client: input.client,
                 events: input.events,
                 scopeKey: input.scopeKey,
                 sessionId: currentSessionId(),
