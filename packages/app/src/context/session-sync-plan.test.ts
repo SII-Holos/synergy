@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test"
-import { describeToolPartApply, planSessionSyncReload } from "./session-sync-plan"
+import {
+  describeToolPartApply,
+  planSessionSyncReload,
+  refreshSessionAfterPending,
+  trackSessionSync,
+} from "./session-sync-plan"
 
 describe("planSessionSyncReload (#509)", () => {
   test("short-circuits when session and messages are current", () => {
@@ -17,6 +22,25 @@ describe("planSessionSyncReload (#509)", () => {
       forceSession: false,
       forceMessages: false,
       ready: true,
+    })
+  })
+
+  test("refreshes only authoritative session metadata after a workspace transition", () => {
+    expect(
+      planSessionSyncReload({
+        hasSessionRecord: true,
+        hasMessages: true,
+        reconnectVersion: 2,
+        lastSyncedReconnectVersion: 2,
+        canUnrollback: false,
+        trigger: { type: "workspace-transition" },
+      }),
+    ).toEqual({
+      versionStale: false,
+      needsDerivedHistoryRefresh: false,
+      forceSession: true,
+      forceMessages: false,
+      ready: false,
     })
   })
 
@@ -88,6 +112,76 @@ describe("planSessionSyncReload (#509)", () => {
       forceMessages: true,
       ready: false,
     })
+  })
+})
+
+describe("refreshSessionAfterPending", () => {
+  test("starts the authoritative refresh only after the stale request settles", async () => {
+    let releasePending!: () => void
+    const pending = new Promise<void>((resolve) => {
+      releasePending = resolve
+    })
+    const calls: string[] = []
+
+    const refresh = refreshSessionAfterPending(pending, async () => {
+      calls.push("refresh")
+    })
+    await Promise.resolve()
+
+    expect(calls).toEqual([])
+    releasePending()
+    await refresh
+    expect(calls).toEqual(["refresh"])
+  })
+
+  test("still refreshes authoritative metadata after the stale request fails", async () => {
+    const calls: string[] = []
+
+    await refreshSessionAfterPending(Promise.reject(new Error("stale request failed")), async () => {
+      calls.push("refresh")
+    })
+
+    expect(calls).toEqual(["refresh"])
+  })
+
+  test("propagates an authoritative refresh failure", async () => {
+    const failure = new Error("refresh failed")
+
+    expect(refreshSessionAfterPending(Promise.resolve(), async () => Promise.reject(failure))).rejects.toBe(failure)
+  })
+})
+
+describe("trackSessionSync", () => {
+  test("keeps the replacement request tracked until it settles", async () => {
+    const inflight = new Map<string, Promise<void>>()
+    let releaseFirst!: () => void
+    let releaseReplacement!: () => void
+    const first = trackSessionSync(
+      inflight,
+      "ses_1",
+      new Promise<void>((resolve) => {
+        releaseFirst = resolve
+      }),
+    )
+    const replacement = trackSessionSync(
+      inflight,
+      "ses_1",
+      first.then(
+        () =>
+          new Promise<void>((resolve) => {
+            releaseReplacement = resolve
+          }),
+      ),
+    )
+
+    releaseFirst()
+    await first
+    await Promise.resolve()
+    expect(inflight.get("ses_1")).toBe(replacement)
+
+    releaseReplacement()
+    await replacement
+    expect(inflight.has("ses_1")).toBe(false)
   })
 })
 

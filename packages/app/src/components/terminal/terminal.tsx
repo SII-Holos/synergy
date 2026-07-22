@@ -8,6 +8,7 @@ import { copyTextToClipboard } from "@ericsanchezok/synergy-ui/clipboard"
 import { resolveThemeColor, useTheme, withAlpha } from "@ericsanchezok/synergy-ui/theme"
 import { terminal as T } from "@/locales/messages"
 import { applyTerminalTheme, type TerminalTheme } from "./terminal-theme"
+import { textSelectionController } from "@/context/text-selection"
 
 export interface TerminalProps extends ComponentProps<"div"> {
   pty: LocalPTY
@@ -126,6 +127,7 @@ export const Terminal = (props: TerminalProps) => {
 
       return false
     })
+    t.onSelectionChange(() => textSelectionController.update(t.getSelection() || undefined))
 
     fitAddon = new mod.FitAddon()
     serializeAddon = new SerializeAddon()
@@ -274,6 +276,7 @@ export const Terminal = (props: TerminalProps) => {
     }
 
     ws?.close()
+    textSelectionController.update(undefined)
     t?.dispose()
   })
 

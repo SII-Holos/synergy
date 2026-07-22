@@ -205,11 +205,12 @@ If the requested information is not found, clearly state what is missing.`
 
       let output: string
       try {
-        const result = await SessionInvoke.invoke({
+        const result = await SessionInvoke.invokeInternal({
           messageID: Identifier.ascending("message"),
           sessionID: session.id,
           model,
           agent: MULTIMODAL_AGENT,
+          origin: { type: "system" },
           parts: [
             { type: "text", text: prompt },
             ...files.map((file) => ({

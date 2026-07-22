@@ -10,6 +10,7 @@ import { spawn } from "child_process"
 import { SessionManager } from "./manager"
 import { Shell } from "../util/shell"
 import { lastModel } from "./input"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
 
 function deriveShellAbortReason(reason: unknown): string {
   if (reason instanceof DOMException) {
@@ -64,7 +65,6 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     rootID: userMsgID,
     visible: true,
   }
-  await Session.updateMessage(userMsg)
   const userPart: MessageV2.Part = {
     type: "text",
     id: Identifier.ascending("part"),
@@ -74,7 +74,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
     synthetic: true,
     origin: "system",
   }
-  await Session.updatePart(userPart)
+  await SessionUserMessageMaterialization.write({ info: userMsg, parts: [userPart] })
 
   const msg: MessageV2.Assistant = {
     id: Identifier.ascending("message"),

@@ -1,5 +1,10 @@
 import z from "zod"
-import type { BlueprintAfterInput, PluginCortexTaskAfterInput, PluginInvocationContext } from "./context.js"
+import type {
+  BlueprintAfterInput,
+  PluginCortexTaskAfterInput,
+  PluginInvocationContext,
+  SessionUserMessageAfterInput,
+} from "./context.js"
 import type { PluginAgent, PluginSkill } from "./plugin-types.js"
 import type { ToolDisplay, ToolResult } from "./tool.js"
 
@@ -42,6 +47,7 @@ export interface ToolContribution<Input = unknown> extends ContributionBase<"too
 export interface PluginHookPointInputs {
   "cortex.task.after": PluginCortexTaskAfterInput
   "blueprint.after": BlueprintAfterInput
+  "session.user-message.after": SessionUserMessageAfterInput
 }
 
 export interface HookContribution<Point extends string = string> extends ContributionBase<"hook"> {
@@ -120,6 +126,27 @@ export interface ComposerActionContribution extends UISurfaceContributionBase<"u
   slot: string
 }
 
+interface HeadlessUIContributionBase<Kind extends string> extends ContributionBase<Kind> {
+  order: number
+  component: TrustedComponentReference
+}
+
+export interface ComposerExtensionContribution extends HeadlessUIContributionBase<"ui.composerExtension"> {}
+
+export interface SelectionExtensionContribution extends HeadlessUIContributionBase<"ui.selectionExtension"> {}
+
+export interface TextActionContribution extends ContributionBase<"ui.textAction"> {
+  label: string
+  icon?: string
+  order: number
+  operation: string
+}
+
+export interface MessageSlotContribution extends HeadlessUIContributionBase<"ui.messageSlot"> {
+  slot: "message.before" | "message.after" | "message.actions"
+  roles?: Array<"user" | "assistant">
+}
+
 export interface SettingsContribution extends UISurfaceContributionBase<"ui.settings"> {
   group: string
   formSchema?: PluginJsonSchema
@@ -156,6 +183,10 @@ export type PluginContribution =
   | NavigationItemContribution
   | MessageRendererContribution
   | ComposerActionContribution
+  | ComposerExtensionContribution
+  | SelectionExtensionContribution
+  | TextActionContribution
+  | MessageSlotContribution
   | SettingsContribution
   | ThemeContribution
   | IconContribution
@@ -241,6 +272,36 @@ export function composerAction(
   input: Omit<ComposerActionContribution, "kind" | "order"> & { order?: number },
 ): ComposerActionContribution {
   return { ...input, kind: "ui.composerAction", order: input.order ?? 1000 }
+}
+
+export function composerExtension(
+  input: Omit<ComposerExtensionContribution, "kind" | "order"> & { order?: number },
+): ComposerExtensionContribution {
+  return { ...input, kind: "ui.composerExtension", order: input.order ?? 1000 }
+}
+
+export function selectionExtension(
+  input: Omit<SelectionExtensionContribution, "kind" | "order" | "requires"> & {
+    order?: number
+    requires?: ["selection.read"]
+  },
+): SelectionExtensionContribution {
+  return { ...input, kind: "ui.selectionExtension", order: input.order ?? 1000, requires: ["selection.read"] }
+}
+
+export function textAction(
+  input: Omit<TextActionContribution, "kind" | "order" | "requires"> & {
+    order?: number
+    requires?: ["selection.read"]
+  },
+): TextActionContribution {
+  return { ...input, kind: "ui.textAction", order: input.order ?? 1000, requires: ["selection.read"] }
+}
+
+export function messageSlot(
+  input: Omit<MessageSlotContribution, "kind" | "order"> & { order?: number },
+): MessageSlotContribution {
+  return { ...input, kind: "ui.messageSlot", order: input.order ?? 1000 }
 }
 
 export function settings(

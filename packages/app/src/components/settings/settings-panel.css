@@ -148,7 +148,8 @@
   pointer-events: none;
 }
 
-.settings-popover-layer .settings-model-picker-popover {
+.settings-popover-layer .settings-model-picker-popover,
+.settings-popover-layer .settings-model-detail-surface {
   pointer-events: auto;
 }
 
@@ -1113,12 +1114,25 @@
   line-height: var(--settings-type-caption-line-height);
 }
 
+.settings-model-detail-surface {
+  width: min(400px, calc(100vw - 32px));
+  max-height: min(480px, calc(100vh - 32px));
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  border: 1px solid color-mix(in oklch, var(--border-base) 42%, transparent);
+  border-radius: 12px;
+  background: var(--settings-popover-bg);
+  box-shadow: 0 4px 8px color-mix(in oklch, var(--surface-overlay) 48%, transparent);
+  z-index: 70;
+}
+
 .settings-model-detail-popover {
-  width: 280px;
+  width: 100%;
   display: flex;
   flex-direction: column;
   gap: 11px;
-  padding: 3px 1px;
+  padding: 16px;
 }
 
 .settings-model-detail-title {
@@ -1887,6 +1901,47 @@
   border: 1px dashed color-mix(in oklch, var(--border-base) 58%, transparent);
   color: var(--text-weak);
   background: color-mix(in oklch, var(--settings-card-bg) 46%, transparent);
+}
+
+.settings-link-page-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-link-add-dialog {
+  --dialog-body-padding: 0;
+}
+
+.settings-link-add-dialog [data-slot="dialog-form"] {
+  gap: 0;
+}
+
+.settings-link-dialog-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 0 24px 22px;
+}
+
+.settings-link-dialog-field-wide {
+  grid-column: 1 / -1;
+}
+
+.settings-link-dialog-actions {
+  padding: 14px 24px;
+  border-top: 1px solid var(--dialog-border-weak);
+}
+
+@media (max-width: 560px) {
+  .settings-link-dialog-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .settings-link-dialog-field-wide {
+    grid-column: auto;
+  }
 }
 
 .settings-link-list {

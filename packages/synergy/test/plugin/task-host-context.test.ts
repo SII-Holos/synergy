@@ -82,4 +82,38 @@ describe("plugin task host context", () => {
     })
     expect(context.task).toBeUndefined()
   })
+
+  test("exposes sessionless Agent calls only with agent.call", async () => {
+    const calls: Array<{ method: string; params: unknown }> = []
+    const context = createPluginInvocationContext({
+      requestId: "request-agent",
+      runtime: {
+        hostVersion: "test",
+        pluginVersion: "1.0.0",
+        pluginGeneration: "generation-one",
+        protocolVersion: 5,
+      },
+      data: { scopeId: "scope-one", directory: "/workspace", actor: { type: "ui" } },
+      signal: AbortSignal.any([]),
+      capabilities: new Set(["agent.call"]),
+      log: { debug() {}, info() {}, warn() {}, error() {} },
+      async invokeHost(method, params) {
+        calls.push({ method, params })
+        return { text: "result" }
+      },
+    })
+    await expect(context.agent?.call({ agent: "language", text: "hello" })).resolves.toEqual({ text: "result" })
+    expect(calls).toEqual([{ method: "agent.call", params: { agent: "language", text: "hello" } }])
+
+    const denied = createPluginInvocationContext({
+      requestId: "request-agent-denied",
+      runtime: context.runtime,
+      data: { scopeId: "scope-one", directory: "/workspace", actor: { type: "ui" } },
+      signal: AbortSignal.any([]),
+      capabilities: new Set(),
+      log: context.log,
+      async invokeHost() {},
+    })
+    expect(denied.agent).toBeUndefined()
+  })
 })

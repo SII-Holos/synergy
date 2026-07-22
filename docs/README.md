@@ -51,6 +51,7 @@ Reference documents answer exact operational and repository questions without re
 
 - [CLI](reference/cli.md)
 - [Configuration](reference/configuration.md)
+- [Skills](reference/skills.md)
 - [Storage and paths](reference/storage-and-paths.md)
 - [Package map](reference/packages.md)
 - [Development](reference/development.md)
@@ -90,7 +91,7 @@ Research documents record investigations and measurements; they are not current 
 - `docs/product/` owns user-facing concepts and flows.
 - `packages/app/PRODUCT.md` owns durable Web interaction and visual principles.
 - `docs/architecture/` owns implementation invariants and subsystem boundaries.
-- `docs/reference/` owns exact commands, configuration, paths, packages, and development procedures.
+- `docs/reference/` owns exact commands, configuration, Skills, paths, packages, and development procedures.
 - `docs/plugins/` owns the public plugin platform documentation.
 - `docs/operations/` owns release, quality, and observability runbooks.
 - `docs/research/` and `docs/migrations/` are the only homes for investigation and historical narratives.

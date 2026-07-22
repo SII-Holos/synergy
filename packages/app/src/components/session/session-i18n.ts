@@ -432,6 +432,7 @@ export const S = {
   worktreeStepSendPrompt: { id: "session.worktree.step.sendPrompt", message: "Send prompt" },
   worktreeStepReturnCheckout: { id: "session.worktree.step.returnCheckout", message: "Return to main checkout" },
   worktreeStepCreateBind: { id: "session.worktree.step.createBind", message: "Create and bind checkout" },
+  worktreeStepRefreshStatus: { id: "session.worktree.step.refreshStatus", message: "Refresh workspace status" },
 
   // worktree-session.ts — factory detail strings
   worktreeDetailPreparingWorktree: {
@@ -450,6 +451,10 @@ export const S = {
   worktreeDetailWorkspaceUpdated: {
     id: "session.worktree.detail.workspaceUpdated",
     message: "Session workspace updated.",
+  },
+  worktreeDetailRefreshingStatus: {
+    id: "session.worktree.detail.refreshingStatus",
+    message: "Loading the updated session workspace.",
   },
   worktreeDetailCreatingConversation: {
     id: "session.worktree.detail.creatingConversation",
@@ -492,6 +497,22 @@ export const S = {
   worktreeDescWorktreeActive: {
     id: "session.worktree.desc.worktreeActive",
     message: "This session now runs in the isolated checkout.",
+  },
+  worktreeTitleRefreshing: {
+    id: "session.worktree.title.refreshing",
+    message: "Refreshing workspace status",
+  },
+  worktreeDescRefreshing: {
+    id: "session.worktree.desc.refreshing",
+    message: "The workspace changed. Updating the session status.",
+  },
+  worktreeTitleRefreshFailed: {
+    id: "session.worktree.title.refreshFailed",
+    message: "Workspace status refresh failed",
+  },
+  worktreeDescRefreshFailed: {
+    id: "session.worktree.desc.refreshFailed",
+    message: "The workspace changed successfully, but Synergy couldn’t refresh the session status. {message}",
   },
   worktreeTitleLeaveFailed: { id: "session.worktree.title.leaveFailed", message: "Leave worktree failed" },
   worktreeTitleMoveFailed: { id: "session.worktree.title.moveFailed", message: "Move to worktree failed" },

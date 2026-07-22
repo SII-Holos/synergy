@@ -21,6 +21,7 @@ import { lastModel, type InvokeInput } from "./input"
 import type { Info } from "./types"
 import type { SessionManager } from "./manager"
 import { SessionHistory } from "./history"
+import { SessionUserMessageMaterialization } from "./user-message-materialization"
 
 export namespace SessionInbox {
   const log = Log.create({ service: "session.inbox" })
@@ -727,11 +728,7 @@ export namespace SessionInbox {
         ...(payload.tools ? { tools: payload.tools } : {}),
         ...(payload.variant ? { variant: payload.variant } : {}),
       }
-      await Session.updateMessage(info)
-      for (const part of parts) {
-        await Session.updatePart(part)
-      }
-      return { info, parts }
+      return SessionUserMessageMaterialization.write({ info, parts })
     }
 
     // Assistant messages

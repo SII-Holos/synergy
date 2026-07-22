@@ -150,12 +150,30 @@ export function SessionConversation(props: {
                 class="min-w-0 w-full max-w-full"
                 style={isLast() ? { animation: "fadeUp 0.3s ease-out both" } : undefined}
               >
+                <MessageSlotOutlet
+                  slot="message.before"
+                  sessionId={props.sessionID}
+                  messageId={msg.id}
+                  role="assistant"
+                />
                 <Component
                   message={assistantMsg}
                   classes={{
                     root: "min-w-0 w-full relative",
                     container: "w-full min-w-0 max-w-full px-3 md:px-1 pb-1",
                   }}
+                />
+                <MessageSlotOutlet
+                  slot="message.actions"
+                  sessionId={props.sessionID}
+                  messageId={msg.id}
+                  role="assistant"
+                />
+                <MessageSlotOutlet
+                  slot="message.after"
+                  sessionId={props.sessionID}
+                  messageId={msg.id}
+                  role="assistant"
                 />
               </div>
             )
