@@ -1,0 +1,5 @@
+<lattice-state name="reviewing_blueprint">
+Read the entire bound Blueprint and perform a complete self-review. Repair scope, decisions, boundaries, migration or compatibility requirements, documentation, verification, and edge cases directly in the Blueprint Note. Re-check it against the current Step and aligned requirements.
+
+Do not execute the Blueprint. When the reviewed Blueprint is decision-complete, call lattice_submit with action submit_blueprint_review and stop this responsibility.
+</lattice-state>

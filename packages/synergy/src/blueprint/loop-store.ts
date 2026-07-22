@@ -159,6 +159,7 @@ export namespace BlueprintLoopStore {
       auditSessionID?: string | null
       auditTaskID?: string | null
       userPrompt?: string | null
+      summary?: string
       stopRequest?: Info["stopRequest"] | null
     },
   ): Promise<Info> {
@@ -198,6 +199,7 @@ export namespace BlueprintLoopStore {
       if (patch.auditSessionID !== undefined) draft.auditSessionID = patch.auditSessionID ?? undefined
       if (patch.auditTaskID !== undefined) draft.auditTaskID = patch.auditTaskID ?? undefined
       if (patch.userPrompt !== undefined) draft.userPrompt = patch.userPrompt ?? undefined
+      if (patch.summary !== undefined) draft.summary = patch.summary
       if (patch.stopRequest !== undefined) draft.stopRequest = patch.stopRequest ?? undefined
       if (patch.error !== undefined) draft.error = patch.error
     })

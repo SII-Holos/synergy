@@ -25,4 +25,18 @@ describe("tool classifier localization", () => {
     expect(classified.title).toBe("Plugin Custom Action")
     expect(classified.titleDescriptor).toBeUndefined()
   })
+
+  test("classifies every Lattice tool with an explicit localized title", () => {
+    const read = classifyTool("pathway_read")
+    const write = classifyTool("pathway_write", { steps: [{ title: "Build" }] })
+    const submit = classifyTool("lattice_submit", { action: "approve_execution", reason: "Reviewed" })
+
+    expect(read.category).toBe("dag")
+    expect(read.titleDescriptor?.message).toBe("Read Pathway")
+    expect(write.category).toBe("dag")
+    expect(write.titleDescriptor?.message).toBe("Write Pathway")
+    expect(submit.category).toBe("task")
+    expect(submit.titleDescriptor?.message).toBe("Submit Lattice action")
+    expect(submit.subtitle).toBe("approve_execution")
+  })
 })

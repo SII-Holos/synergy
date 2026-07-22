@@ -23,9 +23,7 @@ async function createSession(input?: { workflow?: "plan" | "lattice" }) {
   if (input?.workflow) {
     await Session.update(session.id, (draft) => {
       draft.workflow =
-        input.workflow === "plan"
-          ? { kind: "plan" }
-          : { kind: "lattice", runID: "ltr_test", mode: "auto", firstBlueprintStarted: false }
+        input.workflow === "plan" ? { kind: "plan" } : { kind: "lattice", runID: "ltr_test", mode: "auto" }
     })
   }
   return session

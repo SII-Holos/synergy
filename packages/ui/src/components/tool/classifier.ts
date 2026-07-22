@@ -3,6 +3,72 @@ import type { MessageDescriptor } from "@lingui/core"
 import { getSemanticIcon } from "../semantic-icon"
 import { CLASSIFIER_LABEL_DESC, TOOL_LABEL_DESC, TOOL_TITLE_DESC } from "../tool-title-descriptors"
 
+export const LATTICE_TOOL_TITLE_DESCRIPTORS: Record<string, MessageDescriptor> = {
+  pathway_read: { id: "tool.title.pathwayRead", message: "Read Pathway" },
+  pathway_write: { id: "tool.title.pathwayWrite", message: "Write Pathway" },
+  lattice_submit: { id: "tool.title.latticeSubmit", message: "Submit Lattice action" },
+}
+
+export const LATTICE_ACTION_DESCRIPTORS: Record<string, MessageDescriptor> = {
+  submit_requirements: { id: "tool.title.latticeSubmitRequirements", message: "Align requirements" },
+  submit_pathway: { id: "tool.title.latticeSubmitPathway", message: "Submit Pathway" },
+  submit_pathway_review: { id: "tool.title.latticeSubmitPathwayReview", message: "Complete Pathway review" },
+  submit_blueprint: { id: "tool.title.latticeSubmitBlueprint", message: "Select Blueprint" },
+  submit_blueprint_review: {
+    id: "tool.title.latticeSubmitBlueprintReview",
+    message: "Complete Blueprint review",
+  },
+  approve_execution: { id: "tool.title.latticeApproveExecution", message: "Approve Blueprint execution" },
+}
+
+export const LATTICE_SOURCE_DESCRIPTORS: Record<string, MessageDescriptor> = {
+  tool: { id: "tool.label.latticeSourceChat", message: "Chat" },
+  chat: { id: "tool.label.latticeSourceChat", message: "Chat" },
+  panel: { id: "tool.label.latticeSourcePanel", message: "Panel" },
+}
+
+export function getLatticeToolPresentation(
+  tool: string,
+  input: Record<string, any> = {},
+  metadata: Record<string, any> = {},
+): { icon: IconName; title: MessageDescriptor; subtitle?: string; args?: string[] } | undefined {
+  if (tool === "pathway_read") {
+    const completed = typeof metadata.completed === "number" ? metadata.completed : undefined
+    const total = typeof metadata.total === "number" ? metadata.total : undefined
+    return {
+      icon: "route",
+      title: LATTICE_TOOL_TITLE_DESCRIPTORS.pathway_read!,
+      subtitle: typeof metadata.currentStepTitle === "string" ? metadata.currentStepTitle : undefined,
+      args: completed !== undefined && total !== undefined ? [`${completed}/${total}`] : undefined,
+    }
+  }
+
+  if (tool === "pathway_write") {
+    const stepCount = Array.isArray(input.steps) ? input.steps.length : undefined
+    return {
+      icon: "list-checks",
+      title: LATTICE_TOOL_TITLE_DESCRIPTORS.pathway_write!,
+      subtitle: typeof metadata.currentStepTitle === "string" ? metadata.currentStepTitle : undefined,
+      args: stepCount !== undefined ? [String(stepCount)] : undefined,
+    }
+  }
+
+  if (tool !== "lattice_submit") return undefined
+  const action = typeof input.action === "string" ? input.action : ""
+  const title = LATTICE_ACTION_DESCRIPTORS[action] ?? LATTICE_TOOL_TITLE_DESCRIPTORS.lattice_submit!
+  const blueprintTitle = typeof metadata.blueprintTitle === "string" ? metadata.blueprintTitle : undefined
+  const reason = typeof input.reason === "string" ? input.reason : undefined
+  const goal = action === "submit_requirements" && typeof input.goal === "string" ? input.goal : undefined
+  const source = typeof metadata.source === "string" ? metadata.source : undefined
+  const sourceDescriptor = source ? LATTICE_SOURCE_DESCRIPTORS[source] : undefined
+  return {
+    icon: "circle-check",
+    title,
+    subtitle: blueprintTitle ?? reason ?? goal,
+    args: sourceDescriptor ? [sourceDescriptor.message ?? sourceDescriptor.id] : undefined,
+  }
+}
+
 /**
  * Semantic tool classification system.
  *
@@ -251,6 +317,9 @@ const TOOL_CATEGORIES: Record<string, SemanticCategory> = {
   dagwrite: "dag",
   dagread: "dag",
   dagpatch: "dag",
+  pathway_read: "dag",
+  pathway_write: "dag",
+  lattice_submit: "task",
   todowrite: "dag",
   todoread: "dag",
   session_list: "session",
@@ -444,7 +513,10 @@ export function classifyTool(
   const titleDescriptor = toolTitleDescriptor(toolName, spec)
   const title = titleDescriptor?.message ?? humanizeToolName(toolName)
 
-  const subtitle = extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys)
+  const subtitle =
+    toolName === "lattice_submit" && typeof input.action === "string"
+      ? input.action
+      : (extractField(metadata, spec.subtitleKeys) ?? extractField(input, spec.subtitleKeys))
 
   const args = buildArgs(input, metadata, spec)
   const count = classifyCount(toolName, category, metadata)
@@ -453,6 +525,8 @@ export function classifyTool(
 }
 
 function toolTitleDescriptor(name: string, spec: CategorySpec): MessageDescriptor | undefined {
+  const latticeDescriptor = LATTICE_TOOL_TITLE_DESCRIPTORS[name]
+  if (latticeDescriptor) return latticeDescriptor
   const exactDescriptor: MessageDescriptor | undefined = Object.hasOwn(TOOL_TITLE_DESC, name)
     ? TOOL_TITLE_DESC[name]
     : undefined

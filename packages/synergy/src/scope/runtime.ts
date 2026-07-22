@@ -8,6 +8,8 @@ import { LSP } from "@/lsp"
 import { Plugin } from "@/plugin"
 import { Vcs } from "@/project/vcs"
 import { SessionRecovery } from "@/session/recovery"
+import { SessionInvoke } from "@/session/invoke"
+import { LatticeRuntime } from "@/lattice/runtime"
 import { Scope } from "."
 import { ScopeContext } from "./context"
 import { ScopedState } from "./scoped-state"
@@ -29,6 +31,8 @@ export namespace ScopeRuntime {
             await SessionRecovery.reconcileRuntimeState({ scopeID: scope.id, apply: true }).catch((error) => {
               log.warn("session runtime recovery failed", { scopeID: scope.id, error })
             })
+            await LatticeRuntime.init()
+            await SessionInvoke.resumePending({ scopeID: scope.id })
             Format.init()
             await LSP.init()
             FileWatcher.init()

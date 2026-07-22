@@ -1,13 +1,10 @@
 import { Identifier } from "../id/id"
 import { LatticeError } from "./error"
-import { LatticeStore } from "./store"
 import { LatticeTypes } from "./types"
 
 /**
- * LatticeMachine owns every mutation of a Lattice run's phase and Pathway.
- * Agent-facing tools only submit patch intents; phase transitions are computed
- * here and by the bridge from deterministic events. Terminal steps are
- * immutable; the running step is frozen during blueprint_execution.
+ * Pure Lattice state transitions. This module performs no storage, Session,
+ * Inbox, Bus, or BlueprintLoop I/O; callers persist the returned strict v2 Run.
  */
 export namespace LatticeMachine {
   export type StepInput = {
@@ -19,17 +16,38 @@ export namespace LatticeMachine {
     addressesFailedStepIDs?: string[]
   }
 
-  export type PatchInput = {
-    /** Replace the ordered list of non-terminal steps (terminal steps preserved). */
-    steps?: StepInput[]
-    /** Bind the current step's Blueprint note (step_blueprinting). */
-    bindCurrentBlueprint?: { noteID: string; version?: number }
-    /** Record a result summary on a terminal step (result_analysis). */
-    recordResult?: { stepID: string; resultSummary?: string }
+  export type LoopTerminalInput = {
+    loopID: string
+    status: "completed" | "failed" | "cancelled"
+    summary?: string
+    error?: string
   }
 
-  function firstSelectableIndex(pathway: LatticeTypes.Step[]): number {
-    return pathway.findIndex((step) => step.status === "pending" || step.status === "ready")
+  function edit(run: LatticeTypes.Run, editor: (draft: LatticeTypes.Run) => void): LatticeTypes.Run {
+    const draft = structuredClone(run)
+    editor(draft)
+    return LatticeTypes.Run.parse(draft)
+  }
+
+  function stateConflict(run: LatticeTypes.Run, reason: string): never {
+    throw new LatticeError.StateConflict({ state: run.state, reason })
+  }
+
+  function assertActive(run: LatticeTypes.Run): void {
+    if (run.status !== "active") stateConflict(run, `run is ${run.status}, not active`)
+  }
+
+  function assertState(run: LatticeTypes.Run, state: LatticeTypes.State): void {
+    if (run.state !== state) stateConflict(run, `expected ${state}, got ${run.state}`)
+  }
+
+  function advanceStateRevision(draft: LatticeTypes.Run, now: number): void {
+    draft.stateRevision++
+    draft.time.updated = now
+  }
+
+  function setState(draft: LatticeTypes.Run, state: LatticeTypes.State): void {
+    draft.state = state
   }
 
   function findStep(run: LatticeTypes.Run, stepID: string | undefined): LatticeTypes.Step | undefined {
@@ -37,387 +55,543 @@ export namespace LatticeMachine {
     return run.pathway.find((step) => step.id === stepID)
   }
 
-  /**
-   * Apply an agent pathway patch and run the resulting automatic transition.
-   * All validation (terminal immutability, running-step freeze, ordering) is
-   * enforced here.
-   */
-  export async function patch(scopeID: string, sessionID: string, input: PatchInput): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.get(scopeID, sessionID)
-    if (run.status !== "active") {
-      throw new LatticeError.PhaseViolation({ phase: run.phase, reason: `run is ${run.status}, not active` })
-    }
-
-    let boundBlueprint = false
-
-    const next = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      if (input.steps) applyStepsReplacement(draft, input.steps)
-
-      if (input.bindCurrentBlueprint) {
-        const current = findStep(draft, draft.currentStepID)
-        if (!current) {
-          throw new LatticeError.PhaseViolation({
-            phase: draft.phase,
-            reason: "no current step to bind a Blueprint to",
-          })
-        }
-        if (LatticeTypes.isTerminalStep(current.status)) {
-          throw new LatticeError.InvalidPathway({ reason: "cannot bind a Blueprint to a terminal step" })
-        }
-        current.blueprintNoteID = input.bindCurrentBlueprint.noteID
-        current.blueprintVersion = input.bindCurrentBlueprint.version
-        current.time.updated = Date.now()
-        boundBlueprint = true
-      }
-
-      if (input.recordResult) {
-        const step = findStep(draft, input.recordResult.stepID)
-        if (!step) {
-          throw new LatticeError.InvalidPathway({ reason: `unknown step ${input.recordResult.stepID}` })
-        }
-        if (!LatticeTypes.isTerminalStep(step.status)) {
-          throw new LatticeError.InvalidPathway({ reason: "recordResult only applies to a terminal step" })
-        }
-        if (input.recordResult.resultSummary !== undefined) step.resultSummary = input.recordResult.resultSummary
-        step.time.updated = Date.now()
-      }
-
-      autoTransition(draft, { boundBlueprint })
-    })
-
-    await LatticeStore.appendEvent(scopeID, next, {
-      kind: boundBlueprint ? "step_blueprint_bound" : "step_updated",
-      stepID: next.currentStepID,
-      phase: next.phase,
-    })
-    return next
+  function requireCurrentStep(run: LatticeTypes.Run): LatticeTypes.Step {
+    const step = findStep(run, run.currentStepID)
+    if (!step) stateConflict(run, "the run has no current Step")
+    return step
   }
 
-  /**
-   * Replace the ordered non-terminal steps with `inputs`. Terminal steps keep
-   * their identity and order (they are historically first in a sequential
-   * pathway). A running step may not be dropped or have its objective changed.
-   */
-  function applyStepsReplacement(draft: LatticeTypes.Run, inputs: StepInput[]): void {
-    if (draft.phase === "blueprint_execution") {
-      throw new LatticeError.PhaseViolation({
-        phase: draft.phase,
-        reason: "the Pathway cannot be restructured while a step is executing",
-      })
-    }
-
-    const terminal = draft.pathway.filter((step) => LatticeTypes.isTerminalStep(step.status))
-    const terminalIDs = new Set(terminal.map((step) => step.id))
-    const existingByID = new Map(draft.pathway.map((step) => [step.id, step]))
-
-    const seen = new Set<string>()
-    const now = Date.now()
-    const resolved: LatticeTypes.Step[] = inputs.map((item) => {
-      if (item.id) {
-        if (terminalIDs.has(item.id)) {
-          throw new LatticeError.InvalidPathway({ reason: `cannot modify terminal step ${item.id}` })
-        }
-        if (seen.has(item.id)) {
-          throw new LatticeError.InvalidPathway({ reason: `duplicate step id ${item.id}` })
-        }
-        seen.add(item.id)
-        const prior = existingByID.get(item.id)
-        if (!prior) {
-          throw new LatticeError.InvalidPathway({ reason: `unknown step id ${item.id}` })
-        }
-        if (prior.status === "running" && prior.objective !== item.objective) {
-          throw new LatticeError.InvalidPathway({
-            reason: `cannot change the objective of the running step ${item.id}`,
-          })
-        }
-        return {
-          ...prior,
-          title: item.title,
-          objective: item.objective,
-          acceptanceCriteria: item.acceptanceCriteria ?? prior.acceptanceCriteria,
-          assumptions: item.assumptions ?? prior.assumptions,
-          addressesFailedStepIDs: item.addressesFailedStepIDs ?? prior.addressesFailedStepIDs,
-          time: { ...prior.time, updated: now },
-        }
-      }
-      return LatticeTypes.Step.parse({
-        id: Identifier.ascending("lattice_step"),
-        title: item.title,
-        objective: item.objective,
-        status: "pending",
-        acceptanceCriteria: item.acceptanceCriteria ?? [],
-        assumptions: item.assumptions ?? [],
-        addressesFailedStepIDs: item.addressesFailedStepIDs,
-        time: { created: now, updated: now },
-      })
-    })
-
-    // A running step must be preserved by id.
-    const runningStep = draft.pathway.find((step) => step.status === "running")
-    if (runningStep && !seen.has(runningStep.id)) {
-      throw new LatticeError.InvalidPathway({ reason: `the running step ${runningStep.id} cannot be dropped` })
-    }
-
-    draft.pathway = [...terminal, ...resolved]
-
-    // If the current step was dropped, clear it so autoTransition reselects.
-    if (draft.currentStepID && !draft.pathway.some((step) => step.id === draft.currentStepID)) {
-      draft.currentStepID = undefined
-    }
+  function firstPendingStep(run: LatticeTypes.Run): LatticeTypes.Step | undefined {
+    return run.pathway.find((step) => step.status === "pending")
   }
 
-  /** Compute the automatic phase transition after a mutation. */
-  function autoTransition(draft: LatticeTypes.Run, ctx: { boundBlueprint: boolean }): void {
-    if (draft.phase === "initial_planning") {
-      const index = firstSelectableIndex(draft.pathway)
-      if (index >= 0) {
-        const step = draft.pathway[index]
-        step.status = "ready"
-        step.time.updated = Date.now()
-        draft.currentStepID = step.id
-        setPhase(draft, "step_blueprinting")
-      }
-      return
-    }
-
-    if (draft.phase === "step_blueprinting" && ctx.boundBlueprint) {
-      const current = findStep(draft, draft.currentStepID)
-      if (current?.blueprintNoteID) {
-        if (draft.mode === "collaborative") {
-          current.status = "reviewing"
-          setPhase(draft, "blueprint_review")
-        } else {
-          // auto: the loop is started by the continuation policy at idle.
-          setPhase(draft, "blueprint_execution")
-        }
-      }
-      return
-    }
-
-    if (draft.phase === "result_analysis") {
-      advanceAfterResult(draft)
-      return
-    }
-  }
-
-  /** Pick the next selectable step or complete the run. */
-  function advanceAfterResult(draft: LatticeTypes.Run): void {
-    const index = firstSelectableIndex(draft.pathway)
-    if (index >= 0) {
-      const step = draft.pathway[index]
-      step.status = "ready"
-      step.time.updated = Date.now()
-      draft.currentStepID = step.id
-      setPhase(draft, "step_blueprinting")
-      return
-    }
-    // No more selectable steps — the run is done.
-    draft.currentStepID = undefined
-    draft.status = "completed"
-    draft.statusReason = undefined
-    draft.time.completed = Date.now()
-  }
-
-  function setPhase(draft: LatticeTypes.Run, phase: LatticeTypes.Phase): void {
-    draft.phase = phase
-  }
-
-  // --- Bridge-driven transitions (deterministic loop events) ---
-
-  export async function onLoopStarted(
-    scopeID: string,
-    sessionID: string,
-    stepID: string,
-    loopID: string,
-  ): Promise<LatticeTypes.Run> {
-    const wasFirst = !(await LatticeStore.getOrUndefined(scopeID, sessionID))?.firstBlueprintStarted
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      const step = findStep(draft, stepID)
-      if (!step) return
-      step.status = "running"
-      step.blueprintLoopID = loopID
-      step.time.started = Date.now()
-      step.time.updated = Date.now()
-      draft.currentStepID = step.id
-      draft.firstBlueprintStarted = true
-      setPhase(draft, "blueprint_execution")
-    })
-    // Mirror the monotonic first-blueprint flag onto the session so tool gating
-    // (auto mode hides `question` after the first loop) can decide synchronously.
-    if (wasFirst) {
-      const { Session } = await import("../session")
-      await Session.update(sessionID, (draft) => {
-        if (draft.workflow?.kind === "lattice") {
-          draft.workflow = { ...draft.workflow, firstBlueprintStarted: true }
-        }
-      }).catch(() => undefined)
-    }
-    await LatticeStore.appendEvent(scopeID, run, { kind: "step_started", stepID, phase: run.phase })
-    return run
-  }
-
-  export async function onLoopCompleted(
-    scopeID: string,
-    sessionID: string,
-    loopID: string,
-    summary?: string,
-  ): Promise<LatticeTypes.Run | undefined> {
-    const before = await LatticeStore.getOrUndefined(scopeID, sessionID)
-    if (!before) return undefined
-    const step = before.pathway.find((s) => s.blueprintLoopID === loopID)
-    if (!step || LatticeTypes.isTerminalStep(step.status)) return before
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      const target = findStep(draft, step.id)
-      if (!target) return
-      target.status = "completed"
-      if (summary) target.resultSummary = summary
-      target.time.completed = Date.now()
-      target.time.updated = Date.now()
-      setPhase(draft, "result_analysis")
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "step_completed", stepID: step.id, phase: run.phase })
-    return run
-  }
-
-  export async function onLoopFailed(
-    scopeID: string,
-    sessionID: string,
-    loopID: string,
-    reason?: string,
-  ): Promise<LatticeTypes.Run | undefined> {
-    const before = await LatticeStore.getOrUndefined(scopeID, sessionID)
-    if (!before) return undefined
-    const step = before.pathway.find((s) => s.blueprintLoopID === loopID)
-    if (!step || LatticeTypes.isTerminalStep(step.status)) return before
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      const target = findStep(draft, step.id)
-      if (!target) return
-      target.status = "failed"
-      if (reason) target.failureReason = reason
-      target.time.completed = Date.now()
-      target.time.updated = Date.now()
-      setPhase(draft, "result_analysis")
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "step_failed", stepID: step.id, phase: run.phase })
-    return run
-  }
-
-  /** A loop was cancelled from the UI without exiting Lattice: revert the step and pause the run. */
-  export async function onLoopCancelled(
-    scopeID: string,
-    sessionID: string,
-    loopID: string,
-  ): Promise<LatticeTypes.Run | undefined> {
-    const before = await LatticeStore.getOrUndefined(scopeID, sessionID)
-    if (!before) return undefined
-    const step = before.pathway.find((s) => s.blueprintLoopID === loopID)
-    if (!step || LatticeTypes.isTerminalStep(step.status)) return before
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      const target = findStep(draft, step.id)
-      if (target && !LatticeTypes.isTerminalStep(target.status)) {
-        target.status = "ready"
-        target.blueprintLoopID = undefined
-        target.time.updated = Date.now()
-      }
-      draft.status = "paused"
-      draft.statusReason = "blueprint_loop_cancelled"
-      draft.time.paused = Date.now()
-    })
-    await LatticeStore.appendEvent(scopeID, run, {
-      kind: "loop_cancelled",
-      stepID: step.id,
-      data: { loopID },
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "run_paused", message: "blueprint_loop_cancelled" })
-    return run
-  }
-
-  // --- Run lifecycle ---
-
-  export async function pause(scopeID: string, sessionID: string, reason: string): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      const running = draft.pathway.find((step) => step.status === "running")
-      if (running) {
-        running.status = "ready"
-        running.blueprintLoopID = undefined
-        running.time.updated = Date.now()
-      }
-      draft.status = "paused"
-      draft.statusReason = reason
-      draft.time.paused = Date.now()
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "run_paused", message: reason })
-    return run
-  }
-
-  export async function cancel(scopeID: string, sessionID: string): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      draft.status = "cancelled"
-      draft.time.completed = Date.now()
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "run_cancelled" })
-    return run
-  }
-
-  export async function fail(scopeID: string, sessionID: string, reason: string): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      draft.status = "failed"
-      draft.statusReason = reason
-      draft.time.completed = Date.now()
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "run_failed", message: reason })
-    return run
-  }
-
-  /** Recompute the phase when resuming a paused run. */
-  export async function resume(scopeID: string, sessionID: string): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      draft.status = "active"
-      draft.statusReason = undefined
-      draft.time.paused = undefined
-      const current = findStep(draft, draft.currentStepID)
-      if (current && !LatticeTypes.isTerminalStep(current.status)) {
-        if (current.blueprintNoteID) {
-          if (draft.mode === "collaborative") {
-            current.status = "reviewing"
-            setPhase(draft, "blueprint_review")
-          } else {
-            current.status = "ready"
-            setPhase(draft, "blueprint_execution")
-          }
-        } else {
-          current.status = "ready"
-          setPhase(draft, "step_blueprinting")
-        }
-        return
-      }
-      const index = firstSelectableIndex(draft.pathway)
-      if (index >= 0) {
-        const step = draft.pathway[index]
-        step.status = "ready"
-        draft.currentStepID = step.id
-        setPhase(draft, "step_blueprinting")
-      } else {
-        draft.currentStepID = undefined
-        setPhase(draft, "initial_planning")
-      }
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "run_resumed", phase: run.phase })
-    return run
-  }
-
-  /** Mark the run paused because the model-call budget is exhausted. */
-  export async function markBudgetExhausted(scopeID: string, sessionID: string): Promise<LatticeTypes.Run> {
-    const run = await LatticeStore.update(scopeID, sessionID, (draft) => {
-      draft.status = "paused"
-      draft.statusReason = "model_call_budget_exhausted"
-      draft.time.paused = Date.now()
-    })
-    await LatticeStore.appendEvent(scopeID, run, { kind: "budget_exhausted" })
-    return run
+  function requireNoEffect(run: LatticeTypes.Run): void {
+    if (run.effect) stateConflict(run, `effect ${run.effect.id} is still pending`)
   }
 
   export function currentStep(run: LatticeTypes.Run): LatticeTypes.Step | undefined {
     return findStep(run, run.currentStepID)
+  }
+
+  /** Replace only future pending Steps; historical/current Steps remain immutable and ordered. */
+  export function writePathway(run: LatticeTypes.Run, inputs: StepInput[], now = Date.now()): LatticeTypes.Run {
+    assertActive(run)
+    if (run.state !== "planning" && run.state !== "reviewing_pathway") {
+      stateConflict(run, "the Pathway can only be written while planning or reviewing it")
+    }
+
+    return edit(run, (draft) => {
+      const history = draft.pathway.filter((step) => step.status !== "pending")
+      const historicalIDs = new Set(history.map((step) => step.id))
+      const pendingByID = new Map(
+        draft.pathway.filter((step) => step.status === "pending").map((step) => [step.id, step]),
+      )
+      const failedIDs = new Set(draft.pathway.filter((step) => step.status === "failed").map((step) => step.id))
+      const seen = new Set<string>()
+
+      const future = inputs.map((input) => {
+        const title = input.title.trim()
+        const objective = input.objective.trim()
+        if (!title || !objective) {
+          throw new LatticeError.InvalidPathway({ reason: "Step title and objective must be non-empty" })
+        }
+        if (input.id && historicalIDs.has(input.id)) {
+          throw new LatticeError.InvalidPathway({ reason: `cannot rewrite historical Step ${input.id}` })
+        }
+        if (input.id && seen.has(input.id)) {
+          throw new LatticeError.InvalidPathway({ reason: `duplicate Step id ${input.id}` })
+        }
+        if (input.addressesFailedStepIDs?.some((stepID) => !failedIDs.has(stepID))) {
+          throw new LatticeError.InvalidPathway({ reason: "addressesFailedStepIDs must reference failed Steps" })
+        }
+        if (input.id) seen.add(input.id)
+
+        const prior = input.id ? pendingByID.get(input.id) : undefined
+        if (input.id && !prior) {
+          throw new LatticeError.InvalidPathway({ reason: `unknown pending Step ${input.id}` })
+        }
+        return LatticeTypes.Step.parse({
+          ...(prior ?? {
+            id: Identifier.ascending("lattice_step"),
+            status: "pending",
+            blueprintHistory: [],
+            loopHistory: [],
+            time: { created: now, updated: now },
+          }),
+          title,
+          objective,
+          acceptanceCriteria: input.acceptanceCriteria ?? prior?.acceptanceCriteria ?? [],
+          assumptions: input.assumptions ?? prior?.assumptions ?? [],
+          addressesFailedStepIDs: input.addressesFailedStepIDs ?? prior?.addressesFailedStepIDs,
+          time: { ...(prior?.time ?? { created: now }), updated: now },
+        })
+      })
+
+      draft.pathway = [...history, ...future]
+      draft.pathwayRevision++
+      draft.time.updated = now
+    })
+  }
+
+  /** Persist a semantic action without changing workflow state. */
+  export function queueAction(
+    run: LatticeTypes.Run,
+    action: LatticeTypes.PendingAction,
+    now = Date.now(),
+  ): LatticeTypes.Run {
+    assertActive(run)
+    if (run.pendingAction) stateConflict(run, `action ${run.pendingAction.id} is already pending`)
+    if (action.expectedStateRevision !== run.stateRevision) {
+      stateConflict(run, `stale state revision ${action.expectedStateRevision}; current is ${run.stateRevision}`)
+    }
+    if (action.expectedPathwayRevision !== run.pathwayRevision) {
+      stateConflict(run, `stale Pathway revision ${action.expectedPathwayRevision}; current is ${run.pathwayRevision}`)
+    }
+    return edit(run, (draft) => {
+      draft.pendingAction = LatticeTypes.PendingAction.parse(action)
+      draft.time.updated = now
+    })
+  }
+
+  /** Consume exactly one persisted action and deterministically advance state. */
+  export function consumePendingAction(run: LatticeTypes.Run, now = Date.now()): LatticeTypes.Run {
+    assertActive(run)
+    const action = run.pendingAction
+    if (!action) stateConflict(run, "there is no pending action")
+    if (action.expectedStateRevision !== run.stateRevision) {
+      stateConflict(run, `stale state revision ${action.expectedStateRevision}; current is ${run.stateRevision}`)
+    }
+    if (action.expectedPathwayRevision !== run.pathwayRevision) {
+      stateConflict(run, `stale Pathway revision ${action.expectedPathwayRevision}; current is ${run.pathwayRevision}`)
+    }
+
+    return edit(run, (draft) => {
+      switch (action.kind) {
+        case "submit_requirements": {
+          assertState(draft, "clarifying")
+          requireNoEffect(draft)
+          draft.requirements = action.requirements
+          setState(draft, "planning")
+          break
+        }
+        case "submit_pathway": {
+          assertState(draft, "planning")
+          requireNoEffect(draft)
+          if (!firstPendingStep(draft)) {
+            throw new LatticeError.InvalidPathway({ reason: "the Pathway must contain at least one pending Step" })
+          }
+          setState(draft, "reviewing_pathway")
+          break
+        }
+        case "submit_pathway_review": {
+          assertState(draft, "reviewing_pathway")
+          requireNoEffect(draft)
+          const next = firstPendingStep(draft)
+          if (!next) throw new LatticeError.InvalidPathway({ reason: "the Pathway has no pending Step" })
+          next.status = "current"
+          next.time.updated = now
+          draft.currentStepID = next.id
+          setState(draft, "blueprinting")
+          break
+        }
+        case "submit_blueprint": {
+          assertState(draft, "blueprinting")
+          requireNoEffect(draft)
+          const step = requireCurrentStep(draft)
+          if (step.status !== "current") stateConflict(draft, `current Step is ${step.status}`)
+          if (step.blueprint) step.blueprintHistory.push(step.blueprint)
+          step.blueprint = {
+            noteID: action.blueprintID,
+            boundVersion: action.blueprintVersion,
+            contentDigest: action.contentDigest,
+            time: { bound: now },
+          }
+          step.time.updated = now
+          setState(draft, "reviewing_blueprint")
+          break
+        }
+        case "submit_blueprint_review": {
+          assertState(draft, "reviewing_blueprint")
+          requireNoEffect(draft)
+          const step = requireCurrentStep(draft)
+          const binding = step.blueprint
+          if (!binding) stateConflict(draft, "the current Step has no Blueprint binding")
+          binding.reviewedVersion = action.blueprintVersion
+          binding.reviewedContentDigest = action.contentDigest
+          binding.time.reviewed = now
+          step.time.updated = now
+          if (draft.mode === "auto") {
+            setState(draft, "executing")
+            draft.effect = createLoopEffect(step, binding, now)
+          } else {
+            setState(draft, "awaiting_execution")
+          }
+          break
+        }
+        case "approve_execution": {
+          assertState(draft, "awaiting_execution")
+          requireNoEffect(draft)
+          const step = requireCurrentStep(draft)
+          const binding = step.blueprint
+          if (binding?.reviewedVersion === undefined || !binding.reviewedContentDigest) {
+            stateConflict(draft, "the current Blueprint has not been reviewed")
+          }
+          if (
+            binding.reviewedVersion !== action.blueprintVersion ||
+            binding.reviewedContentDigest !== action.contentDigest
+          ) {
+            stateConflict(draft, "the Blueprint changed after review")
+          }
+          setState(draft, "executing")
+          draft.effect = createLoopEffect(step, binding, now)
+          break
+        }
+      }
+      draft.pendingAction = undefined
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  function createLoopEffect(
+    step: LatticeTypes.Step,
+    binding: LatticeTypes.BlueprintBinding,
+    now: number,
+  ): LatticeTypes.CreateBlueprintLoopEffect {
+    const version = binding.reviewedVersion ?? binding.boundVersion
+    const digest = binding.reviewedContentDigest ?? binding.contentDigest
+    return {
+      id: Identifier.ascending("lattice_effect"),
+      kind: "create_blueprint_loop",
+      stepID: step.id,
+      blueprintNoteID: binding.noteID,
+      blueprintVersion: version,
+      sourceDigest: digest,
+      time: { created: now },
+    }
+  }
+
+  /** Return a changed approved Blueprint to self-review while retaining its prior binding in history. */
+  export function invalidateBlueprintReview(
+    run: LatticeTypes.Run,
+    latest: { version: number; contentDigest: string },
+    now = Date.now(),
+  ): LatticeTypes.Run {
+    assertActive(run)
+    if (run.state !== "awaiting_execution" && run.state !== "reviewing_blueprint" && run.state !== "executing") {
+      stateConflict(run, "Blueprint review can only be invalidated before execution")
+    }
+    return edit(run, (draft) => {
+      const step = requireCurrentStep(draft)
+      const binding = step.blueprint
+      if (!binding) stateConflict(draft, "the current Step has no Blueprint binding")
+      step.blueprintHistory.push(binding)
+      step.blueprint = {
+        noteID: binding.noteID,
+        boundVersion: latest.version,
+        contentDigest: latest.contentDigest,
+        time: { bound: now },
+      }
+      for (const attempt of step.loopHistory) {
+        if (attempt.status !== "created" && attempt.status !== "running") continue
+        attempt.status = "cancelled"
+        attempt.error = "Blueprint changed before execution handoff completed"
+        attempt.time.completed = now
+      }
+      step.status = "current"
+      step.time.completed = undefined
+      step.time.updated = now
+      draft.effect = undefined
+      setState(draft, "reviewing_blueprint")
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  /** Atomically hand off a created BlueprintLoop to the separate start effect. */
+  export function onLoopCreated(
+    run: LatticeTypes.Run,
+    input: { loopID: string; blueprintVersion: number; sourceDigest: string },
+    now = Date.now(),
+  ): LatticeTypes.Run {
+    assertActive(run)
+    assertState(run, "executing")
+    const effect = run.effect
+    if (effect?.kind !== "create_blueprint_loop") stateConflict(run, "no create BlueprintLoop effect is pending")
+    if (effect.sourceDigest !== input.sourceDigest) stateConflict(run, "created BlueprintLoop source digest differs")
+
+    return edit(run, (draft) => {
+      const step = findStep(draft, effect.stepID)
+      if (!step) stateConflict(draft, `unknown effect Step ${effect.stepID}`)
+      if (step.loopHistory.some((attempt) => attempt.loopID === input.loopID)) {
+        stateConflict(draft, `BlueprintLoop ${input.loopID} is already recorded`)
+      }
+      step.status = "executing"
+      step.loopHistory.push({
+        loopID: Identifier.ascending("blueprint_loop", input.loopID),
+        status: "created",
+        sourceDigest: input.sourceDigest,
+        time: { created: now },
+      })
+      step.time.started ??= now
+      step.time.updated = now
+      draft.effect = {
+        id: Identifier.ascending("lattice_effect"),
+        kind: "start_blueprint_loop",
+        stepID: step.id,
+        loopID: Identifier.ascending("blueprint_loop", input.loopID),
+        blueprintVersion: input.blueprintVersion,
+        sourceDigest: input.sourceDigest,
+        time: { created: now },
+      }
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function onLoopStarted(run: LatticeTypes.Run, loopID: string, now = Date.now()): LatticeTypes.Run {
+    assertActive(run)
+    assertState(run, "executing")
+    const existingStep = run.pathway.find((step) => step.loopHistory.some((attempt) => attempt.loopID === loopID))
+    const existing = existingStep?.loopHistory.find((attempt) => attempt.loopID === loopID)
+    if (existing?.status === "running" && run.effect === undefined) return run
+    const effect = run.effect
+    if (effect?.kind !== "start_blueprint_loop" || effect.loopID !== loopID) {
+      stateConflict(run, `no start effect exists for BlueprintLoop ${loopID}`)
+    }
+
+    return edit(run, (draft) => {
+      const step = findStep(draft, effect.stepID)
+      const attempt = step?.loopHistory.find((item) => item.loopID === loopID)
+      if (!step || !attempt) stateConflict(draft, `BlueprintLoop ${loopID} is not recorded on its Step`)
+      attempt.status = "running"
+      attempt.time.started = now
+      step.status = "executing"
+      step.time.updated = now
+      draft.effect = undefined
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function onLoopTerminal(run: LatticeTypes.Run, input: LoopTerminalInput, now = Date.now()): LatticeTypes.Run {
+    if (LatticeTypes.isTerminalRun(run.status)) return run
+    const owner = run.pathway.find((step) => step.loopHistory.some((attempt) => attempt.loopID === input.loopID))
+    const existing = owner?.loopHistory.find((attempt) => attempt.loopID === input.loopID)
+    if (!owner || !existing) stateConflict(run, `BlueprintLoop ${input.loopID} is not owned by this Run`)
+    if (existing.status === "completed" || existing.status === "failed" || existing.status === "cancelled") return run
+
+    return edit(run, (draft) => {
+      const step = findStep(draft, owner.id)!
+      const attempt = step.loopHistory.find((item) => item.loopID === input.loopID)!
+      attempt.status = input.status
+      attempt.summary = input.summary
+      attempt.error = input.error
+      attempt.time.completed = now
+      step.time.completed = now
+      step.time.updated = now
+      draft.effect = undefined
+
+      if (input.status === "completed") {
+        const wasPaused = draft.status === "paused"
+        const pauseReason = draft.statusReason
+        const pausedAt = draft.time.paused
+        step.status = "completed"
+        step.resultSummary = input.summary
+        step.failureReason = undefined
+        draft.currentStepID = undefined
+        draft.statusReason = undefined
+        draft.time.paused = undefined
+        if (firstPendingStep(draft)) {
+          draft.status = wasPaused ? "paused" : "active"
+          draft.statusReason = wasPaused ? pauseReason : undefined
+          draft.time.paused = wasPaused ? pausedAt : undefined
+          setState(draft, "reviewing_pathway")
+        } else {
+          draft.status = "completed"
+          draft.time.completed = now
+        }
+      } else {
+        const wasPaused = draft.status === "paused"
+        const pauseReason = draft.statusReason
+        const pausedAt = draft.time.paused
+        step.status = input.status
+        step.failureReason = input.error ?? `BlueprintLoop ${input.status}`
+        draft.status = "paused"
+        draft.statusReason = wasPaused
+          ? pauseReason
+          : input.status === "failed"
+            ? "blueprint_loop_failed"
+            : "blueprint_loop_cancelled"
+        draft.time.paused = wasPaused ? pausedAt : now
+      }
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function setPromptEffect(
+    run: LatticeTypes.Run,
+    input: {
+      promptType: LatticeTypes.PromptEffect["promptType"]
+      deliveryKey?: string
+      validationErrors?: string[]
+    },
+    now = Date.now(),
+  ): LatticeTypes.Run {
+    requireNoEffect(run)
+    return edit(run, (draft) => {
+      const id = Identifier.ascending("lattice_effect")
+      draft.effect = {
+        id,
+        kind: "deliver_prompt",
+        promptType: input.promptType,
+        state: draft.state,
+        deliveryKey: input.deliveryKey ?? `lattice:${draft.id}:prompt:${id}`,
+        validationErrors: input.validationErrors,
+        attemptCount: 0,
+        time: { created: now },
+      }
+      draft.time.updated = now
+    })
+  }
+
+  export function completeEffect(run: LatticeTypes.Run, effectID: string, now = Date.now()): LatticeTypes.Run {
+    if (!run.effect || run.effect.id !== effectID) stateConflict(run, `effect ${effectID} is not pending`)
+    return edit(run, (draft) => {
+      draft.effect = undefined
+      draft.time.updated = now
+    })
+  }
+
+  export function pause(run: LatticeTypes.Run, reason: string, now = Date.now()): LatticeTypes.Run {
+    if (LatticeTypes.isTerminalRun(run.status)) stateConflict(run, `terminal run cannot be paused (${run.status})`)
+    if (run.status === "paused" && run.statusReason === reason) return run
+    return edit(run, (draft) => {
+      draft.status = "paused"
+      draft.statusReason = reason
+      draft.time.paused = now
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function resume(
+    run: LatticeTypes.Run,
+    options: { preservePendingAction?: boolean } = {},
+    now = Date.now(),
+  ): LatticeTypes.Run {
+    if (run.status !== "paused") stateConflict(run, `only a paused run can resume, got ${run.status}`)
+    return edit(run, (draft) => {
+      const step = findStep(draft, draft.currentStepID)
+      const pauseReason = draft.statusReason
+      const interruptedExecutionEffect =
+        draft.effect?.kind === "create_blueprint_loop" || draft.effect?.kind === "start_blueprint_loop"
+      draft.status = "active"
+      draft.statusReason = undefined
+      draft.time.paused = undefined
+      draft.effect = undefined
+      if (!options.preservePendingAction) draft.pendingAction = undefined
+      if (
+        draft.state === "executing" &&
+        step &&
+        (step.status === "failed" ||
+          step.status === "cancelled" ||
+          step.status === "current" ||
+          interruptedExecutionEffect ||
+          pauseReason === "duplicate_active_run" ||
+          pauseReason === "blueprint_loop_ownership_conflict" ||
+          pauseReason === "multiple_blueprint_loop_owners")
+      ) {
+        for (const attempt of step.loopHistory) {
+          if (attempt.status !== "created" && attempt.status !== "running") continue
+          attempt.status = "cancelled"
+          attempt.error ??= `Lattice recovery reopened the Step after ${pauseReason}`
+          attempt.time.completed = now
+        }
+        step.status = "current"
+        step.time.completed = undefined
+        step.time.updated = now
+        setState(draft, "blueprinting")
+      }
+      advanceStateRevision(draft, now)
+      if (draft.pendingAction) {
+        draft.pendingAction.expectedStateRevision = draft.stateRevision
+        draft.pendingAction.expectedPathwayRevision = draft.pathwayRevision
+      }
+    })
+  }
+
+  export function cancel(run: LatticeTypes.Run, now = Date.now()): LatticeTypes.Run {
+    if (LatticeTypes.isTerminalRun(run.status)) return run
+    return edit(run, (draft) => {
+      // Creation can commit a Loop before its ID reaches loopHistory. Retain
+      // this inactive-only breadcrumb until lifecycle cleanup proves convergence.
+      const cleanupEffect = draft.effect?.kind === "create_blueprint_loop" ? draft.effect : undefined
+      const step = findStep(draft, draft.currentStepID)
+      if (step && !LatticeTypes.isTerminalStep(step.status)) {
+        step.status = "cancelled"
+        step.time.completed = now
+        step.time.updated = now
+        for (const attempt of step.loopHistory) {
+          if (attempt.status !== "created" && attempt.status !== "running") continue
+          attempt.status = "cancelled"
+          attempt.error ??= "Lattice Run cancelled"
+          attempt.time.completed = now
+        }
+      }
+      draft.status = "cancelled"
+      draft.statusReason = undefined
+      draft.pendingAction = undefined
+      draft.effect = cleanupEffect
+      draft.time.paused = undefined
+      draft.time.completed = now
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function fail(run: LatticeTypes.Run, reason: string, now = Date.now()): LatticeTypes.Run {
+    if (LatticeTypes.isTerminalRun(run.status)) return run
+    return edit(run, (draft) => {
+      draft.status = "failed"
+      draft.statusReason = reason
+      draft.pendingAction = undefined
+      draft.effect = undefined
+      draft.time.paused = undefined
+      draft.time.completed = now
+      advanceStateRevision(draft, now)
+    })
+  }
+
+  export function markBudgetExhausted(run: LatticeTypes.Run, now = Date.now()): LatticeTypes.Run {
+    return pause(run, "model_call_budget_exhausted", now)
+  }
+
+  export function quarantineDuplicate(run: LatticeTypes.Run, selected: boolean, now = Date.now()): LatticeTypes.Run {
+    if (LatticeTypes.isTerminalRun(run.status)) return run
+    return edit(run, (draft) => {
+      // The Controller cannot execute effects on inactive Runs; this create
+      // fingerprint exists only so cold recovery can find a pre-handoff Loop.
+      const cleanupEffect = draft.effect?.kind === "create_blueprint_loop" ? draft.effect : undefined
+      draft.pendingAction = undefined
+      draft.effect = cleanupEffect
+      draft.status = selected ? "paused" : "failed"
+      draft.statusReason = "duplicate_active_run"
+      if (!selected) {
+        for (const step of draft.pathway) {
+          let ownedActiveAttempt = false
+          for (const attempt of step.loopHistory) {
+            if (attempt.status !== "created" && attempt.status !== "running") continue
+            ownedActiveAttempt = true
+            attempt.status = "cancelled"
+            attempt.error ??= "duplicate_active_run"
+            attempt.time.completed = now
+          }
+          if (!ownedActiveAttempt && step.id !== draft.currentStepID) continue
+          if (!LatticeTypes.isTerminalStep(step.status)) step.status = "failed"
+          step.failureReason ??= "duplicate_active_run"
+          step.time.completed ??= now
+          step.time.updated = now
+        }
+        draft.currentStepID = undefined
+      }
+      draft.time.paused = selected ? now : undefined
+      draft.time.completed = selected ? undefined : now
+      advanceStateRevision(draft, now)
+    })
   }
 }

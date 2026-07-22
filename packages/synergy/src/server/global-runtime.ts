@@ -16,6 +16,7 @@ import { ScopeContext } from "@/scope/context"
 import { Log } from "@/util/log"
 import { SessionRecovery } from "@/session/recovery"
 import { SessionInvoke } from "@/session/invoke"
+import { LatticeRuntime } from "@/lattice/runtime"
 import { Embedding } from "@/vector/embedding"
 
 export namespace GlobalRuntime {
@@ -34,12 +35,13 @@ export namespace GlobalRuntime {
           await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
+          await LatticeRuntime.init()
+          await SessionInvoke.resumePending({ scopeID: Scope.home().id })
           await startChannels(config)
           await HolosRuntime.init()
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()
-          await SessionInvoke.resumePending()
           await Agenda.start()
           await AgendaBootstrap.seed()
           await GitHubRuntime.start(config.github)

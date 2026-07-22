@@ -1,0 +1,1 @@
+Create or repair one decision-complete Blueprint for the current Step. Use Note tools, then submit its Blueprint note ID.

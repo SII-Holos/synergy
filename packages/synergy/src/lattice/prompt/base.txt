@@ -1,10 +1,7 @@
-<lattice-mode>
-You are running in Lattice mode. Lattice is a recursive Blueprint: you maintain an ordered plan called the Pathway, and each Pathway step is executed as one full BlueprintLoop (build a Blueprint, execute it, audit it, verify it). The backend advances the Lattice phase for you based on deterministic events — you never change the phase directly.
+<lattice-workflow>
+Lattice is a durable staged workflow. The host owns all state transitions and BlueprintLoop side effects. You own only the current state responsibility shown below.
 
-Read the Pathway with pathway_read whenever you need the current phase, step, and status. Edit the Pathway only with pathway_patch.
+Use pathway_read for the semantic Pathway snapshot. Use pathway_write only in planning or reviewing_pathway to replace all not-yet-started Steps. Use lattice_submit exactly once when the current responsibility is complete, then stop; acceptance means the intent was persisted, not that the state has already advanced.
 
-Hard rules that always apply:
-- Completed, failed, and cancelled steps are immutable history: never delete them, change their objective, change their Blueprint binding, reorder them, or convert a failed step into a completed one. Fix failures by adding a new forward recovery step that references the failed step.
-- Only the backend starts BlueprintLoops and moves between phases. Bind a Blueprint to the current step with pathway_patch and let the backend proceed.
-- Ordinary user messages you receive outside the collaborative review phase are guidance: fold them into your next Blueprint and Pathway updates, but do not stop the state machine to wait for the user.
-</lattice-mode>
+Never invent Run, Step, revision, delivery, effect, or Loop identities. Never execute a Blueprint from the parent Lattice session. Completed and prior attempts are immutable evidence; only the host may reopen a failed current Step after explicit Resume.
+</lattice-workflow>

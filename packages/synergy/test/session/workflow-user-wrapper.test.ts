@@ -5,7 +5,7 @@ import { WorkflowUserWrapper } from "../../src/session/workflow-user-wrapper"
 const sessionID = "session_test"
 const planSession = { workflow: { kind: "plan" as const } }
 const latticeSession = {
-  workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const, firstBlueprintStarted: false },
+  workflow: { kind: "lattice" as const, runID: "r1", mode: "auto" as const },
 }
 const lightloopSession = { workflow: { kind: "lightloop" as const, instructions: "test" } }
 const normalSession = {}
@@ -176,6 +176,9 @@ describe("WorkflowUserWrapper projection", () => {
 
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy-max in the Lattice workflow")
+    expect(text).toContain("current Lattice responsibility")
+    expect(text).toContain("align requirements")
+    expect(text).not.toContain("pathway_patch")
     expect(text).toContain("User request:\nbuild a full CI pipeline")
   })
 

@@ -1,0 +1,15 @@
+<lattice-state name="blueprinting">
+Create or revise one decision-complete Blueprint note for the current Step only. Incorporate the Step objective, acceptance criteria, aligned requirements, completed-step evidence, prior failed attempts, and current workspace evidence. Use the same eight required sections as Plan, converge on one material implementation route, and explicitly reject plausible material alternatives.
+
+The required sections are:
+## Goal and Requirements
+## Current State and Constraints
+## Chosen Implementation Route
+## Rejected Alternatives
+## Change Scope and Boundaries
+## Implementation Sequence
+## Risks and Edge Cases
+## Verification and Done Criteria
+
+Do not execute the Blueprint. When the Note is complete, call lattice_submit with action submit_blueprint and its blueprintID, then stop this responsibility.
+</lattice-state>

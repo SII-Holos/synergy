@@ -60,7 +60,7 @@ export namespace SessionModePolicy {
     "communication.question",
   ])
 
-  const PATHWAY_TOOLS = new Set(["pathway_read", "pathway_patch"])
+  const LATTICE_PARENT_TOOLS = new Set(["pathway_read", "pathway_write", "lattice_submit"])
 
   export function isPlan(session?: Pick<SessionInfo, "workflow">) {
     return session?.workflow?.kind === "plan"
@@ -72,7 +72,7 @@ export namespace SessionModePolicy {
 
   export function visibility(input: {
     toolName: string
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "blueprint">
   }): ToolDiagnostic | undefined {
     const latticeDiagnostic = latticeVisibility(input.toolName, input.session)
     if (latticeDiagnostic) return latticeDiagnostic
@@ -96,7 +96,7 @@ export namespace SessionModePolicy {
   export function evaluateCall(input: {
     toolName: string
     args: Record<string, any>
-    session?: Pick<SessionInfo, "workflow">
+    session?: Pick<SessionInfo, "workflow" | "blueprint">
     capabilities: Capability[]
   }): ToolDiagnostic | undefined {
     if (!isPlan(input.session)) return undefined
@@ -177,15 +177,12 @@ export namespace SessionModePolicy {
     }
   }
 
-  /**
-   * Lattice tool visibility:
-   *  - pathway_* tools are hidden outside an active Lattice session;
-   *  - in auto mode after the first BlueprintLoop has started, `question` is
-   *    hidden so the run keeps advancing without waiting for the user.
-   */
-  function latticeVisibility(toolName: string, session?: Pick<SessionInfo, "workflow">): ToolDiagnostic | undefined {
+  function latticeVisibility(
+    toolName: string,
+    session?: Pick<SessionInfo, "workflow" | "blueprint">,
+  ): ToolDiagnostic | undefined {
     if (!isLattice(session)) {
-      if (PATHWAY_TOOLS.has(toolName)) {
+      if (LATTICE_PARENT_TOOLS.has(toolName)) {
         return {
           code: "tool_unavailable",
           toolName,
@@ -195,20 +192,15 @@ export namespace SessionModePolicy {
       return undefined
     }
 
-    const workflow = session!.workflow!
     if (
-      workflow.kind === "lattice" &&
-      toolName === "question" &&
-      workflow.mode === "auto" &&
-      workflow.firstBlueprintStarted === true
+      LATTICE_PARENT_TOOLS.has(toolName) &&
+      session?.blueprint?.loopID &&
+      session.blueprint.loopRole === "execution"
     ) {
       return {
         code: "tool_unavailable",
         toolName,
-        message: [
-          `The "question" tool is disabled in autonomous Lattice mode once the first BlueprintLoop has started.`,
-          "Do not wait for the user: replan forward and keep advancing the Pathway.",
-        ].join("\n"),
+        message: `The "${toolName}" tool is unavailable while the current Lattice step is executing in BlueprintLoop.`,
       }
     }
     return undefined

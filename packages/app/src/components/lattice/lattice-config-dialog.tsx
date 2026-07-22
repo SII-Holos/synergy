@@ -5,51 +5,41 @@ import { TextField } from "@ericsanchezok/synergy-ui/text-field"
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useLingui } from "@lingui/solid"
 import { showToast } from "@ericsanchezok/synergy-ui/toast"
-import type { LatticeRun } from "@ericsanchezok/synergy-sdk/client"
+import type { SDKContext } from "@/context/sdk"
+import {
+  pauseReasonLabel,
+  RUN_STATUS_DESCRIPTORS,
+  runWorkState,
+  workStateLabel,
+  type LatticeMode,
+  type LatticeRunView,
+} from "./lattice-panel-model"
 
-export type LatticeMode = "auto" | "collaborative"
+export type { LatticeMode } from "./lattice-panel-model"
 
 export interface LatticeEnableConfig {
   mode: LatticeMode
   maxModelCalls: number
   goal?: string
-  action?: "continue" | "restart"
 }
 
-export interface LatticeConfigSDK {
-  client: {
-    lattice: {
-      session: {
-        getRun: (input: { id: string }) => Promise<{ data?: LatticeRun | null }>
-      }
-    }
-  }
-}
-
-const RESUMABLE = new Set(["paused"])
-
-function progressCounts(run: LatticeRun): { done: number; total: number } {
-  const pathway = run.pathway ?? []
+function progressCounts(run: LatticeRunView): { done: number; total: number } {
   return {
-    done: pathway.filter((step) => step.status === "completed").length,
-    total: pathway.length,
+    done: run.pathway.filter((step) => step.status === "completed").length,
+    total: run.pathway.length,
   }
-}
-
-function statusLine(run: LatticeRun, modeLabel: string): string {
-  const reason = run.statusReason ? ` (${run.statusReason})` : ""
-  return `${run.status}${reason} · ${run.phase} · ${modeLabel}`
 }
 
 export function LatticeConfigDialog(props: {
-  sdk: LatticeConfigSDK
+  sdk: SDKContext
   sessionID?: string
   onEnable: (config: LatticeEnableConfig) => Promise<void> | void
 }) {
   const { _ } = useLingui()
   const dialog = useDialog()
-  const [existing, setExisting] = createSignal<LatticeRun | null>(null)
+  const [existing, setExisting] = createSignal<LatticeRunView | null>(null)
   const [loading, setLoading] = createSignal(!!props.sessionID)
+  const [loadFailed, setLoadFailed] = createSignal(false)
   const [mode, setMode] = createSignal<LatticeMode>("auto")
   const [budget, setBudget] = createSignal("0")
   const [goal, setGoal] = createSignal("")
@@ -71,34 +61,45 @@ export function LatticeConfigDialog(props: {
         setBudget(String(run.maxModelCalls))
       }
     } catch {
-      // No prior run — fresh configuration.
+      setLoadFailed(true)
     } finally {
       setLoading(false)
     }
   })
 
-  const canContinue = () => {
+  const canSubmit = () => {
     const run = existing()
-    return !!run && RESUMABLE.has(run.status)
+    return (
+      !run ||
+      run.status === "active" ||
+      run.status === "completed" ||
+      run.status === "failed" ||
+      run.status === "cancelled"
+    )
   }
 
-  const submit = async (action?: "continue" | "restart") => {
+  const submit = async () => {
+    if (!canSubmit()) return
     setSaving(true)
     try {
       const parsedBudget = Math.max(0, Math.floor(Number(budget()) || 0))
+      const current = existing()
+      const startsNewRun =
+        !current || current.status === "completed" || current.status === "failed" || current.status === "cancelled"
       await props.onEnable({
         mode: mode(),
         maxModelCalls: parsedBudget,
-        goal: props.sessionID ? goal().trim() || undefined : undefined,
-        action,
+        goal: props.sessionID && startsNewRun ? goal().trim() || undefined : undefined,
       })
       dialog.close()
-    } catch (err) {
+    } catch (error) {
       showToast({
         type: "error",
-        title: _({ id: "app.lattice.config.failed", message: "Failed to enable Lattice" }),
+        title: _({ id: "app.lattice.config.failed", message: "Failed to configure Lattice" }),
         description:
-          err instanceof Error ? err.message : _({ id: "app.lattice.config.unknownError", message: "Unknown error" }),
+          error instanceof Error
+            ? error.message
+            : _({ id: "app.lattice.config.unknownError", message: "Unknown error" }),
       })
     } finally {
       setSaving(false)
@@ -107,12 +108,12 @@ export function LatticeConfigDialog(props: {
 
   return (
     <Dialog title={_({ id: "app.lattice.config.title", message: "Configure Lattice" })} size="form">
-      <div data-slot="dialog-form" class="flex flex-col gap-4">
+      <div data-slot="dialog-form" class="flex min-w-0 flex-col gap-4">
         <p class="text-12-regular text-text-weak">
           {_({
             id: "app.lattice.config.description",
             message:
-              "Lattice turns your goal into an ordered Pathway and executes each step through a BlueprintLoop. Advance autonomously keeps planning and executing without waiting for review. Work with you pauses before each Blueprint executes so you can review it or add instructions.",
+              "Lattice aligns requirements, plans a Pathway, reviews each Blueprint, and delegates execution to BlueprintLoop. Work with you waits for explicit approval before execution.",
           })}
         </p>
 
@@ -120,54 +121,88 @@ export function LatticeConfigDialog(props: {
           <p class="text-11-regular text-text-weak">
             {_({
               id: "app.lattice.config.nextMessageGoal",
-              message: "Your next message will be used as the goal for this run.",
+              message: "Your next message will start requirement alignment for this run.",
             })}
           </p>
         </Show>
 
+        <Show when={loading()}>
+          <div class="text-11-regular text-text-weak" role="status" aria-live="polite">
+            {_({ id: "app.lattice.config.loading", message: "Loading previous Lattice run…" })}
+          </div>
+        </Show>
+        <Show when={loadFailed()}>
+          <div class="text-11-regular text-text-on-critical-base" role="alert">
+            {_({ id: "app.lattice.config.loadFailed", message: "Could not load the previous Lattice run." })}
+          </div>
+        </Show>
+
         <Show when={!loading() && existing()}>
-          {(run) => (
-            <div class="rounded-lg border border-border-base/60 bg-surface-weak/40 p-3">
-              <div class="text-11-medium text-text-weak uppercase tracking-wide">
-                {_({ id: "app.lattice.config.previousRun", message: "Previous run" })}
-              </div>
-              <div class="mt-1 text-12-medium text-text-strong">{statusLine(run(), modeLabel(run().mode))}</div>
-              <div class="mt-1 text-11-regular text-text-weak">
-                {_({
-                  id: "app.lattice.config.stepsCompleted",
-                  message: "{done}/{total} steps completed",
-                  values: progressCounts(run()),
-                })}
-                <Show when={run().currentStepID}>
-                  {" · "}
-                  {_({ id: "app.lattice.config.current", message: "current" })}:{" "}
-                  {(run().pathway ?? []).find((s) => s.id === run().currentStepID)?.title ?? run().currentStepID}
+          {(run) => {
+            const state = () => runWorkState(run())
+            return (
+              <div class="rounded-lg border border-border-base/60 bg-surface-weak/40 p-3">
+                <div class="text-10-medium uppercase tracking-wide text-text-weak">
+                  {_({ id: "app.lattice.config.previousRun", message: "Previous run" })}
+                </div>
+                <div class="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-12-medium text-text-strong">
+                  <span>{_(RUN_STATUS_DESCRIPTORS[run().status])}</span>
+                  <Show when={state()}>
+                    {(value) => <span class="text-text-weak">{workStateLabel(_, value())}</span>}
+                  </Show>
+                  <span class="text-text-weak">{modeLabel(run().mode)}</span>
+                </div>
+                <Show when={run().status === "paused"}>
+                  <div class="mt-1 text-11-regular text-text-on-warning-base">
+                    {pauseReasonLabel(_, run().statusReason)}
+                  </div>
+                </Show>
+                <div class="mt-1 text-11-regular text-text-weak">
+                  {_({
+                    id: "app.lattice.config.stepsCompleted",
+                    message: "{done}/{total} steps completed",
+                    values: progressCounts(run()),
+                  })}
+                  <Show when={run().currentStepID}>
+                    {" · "}
+                    {_({ id: "app.lattice.config.current", message: "Current" })}:{" "}
+                    {run().pathway.find((step) => step.id === run().currentStepID)?.title ??
+                      _({ id: "app.lattice.config.notStarted", message: "Not started" })}
+                  </Show>
+                </div>
+                <div class="mt-1 text-11-regular text-text-weak">
+                  {_({ id: "app.lattice.config.modelCalls", message: "Model calls" })}: {run().modelCallCount}/
+                  {run().maxModelCalls || _({ id: "app.lattice.config.unlimited", message: "Unlimited" })}
+                </div>
+                <Show when={run().status === "paused"}>
+                  <p class="mt-2 text-11-regular text-text-weak">
+                    {_({
+                      id: "app.lattice.config.pausedHint",
+                      message: "Resume or cancel this run from the Lattice panel before changing its settings.",
+                    })}
+                  </p>
                 </Show>
               </div>
-              <div class="mt-1 text-11-regular text-text-weak">
-                {_({ id: "app.lattice.config.modelCalls", message: "Model calls" })}: {run().modelCallCount}/
-                {run().maxModelCalls || _({ id: "app.lattice.config.unlimited", message: "Unlimited" })}
-              </div>
-            </div>
-          )}
+            )
+          }}
         </Show>
 
         <div class="flex flex-col gap-1.5">
           <span class="text-12-medium text-text-base">
             {_({ id: "app.lattice.config.mode", message: "How Lattice runs" })}
           </span>
-          <div class="flex gap-2">
+          <div class="flex flex-wrap gap-2">
             <Button
               variant={mode() === "auto" ? "primary" : "secondary"}
               onClick={() => setMode("auto")}
-              disabled={saving()}
+              disabled={saving() || existing()?.status === "paused"}
             >
               {modeLabel("auto")}
             </Button>
             <Button
               variant={mode() === "collaborative" ? "primary" : "secondary"}
               onClick={() => setMode("collaborative")}
-              disabled={saving()}
+              disabled={saving() || existing()?.status === "paused"}
             >
               {modeLabel("collaborative")}
             </Button>
@@ -184,9 +219,18 @@ export function LatticeConfigDialog(props: {
           type="number"
           value={budget()}
           onChange={setBudget}
+          disabled={existing()?.status === "paused"}
         />
 
-        <Show when={!!props.sessionID && !existing()}>
+        <Show
+          when={
+            !!props.sessionID &&
+            (!existing() ||
+              existing()?.status === "completed" ||
+              existing()?.status === "failed" ||
+              existing()?.status === "cancelled")
+          }
+        >
           <TextField
             label={_({ id: "app.lattice.config.goalOptional", message: "Goal (optional)" })}
             type="text"
@@ -199,22 +243,16 @@ export function LatticeConfigDialog(props: {
           />
         </Show>
 
-        <div class="mt-1 flex justify-end gap-2">
-          <Show when={canContinue()}>
-            <Button variant="secondary" onClick={() => void submit("continue")} disabled={saving()}>
-              {_({ id: "app.lattice.config.continueExisting", message: "Continue existing" })}
-            </Button>
-          </Show>
-          <Show when={existing()}>
-            <Button variant="secondary" onClick={() => void submit("restart")} disabled={saving()}>
-              {_({ id: "app.lattice.config.restart", message: "Restart" })}
-            </Button>
-          </Show>
-          <Show when={!existing()}>
-            <Button variant="primary" onClick={() => void submit()} disabled={saving() || loading()}>
-              {props.sessionID
-                ? _({ id: "app.lattice.config.enable", message: "Enable Lattice" })
-                : _({ id: "app.lattice.config.arm", message: "Arm Lattice for this message" })}
+        <div class="mt-1 flex flex-wrap justify-end gap-2">
+          <Show when={canSubmit()}>
+            <Button variant="primary" onClick={() => void submit()} disabled={saving() || loading() || loadFailed()}>
+              {!props.sessionID
+                ? _({ id: "app.lattice.config.arm", message: "Arm Lattice for this message" })
+                : existing()?.status === "active"
+                  ? _({ id: "app.lattice.config.save", message: "Save settings" })
+                  : existing()
+                    ? _({ id: "app.lattice.config.startNew", message: "Start new run" })
+                    : _({ id: "app.lattice.config.enable", message: "Enable Lattice" })}
             </Button>
           </Show>
         </div>

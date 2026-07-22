@@ -35,7 +35,8 @@ import { LoopStopTool } from "./loop-stop"
 import { LightLoopApproveTool } from "./light-loop-approve"
 import { LightLoopRejectTool } from "./light-loop-reject"
 import { PathwayReadTool } from "./pathway-read"
-import { PathwayPatchTool } from "./pathway-patch"
+import { PathwayWriteTool } from "./pathway-write"
+import { LatticeSubmitTool } from "./lattice-submit"
 import { SessionListTool } from "./session-list"
 import { SessionReadTool } from "./session-read"
 import { SessionSearchTool } from "./session-search"
@@ -382,7 +383,8 @@ export namespace ToolRegistry {
       LightLoopApproveTool,
       LightLoopRejectTool,
       PathwayReadTool,
-      PathwayPatchTool,
+      PathwayWriteTool,
+      LatticeSubmitTool,
       SessionListTool,
       SessionReadTool,
       SessionSearchTool,

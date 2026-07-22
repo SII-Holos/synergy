@@ -134,7 +134,6 @@ export const WorkflowInfo = z
       kind: z.literal("lattice"),
       runID: z.string(),
       mode: z.enum(["auto", "collaborative"]),
-      firstBlueprintStarted: z.boolean().optional(),
     }),
   ])
   .meta({ ref: "SessionWorkflowInfo" })

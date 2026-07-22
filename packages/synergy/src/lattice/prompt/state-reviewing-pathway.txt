@@ -1,0 +1,5 @@
+<lattice-state name="reviewing_pathway">
+Perform an adversarial self-review of the remaining Pathway against the aligned requirements and evidence from completed steps. Check coverage, step size, ordering, dependencies, assumptions, and verifiable acceptance criteria. Use pathway_write to replace all and only the not-yet-started steps when corrections are needed.
+
+Do not create a Blueprint or execute work. When the remaining Pathway is decision-complete, call lattice_submit with action submit_pathway_review and stop this responsibility.
+</lattice-state>

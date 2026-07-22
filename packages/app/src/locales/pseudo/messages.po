@@ -2408,10 +2408,6 @@ msgid "app.lattice.config.budgetDescription"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.continueExisting"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.lattice.config.current"
 msgstr ""
 
@@ -2436,6 +2432,14 @@ msgid "app.lattice.config.goalPlaceholder"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
 msgstr ""
 
@@ -2456,11 +2460,23 @@ msgid "app.lattice.config.nextMessageGoal"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.lattice.config.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.pausedHint"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.restart"
+msgid "app.lattice.config.save"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.startNew"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2480,11 +2496,75 @@ msgid "app.lattice.config.unlimited"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReview"
+msgid "app.lattice.loop.armed"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReviewHint"
+msgid "app.lattice.loop.auditing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.running"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.waiting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailedTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalConflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalHint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalTitle"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approve"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approving"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintCurrent"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintHistory"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintLoops"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprints"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2492,35 +2572,51 @@ msgid "app.lattice.panel.calls"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continue"
+msgid "app.lattice.panel.cancel"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continueFailed"
+msgid "app.lattice.panel.cancelConfirm"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.current"
+msgid "app.lattice.panel.cancelConfirmTitle"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.mode"
+msgid "app.lattice.panel.confirmCancel"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstruction"
+msgid "app.lattice.panel.currentStep"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstructionPlaceholder"
+msgid "app.lattice.panel.keepRun"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.paused"
+msgid "app.lattice.panel.label"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.recovery"
+msgid "app.lattice.panel.loadFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.notStarted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pause"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -2528,11 +2624,119 @@ msgid "app.lattice.panel.resume"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.resumeFailed"
+msgid "app.lattice.panel.retry"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.unknown"
+msgid "app.lattice.panel.stepProgress"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unlimited"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.attention"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.budget"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopCancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.modelError"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.turnInterrupted"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userExit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userPause"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.awaitingExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.blueprinting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.clarifying"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.executing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.planning"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingPathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.active"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.paused"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.cancelled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.completed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.current"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.executing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.pending"
 msgstr ""
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
@@ -16269,6 +16473,14 @@ msgstr ""
 msgid "tool.label.items"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourceChat"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourcePanel"
+msgstr ""
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.matches"
 msgstr ""
@@ -16287,6 +16499,10 @@ msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.notes"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.label.pathwaySteps"
 msgstr ""
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
@@ -16625,6 +16841,34 @@ msgstr ""
 msgid "tool.title.jobs"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "tool.title.latticeApproveExecution"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprint"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprintReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathway"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathwayReview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitRequirements"
+msgstr ""
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
 msgstr ""
@@ -16727,6 +16971,14 @@ msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-generating"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayRead"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayWrite"
 msgstr ""
 
 #. ── Tool trigger titles ────────────────────────────────────────────

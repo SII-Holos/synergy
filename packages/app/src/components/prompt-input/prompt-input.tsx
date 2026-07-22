@@ -648,7 +648,6 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         mode: config.mode,
         maxModelCalls: config.maxModelCalls,
         goal: config.goal,
-        action: config.action,
       },
     })
   }
@@ -678,7 +677,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
       event?.preventDefault()
       return
     }
-    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk as any} sessionID={params.id} onEnable={enableLattice} />)
+    workflowDialog.show(() => <LatticeConfigDialog sdk={sdk} sessionID={params.id} onEnable={enableLattice} />)
   }
 
   const selectLatticeFromMenu = (event?: Event) => {
@@ -1711,7 +1710,7 @@ export const PromptInput: Component<PromptInputProps> = (props) => {
         </div>
       </Show>
       <Show when={params.id}>
-        <LatticePanel sdk={sdk as any} sessionID={params.id!} />
+        <LatticePanel sdk={sdk} sessionID={params.id!} />
       </Show>
       <Show when={store.popover}>
         <PromptPopover

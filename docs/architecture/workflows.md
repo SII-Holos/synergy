@@ -10,7 +10,7 @@ Enabling or switching any workflow, plus ordinary workflow disabling, requires a
 
 A user-owned BlueprintLoop can replace Plan or Light Loop after the session is idle. It cannot replace an active Lattice workflow. A BlueprintLoop with `source: "lattice"` is valid only while Lattice owns the session.
 
-Disabling Lattice first pauses the run, then cancels any active Lattice-owned BlueprintLoop so terminal loop events cannot advance an inactive Pathway.
+Pausing Lattice persists the inactive run before aborting session work, withdrawing queued Inbox work owned by that run, or cancelling its active Lattice-owned BlueprintLoop. A paused run cannot advance from a late loop event. Cancellation is terminal; resume is explicit and creates an idempotent state-entry prompt only when the saved action is no longer valid.
 
 ## User-Message Projection
 
@@ -50,7 +50,7 @@ The execution session is marked with `loopRole: "execution"`; the visible Cortex
 
 `blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the visible Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Rejection increments the audit attempt count; when the incremented count reaches `maxIterations`, the loop fails with `iteration_exhausted` instead of returning to execution.
 
-For user-owned loops, approval returns a completion notice to the execution session. For Lattice-owned loops, approval tells the session to analyze and record the step result instead of stopping at a user-facing summary.
+For user-owned loops, approval returns a completion notice to the execution session. For Lattice-owned loops, the BlueprintLoop record is the execution fact consumed by the Lattice controller. Bus events only wake reconciliation and are never sufficient on their own to advance a Pathway.
 
 ## Light Loop State
 
@@ -64,24 +64,31 @@ The active instructions may be updated without restarting the workflow; the next
 
 ## Lattice Run State
 
-A Lattice run is keyed to one session and contains:
+Lattice v2 stores immutable run identity separately from session selection. Run records are keyed by run ID, while one repairable current pointer per session selects the active or most recently selected run. Starting a new run never overwrites terminal history.
 
-- `auto` or `collaborative` mode
-- active, paused, completed, failed, or cancelled status
-- current phase and step
-- ordered Pathway steps
-- model-call count and optional maximum
-- run assumptions, status reason, and event history
+A Run has an independent lifecycle status (`active`, `paused`, `completed`, `failed`, or `cancelled`) and one of seven work states:
 
-Step states are `pending`, `ready`, `blueprinting`, `reviewing`, `running`, `completed`, `failed`, `blocked`, or `cancelled`.
+1. `clarifying` captures an aligned goal, success criteria, constraints, non-goals, and assumptions.
+2. `planning` authors the ordered Pathway.
+3. `reviewing_pathway` checks the next step and may replace only unstarted future steps.
+4. `blueprinting` authors and binds the current step's Blueprint Note.
+5. `reviewing_blueprint` validates the bound Note version and content.
+6. `awaiting_execution` waits for explicit collaborative approval.
+7. `executing` delegates exclusively to the bound BlueprintLoop.
 
-The Lattice machine is the only owner of phase and Pathway mutations. Agent-facing tools submit patch intents; the machine preserves terminal steps, freezes Pathway restructuring during execution, prevents a running step from being dropped or changing objective, selects the next ready step, and completes the run when no selectable step remains.
+Step status is one of `pending`, `current`, `executing`, `completed`, `failed`, or `cancelled`.
 
-Binding a Blueprint advances `step_blueprinting` to `blueprint_review` in collaborative mode or `blueprint_execution` in auto mode. Collaborative continue starts the current step explicitly. Auto mode starts it from the continuation policy.
+Step history preserves Blueprint bindings and every BlueprintLoop attempt. Completed, failed, and cancelled attempts remain immutable evidence. A failed or cancelled current attempt pauses the Run; only an explicit resume for that pause reason reopens the same Step for Blueprint work. After a successful step, Lattice returns to `reviewing_pathway` whenever future steps remain, so later work can adapt to the observed result. The final successful step completes the Run.
 
-The Lattice bridge consumes terminal events only from loops whose source is `lattice` and only while the owning run is active. Completion moves the step to `completed` and the run to `result_analysis`; failure and cancellation produce their corresponding deterministic transitions.
+The Lattice machine is the sole owner of work state, Run status, current Step, and Step status. Agent tools write artifacts or a single semantic pending action; they do not transition the machine or invoke Session and BlueprintLoop effects. Each action captures the state and Pathway revisions it was based on, so duplicate submission is idempotent and stale or conflicting submission is rejected.
 
-Model calls are accumulated for the run and flushed at idle. A positive maximum is enforced before the next continuation; reaching it pauses the run with a budget-exhausted event rather than starting more model work.
+The controller consumes one pending action and persists the next state plus at most one outbox effect before crossing an external boundary. Effects cover state-entry prompts and BlueprintLoop create/start handoffs. Prompt delivery uses a persisted effect identity with `SessionInbox.deliverUnique`; Blueprint creation and start are separate effects so recovery can reconcile either boundary without creating a duplicate loop. The controller validates the bound Note version and digest immediately before Auto start or collaborative approval.
+
+While the Run is `executing`, the parent Lattice prompt and tools are absent and BlueprintLoop owns continuation. The controller accepts only the exact `source: "lattice"` loop bound in the current attempt. It re-reads the loop record on wake; missing, late, foreign, or multiply owned events cannot advance the Run.
+
+Each Scope runtime subscribes to loop events before reconciling persisted Runs and effects. Startup reconciliation is also responsible for detecting an interrupted execution or a running loop that never received its first durable prompt. Normal asynchronous loop start is not diagnosed by that cold-start-only check.
+
+Model calls are accumulated and flushed at turn and lifecycle boundaries. A positive limit is checked before another Lattice continuation and pauses the Run when exhausted. Explicitly resuming a budget-paused Run extends the visible cap by exactly one call, so each additional call requires a fresh user decision. This is a soft operational budget: a hard process failure can lose the final in-memory increment. Lattice event files are idempotent, best-effort audit output; Run, Step, Blueprint binding, and BlueprintLoop records are canonical recovery state.
 
 ## Continuation Drive
 
@@ -97,9 +104,9 @@ Policies run in descending priority:
 2. Lattice (`50`)
 3. Light Loop (`25`)
 
-The first policy that returns a proposal wins. Per-session, per-policy deduplication keys the decision to the terminal assistant message, while Inbox delivery keys make persistence idempotent across concurrent requests and restart recovery.
+The first policy that returns a proposal wins. Per-session, per-policy deduplication keys the decision to the terminal assistant message, while Inbox delivery keys make persistence idempotent across concurrent requests and restart recovery. Persisted Lattice lifecycle effects such as explicit resume and startup repair may materialize their own unique Inbox entry before requesting the drive; they still use the same Inbox-first ordering and never invoke the model loop directly.
 
-BlueprintLoop normally continues a `running` bound loop, but an unbound stop intent is handled first by preparing, binding, and starting its reviewer. Lattice enforces its budget, waits during collaborative Blueprint review, starts the current Blueprint in execution phase, or proposes a phase continuation. Light Loop similarly handles an unbound stop intent before proposing its ordinary task check.
+BlueprintLoop normally continues a `running` bound loop, but an unbound stop intent is handled first by preparing, binding, and starting its reviewer. Lattice reconciles semantic actions and persisted effects, then proposes ordinary state continuation only after a successful terminal turn. Light Loop similarly handles an unbound stop intent before proposing its ordinary task check.
 
 ### Agenda Wait Ownership
 
@@ -118,7 +125,7 @@ Pending stop intents suppress Agenda wake guidance and are re-driven through `Se
 - Plan authors a Blueprint and cannot directly execute the requested outcome.
 - Blueprint writes occur only in Plan or Lattice.
 - Executors request completion; independent reviewer sessions decide it.
-- Lattice owns phase transitions and only its own BlueprintLoops can advance its Pathway.
+- Lattice owns work-state transitions and only the exact BlueprintLoop bound to its current attempt can advance its Pathway.
 - One shared drive serializes Inbox work and workflow proposals, and the shared gate prevents continuation while child work, an incomplete or erroring turn, or a one-shot Agenda wait is still active.
 
 ## SuperPlan Storage Substrate
