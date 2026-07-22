@@ -15,6 +15,7 @@
     "synergy-link:app": "bun run --cwd packages/synergy-link script/build-app.ts",
     "perf:load": "bun script/performance-load.ts",
     "perf:benchmark": "bun script/performance-benchmark.ts",
+    "perf:memory": "bun script/session-memory-benchmark.ts",
     "perf:playwright": "bun script/performance-playwright.ts",
     "perf:tools:test": "bun test --config /dev/null test/script/performance-tools.test.ts",
     "release:test": "bun test --config /dev/null test/script/release",

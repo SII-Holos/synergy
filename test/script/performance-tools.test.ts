@@ -5,6 +5,7 @@ const requiredFiles = [
   "packages/app/script/visualizer-report.ts",
   "script/performance-playwright.ts",
   "script/performance-benchmark.ts",
+  "script/session-memory-benchmark.ts",
   "script/performance-hyperfine.sh",
   "script/performance-http.sh",
   "script/performance-k6.js",
@@ -23,5 +24,12 @@ describe("optional performance tooling integration", () => {
     expect(docs).toContain("k6")
     expect(docs).toContain("not a runtime dependency")
     expect(JSON.stringify(rootPackage.dependencies ?? {})).not.toContain("k6")
+  })
+
+  test("documents the isolated cross-platform session memory benchmark", async () => {
+    const docs = await Bun.file("docs/operations/performance-observability.md").text()
+    expect(docs).toContain("perf:memory")
+    expect(docs).toContain("history-projection")
+    expect(docs).toContain("tool-stream")
   })
 })

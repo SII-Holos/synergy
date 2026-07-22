@@ -48,6 +48,17 @@ The configured SQLite limit applies to the combined database, WAL, and shared-me
 
 High-frequency count signals such as LLM stream output, child-process output, and storage-operation counts are aggregated by attribution key before SQLite flush. Stream chunk-gap and throughput signals are summarized once per stream and output kind rather than written for every chunk. LLM memory checkpoints run at lifecycle boundaries and at a five-second periodic interval rather than for every provider chunk. This keeps writer queue depth bounded without removing trace, Scope, session, message, provider, tool, or process attribution.
 
+## Cross-platform session memory benchmark
+
+Use the isolated session-memory harness to compare the same bounded fixtures on Linux, macOS, and Windows without contacting a model provider or modifying Synergy state:
+
+```bash
+bun run perf:memory --preset smoke
+bun run perf:memory --preset standard
+```
+
+Each scenario runs in a fresh Bun child process and reports `baseline`, `peak`, and `afterGC` values for RSS, JavaScript heap, external memory, and ArrayBuffers. `history-projection` exercises Synergy's message-to-model projection with deterministic tool output. `tool-stream` exercises chunked `Uint8Array` decoding, JSON tool-input parsing, and release. Keep the preset, Bun version, and architecture identical when comparing platforms. The harness is a bounded regression baseline, not a concurrency or stress test.
+
 ## Runtime config
 
 Performance settings extend the existing runtime observability domain in `120-runtime.jsonc`:
