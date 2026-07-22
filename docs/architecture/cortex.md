@@ -52,6 +52,7 @@ The ordinary role is `delegated_subagent`. It is intentionally narrower than a p
 - DAG mutation tools are removed
 - configured primary-only tools are removed
 - deferred tool discovery and expansion remain available, but they expose only tools already allowed by the selected agent's permission rules
+- native subagents may expand the deferred Browser group on demand; Browser tools remain hidden until expansion and still pass through the normal capability and permission pipeline
 
 This keeps a delegated task bounded and prevents accidental recursive orchestration. Hidden internal reviewers can be given an explicit `delegationGroup` so they can call selected specialists while remaining hidden and unavailable as direct user targets.
 

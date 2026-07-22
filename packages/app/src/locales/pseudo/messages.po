@@ -15740,6 +15740,18 @@ msgid "settings.synergyLink.add.action"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.synergyLink.add.adding"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.cancel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.close"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.synergyLink.add.description"
 msgstr ""
 
@@ -15897,14 +15909,6 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.empty"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "settings.usage.attention.emptyDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
