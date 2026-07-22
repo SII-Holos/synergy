@@ -5,8 +5,8 @@ export interface PluginSurfaceIdentity {
 }
 
 export interface PluginUIOperations {
-  query<Output = unknown>(id: string, input?: unknown): Promise<Output>
-  command<Output = unknown>(id: string, input?: unknown): Promise<Output>
+  query<Output = unknown>(id: string, input?: unknown, options?: { signal?: AbortSignal }): Promise<Output>
+  command<Output = unknown>(id: string, input?: unknown, options?: { signal?: AbortSignal }): Promise<Output>
 }
 
 export interface PluginUIEvents {
@@ -34,4 +34,73 @@ export interface PluginSurfaceContext {
     subscribe(listener: (values: Record<string, unknown>) => void): () => void
   }
   host: PluginUIHostActions
+}
+
+export interface PluginTextRange {
+  start: number
+  end: number
+}
+
+export interface PluginComposerDocumentSnapshot {
+  revision: number
+  text: string
+  selection: PluginTextRange
+  sessionId?: string
+  mode: "normal" | "shell"
+}
+
+export interface PluginComposerEdit {
+  range: PluginTextRange
+  text: string
+}
+
+export interface PluginComposerCompletion {
+  revision: number
+  position: number
+  text: string
+}
+
+export interface PluginComposerDecoration {
+  id: string
+  range: PluginTextRange
+  severity: "info" | "warning" | "error"
+  message?: string
+  replacement?: string
+}
+
+export interface PluginComposerService {
+  current(): PluginComposerDocumentSnapshot
+  onDraftSettled(
+    listener: (snapshot: PluginComposerDocumentSnapshot, context: { signal: AbortSignal }) => void | Promise<void>,
+  ): () => void
+  onBeforeSubmit(
+    listener: (snapshot: PluginComposerDocumentSnapshot, context: { signal: AbortSignal }) => Promise<void>,
+  ): () => void
+  setCompletion(completion: PluginComposerCompletion | undefined): void
+  setDecorations(input: { revision: number; items: PluginComposerDecoration[] }): void
+  applyEdits(input: { revision: number; edits: PluginComposerEdit[] }): Promise<PluginComposerDocumentSnapshot>
+}
+
+export interface PluginComposerSurfaceContext extends PluginSurfaceContext {
+  composer: PluginComposerService
+}
+
+export interface TextSelectionSnapshot {
+  text: string
+}
+
+export interface PluginSelectionService {
+  current(): TextSelectionSnapshot | undefined
+  onSettled(listener: (snapshot: TextSelectionSnapshot | undefined) => void): () => void
+}
+
+export interface PluginSelectionSurfaceContext extends PluginSurfaceContext {
+  selection: PluginSelectionService
+}
+
+export interface PluginMessageSurfaceContext extends PluginSurfaceContext {
+  message: {
+    id: string
+    role: "user" | "assistant"
+  }
 }
