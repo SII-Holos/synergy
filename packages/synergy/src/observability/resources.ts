@@ -7,6 +7,19 @@ import { ObservabilitySchema } from "./schema"
 import { ObservabilityStore } from "./store"
 import { ObservabilityRedaction } from "./redaction"
 import { ProcessRegistry } from "@/process/registry"
+import { ProcessMemory } from "@/process/memory-usage"
+import { ServiceMemory } from "@/process/service-memory"
+
+type PublicServiceMemory = NonNullable<ObservabilitySchema.ResourceSample["serviceMemory"]>
+
+const serviceMemorySources = {
+  cgroup_v2: "cgroup_v2",
+  process_sum: "process_api",
+} satisfies Record<ServiceMemory.Source, PublicServiceMemory["source"]>
+
+function serviceMemoryCompleteness(complete: boolean): PublicServiceMemory["completeness"] {
+  return complete ? "full" : "partial"
+}
 
 export namespace ObservabilityResources {
   let timer: Timer | undefined
@@ -39,6 +52,9 @@ export namespace ObservabilityResources {
     const ctx = ObservabilityContext.current()
     const now = ObservabilityClock.now()
     const memory = process.memoryUsage()
+    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+    const cgroup = ServiceMemory.currentCgroupV2()
+    const serviceMemory = ServiceMemory.measure({ processRssBytes: memory.rss, children: childProcesses, cgroup })
     const cpu = process.cpuUsage()
     const elapsedMs = Math.max(1, performance.now() - lastTime)
     const userDelta = cpu.user - lastCpu.user
@@ -70,12 +86,27 @@ export namespace ObservabilityResources {
         externalBytes: memory.external,
         arrayBuffersBytes: memory.arrayBuffers,
       },
+      cgroup: cgroup
+        ? {
+            currentBytes: cgroup.currentBytes,
+            highBytes: cgroup.highBytes,
+            maxBytes: cgroup.maxBytes,
+            peakBytes: cgroup.peakBytes,
+            oomCount: cgroup.events?.oom,
+            oomKillCount: cgroup.events?.oomKill,
+          }
+        : undefined,
+      serviceMemory: {
+        rssBytes: serviceMemory.currentBytes,
+        source: serviceMemorySources[serviceMemory.source],
+        completeness: serviceMemoryCompleteness(serviceMemory.complete),
+      },
       eventLoop: { lagMs, sampleWindowMs: config.resourceSampleIntervalMs },
       io: { ...io, osAvailable: false },
       labels: {},
     })
     ObservabilityStore.insertResource(sample)
-    recordChildProcesses(now, config.resourceSampleIntervalMs)
+    recordChildProcesses(now, config.resourceSampleIntervalMs, childProcesses)
     recordResourceMetrics(memory, utilizationRatio, lagMs)
     detectPressure(sample, config)
   }
@@ -101,8 +132,11 @@ export namespace ObservabilityResources {
     start()
   }
 
-  function recordChildProcesses(now: number, sampleWindowMs: number) {
-    const childProcesses = ProcessRegistry.resourceSnapshot({ now, settleStale: true })
+  function recordChildProcesses(
+    now: number,
+    sampleWindowMs: number,
+    childProcesses: ReturnType<typeof ProcessRegistry.resourceSnapshot>,
+  ) {
     ObservabilityMetrics.record({
       name: "process.active.count",
       value: childProcesses.length,
@@ -112,7 +146,6 @@ export namespace ObservabilityResources {
       labels: { role: "tool-child" },
     })
     for (const child of childProcesses) {
-      if (child.rssBytes === undefined) continue
       const commandFamily = ObservabilityRedaction.commandFamily(child.command)
       const labels: Record<string, string | number | boolean> = {
         command: commandFamily,
@@ -134,6 +167,7 @@ export namespace ObservabilityResources {
           labels,
         }),
       )
+      if (child.rssBytes === undefined) continue
       ObservabilityMetrics.record({
         name: "process.child.memory.rss",
         value: child.rssBytes,
@@ -204,8 +238,10 @@ export namespace ObservabilityResources {
     config: ReturnType<typeof ObservabilityConfig.current>,
   ) {
     const rss = sample.memory.rssBytes ?? 0
-    const heapUsed = sample.memory.heapUsedBytes ?? 0
-    const heapTotal = sample.memory.heapTotalBytes ?? 0
+    const heapRatio = ProcessMemory.heapUsageRatio({
+      heapUsedBytes: sample.memory.heapUsedBytes,
+      heapTotalBytes: sample.memory.heapTotalBytes,
+    })
     const cpu = sample.cpu.utilizationRatio ?? 0
     const lag = sample.eventLoop.lagMs ?? 0
     rssWindow.push({ time: sample.time, rss })
@@ -230,8 +266,8 @@ export namespace ObservabilityResources {
       })
     }
     if (
-      heapTotal > 0 &&
-      heapUsed / heapTotal >=
+      heapRatio.available &&
+      heapRatio.ratio >=
         (config.thresholds.highHeapUsedRatio ?? ObservabilityConfig.defaults.thresholds.highHeapUsedRatio)
     ) {
       ObservabilityIssues.raise({
@@ -239,9 +275,13 @@ export namespace ObservabilityResources {
         severity: "warning",
         module: "process",
         title: "High heap usage ratio",
-        message: `Heap usage ratio is ${(heapUsed / heapTotal).toFixed(2)}`,
+        message: `Heap usage ratio is ${heapRatio.ratio.toFixed(2)}`,
         recommendation: "Inspect memory trend and active sessions/tools before restarting the server.",
-        evidence: { heapUsedBytes: heapUsed, heapTotalBytes: heapTotal, ratio: heapUsed / heapTotal },
+        evidence: {
+          heapUsedBytes: sample.memory.heapUsedBytes ?? null,
+          heapTotalBytes: sample.memory.heapTotalBytes ?? null,
+          ratio: heapRatio.ratio,
+        },
       })
     }
     if (

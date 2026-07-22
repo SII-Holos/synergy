@@ -96,7 +96,7 @@ Session, Agenda, Library, Performance, and Plugins should feel like one continuo
 Session import and export are session-level portability actions. Keep them available for every open session regardless of Scope type, while Scope-specific workspace and lifecycle actions may remain limited to project sessions.
 Performance and Diagnostics are developer diagnostic workbench surfaces. Organize them around evidence, current health, inflight or stale work, and recovery actions; keep raw trace IDs, span IDs, correlation IDs, and debug tables in detail or copy areas instead of making them default primary labels.
 
-Performance should separate server process resources from registered tool child process resources. Main RSS, heap, CPU, and event-loop signals belong in the primary resource cards and charts; tool child process count, aggregate RSS, and top child memory contributors should be visible as support-oriented diagnostics without crowding the main time-series model.
+Performance should separate whole-service memory from server process and registered tool child resources. Service memory is the primary current footprint and must state its measurement source and coverage; server RSS, heap, CPU, and event-loop signals remain process-specific cards and charts. Tool child count, measured count, aggregate RSS, and top child memory contributors stay visible as support-oriented diagnostics without crowding the main time-series model.
 
 Performance support cards should surface runtime retention counters plainly: session runtimes, retained Cortex tasks, pending sessions, trace evidence, and recent errors belong together as operational signals rather than as decorative dashboard metrics.
 
