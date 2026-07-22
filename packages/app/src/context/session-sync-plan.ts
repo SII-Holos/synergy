@@ -17,6 +17,14 @@ export type SessionSyncPlan = {
   ready: boolean
 }
 
+export async function refreshSessionAfterPending(
+  pending: Promise<unknown>,
+  refresh: () => Promise<unknown>,
+): Promise<void> {
+  await pending
+  await refresh()
+}
+
 /**
  * Decide whether session metadata and/or durable message/part snapshots must be
  * re-fetched. Tool parts publish as unsequenced streaming events, so reconnect

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { describeToolPartApply, planSessionSyncReload } from "./session-sync-plan"
+import { describeToolPartApply, planSessionSyncReload, refreshSessionAfterPending } from "./session-sync-plan"
 
 describe("planSessionSyncReload (#509)", () => {
   test("short-circuits when session and messages are current", () => {
@@ -107,6 +107,26 @@ describe("planSessionSyncReload (#509)", () => {
       forceMessages: true,
       ready: false,
     })
+  })
+})
+
+describe("refreshSessionAfterPending", () => {
+  test("starts the authoritative refresh only after the stale request settles", async () => {
+    let releasePending!: () => void
+    const pending = new Promise<void>((resolve) => {
+      releasePending = resolve
+    })
+    const calls: string[] = []
+
+    const refresh = refreshSessionAfterPending(pending, async () => {
+      calls.push("refresh")
+    })
+    await Promise.resolve()
+
+    expect(calls).toEqual([])
+    releasePending()
+    await refresh
+    expect(calls).toEqual(["refresh"])
   })
 })
 

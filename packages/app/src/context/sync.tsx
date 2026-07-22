@@ -9,7 +9,11 @@ import type { Message, PermissionRequest, Session } from "@ericsanchezok/synergy
 import { refreshPlanBlueprintOfferFromLoadedParts, updatePlanBlueprintOfferState } from "./global-sync"
 import { createSessionMessageLoader, type SessionMessageLoadState } from "./session-message-loader"
 import { requestErrorMessage } from "@/utils/error"
-import { planSessionSyncReload, type SessionSyncTrigger } from "./session-sync-plan"
+import {
+  planSessionSyncReload,
+  refreshSessionAfterPending,
+  type SessionSyncTrigger,
+} from "./session-sync-plan"
 import type { MessageWindowState } from "./session-message-window"
 import { planMessagePageApply } from "./session-message-page"
 import { loadOlderOrRecoverLatest } from "./session-message-page-recovery"
@@ -384,7 +388,7 @@ export const { use: useSync, provider: SyncProvider } = createSimpleContext({
           const pending = plan.ready ? undefined : inflight.get(sessionID)
           const baseReq =
             pending && options?.trigger?.type === "workspace-transition"
-              ? Promise.all([pending, loadSession(sessionID, { force: true })]).then(() => undefined)
+              ? refreshSessionAfterPending(pending, () => loadSession(sessionID, { force: true }))
               : (pending ??
                 (plan.ready
                   ? Promise.resolve()
