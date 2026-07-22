@@ -48,6 +48,7 @@
       "packages/plugin-kit",
       "packages/script",
       "packages/sdk/js",
+      "packages/tui",
       "packages/synergy",
       "packages/ui",
       "packages/util"

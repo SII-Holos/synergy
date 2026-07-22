@@ -13,9 +13,9 @@ Synergy is a client-server system built around a persistent runtime:
 3. A lazily started project `ScopeRuntime` owns project-sensitive services such as file watching, LSP, formatting, VCS, and command state.
 4. A durable session owns messages, inbox state, session-local workflow state, workspace binding, and at most one active LLM loop.
 5. The LLM loop resolves agent, model, context, tools, execution policy, and persistence for one root task at a time.
-6. The event system projects state changes to Web and Desktop clients, which reconcile them into scope-local stores.
+6. The event system projects state changes to Web, Desktop, and TUI clients, which reconcile them into client-owned projections.
 
-Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same runtime model. They do not own parallel session or permission semantics.
+Web, Desktop, TUI, CLI, Channels, Agenda, Cortex, and plugins all enter this same runtime model. They do not own parallel session or permission semantics.
 
 ## Core Documents
 
@@ -66,6 +66,7 @@ Web, Desktop, CLI, Channels, Agenda, Cortex, and plugins all enter this same run
 | External agents and ACP  | `packages/synergy/src/external-agent/`, `acp/`                                                     |
 | Browser                  | `packages/synergy/src/browser/`, `packages/desktop`, Browser UI modules                            |
 | Frontend sync            | `packages/app/src/context/`, `packages/synergy/src/bus/`, server event routes                      |
+| Terminal UI              | `packages/tui`, generated SDK event/snapshot clients                                               |
 | Plugins                  | `packages/synergy/src/plugin/`, `packages/plugin`, `packages/plugin-kit`                           |
 | Observability            | `packages/synergy/src/observability/`, `performance/`, diagnostics and trace UI                    |
 

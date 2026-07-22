@@ -73,6 +73,7 @@
     "@ericsanchezok/synergy-plugin": "workspace:*",
     "@ericsanchezok/synergy-script": "workspace:*",
     "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@ericsanchezok/synergy-tui": "workspace:*",
     "@ericsanchezok/synergy-util": "workspace:*",
     "@hono/zod-validator": "catalog:",
     "@huggingface/transformers": "4.2.0",

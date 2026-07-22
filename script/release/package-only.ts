@@ -11,16 +11,19 @@ import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
+import { buildTui } from "./nodes/build-tui"
 import { publishSdkCandidate } from "./nodes/publish-sdk-candidate"
 import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-link-protocol-candidate"
 import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
+import { publishTuiCandidate } from "./nodes/publish-tui-candidate"
 
-type PackageAlias = "sdk" | "util" | "synergy-link-protocol" | "plugin" | "plugin-kit"
+type PackageAlias = "sdk" | "tui" | "util" | "synergy-link-protocol" | "plugin" | "plugin-kit"
 
 const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "@ericsanchezok/synergy-sdk",
+  tui: "@ericsanchezok/synergy-tui",
   util: "@ericsanchezok/synergy-util",
   "synergy-link-protocol": "@ericsanchezok/synergy-link-protocol",
   plugin: "@ericsanchezok/synergy-plugin",
@@ -29,6 +32,7 @@ const PACKAGE_BY_ALIAS: Record<PackageAlias, string> = {
 
 const TAG_PREFIX_BY_ALIAS: Record<PackageAlias, string> = {
   sdk: "synergy-sdk",
+  tui: "synergy-tui",
   util: "synergy-util",
   "synergy-link-protocol": "synergy-link-protocol",
   plugin: "synergy-plugin",
@@ -64,6 +68,7 @@ function expandPackageDependencies(aliases: PackageAlias[]): PackageAlias[] {
   const add = (alias: PackageAlias) => {
     if (!result.includes(alias)) result.push(alias)
   }
+  if (aliases.includes("tui")) add("sdk")
   if (aliases.some((alias) => alias === "plugin" || alias === "plugin-kit")) add("util")
   for (const alias of aliases) add(alias)
   return result
@@ -112,6 +117,7 @@ async function buildPackage(alias: PackageAlias) {
   if (alias === "synergy-link-protocol") await buildSynergyLinkProtocol()
   if (alias === "plugin") await buildPlugin()
   if (alias === "plugin-kit") await buildPluginKit()
+  if (alias === "tui") await buildTui()
 }
 
 async function publishPackage(
@@ -125,6 +131,7 @@ async function publishPackage(
   if (alias === "synergy-link-protocol") await publishSynergyLinkProtocolCandidate(version, channel)
   if (alias === "plugin") await publishPluginCandidate(version, channel)
   if (alias === "plugin-kit") await publishPluginKitCandidate(version, channel, dependencyVersions)
+  if (alias === "tui") await publishTuiCandidate(version, channel, dependencyVersions)
 }
 
 async function ensurePackageTag(alias: PackageAlias, version: string) {

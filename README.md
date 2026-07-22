@@ -2,7 +2,7 @@
 
 Synergy is an open-source AI agent workspace for persistent, recoverable software and knowledge work. It is built by the [Holos](https://github.com/SII-Holos) team at Shanghai Innovation Institute (SII).
 
-One Synergy runtime hosts sessions, agents, tools, knowledge, automation, and integrations. Web, Desktop, and CLI are clients of that runtime, so the same work can continue across interactive, background, and one-off flows.
+One Synergy runtime hosts sessions, agents, tools, knowledge, automation, and integrations. Web, Desktop, TUI, and CLI are clients of that runtime, so the same work can continue across interactive, background, and one-off flows.
 
 Synergy works as a standalone local workspace. Connecting a Holos agent adds account identity, agent messaging, presence, and Synergy Link remote execution without replacing local projects, providers, sessions, or data.
 
@@ -29,6 +29,7 @@ Long sessions use compaction to replace older model context with a continuation 
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
 | Web                | The primary workbench for sessions, project files, Browser, Notes, Library, Agenda, plugins, settings, and operational views.              |
 | Desktop            | The Electron product, with a managed packaged server, native Browser presentation, local folder selection, protocol handling, and updates. |
+| TUI                | A keyboard-first terminal client for sessions, streaming work, commands, permissions, questions, tasks, and DAG progress.                  |
 | CLI                | Runtime management, one-off `send` execution, configuration, sessions, integrations, diagnostics, and development workflows.               |
 | Server API and SDK | The shared contract used by first-party clients and integrations.                                                                          |
 
@@ -46,7 +47,7 @@ The recommended installers include the Desktop app and expose its packaged runti
 
 Released packages do not require Rust. Rust is used only to build the Linux and Windows sandbox helpers. The Linux `.deb` installs Bubblewrap as a package dependency; Linux portable and CLI archive users must install `bubblewrap` with their system package manager. Windows Desktop and CLI releases currently support x64.
 
-### CLI and Web
+### CLI, TUI, and Web
 
 Install the current release:
 
@@ -64,15 +65,17 @@ The CLI installer places the runtime, Web UI, and schema assets under `~/.synerg
 
 Desktop Browser presentation includes Electron's Chromium. Headless Browser tools used directly by the CLI/server require an installed Chrome or Chromium; set `CHROMIUM_PATH` when it is not in a standard system or Playwright cache location.
 
-Configure a model provider, start the background runtime, and open the Web client:
+Configure a model provider, start the background runtime, and open either interactive client:
 
 ```bash
 synergy config wizard
 synergy start
+synergy tui
+# or
 synergy web
 ```
 
-Run one task from the terminal:
+Run one task non-interactively from the terminal:
 
 ```bash
 synergy send "summarize this repository"
@@ -87,7 +90,7 @@ synergy doctor
 synergy stop
 ```
 
-Run `synergy server` for a foreground server. `synergy web --attach <url>` and `synergy send --attach <url> ...` connect to a non-default runtime.
+Run `synergy server` for a foreground server. `synergy tui --attach <url>`, `synergy web --attach <url>`, and `synergy send --attach <url> ...` connect to a non-default runtime.
 
 Holos is optional. Connect an agent from the Web account surface or with:
 

@@ -142,6 +142,10 @@
       "entry": ["test/**/*.ts"],
       "project": ["src/**/*.ts", "test/**/*.ts"],
     },
+    "packages/tui": {
+      "entry": ["src/index.ts", "script/**/*.ts", "test/**/*.ts"],
+      "project": ["src/**/*.ts", "script/**/*.ts", "test/**/*.ts"],
+    },
     "packages/util": {
       "entry": ["src/**/*.ts"],
       "project": ["src/**/*.ts"],

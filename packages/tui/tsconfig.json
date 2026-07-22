@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig.json",
+  "extends": "@tsconfig/bun/tsconfig.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "strict": true,
+    "lib": ["ESNext", "WebWorker"],
+    "types": ["bun"]
+  },
+  "include": ["src", "test", "script"]
+}

@@ -33,6 +33,7 @@ import { StatusCommand } from "./cli/cmd/status"
 import { LogsCommand } from "./cli/cmd/logs"
 import { DoctorCommand } from "./cli/cmd/doctor"
 import { DiagnosticsCommand } from "./cli/cmd/diagnostics"
+import { TuiCommand } from "./cli/cmd/tui"
 
 import { PluginCommand } from "./cli/cmd/plugin"
 import { DataCommand, MigrateCommand } from "./cli/cmd/data"
@@ -152,6 +153,7 @@ const cli = yargs(hideBin(process.argv))
   .command(UninstallCommand)
   .command(ServerCommand)
   .command(WebCommand)
+  .command(TuiCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
   .command(ExportCommand)
@@ -203,6 +205,7 @@ function firstPositionalArg() {
 function isLongRunningCommand() {
   const command = firstPositionalArg() ?? "server"
   if (command === "server") return true
+  if (command === "tui") return true
   if (command === "logs") {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }

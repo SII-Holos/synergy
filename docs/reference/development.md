@@ -79,6 +79,9 @@ bun turbo test
 bun run desktop:test
 bun run --cwd packages/app test
 bun run --cwd packages/ui test
+bun run --cwd packages/tui test
+bun run --cwd packages/tui typecheck
+bun run --cwd packages/tui compile:smoke
 ```
 
 The App and shared UI package scripts are part of the Turbo test graph. The App runner isolates its production CSS build contract from ordinary unit tests. The UI runner executes ordinary suites together and isolates the session-turn timeline suite so its global module mocks cannot contaminate neighboring tests.
@@ -175,5 +178,5 @@ When implementation or review reveals a reusable required pattern, registration,
 - Session/message loop: read the session and frontend-sync contracts, run focused session tests, then shared checks.
 - Frontend: typecheck `packages/app`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
 - Desktop/release: run Desktop typecheck/tests/build validation and review the Desktop release runbook.
-- Plugin/public package: build package, run `package:check`, and verify exported ESM/type paths.
+- Plugin/public package/TUI: build the package, run its focused tests and typecheck, run `package:check`, and verify exported ESM/type paths. TUI changes also run `compile:smoke` to exercise OpenTUI native loading in a compiled Bun executable.
 - Config/auth examples: run secret scanning and verify both global and project configuration behavior.
