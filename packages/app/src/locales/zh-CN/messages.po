@@ -2679,6 +2679,11 @@ msgstr "已移至隔离工作区"
 msgid "app.layout.worktree.moveFailed"
 msgstr "无法移至隔离工作区"
 
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.layout.worktree.refreshFailed"
+msgstr "工作区状态刷新失败"
+
 #. ── Library ───────────────────────────────────────────────────────────────────
 msgid "app.library.category.asset"
 msgstr "资产"
@@ -11809,6 +11814,16 @@ msgstr "正在创建隔离工作区并将此会话移入其中。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshFailed"
+msgstr "工作区已成功变更，但 Synergy 无法刷新会话状态。{message}"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.desc.refreshing"
+msgstr "工作区已变更。正在更新会话状态。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.desc.started"
 msgstr "工作区已就绪，你的第一条消息正在等待处理。"
 
@@ -11850,6 +11865,11 @@ msgstr "正在准备工作树并更新此会话工作区。"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.detail.promptDispatched"
 msgstr "第一条消息已发送。"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.detail.refreshingStatus"
+msgstr "正在加载更新后的会话工作区。"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
@@ -11940,6 +11960,11 @@ msgstr "准备会话"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.step.refreshStatus"
+msgstr "刷新工作区状态"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.step.returnCheckout"
 msgstr "切回主工作区"
 
@@ -11971,6 +11996,16 @@ msgstr "无法移至隔离工作区"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "session.worktree.title.moving"
 msgstr "正在将会话移至工作树"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshFailed"
+msgstr "工作区状态刷新失败"
+
+#. Runtime Lingui descriptors for session component strings.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "session.worktree.title.refreshing"
+msgstr "正在刷新工作区状态"
 
 #. Runtime Lingui descriptors for session component strings.
  *  Translate at use time via `useLocale().i18n._(descriptor)`.

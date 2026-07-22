@@ -21,8 +21,22 @@ export async function refreshSessionAfterPending(
   pending: Promise<unknown>,
   refresh: () => Promise<unknown>,
 ): Promise<void> {
-  await pending
+  await pending.catch(() => undefined)
   await refresh()
+}
+
+export function trackSessionSync(
+  inflight: Map<string, Promise<void>>,
+  sessionID: string,
+  request: Promise<unknown>,
+): Promise<void> {
+  const tracked = request
+    .then(() => undefined)
+    .finally(() => {
+      if (inflight.get(sessionID) === tracked) inflight.delete(sessionID)
+    })
+  inflight.set(sessionID, tracked)
+  return tracked
 }
 
 /**
