@@ -70,10 +70,11 @@ function reviewPrompt(loop: BlueprintLoopInfo): string {
     `Session ID: ${loop.sessionID}. Use session_read to inspect the execution trajectory.`,
     "",
     "## Instructions",
-    "1. Inspect the Blueprint, start user instruction, execution trajectory, delivered artifacts, workspace changes, and domain-appropriate verification evidence.",
-    "2. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
-    "3. If all required outcomes are complete and verified, call blueprint_loop_approve with the execution session ID and a verdict summary.",
-    "4. If anything required is missing, incorrect, or unverified, call blueprint_loop_reject with concrete remaining work and instructions.",
+    "1. Audit both outcome completeness and trajectory conformance. Inspect the Blueprint, start user instruction, execution trajectory, delivered artifacts, workspace changes, and domain-appropriate verification evidence.",
+    "2. Compare the actual route against the Blueprint's chosen implementation route, rejected alternatives, preserved behavior, change scope, and boundaries. Map every requirement to concrete evidence and classify any gap as blocking or non-blocking.",
+    "3. Reject a materially different implementation route, unexpected ownership or duplication, forbidden fallback or compatibility path, or unrelated expansion even when the requested outcome is complete and tests pass.",
+    "4. If all required outcomes are complete, verified, and trajectory-conformant, call blueprint_loop_approve with the execution session ID and a verdict summary.",
+    "5. If anything required is missing, incorrect, unverified, or non-conformant, call blueprint_loop_reject with concrete remaining work and instructions.",
   ]
     .filter((line): line is string => line !== undefined && line !== "")
     .join("\n")

@@ -155,6 +155,9 @@ describe("BlueprintContinuation", () => {
           expect(input.visibility).toBe("visible")
           expect(input.notifyParentOnComplete).toBe(false)
           expect(input.prompt).toContain("Focused tests pass")
+          expect(input.prompt).toContain("Audit both outcome completeness and trajectory conformance")
+          expect(input.prompt).toContain("materially different implementation route")
+          expect(input.prompt).toContain("even when the requested outcome is complete and tests pass")
           const reviewSession = await Session.create({ parentID: session.id })
           reviewSessionID = reviewSession.id
           return { id: "ctx_audit", sessionID: reviewSession.id, status: "queued" }

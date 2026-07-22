@@ -20,7 +20,7 @@ System control messages, non-root messages, and messages from continuation sourc
 
 ## Plan Enforcement
 
-Plan prompts instruct the agent to research and author a decision-complete Blueprint instead of executing the result. Tool exposure and execution policy enforce the read-only project boundary in addition to the prompt.
+Plan prompts instruct the agent to research and author a decision-complete Blueprint instead of executing the result. A finalized Blueprint uses eight shared semantic sections and selects one material implementation route: materially different owners, architectures, data flows, compatibility strategies, domain methods, artifact shapes, and user-visible behaviors must be resolved from evidence, established conventions, or a blocking user decision. Incidental execution mechanics remain delegated to the executor. Tool exposure and execution policy enforce the read-only project boundary in addition to the prompt.
 
 The Note Blueprint policy allows Blueprint creation and modification only in Plan or Lattice. It infers Blueprint intent from `kind` or Blueprint-specific fields and blocks edits to an existing Blueprint outside those workflows. Reading and searching remain available.
 
@@ -46,7 +46,7 @@ armed → running → auditing → completed
 armed/running/waiting/auditing → failed | cancelled
 ```
 
-The execution session is marked with `loopRole: "execution"`; the visible Cortex review child is marked with `loopRole: "audit"`. Only the execution session can call `blueprint_loop_stop`, and only the recorded audit session can approve or reject.
+The execution session is marked with `loopRole: "execution"`; the visible Cortex review child is marked with `loopRole: "audit"`. The executor must follow the Blueprint's selected route and surface a missing, ambiguous, or infeasible material route rather than silently substitute one. The reviewer audits both outcome completeness and trajectory conformance and rejects material route drift even when the requested result or tests pass. Only the execution session can call `blueprint_loop_stop`, and only the recorded audit session can approve or reject.
 
 `blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the visible Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Rejection increments the audit attempt count; when the incremented count reaches `maxIterations`, the loop fails with `iteration_exhausted` instead of returning to execution.
 

@@ -3,7 +3,17 @@ In the coding Plan workflow, produce a Blueprint that is strong enough for auton
 
 Before writing the Blueprint, investigate the codebase and gather context to understand the landscape. Identify decisions the user must own: product direction, architecture tradeoffs, API design, migration strategy, compatibility choices, UX behavior, or acceptance criteria. Ask the user about unresolved decisions before finalizing the Blueprint; you do not need to ask everything upfront. It is natural to investigate, discover a fuzzy point, ask, get an answer, continue, and ask again.
 
-It should cover:
+Converge the engineering route before finalizing. Explicitly select:
+- The existing owner or abstraction to extend
+- The intended state and data flow
+- Affected public interfaces and downstream consumers
+- Persistence and migration strategy
+- Compatibility and cleanup strategy
+- The expected implementation sequence
+
+Explicitly reject plausible alternatives that would create parallel state or duplicate ownership, bypass a canonical or generated contract, add a one-off compatibility or fallback path, or broaden the refactor beyond the requested outcome.
+
+The shared eight-section Blueprint should also cover:
 - Current codebase evidence and file-level entry points
 - Requirements and non-goals
 - Verification approach: existing checks to run and narrowly scoped new tests only when they are needed to prove changed behavior
@@ -13,6 +23,8 @@ It should cover:
 - Security, performance, compatibility, and UX risks where relevant
 - Verification commands
 - Implementation boundaries, sequencing, and cleanup expectations
+
+Resolve technical choices from current implementation evidence, tests, architecture documents, and repository conventions before asking the user. Ask only when multiple material engineering routes remain viable and the choice changes product behavior or a user-owned tradeoff. Do not ask the user to choose incidental code mechanics.
 
 Do not include Open Decisions, Open Questions, TBDs, unresolved alternatives, or instructions for the implementation session to ask the user later. Assumptions are allowed only when they state locked defaults chosen from evidence, project conventions, or explicit user direction.
 

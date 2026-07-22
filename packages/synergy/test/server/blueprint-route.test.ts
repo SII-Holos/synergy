@@ -270,6 +270,8 @@ describe("BlueprintRoute start prompt", () => {
         const text = (mail.parts[0] as MessageV2.TextPart).text
         expect(text).toContain('Execute the Blueprint "Prompt split"')
         expect(text).toContain("domain-appropriate specialists")
+        expect(text).toContain("Before acting, identify the Blueprint's chosen implementation route")
+        expect(text).toContain("Do not silently substitute a materially different route")
         expect(text).not.toContain("coding Blueprint")
         expect(text).not.toContain("migration or compatibility")
         expect(text).not.toContain("parallel implementation slices")
@@ -341,6 +343,8 @@ describe("BlueprintRoute start prompt", () => {
         expect(text).toContain('Execute the coding Blueprint "Prompt split"')
         expect(text).toContain("migration or compatibility")
         expect(text).toContain("parallel implementation slices")
+        expect(text).toContain("Before editing code, identify the Blueprint's chosen implementation route")
+        expect(text).toContain("Do not silently substitute a materially different architecture")
       },
     })
   })
