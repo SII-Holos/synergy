@@ -158,7 +158,8 @@ describe("WorkflowUserWrapper projection", () => {
     const text = (projected[0].parts[0] as MessageV2.TextPart).text
     expect(text).toContain("You are synergy in the Plan workflow")
     expect(text).toContain("converge materially different routes")
-    expect(text).toContain("ask the user only for unresolved material choices")
+    expect(text).toContain("single clarification checkpoint")
+    expect(text).toContain("one question call")
     expect(text).toContain("User request:\nbuild the new importer")
   })
 
@@ -211,6 +212,8 @@ describe("WorkflowUserWrapper projection", () => {
     expect(text).toContain("Do not implement code. Do not edit files.")
     expect(text).toContain("one material engineering route")
     expect(text).toContain("canonical owner")
+    expect(text).toContain("single clarification checkpoint")
+    expect(text).toContain("one question call")
     expect(text).toContain("User request:\nrefactor the route layer")
   })
 

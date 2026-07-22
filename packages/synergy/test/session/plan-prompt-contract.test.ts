@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test"
 import PLAN from "../../src/session/prompt/plan.txt"
 import PLAN_SYNERGY from "../../src/session/prompt/plan-synergy.txt"
 import PLAN_SYNERGY_MAX from "../../src/session/prompt/plan-synergy-max.txt"
+import LATTICE_INITIAL_PLANNING from "../../src/lattice/prompt/phase-initial-planning.txt"
+import LATTICE_AUTO from "../../src/lattice/prompt/mode-auto.txt"
 import LATTICE_STEP_BLUEPRINTING from "../../src/lattice/prompt/phase-step-blueprinting.txt"
 
 const REQUIRED_BLUEPRINT_SECTIONS = [
@@ -18,9 +20,18 @@ const REQUIRED_BLUEPRINT_SECTIONS = [
 describe("Plan Blueprint prompt contract", () => {
   test("converges material route forks before finalizing a Blueprint", () => {
     expect(PLAN).toContain("materially different implementation routes")
-    expect(PLAN).toContain("Ask the user only when")
+    expect(PLAN).toContain("single clarification checkpoint")
+    expect(PLAN).toContain("one `question` call")
+    expect(PLAN).toContain("Do not call `question` again for that Blueprint")
     expect(PLAN).toContain("two competent executors")
     expect(PLAN).toContain("not decision-complete")
+  })
+
+  test("does not encourage iterative clarification", () => {
+    expect(PLAN_SYNERGY_MAX).not.toContain("continue, and ask again")
+    expect(PLAN_SYNERGY).toContain("single clarification checkpoint")
+    expect(PLAN_SYNERGY_MAX).toContain("single clarification checkpoint")
+    expect(PLAN_SYNERGY_MAX).toContain("mutually exclusive")
   })
 
   test("requires the shared eight-section Blueprint structure", () => {
@@ -37,6 +48,9 @@ describe("Plan Blueprint prompt contract", () => {
   })
 
   test("requires Lattice-authored Blueprints to use the same route contract", () => {
+    expect(LATTICE_INITIAL_PLANNING).toContain("one `question` call")
+    expect(LATTICE_AUTO).toContain("single initial clarification checkpoint")
+    expect(LATTICE_STEP_BLUEPRINTING).toContain("In auto mode, do not call `question` in this phase")
     expect(LATTICE_STEP_BLUEPRINTING).toContain("same eight required sections")
     expect(LATTICE_STEP_BLUEPRINTING).toContain("one material implementation route")
     for (const section of REQUIRED_BLUEPRINT_SECTIONS) {

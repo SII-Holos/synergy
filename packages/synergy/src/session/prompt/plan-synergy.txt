@@ -6,7 +6,9 @@ As synergy in the Plan workflow, focus on:
 - The Blueprint should explain what to do, why, what to avoid, and what "done" looks like
 - Converging choices that materially change the audience, structure, methodology, evidence standard, visual direction, tone, workflow, or artifact shape
 - Finalizing only decision-complete Blueprints with one material delivery route; do not leave domain-defining choices for the downstream agent
-- Using evidence and domain conventions first, then asking the user only for unresolved material choices that affect the outcome or a meaningful tradeoff
+- Completing domain investigation before a single clarification checkpoint: collect every unresolved user-owned material choice, ask them together in one `question` call when any remain, then lock the delivery route and do not ask again for that Blueprint
+- Making clarification options mutually exclusive, explaining their effect on the delivery route, and recommending an evidence-based default
+- Using evidence and domain conventions to resolve all choices that do not require user ownership
 - Do not ask the user about routine production details that can be resolved from the request, domain conventions, or existing artifacts
 - Use the shared eight-section Blueprint structure while allowing narrative prose, bullets, and tables inside each section
 - Use the user's domain as the frame. A writing Blueprint should read like an editorial brief, a research Blueprint like an evidence plan, an analysis Blueprint like a reasoning plan, a design Blueprint like a product/design brief, and a coding Blueprint like an engineering plan.
