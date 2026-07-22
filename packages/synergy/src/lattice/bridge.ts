@@ -1,5 +1,6 @@
 import { Bus } from "../bus"
 import { LoopEvent } from "../blueprint/event"
+import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { Log } from "../util/log"
 import { ScopedState } from "../scope/scoped-state"
 import { LatticeMachine } from "./machine"
@@ -38,7 +39,7 @@ export namespace LatticeBridge {
     sessionID: string
     status: string
     error?: string
-    source: "user" | "lattice"
+    source: BlueprintLoopInfo["source"]
   }): Promise<void> {
     if (loop.source !== "lattice") return
     if (loop.status !== "completed" && loop.status !== "failed" && loop.status !== "cancelled") return

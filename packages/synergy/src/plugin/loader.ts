@@ -35,7 +35,12 @@ export interface LoadedPlugin {
   contributionHealth: Map<string, { state: "healthy" | "degraded"; lastError?: string; updatedAt: number }>
 }
 
-export type DisabledPluginPhase = "resolve" | "manifest" | "runtime" | "contribution" | "doctor"
+export type PluginAgentEntry = PluginAgent & {
+  pluginId: string
+  pluginGeneration: string
+}
+
+export type DisabledPluginPhase = "resolve" | "manifest" | "approval" | "runtime" | "contribution" | "doctor"
 
 export interface DisabledPlugin {
   pluginId: string
@@ -47,6 +52,8 @@ export interface DisabledPlugin {
   phase: DisabledPluginPhase
   reason: string
   disabledAt: number
+  /** Approval phase: manifest held in memory for status enrichment; never persisted. */
+  manifest?: PluginManifestType
 }
 
 export interface LoaderState {
@@ -114,6 +121,16 @@ export function identifyFailedPluginRegistration(input: {
   }
 }
 
+class ApprovalRequiredError extends Error {
+  constructor(
+    message: string,
+    readonly manifest: PluginManifestType,
+  ) {
+    super(message)
+    this.name = "ApprovalRequiredError"
+  }
+}
+
 export const state = ScopedState.create(
   async (): Promise<LoaderState> => {
     const scopeId = ScopeContext.current.scope.id
@@ -126,14 +143,18 @@ export const state = ScopedState.create(
     const selected = new Map<string, { spec: string; resolved: ResolvedPluginSpec }>()
 
     for (const spec of config.plugin ?? []) {
+      let resolved: ResolvedPluginSpec | undefined
       try {
-        const resolved = await resolvePluginSpec(spec, {
+        resolved = await resolvePluginSpec(spec, {
           cwd: ScopeContext.current.directory,
           install: !spec.startsWith("file://"),
         })
         const approval = await getApproval(resolved.manifest.id, resolved.manifest)
         if (!approval || !verifyApproval(approval, resolved.manifest)) {
-          throw new Error(`Plugin ${resolved.manifest.id}@${resolved.manifest.version} requires capability approval`)
+          throw new ApprovalRequiredError(
+            `Plugin ${resolved.manifest.id}@${resolved.manifest.version} requires capability approval`,
+            resolved.manifest,
+          )
         }
         const current = selected.get(resolved.manifest.id)
         const lockEntry = lockfile?.plugins[resolved.manifest.id]
@@ -144,26 +165,42 @@ export const state = ScopedState.create(
           selected.set(resolved.manifest.id, { spec, resolved: installed })
         }
       } catch (error) {
-        const identity = identifyFailedPluginRegistration({
-          spec,
-          lockfile: lockfile ?? { version: 2, plugins: {} },
-          incompatible,
-          approvals,
-        })
-        failures.push(
-          disabled({
-            pluginId: identity.pluginId,
-            name: identity.pluginId,
+        if (error instanceof ApprovalRequiredError) {
+          failures.push(
+            disabled({
+              pluginId: error.manifest.id,
+              name: error.manifest.name,
+              spec,
+              pluginDir: resolved?.pluginDir,
+              entryPath: resolved?.entryPath,
+              source: resolved?.source ?? lockfile?.plugins[error.manifest.id]?.source,
+              phase: "approval",
+              reason: error.message,
+              manifest: error.manifest,
+            }),
+          )
+        } else {
+          const identity = identifyFailedPluginRegistration({
             spec,
-            source: identity.source,
-            phase: identity.incompatible ? "manifest" : "resolve",
-            reason: identity.incompatible
-              ? `Plugin ${identity.pluginId} uses an incompatible package format and must be reinstalled`
-              : error instanceof Error
-                ? error.message
-                : String(error),
-          }),
-        )
+            lockfile: lockfile ?? { version: 2, plugins: {} },
+            incompatible,
+            approvals,
+          })
+          failures.push(
+            disabled({
+              pluginId: identity.pluginId,
+              name: identity.pluginId,
+              spec,
+              source: identity.source,
+              phase: identity.incompatible ? "manifest" : "resolve",
+              reason: identity.incompatible
+                ? `Plugin ${identity.pluginId} uses an incompatible package format and must be reinstalled`
+                : error instanceof Error
+                  ? error.message
+                  : String(error),
+            }),
+          )
+        }
       }
     }
 
@@ -227,7 +264,10 @@ export async function reloadDevelopmentGeneration(input: {
       entryPath: resolved.entryPath,
     })
   }
-  return registerResolved(current.spec, resolved)
+  const registered = registerResolved(current.spec, resolved)
+  const [{ Agent }, { ToolRegistry }] = await Promise.all([import("../agent/agent"), import("../tool/registry")])
+  await Promise.all([Agent.reload(), ToolRegistry.reload()])
+  return registered
 }
 
 export function getCatalogPlugin(pluginId: string) {
@@ -286,13 +326,15 @@ export async function getSkillEntries(): Promise<
   )
 }
 
-export async function getAgentEntries(): Promise<Record<string, PluginAgent>> {
-  const agents: Record<string, PluginAgent> = {}
+export async function getAgentEntries(): Promise<Record<string, PluginAgentEntry>> {
+  const agents: Record<string, PluginAgentEntry> = {}
   for (const plugin of await getLoadedPlugins()) {
     for (const item of contributions(plugin, "agent")) {
       agents[item.id] = {
         ...(item.agent as unknown as PluginAgent),
         name: (item.agent.name as string | undefined) ?? item.id,
+        pluginId: plugin.id,
+        pluginGeneration: plugin.manifest.artifacts.generation,
       }
     }
   }

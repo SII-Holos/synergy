@@ -3,6 +3,7 @@ import { Log } from "@/util/log"
 export namespace SessionMemoryPressure {
   const log = Log.create({ service: "session.memory-pressure" })
   const GIB = 1024 ** 3
+  const RELEASE_COALESCE_MS = 1_000
 
   export type Snapshot = {
     rssBytes: number
@@ -17,7 +18,12 @@ export namespace SessionMemoryPressure {
 
   export type Thresholds = {
     minIntervalMs: number
+    heapUsedSoftBytes: number
+    externalSoftBytes: number
+    arrayBuffersSoftBytes: number
     rssCriticalBytes: number
+    heapUsedCriticalBytes: number
+    externalCriticalBytes: number
     arrayBuffersCriticalBytes: number
     cgroupCriticalBytes: number
   }
@@ -28,8 +34,33 @@ export namespace SessionMemoryPressure {
     | { action: "normal"; reason: "interval_elapsed"; critical: false }
     | { action: "critical_forced"; reason: "critical_pressure"; critical: true }
 
+  type PressureLevel = "normal" | "soft" | "critical"
+
+  type CollectionInput = {
+    sessionID?: string
+    messageID?: string
+    phase: string
+    now?: () => number
+    snapshot?: () => Snapshot | Promise<Snapshot>
+    collect?: (synchronous: boolean) => void | Promise<void>
+    env?: NodeJS.ProcessEnv
+  }
+
+  type CollectionResult = {
+    decision: Decision
+    before: Snapshot
+    after?: Snapshot
+    thresholds: Thresholds
+    pressure: PressureLevel
+  }
+
+  type ReleaseResult = CollectionResult & { releaseCount: number }
+
   let lastGCAt = 0
   let cachedCgroupDir: string | undefined | null
+  let pendingRelease: { count: number; input: CollectionInput } | undefined
+  let releaseTimer: ReturnType<typeof setTimeout> | undefined
+  let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
 
   export function currentSnapshot(): Snapshot {
     const memory = process.memoryUsage()
@@ -57,7 +88,12 @@ export namespace SessionMemoryPressure {
 
     return {
       minIntervalMs: envNumber(env.SYNERGY_SESSION_GC_MIN_INTERVAL_MS) ?? 10_000,
+      heapUsedSoftBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_SOFT_BYTES) ?? Math.floor(1.25 * GIB),
+      externalSoftBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_SOFT_BYTES) ?? Math.floor(1 * GIB),
+      arrayBuffersSoftBytes: envNumber(env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_SOFT_BYTES) ?? Math.floor(1 * GIB),
       rssCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_RSS_CRITICAL_BYTES) ?? Math.floor(9.5 * GIB),
+      heapUsedCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_HEAP_USED_CRITICAL_BYTES) ?? Math.floor(1.75 * GIB),
+      externalCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_EXTERNAL_CRITICAL_BYTES) ?? Math.floor(1.5 * GIB),
       arrayBuffersCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_ARRAY_BUFFERS_CRITICAL_BYTES) ?? Math.floor(8 * GIB),
       cgroupCriticalBytes: envNumber(env.SYNERGY_SESSION_GC_CGROUP_CRITICAL_BYTES) ?? cgroupCriticalDefault,
     }
@@ -70,10 +106,7 @@ export namespace SessionMemoryPressure {
     lastGCAt: number
     gcAvailable: boolean
   }): Decision {
-    const critical =
-      input.snapshot.rssBytes >= input.thresholds.rssCriticalBytes ||
-      input.snapshot.arrayBuffersBytes >= input.thresholds.arrayBuffersCriticalBytes ||
-      (input.snapshot.cgroupCurrentBytes ?? 0) >= input.thresholds.cgroupCriticalBytes
+    const critical = pressureLevel(input.snapshot, input.thresholds) === "critical"
 
     if (!input.gcAvailable) return { action: "unavailable", reason: "gc_unavailable", critical }
     if (critical) return { action: "critical_forced", reason: "critical_pressure", critical: true }
@@ -86,18 +119,29 @@ export namespace SessionMemoryPressure {
     return { action: "normal", reason: "interval_elapsed", critical: false }
   }
 
-  export async function maybeCollect(input: {
-    sessionID?: string
-    messageID?: string
-    phase: string
-    now?: () => number
-    snapshot?: () => Snapshot | Promise<Snapshot>
-    collect?: (critical: boolean) => void | Promise<void>
-    env?: NodeJS.ProcessEnv
-  }) {
+  export function pressureLevel(snapshot: Snapshot, thresholds: Thresholds): PressureLevel {
+    if (
+      snapshot.rssBytes >= thresholds.rssCriticalBytes ||
+      snapshot.heapUsedBytes >= thresholds.heapUsedCriticalBytes ||
+      snapshot.externalBytes >= thresholds.externalCriticalBytes ||
+      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersCriticalBytes ||
+      (snapshot.cgroupCurrentBytes ?? 0) >= thresholds.cgroupCriticalBytes
+    )
+      return "critical"
+    if (
+      snapshot.heapUsedBytes >= thresholds.heapUsedSoftBytes ||
+      snapshot.externalBytes >= thresholds.externalSoftBytes ||
+      snapshot.arrayBuffersBytes >= thresholds.arrayBuffersSoftBytes
+    )
+      return "soft"
+    return "normal"
+  }
+
+  export async function maybeCollect(input: CollectionInput): Promise<CollectionResult> {
     const now = input.now?.() ?? Date.now()
     const before = input.snapshot ? await input.snapshot() : await currentSnapshotWithCgroup()
     const thresholds = resolveThresholds(input.env, before)
+    const pressure = pressureLevel(before, thresholds)
     const collect = input.collect ?? defaultCollect
     const decision = decide({
       snapshot: before,
@@ -116,10 +160,10 @@ export namespace SessionMemoryPressure {
         memory: before,
         thresholds,
       })
-      return { decision, before }
+      return { decision, before, thresholds, pressure }
     }
 
-    await collect(decision.critical)
+    await collect(decision.action === "critical_forced")
     lastGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
     log.info("gc completed", {
@@ -131,7 +175,61 @@ export namespace SessionMemoryPressure {
       after,
       thresholds,
     })
-    return { decision, before, after }
+    return { decision, before, after, thresholds, pressure }
+  }
+
+  export function signalRelease(input: CollectionInput) {
+    if (pendingRelease) {
+      pendingRelease.count++
+      pendingRelease.input = input
+    } else {
+      pendingRelease = { count: 1, input }
+    }
+    scheduleReleaseFlush()
+  }
+
+  function scheduleReleaseFlush() {
+    if (!pendingRelease || releaseTimer || releaseFlushInFlight) return
+    const delay = envNumber(pendingRelease.input.env?.SYNERGY_SESSION_GC_RELEASE_COALESCE_MS) ?? RELEASE_COALESCE_MS
+    releaseTimer = setTimeout(() => {
+      releaseTimer = undefined
+      void flushReleaseSignals().catch((error) => {
+        log.warn("release-triggered gc failed", { error })
+      })
+    }, delay)
+    releaseTimer.unref()
+  }
+
+  async function flushReleaseSignals(): Promise<ReleaseResult | undefined> {
+    if (releaseFlushInFlight) return releaseFlushInFlight
+    const pending = pendingRelease
+    if (!pending) return
+    pendingRelease = undefined
+
+    const flush = (async () => {
+      const result = await maybeCollect(pending.input)
+      return { ...result, releaseCount: pending.count }
+    })()
+    releaseFlushInFlight = flush
+    try {
+      return await flush
+    } finally {
+      if (releaseFlushInFlight === flush) releaseFlushInFlight = undefined
+      scheduleReleaseFlush()
+    }
+  }
+
+  export async function flushReleaseSignalsForTest() {
+    if (releaseTimer) {
+      clearTimeout(releaseTimer)
+      releaseTimer = undefined
+    }
+    if (releaseFlushInFlight) await releaseFlushInFlight
+    if (releaseTimer) {
+      clearTimeout(releaseTimer)
+      releaseTimer = undefined
+    }
+    return flushReleaseSignals()
   }
 
   export function probe(phase: string, context: { sessionID?: string; messageID?: string } = {}) {
@@ -143,12 +241,16 @@ export namespace SessionMemoryPressure {
   }
 
   export function resetForTest(lastRunAt = 0) {
+    if (releaseTimer) clearTimeout(releaseTimer)
     lastGCAt = lastRunAt
     cachedCgroupDir = undefined
+    pendingRelease = undefined
+    releaseTimer = undefined
+    releaseFlushInFlight = undefined
   }
 
-  async function defaultCollect(critical: boolean) {
-    Bun.gc(critical)
+  async function defaultCollect(synchronous: boolean) {
+    Bun.gc(synchronous)
   }
 
   async function cgroupMemory() {

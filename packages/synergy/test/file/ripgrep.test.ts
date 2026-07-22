@@ -154,3 +154,68 @@ while true; do :; done
     expect(proc.killed || code !== 0).toBe(true)
   })
 })
+
+describe("Ripgrep.matches", () => {
+  test.skipIf(process.platform === "win32")(
+    "terminates the producer when the consumer has enough matches",
+    async () => {
+      await using tmp = await tmpdir({
+        init: async (dir) => {
+          const script = path.join(dir, "stream-rg.sh")
+          const marker = path.join(dir, "completed")
+          await Bun.write(
+            script,
+            `#!/bin/sh
+printf '%s\n' \
+  '{"type":"match","data":{"path":{"text":"file-1.ts"},"lines":{"text":"hit\\n"},"line_number":1,"absolute_offset":0,"submatches":[{"match":{"text":"hit"},"start":0,"end":3}]}}' \
+  '{"type":"match","data":{"path":{"text":"file-2.ts"},"lines":{"text":"hit\\n"},"line_number":1,"absolute_offset":0,"submatches":[{"match":{"text":"hit"},"start":0,"end":3}]}}' \
+  '{"type":"match","data":{"path":{"text":"file-3.ts"},"lines":{"text":"hit\\n"},"line_number":1,"absolute_offset":0,"submatches":[{"match":{"text":"hit"},"start":0,"end":3}]}}'
+while true; do :; done
+touch '${marker}'
+`,
+          )
+          await fs.chmod(script, 0o755)
+        },
+      })
+
+      const originalFilepath = Ripgrep.filepath
+      ;(Ripgrep as any).filepath = async () => path.join(tmp.path, "stream-rg.sh")
+      try {
+        const matches: Ripgrep.Match["data"][] = []
+        for await (const match of Ripgrep.matches({ cwd: tmp.path, pattern: "hit" })) {
+          matches.push(match)
+          if (matches.length === 2) break
+        }
+
+        expect(matches).toHaveLength(2)
+        expect(await Bun.file(path.join(tmp.path, "completed")).exists()).toBe(false)
+      } finally {
+        ;(Ripgrep as any).filepath = originalFilepath
+      }
+    },
+  )
+})
+
+describe("Ripgrep.tree", () => {
+  test("stops enumerating files at the requested limit", async () => {
+    const originalFiles = Ripgrep.files
+    let yielded = 0
+    let finalized = false
+    ;(Ripgrep as any).files = async function* () {
+      try {
+        while (true) yield `dir/file-${yielded++}.ts`
+      } finally {
+        finalized = true
+      }
+    }
+
+    try {
+      const output = await Ripgrep.tree({ cwd: ".", limit: 3 })
+      expect(output).toContain("dir/")
+      expect(yielded).toBe(3)
+      expect(finalized).toBe(true)
+    } finally {
+      ;(Ripgrep as any).files = originalFiles
+    }
+  })
+})

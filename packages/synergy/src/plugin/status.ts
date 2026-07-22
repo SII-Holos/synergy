@@ -142,6 +142,40 @@ export async function getStatusForLoadedPlugin(plugin: LoadedPlugin): Promise<Pl
 }
 
 function disabledStatus(plugin: Awaited<ReturnType<typeof getDisabledPlugin>> & {}): PluginStatus {
+  if (plugin.phase === "approval" && plugin.manifest) {
+    const manifest = plugin.manifest
+    const capabilities = manifest.capabilities.map((item) => item.id)
+    const trusted = manifest.contributions.some(
+      (item) => item.kind.startsWith("ui.") && "component" in item && Boolean(item.component),
+    )
+    return {
+      id: plugin.pluginId,
+      name: plugin.name ?? plugin.pluginId,
+      version: manifest.version,
+      apiVersion: manifest.apiVersion,
+      generation: manifest.artifacts.generation,
+      installation: classifyPluginInstallation({ spec: plugin.spec ?? plugin.pluginId, source: plugin.source }),
+      trust: trusted ? "trusted-import" : "declarative",
+      health: "disabled",
+      disabledReason: plugin.reason,
+      disabledPhase: plugin.phase,
+      loaded: false,
+      capabilities,
+      risk: riskForCapabilities(capabilities),
+      operations: manifest.contributions
+        .filter((item) => item.kind === "operation")
+        .map((item) => ({ id: item.id, type: item.type as "query" | "command", expose: item.expose })),
+      tools: manifest.contributions
+        .filter((item) => item.kind === "tool")
+        .map((item) => ({
+          id: item.id,
+          fullId: PluginToolId.format(plugin.pluginId, item.id),
+          capabilities: item.requires ?? [],
+        })),
+      uiContributions: manifest.contributions.filter((item) => item.kind.startsWith("ui.")).length,
+      contributionHealth: {},
+    }
+  }
   return {
     id: plugin.pluginId,
     name: plugin.name ?? plugin.pluginId,

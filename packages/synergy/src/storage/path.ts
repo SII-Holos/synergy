@@ -39,6 +39,23 @@ export namespace StoragePath {
   ]
   export const sessionNavIndexRoot = () => ["session_nav_v2"]
   export const sessionNavIndex = (scopeID: ScopeID) => ["session_nav_v2", scopeID as string]
+  export const sessionMessageOrderRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    "session_message_order_v1",
+    scopeID as string,
+    sessionID as string,
+  ]
+  export const sessionMessageOrderMarkersRoot = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionMessageOrderRoot(scopeID, sessionID),
+    "markers",
+  ]
+  export const sessionMessageOrderMarker = (scopeID: ScopeID, sessionID: SessionID, marker: string) => [
+    ...sessionMessageOrderMarkersRoot(scopeID, sessionID),
+    marker,
+  ]
+  export const sessionMessageOrderState = (scopeID: ScopeID, sessionID: SessionID) => [
+    ...sessionMessageOrderRoot(scopeID, sessionID),
+    "state",
+  ]
 
   export const sessionRoot = (scopeID: ScopeID, sessionID: SessionID) => [
     "sessions",
@@ -169,6 +186,9 @@ export namespace StoragePath {
     contactId,
     messageId,
   ]
+
+  export const synergyLinkTargetsRoot = () => ["synergy_link", "targets"]
+  export const synergyLinkTarget = (id: string) => ["synergy_link", "targets", id]
 
   export const githubDeliveriesRoot = () => ["github", "deliveries"]
   export const githubDelivery = (deliveryGuid: string) => [...githubDeliveriesRoot(), encodeURIComponent(deliveryGuid)]

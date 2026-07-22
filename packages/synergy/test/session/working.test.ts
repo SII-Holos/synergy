@@ -158,6 +158,57 @@ describe("SessionWorking", () => {
         },
       })
     })
+    test("uses message creation time to find the latest incomplete assistant", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const session = await Session.create({})
+          const userMsg = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: 100 },
+          })
+          const delayedAssistantID = Identifier.ascending("message")
+          await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: 200, completed: 200 },
+            finish: "stop",
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+          await Session.updateMessage({
+            id: delayedAssistantID,
+            sessionID: session.id,
+            role: "assistant",
+            parentID: userMsg.id,
+            time: { created: 300 },
+            modelID: "test-model",
+            providerID: "test-provider",
+            path: { cwd: projectRoot, root: projectRoot },
+            mode: "test",
+            agent: "test",
+            cost: 0,
+            tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+          })
+
+          const result = await SessionWorking.resolve(session.id)
+          assertExists(result)
+          expect(result.status).toBe("recovering")
+        },
+      })
+    })
   })
 
   describe("toStatus()", () => {
@@ -518,6 +569,45 @@ describe("SessionWorking", () => {
       })
     })
 
+    test("resumePending isolates unreadable sessions during startup recovery", async () => {
+      await using tmp = await tmpdir({ git: true })
+      await ScopeContext.provide({
+        scope: await tmp.scope(),
+        fn: async () => {
+          const corrupt = await Session.create({ id: Identifier.create("session", false, 1) })
+          const user = await Session.updateMessage({
+            id: Identifier.ascending("message"),
+            sessionID: corrupt.id,
+            role: "user",
+            agent: "test",
+            model: { providerID: "test-provider", modelID: "test-model" },
+            time: { created: Date.now() },
+          })
+          await Session.updatePart({
+            id: Identifier.ascending("part"),
+            sessionID: corrupt.id,
+            messageID: user.id,
+            type: "attachment",
+            mime: "application/octet-stream",
+            url: "data:broken",
+          })
+          await Session.update(corrupt.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          const stale = await Session.create({ id: Identifier.create("session", false, 2) })
+          await Session.update(stale.id, (draft) => {
+            draft.pendingReply = true
+          })
+
+          await SessionInvoke.resumePending({ scopeID: ScopeContext.current.scope.id })
+
+          expect((await Session.get(corrupt.id)).pendingReply).toBe(true)
+          expect((await Session.get(stale.id)).pendingReply).toBeUndefined()
+        },
+      })
+    })
+
     test("resumePending reconciles interrupted Cortex delegation state after restart", async () => {
       await using tmp = await tmpdir({ git: true })
       await ScopeContext.provide({
@@ -599,7 +689,7 @@ describe("SessionWorking", () => {
           await Session.update(parent.id, (draft) => {
             draft.workflow = {
               kind: "lightloop",
-              taskDescription: "Finish the task",
+              instructions: "Finish the task",
               stopRequest: {
                 summary: "Task complete",
                 requestedAt: Date.now(),

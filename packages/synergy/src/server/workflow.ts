@@ -16,7 +16,7 @@ const WorkflowSetInput = z
     }),
     z.object({
       kind: z.literal("lightloop"),
-      taskDescription: z.string().meta({ description: "Task description for Light Loop" }),
+      instructions: z.string().meta({ description: "Instructions for Light Loop" }),
     }),
     z.object({
       kind: z.literal("lattice"),
@@ -30,7 +30,7 @@ const WorkflowSetInput = z
 
 const LightloopUpdateInput = z
   .object({
-    taskDescription: z.string().meta({ description: "Updated task description for the active Light Loop" }),
+    instructions: z.string().meta({ description: "Updated instructions for the active Light Loop" }),
   })
   .meta({ ref: "LightloopUpdateInput" })
 
@@ -66,8 +66,8 @@ export const WorkflowRoute = new Hono()
   .patch(
     "/session/:id/lightloop",
     describeRoute({
-      summary: "Update Light Loop task",
-      description: "Update the task description for an active Light Loop. The next model step uses the new task.",
+      summary: "Update Light Loop instructions",
+      description: "Update the instructions for an active Light Loop. The next model step uses the new instructions.",
       operationId: "workflow.session.updateLightloop",
       responses: {
         200: {
@@ -81,9 +81,9 @@ export const WorkflowRoute = new Hono()
     validator("json", LightloopUpdateInput),
     async (c) => {
       try {
-        const session = await SessionWorkflowService.updateLightloopTaskDescription(
+        const session = await SessionWorkflowService.updateLightloopInstructions(
           c.req.valid("param").id,
-          c.req.valid("json").taskDescription,
+          c.req.valid("json").instructions,
         )
         return c.json(session)
       } catch (err: any) {

@@ -9,6 +9,7 @@ import { SessionNav, type ScopeNavIndex } from "./nav"
 import type { Info, StatusInfo } from "./types"
 import { SessionProgress } from "./progress"
 import { Session } from "./index"
+import { MessageV2 } from "./message-v2"
 import { BlueprintLoopStore, isActiveLoopStatus } from "../blueprint/loop-store"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
 import { NoteStore } from "../note"
@@ -540,6 +541,11 @@ export namespace SessionRecovery {
   async function removeOne(location: Location, report: DeleteReport) {
     const scope = Identifier.asScopeID(location.scopeID)
     const sid = Identifier.asSessionID(location.sessionID)
+    await removeTarget(
+      `message-order-index:${location.sessionID}`,
+      () => MessageV2.removeOrderIndex(scope, sid),
+      report,
+    )
     await removeTarget(
       `session:${location.sessionID}`,
       () => Storage.removeTree(StoragePath.sessionRoot(scope, sid)),

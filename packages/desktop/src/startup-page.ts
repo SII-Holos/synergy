@@ -1,9 +1,9 @@
-import type { DesktopThemeEffective } from "./theme.js"
+import type { DesktopThemeSnapshot } from "./theme.js"
 
 export interface DesktopStartupPageOptions {
   chrome: "custom" | "native"
   iconDataUrl?: string
-  theme: DesktopThemeEffective
+  theme: DesktopThemeSnapshot
 }
 
 export interface DesktopStartupStatus {
@@ -12,6 +12,7 @@ export interface DesktopStartupStatus {
 }
 
 export function desktopStartupPage(options: DesktopStartupPageOptions): string {
+  const { effective, colors } = options.theme
   const icon = options.iconDataUrl
     ? `<img class="startup-mark__icon" src="${escapeAttribute(options.iconDataUrl)}" alt="" draggable="false">`
     : `<span class="startup-mark__fallback" aria-hidden="true">S</span>`
@@ -37,7 +38,7 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 </header>`
 
   const html = `<!doctype html>
-<html lang="en" data-startup-theme="${options.theme}">
+<html lang="en" data-startup-theme="${effective}">
 <head>
   <meta charset="utf-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
@@ -45,32 +46,18 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
   <title>Starting Synergy</title>
   <style>
     :root {
-      color-scheme: ${options.theme};
-      --startup-bg: #FAFAFA;
-      --startup-text: #191A1D;
-      --startup-mark-bg: #191A1D;
-      --startup-mark-text: #FAFAFA;
-      --startup-control-color: #5E6572;
-      --startup-control-hover-color: #191A1D;
-      --startup-control-hover-bg: #ECEDEF;
-      --startup-focus-ring: rgba(25, 26, 29, 0.16);
+      color-scheme: ${effective};
+      --startup-bg: ${colors.background};
+      --startup-text: ${colors.text};
+      --startup-mark-bg: ${colors.markBackground};
+      --startup-mark-text: ${colors.markText};
+      --startup-control-color: ${colors.control};
+      --startup-control-hover-color: ${colors.controlHover};
+      --startup-control-hover-bg: ${colors.controlHoverBackground};
+      --startup-focus-ring: ${colors.focus};
+      --startup-critical-bg: ${colors.criticalBackground};
+      --startup-critical-text: ${colors.criticalText};
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    }
-
-    :root[data-startup-theme="dark"] {
-      color-scheme: dark;
-      --startup-bg: #0F0F10;
-      --startup-text: #F5F6F7;
-      --startup-mark-bg: #F5F6F7;
-      --startup-mark-text: #0F0F10;
-      --startup-control-color: #B8BDC7;
-      --startup-control-hover-color: #F5F6F7;
-      --startup-control-hover-bg: #24262A;
-      --startup-focus-ring: rgba(245, 246, 247, 0.18);
-    }
-
-    :root[data-startup-theme="light"] {
-      color-scheme: light;
     }
 
     * {
@@ -152,8 +139,8 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
 
     .startup-chrome__control--close:hover,
     .startup-chrome__control--close:focus-visible {
-      color: #FFFFFF;
-      background: #C7392F;
+      color: var(--startup-critical-text);
+      background: var(--startup-critical-bg);
     }
 
     .startup-chrome__glyph {
@@ -301,9 +288,25 @@ export function desktopStartupPage(options: DesktopStartupPageOptions): string {
     }
 
     function setStartupTheme(theme) {
-      if (theme !== "light" && theme !== "dark") return
-      document.documentElement.setAttribute("data-startup-theme", theme)
-      document.documentElement.style.setProperty("color-scheme", theme)
+      if (!theme || (theme.effective !== "light" && theme.effective !== "dark")) return
+      const colors = theme.colors
+      const fields = {
+        background: "--startup-bg",
+        text: "--startup-text",
+        markBackground: "--startup-mark-bg",
+        markText: "--startup-mark-text",
+        control: "--startup-control-color",
+        controlHover: "--startup-control-hover-color",
+        controlHoverBackground: "--startup-control-hover-bg",
+        focus: "--startup-focus-ring",
+        criticalBackground: "--startup-critical-bg",
+        criticalText: "--startup-critical-text",
+      }
+      const hex = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/
+      for (const field in fields) if (!hex.test(colors?.[field])) return
+      document.documentElement.setAttribute("data-startup-theme", theme.effective)
+      document.documentElement.style.setProperty("color-scheme", theme.effective)
+      for (const field in fields) document.documentElement.style.setProperty(fields[field], colors[field])
     }
 
     window.synergySetStartupStatus = setStatus
@@ -341,7 +344,7 @@ export function startupStatusScript(status: DesktopStartupStatus): string {
   return `window.synergySetStartupStatus?.(${JSON.stringify(status)})`
 }
 
-export function startupThemeScript(theme: DesktopThemeEffective): string {
+export function startupThemeScript(theme: DesktopThemeSnapshot): string {
   return `window.synergySetStartupTheme?.(${JSON.stringify(theme)})`
 }
 

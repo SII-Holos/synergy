@@ -3491,6 +3491,10 @@ msgstr "Library"
 msgid "app.name.synergy"
 msgstr "Synergy"
 
+#. js-lingui-explicit-id
+msgid "app.note.blueprint.pluginOwner"
+msgstr "From {plugin}"
+
 #. ── Note panel ───────────────────────────────────────────────────────────────
 msgid "app.note.blueprint.runMode.active"
 msgstr "Active run"
@@ -4228,7 +4232,7 @@ msgstr "CPU and event loop"
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.memory.desc"
-msgstr "RSS, heap used, and heap total as memory gauges in MB"
+msgstr "RSS, heap, external, and ArrayBuffer memory gauges in MB"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4279,6 +4283,31 @@ msgstr "Storage metrics are not available for this range"
  *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.chart.storage.title"
 msgstr "Storage I/O"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.arrayBuffers"
+msgstr "ArrayBuffers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.external"
+msgstr "External"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapTotal"
+msgstr "Heap total"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.heapUsed"
+msgstr "Heap used"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.dataset.rss"
+msgstr "RSS"
 
 #. empty states
 msgid "app.performance.empty.default"
@@ -4436,6 +4465,16 @@ msgstr "healthy"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreams"
+msgstr "LLM streams"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.llmStreamsValue"
+msgstr "{streams} streams · {turns} turns"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.runtime.lock"
 msgstr "Runtime lock"
 
@@ -4452,6 +4491,16 @@ msgstr "Not running"
 #. runtime support values
 msgid "app.performance.runtime.lockStateUnknown"
 msgstr "Unknown"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCache"
+msgstr "Message cache"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.runtime.messageCacheValue"
+msgstr "{bytes} · {entries} entries ({active} active) · {hits}/{misses} hit/miss · {evictions} evictions · {protected} protected over budget · largest {largest}"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4514,6 +4563,11 @@ msgstr "Performance snapshot"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.arrayBuffers"
+msgstr "ArrayBuffers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.summary.cpu"
 msgstr "CPU"
 
@@ -4542,9 +4596,19 @@ msgstr "{read} read · {write} write"
 msgid "app.performance.summary.eventLoop"
 msgstr "Event loop p95"
 
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.external"
+msgstr "External"
+
 #. summary cards
 msgid "app.performance.summary.health"
 msgstr "Health"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.summary.heapUsed"
+msgstr "Heap used"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
@@ -4740,32 +4804,92 @@ msgid "app.plugin.builtin.plugins"
 msgstr "Plugins"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.approveInstall"
-msgstr "Approve & Install"
+msgid "app.plugin.consent.addedGroup"
+msgstr "Added {group}"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.deny"
-msgstr "Deny"
+msgid "app.plugin.consent.approvalFailed"
+msgstr "Approval failed"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.description"
-msgstr "{plugin} {version} requests the following permissions."
+msgid "app.plugin.consent.approvalRequired"
+msgstr "This plugin requires your approval."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.emptyPermissions"
-msgstr "No specific permissions declared."
+msgid "app.plugin.consent.approving"
+msgstr "Approving..."
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.riskSummary"
-msgstr "This plugin requires your approval to install"
+msgid "app.plugin.consent.current.empty"
+msgstr "No existing permissions are unchanged."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.current.title"
+msgstr "Current permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.dialog.description"
+msgstr "{plugin} {version}. {description}"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.approve"
+msgstr "Approve & install"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.description"
+msgstr "Review the permissions before installing this plugin."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.install.title"
+msgstr "Approve Plugin Install"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.manifestChanged"
+msgstr "Permissions are unchanged, but the plugin manifest changed. Review the metadata before approving."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.notNow"
+msgstr "Not now"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.approve"
+msgstr "Approve & reload"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.description"
+msgstr "Review the current plugin manifest before reloading it."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reapprove.title"
+msgstr "Review Plugin Permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.empty"
+msgstr "No permissions are being removed."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.removed.title"
+msgstr "Removed permissions"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.reviewChanged"
+msgstr "Plugin changed while you were reviewing it"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.consent.severityChanges"
 msgstr "Severity changes"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.consent.title"
-msgstr "Install Plugin"
+msgid "app.plugin.consent.update.approve"
+msgstr "Approve & update"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.description"
+msgstr "Review the permission changes before updating this plugin."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.consent.update.title"
+msgstr "Approve Plugin Update"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.install"
@@ -4778,6 +4902,14 @@ msgstr "Installed v{version}"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.installing"
 msgstr "Installing..."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.loadingReview"
+msgstr "Loading review..."
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.action.reviewPermissions"
+msgstr "Review permissions"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.action.uninstall"
@@ -4869,7 +5001,7 @@ msgstr "Capabilities"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.capabilitiesSummary"
-msgstr "{tools} tools · {surfaces} UI surfaces"
+msgstr "{tools} tools · {operations} operations · {surfaces} UI surfaces"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.section.developmentRegistration"
@@ -4926,6 +5058,10 @@ msgstr "Active"
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.state.disabled"
 msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "app.plugin.detail.state.needsApproval"
+msgstr "Needs approval"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.detail.version.installedLocally"
@@ -5088,18 +5224,6 @@ msgid "app.plugin.marketplace.row.pluginDisabled"
 msgstr "Plugin disabled"
 
 #. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.development"
-msgstr "Development"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.disabled"
-msgstr "Disabled"
-
-#. js-lingui-explicit-id
-msgid "app.plugin.marketplace.row.state.installed"
-msgstr "Installed"
-
-#. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.tools"
 msgstr "{count} tools"
 
@@ -5130,6 +5254,18 @@ msgstr "Local registry"
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.source.official"
 msgstr "Official"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.active"
+msgstr "Active"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.disabled"
+msgstr "Disabled"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.status.needsApproval"
+msgstr "Needs approval"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.title"
@@ -9362,6 +9498,27 @@ msgstr "Light Loop starts from the next text prompt, not shell mode."
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.close"
+msgstr "Close"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.description"
+msgstr "This session's worktree no longer exists. Your prompt was restored. Restore the missing worktree or move to another session before trying again."
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.worktreeUnavailable.title"
+msgstr "Worktree unavailable"
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.toolbar.addFiles"
 msgstr "Add files"
 
@@ -12569,6 +12726,30 @@ msgid "settings.catalog.sandbox.searchTerms"
 msgstr "sandbox | isolation | fallback"
 
 #. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.description"
+msgstr "Persisted remote Synergy targets, authorization, and observed host details."
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.label"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targetAgentID"
+msgstr "Target agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.row.targets"
+msgstr "Targets"
+
+#. js-lingui-explicit-id
+msgid "settings.catalog.synergyLink.searchTerms"
+msgstr "synergy link | remote host | target | agent | link id | key"
+
+#. js-lingui-explicit-id
 msgid "settings.catalog.timeouts.description"
 msgstr "Agent prompt behavior, subagent concurrency, provider timeouts, and tool timeout controls."
 
@@ -15086,11 +15267,15 @@ msgstr "Co-author Reminder"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.desc"
-msgstr "Maximum Cortex subagent tasks running at once. Memory pressure recommendations never override this value."
+msgstr "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure."
 
 #. js-lingui-explicit-id
-msgid "settings.runtime.agents.concurrency.recommended"
-msgstr "Recommended: {value}"
+msgid "settings.runtime.agents.concurrency.memorySafety"
+msgstr "Memory safety limit: {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.runtime.agents.concurrency.memorySafetyManaged"
+msgstr "Managed by environment · Memory safety limit: {value}"
 
 #. js-lingui-explicit-id
 msgid "settings.runtime.agents.concurrency.title"
@@ -15439,6 +15624,166 @@ msgstr "Custom"
 #. js-lingui-explicit-id
 msgid "settings.stepScale.customValue"
 msgstr "Custom {value}"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.action"
+msgstr "Add target"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.description"
+msgstr "Copy the target agent ID and Link ID from B. B still approves the first connection."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.add.title"
+msgstr "Add target"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.approved"
+msgstr "Approved"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.revoked"
+msgstr "Revoked"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.authorization.unverified"
+msgstr "Unverified"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.idle"
+msgstr "Ready"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.availability.offline"
+msgstr "Holos offline"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.description"
+msgstr "Add a target so agents can discover and connect to it by a stable target ID."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.empty.title"
+msgstr "No Link targets yet"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.enabled"
+msgstr "Enabled"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents"
+msgstr "Allowed local agents"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.description"
+msgstr "Comma-separated Synergy agent names. Leave empty to allow every local agent to discover this target."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.allowedAgents.placeholder"
+msgstr "synergy, build"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID"
+msgstr "Link ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.linkID.placeholder"
+msgstr "link_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name"
+msgstr "Name"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.name.placeholder"
+msgstr "Build Mac"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.stableTargetID"
+msgstr "Stable target ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID"
+msgstr "Target agent ID"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.field.targetAgentID.placeholder"
+msgstr "agent_…"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.notObserved"
+msgstr "Not observed yet"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.host.title"
+msgstr "Observed host"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.error"
+msgstr "Link targets could not be loaded."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.load.retry"
+msgstr "Retry"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.description"
+msgstr "Persist the Synergy hosts this installation can control and inspect their last observed identity."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.page.title"
+msgstr "Synergy Link"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.refresh"
+msgstr "Refresh"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove"
+msgstr "Remove"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.description"
+msgstr "Agents will no longer discover this target. This does not change B's trust list."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.remove.title"
+msgstr "Remove Link target?"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.save"
+msgstr "Save"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.description"
+msgstr "A target stores routing identifiers, authorization state, and observed host capabilities. It never stores B's Holos credentials."
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.targets.title"
+msgstr "Targets"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.test"
+msgstr "Test connection"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.created"
+msgstr "Link target added"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.failed"
+msgstr "Synergy Link action failed"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.saved"
+msgstr "Link target saved"
+
+#. js-lingui-explicit-id
+msgid "settings.synergyLink.toast.tested"
+msgstr "Connection test completed"
 
 #. js-lingui-explicit-id
 msgid "settings.usage.attention.description"
@@ -15947,6 +16292,10 @@ msgstr "Closing"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-list"
 msgstr "View connections"
+
+#. ── Tool trigger titles ────────────────────────────────────────────
+msgid "tool.title.connect-list-targets"
+msgstr "View Link targets"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.connect-opening"

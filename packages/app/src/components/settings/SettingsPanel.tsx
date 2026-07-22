@@ -54,6 +54,7 @@ import { PersonalizePanel } from "./panels/PersonalizePanel"
 import { createPersonalizeController } from "./panels/personalize-controller"
 import { UsagePanel } from "./panels/UsagePanel"
 import { GitHubPanel } from "./panels/GitHubPanel"
+import { SynergyLinkPanel } from "./panels/SynergyLinkPanel"
 import { McpPanel } from "./panels/McpPanel"
 import { LearningPanel, MemoryPanel, ExperiencePanel } from "./panels/LibraryPanels"
 import { ChannelsPanel } from "./panels/ChannelsPanel"
@@ -495,6 +496,7 @@ export function SettingsPanel(props: SettingsPanelProps) {
       />
     ),
     github: GitHubPanel,
+    "synergy-link": SynergyLinkPanel,
     usage: () => (
       <UsagePanel
         onConnectProvider={(providerID) => {

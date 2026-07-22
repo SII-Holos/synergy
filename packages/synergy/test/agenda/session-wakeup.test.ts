@@ -29,7 +29,7 @@ describe("AgendaSessionWakeup.loopInstruction", () => {
         await Session.update(session.id, (draft) => {
           draft.workflow = {
             kind: "lightloop",
-            taskDescription: "Complete the task",
+            instructions: "Complete the task",
             stopRequest: {
               summary: "Done",
               requestedAt: Date.now(),

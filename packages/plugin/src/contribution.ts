@@ -1,5 +1,5 @@
 import z from "zod"
-import type { PluginCortexTaskAfterInput, PluginInvocationContext } from "./context.js"
+import type { BlueprintAfterInput, PluginCortexTaskAfterInput, PluginInvocationContext } from "./context.js"
 import type { PluginAgent, PluginSkill } from "./plugin-types.js"
 import type { ToolDisplay, ToolResult } from "./tool.js"
 
@@ -41,6 +41,7 @@ export interface ToolContribution<Input = unknown> extends ContributionBase<"too
 
 export interface PluginHookPointInputs {
   "cortex.task.after": PluginCortexTaskAfterInput
+  "blueprint.after": BlueprintAfterInput
 }
 
 export interface HookContribution<Point extends string = string> extends ContributionBase<"hook"> {

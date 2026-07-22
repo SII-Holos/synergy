@@ -199,7 +199,7 @@ export function UsagePanel(props: { onConnectProvider: (providerID?: string) => 
         </div>
 
         <Show when={usage.error}>
-          <div class="usage-request-error" role="alert">
+          <div class="settings-request-error" role="alert">
             <Icon name={getSemanticIcon("state.error")} size="small" />
             <span>{_(errorTitle)}</span>
             <Button type="button" variant="secondary" size="small" onClick={() => void refetch()}>

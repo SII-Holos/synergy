@@ -2,7 +2,7 @@
   CreateDirectory "$INSTDIR\bin"
   FileOpen $0 "$INSTDIR\bin\synergy.cmd" w
   FileWrite $0 "@echo off$\r$\n"
-  FileWrite $0 "\"$INSTDIR\resources\synergy\bin\synergy.exe\" %*$\r$\n"
+  FileWrite $0 "$\"$INSTDIR\resources\synergy\bin\synergy.exe$\" %*$\r$\n"
   FileClose $0
 
   ReadRegStr $0 HKCU "Environment" "Path"
@@ -34,6 +34,7 @@
   SendMessage ${HWND_BROADCAST} ${WM_SETTINGCHANGE} 0 "STR:Environment" /TIMEOUT=5000
 !macroend
 
+!ifndef BUILD_UNINSTALLER
 Function PathHasEntry
   Exch $R1
   Exch
@@ -71,7 +72,9 @@ Function PathHasEntry
     Pop $R1
     Pop $R3
 FunctionEnd
+!endif
 
+!ifdef BUILD_UNINSTALLER
 Function un.RemovePathEntry
   Exch $R1
   Exch
@@ -114,3 +117,4 @@ Function un.RemovePathEntry
     Pop $R1
     Pop $R3
 FunctionEnd
+!endif

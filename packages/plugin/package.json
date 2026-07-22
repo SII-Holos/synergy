@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@ericsanchezok/synergy-plugin",
-  "version": "1.1.26",
+  "version": "1.2.0",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -72,6 +72,11 @@
       "bun": "./src/ui.ts",
       "types": "./src/ui.ts",
       "import": "./dist/ui.js"
+    },
+    "./theme": {
+      "bun": "./src/theme/index.ts",
+      "types": "./src/theme/index.ts",
+      "import": "./dist/theme/index.js"
     },
     "./auth": {
       "bun": "./src/auth-types.ts",

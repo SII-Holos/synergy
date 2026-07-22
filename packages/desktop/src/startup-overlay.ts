@@ -5,14 +5,14 @@ import {
   startupThemeScript,
   type DesktopStartupStatus,
 } from "./startup-page.js"
-import type { DesktopThemeEffective } from "./theme.js"
+import type { DesktopThemeSnapshot } from "./theme.js"
 
 export interface DesktopStartupOverlayOptions {
   window: BrowserWindow
   preloadPath: string
   chrome: "custom" | "native"
   iconDataUrl?: string
-  theme: DesktopThemeEffective
+  theme: DesktopThemeSnapshot
 }
 
 const boundsEvents = ["resize", "maximize", "unmaximize", "enter-full-screen", "leave-full-screen", "restore"] as const
@@ -69,7 +69,7 @@ export class DesktopStartupOverlay {
     await view.webContents.executeJavaScript(startupStatusScript(status)).catch(() => {})
   }
 
-  setTheme(theme: DesktopThemeEffective): void {
+  setTheme(theme: DesktopThemeSnapshot): void {
     const view = this.view
     if (!view || this.dismissed || view.webContents.isDestroyed()) return
     view.webContents.executeJavaScript(startupThemeScript(theme)).catch(() => {})

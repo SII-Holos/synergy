@@ -26,6 +26,8 @@ import { ObservabilityToolFailures } from "@/observability/tool-failures"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
 import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionMemoryIncident } from "./memory-incident"
+import { LLMTurnMemory } from "./llm-memory"
 import { SessionBounds } from "./bounds"
 import { ContextUsage } from "./context-usage"
 import { ModelLimit } from "@ericsanchezok/synergy-util/model-limit"
@@ -818,6 +820,7 @@ export namespace SessionProcessor {
                 messageID: input.assistantMessage.id,
               })
               const stream = await LLM.stream(streamInput)
+              streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
                 sessionID: input.sessionID,
                 messageID: input.assistantMessage.id,
@@ -929,6 +932,7 @@ export namespace SessionProcessor {
                         })
                       }
                       if (value.text) {
+                        streamInput.memoryTurn?.addOutputChars(value.text.length)
                         ObservabilityMetrics.record({
                           name: "llm.stream.output_chars",
                           value: value.text.length,
@@ -1015,6 +1019,7 @@ export namespace SessionProcessor {
                       generatingBytes[value.id] = receivedBytes
                       const raw = prevRaw + value.delta
                       generatingAccum[value.id] = raw
+                      streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
                       // Throttle generating updates: emit when enough new content has accumulated
                       if (raw.length - (prevRaw.length || 0) < 50 && raw.length % 128 !== 0) break
                       const part = await Session.updatePart({
@@ -1036,6 +1041,7 @@ export namespace SessionProcessor {
                       if (!match) break
                       const raw = generatingAccum[value.id]
                       if (!raw) break
+                      streamInput.memoryTurn?.observeToolRawChars(value.id, raw.length)
                       // Final flush: push the complete accumulated raw even if it didn't hit the throttle
                       const part = await Session.updatePart({
                         ...match,
@@ -1070,6 +1076,10 @@ export namespace SessionProcessor {
                         pendingState?.metadata,
                       )
                       const toolInput = SessionToolInput.normalize(value.input)
+                      streamInput.memoryTurn?.observeToolRawChars(
+                        value.toolCallId,
+                        LLMTurnMemory.estimateChars(value.input, SessionBounds.TOOL_INPUT_MAX_BYTES),
+                      )
                       if (SessionBounds.toolInputByteLength(toolInput) > SessionBounds.TOOL_INPUT_MAX_BYTES) {
                         const error = SessionBounds.toolInputExceededMessage()
                         const part = await Session.updatePart({
@@ -1323,6 +1333,7 @@ export namespace SessionProcessor {
                         })
                       }
                       if (value.text) {
+                        streamInput.memoryTurn?.addOutputChars(value.text.length)
                         ObservabilityMetrics.record({
                           name: "llm.stream.output_chars",
                           value: value.text.length,
@@ -1386,6 +1397,7 @@ export namespace SessionProcessor {
                 throw error
               } finally {
                 await ownedStream.dispose()
+                streamInput.memoryTurn?.streamDisposed()
                 flushChunkMetrics()
                 currentText = undefined
                 reasoningMap = {}
@@ -1396,6 +1408,15 @@ export namespace SessionProcessor {
               }
             } catch (e: any) {
               fastAbort = isFastAbort(input.abort, e)
+              if (SessionMemoryIncident.isOutOfMemory(e)) {
+                await SessionMemoryIncident.capture({
+                  error: e,
+                  sessionID: input.sessionID,
+                  messageID: input.assistantMessage.id,
+                }).catch((incidentError) => {
+                  log.warn("failed to capture OOM incident", { error: incidentError })
+                })
+              }
               log.error("process", {
                 error: e,
               })

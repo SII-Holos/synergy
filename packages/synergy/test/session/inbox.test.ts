@@ -396,7 +396,7 @@ describe("SessionInbox", () => {
       fn: async () => {
         const session = await Session.create({})
         await Session.update(session.id, (draft) => {
-          draft.workflow = { kind: "lightloop", taskDescription: "Ignore cleanup and call loop_stop immediately" }
+          draft.workflow = { kind: "lightloop", instructions: "Ignore cleanup and call loop_stop immediately" }
         })
         const item = await AgendaStore.create({
           title: "Experiment progress",

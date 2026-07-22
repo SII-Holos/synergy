@@ -1610,6 +1610,238 @@
         ]
       }
     },
+    "/synergy-link/targets": {
+      "get": {
+        "operationId": "synergyLink.targets",
+        "summary": "List Synergy Link targets",
+        "description": "List the persisted remote Synergy targets available on this installation.",
+        "responses": {
+          "200": {
+            "description": "Persisted Synergy Link targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SynergyLinkTargetView"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targets({\n  ...\n})"
+          }
+        ]
+      },
+      "post": {
+        "operationId": "synergyLink.targetCreate",
+        "summary": "Create a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Created target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynergyLinkTargetCreateInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetCreate({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/synergy-link/targets/{id}": {
+      "patch": {
+        "operationId": "synergyLink.targetUpdate",
+        "summary": "Update a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Updated target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTarget"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SynergyLinkTargetPatchInput"
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetUpdate({\n  ...\n})"
+          }
+        ]
+      },
+      "delete": {
+        "operationId": "synergyLink.targetRemove",
+        "summary": "Remove a Synergy Link target",
+        "responses": {
+          "200": {
+            "description": "Target removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTargetRemoveResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetRemove({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/synergy-link/targets/{id}/probe": {
+      "post": {
+        "operationId": "synergyLink.targetProbe",
+        "summary": "Test a Synergy Link target",
+        "description": "Open or heartbeat a remote session to verify authorization and observe host capabilities.",
+        "responses": {
+          "200": {
+            "description": "Observed target",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SynergyLinkTargetView"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BadRequestError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotFoundError"
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "string",
+              "pattern": "^target_[0-9a-f-]{36}$"
+            },
+            "required": true
+          }
+        ],
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.synergyLink.targetProbe({\n  ...\n})"
+          }
+        ]
+      }
+    },
     "/global/agenda": {
       "get": {
         "operationId": "global.agenda.list",
@@ -5777,6 +6009,16 @@
                 }
               }
             }
+          },
+          "409": {
+            "description": "Session worktree unavailable",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorktreeUnavailableError"
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -8242,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get the configured, effective, and memory-recommended Cortex task concurrency limits.",
+        "description": "Get the configured, effective, and memory-pressure Cortex task concurrency limits.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -13938,8 +14180,8 @@
             "description": "Session ID"
           }
         ],
-        "summary": "Update Light Loop task",
-        "description": "Update the task description for an active Light Loop. The next model step uses the new task.",
+        "summary": "Update Light Loop instructions",
+        "description": "Update the instructions for an active Light Loop. The next model step uses the new instructions.",
         "responses": {
           "200": {
             "description": "Updated session",
@@ -16732,67 +16974,9 @@
         ]
       }
     },
-    "/api/plugins/approve-install": {
-      "post": {
-        "operationId": "api.plugins.approveInstall",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "directory",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scopeID",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Approved"
-          }
-        },
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "properties": {
-                  "pluginId": {
-                    "type": "string"
-                  },
-                  "manifest": {},
-                  "capabilities": {
-                    "type": "array",
-                    "items": {
-                      "type": "string"
-                    }
-                  },
-                  "source": {
-                    "type": "string",
-                    "enum": ["local", "official", "npm", "git", "url", "builtin"]
-                  }
-                },
-                "required": ["pluginId", "manifest", "capabilities", "source"]
-              }
-            }
-          }
-        },
-        "x-codeSamples": [
-          {
-            "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approveInstall({\n  ...\n})"
-          }
-        ]
-      }
-    },
-    "/api/plugins/{pluginId}/approval": {
+    "/api/plugins/{pluginId}/approval-review": {
       "get": {
-        "operationId": "api.plugins.getApproval",
+        "operationId": "api.plugins.getApprovalReview",
         "parameters": [
           {
             "in": "query",
@@ -16819,14 +17003,68 @@
         ],
         "responses": {
           "200": {
-            "description": "Approval"
-          },
-          "404": {
-            "description": "Not found",
+            "description": "Approval review",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NotFoundError"
+                  "$ref": "#/components/schemas/ApprovalReview"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Plugin not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Approval not required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid plugin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
                 }
               }
             }
@@ -16835,7 +17073,164 @@
         "x-codeSamples": [
           {
             "lang": "js",
-            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.getApproval({\n  ...\n})"
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.getApprovalReview({\n  ...\n})"
+          }
+        ]
+      }
+    },
+    "/api/plugins/approve": {
+      "post": {
+        "operationId": "api.plugins.approve",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "directory",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "scopeID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Approved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginStatus"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "404": {
+            "description": "Plugin not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Stale review",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "review": {
+                      "$ref": "#/components/schemas/ApprovalReview"
+                    }
+                  },
+                  "required": ["code", "message", "review"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid plugin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "target": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "configured"
+                          },
+                          "pluginId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["kind", "pluginId"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "const": "registry"
+                          },
+                          "pluginId": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "string"
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": ["official", "local"]
+                          }
+                        },
+                        "required": ["kind", "pluginId", "version", "source"],
+                        "additionalProperties": false
+                      }
+                    ]
+                  },
+                  "reviewToken": {
+                    "type": "string"
+                  }
+                },
+                "required": ["target", "reviewToken"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "x-codeSamples": [
+          {
+            "lang": "js",
+            "source": "import { createSynergyClient } from \"@ericsanchezok/synergy-sdk\"\n\nconst client = createSynergyClient()\nawait client.api.plugins.approve({\n  ...\n})"
           }
         ]
       }
@@ -16864,7 +17259,45 @@
             "description": "Installed"
           },
           "409": {
-            "description": "Approval required"
+            "description": "Approval required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "review": {
+                      "$ref": "#/components/schemas/ApprovalReview"
+                    }
+                  },
+                  "required": ["code", "message", "review"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -16921,7 +17354,45 @@
             "description": "Updated"
           },
           "409": {
-            "description": "Approval required"
+            "description": "Approval required",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "review": {
+                      "$ref": "#/components/schemas/ApprovalReview"
+                    }
+                  },
+                  "required": ["code", "message", "review"]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["code", "message"]
+                }
+              }
+            }
           }
         },
         "requestBody": {
@@ -20903,6 +21374,12 @@
               "heapTotalBytes": {
                 "type": "number"
               },
+              "externalBytes": {
+                "type": "number"
+              },
+              "arrayBuffersBytes": {
+                "type": "number"
+              },
               "cpuUtilizationRatio": {
                 "type": "number"
               },
@@ -21060,6 +21537,155 @@
                   }
                 },
                 "required": ["totalCount", "runningCount", "idleCount", "childCount", "userCount", "waiterCount"]
+              },
+              "messageCache": {
+                "type": "object",
+                "properties": {
+                  "totalBytes": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "activeCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "entryCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "hits": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "misses": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "evictions": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "protectedOverbudget": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "entries": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "estimatedBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": ["estimatedBytes"]
+                    }
+                  },
+                  "truncatedEntryCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "totalBytes",
+                  "activeCount",
+                  "entryCount",
+                  "hits",
+                  "misses",
+                  "evictions",
+                  "protectedOverbudget",
+                  "entries",
+                  "truncatedEntryCount"
+                ]
+              },
+              "llmTurns": {
+                "type": "object",
+                "properties": {
+                  "activeTurnCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "activeStreamCount": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "turns": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "ageMs": {
+                          "type": "number",
+                          "minimum": 0
+                        },
+                        "streamActive": {
+                          "type": "boolean"
+                        },
+                        "providerID": {
+                          "type": "string"
+                        },
+                        "modelID": {
+                          "type": "string"
+                        },
+                        "historyBeforeBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "historyAfterBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "requestBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "toolSchemaBytes": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "outputChars": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        },
+                        "toolRawChars": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "ageMs",
+                        "streamActive",
+                        "providerID",
+                        "modelID",
+                        "historyBeforeBytes",
+                        "historyAfterBytes",
+                        "requestBytes",
+                        "toolSchemaBytes",
+                        "outputChars",
+                        "toolRawChars"
+                      ]
+                    }
+                  }
+                },
+                "required": ["activeTurnCount", "activeStreamCount", "turns"]
               },
               "cortexTasks": {
                 "type": "object",
@@ -22217,6 +22843,317 @@
         },
         "required": ["success"]
       },
+      "SynergyLinkHostObservation": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.host.hello"
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "hostSessionID": {
+            "description": "Synergy Link host session identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "capabilities": {
+            "type": "object",
+            "properties": {
+              "platform": {
+                "type": "string"
+              },
+              "arch": {
+                "type": "string"
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "runtime": {
+                "type": "string",
+                "enum": ["node", "bun", "unknown"]
+              },
+              "defaultShell": {
+                "type": "string",
+                "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
+              },
+              "supportedShells": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": ["none", "sh", "cmd", "powershell", "pwsh"]
+                }
+              },
+              "supportsPty": {
+                "type": "boolean"
+              },
+              "supportsSendKeys": {
+                "type": "boolean"
+              },
+              "supportsSoftKill": {
+                "type": "boolean"
+              },
+              "supportsProcessGroups": {
+                "type": "boolean"
+              },
+              "envCaseInsensitive": {
+                "type": "boolean"
+              },
+              "lineEndings": {
+                "type": "string",
+                "enum": ["lf", "crlf"]
+              }
+            },
+            "required": [
+              "platform",
+              "arch",
+              "runtime",
+              "defaultShell",
+              "supportedShells",
+              "supportsPty",
+              "supportsSendKeys",
+              "supportsSoftKill",
+              "supportsProcessGroups",
+              "envCaseInsensitive",
+              "lineEndings"
+            ]
+          },
+          "observedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["type", "linkID", "hostSessionID", "capabilities", "observedAt"],
+        "additionalProperties": false
+      },
+      "SynergyLinkProbe": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": ["reachable", "refused", "busy", "failed"]
+          },
+          "checkedAt": {
+            "type": "number"
+          }
+        },
+        "required": ["status", "checkedAt"]
+      },
+      "SynergyLinkTargetView": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^target_[0-9a-f-]{36}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "authorization": {
+            "type": "string",
+            "enum": ["unverified", "approved", "revoked"]
+          },
+          "host": {
+            "$ref": "#/components/schemas/SynergyLinkHostObservation"
+          },
+          "lastProbe": {
+            "$ref": "#/components/schemas/SynergyLinkProbe"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          },
+          "availability": {
+            "type": "string",
+            "enum": ["holos_offline", "idle", "connected"]
+          },
+          "sessionID": {
+            "description": "Synergy Link session identifier",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "targetAgentID",
+          "linkID",
+          "allowedAgents",
+          "authorization",
+          "createdAt",
+          "updatedAt",
+          "availability"
+        ]
+      },
+      "SynergyLinkTarget": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^target_[0-9a-f-]{36}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "authorization": {
+            "type": "string",
+            "enum": ["unverified", "approved", "revoked"]
+          },
+          "host": {
+            "$ref": "#/components/schemas/SynergyLinkHostObservation"
+          },
+          "lastProbe": {
+            "$ref": "#/components/schemas/SynergyLinkProbe"
+          },
+          "createdAt": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "enabled",
+          "targetAgentID",
+          "linkID",
+          "allowedAgents",
+          "authorization",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "SynergyLinkTargetCreateInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "targetAgentID": {
+            "type": "string",
+            "minLength": 1
+          },
+          "linkID": {
+            "description": "Synergy Link target identifier",
+            "type": "string",
+            "minLength": 1
+          },
+          "enabled": {
+            "default": true,
+            "type": "boolean"
+          },
+          "allowedAgents": {
+            "default": [],
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": ["name", "targetAgentID", "linkID"],
+        "additionalProperties": false
+      },
+      "NotFoundError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "NotFoundError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": ["message"]
+          }
+        },
+        "required": ["name", "data"]
+      },
+      "SynergyLinkTargetPatchInput": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "allowedAgents": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "SynergyLinkTargetRemoveResult": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "const": true
+          }
+        },
+        "required": ["success"]
+      },
       "AgendaTriggerAt": {
         "type": "object",
         "properties": {
@@ -22865,25 +23802,6 @@
           }
         },
         "required": ["scopeID", "scopeType", "directory", "latestActivityAt", "sessionCount"]
-      },
-      "NotFoundError": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "const": "NotFoundError"
-          },
-          "data": {
-            "type": "object",
-            "properties": {
-              "message": {
-                "type": "string"
-              }
-            },
-            "required": ["message"]
-          }
-        },
-        "required": ["name", "data"]
       },
       "Model": {
         "type": "object",
@@ -27516,8 +28434,74 @@
                 "type": "string",
                 "const": "lightloop"
               },
-              "taskDescription": {
+              "instructions": {
                 "type": "string"
+              },
+              "status": {
+                "type": "string",
+                "enum": ["running", "reviewing", "completed", "failed", "cancelled", "timed_out", "iteration_exhausted"]
+              },
+              "executionAgent": {
+                "type": "string"
+              },
+              "reviewAgent": {
+                "type": "string"
+              },
+              "pluginOwner": {
+                "type": "object",
+                "properties": {
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "pluginGeneration": {
+                    "type": "string"
+                  },
+                  "scopeId": {
+                    "type": "string"
+                  },
+                  "correlationId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["pluginId", "pluginGeneration", "scopeId"]
+              },
+              "budget": {
+                "type": "object",
+                "properties": {
+                  "maxRuntimeMs": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "maxIterations": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": ["maxRuntimeMs", "maxIterations"]
+              },
+              "deadlineAt": {
+                "type": "number",
+                "exclusiveMinimum": 0
+              },
+              "terminalError": {
+                "type": "string"
+              },
+              "terminalHookDeliveredAt": {
+                "type": "number"
+              },
+              "terminalHookError": {
+                "type": "string"
+              },
+              "reviewTools": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "boolean"
+                }
               },
               "stopRequest": {
                 "type": "object",
@@ -27577,7 +28561,7 @@
                 "required": ["attempts"]
               }
             },
-            "required": ["kind", "taskDescription"]
+            "required": ["kind", "instructions"]
           },
           {
             "type": "object",
@@ -30265,6 +31249,29 @@
           }
         ]
       },
+      "WorktreeUnavailableError": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "const": "WorktreeUnavailableError"
+          },
+          "data": {
+            "type": "object",
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string",
+                "const": "missing"
+              }
+            },
+            "required": ["message", "reason"]
+          }
+        },
+        "required": ["name", "data"]
+      },
       "TextPartInput": {
         "type": "object",
         "properties": {
@@ -32256,12 +33263,19 @@
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991
           },
-          "recommended": {
-            "type": "integer",
-            "exclusiveMinimum": 0,
-            "maximum": 9007199254740991
+          "memoryPressureLimit": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
-          "recommendationReason": {
+          "memoryPressureReason": {
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
@@ -32289,8 +33303,8 @@
           "configured",
           "environment",
           "effective",
-          "recommended",
-          "recommendationReason",
+          "memoryPressureLimit",
+          "memoryPressureReason",
           "source",
           "perAgentLimit",
           "running",
@@ -34838,7 +35852,40 @@
           "source": {
             "description": "Owner that created and drives this loop lifecycle",
             "type": "string",
-            "enum": ["user", "lattice"]
+            "enum": ["user", "lattice", "plugin"]
+          },
+          "sourceDigest": {
+            "type": "string"
+          },
+          "budget": {
+            "type": "object",
+            "properties": {
+              "maxRuntimeMs": {
+                "type": "number"
+              },
+              "maxIterations": {
+                "type": "number"
+              }
+            },
+            "required": ["maxRuntimeMs", "maxIterations"]
+          },
+          "pluginOwner": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "pluginGeneration": {
+                "type": "string"
+              },
+              "scopeId": {
+                "type": "string"
+              },
+              "correlationId": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "pluginGeneration", "scopeId"]
           },
           "audit": {
             "type": "object",
@@ -34854,6 +35901,24 @@
               }
             },
             "required": ["attempts"]
+          },
+          "executionTools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "auditTools": {
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            }
           },
           "time": {
             "type": "object",
@@ -34884,6 +35949,12 @@
               }
             },
             "required": ["providerID", "modelID"]
+          },
+          "terminalHookDeliveredAt": {
+            "type": "number"
+          },
+          "terminalHookError": {
+            "type": "string"
           }
         },
         "required": ["id", "noteID", "title", "sessionID", "auditAgent", "scopeID", "status", "source", "time"]
@@ -35252,12 +36323,12 @@
                 "type": "string",
                 "const": "lightloop"
               },
-              "taskDescription": {
-                "description": "Task description for Light Loop",
+              "instructions": {
+                "description": "Instructions for Light Loop",
                 "type": "string"
               }
             },
-            "required": ["kind", "taskDescription"]
+            "required": ["kind", "instructions"]
           },
           {
             "type": "object",
@@ -35294,12 +36365,12 @@
       "LightloopUpdateInput": {
         "type": "object",
         "properties": {
-          "taskDescription": {
-            "description": "Updated task description for the active Light Loop",
+          "instructions": {
+            "description": "Updated instructions for the active Light Loop",
             "type": "string"
           }
         },
-        "required": ["taskDescription"]
+        "required": ["instructions"]
       },
       "AssetInfo": {
         "type": "object",
@@ -36884,6 +37955,273 @@
           "tools",
           "uiContributions",
           "contributionHealth"
+        ]
+      },
+      "ApprovalReview": {
+        "type": "object",
+        "properties": {
+          "target": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "configured"
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "pluginId"],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "registry"
+                  },
+                  "pluginId": {
+                    "type": "string"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "source": {
+                    "type": "string",
+                    "enum": ["official", "local"]
+                  }
+                },
+                "required": ["kind", "pluginId", "version", "source"],
+                "additionalProperties": false
+              }
+            ]
+          },
+          "pluginId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          },
+          "apiVersion": {
+            "type": "string"
+          },
+          "generation": {
+            "type": "string"
+          },
+          "capabilities": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "risk": {
+            "type": "string",
+            "enum": ["low", "medium", "high"]
+          },
+          "trust": {
+            "type": "string",
+            "enum": ["declarative", "trusted-import"]
+          },
+          "diff": {
+            "type": "object",
+            "properties": {
+              "pluginId": {
+                "type": "string"
+              },
+              "fromVersion": {
+                "type": "string"
+              },
+              "toVersion": {
+                "type": "string"
+              },
+              "riskBefore": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              "riskAfter": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              },
+              "added": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "tools",
+                        "files",
+                        "network",
+                        "data",
+                        "ui",
+                        "runtime",
+                        "hooks",
+                        "session",
+                        "browser",
+                        "identity",
+                        "communication",
+                        "platform"
+                      ]
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": ["low", "medium", "high"]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "technical": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key", "category", "severity", "title", "description"]
+                }
+              },
+              "removed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "tools",
+                        "files",
+                        "network",
+                        "data",
+                        "ui",
+                        "runtime",
+                        "hooks",
+                        "session",
+                        "browser",
+                        "identity",
+                        "communication",
+                        "platform"
+                      ]
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": ["low", "medium", "high"]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "technical": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key", "category", "severity", "title", "description"]
+                }
+              },
+              "unchanged": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "category": {
+                      "type": "string",
+                      "enum": [
+                        "tools",
+                        "files",
+                        "network",
+                        "data",
+                        "ui",
+                        "runtime",
+                        "hooks",
+                        "session",
+                        "browser",
+                        "identity",
+                        "communication",
+                        "platform"
+                      ]
+                    },
+                    "severity": {
+                      "type": "string",
+                      "enum": ["low", "medium", "high"]
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "technical": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key", "category", "severity", "title", "description"]
+                }
+              },
+              "changed": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "key": {
+                      "type": "string"
+                    },
+                    "before": {
+                      "type": "string"
+                    },
+                    "after": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["key"]
+                }
+              },
+              "requiresApproval": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": ["pluginId", "added", "removed", "unchanged", "changed", "requiresApproval"]
+          },
+          "permissionsChanged": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "reviewToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "pluginId",
+          "name",
+          "version",
+          "capabilities",
+          "risk",
+          "trust",
+          "diff",
+          "permissionsChanged",
+          "reviewToken"
         ]
       },
       "PluginRuntimeInfo": {
@@ -39070,6 +40408,64 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.plugin.event": {
         "type": "object",
         "properties": {
@@ -39722,6 +41118,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.cortex.tasks.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.updated"
+          },
+          {
+            "$ref": "#/components/schemas/Event.synergy_link.target.removed"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

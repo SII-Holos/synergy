@@ -37,9 +37,10 @@ import type {
   AgendaUpdateResponses,
   AgendaWebhookErrors,
   AgendaWebhookResponses,
-  ApiPluginsApproveInstallResponses,
-  ApiPluginsGetApprovalErrors,
-  ApiPluginsGetApprovalResponses,
+  ApiPluginsApproveErrors,
+  ApiPluginsApproveResponses,
+  ApiPluginsGetApprovalReviewErrors,
+  ApiPluginsGetApprovalReviewResponses,
   ApiPluginsGetErrors,
   ApiPluginsGetResponses,
   ApiPluginsInstallFromRegistryErrors,
@@ -495,6 +496,17 @@ import type {
   SkillReloadResponses,
   SkillRemoveErrors,
   SkillRemoveResponses,
+  SynergyLinkTargetCreateErrors,
+  SynergyLinkTargetCreateInput,
+  SynergyLinkTargetCreateResponses,
+  SynergyLinkTargetPatchInput,
+  SynergyLinkTargetProbeErrors,
+  SynergyLinkTargetProbeResponses,
+  SynergyLinkTargetRemoveErrors,
+  SynergyLinkTargetRemoveResponses,
+  SynergyLinkTargetsResponses,
+  SynergyLinkTargetUpdateErrors,
+  SynergyLinkTargetUpdateResponses,
   TextPartInput,
   ToolIdsErrors,
   ToolIdsResponses,
@@ -2904,9 +2916,9 @@ export class Session extends HeyApiClient {
   }
 
   /**
-   * Update Light Loop task
+   * Update Light Loop instructions
    *
-   * Update the task description for an active Light Loop. The next model step uses the new task.
+   * Update the instructions for an active Light Loop. The next model step uses the new instructions.
    */
   public updateLightloop<ThrowOnError extends boolean = false>(
     parameters: {
@@ -4454,6 +4466,127 @@ export class Holos extends HeyApiClient {
   outbox = new Outbox({ client: this.client })
 
   thread = new Thread({ client: this.client })
+}
+
+export class SynergyLink extends HeyApiClient {
+  /**
+   * List Synergy Link targets
+   *
+   * List the persisted remote Synergy targets available on this installation.
+   */
+  public targets<ThrowOnError extends boolean = false>(options?: Options<never, ThrowOnError>) {
+    return (options?.client ?? this.client).get<SynergyLinkTargetsResponses, unknown, ThrowOnError>({
+      url: "/synergy-link/targets",
+      ...options,
+    })
+  }
+
+  /**
+   * Create a Synergy Link target
+   */
+  public targetCreate<ThrowOnError extends boolean = false>(
+    parameters?: {
+      synergyLinkTargetCreateInput?: SynergyLinkTargetCreateInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ key: "synergyLinkTargetCreateInput", map: "body" }] }])
+    return (options?.client ?? this.client).post<
+      SynergyLinkTargetCreateResponses,
+      SynergyLinkTargetCreateErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Remove a Synergy Link target
+   */
+  public targetRemove<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).delete<
+      SynergyLinkTargetRemoveResponses,
+      SynergyLinkTargetRemoveErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}",
+      ...options,
+      ...params,
+    })
+  }
+
+  /**
+   * Update a Synergy Link target
+   */
+  public targetUpdate<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+      synergyLinkTargetPatchInput?: SynergyLinkTargetPatchInput
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "path", key: "id" },
+            { key: "synergyLinkTargetPatchInput", map: "body" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).patch<
+      SynergyLinkTargetUpdateResponses,
+      SynergyLinkTargetUpdateErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
+    })
+  }
+
+  /**
+   * Test a Synergy Link target
+   *
+   * Open or heartbeat a remote session to verify authorization and observe host capabilities.
+   */
+  public targetProbe<ThrowOnError extends boolean = false>(
+    parameters: {
+      id: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams([parameters], [{ args: [{ in: "path", key: "id" }] }])
+    return (options?.client ?? this.client).post<
+      SynergyLinkTargetProbeResponses,
+      SynergyLinkTargetProbeErrors,
+      ThrowOnError
+    >({
+      url: "/synergy-link/targets/{id}/probe",
+      ...options,
+      ...params,
+    })
+  }
 }
 
 export class Github extends HeyApiClient {
@@ -6334,7 +6467,7 @@ export class Cortex extends HeyApiClient {
   /**
    * Get Cortex concurrency status
    *
-   * Get the configured, effective, and memory-recommended Cortex task concurrency limits.
+   * Get the configured, effective, and memory-pressure Cortex task concurrency limits.
    */
   public concurrency<ThrowOnError extends boolean = false>(
     parameters?: {
@@ -9393,45 +9526,7 @@ export class Plugins extends HeyApiClient {
     })
   }
 
-  public approveInstall<ThrowOnError extends boolean = false>(
-    parameters?: {
-      directory?: string
-      scopeID?: string
-      pluginId?: string
-      manifest?: unknown
-      capabilities?: Array<string>
-      source?: "local" | "official" | "npm" | "git" | "url" | "builtin"
-    },
-    options?: Options<never, ThrowOnError>,
-  ) {
-    const params = buildClientParams(
-      [parameters],
-      [
-        {
-          args: [
-            { in: "query", key: "directory" },
-            { in: "query", key: "scopeID" },
-            { in: "body", key: "pluginId" },
-            { in: "body", key: "manifest" },
-            { in: "body", key: "capabilities" },
-            { in: "body", key: "source" },
-          ],
-        },
-      ],
-    )
-    return (options?.client ?? this.client).post<ApiPluginsApproveInstallResponses, unknown, ThrowOnError>({
-      url: "/api/plugins/approve-install",
-      ...options,
-      ...params,
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-        ...params.headers,
-      },
-    })
-  }
-
-  public getApproval<ThrowOnError extends boolean = false>(
+  public getApprovalReview<ThrowOnError extends boolean = false>(
     parameters: {
       pluginId: string
       directory?: string
@@ -9452,13 +9547,57 @@ export class Plugins extends HeyApiClient {
       ],
     )
     return (options?.client ?? this.client).get<
-      ApiPluginsGetApprovalResponses,
-      ApiPluginsGetApprovalErrors,
+      ApiPluginsGetApprovalReviewResponses,
+      ApiPluginsGetApprovalReviewErrors,
       ThrowOnError
     >({
-      url: "/api/plugins/{pluginId}/approval",
+      url: "/api/plugins/{pluginId}/approval-review",
       ...options,
       ...params,
+    })
+  }
+
+  public approve<ThrowOnError extends boolean = false>(
+    parameters?: {
+      directory?: string
+      scopeID?: string
+      target?:
+        | {
+            kind: "configured"
+            pluginId: string
+          }
+        | {
+            kind: "registry"
+            pluginId: string
+            version: string
+            source: "official" | "local"
+          }
+      reviewToken?: string
+    },
+    options?: Options<never, ThrowOnError>,
+  ) {
+    const params = buildClientParams(
+      [parameters],
+      [
+        {
+          args: [
+            { in: "query", key: "directory" },
+            { in: "query", key: "scopeID" },
+            { in: "body", key: "target" },
+            { in: "body", key: "reviewToken" },
+          ],
+        },
+      ],
+    )
+    return (options?.client ?? this.client).post<ApiPluginsApproveResponses, ApiPluginsApproveErrors, ThrowOnError>({
+      url: "/api/plugins/approve",
+      ...options,
+      ...params,
+      headers: {
+        "Content-Type": "application/json",
+        ...options?.headers,
+        ...params.headers,
+      },
     })
   }
 
@@ -10591,6 +10730,8 @@ export class SynergyClient extends HeyApiClient {
   performance = new Performance({ client: this.client })
 
   holos = new Holos({ client: this.client })
+
+  synergyLink = new SynergyLink({ client: this.client })
 
   github = new Github({ client: this.client })
 

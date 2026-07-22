@@ -463,13 +463,8 @@ function hasNetworkActivity(command: string): boolean {
   return NETWORK_PATTERNS.some((p) => lower.includes(p))
 }
 
-/** Check whether a linkID looks like a valid Synergy Link target. */
-function isValidSynergyLinkID(linkID: unknown): boolean {
-  return typeof linkID === "string" && linkID.startsWith("link_") && linkID.length > 5
-}
-
-function effectiveSynergyLinkID(args: Record<string, any>): unknown {
-  return args.linkID ?? args.envID
+function requestsSynergyLink(args: Record<string, any>): boolean {
+  return [args.targetID, args.linkID, args.envID].some((value) => typeof value === "string" && value.trim().length > 0)
 }
 
 function matchRule(cap: Capability, rules: ProfileRule[], unmatchedAction: ProfileRule["action"]): ProfileRule {
@@ -717,7 +712,7 @@ export namespace EnforcementGate {
         // profiles can distinguish local vs remote shell execution. Deprecated
         // envID is accepted by the tool layer as a linkID alias, so it must be
         // classified through the same remote-execute boundary.
-        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
+        if (requestsSynergyLink(args)) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }
 
@@ -921,7 +916,7 @@ export namespace EnforcementGate {
         } else {
           caps.push({ class: "file_read", nonBypassable: false })
         }
-        if (isValidSynergyLinkID(effectiveSynergyLinkID(args))) {
+        if (requestsSynergyLink(args)) {
           caps.push({ class: "shell_remote_execute", nonBypassable: true })
         }
         return { capabilities: caps }

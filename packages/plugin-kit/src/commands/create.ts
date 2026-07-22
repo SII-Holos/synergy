@@ -1,6 +1,7 @@
 import fs from "fs"
 import path from "path"
 import type { Argv } from "yargs"
+import { renderThemeSchemaJson } from "@ericsanchezok/synergy-plugin/theme"
 import { cmd } from "../cmd.js"
 import { UI } from "../ui.js"
 
@@ -178,10 +179,12 @@ export function scaffoldPluginProject(name: string, template: TemplateName, targ
   const uiSource = ui(template)
   if (uiSource) files.set("src/ui.tsx", uiSource)
   if (template === "theme-icon") {
+    files.set("themes/theme.schema.json", renderThemeSchemaJson())
     files.set(
       "themes/default.json",
       JSON.stringify(
         {
+          $schema: "./theme.schema.json",
           name,
           id: "default",
           light: {

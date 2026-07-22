@@ -6,7 +6,14 @@ export namespace RemoteBashBackend {
     params: BashParams,
     target: Extract<SynergyLinkExecution.ExecutionTarget, { kind: "remote" }>,
   ) {
-    const { linkID: _linkID, ...payload } = params
+    const {
+      targetID: _targetID,
+      linkID: _linkID,
+      envID: _envID,
+      backgroundAfterSeconds: _backgroundAfterSeconds,
+      timeoutSeconds: _timeoutSeconds,
+      ...payload
+    } = params
     return target.client.executeBash(target.linkID, payload, {
       sessionID: target.session.sessionID,
       targetAgentID: target.session.targetAgentID,

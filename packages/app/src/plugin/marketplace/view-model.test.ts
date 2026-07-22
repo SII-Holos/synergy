@@ -5,7 +5,9 @@ import type { InstalledPlugin } from "./types"
 import {
   installationLabel,
   installedPluginFromSnapshot,
+  installedPluginStatusView,
   installedPluginsForView,
+  isApprovalDisabledPlugin,
   isDevelopmentPlugin,
   MARKETPLACE_NAV_ITEMS,
 } from "./view-model"
@@ -65,6 +67,57 @@ describe("plugin marketplace views", () => {
     expect(installedPluginFromSnapshot("focus", undefined, directory)).toBe(directory)
     expect(installedPluginFromSnapshot("focus", [], directory)).toBeUndefined()
     expect(installedPluginFromSnapshot("focus", [official, directory], official)).toBe(directory)
+  })
+
+  test("status labels distinguish active, approval-disabled, and ordinary disabled plugins", () => {
+    expect(installedPluginStatusView(directory, "development")).toEqual({
+      label: pluginMarketplace.statusActive,
+      isDisabled: false,
+      canReviewPermissions: false,
+    })
+    expect(installedPluginStatusView(official, "installed")).toEqual({
+      label: pluginMarketplace.statusActive,
+      isDisabled: false,
+      canReviewPermissions: false,
+    })
+
+    const approvalDisabled = plugin({
+      id: "needs-review",
+      name: "Needs Review",
+      version: "2.0.0",
+      installation: { kind: "directory", spec: "file:///review/dist", path: "/review/dist" },
+      health: "disabled",
+      loaded: false,
+      disabledReason: "Plugin permissions require approval.",
+      disabledPhase: "approval",
+      capabilities: ["filesystem.read"],
+      risk: "medium",
+      tools: [{ id: "scan", fullId: "needs-review.scan", capabilities: ["filesystem.read"] }],
+      operations: [{ id: "sync", type: "command", expose: ["api"] }],
+      uiContributions: 1,
+    })
+    expect(isApprovalDisabledPlugin(approvalDisabled)).toBe(true)
+    expect(installedPluginStatusView(approvalDisabled, "development")).toEqual({
+      label: pluginMarketplace.statusNeedsApproval,
+      isDisabled: true,
+      canReviewPermissions: true,
+    })
+    expect(installedPluginsForView([approvalDisabled], "development", "/review/dist")).toEqual([approvalDisabled])
+
+    const disabled = plugin({
+      id: "broken",
+      installation: { kind: "directory", spec: "file:///broken/dist", path: "/broken/dist" },
+      health: "disabled",
+      loaded: false,
+      disabledReason: "Entrypoint failed",
+      disabledPhase: "runtime",
+    })
+    expect(isApprovalDisabledPlugin(disabled)).toBe(false)
+    expect(installedPluginStatusView(disabled, "development")).toEqual({
+      label: pluginMarketplace.statusDisabled,
+      isDisabled: true,
+      canReviewPermissions: false,
+    })
   })
 })
 

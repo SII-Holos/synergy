@@ -1708,6 +1708,8 @@ ToolRegistry.register({
           return _(TOOL_TITLE_DESC["connect_status"])
         case "list":
           return _(TOOL_TITLE_DESC["connect_list"])
+        case "list_targets":
+          return _(TOOL_TITLE_DESC["connect_list_targets"])
         default:
           return props.input.action || ""
       }
@@ -1724,7 +1726,7 @@ ToolRegistry.register({
         trigger={{
           icon: "cable",
           title: TOOL_TITLE_DESC["connect"],
-          subtitle: props.input.linkID || "",
+          subtitle: props.input.targetID || props.input.linkID || "",
           tags: (() => {
             const l = statusLabel() || actionLabel()
             return l ? [{ label: l }] : undefined

@@ -5,42 +5,15 @@ import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import type { RewardsInfo } from "@ericsanchezok/synergy-sdk/client"
 import { getSemanticIcon } from "@ericsanchezok/synergy-ui/semantic-icon"
 import { library as L } from "@/locales/messages"
+import type { MemoryCategory } from "./category-colors"
+export { MEMORY_CATEGORIES, categoryColors, type MemoryCategory } from "./category-colors"
 export type View = "stats" | "memory" | "experience" | "skill"
 
 export type MemorySortKey = "newest" | "oldest" | "relevance"
 export type ExperienceSortKey = "newest" | "oldest" | "relevance" | "reward" | "qvalue" | "visits"
 export type ExperienceFilter = "all" | "scope" | "session"
 
-export type MemoryCategory =
-  | "user"
-  | "self"
-  | "relationship"
-  | "interaction"
-  | "workflow"
-  | "coding"
-  | "writing"
-  | "asset"
-  | "insight"
-  | "knowledge"
-  | "personal"
-  | "general"
-
 export type MemoryRecallMode = "always" | "contextual" | "search_only"
-
-export const MEMORY_CATEGORIES: MemoryCategory[] = [
-  "user",
-  "self",
-  "relationship",
-  "interaction",
-  "workflow",
-  "coding",
-  "writing",
-  "asset",
-  "insight",
-  "knowledge",
-  "personal",
-  "general",
-]
 
 export const categoryLabels: Record<MemoryCategory, string> = {
   user: "User",
@@ -57,21 +30,6 @@ export const categoryLabels: Record<MemoryCategory, string> = {
   general: "General",
 }
 
-export const categoryColors: Record<MemoryCategory, string> = {
-  user: "bg-[oklch(0.93_0.03_250)] text-[oklch(0.55_0.08_250)]",
-  self: "bg-[oklch(0.93_0.03_290)] text-[oklch(0.55_0.08_290)]",
-  relationship: "bg-[oklch(0.93_0.03_350)] text-[oklch(0.55_0.08_350)]",
-  interaction: "bg-[oklch(0.93_0.03_40)] text-[oklch(0.55_0.08_40)]",
-  workflow: "bg-[oklch(0.93_0.03_110)] text-[oklch(0.55_0.08_110)]",
-  coding: "bg-[oklch(0.93_0.03_210)] text-[oklch(0.55_0.08_210)]",
-  writing: "bg-[oklch(0.93_0.03_20)] text-[oklch(0.55_0.08_20)]",
-  asset: "bg-[oklch(0.93_0.03_160)] text-[oklch(0.55_0.08_160)]",
-  insight: "bg-[oklch(0.93_0.03_270)] text-[oklch(0.55_0.08_270)]",
-  knowledge: "bg-[oklch(0.93_0.03_180)] text-[oklch(0.55_0.08_180)]",
-  personal: "bg-[oklch(0.93_0.03_80)] text-[oklch(0.55_0.08_80)]",
-  general: "bg-surface-inset-base text-text-weak",
-}
-
 export const recallModeLabels: Record<MemoryRecallMode, string> = {
   always: "Always",
   contextual: "Contextual",
@@ -80,7 +38,7 @@ export const recallModeLabels: Record<MemoryRecallMode, string> = {
 
 export const recallModeColors: Record<MemoryRecallMode, string> = {
   always: "workbench-selected-surface text-text-strong ring-border-base/20",
-  contextual: "bg-surface-success-base/20 text-on-success-base",
+  contextual: "bg-surface-success-base/20 text-text-on-success-base",
   search_only: "bg-surface-inset-base text-text-weaker",
 }
 

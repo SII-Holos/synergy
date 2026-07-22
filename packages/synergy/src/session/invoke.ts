@@ -29,11 +29,13 @@ import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
 import { SessionProcessor } from "./processor"
 import { SessionMemoryPressure } from "./memory-pressure"
+import { SessionMemoryIncident } from "./memory-incident"
 import { ExternalAgentProcessor } from "@/external-agent/processor"
 import { ExternalAgent } from "@/external-agent/bridge"
 import { withPreambleSection } from "@/agent/prompt/preamble"
 import { SessionManager } from "./manager"
 import { SessionMessageCache } from "./message-cache"
+import { LLMTurnMemory } from "./llm-memory"
 import { SessionInbox } from "./inbox"
 import { SessionHistory } from "./history"
 import { TimeoutConfig } from "@/util/timeout-config"
@@ -148,7 +150,7 @@ export namespace SessionInvoke {
       }
 
       try {
-        return await loopBody(input.sessionID, lease)
+        return await loopBodyWithIncident(input.sessionID, lease)
       } catch (error) {
         await writeErrorAssistantIfMissing(input.sessionID, message.info as MessageV2.User, error).catch((err) => {
           log.error("failed to persist invocation error", { sessionID: input.sessionID, error: err })
@@ -209,11 +211,24 @@ export namespace SessionInvoke {
         runtime.waiters.push({ onComplete, onCancel })
       })
     }
-    return SessionManager.run(sessionID, (runLease) => loopBody(sessionID, runLease), {
+    return SessionManager.run(sessionID, (runLease) => loopBodyWithIncident(sessionID, runLease), {
       lease,
       requestNextWorkOnFailure: false,
     })
   })
+
+  async function loopBodyWithIncident(sessionID: string, lease: SessionManager.LoopLease) {
+    try {
+      return await loopBody(sessionID, lease)
+    } catch (error) {
+      if (SessionMemoryIncident.isOutOfMemory(error) && !(error instanceof MessageV2.SessionTerminalError)) {
+        await SessionMemoryIncident.capture({ error, sessionID }).catch((incidentError) => {
+          log.warn("failed to capture OOM incident", { error: incidentError })
+        })
+      }
+      throw error
+    }
+  }
 
   async function loopBody(sessionID: string, lease: SessionManager.LoopLease): Promise<MessageV2.WithParts> {
     ContinuationKernel.init()
@@ -632,7 +647,7 @@ export namespace SessionInvoke {
             systemParts.push(`<light-loop-context>
 You are running in the Light Loop workflow. The user has set a task that you must complete fully before stopping.
 
-Task: ${session.workflow.taskDescription}
+Task: ${session.workflow.instructions}
 
 Autonomously advance the task until it is complete. Before calling loop_stop(), carefully assess whether every aspect of the task has been addressed:
 - Have you produced all requested deliverables, artifacts, or changes?
@@ -724,6 +739,15 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             )
           }
         }
+        using memoryTurn = LLMTurnMemory.begin({
+          sessionID,
+          messageID: processor.message.id,
+          providerID: model.providerID,
+          modelID: model.id,
+          historyBeforeBytes: LLMTurnMemory.estimateBytes(sessionMessages),
+          baseline: SessionMemoryPressure.currentSnapshot(),
+        })
+        await memoryTurn.stabilizeBeforeProjection()
         let modelSessionMessages = WorkflowUserWrapper.projectMessages({
           messages: sessionMessages,
           session,
@@ -732,6 +756,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
         const modelProjection = MessageV2.projectModelMessages(modelSessionMessages, {
           maxHistoryImages: jobCtx.compactionMaxHistoryImages,
         })
+        memoryTurn.projected({ historyAfterBytes: LLMTurnMemory.estimateBytes(modelProjection.messages) })
         let preparedMessages = [
           ...modelProjection.messages,
           ...(isLastStep
@@ -828,9 +853,22 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           }),
         )
         const activeToolIDs = new Set(resolvedTools.activeToolIDs)
+        const activeToolDefinitions = promptPlan.toolDefinitions.filter((definition) =>
+          activeToolIDs.has(definition.id),
+        )
         const contextUsageProvenance = ContextUsage.buildProvenance({
           history: plannedHistoryProvenance,
-          toolDefinitions: promptPlan.toolDefinitions.filter((definition) => activeToolIDs.has(definition.id)),
+          toolDefinitions: activeToolDefinitions,
+        })
+        const toolSchemaBytes = LLMTurnMemory.estimateBytes(activeToolDefinitions)
+        memoryTurn.prepared({
+          toolSchemaBytes,
+          requestBytes: LLMTurnMemory.estimateBytes({
+            system: promptPlan.system,
+            lateSystem: promptPlan.lateSystem,
+            messages: promptPlan.messages,
+            tools: activeToolDefinitions,
+          }),
         })
 
         let streamInput: LLM.StreamInput | undefined
@@ -927,6 +965,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           model,
           contextUsageProvenance,
           maxOutputTokens: maxOutputTokensByMessage.get(R.id),
+          memoryTurn,
         }
         try {
           const currentStreamInput = streamInput
@@ -1173,6 +1212,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
   }): Promise<void> {
     const message = input.processor.message
     if (message.time.completed != null) return
+
+    if (SessionMemoryIncident.isOutOfMemory(input.error)) {
+      await SessionMemoryIncident.capture({
+        error: input.error,
+        sessionID: input.sessionID,
+        messageID: message.id,
+      }).catch((incidentError) => {
+        log.warn("failed to capture OOM incident", { error: incidentError })
+      })
+    }
 
     message.error = MessageV2.fromError(input.error, { providerID: input.model.providerID })
     message.finish = "error"
@@ -1824,30 +1873,34 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
 
     const sessionIDs = await SessionManager.listPendingReply(input?.scopeID)
     for (const sessionID of sessionIDs) {
-      const session = await SessionManager.getSession(sessionID)
-      if (!session) continue
-      if (session.agenda) continue
+      try {
+        const session = await SessionManager.getSession(sessionID)
+        if (!session) continue
+        if (session.agenda) continue
 
-      const messages = await effectiveCompactedMessages(sessionID)
-      const pendingReply = SessionProgress.pendingReply(messages)
+        const messages = await effectiveCompactedMessages(sessionID)
+        const pendingReply = SessionProgress.pendingReply(messages)
 
-      if (session.pendingReply !== pendingReply) {
-        await Session.update(sessionID, (draft) => {
-          draft.pendingReply = pendingReply || undefined
-        })
-      }
-
-      if (!pendingReply) continue
-
-      if (!SessionManager.isRunning(sessionID)) {
-        const repaired = await repairAfterAbort(sessionID)
-        if (repaired) {
-          log.info("repaired incomplete assistant during startup recovery", { sessionID })
-          continue
+        if (session.pendingReply !== pendingReply) {
+          await Session.update(sessionID, (draft) => {
+            draft.pendingReply = pendingReply || undefined
+          })
         }
-      }
 
-      log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+        if (!pendingReply) continue
+
+        if (!SessionManager.isRunning(sessionID)) {
+          const repaired = await repairAfterAbort(sessionID)
+          if (repaired) {
+            log.info("repaired incomplete assistant during startup recovery", { sessionID })
+            continue
+          }
+        }
+
+        log.info("pending reply found; automatic assistant resume is disabled", { sessionID })
+      } catch (error) {
+        log.warn("pending session startup recovery failed", { sessionID, error })
+      }
     }
   }
 

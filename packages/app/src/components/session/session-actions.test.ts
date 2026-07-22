@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { sessionActionVisibility, sessionScopeRequest } from "./session-actions"
+import { sessionActionVisibility, sessionModelControlVisibility, sessionScopeRequest } from "./session-actions"
 
 describe("session action visibility", () => {
   test("keeps transfer actions available for open Home sessions", () => {
@@ -31,5 +31,25 @@ describe("session transfer scope request", () => {
 
   test("addresses non-Home scopes through their directory key", () => {
     expect(sessionScopeRequest("/repo")).toEqual({ directory: "/repo" })
+  })
+})
+
+describe("session model control visibility", () => {
+  test("hides both model controls when the represented session cannot change models", () => {
+    expect(sessionModelControlVisibility({ canSelectModel: false, variantCount: 3 })).toEqual({
+      model: false,
+      variant: false,
+    })
+  })
+
+  test("shows effort only when an editable session has model variants", () => {
+    expect(sessionModelControlVisibility({ canSelectModel: true, variantCount: 0 })).toEqual({
+      model: true,
+      variant: false,
+    })
+    expect(sessionModelControlVisibility({ canSelectModel: true, variantCount: 2 })).toEqual({
+      model: true,
+      variant: true,
+    })
   })
 })

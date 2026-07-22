@@ -7,6 +7,8 @@ import { LoopEvent } from "./event"
 import { LoopError } from "./error"
 import { NoteStore } from "../note"
 import { Session } from "../session"
+import { Plugin } from "../plugin"
+import { Lock } from "../util/lock"
 import type { Info } from "./types"
 
 type LoopStatus = Info["status"]
@@ -29,6 +31,10 @@ export function isActiveLoopStatus(status: LoopStatus) {
   return status === "armed" || status === "running" || status === "waiting" || status === "auditing"
 }
 
+function terminalHookLock(scopeID: string, loopID: string): string {
+  return `blueprint_terminal_hook:${scopeID}:${loopID}`
+}
+
 export namespace BlueprintLoopStore {
   export async function create(input: {
     noteID: string
@@ -44,6 +50,11 @@ export namespace BlueprintLoopStore {
     loopIndex?: number
     model?: { providerID: string; modelID: string }
     source?: Info["source"]
+    sourceDigest?: string
+    budget?: Info["budget"]
+    pluginOwner?: Info["pluginOwner"]
+    executionTools?: Info["executionTools"]
+    auditTools?: Info["auditTools"]
   }): Promise<Info> {
     const scopeID = ScopeContext.current.scope.id
     const sid = Identifier.asScopeID(scopeID)
@@ -75,9 +86,13 @@ export namespace BlueprintLoopStore {
       runMode: input.runMode,
       parentSessionID: input.parentSessionID,
       firstPrompt: input.firstPrompt,
-      loopIndex: input.loopIndex,
       source: input.source ?? "user",
+      sourceDigest: input.sourceDigest,
+      budget: input.budget,
+      pluginOwner: input.pluginOwner,
       model: input.model,
+      executionTools: input.executionTools,
+      auditTools: input.auditTools,
       time: { created: now, updated: now },
     }
     await Storage.write(StoragePath.blueprintLoop(sid, id), loop)
@@ -158,6 +173,10 @@ export namespace BlueprintLoopStore {
     }
 
     const isTerminal = patch.status === "completed" || patch.status === "failed" || patch.status === "cancelled"
+    if (isTerminal) {
+      const { BlueprintLoopRuntime } = await import("./loop-runtime")
+      BlueprintLoopRuntime.cancelDeadline(scopeID, id)
+    }
 
     const updated = await Storage.update<Info>(StoragePath.blueprintLoop(sid, id), (draft) => {
       draft.status = patch.status
@@ -196,6 +215,7 @@ export namespace BlueprintLoopStore {
     }
 
     if (isTerminal) {
+      // Clear activeLoopID from note
       try {
         const note = await NoteStore.get(scopeID, updated.noteID)
         if (note.kind === "blueprint" && note.blueprint?.activeLoopID === id) {
@@ -207,6 +227,7 @@ export namespace BlueprintLoopStore {
         // best effort
       }
 
+      // Unbind execution session
       try {
         if (updated.sessionID) {
           await Session.update(updated.sessionID, (draft) => {
@@ -216,10 +237,53 @@ export namespace BlueprintLoopStore {
       } catch {
         // best effort
       }
+
+      // Archive plugin-owned generated resources (Note + execution Session)
+      // User/lattice-owned loops archive via their own lifecycle paths.
+      if (updated.source === "plugin") {
+        void NoteStore.update(scopeID, updated.noteID, { archived: true }).catch(() => {})
+        void Session.update(updated.sessionID, (draft) => {
+          draft.time.archived = Date.now()
+        }).catch(() => {})
+      }
+    }
+
+    if (isTerminal && updated.source === "plugin" && updated.pluginOwner) {
+      await deliverTerminalHook(scopeID, id)
     }
 
     await Bus.publish(LoopEvent.Updated, { loop: updated })
     return updated
+  }
+
+  export async function deliverTerminalHook(scopeID: string, id: string): Promise<void> {
+    using _ = await Lock.write(terminalHookLock(scopeID, id))
+    const path = StoragePath.blueprintLoop(Identifier.asScopeID(scopeID), id)
+    const loop = await Storage.read<Info>(path)
+    if (!loop.pluginOwner || loop.terminalHookDeliveredAt !== undefined) return
+
+    const delivery = await Plugin.deliverHookForPlugin(
+      loop.pluginOwner.pluginId,
+      loop.pluginOwner.pluginGeneration,
+      "blueprint.after",
+      { loop },
+    ).catch((hookError) => ({
+      status: "failed" as const,
+      handlerCount: 0,
+      succeededHandlerCount: 0,
+      error: `Hook blueprint.after delivery failed: ${hookError instanceof Error ? hookError.message : String(hookError)}`,
+    }))
+
+    await Storage.update<Info>(path, (draft) => {
+      if (draft.terminalHookDeliveredAt !== undefined) return
+      if (delivery.status === "delivered" && delivery.handlerCount > 0) {
+        draft.terminalHookDeliveredAt = Date.now()
+        draft.terminalHookError = undefined
+        return
+      }
+      draft.terminalHookError =
+        delivery.status === "delivered" ? "Hook blueprint.after reported delivery without a handler" : delivery.error
+    })
   }
 
   export async function complete(scopeID: string, id: string): Promise<Info> {

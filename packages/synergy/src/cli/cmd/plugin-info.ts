@@ -3,6 +3,7 @@ import type { PluginStatus } from "../../plugin/status"
 import { cmd } from "./cmd"
 import { UI } from "../ui"
 import { attachOption, ensureServer, fetchPluginApi } from "./plugin-server"
+import { pluginInfoStateText } from "./plugin-consent"
 
 function tierLabel(tier: PluginStatus["trust"]): string {
   return tier === "trusted-import"
@@ -41,9 +42,12 @@ export const PluginInfoCommand = cmd({
 
     const pluginId = args.plugin as string
     const status = await fetchPluginApi<PluginStatus>(serverUrl, `/${pluginId}/status`)
+    const stateText = pluginInfoStateText(status)
     const state = status.loaded
-      ? UI.Style.TEXT_SUCCESS + "loaded" + UI.Style.TEXT_NORMAL
-      : UI.Style.TEXT_DANGER + "disabled" + UI.Style.TEXT_NORMAL
+      ? UI.Style.TEXT_SUCCESS + stateText + UI.Style.TEXT_NORMAL
+      : status.disabledPhase === "approval"
+        ? UI.Style.TEXT_WARNING + stateText + UI.Style.TEXT_NORMAL
+        : UI.Style.TEXT_DANGER + stateText + UI.Style.TEXT_NORMAL
 
     UI.println()
     UI.println(
@@ -58,6 +62,9 @@ export const PluginInfoCommand = cmd({
     if (status.apiVersion) UI.println(`${UI.Style.TEXT_DIM}Plugin API:${UI.Style.TEXT_NORMAL}   ${status.apiVersion}`)
     if (status.generation) UI.println(`${UI.Style.TEXT_DIM}Generation:${UI.Style.TEXT_NORMAL}   ${status.generation}`)
     if (status.disabledReason) UI.println(`  ${UI.Style.TEXT_DANGER}${status.disabledReason}${UI.Style.TEXT_NORMAL}`)
+    if (status.disabledPhase === "approval") {
+      UI.println(`  ${UI.Style.TEXT_WARNING}Review with: synergy plugin approve ${status.id}${UI.Style.TEXT_NORMAL}`)
+    }
 
     UI.println()
     UI.println(`${UI.Style.TEXT_DIM}Capabilities:${UI.Style.TEXT_NORMAL} ${status.capabilities.length}`)
@@ -92,21 +99,6 @@ export const PluginInfoCommand = cmd({
       for (const [id, health] of degraded) UI.println(`  ${id}${health.lastError ? `: ${health.lastError}` : ""}`)
     }
 
-    try {
-      const approval = await fetchPluginApi<{ trustTier: string; approvedAt: number }>(
-        serverUrl,
-        `/${pluginId}/approval`,
-      )
-      UI.println()
-      UI.println(
-        `${UI.Style.TEXT_DIM}Approval:${UI.Style.TEXT_NORMAL} ${approval.trustTier} (approved ${new Date(approval.approvedAt).toLocaleDateString()})`,
-      )
-    } catch {
-      UI.println()
-      UI.println(
-        `${UI.Style.TEXT_DIM}Approval:${UI.Style.TEXT_NORMAL} ${UI.Style.TEXT_WARNING}not approved${UI.Style.TEXT_NORMAL}`,
-      )
-    }
     UI.println()
   },
 })
