@@ -45,6 +45,7 @@ import { ensureInit } from "./hooks/useSettingsForm"
 import { buildPatch } from "./hooks/useConfigPatch"
 import { useSettingsSave } from "./hooks/useSettingsSave"
 import { hasExplicitSettingsChanges, saveExplicitSettingsChanges } from "./settings-explicit-save"
+import { pluginSettingsResourceKey } from "./plugin-settings-resource"
 import { GeneralPanel } from "./panels/GeneralPanel"
 import { rollbackFailedLocalePatch } from "./panels/locale-preference-change"
 import { ModelsPanel } from "./panels/ModelsPanel"
@@ -818,9 +819,9 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
 
   const section = () => props.section
   const [values, { mutate }] = createResource(
-    () => section().pluginId,
-    async (pluginId) => {
-      const result = await globalSDK.client.plugin.getConfig({ pluginId })
+    () => pluginSettingsResourceKey(section()),
+    async ({ pluginId, scopeId }) => {
+      const result = await globalSDK.client.plugin.getConfig({ pluginId, scopeID: scopeId })
       return result.data ?? {}
     },
   )
@@ -828,10 +829,18 @@ function SettingsSectionContent(props: { section: RegisteredSettingsSection }) {
   async function updateValues(next: Record<string, unknown>) {
     const pluginId = section().pluginId
     if (!pluginId) return
-    const result = await globalSDK.client.plugin.updateConfig({ pluginId, pluginConfigUpdate: next })
+    const result = await globalSDK.client.plugin.updateConfig({
+      pluginId,
+      scopeID: section().scopeId,
+      pluginConfigUpdate: next,
+    })
     const saved = result.data ?? next
     mutate(saved)
-    window.dispatchEvent(new CustomEvent("synergy:plugin-config-changed", { detail: { pluginId, values: saved } }))
+    window.dispatchEvent(
+      new CustomEvent("synergy:plugin-config-changed", {
+        detail: { pluginId, scopeId: section().scopeId, values: saved },
+      }),
+    )
   }
 
   onMount(() => {

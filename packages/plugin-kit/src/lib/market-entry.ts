@@ -221,13 +221,32 @@ export function registryEntry(input: {
     releaseTagTemplate: input.releaseTagTemplate,
   })
 
+  const capabilityRisk = (key: string): "low" | "medium" | "high" => {
+    if (
+      [
+        "shell.execute",
+        "session.control",
+        "secrets",
+        "task.delegate",
+        "blueprint.delegate",
+        "lightloop.delegate",
+        "tool.invoke",
+      ].includes(key)
+    ) {
+      return "high"
+    }
+    if (["asset.write", "workspace.write", "session.read", "workspace.read", "settings.write"].includes(key)) {
+      return "medium"
+    }
+    return "low"
+  }
+
   const capabilities = manifest.capabilities.map((item) => item.id)
   const tools = manifest.contributions.filter((item) => item.kind === "tool").map((item) => item.id)
-  const risk = capabilities.some((item) =>
-    ["workspace.write", "secrets", "task.delegate", "blueprint.delegate", "lightloop.delegate"].includes(item),
-  )
+  const capabilityRisks = capabilities.map(capabilityRisk)
+  const risk = capabilityRisks.includes("high")
     ? ("high" as const)
-    : capabilities.length
+    : capabilityRisks.includes("medium")
       ? ("medium" as const)
       : ("low" as const)
   const integrity = `sha256-${sha256File(input.tarballPath)}`
@@ -274,7 +293,11 @@ export function registryEntry(input: {
         permissionsHash,
         risk,
         runtimeMode: "process",
-        permissionsSummary: capabilities.map((key) => ({ key, description: `Synergy host capability ${key}`, risk })),
+        permissionsSummary: capabilities.map((key) => ({
+          key,
+          description: `Synergy host capability ${key}`,
+          risk: capabilityRisk(key),
+        })),
         tools,
         uiSurfaces: uiSurfaces(manifest),
         publishedAt: input.publishedAt ?? new Date().toISOString(),

@@ -46,7 +46,7 @@ export default definePlugin({
 
 ## Contribution Factories
 
-Executable factories: `operation`, `tool`, `hook`, `authProvider`, `lifecycleUpgrade`, and `lifecycleUninstall`.
+Executable factories: `operation`, `tool`, `hook`, `cliCommand`, `authProvider`, `lifecycleUpgrade`, and `lifecycleUninstall`.
 
 Declarative factories: `event`, `agent`, `skill`, `mcp`, `workbenchPanel`, `navigationItem`, `messageRenderer`, `composerAction`, `composerExtension`, `selectionExtension`, `textAction`, `messageSlot`, `settings`, `theme`, and `icon`.
 
@@ -56,7 +56,9 @@ The generated manifest contains declarations only. Runtime startup reports its a
 
 Every executable call receives a fresh `PluginInvocationContext` with request ID, Scope, optional Session, actor, cancellation, logger, scoped events, and only the Host Services allowed by approved capabilities. Plugins never receive a raw Synergy client, server URL, or token.
 
-Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/current/get/cancel`; `current()` reads the durable owner of the invoking child Session and is intended for correlation-based domain binding. Non-agent callers must provide an explicit parent Session/message in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of model prompts and the native `task` tool; the owner plugin can launch it only through an approved `task.delegate` allowlist, and execution still uses native Cortex and child Sessions. `tool.invoke` remains agent-only.
+Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes `start/run/current/get/cancel`; `run()` waits for a native Cortex Task and returns its terminal snapshot, while `current()` reads the durable owner of the invoking child Session. Non-agent callers must provide an explicit parent Session/message for `start()` in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of ordinary prompt and native-task exposure.
+
+`asset.write` exposes `context.asset.create()` and returns a host-owned attachment. `shell.execute` exposes argv-only `context.shell.run()` through the ordinary permission and sandbox boundary. `cliCommand()` registers executable commands under `synergy <pluginId> <command>`. MCP contributions use strict shared local/remote schemas and are installed atomically under qualified `${pluginId}::${contributionId}` names.
 
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
 
@@ -64,7 +66,7 @@ Capabilities govern Host Services; they do not claim to restrict direct OS acces
 
 ## Trusted UI
 
-Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.
+Trusted Solid components receive `PluginSurfaceContext`. The component uses bound `operations.query/command`, scoped `events.subscribe`, settings `get/subscribe`, capability-gated `settings.replace`, and capability-gated host actions. plugin-kit compiles TSX and binds `solid-js`, `solid-js/web`, and `solid-js/store` to the host runtime; plugins must not ship a private Solid runtime.
 
 Source component shape:
 

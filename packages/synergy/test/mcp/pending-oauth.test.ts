@@ -13,6 +13,7 @@ function connection() {
     value: {
       client: { close },
       transport: { finishAuth },
+      identity: crypto.randomUUID(),
     },
   }
 }
@@ -28,6 +29,28 @@ describe.serial("PendingOAuth", () => {
 
     await PendingOAuth.register("demo", first.value)
     await PendingOAuth.register("demo", second.value)
+
+    expect(first.close).toHaveBeenCalledTimes(1)
+    expect(second.close).not.toHaveBeenCalled()
+    expect(PendingOAuth.get("demo")?.transport).toBe(second.value.transport)
+  })
+
+  test("serializes concurrent replacements so the last registration wins", async () => {
+    let releaseInitial!: () => void
+    const initialReleased = new Promise<void>((resolve) => {
+      releaseInitial = resolve
+    })
+    const initial = connection()
+    initial.value.client.close = mock(async () => initialReleased)
+    const first = connection()
+    const second = connection()
+    await PendingOAuth.register("demo", initial.value)
+
+    const firstRegistration = PendingOAuth.register("demo", first.value)
+    await Promise.resolve()
+    const secondRegistration = PendingOAuth.register("demo", second.value)
+    releaseInitial()
+    await Promise.all([firstRegistration, secondRegistration])
 
     expect(first.close).toHaveBeenCalledTimes(1)
     expect(second.close).not.toHaveBeenCalled()

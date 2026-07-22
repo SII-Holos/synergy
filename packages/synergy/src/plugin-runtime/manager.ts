@@ -74,7 +74,15 @@ export class PluginRuntimeManager {
     if (existing?.state === "ready") return existing
     const expectedHandlers = manifest.contributions
       .filter((item) =>
-        ["operation", "tool", "hook", "authProvider", "lifecycle.upgrade", "lifecycle.uninstall"].includes(item.kind),
+        [
+          "operation",
+          "tool",
+          "hook",
+          "cli.command",
+          "authProvider",
+          "lifecycle.upgrade",
+          "lifecycle.uninstall",
+        ].includes(item.kind),
       )
       .map((item) => `${item.kind}:${item.id}`)
       .sort()

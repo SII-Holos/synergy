@@ -3,7 +3,7 @@ import fs from "fs/promises"
 import path from "path"
 import { pathToFileURL } from "url"
 import z from "zod"
-import { compilePluginManifest, definePlugin, operation } from "@ericsanchezok/synergy-plugin"
+import { compilePluginManifest, definePlugin, mcp, operation } from "@ericsanchezok/synergy-plugin"
 import { resolvePluginSpec } from "../../src/plugin/spec-resolver"
 import { add, PluginApprovalRequiredError, resolveConfiguredPluginId } from "../../src/plugin/install"
 import { ScopeContext } from "../../src/scope/context"
@@ -49,6 +49,35 @@ describe("plugin installation discovery", () => {
     await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(tampered))
     await expect(resolvePluginSpec(pathToFileURL(tmp.path).href, { install: false })).rejects.toThrow(
       "integrity mismatch",
+    )
+  })
+
+  test("rejects malformed plugin MCP metadata during data-only discovery", async () => {
+    await using tmp = await tmpdir()
+    const definition = definePlugin({
+      id: "invalid-mcp-discovery",
+      version: "1.0.0",
+      description: "Malformed MCP metadata must fail before activation",
+      contributions: [
+        mcp({
+          id: "remote",
+          server: { type: "remote", url: "https://example.com/mcp", startup: "manual" },
+        }),
+      ],
+    })
+    const manifest = compilePluginManifest(definition, { generation: "invalid-mcp-generation" })
+    const tampered = {
+      ...manifest,
+      contributions: manifest.contributions.map((contribution) =>
+        contribution.kind === "mcp"
+          ? { ...contribution, server: { ...contribution.server, url: "file:///tmp/mcp.sock" } }
+          : contribution,
+      ),
+    }
+    await Bun.write(path.join(tmp.path, "plugin.json"), JSON.stringify(tampered))
+
+    await expect(resolvePluginSpec(pathToFileURL(tmp.path).href, { install: false })).rejects.toThrow(
+      "MCP remote URL must use http or https",
     )
   })
 

@@ -23,6 +23,7 @@ export type PluginHostServiceMethod =
   | "session.get"
   | "session.abort"
   | "task.start"
+  | "task.run"
   | "task.current"
   | "task.get"
   | "task.cancel"
@@ -42,6 +43,8 @@ export type PluginHostServiceMethod =
   | "secrets.delete"
   | "tool.invoke"
   | "agent.call"
+  | "asset.create"
+  | "shell.run"
 
 export type HostToPlugin =
   | { type: "activate"; input: RuntimeActivationData }
@@ -104,5 +107,5 @@ export function deserializePluginRuntimeError(error: SerializedPluginRuntimeErro
   })
 }
 
-export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 5
+export const PLUGIN_RUNTIME_PROTOCOL_VERSION = 6
 export const PLUGIN_RUNTIME_MESSAGE_DELIMITER = "\n"

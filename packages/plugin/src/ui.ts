@@ -31,6 +31,7 @@ export interface PluginSurfaceContext {
   events: PluginUIEvents
   settings: {
     get(): Promise<Record<string, unknown>>
+    replace(values: Record<string, unknown>): Promise<void>
     subscribe(listener: (values: Record<string, unknown>) => void): () => void
   }
   host: PluginUIHostActions

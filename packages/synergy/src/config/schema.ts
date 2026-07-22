@@ -1,6 +1,16 @@
 import { Log } from "../util/log"
 import z from "zod"
 import { DEFAULT_PLUGIN_MARKETPLACE_CONFIG } from "@ericsanchezok/synergy-plugin/market"
+import {
+  McpLifecycleFields,
+  McpLocalServerConfig,
+  McpOAuthConfig,
+  McpRemoteServerConfig,
+  McpRetryConfig,
+  McpToolCacheConfig,
+  McpToolFilterConfig,
+  McpToolsConfig,
+} from "@ericsanchezok/synergy-plugin"
 import { DEFAULT_PLUGIN_RUNTIME_LIMITS } from "@ericsanchezok/synergy-util/plugin-policy"
 import { ModelsDev } from "../provider/models"
 import { LSPServer } from "../lsp/server"
@@ -8,122 +18,28 @@ import { ModelRole } from "../provider/model-role"
 import { normalizePublicHttpsOrigin } from "../util/public-https-origin"
 import { GitHubIntegrationConfig as GitHubIntegrationConfigSchema } from "../github/types"
 
-export const McpRetry = z
-  .object({
-    maxAttempts: z.number().int().positive().optional().describe("Maximum connection attempts before giving up"),
-    backoffMs: z.number().int().positive().optional().describe("Initial backoff delay in ms between retries"),
-    backoffMultiplier: z.number().positive().optional().describe("Multiplier applied to backoff on each retry"),
-    cooldownMs: z.number().int().nonnegative().optional().describe("Cooldown period in ms before a retry cycle resets"),
-  })
-  .strict()
-  .meta({ ref: "McpRetryConfig" })
-export type McpRetry = z.infer<typeof McpRetry>
+export const McpRetry = McpRetryConfig
+export type McpRetry = McpRetryConfig
 
-export const McpToolFilter = z
-  .object({
-    include: z.array(z.string()).optional().describe("Tool names to include (allowlist)"),
-    exclude: z.array(z.string()).optional().describe("Tool names to exclude (blocklist)"),
-  })
-  .strict()
-  .meta({ ref: "McpToolFilterConfig" })
-export type McpToolFilter = z.infer<typeof McpToolFilter>
+export const McpToolFilter = McpToolFilterConfig
+export type McpToolFilter = McpToolFilterConfig
 
-export const McpTools = z
-  .object({
-    approval: z.enum(["auto", "always", "per_session"]).optional().describe("Tool approval mode"),
-    maxOutputBytes: z.number().int().positive().optional().describe("Maximum tool output size in bytes"),
-  })
-  .strict()
-  .meta({ ref: "McpToolsConfig" })
-export type McpTools = z.infer<typeof McpTools>
+export const McpTools = McpToolsConfig
+export type McpTools = McpToolsConfig
 
-export const McpToolCache = z
-  .object({
-    mode: z.enum(["disabled", "session", "persistent"]).optional().describe("Tool list caching mode"),
-    ttlMs: z.number().int().positive().optional().describe("Time-to-live for cached tool list in ms"),
-  })
-  .strict()
-  .meta({ ref: "McpToolCacheConfig" })
-export type McpToolCache = z.infer<typeof McpToolCache>
+export const McpToolCache = McpToolCacheConfig
+export type McpToolCache = McpToolCacheConfig
 
-const McpLifecycleFields = {
-  startup: z.enum(["eager", "lazy", "manual"]).optional().describe("MCP startup mode"),
-  required: z.boolean().optional().describe("If true, this MCP server is required for the configured workflow"),
-  connectTimeout: z.number().int().positive().optional().describe("Timeout in ms for initial connection handshake"),
-  listTimeout: z.number().int().positive().optional().describe("Timeout in ms for listing tools"),
-  callTimeout: z.number().int().positive().optional().describe("Timeout in ms for tool call execution"),
-  retry: McpRetry.optional().describe("Retry policy for connecting to this server"),
-  idleShutdownMs: z
-    .number()
-    .int()
-    .positive()
-    .optional()
-    .describe("Idle time in ms after which the server is shut down"),
-  toolFilter: McpToolFilter.optional().describe("Filter which tools are exposed from this server"),
-  tools: McpTools.optional().describe("Tool execution behavior config"),
-  toolCache: McpToolCache.optional().describe("Tool list caching behavior"),
-} satisfies z.core.$ZodLooseShape
+const McpEnabled = {
+  enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
+}
 
-export const McpLocal = z
-  .object({
-    type: z.literal("local").describe("Type of MCP server connection"),
-    command: z.string().array().describe("Command and arguments to run the MCP server"),
-    cwd: z.string().optional().describe("Working directory for local MCP servers"),
-    environment: z
-      .record(z.string(), z.string())
-      .optional()
-      .describe("Environment variables to set when running the MCP server"),
-    enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-    timeout: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
-    ...McpLifecycleFields,
-  })
-  .strict()
-  .meta({
-    ref: "McpLocalConfig",
-  })
+export const McpLocal = McpLocalServerConfig.extend(McpEnabled).strict().meta({ ref: "McpLocalConfig" })
 
-export const McpOAuth = z
-  .object({
-    clientId: z
-      .string()
-      .optional()
-      .describe("OAuth client ID. If not provided, dynamic client registration (RFC 7591) will be attempted."),
-    clientSecret: z.string().optional().describe("OAuth client secret (if required by the authorization server)"),
-    scope: z.string().optional().describe("OAuth scopes to request during authorization"),
-  })
-  .strict()
-  .meta({
-    ref: "McpOAuthConfig",
-  })
-export type McpOAuth = z.infer<typeof McpOAuth>
+export const McpOAuth = McpOAuthConfig
+export type McpOAuth = McpOAuthConfig
 
-export const McpRemote = z
-  .object({
-    type: z.literal("remote").describe("Type of MCP server connection"),
-    url: z.string().describe("URL of the remote MCP server"),
-    enabled: z.boolean().optional().describe("Enable or disable the MCP server on startup"),
-    headers: z.record(z.string(), z.string()).optional().describe("Headers to send with the request"),
-    oauth: z
-      .union([McpOAuth, z.literal(false)])
-      .optional()
-      .describe("OAuth authentication configuration for the MCP server. Set to false to disable OAuth auto-detection."),
-    timeout: z
-      .number()
-      .int()
-      .positive()
-      .optional()
-      .describe("Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout."),
-    ...McpLifecycleFields,
-  })
-  .strict()
-  .meta({
-    ref: "McpRemoteConfig",
-  })
+export const McpRemote = McpRemoteServerConfig.extend(McpEnabled).strict().meta({ ref: "McpRemoteConfig" })
 
 export const Mcp = z.discriminatedUnion("type", [McpLocal, McpRemote])
 export type Mcp = z.infer<typeof Mcp>

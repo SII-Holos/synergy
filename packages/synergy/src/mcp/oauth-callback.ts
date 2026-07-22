@@ -184,9 +184,9 @@ export namespace McpOAuthCallback {
     })
   }
 
-  export function cancelPending(mcpName: string): void {
+  export function cancelPending(mcpName: string, expectedState?: string): void {
     const oauthState = stateByMcpName.get(mcpName)
-    if (!oauthState) return
+    if (!oauthState || (expectedState !== undefined && oauthState !== expectedState)) return
     const pending = removePending(oauthState)
     pending?.reject(new Error("Authorization cancelled"))
   }
