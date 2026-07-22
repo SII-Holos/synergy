@@ -101,8 +101,7 @@ const invokeRowDesc = {
 const concurrencyRowTitle = { id: "settings.runtime.agents.concurrency.title", message: "Max Concurrent Subagents" }
 const concurrencyRowDesc = {
   id: "settings.runtime.agents.concurrency.desc",
-  message:
-    "Maximum Cortex subagent tasks running at once. The runtime temporarily lowers the active limit under memory pressure.",
+  message: "Maximum Cortex subagent tasks running at once. Memory guidance never overrides this setting.",
 }
 const providerSectionTitle = { id: "settings.runtime.agents.provider.title", message: "Provider" }
 const ttfbRowTitle = { id: "settings.runtime.agents.ttfb.title", message: "TTFB Timeout" }
@@ -248,17 +247,23 @@ export function TimeoutsPanel(props: {
     managedByEnvironment() ? String(environmentConcurrency()) : props.runtime.cortexConcurrency
   const concurrencyStateLabel = () => {
     const memoryPressureLimit = props.concurrencyStatus?.memoryPressureLimit
-    if (memoryPressureLimit !== null && memoryPressureLimit !== undefined) {
+    const effective = props.concurrencyStatus?.effective
+    if (
+      memoryPressureLimit !== null &&
+      memoryPressureLimit !== undefined &&
+      effective !== undefined &&
+      memoryPressureLimit < effective
+    ) {
       if (managedByEnvironment()) {
         return _({
-          id: "settings.runtime.agents.concurrency.memorySafetyManaged",
-          message: "Managed by environment · Memory safety limit: {value}",
+          id: "settings.runtime.agents.concurrency.memoryAdvisoryManaged",
+          message: "Managed by environment · Memory recommendation: {value}",
           values: { value: String(memoryPressureLimit) },
         })
       }
       return _({
-        id: "settings.runtime.agents.concurrency.memorySafety",
-        message: "Memory safety limit: {value}",
+        id: "settings.runtime.agents.concurrency.memoryAdvisory",
+        message: "Memory recommendation: {value}. Your setting remains active.",
         values: { value: String(memoryPressureLimit) },
       })
     }
