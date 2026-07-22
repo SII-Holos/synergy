@@ -293,6 +293,7 @@ describe("performance analysis", () => {
             agent: "performance-analyst",
             tools: {},
             isRoot: true,
+            origin: { type: "system" },
             metadata: { source: "performance-analysis" },
           })
           expect(messages[0]?.parts).toContainEqual(

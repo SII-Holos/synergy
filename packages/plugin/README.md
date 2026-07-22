@@ -48,7 +48,7 @@ export default definePlugin({
 
 Executable factories: `operation`, `tool`, `hook`, `authProvider`, `lifecycleUpgrade`, and `lifecycleUninstall`.
 
-Declarative factories: `event`, `agent`, `skill`, `mcp`, `workbenchPanel`, `navigationItem`, `messageRenderer`, `composerAction`, `settings`, `theme`, and `icon`.
+Declarative factories: `event`, `agent`, `skill`, `mcp`, `workbenchPanel`, `navigationItem`, `messageRenderer`, `composerAction`, `composerExtension`, `selectionExtension`, `textAction`, `messageSlot`, `settings`, `theme`, and `icon`.
 
 The generated manifest contains declarations only. Runtime startup reports its actual handler IDs, and the host requires an exact match.
 
@@ -59,6 +59,8 @@ Every executable call receives a fresh `PluginInvocationContext` with request ID
 Capabilities govern Host Services; they do not claim to restrict direct OS access by the external process. `task.delegate` exposes asynchronous `start/current/get/cancel`; `current()` reads the durable owner of the invoking child Session and is intended for correlation-based domain binding. Non-agent callers must provide an explicit parent Session/message in the active Scope. Contributed Agents are registered in Synergy's native Agent registry. Set `hidden: true` for an owner-only Agent that must stay out of model prompts and the native `task` tool; the owner plugin can launch it only through an approved `task.delegate` allowlist, and execution still uses native Cortex and child Sessions. `tool.invoke` remains agent-only.
 
 `task.delegate` is the plugin capability; `task` is the separate runtime permission evaluated by the current control profile. `task.start()` parent binding failures expose `PluginHostServiceErrorCode.TASK_PARENT_REQUIRED` or `TASK_PARENT_SCOPE_MISMATCH`. Host Service error codes survive process IPC.
+
+`agent.call` exposes a bounded Sessionless Agent call only to an executable contribution that lists it in `requires`. By default a plugin may call only a hidden Agent owned by its active generation; capability constraints may allow additional Agent names and lower the host runtime/input/output ceilings. The call has no tools, Session history, or Cortex lifecycle.
 
 ## Trusted UI
 

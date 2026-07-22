@@ -1234,6 +1234,34 @@ export const pluginPermission = {
   groupNetwork: { id: "app.plugin.permissionGroup.network", message: "Network" },
   groupUi: { id: "app.plugin.permissionGroup.ui", message: "UI" },
   groupRuntime: { id: "app.plugin.permissionGroup.runtime", message: "Runtime" },
+  composerReadTitle: { id: "app.plugin.permission.composerRead.title", message: "Read composer drafts" },
+  composerReadDescription: {
+    id: "app.plugin.permission.composerRead.description",
+    message: "Read settled text and selection from the active Synergy composer.",
+  },
+  composerWriteTitle: { id: "app.plugin.permission.composerWrite.title", message: "Change composer drafts" },
+  composerWriteDescription: {
+    id: "app.plugin.permission.composerWrite.description",
+    message: "Offer completions and annotations or apply edits to the active composer.",
+  },
+  composerInterceptTitle: {
+    id: "app.plugin.permission.composerIntercept.title",
+    message: "Intercept message submission",
+  },
+  composerInterceptDescription: {
+    id: "app.plugin.permission.composerIntercept.description",
+    message: "Delay a normal message before it enters a Session while the plugin finishes its interaction.",
+  },
+  selectionReadTitle: { id: "app.plugin.permission.selectionRead.title", message: "Read selected text" },
+  selectionReadDescription: {
+    id: "app.plugin.permission.selectionRead.description",
+    message: "Receive non-sensitive text selected in Synergy and add text actions to its menu.",
+  },
+  agentCallTitle: { id: "app.plugin.permission.agentCall.title", message: "Call Synergy agents" },
+  agentCallDescription: {
+    id: "app.plugin.permission.agentCall.description",
+    message: "Send bounded text to approved Sessionless Agents without tools or Session history.",
+  },
 } as const satisfies Record<string, AppMessageDescriptor>
 
 // ── Plugin risk labels ────────────────────────────────────────────────────────

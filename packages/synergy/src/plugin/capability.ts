@@ -29,12 +29,19 @@ export function riskForCapabilities(capabilities: string[]): "low" | "medium" | 
         "lightloop.delegate",
         "secrets",
         "tool.invoke",
+        "composer.write",
+        "composer.intercept",
+        "agent.call",
       ].includes(capability),
     )
   ) {
     return "high"
   }
-  if (capabilities.some((capability) => ["session.read", "workspace.read", "settings.write"].includes(capability))) {
+  if (
+    capabilities.some((capability) =>
+      ["session.read", "workspace.read", "settings.write", "composer.read", "selection.read"].includes(capability),
+    )
+  ) {
     return "medium"
   }
   return "low"

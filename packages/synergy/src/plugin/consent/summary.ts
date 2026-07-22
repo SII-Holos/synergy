@@ -62,6 +62,31 @@ const labels: Record<string, { title: string; description: string; category: Per
     description: "Open Synergy sessions, panels, and resources from plugin UI.",
     category: "ui",
   },
+  "composer.read": {
+    title: "Read composer drafts",
+    description: "Read settled text and selection from the active Synergy composer.",
+    category: "ui",
+  },
+  "composer.write": {
+    title: "Change composer drafts",
+    description: "Offer completions and annotations or apply edits to the active composer.",
+    category: "ui",
+  },
+  "composer.intercept": {
+    title: "Intercept message submission",
+    description: "Delay a normal message before it enters a Session while the plugin finishes its interaction.",
+    category: "ui",
+  },
+  "selection.read": {
+    title: "Read selected text",
+    description: "Receive non-sensitive text selected in Synergy and add text actions to its menu.",
+    category: "ui",
+  },
+  "agent.call": {
+    title: "Call Synergy agents",
+    description: "Send bounded text to approved Sessionless Agents without tools or Session history.",
+    category: "tools",
+  },
 }
 
 export function generatePermissionItems(capabilities: string[]): PermissionItem[] {

@@ -197,7 +197,9 @@ function SessionPageContent() {
         if (request.operation === "leave") {
           await sdk.client.worktree.leave({ directory: request.directory, sessionID: request.sessionID })
           const progress = createWorkspaceTransitionSuccessProgress({ operation: "leave" })
-          await sync.session.sync(request.sessionID).catch(() => undefined)
+          await sync.session
+            .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+            .catch(() => undefined)
           setSessionTransition(request.sessionID, progress, {
             dismiss: () => clearSessionTransition(request.sessionID),
           })
@@ -222,14 +224,16 @@ function SessionPageContent() {
           await sdk.client.worktree
             .leave({ directory: request.directory, sessionID: request.sessionID })
             .catch(() => undefined)
-          await sync.session.sync(request.sessionID).catch(() => undefined)
+          await sync.session
+            .sync(request.sessionID, { trigger: { type: "workspace-transition" } })
+            .catch(() => undefined)
           throw new Error(setupFailure)
         }
         const description = result.data?.name
           ? i18n._(AP.layoutWorktreeDesc.id, { name: result.data.name })
           : i18n._(AP.layoutWorktreeDescDefault.id)
         const progress = createWorkspaceTransitionSuccessProgress({ operation: "enter", description })
-        await sync.session.sync(request.sessionID).catch(() => undefined)
+        await sync.session.sync(request.sessionID, { trigger: { type: "workspace-transition" } }).catch(() => undefined)
         setSessionTransition(request.sessionID, progress, {
           dismiss: () => clearSessionTransition(request.sessionID),
         })

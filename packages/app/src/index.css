@@ -692,6 +692,18 @@ a:active,
   font-weight: 500;
 }
 
+::highlight(synergy-composer-info) {
+  text-decoration: underline dotted var(--icon-info-base);
+}
+
+::highlight(synergy-composer-warning) {
+  text-decoration: underline wavy var(--icon-warning-base);
+}
+
+::highlight(synergy-composer-error) {
+  text-decoration: underline wavy var(--icon-critical-base);
+}
+
 .synergy-workbench-canvas .prompt-input-shell {
   container: prompt-input / inline-size;
   border-radius: 16px;

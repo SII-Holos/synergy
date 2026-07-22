@@ -2988,15 +2988,11 @@ msgid "app.library.skills.card.compatLabel"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.card.diagnosticsCount"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.card.openDetails"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.referencesCount"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.card.scriptsCount"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3040,6 +3036,10 @@ msgid "app.library.skills.detail.compatLevel"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.declaredCompatibility"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.delete"
 msgstr ""
 
@@ -3048,7 +3048,31 @@ msgid "app.library.skills.detail.description"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.detail.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.detail.entryFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exporting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZip"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.exportZipAria"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocation"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.detail.invocationStatus"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3056,23 +3080,7 @@ msgid "app.library.skills.detail.location"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.detail.references"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.scripts"
-msgstr ""
-
-#. js-lingui-explicit-id
 msgid "app.library.skills.detail.skillPath"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.unsupported"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.detail.warnings"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3089,6 +3097,34 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.empty.search"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.generic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notFound"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.notStandard"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.export.error.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccess"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.exportSuccessDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3132,6 +3168,50 @@ msgid "app.library.skills.import.button"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "app.library.skills.import.destination"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.actualLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.codeLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.conflict"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.generic"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.guidance"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.invalid"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limit"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.limitLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.nameLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.error.pathLabel"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "app.library.skills.import.fromUrl"
 msgstr ""
 
@@ -3148,27 +3228,23 @@ msgid "app.library.skills.import.label"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZip"
+msgid "app.library.skills.import.scope.global"
 msgstr ""
 
 #. js-lingui-explicit-id
-msgid "app.library.skills.import.uploadZipDesc"
+msgid "app.library.skills.import.scope.project"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchive"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.import.uploadArchiveDesc"
 msgstr ""
 
 #. Skill import URL placeholder
 msgid "app.library.skills.import.urlPlaceholder"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailed"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedDesc"
-msgstr ""
-
-#. js-lingui-explicit-id
-msgid "app.library.skills.importFailedUrlDesc"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -3177,6 +3253,22 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "app.library.skills.importSuccessDesc"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.modelOnly"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userModel"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.library.skills.invocation.userOnly"
 msgstr ""
 
 #. js-lingui-explicit-id
@@ -5181,6 +5273,46 @@ msgstr ""
 
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.version.label"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.agentCall.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerIntercept.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerRead.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.composerWrite.title"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.description"
+msgstr ""
+
+#. ── Plugin permission groups ──────────────────────────────────────────────────
+msgid "app.plugin.permission.selectionRead.title"
 msgstr ""
 
 #. ── Plugin permission groups ──────────────────────────────────────────────────
@@ -8056,6 +8188,34 @@ msgstr ""
 msgid "nav.tools.title"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "plugin.textAction.copy"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.cut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.paste"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.selectAll"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "plugin.textAction.unavailable"
+msgstr ""
+
 #. Runtime Lingui descriptors for prompt-input component strings.
  *  Each is a plain object with `id` + English `message`.
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
@@ -9326,6 +9486,13 @@ msgstr ""
  *  Translate at use time via `useLocale().i18n._(descriptor)` or
  *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
 msgid "prompt.submit.inProgress.description"
+msgstr ""
+
+#. Runtime Lingui descriptors for prompt-input component strings.
+ *  Each is a plain object with `id` + English `message`.
+ *  Translate at use time via `useLocale().i18n._(descriptor)` or
+ *  `i18n._({ ...descriptor, values: {...} })` when ICU placeholders are present.
+msgid "prompt.submit.interceptFailed"
 msgstr ""
 
 #. Runtime Lingui descriptors for prompt-input component strings.

@@ -67,9 +67,11 @@ The configured timeout can be disabled or changed. A timeout returns an explicit
 
 ## Skills
 
-A Skill contains `SKILL.md` plus optional scripts, references, and assets. Metadata controls discovery; the body is loaded only after the Skill is selected, and additional resources are loaded as needed. This progressive disclosure keeps specialized workflows out of every prompt.
+A Skill packages a workflow into `SKILL.md` with optional references, scripts, and assets. Synergy discovers native Synergy Skills and compatible Agent Skills, Claude, Codex, and OpenClaw directories, normalizes them into one catalog, and loads the body only when a user invokes the slash command or the model selects the `skill` tool.
 
-Skills can be built in, global, project-local, plugin-provided, or imported from a local directory or URL. Skill roots are trusted runtime areas for operations that remain inside the configured root, but a Skill does not bypass tool permissions when it reads or writes elsewhere.
+Skill metadata controls whether users see a slash command and whether the model can load the Skill. It does not grant tool authorization: `allowed-tools` is accepted as author metadata, while actual execution still follows the active agent, Scope, control profile, permission rules, and sandbox. References load on demand and must stay inside the Skill directory.
+
+The exact manifest fields, source roots, precedence, slash-rendering grammar, import/export limits, reload behavior, and compatibility contract live in [Skills](../reference/skills.md).
 
 ## Commands
 
