@@ -71,6 +71,13 @@ export const PluginHostServiceErrorCode = {
   TASK_PARENT_REQUIRED: "PLUGIN_TASK_PARENT_REQUIRED",
   TASK_PARENT_SCOPE_MISMATCH: "PLUGIN_TASK_PARENT_SCOPE_MISMATCH",
   SESSION_SCOPE_MISMATCH: "PLUGIN_SESSION_SCOPE_MISMATCH",
+  AGENT_NOT_FOUND: "PLUGIN_AGENT_NOT_FOUND",
+  AGENT_NOT_OWNED: "PLUGIN_AGENT_NOT_OWNED",
+  AGENT_MODEL_UNAVAILABLE: "PLUGIN_AGENT_MODEL_UNAVAILABLE",
+  AGENT_INPUT_TOO_LARGE: "PLUGIN_AGENT_INPUT_TOO_LARGE",
+  AGENT_OUTPUT_TOO_LARGE: "PLUGIN_AGENT_OUTPUT_TOO_LARGE",
+  AGENT_TIMEOUT: "PLUGIN_AGENT_TIMEOUT",
+  AGENT_CANCELLED: "PLUGIN_AGENT_CANCELLED",
 } as const
 export type PluginHostServiceErrorCode = (typeof PluginHostServiceErrorCode)[keyof typeof PluginHostServiceErrorCode]
 
@@ -226,6 +233,18 @@ export interface PluginToolHostService {
   invoke(toolId: string, input: unknown): Promise<ToolResult>
 }
 
+export interface PluginAgentHostService {
+  call(input: { agent: string; text: string; timeoutMs?: number; maxOutputChars?: number }): Promise<{ text: string }>
+}
+
+export interface SessionUserMessageAfterInput {
+  message: {
+    id: string
+    text: string
+    createdAt: number
+  }
+}
+
 export interface PluginInvocationContext {
   requestId: string
   scopeId: string
@@ -243,6 +262,7 @@ export interface PluginInvocationContext {
   settings?: PluginSettingsService
   secrets?: PluginSecretsService
   tools?: PluginToolHostService
+  agent?: PluginAgentHostService
 }
 
 export interface PluginActivationContext {

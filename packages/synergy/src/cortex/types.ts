@@ -4,6 +4,11 @@ import { Identifier } from "../id/id"
 export namespace CortexTypes {
   export const TaskStatus = z.enum(["queued", "running", "completed", "error", "cancelled", "interrupted"])
   export type TaskStatus = z.infer<typeof TaskStatus>
+  export type TerminalTaskStatus = Exclude<TaskStatus, "queued" | "running">
+
+  export function isTerminalStatus(status: unknown): status is TerminalTaskStatus {
+    return status === "completed" || status === "error" || status === "cancelled" || status === "interrupted"
+  }
 
   export const PluginTaskOwner = z.object({
     pluginId: z.string(),

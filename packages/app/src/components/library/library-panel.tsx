@@ -213,7 +213,7 @@ export function LibraryPanel() {
               />
             </Show>
             <Show when={view() === "skill"}>
-              <SkillView sdk={sdk} search={debouncedSearch()} directory={directory()} />
+              <SkillView sdk={sdk} search={debouncedSearch()} directory={directory()} scopeID={currentScopeID()} />
             </Show>
           </div>
         </AppPanel.Body>

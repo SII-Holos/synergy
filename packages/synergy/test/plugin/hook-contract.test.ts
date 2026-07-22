@@ -38,4 +38,12 @@ describe("plugin hook contract", () => {
       timeoutMs: 120_000,
     })
   })
+  test("requires session.read for persisted user message observers", () => {
+    expect(PluginHookPointRegistry.get("session.user-message.after")).toMatchObject({
+      mode: "observer",
+      failure: "continue",
+      requiredCapability: "session.read",
+      redactErrors: true,
+    })
+  })
 })

@@ -44,6 +44,7 @@ Non-tool product UI expresses meaning through `packages/ui/src/components/semant
 5. When the glyph is new to the shared Icon component, register it in both `packages/ui/src/components/icon.tsx` and `packages/ui/src/plugin/builtin-icons.ts` before referencing it from the semantic map.
 6. Render through `getSemanticIcon(token)` and type stored metadata as `SemanticIconTokenName`.
 7. Keep raw icon names inside base icon controls, file-type/icon registries, tool-card plumbing, or plugin-provided icon paths. Built-in Plugin host UI still uses semantic tokens. Tool icons follow `add-tool`, not the product semantic-token registry.
+8. Route Composer completion, annotation, revision-checked edits, and normal-message preflight through the single `ComposerDocumentController`; do not let features or plugin adapters read and mutate contenteditable independently. Keep Composer and selected-text snapshots transient and out of sync/replay stores.
 
 Run `bun test test/semantic-icon.test.ts` from `packages/ui`. It rejects duplicate glyph mappings, missing shared registrations, raw JSX icon literals, and raw icon object metadata outside the documented base/tool/plugin-data exceptions.
 

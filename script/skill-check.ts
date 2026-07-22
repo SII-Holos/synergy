@@ -2,15 +2,10 @@
 
 import { readdir, stat } from "node:fs/promises"
 import path from "node:path"
+import { ConfigMarkdown } from "../packages/synergy/src/config/markdown"
+import { SkillManifest } from "../packages/synergy/src/skill/manifest"
 
-const SKILL_NAME = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
-const FRONTMATTER = /^---\n([\s\S]*?)\n---\n/
 const MARKDOWN_LINK = /\[[^\]]*\]\(([^)]+)\)/g
-
-type Frontmatter = {
-  name: string
-  description: string
-}
 
 export async function validateSkillRoot(root: string): Promise<string[]> {
   const entries = await readdir(root, { withFileTypes: true }).catch(() => [])
@@ -19,7 +14,7 @@ export async function validateSkillRoot(root: string): Promise<string[]> {
   const errors = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory())
-      .toSorted((a, b) => a.name.localeCompare(b.name))
+      .toSorted((left, right) => left.name.localeCompare(right.name))
       .map((entry) => validateSkillDirectory(path.join(root, entry.name))),
   )
   return errors.flat()
@@ -27,23 +22,24 @@ export async function validateSkillRoot(root: string): Promise<string[]> {
 
 async function validateSkillDirectory(skillDir: string): Promise<string[]> {
   const errors: string[] = []
-  const directoryName = path.basename(skillDir)
   const skillFile = path.join(skillDir, "SKILL.md")
   const source = await Bun.file(skillFile)
     .text()
     .catch(() => "")
   if (!source) return [`${relative(skillFile)}: missing or empty SKILL.md`]
 
-  const frontmatter = parseFrontmatter(source, skillFile, errors)
-  if (!frontmatter) return errors
+  const standard = await SkillManifest.normalizeFile({ entryFile: skillFile, source: "synergy", mode: "strict" })
+  errors.push(
+    ...standard.diagnostics.map(
+      (diagnostic) =>
+        `${relative(diagnostic.path ?? skillFile)}: ${diagnostic.field ? `${diagnostic.field}: ` : ""}${diagnostic.message}`,
+    ),
+  )
+  const document = await ConfigMarkdown.parse(skillFile).catch(() => undefined)
+  const name = typeof document?.data.name === "string" ? document.data.name : path.basename(skillDir)
+  const description = typeof document?.data.description === "string" ? document.data.description : undefined
 
-  if (frontmatter.name !== directoryName) {
-    errors.push(`${relative(skillFile)}: name '${frontmatter.name}' must match directory '${directoryName}'`)
-  }
-  if (!SKILL_NAME.test(frontmatter.name) || frontmatter.name.length > 64) {
-    errors.push(`${relative(skillFile)}: name must be lowercase hyphen-case and at most 64 characters`)
-  }
-  if (frontmatter.description.length < 40) {
+  if (description && description.length < 40) {
     errors.push(`${relative(skillFile)}: description must explain both behavior and when to use the Skill`)
   }
   if (/\bTODO\b|\[TODO/i.test(source)) {
@@ -51,41 +47,11 @@ async function validateSkillDirectory(skillDir: string): Promise<string[]> {
   }
 
   await validateLinks(source, skillFile, errors)
-  await validateOpenAIYaml(skillDir, frontmatter.name, errors)
+  await validateOpenAIYaml(skillDir, name, errors)
   return errors
 }
 
-function parseFrontmatter(source: string, skillFile: string, errors: string[]): Frontmatter | undefined {
-  const match = source.match(FRONTMATTER)
-  if (!match) {
-    errors.push(`${relative(skillFile)}: missing YAML frontmatter`)
-    return
-  }
-
-  const values = new Map<string, string>()
-  for (const line of match[1].split("\n")) {
-    if (!line.trim()) continue
-    const field = line.match(/^([a-z_]+):\s*(.+)$/)
-    if (!field) {
-      errors.push(`${relative(skillFile)}: unsupported frontmatter line '${line}'`)
-      continue
-    }
-    values.set(field[1], parseScalar(field[2], skillFile, errors))
-  }
-
-  const unexpected = [...values.keys()].filter((key) => key !== "name" && key !== "description")
-  if (unexpected.length > 0) {
-    errors.push(`${relative(skillFile)}: unsupported frontmatter fields: ${unexpected.join(", ")}`)
-  }
-  const name = values.get("name")?.trim()
-  const description = values.get("description")?.trim()
-  if (!name) errors.push(`${relative(skillFile)}: missing name`)
-  if (!description) errors.push(`${relative(skillFile)}: missing description`)
-  if (!name || !description) return
-  return { name, description }
-}
-
-function parseScalar(raw: string, file: string, errors: string[]): string {
+function parseScalar(raw: string, file: string, errors: string[]) {
   if (!raw.startsWith('"')) return raw.trim()
   try {
     const value = JSON.parse(raw)
@@ -97,10 +63,10 @@ function parseScalar(raw: string, file: string, errors: string[]): string {
 
 async function validateLinks(source: string, skillFile: string, errors: string[]) {
   for (const match of source.matchAll(MARKDOWN_LINK)) {
-    let target = match[1].trim()
+    let target = match[1]!.trim()
     if (!target || target.startsWith("#") || /^[a-z]+:/i.test(target)) continue
     if (target.startsWith("<") && target.endsWith(">")) target = target.slice(1, -1)
-    target = target.split("#", 1)[0].split("?", 1)[0]
+    target = target.split("#", 1)[0]!.split("?", 1)[0]!
     const resolved = path.resolve(path.dirname(skillFile), decodeURIComponent(target))
     const exists = await stat(resolved)
       .then(() => true)
@@ -128,7 +94,7 @@ async function validateOpenAIYaml(skillDir: string, skillName: string, errors: s
       errors.push(`${relative(file)}: interface values must be quoted strings ('${line}')`)
       continue
     }
-    values.set(field[1], parseScalar(field[2], file, errors))
+    values.set(field[1]!, parseScalar(field[2]!, file, errors))
   }
 
   for (const key of ["display_name", "short_description", "default_prompt"]) {

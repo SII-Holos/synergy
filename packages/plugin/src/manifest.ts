@@ -133,6 +133,33 @@ const ComposerActionContribution = UIBase.extend({
   slot: z.string().min(1),
 }).strict()
 
+const HeadlessUIBase = ContributionBase.extend({
+  order: z.number().int(),
+  component: Component,
+})
+
+const ComposerExtensionContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.composerExtension"),
+}).strict()
+
+const SelectionExtensionContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.selectionExtension"),
+}).strict()
+
+const TextActionContribution = ContributionBase.extend({
+  kind: z.literal("ui.textAction"),
+  label: z.string().min(1),
+  icon: z.string().optional(),
+  order: z.number().int(),
+  operation: ContributionId,
+}).strict()
+
+const MessageSlotContribution = HeadlessUIBase.extend({
+  kind: z.literal("ui.messageSlot"),
+  slot: z.enum(["message.before", "message.after", "message.actions"]),
+  roles: z.array(z.enum(["user", "assistant"])).optional(),
+}).strict()
+
 const SettingsContribution = UIBase.extend({
   kind: z.literal("ui.settings"),
   group: z.string().min(1),
@@ -170,6 +197,10 @@ export const PluginManifestContribution = z.discriminatedUnion("kind", [
   NavigationItemContribution,
   MessageRendererContribution,
   ComposerActionContribution,
+  ComposerExtensionContribution,
+  SelectionExtensionContribution,
+  TextActionContribution,
+  MessageSlotContribution,
   SettingsContribution,
   ThemeContribution,
   IconContribution,
@@ -242,6 +273,42 @@ export const PluginManifest = z
           path: ["contributions", contribution.id, "enabledWhen", "setting"],
           message: `Undeclared plugin setting ${contribution.enabledWhen.setting}`,
         })
+      }
+      if (contribution.kind === "hook" && contribution.point === "session.user-message.after") {
+        if (!contribution.requires?.includes("session.read")) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "requires"],
+            message: "session.user-message.after requires session.read",
+          })
+        }
+      }
+      if (
+        (contribution.kind === "ui.selectionExtension" || contribution.kind === "ui.textAction") &&
+        !contribution.requires?.includes("selection.read")
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["contributions", contribution.id, "requires"],
+          message: `${contribution.kind} requires selection.read`,
+        })
+      }
+      if (contribution.kind === "ui.textAction") {
+        const operation = manifest.contributions.find(
+          (item) => item.kind === "operation" && item.id === contribution.operation,
+        )
+        if (
+          !operation ||
+          operation.kind !== "operation" ||
+          operation.type !== "command" ||
+          !operation.expose.includes("ui")
+        ) {
+          context.addIssue({
+            code: "custom",
+            path: ["contributions", contribution.id, "operation"],
+            message: "Text action must reference a UI-exposed command operation",
+          })
+        }
       }
       if (contribution.kind === "tool" && contribution.input.type !== "object") {
         context.addIssue({
