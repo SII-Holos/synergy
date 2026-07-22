@@ -27,18 +27,3 @@ describe("SessionToolInput.normalize", () => {
     expect(SessionToolInput.normalize(undefined)).toEqual({})
   })
 })
-
-describe("SessionToolInput.fromStream", () => {
-  test("reparses the bounded streamed JSON into a plain record", () => {
-    expect(SessionToolInput.fromStream('{"command":"git status","workdir":"/tmp"}')).toEqual({
-      command: "git status",
-      workdir: "/tmp",
-    })
-  })
-
-  test("falls back when the stream is absent, partial, or not an object", () => {
-    expect(SessionToolInput.fromStream(undefined)).toBeUndefined()
-    expect(SessionToolInput.fromStream('{"command":')).toBeUndefined()
-    expect(SessionToolInput.fromStream('["git status"]')).toBeUndefined()
-  })
-})

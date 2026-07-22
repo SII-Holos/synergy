@@ -1072,19 +1072,16 @@ export namespace SessionProcessor {
                       const pendingState = pendingToolCallStates.get(value.toolCallId)
                       pendingToolCallStates.delete(value.toolCallId)
                       const streamedRaw = generatingAccum[value.toolCallId]
-                      const streamedInput = SessionToolInput.fromStream(streamedRaw)
-                      const toolInput = streamedInput ?? SessionToolInput.normalize(value.input)
-                      const toolInputBytes =
-                        streamedInput && streamedRaw !== undefined
-                          ? SessionBounds.byteLength(streamedRaw)
-                          : SessionBounds.toolInputByteLength(toolInput)
+                      const toolInput = SessionToolInput.normalize(value.input)
+                      const toolInputBytes = SessionBounds.toolInputByteLength(toolInput)
                       log.info("tool.stream.tool_call.input_ready", {
                         sessionID: input.sessionID,
                         messageID: input.assistantMessage.id,
                         callID: value.toolCallId,
                         tool: value.toolName,
-                        source: streamedInput ? "bounded_raw" : "provider_input",
+                        source: "ai_sdk_input",
                         bytes: toolInputBytes,
+                        streamedBytes: streamedRaw === undefined ? undefined : SessionBounds.byteLength(streamedRaw),
                       })
                       const runningMetadata = ToolTimeout.mergeMetadata(
                         runningToolMetadata(value.toolName, value.providerMetadata),
@@ -1098,9 +1095,9 @@ export namespace SessionProcessor {
                       })
                       streamInput.memoryTurn?.observeToolRawChars(
                         value.toolCallId,
-                        streamedInput && streamedRaw !== undefined
+                        streamedRaw !== undefined
                           ? streamedRaw.length
-                          : LLMTurnMemory.estimateChars(value.input, SessionBounds.TOOL_INPUT_MAX_BYTES),
+                          : LLMTurnMemory.estimateChars(toolInput, SessionBounds.TOOL_INPUT_MAX_BYTES),
                       )
                       if (toolInputBytes > SessionBounds.TOOL_INPUT_MAX_BYTES) {
                         const error = SessionBounds.toolInputExceededMessage()

@@ -144,6 +144,7 @@ Tool definitions are filtered for agent visibility and current workflow before p
 `SessionProcessor` owns streamed tool state:
 
 - tool input can move through generating, pending, and running states;
+- streamed raw argument deltas are transport/progress data used for incremental bounds and diagnostics, while the AI SDK `tool-call.input` is the canonical input for final bounds, persistence, loop guards, permission evaluation, and execution;
 - each provider call ID owns one runtime execution promise, so replayed AI SDK callbacks reuse the original result or error instead of repeating tool side effects;
 - each execution has a settlement slot keyed by provider call ID;
 - completed output, attachments, metadata, timing, and errors are persisted on the original tool part;
