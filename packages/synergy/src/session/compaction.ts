@@ -631,8 +631,13 @@ export namespace SessionCompaction {
       if (ctx.step <= 1) return []
       return [{ type: "prune" }]
     },
-    async execute(ctx) {
-      await prune({ sessionID: ctx.sessionID, messages: ctx.messages, modelID: ctx.modelID })
+    capture(ctx) {
+      return { type: "prune", sessionID: ctx.sessionID, modelID: ctx.modelID }
+    },
+    async execute(input) {
+      const { Session } = await import(".")
+      const messages = await Session.messages({ sessionID: input.sessionID })
+      await prune({ sessionID: input.sessionID, messages, modelID: input.modelID })
       return "pass"
     },
   })

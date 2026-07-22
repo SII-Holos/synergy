@@ -231,7 +231,7 @@ describe("SessionSummary", () => {
     ).toEqual([{ type: "summarize" }])
   })
 
-  test("post job summarizes from its message snapshot without rereading or mutating it", async () => {
+  test("post job reloads history from a detached payload without mutating the caller snapshot", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({
       scope: await tmp.scope(),
@@ -316,8 +316,10 @@ describe("SessionSummary", () => {
           api: { npm: "@ai-sdk/openai", id: modelID },
           options: {},
         }))
-        ;(Session.messages as any) = mock(async () => {
-          throw new Error("post job unexpectedly reread session history")
+        let historyReads = 0
+        ;(Session.messages as any) = mock(async (input: Parameters<typeof Session.messages>[0]) => {
+          historyReads++
+          return originalSessionMessages(input)
         })
 
         await LoopJob.execute([{ type: "summarize" }], {
@@ -342,6 +344,7 @@ describe("SessionSummary", () => {
         }
         expect(storedUser?.summary?.diffs).toEqual([diff])
         expect(messages).toEqual(before)
+        expect(historyReads).toBeGreaterThan(0)
 
         await Session.remove(session.id)
       },

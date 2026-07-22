@@ -586,12 +586,19 @@ LoopJob.register({
     if (!ctx.lastAssistant || !SessionProgress.isTerminalAssistant(ctx.lastAssistant)) return []
     return [{ type: "summarize" }]
   },
-  async execute(ctx) {
-    await SessionSummary.summarize({
+  capture(ctx) {
+    return {
+      type: "summarize",
       sessionID: ctx.sessionID,
       messageID: ctx.lastUser.id,
       revisionID: ctx.lastAssistant?.id,
-      messages: ctx.messages.slice(),
+    }
+  },
+  async execute(input) {
+    await SessionSummary.summarize({
+      sessionID: input.sessionID,
+      messageID: input.messageID,
+      revisionID: input.revisionID,
     })
     return "pass"
   },

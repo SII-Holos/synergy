@@ -32,12 +32,25 @@ LoopJob.register({
     if (ctx.step !== 1) return []
     return [{ type: "ensure-title" }]
   },
-  async execute(ctx) {
-    await ensureTitle({
-      session: ctx.session,
+  capture(ctx) {
+    return {
+      type: "ensure-title",
+      sessionID: ctx.sessionID,
       modelID: ctx.lastUser.model.modelID,
       providerID: ctx.lastUser.model.providerID,
-      history: ctx.messages,
+    }
+  },
+  async execute(input) {
+    const { Session } = await import(".")
+    const [session, history] = await Promise.all([
+      Session.get(input.sessionID),
+      Session.messages({ sessionID: input.sessionID }),
+    ])
+    await ensureTitle({
+      session,
+      modelID: input.modelID,
+      providerID: input.providerID,
+      history,
     })
     return "pass"
   },
