@@ -22,8 +22,8 @@ import PLAN_SYNERGY_MAX from "./prompt/plan-synergy-max.txt"
 import COAUTHOR_REMINDER from "./prompt/coauthor-reminder.txt"
 import { defer } from "../util/defer"
 import type { Command } from "../command/command"
-import { $ } from "bun"
-import { ConfigMarkdown } from "../config/markdown"
+import { CommandRenderer } from "../command/renderer"
+import { SkillRenderer } from "../skill/renderer"
 import "./summary"
 import { NamedError } from "@ericsanchezok/synergy-util/error"
 import { fn } from "@/util/fn"
@@ -81,7 +81,7 @@ import { WorkflowUserWrapper } from "./workflow-user-wrapper"
 import type { ToolDisplay } from "@ericsanchezok/synergy-plugin/tool"
 import { ObservabilitySpans } from "@/observability/spans"
 import { ObservabilityContext } from "@/observability/context"
-import { SkillPaths } from "@/skill/paths"
+import { SkillSourceProfile } from "@/skill/source-profile"
 
 export { InvokeInput, resolveInputParts } from "./input"
 
@@ -614,7 +614,7 @@ export namespace SessionInvoke {
           const resolved = await ControlProfileCompiler.resolve(profileId, {
             workspace,
             workspaceType: workspaceInfo?.type === "git_worktree" ? "worktree" : "main",
-            trustedRoots: SkillPaths.runtimeSkillRootCandidatesSync(workspace),
+            trustedRoots: SkillSourceProfile.allRootPaths(workspace),
           })
           if (resolved.valid) {
             const ctx = buildPermissionContext(resolved, workspace)
@@ -1667,12 +1667,6 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       .optional(),
   })
   export type CommandInput = z.infer<typeof CommandInput>
-  const bashRegex = /!`([^`]+)`/g
-  // Match [Image N] as single token, quoted strings, or non-space sequences
-  const argsRegex = /(?:\[Image\s+\d+\]|"[^"]*"|'[^']*'|[^\s"']+)/gi
-  const placeholderRegex = /\$(\d+)/g
-  const quoteTrimRegex = /^["']|["']$/g
-
   function commandMetadata(command: Command.Info) {
     return {
       command: {
@@ -1776,43 +1770,11 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
     if (!command.template) throw new CommandRuntime.NotFoundError({ name: input.command })
     const agentName = command.agent ?? input.agent ?? (await Agent.defaultAgent())
 
-    const raw = input.arguments.match(argsRegex) ?? []
-    const args = raw.map((arg) => arg.replace(quoteTrimRegex, ""))
-
-    const templateCommand = await command.template
-
-    const placeholders = templateCommand.match(placeholderRegex) ?? []
-    let last = 0
-    for (const item of placeholders) {
-      const value = Number(item.slice(1))
-      if (value > last) last = value
-    }
-
-    // Let the final placeholder swallow any extra arguments so prompts read naturally
-    const withArgs = templateCommand.replaceAll(placeholderRegex, (_, index) => {
-      const position = Number(index)
-      const argIndex = position - 1
-      if (argIndex >= args.length) return ""
-      if (position === last) return args.slice(argIndex).join(" ")
-      return args[argIndex]
-    })
-    let template = withArgs.replaceAll("$ARGUMENTS", input.arguments)
-
-    const sh = ConfigMarkdown.shell(template)
-    if (sh.length > 0) {
-      const results = await Promise.all(
-        sh.map(async ([, cmd]) => {
-          try {
-            return await $`${{ raw: cmd }}`.quiet().nothrow().text()
-          } catch (error) {
-            return `Error executing command: ${error instanceof Error ? error.message : String(error)}`
-          }
-        }),
-      )
-      let index = 0
-      template = template.replace(bashRegex, () => results[index++])
-    }
-    template = template.trim()
+    const template = await command.template
+    const renderedTexts =
+      command.source === "skill"
+        ? SkillRenderer.render({ template, arguments: input.arguments })
+        : [await CommandRenderer.render({ template, arguments: input.arguments })]
 
     const model = await (async () => {
       if (command.model) {
@@ -1853,8 +1815,16 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
       throw error
     }
 
-    const templateParts = await resolveInputParts(template)
-    const parts = [...templateParts, ...(input.parts ?? [])]
+    const textParts: InvokeInput["parts"] = []
+    const attachments: InvokeInput["parts"] = []
+    for (const text of renderedTexts) {
+      const renderedParts = await resolveInputParts(text)
+      for (const part of renderedParts) {
+        if (part.type === "text") textParts.push(part)
+        else attachments.push(part)
+      }
+    }
+    const parts = [...textParts, ...attachments, ...(input.parts ?? [])]
 
     const result = (await invoke({
       sessionID: input.sessionID,
