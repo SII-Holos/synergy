@@ -148,6 +148,8 @@ Automatic reasoning variants are derived from model identity (`model.id`, API mo
 
 `role_variant` selects a variant name for a model role only when the resolved model exposes that same variant. If a provider-managed reasoning model exposes no automatic variants, `role_variant: { "thinking": "max" }` does not synthesize provider options; the request uses the provider's default reasoning behavior. Explicit model `variants` configured under a provider model are merged after automatic defaults, so they can add or override named variants for that model.
 
+Feishu/Lark account configuration may pair an explicit `model` with `variant`. The Settings Channel model selector lists the same model variants used by model roles, and the selected variant is sent only while that account model is effective. A conversation-level `/model` override takes precedence and does not reuse the account model's variant.
+
 ## Control Profiles and Sandbox
 
 `controlProfile` selects `guarded`, `autonomous`, or `full_access`. Session and agent settings can override the global value through the resolution order documented in [Execution Boundaries](../architecture/execution-boundaries.md).

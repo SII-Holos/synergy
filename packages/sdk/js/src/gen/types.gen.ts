@@ -2907,6 +2907,10 @@ export type ChannelFeishuAccountConfig = {
    */
   model?: string
   /**
+   * Model variant to use with this account model (e.g. low, high, max)
+   */
+  variant?: string
+  /**
    * Resolve sender display names via Feishu contact API
    */
   resolveSenderNames?: boolean

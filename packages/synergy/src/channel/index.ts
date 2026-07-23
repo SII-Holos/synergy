@@ -18,6 +18,7 @@ import { SessionInteraction } from "../session/interaction"
 import { SessionInvoke, InvokeInput } from "../session/invoke"
 
 import { ChannelCommand } from "./command"
+import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import {
   Info as InfoSchema,
@@ -236,7 +237,7 @@ export namespace Channel {
       accountId,
       accountConfig,
       channelConfig,
-      onMessage: (ctx) => handleMessage(provider, ctx, scope),
+      onMessage: (ctx) => handleMessage(provider, ctx, scope, accountConfig),
       signal: abort.signal,
       onDisconnect: (reason) => {
         if (abort.signal.aborted) return
@@ -355,7 +356,12 @@ export namespace Channel {
     reconnects.set(key, timer)
   }
 
-  async function handleMessage(provider: Provider, ctx: MessageContext, scope: Scope): Promise<void> {
+  async function handleMessage(
+    provider: Provider,
+    ctx: MessageContext,
+    scope: Scope,
+    accountConfig: unknown,
+  ): Promise<void> {
     await ScopeContext.provide({
       scope,
       fn: async () => {
@@ -450,9 +456,10 @@ export namespace Channel {
           streaming.start(),
         ])
         const sessionID = session.id
-        const sessionModel = session.modelOverride
-          ? { providerID: session.modelOverride.providerID, modelID: session.modelOverride.modelID }
-          : undefined
+        const accountInvocation = resolveChannelAccountInvocation({
+          accountConfig,
+          sessionModelOverride: session.modelOverride,
+        })
 
         let activeTextMessageId: string | null = null
         const assistantTranscript = new Map<string, string>()
@@ -523,7 +530,7 @@ export namespace Channel {
         try {
           const result = await SessionInvoke.invoke({
             sessionID,
-            model: sessionModel,
+            ...accountInvocation,
             parts: buildPromptParts(ctx),
           })
 

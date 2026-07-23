@@ -26818,6 +26818,10 @@
             "description": "Model to use for this account in providerID/modelID format (e.g. openai/gpt-4o)",
             "type": "string"
           },
+          "variant": {
+            "description": "Model variant to use with this account model (e.g. low, high, max)",
+            "type": "string"
+          },
           "resolveSenderNames": {
             "description": "Resolve sender display names via Feishu contact API",
             "default": true,
