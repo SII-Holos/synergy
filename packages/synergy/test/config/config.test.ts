@@ -1080,7 +1080,7 @@ test("migrates legacy channel holos config to top-level holos", async () => {
     )
 
     resetMigrations()
-    await runMigrations()
+    await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
     expect(migrated.holos).toEqual({
@@ -1131,7 +1131,7 @@ test("removes legacy channel holos config when top-level holos already exists", 
     )
 
     resetMigrations()
-    await runMigrations()
+    await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
     expect(migrated.holos).toEqual({
@@ -1164,7 +1164,7 @@ test("migrates legacy auto_classifier config to smartAllow", async () => {
     )
 
     resetMigrations()
-    await runMigrations()
+    await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
     expect(migrated.smartAllow).toBe(true)
@@ -1195,7 +1195,7 @@ test("migrates project permissions domain auto_classifier config to smartAllow",
 
     process.chdir(project)
     resetMigrations()
-    await runMigrations()
+    await runMigrations({ targetDomain: "config" })
 
     const migrated = parseJsonc(await Bun.file(target).text()) as Record<string, any>
     expect(migrated.smartAllow).toBe(false)
