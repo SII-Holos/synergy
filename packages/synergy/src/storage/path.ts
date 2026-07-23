@@ -260,7 +260,19 @@ export namespace StoragePath {
   /** Daily buckets: stats/daily/{YYYY-MM-DD} */
   export const statsDailyRoot = () => ["stats", "daily"]
   export const statsDaily = (day: string) => ["stats", "daily", day]
-  // Channel diagnostics (per-account durable store)
+  // Channel diagnostics (independently addressable records per account)
   export const channelDiagnosticsRoot = () => ["channel", "diagnostics"]
-  export const channelDiagnosticsAccount = (accountHash: string) => ["channel", "diagnostics", accountHash]
+  export const channelDiagnosticsAccountsRoot = () => [...channelDiagnosticsRoot(), "accounts"]
+  export const channelDiagnosticsAccountRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountsRoot(),
+    accountHash,
+  ]
+  export const channelDiagnosticsRecordsRoot = (accountHash: string) => [
+    ...channelDiagnosticsAccountRoot(accountHash),
+    "records",
+  ]
+  export const channelDiagnosticsRecord = (accountHash: string, recordID: string) => [
+    ...channelDiagnosticsRecordsRoot(accountHash),
+    recordID,
+  ]
 }

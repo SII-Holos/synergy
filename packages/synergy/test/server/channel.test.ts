@@ -46,13 +46,13 @@ function diagnosticProvider(input: { type: string; lifecycle: "borrowed_transpor
   }
 }
 
-async function configureChannel(type: string) {
+async function configureChannel(type: string, accountId = "account") {
   ConfigRuntime.current = mock(async () => {
     return {
       channel: {
         [type]: {
           type,
-          accounts: { account: { enabled: true } },
+          accounts: { [accountId]: { enabled: true } },
         },
       },
     } as unknown as Config.Info
@@ -98,6 +98,24 @@ describe("Channel diagnostics NDJSON route", () => {
     }
 
     expect(lines.length).toBeGreaterThan(0)
+  })
+
+  test("pulls one complete NDJSON record per response chunk", async () => {
+    const type = `ndjson-pull-${crypto.randomUUID()}`
+    const fake = diagnosticProvider({ type, lifecycle: "borrowed_transport" })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+    await inHome(() => Channel.start(type, "account"))
+
+    const res = await Server.App().request(`/channel/${type}/account/diagnostics.ndjson`)
+    const reader = res.body!.getReader()
+    const first = await reader.read()
+    await reader.cancel()
+
+    expect(first.done).toBe(false)
+    const lines = new TextDecoder().decode(first.value).split("\n").filter(Boolean)
+    expect(lines).toHaveLength(1)
+    expect(() => JSON.parse(lines[0]!)).not.toThrow()
   })
 
   test("rejects unknown account/provider with an error status", async () => {
@@ -156,5 +174,22 @@ describe("Channel diagnostics NDJSON route", () => {
     expect(disposition).toContain(type)
     expect(disposition).toContain("account")
     expect(disposition).toContain("diagnostics.ndjson")
+  })
+
+  test("sanitizes diagnostics attachment filenames", async () => {
+    const type = `ndjson-filename-${crypto.randomUUID()}`
+    const accountId = `account\"界`
+    const fake = diagnosticProvider({ type, lifecycle: "borrowed_transport" })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type, accountId)
+    await inHome(() => Channel.start(type, accountId))
+
+    const res = await Server.App().request(
+      `/channel/${encodeURIComponent(type)}/${encodeURIComponent(accountId)}/diagnostics.ndjson`,
+    )
+    const disposition = res.headers.get("Content-Disposition")
+
+    expect(res.status).toBe(200)
+    expect(disposition).toBe(`attachment; filename="channel-${type}-account__-diagnostics.ndjson"`)
   })
 })

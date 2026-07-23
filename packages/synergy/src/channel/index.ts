@@ -23,7 +23,12 @@ import { createStatusReactionController } from "./status-reactions"
 import { ManagedProjectOwnership } from "./managed-project-ownership"
 import { externalIdentityHash } from "./identity"
 import { ChannelHost } from "./host"
-import { recording as recordDiagnostic, list as listDiagnostics, DiagnosticRecord } from "./diagnostics"
+import {
+  recording as recordDiagnostic,
+  list as listDiagnostics,
+  iterate as iterateDiagnostics,
+  DiagnosticRecord,
+} from "./diagnostics"
 import {
   Info as InfoSchema,
   Status as StatusSchema,
@@ -920,6 +925,10 @@ export namespace Channel {
 
   export async function getDiagnostics(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
     return listDiagnostics(channelType, accountId)
+  }
+
+  export function streamDiagnostics(channelType: string, accountId: string): AsyncGenerator<DiagnosticRecord> {
+    return iterateDiagnostics(channelType, accountId)
   }
   export async function init(): Promise<void> {
     await state()

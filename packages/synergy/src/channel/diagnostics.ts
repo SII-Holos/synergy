@@ -3,6 +3,7 @@ import { Storage } from "@/storage/storage"
 import { StoragePath } from "@/storage/path"
 import { externalIdentityHash } from "./identity"
 import { Log } from "@/util/log"
+import { Lock } from "@/util/lock"
 
 const log = Log.create({ service: "channel-diagnostics" })
 
@@ -171,59 +172,90 @@ function accountHash(channelType: string, accountId: string): string {
   return externalIdentityHash(channelType, accountId)
 }
 
-function pruneByAge(records: DiagnosticRecord[], now: number): DiagnosticRecord[] {
-  const cutoff = now - RETENTION_MS
-  return records.filter((r) => r.timestamp >= cutoff)
+function recordID(timestamp: number): string {
+  return `${timestamp.toString().padStart(13, "0")}-${crypto.randomUUID()}`
 }
 
-function pruneByCount(records: DiagnosticRecord[]): DiagnosticRecord[] {
-  if (records.length <= MAX_RECORDS) return records
-  return records.slice(records.length - MAX_RECORDS)
+function recordTimestamp(id: string): number | undefined {
+  const separator = id.indexOf("-")
+  if (separator === -1) return
+  const timestamp = Number(id.slice(0, separator))
+  if (!Number.isSafeInteger(timestamp) || timestamp < 0) return
+  return timestamp
+}
+
+async function removeRecords(account: string, ids: string[]): Promise<void> {
+  const concurrency = 32
+  for (let offset = 0; offset < ids.length; offset += concurrency) {
+    await Promise.all(
+      ids
+        .slice(offset, offset + concurrency)
+        .map((id) => Storage.remove(StoragePath.channelDiagnosticsRecord(account, id))),
+    )
+  }
+}
+
+async function pruneBeforeWrite(account: string, now: number): Promise<void> {
+  const ids = await Storage.scan(StoragePath.channelDiagnosticsRecordsRoot(account))
+  const cutoff = now - RETENTION_MS
+  const expired: string[] = []
+  const retained: string[] = []
+
+  for (const id of ids) {
+    const timestamp = recordTimestamp(id)
+    if (timestamp === undefined || timestamp < cutoff) expired.push(id)
+    else retained.push(id)
+  }
+
+  const overflow = Math.max(0, retained.length - MAX_RECORDS + 1)
+  await removeRecords(account, [...expired, ...retained.slice(0, overflow)])
 }
 
 export async function recording(channelType: string, accountId: string, input: DiagnosticRecordInput): Promise<void> {
-  const hash = accountHash(channelType, accountId)
-  const key = StoragePath.channelDiagnosticsAccount(hash)
+  const account = accountHash(channelType, accountId)
   const normalized = normalizeRecord(input)
-  const now = normalized.timestamp
 
   try {
-    let existing: DiagnosticRecord[] = []
-    try {
-      existing = await Storage.read<DiagnosticRecord[]>(key)
-    } catch {
-      // No existing records — start fresh
-    }
-
-    existing = pruneByAge(existing, now)
-    existing.push(normalized)
-    existing = pruneByCount(existing)
-
-    await Storage.write(key, existing)
+    using _ = await Lock.write(`channel-diagnostics:${account}`)
+    await pruneBeforeWrite(account, normalized.timestamp)
+    await Storage.write(StoragePath.channelDiagnosticsRecord(account, recordID(normalized.timestamp)), normalized, {
+      compact: true,
+    })
   } catch (err) {
     log.error("failed to persist diagnostic record", { error: err })
   }
 }
 
-export async function list(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
-  const hash = accountHash(channelType, accountId)
-  const key = StoragePath.channelDiagnosticsAccount(hash)
+async function retainedRecordIDs(account: string, cutoff: number): Promise<string[]> {
+  return (await Storage.scan(StoragePath.channelDiagnosticsRecordsRoot(account))).filter((id) => {
+    const timestamp = recordTimestamp(id)
+    return timestamp !== undefined && timestamp >= cutoff
+  })
+}
 
-  try {
-    const records = await Storage.read<DiagnosticRecord[]>(key)
-    return pruneByAge(records, Date.now())
-  } catch {
-    return []
+export async function* iterate(channelType: string, accountId: string): AsyncGenerator<DiagnosticRecord> {
+  const account = accountHash(channelType, accountId)
+  const cutoff = Date.now() - RETENTION_MS
+  const ids = await retainedRecordIDs(account, cutoff)
+
+  for (const id of ids) {
+    try {
+      const parsed = DiagnosticRecord.safeParse(
+        await Storage.read<unknown>(StoragePath.channelDiagnosticsRecord(account, id)),
+      )
+      if (parsed.success && parsed.data.timestamp >= cutoff) yield parsed.data
+    } catch {
+      continue
+    }
   }
 }
 
+export async function list(channelType: string, accountId: string): Promise<DiagnosticRecord[]> {
+  return Array.fromAsync(iterate(channelType, accountId))
+}
+
 export async function hasData(channelType: string, accountId: string): Promise<boolean> {
-  const hash = accountHash(channelType, accountId)
-  const key = StoragePath.channelDiagnosticsAccount(hash)
-  try {
-    await Storage.read(key)
-    return true
-  } catch {
-    return false
-  }
+  const account = accountHash(channelType, accountId)
+  const cutoff = Date.now() - RETENTION_MS
+  return (await retainedRecordIDs(account, cutoff)).length > 0
 }

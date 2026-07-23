@@ -1,3 +1,5 @@
+import path from "path"
+import fs from "fs/promises"
 import { afterEach, describe, expect, mock, test } from "bun:test"
 import type { Config } from "../../src/config/config"
 import { Config as ConfigRuntime } from "../../src/config/config"
@@ -6,6 +8,10 @@ import { ChannelHost } from "../../src/channel/host"
 import type { Provider, StreamingSession } from "../../src/channel/types"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
+import { Storage } from "../../src/storage/storage"
+import { StoragePath } from "../../src/storage/path"
+import { externalIdentityHash } from "../../src/channel/identity"
+import { Global } from "../../src/global"
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -92,6 +98,31 @@ async function reloadWithoutChannel() {
   })
 }
 
+async function seedDiagnosticRecords(input: {
+  accountHash: string
+  count: number
+  firstTimestamp: number
+}): Promise<string> {
+  const root = path.join(Global.Path.data, ...StoragePath.channelDiagnosticsRecordsRoot(input.accountHash))
+  await fs.mkdir(root, { recursive: true })
+  const firstID = `${input.firstTimestamp.toString().padStart(13, "0")}-seed-00000`
+  const concurrency = 128
+  for (let offset = 0; offset < input.count; offset += concurrency) {
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, input.count - offset) }, (_, index) => {
+        const position = offset + index
+        const timestamp = input.firstTimestamp + position
+        const id = `${timestamp.toString().padStart(13, "0")}-seed-${position.toString().padStart(5, "0")}`
+        return Bun.write(
+          path.join(root, `${id}.json`),
+          JSON.stringify({ timestamp, level: "info", message: `seed ${position}` }),
+        )
+      }),
+    )
+  }
+  return firstID
+}
+
 afterEach(async () => {
   ConfigRuntime.current = originalConfigCurrent
   await inHome(() => Channel.stopAll())
@@ -146,6 +177,36 @@ describe.serial("Channel diagnostics durability", () => {
     // diagnostics are lost because the Connection object was torn down.
     const afterReload = await inHome(() => Channel.getDiagnostics(type, "account"))
     expect(afterReload.length).toBeGreaterThan(0)
+  })
+
+  test("stores diagnostics as independently addressable records", async () => {
+    const type = `diag-records-${crypto.randomUUID()}`
+    const accountHash = externalIdentityHash(type, "account")
+    await Storage.write(
+      ["channel", "diagnostics", accountHash],
+      [{ timestamp: Date.now(), level: "info", message: "legacy array record" }],
+    )
+    const fake = diagnosticProvider({
+      type,
+      lifecycle: "borrowed_transport",
+      onConnect: async (host) => {
+        await host.diagnostics.record({ level: "debug", message: "first record" })
+      },
+    })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+    await inHome(() => Channel.start(type, "account"))
+
+    const recordIDs = await Storage.scan(StoragePath.channelDiagnosticsRecordsRoot(accountHash))
+    const records = await Storage.readMany<unknown>(
+      recordIDs.map((id) => StoragePath.channelDiagnosticsRecord(accountHash, id)),
+    )
+
+    expect(recordIDs.length).toBeGreaterThanOrEqual(2)
+    expect(records.every((record) => !Array.isArray(record) && typeof record === "object")).toBe(true)
+    expect(await Channel.getDiagnostics(type, "account")).not.toContainEqual(
+      expect.objectContaining({ message: "legacy array record" }),
+    )
   })
 })
 
@@ -267,5 +328,47 @@ describe.serial("Channel diagnostic retention", () => {
     expect(MAX_RECORDS).toBe(10000)
     expect(RETENTION_MS).toBeGreaterThan(0)
     expect(RETENTION_MS).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  test("prunes the oldest record when a write exceeds the 10,000-record cap", async () => {
+    const { MAX_RECORDS, recording } = await import("../../src/channel/diagnostics")
+    const type = `diag-cap-${crypto.randomUUID()}`
+    const accountHash = externalIdentityHash(type, "account")
+    const firstTimestamp = Date.now() - MAX_RECORDS - 1_000
+    const oldestID = await seedDiagnosticRecords({
+      accountHash,
+      count: MAX_RECORDS,
+      firstTimestamp,
+    })
+
+    try {
+      await recording(type, "account", { level: "info", message: "overflow record" })
+
+      const recordIDs = await Storage.scan(StoragePath.channelDiagnosticsRecordsRoot(accountHash))
+      expect(recordIDs).toHaveLength(MAX_RECORDS)
+      expect(recordIDs).not.toContain(oldestID)
+    } finally {
+      await Storage.removeTree(StoragePath.channelDiagnosticsRecordsRoot(accountHash))
+    }
+  })
+
+  test("prunes expired records during the next bounded write", async () => {
+    const { RETENTION_MS } = await import("../../src/channel/diagnostics")
+    const type = `diag-retention-${crypto.randomUUID()}`
+    const accountHash = externalIdentityHash(type, "account")
+    const expiredAt = Date.now() - RETENTION_MS - 1
+    const expiredID = `${expiredAt.toString().padStart(13, "0")}-${crypto.randomUUID()}`
+    await Storage.write(StoragePath.channelDiagnosticsRecord(accountHash, expiredID), {
+      timestamp: expiredAt,
+      level: "info",
+      message: "expired",
+    })
+
+    const fake = diagnosticProvider({ type, lifecycle: "borrowed_transport" })
+    Channel.registerProvider(fake.value)
+    await configureChannel(type)
+    await inHome(() => Channel.start(type, "account"))
+
+    expect(await Storage.scan(StoragePath.channelDiagnosticsRecordsRoot(accountHash))).not.toContain(expiredID)
   })
 })
