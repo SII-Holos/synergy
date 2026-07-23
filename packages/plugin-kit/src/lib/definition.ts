@@ -38,7 +38,10 @@ function isPluginDefinition(value: unknown): value is PluginDefinition {
   )
 }
 
-const loaderPath = fileURLToPath(new URL("./definition-loader-child.ts", import.meta.url))
+const loaderUrl = new URL("./definition-loader-child", import.meta.url)
+const loaderPathTs = fileURLToPath(new URL(loaderUrl.href + ".ts"))
+const loaderPathJs = fileURLToPath(new URL(loaderUrl.href + ".js"))
+const loaderPath = fs.existsSync(loaderPathTs) ? loaderPathTs : loaderPathJs
 const marker = "__SYNERGY_PLUGIN_DEFINITION__"
 
 export async function loadPluginDefinition(pluginDir: string): Promise<{
