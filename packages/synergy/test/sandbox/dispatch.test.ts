@@ -419,9 +419,14 @@ describe("prepareWrapper Linux dispatch", () => {
       forcePlatform: "linux",
     })
 
-    // Both should produce identical output
+    // Both should produce the same stable shape; each call owns a unique temp profile.
+    const normalizeProfilePath = (args: string[]) => {
+      const index = args.indexOf("--permission-profile")
+      expect(index).toBeGreaterThanOrEqual(0)
+      return args.map((arg, argIndex) => (argIndex === index + 1 ? "<profile>" : arg))
+    }
     expect(dispatchWrapper.command).toBe(compatWrapper.command)
     expect(dispatchWrapper.sandboxed).toBe(compatWrapper.sandboxed)
-    expect(dispatchWrapper.args).toEqual(compatWrapper.args)
+    expect(normalizeProfilePath(dispatchWrapper.args)).toEqual(normalizeProfilePath(compatWrapper.args))
   })
 })
