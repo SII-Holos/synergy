@@ -77,7 +77,7 @@ See the [development reference](docs/reference/development.md) for source modes,
    bun run localization:check
    ```
 
-3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `./script/generate.ts` and include the output in your PR.
+3. **Regenerate the SDK if you touched routes.** If your change modifies server routes or route schemas, run `script/generate.ts` and include the output in your PR.
 
 4. **Open your PR against `dev`.** Describe what you changed and why. If it addresses an open issue, reference it.
 
