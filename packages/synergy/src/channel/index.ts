@@ -22,7 +22,7 @@ import { ChannelCommand } from "./command"
 import { resolveChannelAccountInvocation } from "./model-selection"
 import { createStatusReactionController } from "./status-reactions"
 import { buildAssistantTranscript, resolveFinalResponseText } from "./response-text"
-import { ManagedProjectOwnership } from "./managed-project-ownership
+import { ManagedProjectOwnership } from "./managed-project-ownership"
 import { externalIdentityHash } from "./identity"
 import { ChannelHost } from "./host"
 import { recording as recordDiagnostic, list as listDiagnostics, DiagnosticRecord } from "./diagnostics"
@@ -208,6 +208,20 @@ export namespace Channel {
     connections: Map<string, Connection>
     statuses: Map<string, Status>
     reconnects: Map<string, ReturnType<typeof setTimeout>>
+    attempts: Map<string, AbortController>
+  }
+
+  type ConnectContext = {
+    channelType: string
+    accountId: string
+    accountConfig: unknown
+    channelConfig: Config.Channel
+    provider: Provider
+    abort: AbortController
+    connections: Map<string, Connection>
+    statuses: Map<string, Status>
+    reconnects: Map<string, ReturnType<typeof setTimeout>>
+    attempts: Map<string, AbortController>
   }
 
   function connectionKey(channelType: string, accountId: string): string {
@@ -233,6 +247,7 @@ export namespace Channel {
       const connections = new Map<string, Connection>()
       const statuses = new Map<string, Status>()
       const reconnects = new Map<string, ReturnType<typeof setTimeout>>()
+      const attempts = new Map<string, AbortController>()
 
       for (const [channelType, channelConfig] of Object.entries(channels)) {
         const provider = providers.get(channelType)
@@ -253,7 +268,7 @@ export namespace Channel {
           statuses.set(key, { status: "connecting" })
           const abort = new AbortController()
 
-          connectAccount({
+          connectInBackground({
             channelType,
             accountId,
             accountConfig,
@@ -263,34 +278,16 @@ export namespace Channel {
             connections,
             statuses,
             reconnects,
-          }).catch((err) => {
-            const error = err instanceof Error ? err.message : String(err)
-            log.error("channel connection failed", {
-              channelType,
-              accountHash: externalIdentityHash(accountId),
-              error,
-            })
-            statuses.set(key, { status: "failed", error })
-            scheduleReconnect({
-              channelType,
-              accountId,
-              accountConfig,
-              channelConfig,
-              provider,
-              abort,
-              connections,
-              statuses,
-              reconnects,
-              attempt: 0,
-            })
+            attempts,
           })
         }
       }
 
-      return { connections, statuses, reconnects }
+      return { connections, statuses, reconnects, attempts }
     },
     async (s) => {
       for (const timer of s.reconnects.values()) clearTimeout(timer)
+      for (const abort of s.attempts.values()) abort.abort()
       for (const conn of s.connections.values()) {
         conn.abort.abort()
         Bus.publish(Event.Disconnected, {
@@ -312,18 +309,7 @@ export namespace Channel {
     await state.resetAll()
   }
 
-  async function connectAccount(input: {
-    channelType: string
-    accountId: string
-    accountConfig: unknown
-    channelConfig: Config.Channel
-    provider: Provider
-    abort: AbortController
-    connections: Map<string, Connection>
-    statuses: Map<string, Status>
-    reconnects: Map<string, ReturnType<typeof setTimeout>>
-    attempt?: number
-  }): Promise<void> {
+  async function connectAccount(input: ConnectContext & { attempt?: number }): Promise<void> {
     const {
       channelType,
       accountId,
@@ -334,9 +320,14 @@ export namespace Channel {
       connections,
       statuses,
       reconnects,
+      attempts,
       attempt = 0,
     } = input
     const key = connectionKey(channelType, accountId)
+    if (abort.signal.aborted) return
+    const currentAttempt = attempts.get(key)
+    if (currentAttempt && currentAttempt !== abort) return
+    attempts.set(key, abort)
     const scope = await resolveAccountScope({ channelType, accountId, accountConfig })
 
     const reconnectTimer = reconnects.get(key)
@@ -344,6 +335,13 @@ export namespace Channel {
       clearTimeout(reconnectTimer)
       reconnects.delete(key)
     }
+
+    if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+      statuses.set(key, { status: "waiting_for_transport" })
+      await provider.waitForTransport({ accountId, signal: abort.signal })
+      if (abort.signal.aborted || attempts.get(key) !== abort) return
+    }
+    statuses.set(key, { status: "connecting" })
 
     const host = ChannelHost.create({
       channelType,
@@ -362,10 +360,27 @@ export namespace Channel {
       host,
       onDisconnect: (reason) => {
         if (abort.signal.aborted) return
+        const active = connections.get(key)
+        if (!active || active.abort !== abort) return
         log.info("channel disconnected", { channelType, accountHash: externalIdentityHash(accountId), reason })
         connections.delete(key)
         statuses.set(key, { status: "disconnected" })
         Bus.publish(Event.Disconnected, { channelType, accountId, reason })
+        if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+          connectInBackground({
+            channelType,
+            accountId,
+            accountConfig,
+            channelConfig,
+            provider,
+            abort,
+            connections,
+            statuses,
+            reconnects,
+            attempts,
+          })
+          return
+        }
         scheduleReconnect({
           channelType,
           accountId,
@@ -376,10 +391,12 @@ export namespace Channel {
           connections,
           statuses,
           reconnects,
+          attempts,
           attempt: 0,
         })
       },
     })
+    if (abort.signal.aborted || attempts.get(key) !== abort) return
 
     connections.set(key, {
       channelType,
@@ -390,23 +407,30 @@ export namespace Channel {
     })
     statuses.set(key, { status: "connected" })
     reconnects.delete(key)
+    attempts.delete(key)
 
     log.info("channel connected", { channelType, accountHash: externalIdentityHash(accountId) })
     Bus.publish(Event.Connected, { channelType, accountId })
   }
 
-  function scheduleReconnect(input: {
-    channelType: string
-    accountId: string
-    accountConfig: unknown
-    channelConfig: Config.Channel
-    provider: Provider
-    abort: AbortController
-    connections: Map<string, Connection>
-    statuses: Map<string, Status>
-    reconnects: Map<string, ReturnType<typeof setTimeout>>
-    attempt: number
-  }): void {
+  function connectInBackground(input: ConnectContext & { attempt?: number }): void {
+    void connectAccount(input).catch((err) => {
+      const key = connectionKey(input.channelType, input.accountId)
+      if (input.abort.signal.aborted || input.attempts.get(key) !== input.abort) return
+      input.attempts.delete(key)
+      const error = err instanceof Error ? err.message : String(err)
+      log.error("channel connection failed", {
+        channelType: input.channelType,
+        accountHash: externalIdentityHash(input.accountId),
+        attempt: input.attempt ?? 0,
+        error,
+      })
+      input.statuses.set(key, { status: "failed", error })
+      scheduleReconnect({ ...input, attempt: input.attempt ?? 0 })
+    })
+  }
+
+  function scheduleReconnect(input: ConnectContext & { attempt: number }): void {
     const {
       channelType,
       accountId,
@@ -417,6 +441,7 @@ export namespace Channel {
       connections,
       statuses,
       reconnects,
+      attempts,
       attempt,
     } = input
     if (abort.signal.aborted) return
@@ -444,7 +469,7 @@ export namespace Channel {
       reconnects.delete(key)
       if (abort.signal.aborted) return
 
-      connectAccount({
+      connectInBackground({
         channelType,
         accountId,
         accountConfig,
@@ -454,28 +479,8 @@ export namespace Channel {
         connections,
         statuses,
         reconnects,
+        attempts,
         attempt: attempt + 1,
-      }).catch((err) => {
-        const error = err instanceof Error ? err.message : String(err)
-        log.warn("channel reconnect failed", {
-          channelType,
-          accountHash: externalIdentityHash(accountId),
-          attempt: attempt + 1,
-          error,
-        })
-        statuses.set(key, { status: "failed", error })
-        scheduleReconnect({
-          channelType,
-          accountId,
-          accountConfig,
-          channelConfig,
-          provider,
-          abort,
-          connections,
-          statuses,
-          reconnects,
-          attempt: attempt + 1,
-        })
       })
     }, delayMs)
 
@@ -774,6 +779,12 @@ export namespace Channel {
       clearTimeout(reconnectTimer)
       s.reconnects.delete(key)
     }
+    const attempt = s.attempts.get(key)
+    if (attempt) {
+      attempt.abort()
+      s.attempts.delete(key)
+      s.statuses.set(key, { status: "disconnected" })
+    }
     const conn = s.connections.get(key)
     if (conn) {
       conn.abort.abort()
@@ -785,12 +796,14 @@ export namespace Channel {
 
   export async function disconnectAll(): Promise<void> {
     const s = await state()
+    for (const timer of s.reconnects.values()) clearTimeout(timer)
+    s.reconnects.clear()
+    for (const [key, abort] of s.attempts) {
+      abort.abort()
+      s.statuses.set(key, { status: "disconnected" })
+    }
+    s.attempts.clear()
     for (const [key, conn] of s.connections) {
-      const reconnectTimer = s.reconnects.get(key)
-      if (reconnectTimer) {
-        clearTimeout(reconnectTimer)
-        s.reconnects.delete(key)
-      }
       conn.abort.abort()
       s.statuses.set(key, { status: "disconnected" })
       Bus.publish(Event.Disconnected, {
@@ -810,6 +823,11 @@ export namespace Channel {
     if (existing) {
       existing.abort.abort()
       s.connections.delete(key)
+    }
+    const activeAttempt = s.attempts.get(key)
+    if (activeAttempt) {
+      activeAttempt.abort()
+      s.attempts.delete(key)
     }
     const reconnectTimer = s.reconnects.get(key)
     if (reconnectTimer) {
@@ -856,7 +874,7 @@ export namespace Channel {
     s.statuses.set(key, { status: "connecting" })
     const abort = new AbortController()
 
-    await connectAccount({
+    const context = {
       channelType,
       accountId,
       accountConfig,
@@ -866,7 +884,13 @@ export namespace Channel {
       connections: s.connections,
       statuses: s.statuses,
       reconnects: s.reconnects,
-    })
+      attempts: s.attempts,
+    }
+    if (provider.lifecycle === "borrowed_transport" && provider.waitForTransport) {
+      connectInBackground(context)
+      return
+    }
+    await connectAccount(context)
   }
 
   const refreshInFlight = new Map<string, boolean>()

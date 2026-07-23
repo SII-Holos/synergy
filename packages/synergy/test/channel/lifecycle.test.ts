@@ -22,10 +22,13 @@ function streaming(): StreamingSession {
 function provider(input: {
   type: string
   lifecycle: "self_connected" | "borrowed_transport"
+  waitForTransport?: boolean
   onConnected?: (callbacks: { onDisconnect?: (reason?: string) => void; signal: AbortSignal }) => void
 }) {
   let connectCount = 0
+  let transportWaitCount = 0
   let callbacks: { onDisconnect?: (reason?: string) => void; signal: AbortSignal } | undefined
+  const readyResolvers: Array<() => void> = []
   const value = {
     type: input.type,
     lifecycle: input.lifecycle,
@@ -42,16 +45,40 @@ function provider(input: {
     },
     async addReaction() {},
     createStreamingSession: streaming,
-  } satisfies Provider
+  } as Provider & {
+    waitForTransport?: (input: { accountId: string; signal: AbortSignal }) => Promise<void>
+  }
+  if (input.waitForTransport) {
+    value.waitForTransport = ({ signal }) => {
+      transportWaitCount += 1
+      return new Promise<void>((resolve) => {
+        if (signal.aborted) return resolve()
+        const onAbort = () => resolve()
+        signal.addEventListener("abort", onAbort, { once: true })
+        readyResolvers.push(() => {
+          signal.removeEventListener("abort", onAbort)
+          resolve()
+        })
+      })
+    }
+  }
   return {
     value,
     connectCount: () => connectCount,
+    transportWaitCount: () => transportWaitCount,
+    readyTransport: () => readyResolvers.shift()?.(),
     disconnect: (reason = "test") => inHome(() => callbacks?.onDisconnect?.(reason)),
   }
 }
 
 function inHome<T>(fn: () => T | Promise<T>) {
   return ScopeContext.provide({ scope: Scope.home(), fn })
+}
+
+async function waitFor(predicate: () => boolean | Promise<boolean>): Promise<void> {
+  const timeoutAt = Date.now() + 2_000
+  while (!(await predicate()) && Date.now() < timeoutAt) await Bun.sleep(5)
+  if (!(await predicate())) throw new Error("Timed out waiting for Channel lifecycle state")
 }
 
 async function configure(type: string, enabled: boolean) {
@@ -109,6 +136,41 @@ describe.serial("Channel provider lifecycle capability", () => {
     })
     await Bun.sleep(2_100)
     expect(fake.connectCount()).toBe(1)
+  })
+
+  test("borrowed transport waits passively and reattaches exactly once per readiness event", async () => {
+    const fake = provider({
+      type: `borrowed-ready-${crypto.randomUUID()}`,
+      lifecycle: "borrowed_transport",
+      waitForTransport: true,
+    })
+    Channel.registerProvider(fake.value)
+    await configure(fake.value.type, true)
+
+    await waitFor(async () => {
+      const status = await inHome(() => Channel.status())
+      return status[`${fake.value.type}:account`]?.status === "waiting_for_transport"
+    })
+    expect(fake.transportWaitCount()).toBe(1)
+    expect(fake.connectCount()).toBe(0)
+
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 1)
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "connected" },
+    })
+
+    await fake.disconnect("transport_lost")
+    await waitFor(() => fake.transportWaitCount() === 2)
+    expect(fake.connectCount()).toBe(1)
+    expect(await inHome(() => Channel.status())).toMatchObject({
+      [`${fake.value.type}:account`]: { status: "waiting_for_transport" },
+    })
+
+    fake.readyTransport()
+    await waitFor(() => fake.connectCount() === 2)
+    await Bun.sleep(25)
+    expect(fake.connectCount()).toBe(2)
   })
 
   test("disabled accounts create no connection or reconnect pressure", async () => {

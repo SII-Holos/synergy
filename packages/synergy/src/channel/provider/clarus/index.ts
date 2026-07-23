@@ -39,6 +39,48 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
 
+  async waitForTransport(input: { accountId: string; signal: AbortSignal }): Promise<void> {
+    if (input.signal.aborted) return
+    const tunnel = await HolosRuntime.getNativeTunnel()
+    if (input.signal.aborted) return
+
+    const ready = async () => {
+      const [status, identity] = await Promise.all([HolosRuntime.status(), HolosRuntime.getNativeIdentity()])
+      return status.status === "connected" && identity.agentID === input.accountId
+    }
+    if (await ready()) return
+
+    await new Promise<void>((resolve) => {
+      let settled = false
+      let removeObserver = () => {}
+      const settle = () => {
+        if (settled) return
+        settled = true
+        input.signal.removeEventListener("abort", settle)
+        removeObserver()
+        resolve()
+      }
+      removeObserver = tunnel.registerConnectionObserver((event) => {
+        if (event.type === "connected" && event.agentID === input.accountId) settle()
+      })
+      input.signal.addEventListener("abort", settle, { once: true })
+      if (input.signal.aborted) {
+        settle()
+        return
+      }
+      void ready()
+        .then((isReady) => {
+          if (isReady) settle()
+        })
+        .catch((error) => {
+          this.log.warn("failed to recheck Holos transport readiness", {
+            accountHash: hash(input.accountId),
+            error,
+          })
+        })
+    })
+  }
+
   async connect(input: {
     accountId: string
     accountConfig: Config.ChannelClarusAccount

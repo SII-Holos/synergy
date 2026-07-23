@@ -58,6 +58,7 @@ export const Status = z
   .discriminatedUnion("status", [
     z.object({ status: z.literal("connected") }),
     z.object({ status: z.literal("connecting") }),
+    z.object({ status: z.literal("waiting_for_transport") }),
     z.object({ status: z.literal("disconnected") }),
     z.object({ status: z.literal("disabled") }),
     z.object({ status: z.literal("syncing") }),
@@ -167,6 +168,8 @@ export interface Provider<TAccountConfig = unknown, TChannelConfig = unknown> {
   readonly type: string
   readonly lifecycle: ProviderLifecycle
   readonly messaging?: "chat" | "task_only"
+
+  waitForTransport?(input: { accountId: string; signal: AbortSignal }): Promise<void>
 
   connect(input: {
     accountId: string
