@@ -22,4 +22,8 @@ describe("tool taxonomy", () => {
     expect(entry.kind).toBe("platform.collaboration")
     expect(entry.traits).toEqual({ stateful: true, externalIO: true })
   })
+
+  test("labels collaboration tools without a retired product name", () => {
+    expect(ToolTaxonomy.KIND_LABELS["platform.collaboration"]).toBe("Collaboration")
+  })
 })

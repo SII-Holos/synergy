@@ -331,7 +331,7 @@ export namespace ToolTaxonomy {
     "platform.config": "Config",
     "platform.tooling": "Tools",
     "platform.compute": "Compute",
-    "platform.collaboration": "Agora",
+    "platform.collaboration": "Collaboration",
     "platform.external": "Tool",
     "communication.question": "Ask",
     "communication.email": "Email",
