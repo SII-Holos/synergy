@@ -1,15 +1,11 @@
 /**
  * ClarusProvider routing integration tests.
  *
- * These tests use Bun's mock.module to intercept HolosAuth and HolosRuntime so
- * the full ClarusProvider.connect() flow can be exercised
- * without real Holos credentials or a live Agent Tunnel.
- *
  * Project discovery must remain task-only: it creates managed ownership but
  * no Project conversation Session. Only runtimeTaskAssigned creates and wakes
  * a dedicated Task Session.
  */
-import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test"
+import { beforeEach, describe, expect, mock, test } from "bun:test"
 import { Channel } from "../../src/channel"
 import { ManagedProjectOwnership } from "../../src/channel/managed-project-ownership"
 import { Session } from "../../src/session"
@@ -19,29 +15,8 @@ import { ChannelHost } from "../../src/channel/host"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
 
-// Register mocks before the provider import so Bun intercepts the Holos modules
-// exactly as referenced by the implementation under test.
-
 const FAKE_AGENT_ID = "test-agent"
 const FAKE_AGENT_SECRET = "test-secret"
-
-mock.module("../../src/holos/auth", () => ({
-  HolosAuth: {
-    getStoredCredential: async () => ({ agentId: FAKE_AGENT_ID, agentSecret: FAKE_AGENT_SECRET }),
-    getCredentialOrThrow: async () => ({ agentId: FAKE_AGENT_ID, agentSecret: FAKE_AGENT_SECRET }),
-  },
-}))
-
-let injectTunnel: any = null
-mock.module("../../src/holos/runtime", () => ({
-  HolosRuntime: {
-    status: async () => ({ status: "connected", sessionID: "sess-test", generation: 1, epoch: 1 }),
-    getNativeTunnel: async () => {
-      if (!injectTunnel) throw new Error("No fake tunnel injected for ClarusProvider integration test")
-      return injectTunnel
-    },
-  },
-}))
 
 // ---------------------------------------------------------------------------
 // Fake tunnel + provider setup
@@ -84,12 +59,30 @@ describe("ClarusProvider routing integration", () => {
   beforeEach(() => {
     fake = new FakeNativeTunnelPort()
     fake.setAgentID(FAKE_AGENT_ID)
-    injectTunnel = fake
-    provider = new ClarusProvider()
-  })
-
-  afterEach(() => {
-    injectTunnel = null
+    provider = new ClarusProvider({
+      auth: {
+        getStoredCredential: async () => ({
+          agentId: FAKE_AGENT_ID,
+          agentSecret: FAKE_AGENT_SECRET,
+          maskedSecret: "test-••••-secret",
+        }),
+        getCredentialOrThrow: async () => ({
+          agentId: FAKE_AGENT_ID,
+          agentSecret: FAKE_AGENT_SECRET,
+          maskedSecret: "test-••••-secret",
+        }),
+      },
+      runtime: {
+        status: async () => ({ status: "connected" }),
+        getNativeIdentity: async () => ({
+          agentID: FAKE_AGENT_ID,
+          sessionID: "sess-test",
+          generation: 1,
+          epoch: 1,
+        }),
+        getNativeTunnel: async () => fake,
+      },
+    })
   })
 
   test("provider declares borrowed_transport lifecycle (no reconnect loop)", () => {
