@@ -8,6 +8,7 @@ import { Log } from "../util/log"
 import { LibraryDB } from "./database"
 import { detect, type Candidate } from "./experience-detect"
 import { ExperienceEncoder } from "./experience-encoder"
+import { TurnDigest } from "./turn-digest"
 
 export namespace ExperienceReencode {
   export type JobType = LibraryDB.ReencodeJob.Type
@@ -315,6 +316,7 @@ export namespace ExperienceReencode {
 
       if (job.type === "intent") {
         if (!history) throw new Error("session history unavailable for intent reencode")
+        const raw = LibraryDB.Experience.getContent(item.experience_id)?.raw
         const result = await withStageRetry({
           retries: learning.reencodeRetries,
           backoffMs: learning.reencodeRetryBackoffMs,
@@ -326,6 +328,7 @@ export namespace ExperienceReencode {
               history.messages,
               reencodeLearning,
               signal,
+              raw ? TurnDigest.userTextFromRendered(raw) : undefined,
             ),
         })
         await withStageRetry({
@@ -481,8 +484,9 @@ export namespace ExperienceReencode {
   }
 
   function isTransient(error: unknown) {
-    const details = error as { code?: unknown; status?: unknown; statusCode?: unknown }
+    const details = error as { code?: unknown; name?: unknown; status?: unknown; statusCode?: unknown }
     const code = String(details?.code)
+    if (details?.name === "TimeoutError") return true
     if (
       [
         "SQLITE_BUSY",
@@ -493,6 +497,7 @@ export namespace ExperienceReencode {
         "EAI_AGAIN",
         "ENETUNREACH",
         "UND_ERR_CONNECT_TIMEOUT",
+        "REENCODE_INVALID_OUTPUT",
         "timeout",
       ].includes(code)
     ) {
@@ -501,7 +506,7 @@ export namespace ExperienceReencode {
     const status = Number(details?.status ?? details?.statusCode)
     if ([408, 425, 429, 500, 502, 503, 504].includes(status)) return true
     const message = error instanceof Error ? error.message : String(error)
-    return /database is locked|temporarily unavailable|connection reset|connection refused|socket hang up|rate limit|too many requests|service unavailable|bad gateway|gateway timeout/i.test(
+    return /database is locked|temporarily unavailable|connection reset|connection refused|socket hang up|rate limit|too many requests|service unavailable|bad gateway|gateway timeout|operation timed out|request timed out/i.test(
       message,
     )
   }

@@ -19,6 +19,15 @@ import { createHash } from "crypto"
 export namespace ExperienceEncoder {
   const log = Log.create({ service: "library.encoder" })
 
+  export class ReencodeOutputError extends Error {
+    readonly code = "REENCODE_INVALID_OUTPUT"
+
+    constructor(kind: "intent" | "script", reason: string) {
+      super(`${kind}-output-${reason}`)
+      this.name = "ReencodeOutputError"
+    }
+  }
+
   function hashForLog(value: string): string {
     if (!value) return "empty"
     return createHash("sha256").update(value).digest("hex").slice(0, 12)
@@ -95,9 +104,10 @@ export namespace ExperienceEncoder {
     msgs: MessageV2.WithParts[],
     learning?: Required<Config.Learning>,
     signal?: AbortSignal,
+    storedUserText?: string,
   ): Promise<{ intent: string; embedding: Embedding.Info; reason: string; usedFallback: boolean }> {
     signal?.throwIfAborted()
-    const userText = Turn.resolveUserText(msgs, userMessageID)
+    const userText = Turn.resolveUserText(msgs, userMessageID) ?? storedUserText
     if (!userText) throw new Error("no-user-text")
     const model = await resolveModel(userMessageID)
     const effectiveLearning = learning ?? (await loadLearning())
@@ -116,7 +126,6 @@ export namespace ExperienceEncoder {
     const result = Intent.sanitizeWithReason(rawIntent, userText)
     const intent = result.value
     const usedFallback = intent === userText
-    const embedding = await Embedding.generate({ id: userMessageID, text: intent || userText, signal })
 
     log.info("reencode intent", {
       sessionID,
@@ -128,6 +137,9 @@ export namespace ExperienceEncoder {
       rawHash: hashForLog(rawIntent),
       rawPreview: preview(rawIntent),
     })
+
+    if (usedFallback) throw new ReencodeOutputError("intent", result.reason)
+    const embedding = await Embedding.generate({ id: userMessageID, text: intent, signal })
 
     return { intent, embedding, reason: result.reason, usedFallback }
   }
@@ -156,9 +168,6 @@ export namespace ExperienceEncoder {
     const result = Script.sanitizeWithReason(rawScript, raw)
     const script = result.value
     const usedFallback = script === raw
-    const embedding = script
-      ? await Embedding.generate({ id: `${userMessageID}:script`, text: script, signal })
-      : await Embedding.generate({ id: `${userMessageID}:script`, text: raw, signal })
 
     log.info("reencode script", {
       sessionID,
@@ -170,6 +179,9 @@ export namespace ExperienceEncoder {
       rawHash: hashForLog(rawScript),
       rawPreview: preview(rawScript),
     })
+
+    if (usedFallback) throw new ReencodeOutputError("script", result.reason)
+    const embedding = await Embedding.generate({ id: `${userMessageID}:script`, text: script, signal })
 
     return { script, embedding, reason: result.reason, usedFallback }
   }

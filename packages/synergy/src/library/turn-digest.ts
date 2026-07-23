@@ -170,6 +170,19 @@ export namespace TurnDigest {
     return parts.join("\n\n")
   }
 
+  export function userTextFromRendered(raw: string): string | undefined {
+    const marker = "### User\n"
+    const start = raw.indexOf(marker)
+    if (start < 0) return
+    const contentStart = start + marker.length
+    const boundaries = ["\n\n### Response\n", "\n\n### Changes\n", "\n\n### Summary\n"]
+      .map((boundary) => raw.indexOf(boundary, contentStart))
+      .filter((index) => index >= 0)
+    const end = boundaries.length > 0 ? Math.min(...boundaries) : raw.length
+    const userText = raw.slice(contentStart, end).trim()
+    return userText || undefined
+  }
+
   // ---------------------------------------------------------------------------
   // Internal
   // ---------------------------------------------------------------------------

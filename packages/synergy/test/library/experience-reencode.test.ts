@@ -472,6 +472,137 @@ describe.serial("ExperienceReencode bounded session loading", () => {
     })
   })
 
+  test("retries invalid script output before updating the stored trajectory", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const raw = "### User\nRepair the build\n\n### Response\nThe build is repaired."
+        insertExperience({
+          id: "exp-script-retry",
+          sessionID: session.id,
+          scopeID: scope.id,
+          script: "",
+          raw,
+        })
+        installReencodeModelMocks()
+        ;(Config.current as any) = mock(async () => ({
+          library: {
+            experience: {
+              learning: { reencodeConcurrency: 1, reencodeRetries: 2, reencodeRetryBackoffMs: 0 },
+            },
+          },
+        }))
+        let modelAttempts = 0
+        ;(LLM.stream as any) = mock(async () => {
+          modelAttempts++
+          const text = modelAttempts < 3 ? "Let me inspect the code first" : "1. Repair the build\n2. Verify the result"
+          return {
+            textStream: (async function* () {
+              yield text
+            })(),
+            text: Promise.resolve(text),
+          }
+        })
+
+        const started = ExperienceReencode.start({ type: "script", reason: "empty" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
+        expect(modelAttempts).toBe(3)
+        expect(LibraryDB.Experience.getContent("exp-script-retry")?.script).toBe(
+          "1. Repair the build\n2. Verify the result",
+        )
+      },
+    })
+  })
+
+  test("reencodes an intent from the stored digest when its target user message is missing", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        await createTurn(session.id, "Keep the session load non-empty", "The old turn remains available.")
+        insertExperience({
+          id: "missing-user-message",
+          sessionID: session.id,
+          scopeID: scope.id,
+          intent: "x".repeat(200),
+          raw: "### User\nRecover the stored request\n\n### Response\nThe request was completed.",
+        })
+        installReencodeModelMocks()
+
+        const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
+        expect(LibraryDB.Experience.get("missing-user-message")?.intent).toBe("Bounded maintenance reencode")
+      },
+    })
+  })
+
+  test("retries invalid intent output without embedding or recording a false success", async () => {
+    await using tmp = await tmpdir({ git: true })
+    const scope = await tmp.scope()
+
+    await ScopeContext.provide({
+      scope,
+      fn: async () => {
+        const session = await Session.create({})
+        const user = await createTurn(session.id, "Repair the durable job", "The repair completed.")
+        insertExperience({
+          id: user.id,
+          sessionID: session.id,
+          scopeID: scope.id,
+          intent: "x".repeat(200),
+          raw: "### User\nRepair the durable job\n\n### Response\nThe repair completed.",
+        })
+        installReencodeModelMocks()
+        ;(Config.current as any) = mock(async () => ({
+          library: {
+            experience: {
+              learning: { reencodeConcurrency: 1, reencodeRetries: 2, reencodeRetryBackoffMs: 0 },
+            },
+          },
+        }))
+        let modelAttempts = 0
+        ;(LLM.stream as any) = mock(async () => {
+          modelAttempts++
+          const text = modelAttempts < 3 ? "Let me inspect the errors" : "Repair durable reencode job"
+          return {
+            textStream: (async function* () {
+              yield text
+            })(),
+            text: Promise.resolve(text),
+          }
+        })
+        let embeddingAttempts = 0
+        ;(Embedding.generate as any) = mock(async (input: { id: string }) => {
+          embeddingAttempts++
+          return {
+            id: input.id,
+            vector: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8],
+            model: "test-embedding",
+          }
+        })
+
+        const started = ExperienceReencode.start({ type: "intent", reason: "too-long" })
+        const finished = await waitForTerminalJob(started.id)
+
+        expect(finished).toMatchObject({ status: "completed", totalCount: 1, okCount: 1, failedCount: 0 })
+        expect(modelAttempts).toBe(3)
+        expect(embeddingAttempts).toBe(1)
+        expect(LibraryDB.Experience.get(user.id)?.intent).toBe("Repair durable reencode job")
+      },
+    })
+  })
+
   test("keeps direct script work on its classified lane when the stored row changes", async () => {
     await using tmp = await tmpdir({ git: true })
     const scope = await tmp.scope()
@@ -834,6 +965,20 @@ describe("ExperienceReencode worker primitives", () => {
     })
     expect(transient).toBe("ok")
     expect(transientAttempts).toBe(3)
+
+    let timeoutAttempts = 0
+    const afterTimeout = await ExperienceReencode.withStageRetry({
+      retries: 2,
+      backoffMs: 0,
+      signal: new AbortController().signal,
+      operation() {
+        timeoutAttempts++
+        if (timeoutAttempts < 3) throw new DOMException("The operation timed out.", "TimeoutError")
+        return "ok"
+      },
+    })
+    expect(afterTimeout).toBe("ok")
+    expect(timeoutAttempts).toBe(3)
 
     let permanentAttempts = 0
     await expect(
