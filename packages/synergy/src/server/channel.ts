@@ -20,6 +20,10 @@ const ChannelStatusResponse = {
 
 const channelKeyParam = validator("param", z.object({ channelType: z.string(), accountId: z.string() }))
 
+function diagnosticFilenamePart(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "unknown"
+}
+
 async function reloadGlobalChannelConfig() {
   await Config.reload("global")
 }
@@ -244,19 +248,29 @@ export const ChannelRoute = new Hono()
       const provider = Channel.getProvider(channelType)
       if (!provider) return c.json({ error: "not found" }, 404)
 
-      const records = await Channel.getDiagnostics(channelType, accountId)
+      const filename = `channel-${diagnosticFilenamePart(channelType)}-${diagnosticFilenamePart(accountId)}-diagnostics.ndjson`
+      const records = Channel.streamDiagnostics(channelType, accountId)
       const encoder = new TextEncoder()
-      const body = new ReadableStream({
-        start(controller) {
-          for (const record of records) {
-            controller.enqueue(encoder.encode(JSON.stringify(record) + "\n"))
+      const body = new ReadableStream<Uint8Array>({
+        async pull(controller) {
+          try {
+            const next = await records.next()
+            if (next.done) {
+              controller.close()
+              return
+            }
+            controller.enqueue(encoder.encode(JSON.stringify(next.value) + "\n"))
+          } catch (error) {
+            controller.error(error)
           }
-          controller.close()
+        },
+        async cancel() {
+          await records.return(undefined)
         },
       })
       return c.newResponse(body, 200, {
         "Content-Type": "application/x-ndjson",
-        "Content-Disposition": `attachment; filename="channel-${channelType}-${accountId}-diagnostics.ndjson"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
       })
     },
   )
