@@ -53,7 +53,7 @@ describe("Cortex routes", () => {
     expect(CortexConcurrency.globalStatus()).toMatchObject({ configured: 3, effective: 3, source: "config" })
   })
 
-  test("reports memory pressure as advisory without changing the effective limit", async () => {
+  test("reports memory pressure as the effective admission limit", async () => {
     CortexConcurrency.configure(3)
     CortexConcurrency.setMemoryProbeForTest(() => memorySnapshot(10, 9))
 
@@ -62,7 +62,7 @@ describe("Cortex routes", () => {
     expect(response.status).toBe(200)
     expect(await response.json()).toMatchObject({
       configured: 3,
-      effective: 3,
+      effective: 2,
       memoryPressureLimit: 2,
       memoryPressureReason: "critical_memory_pressure",
       source: "config",

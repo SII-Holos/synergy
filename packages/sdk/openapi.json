@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
+        "description": "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -26506,9 +26506,11 @@
           },
           "command": {
             "description": "Command and arguments to run the MCP server",
+            "minItems": 1,
             "type": "array",
             "items": {
-              "type": "string"
+              "type": "string",
+              "minLength": 1
             }
           },
           "cwd": {
@@ -26524,10 +26526,6 @@
             "additionalProperties": {
               "type": "string"
             }
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
           },
           "timeout": {
             "description": "Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.",
@@ -26579,6 +26577,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "command"],
@@ -26612,11 +26614,8 @@
           },
           "url": {
             "description": "URL of the remote MCP server",
-            "type": "string"
-          },
-          "enabled": {
-            "description": "Enable or disable the MCP server on startup",
-            "type": "boolean"
+            "type": "string",
+            "format": "uri"
           },
           "headers": {
             "description": "Headers to send with the request",
@@ -26690,6 +26689,10 @@
           },
           "toolCache": {
             "$ref": "#/components/schemas/McpToolCacheConfig"
+          },
+          "enabled": {
+            "description": "Enable or disable the MCP server on startup",
+            "type": "boolean"
           }
         },
         "required": ["type", "url"],
@@ -33457,7 +33460,7 @@
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
-            "description": "Advisory limit suggested by current memory pressure; never used for task admission",
+            "description": "Memory-pressure ceiling applied to new task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33470,7 +33473,7 @@
             ]
           },
           "memoryPressureReason": {
-            "description": "Reason for the advisory memory-pressure limit",
+            "description": "Reason for the memory-pressure admission ceiling",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
@@ -40547,6 +40550,64 @@
         },
         "required": ["type", "properties"]
       },
+      "Event.synergy_link.target.created": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.created"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.updated": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.updated"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "target": {
+                "$ref": "#/components/schemas/SynergyLinkTarget"
+              }
+            },
+            "required": ["target"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "Event.synergy_link.target.removed": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "synergy_link.target.removed"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^target_[0-9a-f-]{36}$"
+              }
+            },
+            "required": ["id"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
       "Event.cortex.task.created": {
         "type": "object",
         "properties": {
@@ -40603,64 +40664,6 @@
               }
             },
             "required": ["tasks"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.created": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.created"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.updated": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.updated"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "target": {
-                "$ref": "#/components/schemas/SynergyLinkTarget"
-              }
-            },
-            "required": ["target"]
-          }
-        },
-        "required": ["type", "properties"]
-      },
-      "Event.synergy_link.target.removed": {
-        "type": "object",
-        "properties": {
-          "type": {
-            "type": "string",
-            "const": "synergy_link.target.removed"
-          },
-          "properties": {
-            "type": "object",
-            "properties": {
-              "id": {
-                "type": "string",
-                "pattern": "^target_[0-9a-f-]{36}$"
-              }
-            },
-            "required": ["id"]
           }
         },
         "required": ["type", "properties"]
@@ -41310,15 +41313,6 @@
             "$ref": "#/components/schemas/Event.agenda.item.deleted"
           },
           {
-            "$ref": "#/components/schemas/Event.cortex.task.created"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.task.completed"
-          },
-          {
-            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
-          },
-          {
             "$ref": "#/components/schemas/Event.synergy_link.target.created"
           },
           {
@@ -41326,6 +41320,15 @@
           },
           {
             "$ref": "#/components/schemas/Event.synergy_link.target.removed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.created"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.task.completed"
+          },
+          {
+            "$ref": "#/components/schemas/Event.cortex.tasks.updated"
           },
           {
             "$ref": "#/components/schemas/Event.plugin.event"

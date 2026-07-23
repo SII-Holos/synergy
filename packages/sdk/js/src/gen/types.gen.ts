@@ -2713,10 +2713,6 @@ export type McpLocalConfig = {
     [key: string]: string
   }
   /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
-  /**
    * Deprecated legacy timeout in ms for MCP operations. Prefer connectTimeout/listTimeout/callTimeout.
    */
   timeout?: number
@@ -2748,6 +2744,10 @@ export type McpLocalConfig = {
   toolFilter?: McpToolFilterConfig
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
 }
 
 export type McpOAuthConfig = {
@@ -2774,10 +2774,6 @@ export type McpRemoteConfig = {
    * URL of the remote MCP server
    */
   url: string
-  /**
-   * Enable or disable the MCP server on startup
-   */
-  enabled?: boolean
   /**
    * Headers to send with the request
    */
@@ -2820,6 +2816,10 @@ export type McpRemoteConfig = {
   toolFilter?: McpToolFilterConfig
   tools?: McpToolsConfig
   toolCache?: McpToolCacheConfig
+  /**
+   * Enable or disable the MCP server on startup
+   */
+  enabled?: boolean
 }
 
 /**
@@ -5487,11 +5487,11 @@ export type CortexConcurrencyStatus = {
    */
   effective: number
   /**
-   * Advisory limit suggested by current memory pressure; never used for task admission
+   * Memory-pressure ceiling applied to new task admission
    */
   memoryPressureLimit: number | null
   /**
-   * Reason for the advisory memory-pressure limit
+   * Reason for the memory-pressure admission ceiling
    */
   memoryPressureReason: "normal" | "memory_pressure" | "critical_memory_pressure"
   /**
@@ -7792,27 +7792,6 @@ export type EventAgendaItemDeleted = {
   }
 }
 
-export type EventCortexTaskCreated = {
-  type: "cortex.task.created"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTaskCompleted = {
-  type: "cortex.task.completed"
-  properties: {
-    task: CortexTask
-  }
-}
-
-export type EventCortexTasksUpdated = {
-  type: "cortex.tasks.updated"
-  properties: {
-    tasks: Array<CortexTask>
-  }
-}
-
 export type EventSynergyLinkTargetCreated = {
   type: "synergy_link.target.created"
   properties: {
@@ -7831,6 +7810,27 @@ export type EventSynergyLinkTargetRemoved = {
   type: "synergy_link.target.removed"
   properties: {
     id: string
+  }
+}
+
+export type EventCortexTaskCreated = {
+  type: "cortex.task.created"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTaskCompleted = {
+  type: "cortex.task.completed"
+  properties: {
+    task: CortexTask
+  }
+}
+
+export type EventCortexTasksUpdated = {
+  type: "cortex.tasks.updated"
+  properties: {
+    tasks: Array<CortexTask>
   }
 }
 
@@ -8061,12 +8061,12 @@ export type Event =
   | EventAgendaItemCreated
   | EventAgendaItemUpdated
   | EventAgendaItemDeleted
-  | EventCortexTaskCreated
-  | EventCortexTaskCompleted
-  | EventCortexTasksUpdated
   | EventSynergyLinkTargetCreated
   | EventSynergyLinkTargetUpdated
   | EventSynergyLinkTargetRemoved
+  | EventCortexTaskCreated
+  | EventCortexTaskCompleted
+  | EventCortexTasksUpdated
   | EventPluginEvent
   | EventCommandExecuted
   | EventFileWatcherUpdated
