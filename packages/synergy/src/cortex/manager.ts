@@ -718,6 +718,14 @@ export namespace Cortex {
             error,
           })
         })
+      } else {
+        await SessionDrive.request(terminalTask.parentSessionID, "cortex-completion").catch((error) => {
+          log.error("failed to drive parent session after task completion", {
+            taskID,
+            parentSessionID: terminalTask.parentSessionID,
+            error,
+          })
+        })
       }
       const pluginSnapshot = pluginTaskSnapshotFromTask(terminalTask)
       if (pluginSnapshot) {
