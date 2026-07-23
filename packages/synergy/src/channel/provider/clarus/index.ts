@@ -13,6 +13,16 @@ import { ClarusResultOutbox, type ClarusResultPayload, type ClarusResultSend } f
 import { ClarusExtensionOutbox, type ClarusExtendPayload, type ClarusExtensionSend } from "./extension-outbox"
 import { createClarusAgentTunnelAdapter } from "./tunnel-adapter"
 
+type ClarusHolosDependencies = {
+  auth: Pick<typeof HolosAuth, "getCredentialOrThrow" | "getStoredCredential">
+  runtime: Pick<typeof HolosRuntime, "getNativeIdentity" | "getNativeTunnel" | "status">
+}
+
+const defaultHolosDependencies: ClarusHolosDependencies = {
+  auth: HolosAuth,
+  runtime: HolosRuntime,
+}
+
 type AccountConnection = {
   accountId: string
   config: Config.ChannelClarusAccount
@@ -39,13 +49,18 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
   private readonly log = Log.create({ service: "channel.clarus" })
   private readonly connections = new Map<string, AccountConnection>()
 
+  constructor(private readonly holos: ClarusHolosDependencies = defaultHolosDependencies) {}
+
   async waitForTransport(input: { accountId: string; signal: AbortSignal }): Promise<void> {
     if (input.signal.aborted) return
-    const tunnel = await HolosRuntime.getNativeTunnel()
+    const tunnel = await this.holos.runtime.getNativeTunnel()
     if (input.signal.aborted) return
 
     const ready = async () => {
-      const [status, identity] = await Promise.all([HolosRuntime.status(), HolosRuntime.getNativeIdentity()])
+      const [status, identity] = await Promise.all([
+        this.holos.runtime.status(),
+        this.holos.runtime.getNativeIdentity(),
+      ])
       return status.status === "connected" && identity.agentID === input.accountId
     }
     if (await ready()) return
@@ -90,13 +105,13 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     host: ChannelHost.Instance
     onDisconnect?: (reason?: string) => void
   }): Promise<void> {
-    const credential = await HolosAuth.getCredentialOrThrow()
+    const credential = await this.holos.auth.getCredentialOrThrow()
     if (credential.agentId !== input.accountId)
       throw new Error("The Clarus channel account is not the active Holos account")
-    const status = await HolosRuntime.status()
+    const status = await this.holos.runtime.status()
     if (status.status !== "connected") throw new Error("Holos Agent Tunnel is not connected")
 
-    const nativeTunnel = await HolosRuntime.getNativeTunnel()
+    const nativeTunnel = await this.holos.runtime.getNativeTunnel()
     const tunnel = createClarusAgentTunnelAdapter(nativeTunnel)
     const connection: AccountConnection = {
       accountId: input.accountId,
@@ -271,7 +286,7 @@ export class ClarusProvider implements ChannelTypes.Provider<Config.ChannelClaru
     const rest = new ClarusProjectClient(
       apiUrl,
       async () => {
-        const credential = await HolosAuth.getStoredCredential()
+        const credential = await this.holos.auth.getStoredCredential()
         if (!credential) return undefined
         return { agentID: credential.agentId, agentSecret: credential.agentSecret }
       },
