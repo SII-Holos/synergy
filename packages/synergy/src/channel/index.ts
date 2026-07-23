@@ -32,7 +32,6 @@ import {
   Mention as MentionSchema,
   Attachment as AttachmentSchema,
   MessageContext as MessageContextSchema,
-  toKey as toKeyFn,
 } from "./types"
 import type {
   Info as InfoType,
