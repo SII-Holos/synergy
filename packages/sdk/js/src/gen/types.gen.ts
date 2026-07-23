@@ -7538,6 +7538,9 @@ export type ChannelStatus =
       status: "connecting"
     }
   | {
+      status: "waiting_for_transport"
+    }
+  | {
       status: "disconnected"
     }
   | {

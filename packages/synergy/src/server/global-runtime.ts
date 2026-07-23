@@ -100,8 +100,8 @@ export namespace GlobalRuntime {
           await SessionRecovery.reconcileRuntimeState({ scopeID: Scope.home().id, apply: true }).catch((error) => {
             log.warn("session runtime recovery failed", { scopeID: Scope.home().id, error })
           })
-          await startChannels(config)
           await HolosRuntime.init()
+          await startChannels(config)
           FileWatcher.init()
           MCP.ensureStarted()
           PluginMarketplaceRegistry.prefetchRegistry()

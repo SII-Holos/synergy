@@ -39878,6 +39878,16 @@
             "properties": {
               "status": {
                 "type": "string",
+                "const": "waiting_for_transport"
+              }
+            },
+            "required": ["status"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
                 "const": "disconnected"
               }
             },
