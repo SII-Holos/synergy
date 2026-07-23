@@ -19,7 +19,7 @@ Channel sessions default to the `autonomous` control profile. An inbound message
 
 ### Native Clarus tasks
 
-Clarus is the built-in task-only provider. A Holos identity creates its matching Channel account disabled by default. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity.
+Clarus is the built-in task-only provider. A Holos identity creates its matching Channel account disabled by default. After the user enables it, Clarus borrows the existing authenticated Holos Agent Tunnel instead of opening another WebSocket or reconnect loop. The configured Clarus account must match the active Holos agent identity. While Holos is connecting or reconnecting, Clarus waits passively in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 Project refresh discovers all visible non-archived remote Projects and provisions one deterministic managed Project Scope per `(provider, account, external Project)` identity, including Projects that currently have no Tasks. These are normal Project Scopes with files, Git, LSP, configuration, and Sessions, but the Sidebar shows them only under their Channel account rather than duplicating them in the generic Projects section.
 

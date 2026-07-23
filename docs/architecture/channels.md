@@ -37,15 +37,15 @@ Existing Feishu endpoint records retain the legacy `chatId` / `scopeKey` encodin
 Every provider declares one lifecycle:
 
 - `self_connected` providers own their transport and use Channel's bounded exponential reconnect loop.
-- `borrowed_transport` providers observe a transport owned by another runtime and never install a second reconnect loop.
+- `borrowed_transport` providers observe a transport owned by another runtime and never install a second reconnect loop. When such a provider exposes `waitForTransport`, Channel reports `waiting_for_transport`, waits on the owner's readiness signal without polling, and calls `connect` once for each ready generation.
 
-Clarus borrows the one authenticated Holos Agent Tunnel WebSocket through `HolosRuntime.getNativeTunnel()`. Native requests and unsolicited events carry the active agent identity, tunnel epoch, and monotonic connection generation. The port owns request validation, correlation, observer cleanup, and transport disposition:
+Clarus borrows the one authenticated Holos Agent Tunnel WebSocket through `HolosRuntime.getNativeTunnel()`. Clarus operations and events use their `clarus.*` operation name as the top-level wire `type`; they are not wrapped in a second `native` envelope. Agent identity, tunnel epoch, and monotonic connection generation are attached from the current local Holos provider after receipt rather than trusted from frame metadata. The port owns request validation, correlation, observer isolation and cleanup, and transport disposition:
 
 - `not_dispatched` means bytes were not sent and an explicit retry may be safe.
-- `rejected` is an authoritative terminal rejection.
+- `rejected` is an authoritative terminal rejection, including a correlated gateway error.
 - `ambiguous` means dispatch may have occurred; automatic retry is forbidden.
 
-Disconnect settles in-flight native requests as ambiguous and notifies borrowed consumers. Clarus removes its observers and waits for Channel/Holos lifecycle to reconnect it; it does not create another WebSocket or reconnect loop.
+Disconnect settles in-flight native requests as ambiguous and notifies borrowed consumers. Clarus removes its observers and returns to passive transport waiting; Channel does not create another WebSocket, timer, polling loop, or transport reconnect loop.
 
 ## Managed Project Ownership
 
@@ -100,7 +100,7 @@ Exact assignment replay reuses the Session and delivery key. A new run for the s
 
 ## Native Clarus Task Flow
 
-Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. The configured account ID must equal the active Holos agent ID, and the Agent Tunnel must already be connected.
+Clarus account configuration lives in the Channel domain and uses the active Holos agent credentials. The configured account ID must equal the active Holos agent ID. Server startup initializes Holos before Channels; while the Agent Tunnel is still connecting or reconnecting, the Clarus account remains in `waiting_for_transport` until the matching authenticated transport becomes ready.
 
 On connect or manual refresh, Clarus:
 
