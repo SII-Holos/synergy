@@ -33,6 +33,30 @@ async function createPluginLightLoop(input?: { status?: "completed"; deliveredAt
 }
 
 describe("LightLoop terminal hook delivery", () => {
+  test("clears ordinary LightLoop state instead of persisting a terminal workflow", async () => {
+    await using tmp = await tmpdir({ git: true })
+    await ScopeContext.provide({
+      scope: await tmp.scope(),
+      fn: async () => {
+        const session = await Session.create({})
+        await Session.update(session.id, (draft) => {
+          draft.workflow = {
+            kind: "lightloop",
+            instructions: "Finish the ordinary task",
+            status: "running",
+          }
+        })
+        const delivery = mock(async () => ({ status: "delivered", handlerCount: 1 }))
+        ;(Plugin as any).deliverHookForPlugin = delivery
+
+        await LightLoopRuntime.setTerminalStatus(session.id, "completed")
+
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(delivery).not.toHaveBeenCalled()
+      },
+    })
+  })
+
   test("acknowledges one successful matching delivery and does not redeliver", async () => {
     await using tmp = await tmpdir({ git: true })
     await ScopeContext.provide({

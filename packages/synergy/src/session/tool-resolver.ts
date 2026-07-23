@@ -49,6 +49,7 @@ import { SkillSourceProfile } from "@/skill/source-profile"
 import { LightLoopReviewAccess } from "./light-loop-review-access"
 import { BlueprintLoopReviewAccess } from "./blueprint-loop-review-access"
 import { BlueprintLoopStore } from "@/blueprint"
+import { isActiveLightLoopWorkflow } from "./light-loop-state"
 
 export namespace ToolResolver {
   const log = Log.create({ service: "tool.resolver" })
@@ -1158,7 +1159,7 @@ export namespace ToolResolver {
         }
       }
 
-      if (def.id === "loop_stop" && input.session?.workflow?.kind !== "lightloop") {
+      if (def.id === "loop_stop" && !isActiveLightLoopWorkflow(input.session?.workflow)) {
         diagnostics.set(
           def.id,
           SessionModePolicy.unavailable({

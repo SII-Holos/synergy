@@ -372,6 +372,42 @@ async function migrateLightloopInstructionsField(progress: (current: number, tot
   log.info("Light Loop instructions field migration complete", { total: tasks.length, changed })
 }
 
+async function clearTerminalOrdinaryLightloops(progress: (current: number, total: number) => void) {
+  const scopeIDs = await Storage.scan(["sessions"]).catch(() => [])
+  const tasks: Array<{ scopeID: string; sessionID: string }> = []
+
+  for (const scopeID of scopeIDs) {
+    const scope = Identifier.asScopeID(scopeID)
+    const sessionIDs = await Storage.scan(StoragePath.sessionsRoot(scope)).catch(() => [])
+    for (const sessionID of sessionIDs) tasks.push({ scopeID, sessionID })
+  }
+
+  let done = 0
+  let changed = 0
+  for (const { scopeID, sessionID } of tasks) {
+    const path = StoragePath.sessionInfo(Identifier.asScopeID(scopeID), Identifier.asSessionID(sessionID))
+    const info = await Storage.read<Record<string, unknown>>(path).catch(() => undefined)
+    const workflow = asRecord(info?.workflow)
+    const terminal =
+      workflow?.status === "completed" ||
+      workflow?.status === "failed" ||
+      workflow?.status === "cancelled" ||
+      workflow?.status === "timed_out" ||
+      workflow?.status === "iteration_exhausted"
+
+    if (info && workflow?.kind === "lightloop" && terminal && !asRecord(workflow.pluginOwner)) {
+      delete info.workflow
+      await Storage.write(path, info)
+      changed++
+    }
+
+    done++
+    progress(done, tasks.length)
+  }
+
+  log.info("terminal ordinary Light Loop migration complete", { total: tasks.length, changed })
+}
+
 function migrateWorkflowMessageMetadata(metadata: Record<string, unknown>): {
   metadata: Record<string, unknown> | undefined
   changed: boolean
@@ -2349,6 +2385,13 @@ export const migrations: Migration[] = [
     description: "Migrate Light Loop task descriptions to canonical instructions",
     async up(progress) {
       await migrateLightloopInstructionsField(progress)
+    },
+  },
+  {
+    id: "20260723-clear-terminal-ordinary-lightloops",
+    description: "Clear terminal ordinary Light Loop workflows while preserving plugin lifecycle records",
+    async up(progress) {
+      await clearTerminalOrdinaryLightloops(progress)
     },
   },
 ]
