@@ -14,6 +14,9 @@ import {
   NATIVE_MAX_PAYLOAD_BYTES,
   NATIVE_MAX_STRING_LENGTH,
 } from "../../src/holos/native"
+import { Envelope } from "../../src/holos/envelope"
+
+const textEncoder = new TextEncoder()
 
 type PendingRequest = {
   type: string
@@ -289,7 +292,7 @@ export class FakeNativeTunnelPort implements NativeTunnelPort {
         } satisfies NativeRequestFailure),
       }
     }
-    if (serialized.length > NATIVE_MAX_PAYLOAD_BYTES) {
+    if (textEncoder.encode(serialized).byteLength > NATIVE_MAX_PAYLOAD_BYTES) {
       return {
         requestID,
         response: Promise.reject({
@@ -301,8 +304,21 @@ export class FakeNativeTunnelPort implements NativeTunnelPort {
       }
     }
 
-    const frameSize = JSON.stringify({ type, payload, requestID, meta }).length
-    if (frameSize > NATIVE_FRAME_SIZE_LIMIT) {
+    let frame: string
+    try {
+      frame = Envelope.nativeRequest({ requestID, nativeType: type, payload, meta })
+    } catch {
+      return {
+        requestID,
+        response: Promise.reject({
+          disposition: "rejected",
+          requestID,
+          code: "INVALID_PAYLOAD",
+          message: "Native frame cannot be serialized",
+        } satisfies NativeRequestFailure),
+      }
+    }
+    if (textEncoder.encode(frame).byteLength > NATIVE_FRAME_SIZE_LIMIT) {
       return {
         requestID,
         response: Promise.reject({
