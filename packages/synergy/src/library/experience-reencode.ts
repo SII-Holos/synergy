@@ -498,6 +498,7 @@ export namespace ExperienceReencode {
         "ENETUNREACH",
         "UND_ERR_CONNECT_TIMEOUT",
         "REENCODE_INVALID_OUTPUT",
+        "oversized",
         "timeout",
       ].includes(code)
     ) {

@@ -980,6 +980,22 @@ describe("ExperienceReencode worker primitives", () => {
     expect(afterTimeout).toBe("ok")
     expect(timeoutAttempts).toBe(3)
 
+    let oversizedAttempts = 0
+    const afterOversizedOutput = await ExperienceReencode.withStageRetry({
+      retries: 1,
+      backoffMs: 0,
+      signal: new AbortController().signal,
+      operation() {
+        oversizedAttempts++
+        if (oversizedAttempts === 1) {
+          throw new ExperienceEncoder.EncoderStreamError("oversized", "Agent intent output exceeded 16000 characters")
+        }
+        return "ok"
+      },
+    })
+    expect(afterOversizedOutput).toBe("ok")
+    expect(oversizedAttempts).toBe(2)
+
     let permanentAttempts = 0
     await expect(
       ExperienceReencode.withStageRetry({
