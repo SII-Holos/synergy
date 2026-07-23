@@ -12,7 +12,7 @@ export type NativeMessage = {
   requestID: string | null
   meta: Record<string, unknown>
   payload: unknown
-  caller: unknown
+  caller: Record<string, unknown> | null
   agentID: string
   sessionID: string | null
   generation: number

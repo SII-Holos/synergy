@@ -26,6 +26,7 @@ const WS_FAILED_TIMEOUT_MS = 1_500
 const RECONNECT_DELAY_MS = 2_000
 const MAX_RECONNECT_DELAY_MS = 30_000
 const MAX_RECONNECT_ATTEMPTS = 50
+const textEncoder = new TextEncoder()
 
 type PendingSend = {
   timer: ReturnType<typeof setTimeout>
@@ -160,6 +161,22 @@ export namespace HolosRuntime {
     epoch: number
   }> {
     const current = await state()
+    return {
+      agentID: current.agentID,
+      sessionID: current.sessionID,
+      generation: current.generation,
+      epoch: current.epoch,
+    }
+  }
+
+  export async function getNativeIdentityFor(provider: HolosProvider): Promise<{
+    agentID: string
+    sessionID: string | null
+    generation: number
+    epoch: number
+  } | null> {
+    const current = await state()
+    if (current.provider !== provider || current.status.status !== "connected" || !current.agentID) return null
     return {
       agentID: current.agentID,
       sessionID: current.sessionID,
@@ -391,13 +408,21 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
 
   notifyNativeObservers(msg: NativeMessage): void {
     for (const observer of this._nativeObservers) {
-      observer(msg)
+      try {
+        Promise.resolve(observer(msg)).catch((error) => log.warn("native observer failed", { error }))
+      } catch (error) {
+        log.warn("native observer failed", { error })
+      }
     }
   }
 
   notifyConnectionObservers(event: HolosConnectionEvent): void {
     for (const observer of this._connectionObservers) {
-      observer(event)
+      try {
+        Promise.resolve(observer(event)).catch((error) => log.warn("connection observer failed", { error }))
+      } catch (error) {
+        log.warn("connection observer failed", { error })
+      }
     }
   }
 
@@ -427,9 +452,9 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
       })
     }
 
-    let serialized: string
+    let serializedPayload: string
     try {
-      serialized = JSON.stringify(payload)
+      serializedPayload = JSON.stringify(payload)
     } catch {
       return rejectImmediate(requestID, {
         disposition: "rejected",
@@ -437,7 +462,7 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
         message: "Payload cannot be serialized (may contain circular references)",
       })
     }
-    if (serialized.length > NATIVE_MAX_PAYLOAD_BYTES) {
+    if (textEncoder.encode(serializedPayload).byteLength > NATIVE_MAX_PAYLOAD_BYTES) {
       return rejectImmediate(requestID, {
         disposition: "rejected",
         code: "PAYLOAD_TOO_LARGE",
@@ -445,8 +470,17 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
       })
     }
 
-    const frameSize = JSON.stringify({ type, payload, requestID, meta }).length
-    if (frameSize > NATIVE_FRAME_SIZE_LIMIT) {
+    let frame: string
+    try {
+      frame = Envelope.nativeRequest({ requestID, nativeType: type, payload, meta })
+    } catch {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "INVALID_PAYLOAD",
+        message: "Native frame cannot be serialized",
+      })
+    }
+    if (textEncoder.encode(frame).byteLength > NATIVE_FRAME_SIZE_LIMIT) {
       return rejectImmediate(requestID, {
         disposition: "rejected",
         code: "FRAME_TOO_LARGE",
@@ -462,34 +496,24 @@ class NativeTunnelPortImpl implements NativeTunnelPort {
       })
     }
 
-    const response = new Promise<NativeMessage>((resolve, reject) => {
-      if (signal?.aborted) {
-        reject({
-          disposition: "ambiguous",
-          requestID,
-          reason: "aborted_after_dispatch",
-          message: "Request aborted after dispatch",
-        } satisfies NativeRequestFailure)
-        return
-      }
+    if (signal?.aborted) {
+      return rejectImmediate(requestID, {
+        disposition: "rejected",
+        code: "ABORTED_BEFORE_DISPATCH",
+        message: "Request aborted before dispatch",
+      })
+    }
 
-      HolosRuntime.getProvider()
-        .then((provider) => {
-          if (!provider) {
-            reject({
-              disposition: "not_dispatched",
-              requestID,
-              code: "NOT_CONNECTED",
-              message: "Tunnel is not connected",
-            } satisfies NativeRequestFailure)
-            return
-          }
-          provider
-            .sendNativeRequest({ type, payload, requestID, expectedResponseType, timeoutMs, signal, meta })
-            .then((msg) => resolve(msg))
-            .catch((err) => reject(err))
-        })
-        .catch((err) => reject(err))
+    const response = HolosRuntime.getProvider().then((provider) => {
+      if (!provider) {
+        throw {
+          disposition: "not_dispatched",
+          requestID,
+          code: "NOT_CONNECTED",
+          message: "Tunnel is not connected",
+        } satisfies NativeRequestFailure
+      }
+      return provider.sendNativeRequest({ type, payload, requestID, expectedResponseType, timeoutMs, signal, meta })
     })
 
     return { response, requestID }
@@ -651,7 +675,8 @@ export class HolosProvider {
     signal?: AbortSignal
     meta?: Record<string, unknown>
   }): Promise<NativeMessage> {
-    if (!this.state.ws || this.state.ws.readyState !== WebSocket.OPEN) {
+    const ws = this.state.ws
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
       throw {
         disposition: "not_dispatched",
         requestID: input.requestID,
@@ -659,106 +684,113 @@ export class HolosProvider {
         message: "Tunnel is not connected",
       } satisfies NativeRequestFailure
     }
-
-    return HolosRuntime.getNativeIdentity().then((identity) => {
-      const frame = Envelope.nativeRequest({
+    if (this.state.pendingNativeRequests.has(input.requestID)) {
+      throw {
+        disposition: "rejected",
         requestID: input.requestID,
-        nativeType: input.type,
+        code: "DUPLICATE_REQUEST_ID",
+        message: "A native request with this request ID is already pending",
+      } satisfies NativeRequestFailure
+    }
+    if (input.signal?.aborted) {
+      throw {
+        disposition: "rejected",
+        requestID: input.requestID,
+        code: "ABORTED_BEFORE_DISPATCH",
+        message: "Request aborted before dispatch",
+      } satisfies NativeRequestFailure
+    }
+
+    const frame = Envelope.nativeRequest({
+      requestID: input.requestID,
+      nativeType: input.type,
+      payload: input.payload,
+      meta: input.meta,
+    })
+    if (textEncoder.encode(frame).byteLength > NATIVE_FRAME_SIZE_LIMIT) {
+      throw {
+        disposition: "rejected",
+        requestID: input.requestID,
+        code: "FRAME_TOO_LARGE",
+        message: `Frame exceeds ${NATIVE_FRAME_SIZE_LIMIT} bytes`,
+      } satisfies NativeRequestFailure
+    }
+
+    return new Promise<NativeMessage>((resolve, reject) => {
+      let settled = false
+      let timeout: ReturnType<typeof setTimeout> | null = null
+      let abortListener: (() => void) | null = null
+      const settleOnce = () => {
+        if (settled) return false
+        settled = true
+        if (timeout) clearTimeout(timeout)
+        if (abortListener) input.signal?.removeEventListener("abort", abortListener)
+        this.state.pendingNativeRequests.delete(input.requestID)
+        return true
+      }
+
+      const pending: PendingNativeRequest = {
+        requestID: input.requestID,
         expectedResponseType: input.expectedResponseType,
-        payload: input.payload,
-        agentID: identity.agentID ?? this.state.peerId ?? "",
-        sessionID: identity.sessionID,
-        generation: identity.generation,
-        epoch: identity.epoch,
-        meta: input.meta,
-      })
+        resolve: (msg) => {
+          if (!settleOnce()) return
+          resolve(msg)
+        },
+        reject: (failure) => {
+          if (!settleOnce()) return
+          reject(failure)
+        },
+        timeout: null,
+        abortListener: null,
+      }
 
-      this.state.ws!.send(frame)
-
-      return new Promise<NativeMessage>((resolve, reject) => {
-        let settled = false
-
-        const settleOnce = () => {
-          if (settled) return
-          settled = true
-          if (timeout) clearTimeout(timeout)
-          if (abortListener) {
-            try {
-              input.signal?.removeEventListener("abort", abortListener)
-            } catch {
-              // signal may be gone
-            }
-          }
-          this.state.pendingNativeRequests.delete(input.requestID)
+      if (input.timeoutMs && input.timeoutMs > 0) {
+        timeout = setTimeout(() => {
+          pending.reject({
+            disposition: "ambiguous",
+            requestID: input.requestID,
+            reason: "timeout",
+            message: `Request timed out after ${input.timeoutMs}ms`,
+          })
+        }, input.timeoutMs)
+        pending.timeout = timeout
+      }
+      if (input.signal) {
+        abortListener = () => {
+          pending.reject({
+            disposition: "ambiguous",
+            requestID: input.requestID,
+            reason: "aborted_after_dispatch",
+            message: "Request aborted after dispatch",
+          })
         }
+        pending.abortListener = abortListener
+        input.signal.addEventListener("abort", abortListener, { once: true })
+      }
 
-        let timeout: ReturnType<typeof setTimeout> | null = null
-        if (input.timeoutMs && input.timeoutMs > 0) {
-          timeout = setTimeout(() => {
-            settleOnce()
-            reject({
-              disposition: "ambiguous",
-              requestID: input.requestID,
-              reason: "timeout",
-              message: `Request timed out after ${input.timeoutMs}ms`,
-            } satisfies NativeRequestFailure)
-          }, input.timeoutMs)
-        }
-
-        let abortListener: (() => void) | null = null
-        if (input.signal) {
-          abortListener = () => {
-            settleOnce()
-            reject({
-              disposition: "ambiguous",
-              requestID: input.requestID,
-              reason: "aborted_after_dispatch",
-              message: "Request aborted after dispatch",
-            } satisfies NativeRequestFailure)
-          }
-          if (input.signal.aborted) {
-            abortListener()
-            return
-          }
-          input.signal.addEventListener("abort", abortListener, { once: true })
-        }
-
-        this.state.pendingNativeRequests.set(input.requestID, {
+      this.state.pendingNativeRequests.set(input.requestID, pending)
+      try {
+        ws.send(frame)
+      } catch (error) {
+        pending.reject({
+          disposition: "not_dispatched",
           requestID: input.requestID,
-          expectedResponseType: input.expectedResponseType,
-          resolve: (msg) => {
-            settleOnce()
-            resolve(msg)
-          },
-          reject: (failure) => {
-            settleOnce()
-            reject(failure)
-          },
-          timeout,
-          abortListener,
+          code: "SEND_FAILED",
+          message: error instanceof Error ? error.message : "Failed to write native request",
         })
-      })
+      }
     })
   }
 
   private settleNativePending(reason: "disconnected" | "timeout" | "aborted_after_dispatch", message: string): void {
     for (const [requestID, pending] of this.state.pendingNativeRequests) {
       if (pending.timeout) clearTimeout(pending.timeout)
-      if (pending.abortListener) {
-        pending.reject({
-          disposition: "ambiguous",
-          requestID,
-          reason,
-          message,
-        } satisfies NativeRequestFailure)
-      } else {
-        pending.reject({
-          disposition: "ambiguous",
-          requestID,
-          reason,
-          message,
-        } satisfies NativeRequestFailure)
-      }
+      pending.reject({
+        disposition: "ambiguous",
+        requestID,
+        reason,
+        message,
+      })
     }
     this.state.pendingNativeRequests.clear()
   }
@@ -766,10 +798,9 @@ export class HolosProvider {
   private handleParsedMessage(msg: Envelope.Parsed): void {
     switch (msg.kind) {
       case "pong":
-      case "unknown":
         break
       case "error":
-        log.error("gateway error", { code: msg.code, message: msg.message })
+        this.handleGatewayError(msg)
         break
       case "ws_failed":
         this.handleWsFailed(msg)
@@ -779,22 +810,27 @@ export class HolosProvider {
         this.handleAppEvent(msg.event, msg.payload, msg.caller)
         break
       case "native":
-        this.handleNativeMessage(msg)
+        void this.handleNativeMessage(msg)
         break
     }
   }
 
-  private handleNativeMessage(msg: Extract<Envelope.Parsed, { kind: "native" }>): void {
+  private async handleNativeMessage(msg: Extract<Envelope.Parsed, { kind: "native" }>): Promise<void> {
+    const identity = await HolosRuntime.getNativeIdentityFor(this)
+    if (!identity) {
+      log.warn("native message dropped: no matching provider identity")
+      return
+    }
     const nativeMsg: NativeMessage = {
       type: msg.nativeType,
-      requestID: msg.requestId || null,
+      requestID: msg.requestId,
       meta: msg.meta,
       payload: msg.payload,
-      caller: msg.caller ?? null,
-      agentID: msg.agentID,
-      sessionID: msg.sessionID,
-      generation: msg.generation,
-      epoch: msg.epoch,
+      caller: msg.caller,
+      agentID: identity.agentID,
+      sessionID: identity.sessionID,
+      generation: identity.generation,
+      epoch: identity.epoch,
     }
 
     if (msg.requestId) {
@@ -806,17 +842,31 @@ export class HolosProvider {
             requestID: msg.requestId,
             reason: "unexpected_response",
             message: `Expected response type "${pending.expectedResponseType}" but got "${msg.nativeType}"`,
-          } satisfies NativeRequestFailure)
-          return
+          })
+        } else {
+          pending.resolve(nativeMsg)
         }
-        pending.resolve(nativeMsg)
-        return
       }
     }
 
-    HolosRuntime.getNativeTunnel().then((port) => {
-      ;(port as NativeTunnelPortImpl).notifyNativeObservers(nativeMsg)
-    })
+    const port = await HolosRuntime.getNativeTunnel()
+    ;(port as NativeTunnelPortImpl).notifyNativeObservers(nativeMsg)
+  }
+
+  private handleGatewayError(msg: Extract<Envelope.Parsed, { kind: "error" }>): void {
+    if (msg.requestId) {
+      const pending = this.state.pendingNativeRequests.get(msg.requestId)
+      if (pending) {
+        pending.reject({
+          disposition: "rejected",
+          requestID: msg.requestId,
+          code: msg.code,
+          message: msg.message,
+        })
+        return
+      }
+    }
+    log.warn("uncorrelated gateway error", { code: msg.code.slice(0, 256), message: msg.message.slice(0, 256) })
   }
 
   private handleWsFailed(msg: Extract<Envelope.Parsed, { kind: "ws_failed" }>): void {
