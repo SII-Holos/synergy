@@ -1,7 +1,6 @@
 import { Log } from "@/util/log"
 import { Bus } from "@/bus"
 import { Command } from "@/command/command"
-import { File } from "@/file"
 import { Format } from "@/file/format"
 import { FileWatcher } from "@/file/watcher"
 import { LSP } from "@/lsp"
@@ -32,7 +31,6 @@ export namespace ScopeRuntime {
             Format.init()
             await LSP.init()
             FileWatcher.init()
-            File.init()
             Vcs.init()
             const commandState = ScopedState.create(
               () => {

@@ -8484,7 +8484,7 @@
           }
         ],
         "summary": "Get Cortex concurrency status",
-        "description": "Get Cortex admission limits and advisory memory-pressure concurrency guidance.",
+        "description": "Get configured Cortex concurrency and the effective memory-pressure admission limit.",
         "responses": {
           "200": {
             "description": "Cortex concurrency status",
@@ -33464,7 +33464,7 @@
             "maximum": 9007199254740991
           },
           "memoryPressureLimit": {
-            "description": "Advisory limit suggested by current memory pressure; never used for task admission",
+            "description": "Memory-pressure ceiling applied to new task admission",
             "anyOf": [
               {
                 "type": "integer",
@@ -33477,7 +33477,7 @@
             ]
           },
           "memoryPressureReason": {
-            "description": "Reason for the advisory memory-pressure limit",
+            "description": "Reason for the memory-pressure admission ceiling",
             "type": "string",
             "enum": ["normal", "memory_pressure", "critical_memory_pressure"]
           },
