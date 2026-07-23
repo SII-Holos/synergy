@@ -295,7 +295,56 @@ export namespace PerformanceSchema {
           childCount: z.number().int(),
           userCount: z.number().int(),
           waiterCount: z.number().int(),
+          executionPhases: z
+            .partialRecord(
+              z.enum([
+                "queued_agent",
+                "running_agent",
+                "authorizing_tools",
+                "queued_tools",
+                "running_tools",
+                "waiting_background",
+                "stopping",
+              ]),
+              z.number().int().nonnegative(),
+            )
+            .optional(),
         }),
+        execution: z
+          .object({
+            agentWorkers: z.object({
+              configured: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive(),
+              workers: z.number().int().nonnegative(),
+              ready: z.number().int().nonnegative(),
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              rssBytes: z.number().int().nonnegative(),
+              heapUsedBytes: z.number().int().nonnegative(),
+            }),
+            toolTasks: z.object({
+              active: z.number().int().nonnegative(),
+              queued: z.number().int().nonnegative(),
+              tracked: z.number().int().nonnegative(),
+              queuedBytes: z.number().int().nonnegative(),
+              maxConcurrent: z.number().int().positive(),
+              maxQueued: z.number().int().nonnegative(),
+              maxQueuedBytes: z.number().int().positive().optional(),
+              byExecutor: z
+                .partialRecord(
+                  z.enum(["local_process", "file", "plugin", "mcp", "browser", "link", "control_plane"]),
+                  z.object({
+                    active: z.number().int().nonnegative(),
+                    queued: z.number().int().nonnegative(),
+                    limit: z.number().int().positive(),
+                  }),
+                )
+                .optional(),
+            }),
+          })
+          .optional(),
         messageCache: z
           .object({
             totalBytes: z.number().int().nonnegative(),

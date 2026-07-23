@@ -504,6 +504,7 @@ export namespace SessionInvoke {
           sessionID: sessionID,
           model,
           abort,
+          generation: lease.generation,
           toolDisplay: (toolName) => toolDisplayByName.get(toolName),
         })
 
@@ -871,7 +872,7 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           }),
         })
 
-        let streamInput: LLM.StreamInput | undefined
+        let streamInput: SessionProcessor.ProcessInput | undefined
         function releaseTurnReferences(mutateStreamInput: boolean) {
           if (mutateStreamInput) {
             toolDefinitions.length = 0
@@ -889,7 +890,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
             promptPlan?.toolDefinitions.splice(0)
             resolvedTools?.activeToolIDs.splice(0)
             if (resolvedTools) {
-              for (const id of Object.keys(resolvedTools.tools)) delete resolvedTools.tools[id]
+              resolvedTools.definitions.splice(0)
+              for (const id of Object.keys(resolvedTools.executionTools)) delete resolvedTools.executionTools[id]
+              for (const id of Object.keys(resolvedTools.executorKinds)) delete resolvedTools.executorKinds[id]
             }
             activeToolIDs.clear()
             for (const provenance of [plannedHistoryProvenance, contextUsageProvenance]) {
@@ -899,7 +902,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
               streamInput.system.splice(0)
               streamInput.lateSystem?.splice(0)
               streamInput.messages.splice(0)
-              for (const id of Object.keys(streamInput.tools)) delete streamInput.tools[id]
+              streamInput.toolDefinitions.splice(0)
+              for (const id of Object.keys(streamInput.executionTools)) delete streamInput.executionTools[id]
+              for (const id of Object.keys(streamInput.executorKinds)) delete streamInput.executorKinds[id]
               streamInput.activeToolIDs?.splice(0)
             }
           }
@@ -960,7 +965,9 @@ loop_stop() does not end the Light Loop directly — a reviewer will audit your 
           systemCacheBreakpoint: promptPlan.systemCacheBreakpoint,
           lateSystem: promptPlan.lateSystem,
           messages: promptPlan.messages,
-          tools: resolvedTools.tools,
+          toolDefinitions: resolvedTools.definitions,
+          executionTools: resolvedTools.executionTools,
+          executorKinds: resolvedTools.executorKinds,
           activeToolIDs: resolvedTools.activeToolIDs,
           model,
           contextUsageProvenance,

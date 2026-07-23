@@ -414,7 +414,7 @@ describe("tool exposure", () => {
           includeMCP: false,
         })
 
-        await (resolved.tools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
+        await (resolved.executionTools[id] as any).execute({ value: "persist me" }, { toolCallId: "call_post_persist" })
         const completed = await outcome.promise
 
         expect(committed).toBe(false)
@@ -598,14 +598,14 @@ describe("tool exposure", () => {
           includeMCP: false,
         })
 
-        const searchResult = await (resolved.tools.search_tools as any).execute(
+        const searchResult = await (resolved.executionTools.search_tools as any).execute(
           { query: "note", limit: 8 },
           { toolCallId: "call_search" },
         )
         const noteResult = (searchResult.metadata.results as Array<any>).find((result) => result.id === "note")
         expect(noteResult?.matchedToolPreview).toEqual(["note_read"])
 
-        const expandResult = await (resolved.tools.expand_tools as any).execute(
+        const expandResult = await (resolved.executionTools.expand_tools as any).execute(
           { groups: ["note"] },
           { toolCallId: "call_expand" },
         )
@@ -1064,10 +1064,10 @@ describe("tool exposure", () => {
 
         expect(resolved.activeToolIDs).toContain("bash")
         expect(resolved.activeToolIDs).not.toContain("edit")
-        expect(resolved.tools.edit).toBeDefined()
+        expect(resolved.executionTools.edit).toBeDefined()
 
         await expect(
-          (resolved.tools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
+          (resolved.executionTools.edit as any).execute({ filePath: "x" }, { toolCallId: "call_edit" }),
         ).rejects.toThrow("Plan")
         const outcome = await executions.get("call_edit")
         expect(outcome.status).toBe("error")
