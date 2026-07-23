@@ -599,9 +599,17 @@ describe("app production build contract", () => {
       const fileWorkbenchManifestEntry = Object.entries(manifest).find(
         ([, chunk]) => chunk.src === "src/components/file-workbench/content.tsx",
       )
+      const attachmentWorkbenchManifestEntry = Object.entries(manifest).find(
+        ([, chunk]) => chunk.src === "src/components/attachment-workbench/content.tsx",
+      )
       expect(initialManifestEntries.length, "Production manifest must include an initial entry").toBeGreaterThan(0)
       expect(fileWorkbenchManifestEntry, "Production manifest must include the lazy File workbench entry").toBeDefined()
       expect(fileWorkbenchManifestEntry![1].isDynamicEntry).toBe(true)
+      expect(
+        attachmentWorkbenchManifestEntry,
+        "Production manifest must include the lazy Attachment workbench entry",
+      ).toBeDefined()
+      expect(attachmentWorkbenchManifestEntry![1].isDynamicEntry).toBe(true)
 
       const initialCss = await readCssAssets(outDir, collectManifestCss(manifest, initialManifestEntries))
       const fileWorkbenchCss = await readCssAssets(
@@ -667,6 +675,7 @@ describe("app production build contract", () => {
       ])
       const markdownChunk = assets.find((asset) => asset.startsWith("vendor-markdown-") && asset.endsWith(".js"))
       expect(markdownChunk).toBeDefined()
+      expect(assets.some((asset) => asset.startsWith("pdf.worker.min-") && asset.endsWith(".mjs"))).toBe(true)
       await expectSessionWorkbenchPaneTracksBottomSurface(css)
       await expectSessionInboxBadgePreservesIconCenter(css)
       await expectPromptDockKeepsReadableWidth(css)

@@ -1,0 +1,233 @@
+.attachment-workbench {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  flex-direction: column;
+  background: var(--workbench-canvas-bg);
+  color: var(--text-base);
+}
+
+.attachment-workbench-toolbar {
+  display: flex;
+  min-width: 0;
+  min-height: 52px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: var(--workbench-card-bg);
+}
+
+.attachment-workbench-heading,
+.attachment-workbench-actions,
+.attachment-workbench-mode {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+}
+
+.attachment-workbench-heading {
+  gap: 9px;
+}
+
+.attachment-workbench-heading > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.attachment-workbench-heading strong {
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-workbench-heading span {
+  color: var(--text-weaker);
+  font-size: 11px;
+}
+
+.attachment-workbench-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+.attachment-workbench-mode {
+  overflow: hidden;
+  padding: 2px;
+  border: 1px solid var(--workbench-border);
+  border-radius: 8px;
+  background: var(--workbench-control-bg);
+}
+
+.attachment-workbench-mode button,
+.attachment-workbench-action,
+.attachment-pdf-toolbar button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 6px;
+  color: var(--text-weak);
+  background: transparent;
+  font-size: 12px;
+}
+
+.attachment-workbench-mode button {
+  padding: 0 9px;
+}
+
+.attachment-workbench-mode button[aria-pressed="true"],
+.attachment-pdf-toolbar button[aria-pressed="true"] {
+  color: var(--text-strong);
+  background: var(--surface-interactive-base);
+}
+
+.attachment-workbench-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  text-decoration: none;
+}
+
+.attachment-workbench-mode button:hover,
+.attachment-workbench-action:hover,
+.attachment-pdf-toolbar button:hover:not(:disabled) {
+  color: var(--text-strong);
+  background: var(--surface-raised-base-hover);
+}
+
+.attachment-workbench-viewer {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  background: var(--workbench-canvas-bg);
+}
+
+.attachment-workbench-loading,
+.attachment-workbench-state {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  color: var(--text-weaker);
+  text-align: center;
+}
+
+.attachment-workbench-state strong {
+  max-width: 36rem;
+  color: var(--text-strong);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.attachment-workbench-state span,
+.attachment-workbench-error {
+  max-width: 42rem;
+  color: var(--text-weaker);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.attachment-markdown-preview {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 28px 30px 60px;
+}
+
+.attachment-html-preview {
+  padding: 16px;
+}
+
+.attachment-media-preview {
+  display: block;
+  width: min(100%, 960px);
+  max-height: calc(100vh - 180px);
+  margin: 20px auto;
+  background: var(--surface-inset-base);
+}
+
+.attachment-audio-preview {
+  display: block;
+  width: min(calc(100% - 40px), 680px);
+  margin: 40px auto;
+}
+
+.attachment-pdf-preview {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+}
+
+.attachment-pdf-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--workbench-border);
+  background: var(--workbench-card-bg);
+}
+
+.attachment-pdf-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 9px;
+}
+
+.attachment-pdf-toolbar button:disabled {
+  opacity: 0.45;
+}
+
+.attachment-pdf-toolbar > span:not(.attachment-pdf-toolbar-spacer) {
+  min-width: 58px;
+  color: var(--text-weaker);
+  font-size: 12px;
+  text-align: center;
+}
+
+.attachment-pdf-toolbar-spacer {
+  flex: 1;
+}
+
+.attachment-pdf-stage {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  justify-content: center;
+  overflow: auto;
+  padding: 16px;
+  background: var(--surface-inset-base);
+}
+
+.attachment-pdf-stage canvas {
+  align-self: flex-start;
+  background: var(--surface-base);
+  box-shadow: 0 1px 8px color-mix(in srgb, var(--border-strong-base) 40%, transparent);
+}
+
+@media (max-width: 640px) {
+  .attachment-workbench-toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .attachment-workbench-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .attachment-workbench-action {
+    min-height: 32px;
+  }
+}

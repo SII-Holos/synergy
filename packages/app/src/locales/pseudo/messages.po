@@ -738,6 +738,70 @@ msgstr ""
 msgid "app.agentVisual.external"
 msgstr ""
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr ""
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr ""
@@ -4082,6 +4146,10 @@ msgstr ""
 
 #. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.session.error"
+msgstr ""
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
 msgstr ""
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
@@ -17283,6 +17351,10 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
 msgstr ""
 
 #. js-lingui-explicit-id

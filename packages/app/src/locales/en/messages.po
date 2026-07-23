@@ -738,6 +738,70 @@ msgstr "External"
 msgid "app.agentVisual.external"
 msgstr "External"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "Download"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "View source in Files"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "Loading attachment…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "Attachment view mode"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "Preview"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "Source"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "Fit width"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "Next page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "Previous page"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "Zoom in"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "Zoom out"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "Unable to preview this attachment."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "This attachment is too large to preview. Download it to view the full file."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "This attachment is no longer available in the conversation."
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "Preview is not available for this file type."
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "Cancel"
@@ -4083,6 +4147,10 @@ msgstr "Response ready"
 #. ── Notifications ────────────────────────────────────────────────────────────
 msgid "app.notification.session.error"
 msgstr "Session error"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "Attachment"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
@@ -17284,6 +17352,10 @@ msgstr "No image selected"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "Open image in new window"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "View source in Files"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

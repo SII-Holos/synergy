@@ -6,7 +6,9 @@ import {
 } from "@ericsanchezok/synergy-ui/context/resource-open"
 import { ImagePreview, type ImagePreviewImage } from "@ericsanchezok/synergy-ui/image-preview"
 import {
+  attachmentSourcePath,
   isImageAttachment,
+  resolveAttachmentOpenTarget,
   resolveAttachmentUrl,
   resolveImagePreviewImage,
   type AttachmentFile,
@@ -14,6 +16,8 @@ import {
 import { useDialog } from "@ericsanchezok/synergy-ui/context/dialog"
 import { useFile } from "@/context/file"
 import { useSDK } from "@/context/sdk"
+import { useWorkbenchPanels } from "@/context/workbench"
+import { attachmentResourceId, type AttachmentResourceState } from "@/components/attachment-workbench/model"
 
 function stripQueryAndHash(input: string) {
   const hashIndex = input.indexOf("#")
@@ -35,12 +39,7 @@ function fileUrlPath(input: string | undefined) {
 }
 
 function attachmentPath(file: AttachmentFile) {
-  if (file.localPath) return file.localPath
-  const source = file.source as { path?: unknown } | undefined
-  if (typeof source?.path === "string" && source.path) return source.path
-  const attachment = file.metadata?.attachment as Record<string, unknown> | undefined
-  if (typeof attachment?.sourcePath === "string" && attachment.sourcePath) return attachment.sourcePath
-  return fileUrlPath(file.url)
+  return attachmentSourcePath(file) ?? fileUrlPath(file.url)
 }
 
 function filenameFor(resource: { filename?: string; url?: string; path?: string }) {
@@ -80,11 +79,19 @@ export function ResourceOpenProvider(props: ParentProps) {
   const dialog = useDialog()
   const file = useFile()
   const sdk = useSDK()
+  const workbench = useWorkbenchPanels()
 
   const openWorkspaceFile = (path: string) => {
-    if (!path) return false
-    void file.openWorkspaceFile(path)
+    const normalized = path ? file.normalize(path) : undefined
+    if (!normalized) return false
+    void file.openWorkspaceFile(normalized)
     return true
+  }
+
+  const resolveWorkspacePath = (path: string | undefined) => (path ? file.normalize(path) : undefined)
+
+  const openWorkspaceSource = (path: string) => {
+    return openWorkspaceFile(path)
   }
 
   const openUrl = (input: { url: string; mime?: string; filename?: string }) => {
@@ -106,10 +113,30 @@ export function ResourceOpenProvider(props: ParentProps) {
     if (options?.prefer === "workspace" && path) return openWorkspaceFile(path)
 
     const url = resolveAttachmentUrl(options?.serverUrl ?? sdk.url, attachment)
-    if (isImageAttachment(attachment) && url && options?.prefer !== "workspace") {
+    const target = resolveAttachmentOpenTarget(attachment)
+    if (target === "image-preview" && isImageAttachment(attachment) && url && options?.prefer !== "workspace") {
       const image = resolveImagePreviewImage(options?.serverUrl ?? sdk.url, attachment, 0)
       if (!image) return false
+      image.sourcePath = resolveWorkspacePath(attachmentSourcePath(attachment))
       dialog.show(() => <ImagePreview images={[image]} />)
+      return true
+    }
+
+    if (target === "attachment-workspace" && attachment.id && attachment.sessionID && attachment.messageID) {
+      const state: AttachmentResourceState = {
+        version: 1,
+        sessionID: attachment.sessionID,
+        messageID: attachment.messageID,
+        attachmentID: attachment.id,
+      }
+      void workbench.openPanel("attachment", {
+        init: {
+          resourceId: attachmentResourceId(state),
+          title: attachment.filename ?? "Attachment",
+          source: "conversation",
+          state,
+        },
+      })
       return true
     }
 
@@ -156,5 +183,9 @@ export function ResourceOpenProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener("synergy:plugin-open-resource", listener))
   })
 
-  return <BaseResourceOpenProvider value={{ open, openAttachment }}>{props.children}</BaseResourceOpenProvider>
+  return (
+    <BaseResourceOpenProvider value={{ open, openAttachment, resolveWorkspacePath, openWorkspaceSource }}>
+      {props.children}
+    </BaseResourceOpenProvider>
+  )
 }

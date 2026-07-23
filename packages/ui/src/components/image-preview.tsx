@@ -1,7 +1,10 @@
 import { Dialog as Kobalte } from "@kobalte/core/dialog"
 import { createEffect, createMemo, createSignal, For, Show } from "solid-js"
 import { useLingui } from "@lingui/solid"
+import { useDialog } from "../context/dialog"
+import { useResourceOpen } from "../context/resource-open"
 import { Icon } from "./icon"
+import { getSemanticIcon } from "./semantic-icon"
 import {
   clampImageIndex,
   imagePreviewMetadata,
@@ -33,6 +36,7 @@ const resetViewDescriptor = { id: "ui.imagePreview.resetView", message: "Reset i
 const rotateClockwiseDescriptor = { id: "ui.imagePreview.rotateClockwise", message: "Rotate image clockwise" }
 const downloadImageDescriptor = { id: "ui.imagePreview.download", message: "Download image" }
 const openNewWindowDescriptor = { id: "ui.imagePreview.openNewWindow", message: "Open image in new window" }
+const openSourceDescriptor = { id: "ui.imagePreview.openSource", message: "View source in Files" }
 const previousImageDescriptor = { id: "ui.imagePreview.previous", message: "Previous image" }
 const nextImageDescriptor = { id: "ui.imagePreview.next", message: "Next image" }
 const loadingImageDescriptor = { id: "ui.imagePreview.loading", message: "Loading image…" }
@@ -54,6 +58,8 @@ interface DragState {
 
 export function ImagePreview(props: ImagePreviewProps) {
   const { _ } = useLingui()
+  const dialog = useDialog()
+  const resourceOpen = useResourceOpen()
   const [index, setIndex] = createSignal(clampImageIndex(props.initialIndex, props.images.length))
   const [scale, setScale] = createSignal(1)
   const [pan, setPan] = createSignal<PanOffset>({ x: 0, y: 0 })
@@ -123,6 +129,12 @@ export function ImagePreview(props: ImagePreviewProps) {
     const image = current()
     if (!image) return
     window.open(image.externalUrl ?? image.src, "_blank", "noopener,noreferrer")
+  }
+
+  function openSource() {
+    const sourcePath = current()?.sourcePath
+    if (!sourcePath || !resourceOpen?.openWorkspaceSource(sourcePath)) return
+    dialog.close()
   }
 
   function onKeyDown(event: KeyboardEvent) {
@@ -283,6 +295,18 @@ export function ImagePreview(props: ImagePreviewProps) {
                     >
                       <Icon name="download" size="small" />
                     </a>
+                    <Show when={current()?.sourcePath}>
+                      <button
+                        type="button"
+                        data-component="icon-button"
+                        data-variant="ghost"
+                        aria-label={_(openSourceDescriptor)}
+                        title={_(openSourceDescriptor)}
+                        onClick={openSource}
+                      >
+                        <Icon name={getSemanticIcon("workspace.files")} size="small" />
+                      </button>
+                    </Show>
                     <button
                       type="button"
                       data-component="icon-button"
