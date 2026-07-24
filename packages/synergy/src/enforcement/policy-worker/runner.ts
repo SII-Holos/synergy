@@ -25,6 +25,9 @@ function memory() {
   return {
     rssBytes: usage.rss,
     heapUsedBytes: usage.heapUsed,
+    heapTotalBytes: usage.heapTotal,
+    externalBytes: usage.external,
+    arrayBuffersBytes: usage.arrayBuffers,
   }
 }
 
@@ -58,14 +61,18 @@ async function run(requestId: string, input: PolicyClassificationInput): Promise
 
   activeRequestId = requestId
   try {
-    const result = await classify(input)
+    let ownedInput: PolicyClassificationInput | undefined = input
+    const result = await classify(ownedInput)
     requests++
+    const memoryBeforeRelease = memory()
+    ownedInput = undefined
     send({
       type: "result",
       requestId,
       result,
       requests,
-      memory: memory(),
+      memoryBeforeRelease,
+      memoryAfterRelease: memory(),
     })
   } catch (error) {
     send({
@@ -75,6 +82,9 @@ async function run(requestId: string, input: PolicyClassificationInput): Promise
     })
   } finally {
     activeRequestId = undefined
+    setTimeout(() => {
+      send({ type: "released", requestId, requests, memory: memory() })
+    }, 0)
     if (shuttingDown) process.exit(0)
   }
 }
@@ -207,4 +217,4 @@ watchManagedParent({
   onParentExit: () => process.exit(0),
 })
 
-send({ type: "ready", protocolVersion: PolicyWorkerProtocol.VERSION, pid: process.pid })
+send({ type: "ready", protocolVersion: PolicyWorkerProtocol.VERSION, pid: process.pid, memory: memory() })

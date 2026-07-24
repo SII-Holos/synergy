@@ -587,6 +587,7 @@ export const LocalBashBackend = {
       cleanupAllTimers()
       if (metadataDirty) flushMetadata()
       const exitSignal = timedOut ? "SIGTERM" : signal
+      ProcessRegistry.markStdioClosed(regProc, { drainTimedOut })
       if (regProc.backgrounded) {
         ProcessRegistry.markExited(regProc, code, exitSignal)
       } else if (backgroundAfterSeconds > 0) {
@@ -610,6 +611,10 @@ export const LocalBashBackend = {
     void ChildProcessClose.wait(child, {
       onExit(code, signal) {
         exited = true
+        ProcessRegistry.markExitObserved(regProc, {
+          drainGraceMs: ChildProcessClose.DEFAULT_DRAIN_GRACE_MS,
+          timedOut,
+        })
         cleanupAllTimers()
         void trace("bash.child.exit", {
           exitCode: code,

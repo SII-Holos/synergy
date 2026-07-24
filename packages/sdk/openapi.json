@@ -21177,6 +21177,119 @@
           }
         }
       },
+      "PerfResourceOwnerKind": {
+        "type": "string",
+        "enum": ["control_plane", "agent", "policy", "plugin", "browser", "mcp", "local_process"]
+      },
+      "PerfResourceRecovery": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["gc", "recycle", "idle_retire", "close"]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "at": {
+            "type": "number"
+          },
+          "beforeBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "afterBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "reclaimedBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "timedOut": {
+            "type": "boolean"
+          }
+        },
+        "required": ["action", "reason", "at"]
+      },
+      "PerfResourceOwner": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "$ref": "#/components/schemas/PerfResourceOwnerKind"
+          },
+          "processCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "measuredProcessCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "currentBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "peakBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "baselineBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "retainedBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "heapUsedBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "externalBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "arrayBuffersBytes": {
+            "type": "number",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string",
+            "enum": ["process_api", "worker_ipc", "plugin_monitor", "browser_runtime", "mcp_stdio", "process_registry"]
+          },
+          "completeness": {
+            "type": "string",
+            "enum": ["full", "partial", "unavailable"]
+          },
+          "attributes": {
+            "default": {},
+            "type": "object",
+            "propertyNames": {
+              "type": "string"
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                }
+              ]
+            }
+          },
+          "lastRecovery": {
+            "$ref": "#/components/schemas/PerfResourceRecovery"
+          }
+        },
+        "required": ["owner", "processCount", "measuredProcessCount", "source", "completeness"]
+      },
       "PerfModule": {
         "type": "string",
         "enum": [
@@ -21521,6 +21634,18 @@
                   "rssBytes": {
                     "type": "number"
                   },
+                  "currentBytes": {
+                    "type": "number"
+                  },
+                  "workingSetBytes": {
+                    "type": "number"
+                  },
+                  "reclaimableBytes": {
+                    "type": "number"
+                  },
+                  "peakBytes": {
+                    "type": "number"
+                  },
                   "source": {
                     "type": "string",
                     "enum": ["cgroup_v2", "process_api"]
@@ -21534,8 +21659,15 @@
               },
               "childProcessRssBytes": {
                 "type": "number"
+              },
+              "owners": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/PerfResourceOwner"
+                }
               }
-            }
+            },
+            "required": ["owners"]
           },
           "sessions": {
             "type": "object",
@@ -21835,6 +21967,21 @@
                         "type": "integer",
                         "minimum": 0,
                         "maximum": 9007199254740991
+                      },
+                      "heapTotalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "externalBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "arrayBuffersBytes": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
                       }
                     },
                     "required": [
@@ -21847,7 +21994,10 @@
                       "queued",
                       "queuedBytes",
                       "rssBytes",
-                      "heapUsedBytes"
+                      "heapUsedBytes",
+                      "heapTotalBytes",
+                      "externalBytes",
+                      "arrayBuffersBytes"
                     ]
                   },
                   "toolTasks": {
@@ -25614,7 +25764,9 @@
           "hostServiceRequestTimeoutMs": 120000,
           "taskRunTimeoutMs": 120000,
           "shutdownGraceMs": 1500,
-          "heartbeatIntervalMs": 5000
+          "heartbeatIntervalMs": 5000,
+          "maxMemoryMb": 512,
+          "memorySampleIntervalMs": 5000
         },
         "type": "object",
         "properties": {
@@ -25650,6 +25802,18 @@
           },
           "heartbeatIntervalMs": {
             "description": "Heartbeat interval in milliseconds",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "maxMemoryMb": {
+            "description": "External plugin runtime RSS limit in megabytes",
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "memorySampleIntervalMs": {
+            "description": "External plugin runtime RSS sampling interval in milliseconds",
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991

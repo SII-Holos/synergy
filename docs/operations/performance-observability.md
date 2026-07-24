@@ -11,6 +11,7 @@ Open the **Performance** workbench panel from the sidebar to inspect the default
 - session turn latency, inflight or stale operations, LLM calls, tool calls, and repeated tool-failure issues, including model calls to unknown tools, invalid tool arguments, tools hidden or blocked by session mode and permission rules, and executor failures;
 - CPU, server RSS, JavaScript heap, external memory, ArrayBuffer memory, event-loop lag, and app-owned disk IO;
 - whole-service memory from Linux cgroup v2 when available, otherwise the server plus registered child-process RSS sum with explicit partial coverage;
+- owner-oriented resource rows for the Control Plane, Agent workers, Policy workers, plugin runtimes, Browser, MCP, and tracked local processes, including current, peak, baseline, retained delta, source completeness, and the last owner-executed recovery;
 - registered tool child process count, measured RSS count, RSS total, and top child process memory contributors;
 - session runtime counts, MessageCache footprint and eviction counters, active LLM turn/stream counts, and retained Cortex task counts, including retained prompt/output/error character totals;
 - frontend session-switch timing, token receive/apply/paint timing, browser Web Vitals, ResourceTiming, UserTiming, long tasks, and long animation frames when the browser supports them;
@@ -23,6 +24,8 @@ Every record is stored with low-cardinality attribution such as source, module, 
 Permission evaluation emits no per-check log record at INFO or higher. DEBUG keeps a bounded diagnostic record containing only the permission name, requested pattern length, and merged ruleset count. Raw requested patterns and merged permission rules are intentionally omitted so repeated authorization checks do not expose command or path contents through observability.
 
 Server resource samples are kept separate from registered tool child process samples. A server sample also persists cgroup v2 gauges and lifetime OOM counters when available, plus a service-memory reading whose source and completeness remain explicit. Linux cgroup v2 reports the complete cgroup charge; other hosts fall back to the server RSS plus measurable registered child RSS and report partial coverage. Child aggregates use the single latest snapshot frame rather than the Top-5 display list. Stale registered child processes whose pid no longer exists are settled into finished process history before new resource samples are stored. Each live process retains at most 200,000 output characters in bounded segments; full output and the 2,000-character tail are materialized only when a consumer reads them.
+
+The owner rows are a unified read model, not a global process controller. Each process domain samples and recovers only resources it owns: Agent and Policy pools recycle their workers, plugin generations restart only their exact active generation, Browser retires only an idle Host with no active page, MCP owns its stdio close, tracked local processes own their descendant-pipe grace, and the Control Plane collects only its heap/external memory. The Performance layer aggregates these snapshots for attribution and admission-pressure decisions and never kills or recycles another domain. Linux service memory presents cgroup current, working set, and reclaimable cache as distinct values; they must not be treated as interchangeable RSS readings.
 
 ## AI analysis
 
@@ -145,7 +148,9 @@ On Bun, heap-used divided by heap-total is not treated as a pressure ratio becau
 
 ## Session memory pressure
 
-Memory policy follows process ownership. The Control Plane can collect only its own Bun heap; Agent workers and tool processes own their own recycle, termination, or close lifecycle. Linux cgroup memory describes the complete service and is used for attribution, diagnostics, and admission control, but service-only pressure never triggers Control Plane GC.
+Memory policy follows process ownership. The Control Plane can collect only its own Bun heap; Agent, Policy, plugin, Browser, MCP, and local-process owners execute their own recycle, termination, idle retirement, or close lifecycle. Linux cgroup memory describes the complete service and is used for attribution, diagnostics, and admission control, but service-only pressure never triggers Control Plane GC.
+
+Agent release reports an immediate post-collection sample so the completed turn can settle, then reports a delayed idle sample. Warm-baseline growth recycling is evaluated only on that delayed idle sample, and only while the worker remains idle. Policy workers report `before_release`, `after_release`, and `released` samples with heap, external, and ArrayBuffer fields; the pool does not assign the next classification until `released` arrives.
 
 After each model/tool turn, and at selected checkpoints during a long model stream, the session runtime samples Control Plane memory. Concurrent requests share one in-flight collection and every collection observes `SYNERGY_SESSION_GC_MIN_INTERVAL_MS` (default `10000`). Linux turn/tool release signals are coalesced outside the settlement path. Soft process pressure requests asynchronous GC:
 

@@ -171,8 +171,29 @@ describe.serial("performance observability store", () => {
       expect(summary.resources.childProcessRssBytes).toBe(7 * 8 * 1024 * 1024)
       expect(summary.resources.serviceMemory).toMatchObject({
         rssBytes: expect.any(Number),
+        currentBytes: expect.any(Number),
         source: expect.stringMatching(/^(cgroup_v2|process_api)$/),
         completeness: expect.stringMatching(/^(full|partial)$/),
+      })
+      expect(summary.resources.owners.map((owner) => owner.owner)).toEqual([
+        "control_plane",
+        "agent",
+        "policy",
+        "plugin",
+        "browser",
+        "mcp",
+        "local_process",
+      ])
+      expect(summary.resources.owners.find((owner) => owner.owner === "local_process")).toMatchObject({
+        processCount: 7,
+        measuredProcessCount: 7,
+        currentBytes: 7 * 8 * 1024 * 1024,
+        source: "process_registry",
+        completeness: "full",
+        attributes: {
+          stdioOpen: 7,
+          descendantPipeGraceMs: 0,
+        },
       })
       expect(summary.top.childProcesses).toHaveLength(5)
       expect(summary.top.childProcesses).toEqual(

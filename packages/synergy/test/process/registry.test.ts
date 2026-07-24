@@ -167,7 +167,25 @@ describe("ProcessRegistry lifecycle", () => {
       ageMs: 1000,
       alive: true,
       rssBytes: 4096,
+      stdioState: "open",
     })
+  })
+
+  test("reports exit observation, stdio drain grace, and timeout state", () => {
+    const restore = ProcessRegistry.setProcessInspector(() => ({ alive: true, rssBytes: 4096 }))
+    const proc = ProcessRegistry.create({ command: "sleep 10" })
+    proc.pid = 1234
+
+    ProcessRegistry.markExitObserved(proc, { drainGraceMs: 1_000, timedOut: true })
+    const snapshot = ProcessRegistry.resourceSnapshot()
+
+    restore()
+    expect(snapshot[0]).toMatchObject({
+      stdioState: "draining",
+      drainGraceMs: 1_000,
+      timedOut: true,
+    })
+    expect(snapshot[0].exitObservedAt).toBeNumber()
   })
 
   test("settleStaleProcesses moves missing child processes to finished", () => {

@@ -49,11 +49,13 @@ describe("SessionMemoryPressure", () => {
   test("runs asynchronous GC when the minimum interval has elapsed", async () => {
     SessionMemoryPressure.resetForTest(1_000)
     const calls: boolean[] = []
+    let samples = 0
 
     const result = await SessionMemoryPressure.maybeCollect({
       phase: "test",
       now: () => 12_000,
-      snapshot: () => healthySnapshot,
+      snapshot: () =>
+        samples++ === 0 ? { ...healthySnapshot, heapUsedBytes: 100, externalBytes: 50 } : healthySnapshot,
       collect: (synchronous) => {
         calls.push(synchronous)
       },
@@ -62,6 +64,16 @@ describe("SessionMemoryPressure", () => {
 
     expect(result.decision.action).toBe("normal")
     expect(calls).toEqual([false])
+    expect(SessionMemoryPressure.stats()).toMatchObject({
+      lastAssessment: { processPressure: "normal", servicePressure: "normal" },
+      lastRecovery: {
+        action: "gc",
+        reason: "interval_elapsed",
+        beforeBytes: 150,
+        afterBytes: 70,
+        reclaimedBytes: 80,
+      },
+    })
   })
 
   test("coalesces released-history signals into one asynchronous collection", async () => {

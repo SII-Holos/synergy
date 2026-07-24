@@ -22,9 +22,19 @@ function classificationInput() {
   }
 }
 
+function policyMemory(rssBytes = 1024, heapUsedBytes = 512): PolicyWorkerProtocol.WorkerMemory {
+  return {
+    rssBytes,
+    heapUsedBytes,
+    heapTotalBytes: heapUsedBytes + 256,
+    externalBytes: 128,
+    arrayBuffersBytes: 64,
+  }
+}
+
 function fakeProcess(
   options: SpawnPolicyWorkerProcessOptions,
-  behavior: "unready" | "hang" | "error" | "result",
+  behavior: "unready" | "hang" | "error" | "result" | "result-no-release",
   state: { killed: boolean },
 ): PolicyWorkerProcess {
   let exited = false
@@ -45,6 +55,7 @@ function fakeProcess(
         type: "ready",
         protocolVersion: PolicyWorkerProtocol.VERSION,
         pid: behavior === "hang" ? 101 : 102,
+        memory: policyMemory(),
       })
     })
   }
@@ -66,16 +77,28 @@ function fakeProcess(
         )
         return
       }
-      if (message.type === "run-commit" && behavior === "result") {
-        queueMicrotask(() =>
+      if (message.type === "run-commit" && (behavior === "result" || behavior === "result-no-release")) {
+        queueMicrotask(() => {
+          const requestId = message.requestId
           options.onMessage({
             type: "result",
-            requestId: message.requestId,
+            requestId,
             result: { capabilities: [{ class: "shell_read", nonBypassable: false }] },
             requests: ++requests,
-            memory: { rssBytes: 1024, heapUsedBytes: 512 },
-          }),
-        )
+            memoryBeforeRelease: policyMemory(),
+            memoryAfterRelease: policyMemory(),
+          })
+          if (behavior === "result") {
+            queueMicrotask(() =>
+              options.onMessage({
+                type: "released",
+                requestId,
+                requests,
+                memory: policyMemory(),
+              }),
+            )
+          }
+        })
       }
       if (message.type === "run-commit" && behavior === "error") {
         queueMicrotask(() =>
@@ -94,6 +117,132 @@ function fakeProcess(
 }
 
 describe("PolicyWorkerPool", () => {
+  test("does not reuse a worker until the released memory sample arrives", async () => {
+    let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
+    const sent: PolicyWorkerProtocol.HostToWorker[] = []
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        timeoutMs: 500,
+        heartbeatTimeoutMs: 10_000,
+      },
+      (options) => {
+        workerOptions = options
+        queueMicrotask(() =>
+          options.onMessage({
+            type: "ready",
+            protocolVersion: PolicyWorkerProtocol.VERSION,
+            pid: 101,
+            memory: {
+              rssBytes: 100,
+              heapUsedBytes: 40,
+              heapTotalBytes: 80,
+              externalBytes: 20,
+              arrayBuffersBytes: 10,
+            },
+          }),
+        )
+        return {
+          process: { exitCode: null, kill() {} } as unknown as Bun.Subprocess,
+          send(message) {
+            sent.push(message)
+            if (message.type === "run-start") {
+              queueMicrotask(() => options.onMessage({ type: "run-ready", requestId: message.requestId }))
+            } else if (message.type === "run-chunk") {
+              queueMicrotask(() =>
+                options.onMessage({ type: "chunk-ack", requestId: message.requestId, index: message.index }),
+              )
+            } else if (message.type === "run-commit") {
+              queueMicrotask(() =>
+                options.onMessage({
+                  type: "result",
+                  requestId: message.requestId,
+                  result: { capabilities: [{ class: "shell_read", nonBypassable: false }] },
+                  requests: 1,
+                  memoryBeforeRelease: {
+                    rssBytes: 140,
+                    heapUsedBytes: 50,
+                    heapTotalBytes: 90,
+                    externalBytes: 30,
+                    arrayBuffersBytes: 12,
+                  },
+                  memoryAfterRelease: {
+                    rssBytes: 130,
+                    heapUsedBytes: 45,
+                    heapTotalBytes: 90,
+                    externalBytes: 25,
+                    arrayBuffersBytes: 11,
+                  },
+                }),
+              )
+            }
+          },
+          async stop() {},
+        }
+      },
+    )
+
+    try {
+      const first = pool.run(classificationInput())
+      const second = pool.run(classificationInput())
+      await expect(first).resolves.toMatchObject({ capabilities: [{ class: "shell_read" }] })
+      expect(sent.filter((message) => message.type === "run-start")).toHaveLength(1)
+
+      const firstStart = sent.find(
+        (message): message is Extract<PolicyWorkerProtocol.HostToWorker, { type: "run-start" }> =>
+          message.type === "run-start",
+      )!
+      workerOptions?.onMessage({
+        type: "released",
+        requestId: firstStart.requestId,
+        requests: 1,
+        memory: {
+          rssBytes: 110,
+          heapUsedBytes: 42,
+          heapTotalBytes: 90,
+          externalBytes: 21,
+          arrayBuffersBytes: 10,
+        },
+      })
+      for (let i = 0; i < 20 && sent.filter((message) => message.type === "run-start").length < 2; i++) {
+        await Bun.sleep(1)
+      }
+      expect(sent.filter((message) => message.type === "run-start")).toHaveLength(2)
+      pool.stop()
+      await second.catch(() => undefined)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("bounds a worker that returns a result without releasing its request", async () => {
+    const states: Array<{ killed: boolean }> = []
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        timeoutMs: 10,
+        heartbeatTimeoutMs: 10_000,
+      },
+      (options) => {
+        const state = { killed: false }
+        states.push(state)
+        return fakeProcess(options, "result-no-release", state)
+      },
+    )
+
+    try {
+      await expect(pool.run(classificationInput())).resolves.toMatchObject({
+        capabilities: [{ class: "shell_read" }],
+      })
+      for (let i = 0; i < 40 && !states[0]?.killed; i++) await Bun.sleep(1)
+      expect(states[0]?.killed).toBe(true)
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("waits for a worker handshake before reporting the pool ready", async () => {
     let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
     const pool = new PolicyWorkerPool(
@@ -123,6 +272,7 @@ describe("PolicyWorkerPool", () => {
         type: "ready",
         protocolVersion: PolicyWorkerProtocol.VERSION,
         pid: 100,
+        memory: policyMemory(),
       })
 
       await expect(ready).resolves.toBeUndefined()

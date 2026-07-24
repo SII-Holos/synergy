@@ -4560,6 +4560,140 @@ msgstr "Slow tools"
 
 #. Runtime Lingui descriptors for performance host labels and wrappers.
  *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.baseline"
+msgstr "Baseline"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.cgroupCurrent"
+msgstr "cgroup current"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverage"
+msgstr "Source / coverage"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageFull"
+msgstr "full"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coveragePartial"
+msgstr "partial"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageUnavailable"
+msgstr "unavailable"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.coverageValue"
+msgstr "{measured}/{count} · {completeness}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.current"
+msgstr "Current"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.description"
+msgstr "Owner-attributed memory and owner-executed recovery; this view never recycles another domain."
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.lastRecovery"
+msgstr "Last owner recovery"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner"
+msgstr "Owner"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.agent"
+msgstr "Agent Workers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.browser"
+msgstr "Browser"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.controlPlane"
+msgstr "Control Plane"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.localProcess"
+msgstr "Local processes"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.mcp"
+msgstr "MCP"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.plugin"
+msgstr "Plugin Runtimes"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.owner.policy"
+msgstr "Policy Workers"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.peak"
+msgstr "Peak"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.reclaimable"
+msgstr "Reclaimable cache"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryNone"
+msgstr "No recovery recorded"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryReclaimed"
+msgstr "{bytes} reclaimed"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryUnmeasured"
+msgstr "effect unavailable"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.recoveryValue"
+msgstr "{action} · {reason} · {effect} · {time}"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.retained"
+msgstr "Retained Δ"
+
+#. resource ownership
+msgid "app.performance.resources.title"
+msgstr "Resource ownership"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
+msgid "app.performance.resources.workingSet"
+msgstr "Working set"
+
+#. Runtime Lingui descriptors for performance host labels and wrappers.
+ *  Translate at use time via `useLingui()._(descriptor)`.
 msgid "app.performance.runtime.alive"
 msgstr "Alive"
 
