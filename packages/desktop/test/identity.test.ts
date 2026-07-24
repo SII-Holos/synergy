@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test"
 import {
+  applyDesktopAppIdentity,
+  applyReadyDesktopAppName,
   DESKTOP_APP_ID,
   DESKTOP_EXECUTABLE_NAME,
   DESKTOP_PROTOCOL,
+  DESKTOP_PRODUCT_NAME,
   desktopAppUserModelId,
   desktopChannel,
   desktopServerMode,
@@ -46,6 +49,55 @@ describe("desktop identity", () => {
   test("keeps Windows taskbar identity separate for development", () => {
     expect(desktopAppUserModelId("stable")).toBe("io.holosai.synergy")
     expect(desktopAppUserModelId("dev")).toBe("io.holosai.synergy.dev")
+  })
+
+  test("applies the Synergy product name before platform identity", () => {
+    const calls: string[] = []
+    const target = {
+      get name() {
+        return ""
+      },
+      set name(name: string) {
+        calls.push(`name:${name}`)
+      },
+      setAppUserModelId(id: string) {
+        calls.push(`app-id:${id}`)
+      },
+    }
+
+    applyDesktopAppIdentity(target, "dev")
+
+    expect(calls).toEqual([`name:${DESKTOP_PRODUCT_NAME}`, "app-id:io.holosai.synergy.dev"])
+  })
+
+  test("keeps the product name when the platform identity is unavailable", () => {
+    let name = ""
+    const target = {
+      get name() {
+        return name
+      },
+      set name(value: string) {
+        name = value
+      },
+      setAppUserModelId() {
+        throw new Error("unsupported")
+      },
+    }
+
+    expect(() => applyDesktopAppIdentity(target, "stable")).not.toThrow()
+    expect(name).toBe(DESKTOP_PRODUCT_NAME)
+  })
+
+  test("reasserts the product name after Electron is ready", () => {
+    const names: string[] = []
+
+    applyReadyDesktopAppName({
+      setName(name) {
+        names.push(name)
+      },
+    })
+
+    expect(names).toEqual([DESKTOP_PRODUCT_NAME])
   })
 })
 

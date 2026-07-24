@@ -20,6 +20,22 @@ export function desktopAppUserModelId(channel: DesktopChannel): string {
   return channel === "dev" ? `${DESKTOP_APP_ID}.dev` : DESKTOP_APP_ID
 }
 
+export function applyDesktopAppIdentity(
+  target: { name: string; setAppUserModelId(id: string): void },
+  channel: DesktopChannel,
+): void {
+  target.name = DESKTOP_PRODUCT_NAME
+  try {
+    target.setAppUserModelId(desktopAppUserModelId(channel))
+  } catch {
+    // AppUserModelId is only meaningful on Windows.
+  }
+}
+
+export function applyReadyDesktopAppName(target: { setName(name: string): void }): void {
+  target.setName(DESKTOP_PRODUCT_NAME)
+}
+
 export function desktopServerMode(channel: DesktopChannel): DesktopServerMode {
   const mode = process.env.SYNERGY_DESKTOP_SERVER_MODE
   if (mode === "managed" || mode === "external") return mode

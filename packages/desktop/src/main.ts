@@ -23,8 +23,9 @@ import { BrowserRegistrationSecretSchema } from "@ericsanchezok/synergy-browser"
 import { desktopErrorPage } from "./error-page.js"
 import {
   DESKTOP_PROTOCOL,
+  applyDesktopAppIdentity,
+  applyReadyDesktopAppName,
   type DesktopChannel,
-  desktopAppUserModelId,
   desktopChannel,
   desktopServerMode,
   desktopWindowTitle,
@@ -101,11 +102,7 @@ const updateQuitApp = app as typeof app & {
   on(event: "before-quit-for-update", listener: () => void): typeof app
 }
 
-try {
-  app.setAppUserModelId(desktopAppUserModelId(desktopChannel(app.isPackaged)))
-} catch {
-  // AppUserModelId is only meaningful on Windows.
-}
+applyDesktopAppIdentity(app, desktopChannel(app.isPackaged))
 
 if (!app.requestSingleInstanceLock()) {
   shouldStart = false
@@ -725,6 +722,7 @@ app.on("before-quit", (event) => {
 async function start() {
   if (!shouldStart) return
   await app.whenReady()
+  applyReadyDesktopAppName(app)
   await initializeDesktopTheme()
   initializeDesktopUnreadAssets()
   installDesktopThemeNativeListener()
