@@ -216,6 +216,148 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
+  test("backs off repeated startup failures and opens the circuit after the sixth attempt", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+
+      expect(delays).toEqual([100, 200, 400, 800, 1_600])
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+      const spawned = fake.workers.length
+      await expect(inScope(() => pool.run(input(new AbortController().signal)))).rejects.toThrow(
+        "Agent worker failed to start after 6 consecutive attempts",
+      )
+      expect(fake.workers).toHaveLength(spawned)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("reschedules startup backoff from the latest concurrent failure", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const retries: Array<() => void> = []
+    const pool = new AgentWorkerPool({ ...options, size: 3 }, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep(ms) {
+        delays.push(ms)
+        return new Promise<void>((resolve) => retries.push(resolve))
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      fake.workers.slice(0, 3).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400])
+
+      retries[0]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(3)
+      retries[1]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(3)
+      retries[2]()
+      await Bun.sleep(0)
+      expect(fake.workers).toHaveLength(6)
+
+      fake.workers.slice(3, 6).forEach((worker) => worker.exit(1))
+      expect(delays).toEqual([100, 200, 400, 800, 1_600])
+      expect(await turn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("replaces a startup protocol violation without counting it as a startup failure", async () => {
+    const fake = fakeWorkers()
+    const delays: number[] = []
+    const pool = new AgentWorkerPool(options, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      sleep(ms) {
+        delays.push(ms)
+        return Promise.resolve()
+      },
+    })
+    const turn = inScope(() => pool.run(input(new AbortController().signal)))
+
+    try {
+      fake.workers[0].receive({ type: "ready", protocolVersion: 0, pid: 1000 })
+      expect(delays).toEqual([])
+      expect(fake.workers).toHaveLength(2)
+
+      fake.workers[1].ready()
+      const run = startTurn(fake.workers[1])
+      fake.workers[1].receive({
+        type: "error",
+        requestId: run.requestId,
+        error: { name: "Error", message: "stop" },
+      })
+      await expect(turn).rejects.toThrow("stop")
+    } finally {
+      await pool.stop()
+      await turn.catch(() => undefined)
+    }
+  })
+
+  test("recovers an open startup circuit when an existing worker completes its handshake", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, size: 2 }, fake.spawn, {
+      startupBackoffBaseMs: 100,
+      startupBackoffMaxMs: 1_600,
+      maxConsecutiveStartupFailures: 5,
+      sleep() {
+        return Promise.resolve()
+      },
+    })
+    const failedTurn = inScope(() => pool.run(input(new AbortController().signal))).catch((error) => error)
+
+    try {
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        fake.workers[attempt].exit(1)
+        await Bun.sleep(0)
+      }
+      expect(await failedTurn).toMatchObject({
+        message: "Agent worker failed to start after 6 consecutive attempts",
+      })
+
+      fake.workers[0].ready()
+      const recoveredTurn = inScope(() => pool.run(input(new AbortController().signal)))
+      const run = startTurn(fake.workers[0])
+      fake.workers[0].receive({ type: "started", requestId: run.requestId })
+      fake.workers[0].receive({
+        type: "complete",
+        requestId: run.requestId,
+        turns: 1,
+        memory: { rssBytes: 1, heapUsedBytes: 1 },
+      })
+      const stream = await recoveredTurn
+      expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("contains an event-frame backpressure protocol violation to one worker", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool(options, fake.spawn)

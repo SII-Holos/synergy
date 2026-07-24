@@ -41,6 +41,20 @@ export interface AgentWorkerPoolOptions {
   heartbeatTimeoutMs: number
 }
 
+export interface AgentWorkerSupervisorOptions {
+  startupBackoffBaseMs: number
+  startupBackoffMaxMs: number
+  maxConsecutiveStartupFailures: number
+  sleep(ms: number): Promise<void>
+}
+
+const DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS: AgentWorkerSupervisorOptions = {
+  startupBackoffBaseMs: 250,
+  startupBackoffMaxMs: 4_000,
+  maxConsecutiveStartupFailures: 5,
+  sleep: Bun.sleep,
+}
+
 interface PoolTask {
   requestId: string
   queuedAt: number
@@ -67,6 +81,7 @@ interface PoolWorker {
   id: string
   host: AgentWorkerProcess
   ready: boolean
+  startupFailureEligible: boolean
   stopping: boolean
   task?: PoolTask
   turns: number
@@ -145,11 +160,18 @@ export class AgentWorkerPool {
   private queuedBytes = 0
   private stopping = false
   private readonly healthTimer: ReturnType<typeof setInterval>
+  private readonly supervisor: AgentWorkerSupervisorOptions
+  private consecutiveStartupFailures = 0
+  private startupRetryGeneration = 0
+  private startupCircuitError: Error | undefined
+  private startupRetryPending = false
 
   constructor(
     private readonly options: AgentWorkerPoolOptions,
     private readonly spawn: (options: SpawnAgentWorkerProcessOptions) => AgentWorkerProcess = spawnAgentWorkerProcess,
+    supervisor: Partial<AgentWorkerSupervisorOptions> = {},
   ) {
+    this.supervisor = { ...DEFAULT_AGENT_WORKER_SUPERVISOR_OPTIONS, ...supervisor }
     if (!Number.isInteger(options.size) || options.size <= 0) {
       throw new Error("Agent worker pool size must be a positive integer")
     }
@@ -163,8 +185,10 @@ export class AgentWorkerPool {
   run(input: AgentTurnPoolInput): Promise<AgentTurnStream> {
     const signal = input.abort
     if (this.stopping) return Promise.reject(new Error("Agent worker pool is stopping"))
+    if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     if (signal.aborted) return Promise.reject(signal.reason ?? new DOMException("Agent turn aborted", "AbortError"))
     this.ensureWorkers()
+    if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
     const unassignedWorkers = [...this.workers.values()].filter((worker) => !worker.stopping && !worker.task).length
     const waitingTasks = Math.max(0, this.queue.length - unassignedWorkers)
     if (waitingTasks >= this.options.maxQueued && this.queue.length >= unassignedWorkers) {
@@ -265,6 +289,7 @@ export class AgentWorkerPool {
     if (this.stopping) return
     this.stopping = true
     clearInterval(this.healthTimer)
+    this.startupRetryGeneration++
     const error = new Error("Agent worker pool stopped")
     for (const task of this.queue.splice(0)) {
       this.queuedBytes -= task.requestBytes
@@ -284,26 +309,36 @@ export class AgentWorkerPool {
   }
 
   private ensureWorkers(): void {
-    while (!this.stopping && this.workers.size < this.options.size) this.spawnWorker()
+    if (this.startupRetryPending) return
+    while (!this.stopping && !this.startupCircuitError && this.workers.size < this.options.size) {
+      if (!this.spawnWorker()) return
+    }
   }
 
-  private spawnWorker(): void {
+  private spawnWorker(): boolean {
     const id = `agent_worker_${crypto.randomUUID()}`
     let worker!: PoolWorker
-    const host = this.spawn({
-      onMessage: (message) => this.onMessage(worker, message),
-      onExit: (exitCode, signal) => this.onExit(worker, exitCode, signal),
-    })
-    worker = {
-      id,
-      host,
-      ready: false,
-      stopping: false,
-      turns: 0,
-      lastEventSequence: 0,
-      lastHeartbeatAt: Date.now(),
+    try {
+      const host = this.spawn({
+        onMessage: (message) => this.onMessage(worker, message),
+        onExit: (exitCode, signal) => this.onExit(worker, exitCode, signal),
+      })
+      worker = {
+        id,
+        host,
+        ready: false,
+        startupFailureEligible: true,
+        stopping: false,
+        turns: 0,
+        lastEventSequence: 0,
+        lastHeartbeatAt: Date.now(),
+      }
+      this.workers.set(id, worker)
+      return true
+    } catch (error) {
+      this.handleStartupFailure(error)
+      return false
     }
-    this.workers.set(id, worker)
   }
 
   private onMessage(worker: PoolWorker, message: AgentTurnProtocol.WorkerToHost): void {
@@ -313,8 +348,12 @@ export class AgentWorkerPool {
         return
       }
       worker.ready = true
+      worker.startupFailureEligible = false
       worker.pid = message.pid
       worker.lastHeartbeatAt = Date.now()
+      this.consecutiveStartupFailures = 0
+      this.startupCircuitError = undefined
+      this.ensureWorkers()
       this.drain()
       return
     }
@@ -463,9 +502,10 @@ export class AgentWorkerPool {
 
   private onExit(worker: PoolWorker, exitCode: number | null, signal: string | null): void {
     this.workers.delete(worker.id)
+    const error = new Error(`Agent worker exited (${exitCode ?? signal ?? "unknown"})`)
+    const startupFailure = worker.startupFailureEligible
     const task = worker.task
     if (task && !task.completed) {
-      const error = new Error(`Agent worker exited (${exitCode ?? signal ?? "unknown"})`)
       if (task.started) task.stream.fail(error)
       else task.reject(error)
       task.completed = true
@@ -484,9 +524,65 @@ export class AgentWorkerPool {
         labels: { exitCode, signal },
       })
     }
-    if (!this.stopping) {
-      this.ensureWorkers()
-      this.drain()
+    if (this.stopping) return
+    if (startupFailure) {
+      this.handleStartupFailure(error)
+      return
+    }
+    this.ensureWorkers()
+    this.drain()
+  }
+
+  private handleStartupFailure(cause: unknown): void {
+    if (this.stopping || this.startupCircuitError) return
+    const failures = ++this.consecutiveStartupFailures
+    if (failures > this.supervisor.maxConsecutiveStartupFailures) {
+      this.openStartupCircuit(cause)
+      return
+    }
+    const delayMs = Math.min(
+      this.supervisor.startupBackoffMaxMs,
+      this.supervisor.startupBackoffBaseMs * 2 ** (failures - 1),
+    )
+    const generation = ++this.startupRetryGeneration
+    this.startupRetryPending = true
+    this.log.warn("agent worker failed to start; retrying", { failures, delayMs, cause })
+    void this.supervisor
+      .sleep(delayMs)
+      .then(() => {
+        if (generation !== this.startupRetryGeneration) return
+        this.startupRetryPending = false
+        if (this.stopping || this.startupCircuitError) return
+        this.ensureWorkers()
+        this.drain()
+      })
+      .catch((error) => {
+        if (generation !== this.startupRetryGeneration) return
+        this.startupRetryPending = false
+        if (this.stopping) return
+        this.openStartupCircuit(error)
+      })
+  }
+
+  private openStartupCircuit(cause: unknown): void {
+    const attempts = this.consecutiveStartupFailures
+    const error = new Error(`Agent worker failed to start after ${attempts} consecutive attempts`, { cause })
+    this.startupCircuitError = error
+    this.startupRetryPending = false
+    this.startupRetryGeneration++
+    this.log.error("agent worker startup circuit opened", { attempts, cause })
+    ObservabilityMetrics.record({
+      name: "agent.worker.startup_circuit_open",
+      value: 1,
+      unit: "count",
+      module: "session",
+      labels: { attempts },
+    })
+    for (const task of this.queue.splice(0)) {
+      this.queuedBytes -= task.requestBytes
+      task.removeAbortListener()
+      task.resolveUsage(undefined)
+      task.reject(error)
     }
   }
 
@@ -680,6 +776,7 @@ export class AgentWorkerPool {
 
   private terminateForProtocol(worker: PoolWorker, reason: string): void {
     if (worker.stopping || this.stopping) return
+    worker.startupFailureEligible = false
     worker.stopping = true
     this.log.warn("agent worker protocol violation", {
       workerID: worker.id,

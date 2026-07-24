@@ -468,6 +468,11 @@ export namespace Provider {
     modelLoaders: {} as Record<string, CustomModelLoader>,
   }
 
+  function credentialFingerprint(key: string | undefined): string | undefined {
+    if (key === undefined) return undefined
+    return new Bun.CryptoHasher("sha256").update(key).digest("hex")
+  }
+
   export async function configureWorkerProvider(model: Model, plan: WorkerPlan): Promise<void> {
     if (process.env.SYNERGY_AGENT_WORKER !== "1") {
       throw new Error("Worker provider plans can only be installed inside an Agent worker")
@@ -1080,6 +1085,7 @@ export namespace Provider {
           modelID: model.id,
           npm: model.api.npm,
           options,
+          credential: credentialFingerprint(provider.key),
         }),
       )
       .toString()
