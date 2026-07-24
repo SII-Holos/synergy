@@ -37,6 +37,9 @@ export interface AgentWorkerPoolOptions {
   maxTurns: number
   maxRssBytes: number
   maxHeapBytes: number
+  idleBaselineRecycle: boolean
+  idleBaselineRssGrowthBytes: number
+  idleBaselineExternalGrowthBytes: number
   cancelGraceMs: number
   heartbeatTimeoutMs: number
 }
@@ -93,6 +96,8 @@ interface PoolWorker {
   heapTotalBytes?: number
   externalBytes?: number
   arrayBuffersBytes?: number
+  idleBaselineRssBytes?: number
+  idleBaselineExternalBytes?: number
   lastEventSequence: number
   lastHeartbeatAt: number
 }
@@ -502,10 +507,12 @@ export class AgentWorkerPool {
       }
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memory, "turn.released", task)
+      const baselineReason = this.baselineRecycleReason(worker, message.memory)
       const recycle =
         message.turns >= this.options.maxTurns ||
         message.memory.rssBytes >= this.options.maxRssBytes ||
-        message.memory.heapUsedBytes >= this.options.maxHeapBytes
+        message.memory.heapUsedBytes >= this.options.maxHeapBytes ||
+        baselineReason !== undefined
       this.finishTask(worker, task, task.terminalReason ?? "released", !recycle)
       if (!recycle) return
       const reason =
@@ -513,7 +520,9 @@ export class AgentWorkerPool {
           ? "max_turns"
           : message.memory.rssBytes >= this.options.maxRssBytes
             ? "rss"
-            : "heap"
+            : message.memory.heapUsedBytes >= this.options.maxHeapBytes
+              ? "heap"
+              : baselineReason!
       this.recycle(worker, reason)
       return
     }
@@ -661,7 +670,27 @@ export class AgentWorkerPool {
     }
   }
 
-  private recycle(worker: PoolWorker, reason: "max_turns" | "rss" | "heap"): void {
+  private baselineRecycleReason(
+    worker: PoolWorker,
+    memory: AgentTurnProtocol.WorkerMemory,
+  ): "idle_rss_growth" | "idle_external_growth" | undefined {
+    if (!this.options.idleBaselineRecycle) return
+    const baselineRss = worker.idleBaselineRssBytes
+    const baselineExternal = worker.idleBaselineExternalBytes
+    worker.idleBaselineRssBytes = baselineRss === undefined ? memory.rssBytes : Math.min(baselineRss, memory.rssBytes)
+    worker.idleBaselineExternalBytes =
+      baselineExternal === undefined ? memory.externalBytes : Math.min(baselineExternal, memory.externalBytes)
+    if (baselineRss === undefined || baselineExternal === undefined) return
+    if (memory.rssBytes > baselineRss + this.options.idleBaselineRssGrowthBytes) return "idle_rss_growth"
+    if (memory.externalBytes > baselineExternal + this.options.idleBaselineExternalGrowthBytes) {
+      return "idle_external_growth"
+    }
+  }
+
+  private recycle(
+    worker: PoolWorker,
+    reason: "max_turns" | "rss" | "heap" | "idle_rss_growth" | "idle_external_growth",
+  ): void {
     if (worker.stopping || this.stopping) return
     worker.stopping = true
     worker.ready = false
@@ -678,6 +707,9 @@ export class AgentWorkerPool {
         turns: worker.turns,
         rssBytes: worker.rssBytes,
         heapUsedBytes: worker.heapUsedBytes,
+        externalBytes: worker.externalBytes,
+        idleBaselineRssBytes: worker.idleBaselineRssBytes,
+        idleBaselineExternalBytes: worker.idleBaselineExternalBytes,
       },
     })
     void worker.host.stop(this.options.cancelGraceMs)
@@ -849,6 +881,9 @@ export const DEFAULT_AGENT_WORKER_POOL_OPTIONS: AgentWorkerPoolOptions = {
   maxTurns: 64,
   maxRssBytes: 1536 * 1024 * 1024,
   maxHeapBytes: 1024 * 1024 * 1024,
+  idleBaselineRecycle: process.platform === "linux",
+  idleBaselineRssGrowthBytes: 256 * 1024 * 1024,
+  idleBaselineExternalGrowthBytes: 128 * 1024 * 1024,
   cancelGraceMs: 5_000,
   heartbeatTimeoutMs: 45_000,
 }

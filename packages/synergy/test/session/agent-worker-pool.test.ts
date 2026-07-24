@@ -14,12 +14,12 @@ interface FakeWorker {
   exit(code?: number | null, signal?: string | null): void
 }
 
-function workerMemory(rssBytes = 1, heapUsedBytes = 1): AgentTurnProtocol.WorkerMemory {
+function workerMemory(rssBytes = 1, heapUsedBytes = 1, externalBytes = 1): AgentTurnProtocol.WorkerMemory {
   return {
     rssBytes,
     heapUsedBytes,
     heapTotalBytes: heapUsedBytes + 1,
-    externalBytes: 1,
+    externalBytes,
     arrayBuffersBytes: 1,
   }
 }
@@ -68,7 +68,7 @@ function fakeWorkers() {
 }
 
 function startTurn(worker: FakeWorker) {
-  const start = worker.sent.find(
+  const start = worker.sent.findLast(
     (message): message is Extract<AgentTurnProtocol.HostToWorker, { type: "run-start" }> =>
       message.type === "run-start",
   )!
@@ -85,13 +85,13 @@ function startTurn(worker: FakeWorker) {
   return start
 }
 
-function releaseTurn(worker: FakeWorker, requestId: string, turns = 1) {
+function releaseTurn(worker: FakeWorker, requestId: string, turns = 1, memory = workerMemory()) {
   worker.receive({
     type: "released",
     requestId,
     turns,
     collection: "full",
-    memory: workerMemory(),
+    memory,
   })
 }
 
@@ -102,6 +102,9 @@ const options: AgentWorkerPoolOptions = {
   maxTurns: 64,
   maxRssBytes: 1024 * 1024 * 1024,
   maxHeapBytes: 768 * 1024 * 1024,
+  idleBaselineRecycle: true,
+  idleBaselineRssGrowthBytes: 256,
+  idleBaselineExternalGrowthBytes: 128,
   cancelGraceMs: 10,
   heartbeatTimeoutMs: 60_000,
 }
@@ -477,6 +480,94 @@ describe("AgentWorkerPool", () => {
     releaseTurn(fake.workers[1], secondRun.requestId)
     const second = await secondPromise
     expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("recycles only after post-GC idle memory grows beyond its warm baseline", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(
+      {
+        ...options,
+        maxTurns: 64,
+        maxRssBytes: 10_000,
+        maxHeapBytes: 10_000,
+        idleBaselineRssGrowthBytes: 256,
+      },
+      fake.spawn,
+    )
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(200, 100),
+      memory: workerMemory(100, 100),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId, 1, workerMemory(100, 100))
+    const first = await firstPromise
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(1)
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const secondRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: secondRun.requestId })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(500, 100),
+      memory: workerMemory(357, 100),
+    })
+    releaseTurn(fake.workers[0], secondRun.requestId, 2, workerMemory(357, 100))
+    const second = await secondPromise
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(2)
+    await pool.stop()
+  })
+
+  test("leaves baseline recycling disabled when configured off", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool(
+      {
+        ...options,
+        idleBaselineRecycle: false,
+        maxRssBytes: 10_000,
+        maxHeapBytes: 10_000,
+      },
+      fake.spawn,
+    )
+    const firstPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const firstRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: firstRun.requestId })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: firstRun.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(200, 100),
+      memory: workerMemory(100, 100),
+    })
+    releaseTurn(fake.workers[0], firstRun.requestId, 1, workerMemory(100, 100))
+    const first = await firstPromise
+    expect((await first.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+
+    const secondPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    const secondRun = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: secondRun.requestId })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: secondRun.requestId,
+      turns: 2,
+      memoryBeforeDispose: workerMemory(500, 100),
+      memory: workerMemory(500, 100),
+    })
+    releaseTurn(fake.workers[0], secondRun.requestId, 2, workerMemory(500, 100))
+    const second = await secondPromise
+    expect((await second.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    expect(fake.workers).toHaveLength(1)
     await pool.stop()
   })
 
