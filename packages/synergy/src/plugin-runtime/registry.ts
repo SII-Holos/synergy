@@ -1,5 +1,17 @@
 import type { PluginDefinition } from "@ericsanchezok/synergy-plugin"
 import type { PluginProcessHost } from "./process-host.js"
+import type { MemoryMonitor } from "./resource-limits.js"
+
+export interface PluginRuntimeMemory {
+  currentRssBytes?: number
+  baselineRssBytes?: number
+  peakRssBytes?: number
+  heapUsedBytes?: number
+  heapTotalBytes?: number
+  externalBytes?: number
+  arrayBuffersBytes?: number
+  sampledAt?: number
+}
 
 export type PluginRuntimeState = "starting" | "ready" | "draining" | "crashed" | "stopped"
 
@@ -17,6 +29,9 @@ export interface PluginRuntimeEntry {
   startedAt: number
   lastHeartbeatAt?: number
   lastError?: string
+  memory?: PluginRuntimeMemory
+  memoryMonitor?: MemoryMonitor
+  memoryRecyclePending?: boolean
 }
 
 export function pluginRuntimeKey(pluginId: string, version: string, generation: string): string {

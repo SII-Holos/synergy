@@ -79,6 +79,14 @@ export namespace PolicyWorker {
         queuedBytes: 0,
         rssBytes: 0,
         heapUsedBytes: 0,
+        heapTotalBytes: 0,
+        externalBytes: 0,
+        arrayBuffersBytes: 0,
+        baselineBytes: 0,
+        peakBytes: 0,
+        retainedBytes: 0,
+        measuredWorkers: 0,
+        lastRecovery: undefined,
       }
     )
   }

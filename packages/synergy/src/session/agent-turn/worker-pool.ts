@@ -99,6 +99,7 @@ interface PoolWorker {
   heapTotalBytes?: number
   externalBytes?: number
   arrayBuffersBytes?: number
+  peakRssBytes?: number
   idleBaselineRssBytes?: number
   idleBaselineExternalBytes?: number
   idleSince?: number
@@ -183,6 +184,16 @@ export class AgentWorkerPool {
   private targetSize: number
   private rebalancing = false
   private rebalancePending = false
+  private lastRecovery:
+    | {
+        action: "recycle"
+        reason: string
+        at: number
+        beforeBytes?: number
+        afterBytes?: number
+        reclaimedBytes?: number
+      }
+    | undefined
 
   constructor(
     private readonly options: AgentWorkerPoolOptions,
@@ -323,6 +334,15 @@ export class AgentWorkerPool {
       heapTotalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.heapTotalBytes ?? 0), 0),
       externalBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.externalBytes ?? 0), 0),
       arrayBuffersBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.arrayBuffersBytes ?? 0), 0),
+      baselineBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.idleBaselineRssBytes ?? 0), 0),
+      peakBytes: [...this.workers.values()].reduce((sum, worker) => sum + (worker.peakRssBytes ?? 0), 0),
+      retainedBytes: [...this.workers.values()].reduce(
+        (sum, worker) =>
+          sum + Math.max(0, (worker.rssBytes ?? 0) - (worker.idleBaselineRssBytes ?? worker.rssBytes ?? 0)),
+        0,
+      ),
+      measuredWorkers: [...this.workers.values()].filter((worker) => worker.rssBytes !== undefined).length,
+      lastRecovery: this.lastRecovery,
     }
   }
 
@@ -465,6 +485,11 @@ export class AgentWorkerPool {
         this.terminateForMemory(worker, message.memory)
         return
       }
+      if (!worker.task) {
+        const baselineReason = this.baselineRecycleReason(worker, message.memory)
+        if (baselineReason) this.recycle(worker, baselineReason)
+        return
+      }
       if (message.memory.heapUsedBytes < this.options.maxHeapBytes) {
         worker.activeHeapPressureRequestId = undefined
         return
@@ -604,12 +629,10 @@ export class AgentWorkerPool {
       }
       worker.turns = message.turns
       this.recordWorkerMemory(worker, message.memory, "turn.released", task)
-      const baselineReason = this.baselineRecycleReason(worker, message.memory)
       const recycle =
         message.turns >= this.options.maxTurns ||
         message.memory.rssBytes >= this.options.maxRssBytes ||
         message.memory.heapUsedBytes >= this.options.maxHeapBytes ||
-        baselineReason !== undefined ||
         worker.retireAfterTask
       this.finishTask(worker, task, task.terminalReason ?? "released", !recycle)
       if (!recycle) return
@@ -620,7 +643,7 @@ export class AgentWorkerPool {
             ? "rss"
             : message.memory.heapUsedBytes >= this.options.maxHeapBytes
               ? "heap"
-              : (baselineReason ?? "pool_resize")
+              : "pool_resize"
       this.recycle(worker, reason)
       return
     }
@@ -756,6 +779,7 @@ export class AgentWorkerPool {
     worker.heapTotalBytes = memory.heapTotalBytes
     worker.externalBytes = memory.externalBytes
     worker.arrayBuffersBytes = memory.arrayBuffersBytes
+    worker.peakRssBytes = Math.max(worker.peakRssBytes ?? 0, memory.rssBytes)
     for (const [name, value] of Object.entries({
       "agent.worker.rss": memory.rssBytes,
       "agent.worker.heap_used": memory.heapUsedBytes,
@@ -803,6 +827,13 @@ export class AgentWorkerPool {
     worker.ready = false
     worker.startupFailureEligible = false
     this.workers.delete(worker.id)
+    const recovery: NonNullable<AgentWorkerPool["lastRecovery"]> = {
+      action: "recycle" as const,
+      reason,
+      at: Date.now(),
+      beforeBytes: worker.rssBytes,
+    }
+    this.lastRecovery = recovery
     ObservabilityMetrics.record({
       name: "agent.worker.recycle",
       value: 1,
@@ -820,7 +851,13 @@ export class AgentWorkerPool {
         idleBaselineExternalBytes: worker.idleBaselineExternalBytes,
       },
     })
-    void worker.host.stop(this.options.cancelGraceMs)
+    void worker.host.stop(this.options.cancelGraceMs).then(
+      () => {
+        recovery.afterBytes = 0
+        recovery.reclaimedBytes = recovery.beforeBytes
+      },
+      () => undefined,
+    )
     this.ensureWorkers()
     this.drain()
   }

@@ -23,6 +23,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 7. Treat the server-provided session-state `ownerKey` as canonical. Route directories select a route; they never derive native tickets, profiles, broker pages, or view attachment identity.
 8. Dispose live Browser state on session archive/delete and global shutdown; preserve profile, storage-state, download, annotation, and restored page-ID ownership.
 9. Keep Browser implementations out of the Agent worker runner's static dependency graph. Only serializable Browser tool definitions cross into the worker; callbacks, canonical sessions, Playwright/Chromium state, host signaling, native views, and WebRTC state remain Control Plane/tool-runtime owned.
+10. Attribute resource state by owner and page backend without exposing owner IDs. Retire the remote Host only after the broker reports no active canonical page; Performance aggregation must never close a page or stop the Host.
 
 ## Verify
 
@@ -35,6 +36,7 @@ description: Add, modify, or review Synergy Browser ownership, persisted page st
 7. For native lifecycle changes, test both page timing orders: open workspace → first navigation and active page → open workspace. Verify a non-zero initial checkpoint, live surface attachment, close, and same-owner recreation.
 8. For Browser action changes, verify failure atomicity and agent-facing guidance. `select` must distinguish value from label, targeted scroll must finish on a real scroll container, and `includeSnapshot` must make the next DOM state available without a second tool call.
 9. Run `packages/synergy/test/session/agent-worker-runtime-boundary.test.ts` when a shared Browser schema or utility can become reachable from Agent inference.
+10. For resource-lifecycle changes, prove that an active page cancels idle Host retirement and report headless process coverage as partial when the driver cannot expose RSS.
 
 ## Handoff
 

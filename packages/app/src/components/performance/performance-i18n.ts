@@ -74,6 +74,59 @@ export const P = {
   summaryToolCalls: { id: "app.performance.summary.toolCalls", message: "Tool calls" },
   summaryLongTasks: { id: "app.performance.summary.longTasks", message: "Long tasks" },
 
+  // resource ownership
+  resourceOwnershipTitle: { id: "app.performance.resources.title", message: "Resource ownership" },
+  resourceOwnershipDesc: {
+    id: "app.performance.resources.description",
+    message: "Owner-attributed memory and owner-executed recovery; this view never recycles another domain.",
+  },
+  resourceCgroupCurrent: { id: "app.performance.resources.cgroupCurrent", message: "cgroup current" },
+  resourceWorkingSet: { id: "app.performance.resources.workingSet", message: "Working set" },
+  resourceReclaimable: { id: "app.performance.resources.reclaimable", message: "Reclaimable cache" },
+  resourceOwner: { id: "app.performance.resources.owner", message: "Owner" },
+  resourceCurrent: { id: "app.performance.resources.current", message: "Current" },
+  resourcePeak: { id: "app.performance.resources.peak", message: "Peak" },
+  resourceBaseline: { id: "app.performance.resources.baseline", message: "Baseline" },
+  resourceRetained: { id: "app.performance.resources.retained", message: "Retained Δ" },
+  resourceCoverage: { id: "app.performance.resources.coverage", message: "Source / coverage" },
+  resourceLastRecovery: { id: "app.performance.resources.lastRecovery", message: "Last owner recovery" },
+  resourceOwnerControlPlane: {
+    id: "app.performance.resources.owner.controlPlane",
+    message: "Control Plane",
+  },
+  resourceOwnerAgent: { id: "app.performance.resources.owner.agent", message: "Agent Workers" },
+  resourceOwnerPolicy: { id: "app.performance.resources.owner.policy", message: "Policy Workers" },
+  resourceOwnerPlugin: { id: "app.performance.resources.owner.plugin", message: "Plugin Runtimes" },
+  resourceOwnerBrowser: { id: "app.performance.resources.owner.browser", message: "Browser" },
+  resourceOwnerMcp: { id: "app.performance.resources.owner.mcp", message: "MCP" },
+  resourceOwnerLocalProcess: {
+    id: "app.performance.resources.owner.localProcess",
+    message: "Local processes",
+  },
+  resourceCoverageUnavailable: {
+    id: "app.performance.resources.coverageUnavailable",
+    message: "unavailable",
+  },
+  resourceCoverageFull: { id: "app.performance.resources.coverageFull", message: "full" },
+  resourceCoveragePartial: { id: "app.performance.resources.coveragePartial", message: "partial" },
+  resourceCoverageValue: {
+    id: "app.performance.resources.coverageValue",
+    message: "{measured}/{count} · {completeness}",
+  },
+  resourceRecoveryNone: { id: "app.performance.resources.recoveryNone", message: "No recovery recorded" },
+  resourceRecoveryUnmeasured: {
+    id: "app.performance.resources.recoveryUnmeasured",
+    message: "effect unavailable",
+  },
+  resourceRecoveryReclaimed: {
+    id: "app.performance.resources.recoveryReclaimed",
+    message: "{bytes} reclaimed",
+  },
+  resourceRecoveryValue: {
+    id: "app.performance.resources.recoveryValue",
+    message: "{action} · {reason} · {effect} · {time}",
+  },
+
   // runtime support
   runtimeHealth: { id: "app.performance.runtime.health", message: "Runtime health and support" },
   runtimeHealthDesc: {

@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test"
+import { EventEmitter } from "node:events"
+import type { ChildProcess } from "node:child_process"
 import path from "path"
 import { tmpdir } from "../fixture/fixture"
 import { Shell } from "../../src/util/shell"
@@ -69,5 +71,139 @@ describe("util.shell", () => {
     Shell.acceptable.reset()
 
     expect(Shell.acceptable()).toBe(expectedFallback())
+  })
+  test("waits for successful Windows taskkill completion", async () => {
+    let alive = true
+    const directSignals: Array<NodeJS.Signals | number | undefined> = []
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => true
+    const child = {
+      pid: 123,
+      kill: (signal?: NodeJS.Signals | number) => {
+        directSignals.push(signal)
+        alive = false
+        return true
+      },
+    } as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: (pid) => {
+        expect(pid).toBe(123)
+        queueMicrotask(() => {
+          alive = false
+          killer.emit("exit", 0)
+        })
+        return killer
+      },
+      isPidAlive: () => alive,
+      taskkillTimeoutMs: 10,
+    }
+
+    await Shell.killTree(child, { runtime })
+
+    expect(directSignals).toEqual([])
+  })
+  test("falls back when successful Windows taskkill leaves the process alive", async () => {
+    const directSignals: Array<NodeJS.Signals | number | undefined> = []
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => true
+    const child = {
+      pid: 234,
+      kill: (signal?: NodeJS.Signals | number) => {
+        directSignals.push(signal)
+        return true
+      },
+    } as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: () => {
+        queueMicrotask(() => killer.emit("exit", 0))
+        return killer
+      },
+      isPidAlive: () => true,
+      taskkillTimeoutMs: 10,
+    }
+
+    await Shell.killTree(child, { runtime })
+
+    expect(directSignals).toEqual(["SIGKILL"])
+  })
+
+  test("falls back to direct kill when Windows taskkill fails", async () => {
+    let alive = true
+    const directSignals: Array<NodeJS.Signals | number | undefined> = []
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => true
+    const child = {
+      pid: 456,
+      kill: (signal?: NodeJS.Signals | number) => {
+        directSignals.push(signal)
+        alive = false
+        return true
+      },
+    } as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: () => {
+        queueMicrotask(() => killer.emit("exit", 1))
+        return killer
+      },
+      isPidAlive: () => alive,
+      taskkillTimeoutMs: 10,
+    }
+
+    await Shell.killTree(child, { runtime })
+
+    expect(directSignals).toEqual(["SIGKILL"])
+    expect(alive).toBe(false)
+  })
+  test("does not reject when Windows fallback kill throws", async () => {
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => true
+    const child = {
+      pid: 567,
+      kill: () => {
+        throw new Error("process already exited")
+      },
+    } as unknown as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: () => {
+        queueMicrotask(() => killer.emit("exit", 1))
+        return killer
+      },
+      isPidAlive: () => true,
+      taskkillTimeoutMs: 10,
+    }
+
+    await expect(Shell.killTree(child, { runtime })).resolves.toBeUndefined()
+  })
+
+  test("bounds a hung Windows taskkill before direct fallback", async () => {
+    let taskkillKills = 0
+    let directKills = 0
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => {
+      taskkillKills++
+      return true
+    }
+    const child = {
+      pid: 789,
+      kill: () => {
+        directKills++
+        return true
+      },
+    } as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: () => killer,
+      isPidAlive: () => true,
+      taskkillTimeoutMs: 1,
+    }
+
+    await Shell.killTree(child, { runtime })
+
+    expect(taskkillKills).toBe(1)
+    expect(directKills).toBe(1)
   })
 })

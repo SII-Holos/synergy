@@ -28,6 +28,8 @@ let pending:
 let turns = 0
 let shuttingDown = false
 let sequence = 0
+let idleSampleTimer: ReturnType<typeof setTimeout> | undefined
+const IDLE_SAMPLE_DELAY_MS = 1_000
 
 function send(message: AgentTurnProtocol.WorkerToHost): void {
   AgentTurnProtocol.assertIpcFrameBound(message)
@@ -55,6 +57,18 @@ function release(requestId: string): void {
     collection,
     memory: memory(),
   })
+  if (idleSampleTimer) clearTimeout(idleSampleTimer)
+  idleSampleTimer = setTimeout(() => {
+    idleSampleTimer = undefined
+    send({
+      type: "heartbeat",
+      requestId: active?.requestId,
+      turns,
+      collection: "none",
+      memory: memory(),
+    })
+  }, IDLE_SAMPLE_DELAY_MS)
+  idleSampleTimer.unref()
 }
 
 function rejectAndRelease(requestId: string, error: unknown): void {
@@ -297,6 +311,7 @@ process.on("message", (raw: unknown) => {
   }
   if (message.type === "shutdown") {
     shuttingDown = true
+    if (idleSampleTimer) clearTimeout(idleSampleTimer)
     pending = undefined
     if (active) active.controller.abort(new DOMException("Agent worker shutting down", "AbortError"))
     else process.exit(0)
