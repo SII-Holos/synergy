@@ -842,11 +842,6 @@ export namespace SessionProcessor {
               } = streamInput
               const stream = await AgentTurn.stream(agentTurnInput)
               streamInput.memoryTurn?.trackOwner("agent_turn.stream", stream)
-              agentTurnInput.system?.splice(0)
-              agentTurnInput.lateSystem?.splice(0)
-              agentTurnInput.messages?.splice(0)
-              agentTurnInput.toolDefinitions?.splice(0)
-              agentTurnInput.activeToolIDs?.splice(0)
               SessionManager.setExecutionPhase(input.sessionID, "running_agent")
               streamInput.memoryTurn?.streamStarted()
               SessionMemoryPressure.probe("processor.after_llm_stream", {
@@ -1425,12 +1420,6 @@ export namespace SessionProcessor {
                     case "abort":
                       streamAborted = true
                       break
-
-                    default:
-                      log.info("unhandled", {
-                        ...value,
-                      })
-                      continue
                   }
                 }
                 ObservabilitySpans.end(llmSpan, {
@@ -1450,6 +1439,11 @@ export namespace SessionProcessor {
                   messageID: input.assistantMessage.id,
                 })
               }
+              agentTurnInput.system?.splice(0)
+              agentTurnInput.lateSystem?.splice(0)
+              agentTurnInput.messages?.splice(0)
+              agentTurnInput.toolDefinitions?.splice(0)
+              agentTurnInput.activeToolIDs?.splice(0)
               if (deferredToolCalls.length > 0) {
                 SessionManager.setExecutionPhase(input.sessionID, "authorizing_tools")
               }

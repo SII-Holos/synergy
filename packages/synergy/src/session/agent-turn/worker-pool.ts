@@ -7,7 +7,7 @@ import type { ToolCatalog } from "../tool-catalog"
 import { AgentTurnProtocol } from "./protocol"
 import { spawnAgentWorkerProcess, type AgentWorkerProcess, type SpawnAgentWorkerProcessOptions } from "./process-host"
 
-export type AgentTurnStreamPart = LLM.StreamOutput["fullStream"] extends AsyncIterable<infer Part> ? Part : never
+export type AgentTurnStreamPart = AgentTurnProtocol.StreamEvent
 
 export interface AgentTurnInput extends Omit<LLM.StreamInput, "tools" | "memoryTurn" | "prepared"> {
   toolDefinitions: ToolCatalog.Definition[]
