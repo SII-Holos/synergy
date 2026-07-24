@@ -77,8 +77,8 @@ describe("settings form agent worker pool", () => {
   })
 })
 
-describe("settings form channel model variants", () => {
-  test("hydrates the configured account model variant", () => {
+describe("settings form channel accounts", () => {
+  test("hydrates Feishu model overrides and Clarus enablement", () => {
     expect(
       initializedChannels({
         channel: {
@@ -93,6 +93,15 @@ describe("settings form channel model variants", () => {
               },
             },
           },
+          clarus: {
+            type: "clarus",
+            accounts: {
+              "agent-id": {
+                enabled: false,
+                agent: "synergy",
+              },
+            },
+          },
         },
       }),
     ).toEqual({
@@ -102,6 +111,12 @@ describe("settings form channel model variants", () => {
           enabled: true,
           model: "openai-codex/gpt-5.6-sol",
           variant: "high",
+        },
+      ],
+      clarusAccounts: [
+        {
+          key: "agent-id",
+          enabled: false,
         },
       ],
     })

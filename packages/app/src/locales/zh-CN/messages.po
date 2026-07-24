@@ -13266,6 +13266,38 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "工作树 | git | 工作区 | 分支 | 删除 | 项目"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.accounts"
+msgstr "Clarus 账号"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr "启用或禁用 Holos Agent 账号的 Clarus 任务执行。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr "下载诊断"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr "下载 Clarus 诊断失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr "尚未配置 Clarus 账号。"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr "刷新项目"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr "刷新 Clarus 项目失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr "Clarus"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr "飞书账号"
 
@@ -13288,6 +13320,38 @@ msgstr "外部消息频道账号。"
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "频道"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr "已连接"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr "正在连接…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr "已禁用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr "已断开"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr "连接失败"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr "正在同步…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr "状态不可用"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
+msgstr "等待传输连接"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"

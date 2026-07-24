@@ -13266,6 +13266,38 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr ""
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.accounts"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr ""
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr ""
 
@@ -13287,6 +13319,38 @@ msgstr ""
 
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr ""
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
 msgstr ""
 
 #. js-lingui-explicit-id

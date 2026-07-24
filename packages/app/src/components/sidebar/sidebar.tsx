@@ -1,4 +1,4 @@
-import { createEffect, createMemo, createSignal, For, on, onCleanup, Show } from "solid-js"
+import { createEffect, createMemo, createSignal, For, on, onCleanup, Show, type JSX } from "solid-js"
 import { FlipList } from "./flip-list"
 import { Spinner } from "@ericsanchezok/synergy-ui/spinner"
 import { A, useLocation, useNavigate, useParams } from "@solidjs/router"
@@ -36,18 +36,10 @@ import {
 import { SidebarAttentionNotice } from "./sidebar-attention-notice"
 import "./sidebar.css"
 import {
-  partitionScopeNavigation,
-  deriveChannelAccountActions,
-  type ChannelAccount,
-  type ChannelAccountStatus,
-} from "@/context/layout/nav"
-import {
-  channelAccountStatusLabel,
-  channelAccountGroupLabel,
-  channelAccountActionStates,
-  diagnosticsFilename,
-  shouldRenderChannelAccountSection,
-  managedProjectRouteTarget,
+  channelProviderGroups,
+  filterGenericScopeWorktrees,
+  selectVisibleProjectEntries,
+  type ChannelProviderGroup as ChannelProviderGroupModel,
 } from "./channel-account-model"
 
 const ORPHAN_CHAT_GROUP_ID = "__orphan__"
@@ -146,17 +138,17 @@ export function Sidebar(props: SidebarProps) {
   const [githubSectionOpen, setGitHubSectionOpen] = createSignal(false)
   const [projectsFlyoutOpen, setProjectsFlyoutOpen] = createSignal(false)
   const [projectsSectionOpen, setProjectsSectionOpen] = createSignal(true)
-  const [channelAccountsOpen, setChannelAccountsOpen] = createSignal(false)
-
-  const managedWorktrees = createMemo(() => {
-    const accounts = layout.channelProjection().channelAccounts
-    return new Set(accounts.flatMap((a) => a.projects.map((p) => p.directory)))
-  })
-  const genericScopeWorktrees = createMemo(() => scopeWorktrees().filter((wt) => !managedWorktrees().has(wt)))
 
   const scopes = createMemo(() => layout.scopes.list())
   const scopeWorktrees = createMemo(() => scopes().map((scope) => scope.worktree))
   const scopeByWorktree = createMemo(() => new Map(scopes().map((scope) => [scope.worktree, scope])))
+
+  const managedWorktrees = createMemo(() => {
+    const accounts = layout.channelProjection().channelAccounts
+    return new Set(accounts.flatMap((account) => account.projects.map((project) => project.directory)))
+  })
+  const genericScopeWorktrees = createMemo(() => filterGenericScopeWorktrees(scopeWorktrees(), managedWorktrees()))
+  const managedChannelGroups = createMemo(() => channelProviderGroups(layout.channelProjection().channelAccounts))
 
   onCleanup(subscribeNavigation(() => setNavigationRegistryVersion((version) => version + 1)))
   const hasExpandedProject = createMemo(() => scopes().some((s) => s.expanded))
@@ -219,43 +211,6 @@ export function Sidebar(props: SidebarProps) {
     return undefined
   })
   const currentDirectory = createMemo(() => (dir() === "home" ? undefined : dir()))
-  const handleChannelAccountRefresh = async (account: ChannelAccount) => {
-    try {
-      await globalSDK.client.channel.refreshProjects({
-        channelType: account.channelType,
-        accountId: account.accountId,
-      })
-    } catch (err) {
-      console.warn("Channel account refresh failed", err)
-    }
-  }
-
-  const handleChannelAccountDiagnostics = async (account: ChannelAccount) => {
-    try {
-      const response = await globalSDK.client.channel.downloadDiagnostics({
-        channelType: account.channelType,
-        accountId: account.accountId,
-      })
-      const data = response.data
-      if (!data) return
-      const blob =
-        data instanceof Blob
-          ? data
-          : new Blob([typeof data === "string" ? data : JSON.stringify(data, null, 2)], {
-              type: "application/x-ndjson",
-            })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = diagnosticsFilename(account)
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (err) {
-      console.warn("Channel account diagnostics download failed", err)
-    }
-  }
 
   const handleNewSession = () => {
     navigate(`/${base64Encode("home")}/session`)
@@ -544,84 +499,81 @@ export function Sidebar(props: SidebarProps) {
               </div>
               <Show when={channelSectionOpen()}>
                 <Show
-                  when={channelGroupedEntries().length > 0}
+                  when={channelGroupedEntries().length > 0 || managedChannelGroups().length > 0}
                   fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
                 >
-                  <div class="sb-session-group">
-                    <div
-                      class="sb-session-group-header"
-                      onClick={() => setFeishuGroupOpen((v) => !v)}
-                      role="button"
-                      tabindex="0"
-                    >
-                      <Icon
-                        name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
-                        size="small"
-                        class="sb-section-chevron"
-                      />
-                      <span>{_(sidebar.channelFeishu)}</span>
+                  <Show when={channelGroupedEntries().length > 0}>
+                    <div class="sb-session-group">
+                      <div
+                        class="sb-session-group-header"
+                        onClick={() => setFeishuGroupOpen((v) => !v)}
+                        role="button"
+                        tabindex="0"
+                      >
+                        <Icon
+                          name={feishuGroupOpen() ? "chevron-down" : "chevron-right"}
+                          size="small"
+                          class="sb-section-chevron"
+                        />
+                        <span>{_(sidebar.channelFeishu)}</span>
+                      </div>
+                      <Show when={feishuGroupOpen()}>
+                        <For each={channelGroupedEntries()}>
+                          {(group) => (
+                            <ChannelChatPartnerGroup
+                              name={group.name}
+                              sessions={group.sessions}
+                              activeID={params.id}
+                              onSessionClick={handleNavEntryClick}
+                            />
+                          )}
+                        </For>
+                      </Show>
                     </div>
-                    <Show when={feishuGroupOpen()}>
-                      <For each={channelGroupedEntries()}>
-                        {(group) => (
-                          <ChannelChatPartnerGroup
-                            name={group.name}
-                            sessions={group.sessions}
-                            activeID={params.id}
-                            onSessionClick={handleNavEntryClick}
-                          />
-                        )}
-                      </For>
+                    <Show when={layout.nav.hasMoreRootNavSection("channel")}>
+                      <button
+                        type="button"
+                        class="sb-load-more-btn"
+                        onClick={() => layout.nav.loadMoreRootNavSection("channel")}
+                      >
+                        {_(sidebar.loadMore)}
+                      </button>
                     </Show>
-                  </div>
-                  <Show when={layout.nav.hasMoreRootNavSection("channel")}>
-                    <button
-                      type="button"
-                      class="sb-load-more-btn"
-                      onClick={() => layout.nav.loadMoreRootNavSection("channel")}
-                    >
-                      {_(sidebar.loadMore)}
-                    </button>
                   </Show>
+                  <For each={managedChannelGroups()}>
+                    {(group) => (
+                      <ChannelProviderGroup group={group} _={_}>
+                        <For each={group.projects}>
+                          {(project) => (
+                            <SidebarProjectGroup
+                              scope={() => layout.scopes.managed(project.directory)}
+                              activeID={params.id}
+                              currentDirectory={currentDirectory()}
+                              isSupplemental={(scope) => layout.scopes.isSupplemental(scope)}
+                              navLoaded={(scope) => !!layout.nav.navEntries()[scope.worktree]}
+                              projectNavEntries={(scope) => layout.nav.projectNavEntries(scope)}
+                              hasMoreForProject={hasMoreForProject}
+                              managed
+                              onProjectToggle={handleProjectToggle}
+                              onProjectClick={handleProjectClick}
+                              onProjectPlus={handleProjectPlus}
+                              onProjectEdit={handleProjectEdit}
+                              onProjectArchive={handleProjectArchive}
+                              onProjectPin={handleProjectPin}
+                              onLoadScopeNav={(scope) => layout.nav.loadScopeNav(scope.worktree)}
+                              onLoadMore={(scope) => layout.nav.loadMoreNav(scope.worktree)}
+                              activeSessionID={params.id}
+                              onSessionClick={handleSessionClick}
+                              _={_}
+                            />
+                          )}
+                        </For>
+                      </ChannelProviderGroup>
+                    )}
+                  </For>
                 </Show>
               </Show>
             </div>
-
-            {/* Channel Accounts */}
-            <Show when={shouldRenderChannelAccountSection(layout.channelProjection().channelAccounts)}>
-              <div class="sb-root-section">
-                <div
-                  class="sb-projects-header"
-                  onClick={() => setChannelAccountsOpen((v) => !v)}
-                  role="button"
-                  tabindex="0"
-                >
-                  <span class="sb-section-title">{_(sidebar.channelAccounts)}</span>
-                  <Icon
-                    name={channelAccountsOpen() ? "chevron-down" : "chevron-right"}
-                    size="small"
-                    class="sb-section-chevron"
-                  />
-                </div>
-                <Show when={channelAccountsOpen()}>
-                  <Show
-                    when={layout.channelProjection().channelAccounts.length > 0}
-                    fallback={<div class="sb-section-empty">{_(sidebar.noSessions)}</div>}
-                  >
-                    <For each={layout.channelProjection().channelAccounts}>
-                      {(account) => (
-                        <ChannelAccountGroup
-                          account={account}
-                          onRefresh={(acct) => void handleChannelAccountRefresh(acct)}
-                          onDiagnostics={(acct) => void handleChannelAccountDiagnostics(acct)}
-                          _={_}
-                        />
-                      )}
-                    </For>
-                  </Show>
-                </Show>
-              </div>
-            </Show>
 
             {/* Background */}
             <RootNavSection
@@ -765,7 +717,6 @@ export function Sidebar(props: SidebarProps) {
     </div>
   )
 }
-
 function SidebarProjectGroup(props: {
   scope: () => LocalScope | undefined
   activeID?: string
@@ -774,6 +725,7 @@ function SidebarProjectGroup(props: {
   navLoaded: (scope: LocalScope) => boolean
   projectNavEntries: (scope: LocalScope) => NavEntry[]
   hasMoreForProject: (scope: LocalScope) => boolean
+  managed?: boolean
   onProjectToggle: (event: MouseEvent, scope: LocalScope) => void
   onProjectClick: (worktree: string) => void
   onProjectPlus: (event: MouseEvent, scope: LocalScope) => void
@@ -939,6 +891,7 @@ function SidebarProjectGroup(props: {
                   entries={entries()}
                   scope={props.scope()}
                   activeID={props.activeID}
+                  managed={props.managed}
                   onSessionClick={(entry) => {
                     const scope = props.scope()
                     if (scope) props.onSessionClick(scope, entry)
@@ -973,6 +926,7 @@ function SidebarProjectGroup(props: {
                 entries={entries()}
                 scope={props.scope()}
                 activeID={props.activeID}
+                managed={props.managed}
                 onSessionClick={(entry) => {
                   const scope = props.scope()
                   if (scope) props.onSessionClick(scope, entry)
@@ -1075,9 +1029,10 @@ function GroupedSessionList(props: {
   entries: NavEntry[]
   scope?: LocalScope
   activeID?: string
+  managed?: boolean
   onSessionClick: (entry: NavEntry) => void
 }) {
-  const entries = createMemo(() => props.entries.filter((entry) => entry.category === "project"))
+  const entries = createMemo(() => selectVisibleProjectEntries(props.entries, props.managed ?? false))
 
   return (
     <SidebarSessionList
@@ -1111,89 +1066,25 @@ function ChannelChatPartnerGroup(props: {
   )
 }
 
-function ChannelAccountGroup(props: {
-  account: ChannelAccount
-  onRefresh: (account: ChannelAccount) => void
-  onDiagnostics: (account: ChannelAccount) => void
+function ChannelProviderGroup(props: {
+  group: ChannelProviderGroupModel
   _: ReturnType<typeof useLingui>["_"]
+  children: JSX.Element
 }) {
-  const navigate = useNavigate()
   const [open, setOpen] = createSignal(true)
-  const actions = createMemo(() => deriveChannelAccountActions(props.account.channelType))
-  const actionStates = createMemo(() => channelAccountActionStates(props.account, actions()))
-  const groupLabel = createMemo(() => channelAccountGroupLabel(props.account))
-  const statusLabel = createMemo(() =>
-    props.account.status ? channelAccountStatusLabel(props.account.status) : undefined,
-  )
 
   return (
     <div class="sb-channel-account-group">
-      <div class="sb-channel-account-header">
-        <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
-          <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
-          <span>{groupLabel()}</span>
-          <Show when={statusLabel()}>
-            <span class="sb-channel-account-status">{props._(statusLabel()!)}</span>
-          </Show>
-        </div>
-        <div class="sb-channel-account-actions">
-          <For each={actionStates()}>
-            {(actionState) => (
-              <Tooltip value={props._(actionState.label)} placement="top">
-                <button
-                  type="button"
-                  class="sb-channel-account-action-btn"
-                  aria-label={props._(actionState.label)}
-                  disabled={actionState.disabled}
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    if (actionState.action === "refreshProjects") {
-                      props.onRefresh(props.account)
-                    } else if (actionState.action === "downloadDiagnostics") {
-                      props.onDiagnostics(props.account)
-                    }
-                  }}
-                >
-                  <Icon
-                    name={
-                      actionState.action === "refreshProjects"
-                        ? getSemanticIcon("action.refresh")
-                        : getSemanticIcon("action.download")
-                    }
-                    size="small"
-                  />
-                </button>
-              </Tooltip>
-            )}
-          </For>
-        </div>
+      <div class="sb-session-group-header" onClick={() => setOpen((v) => !v)} role="button" tabindex="0">
+        <Icon name={open() ? "chevron-down" : "chevron-right"} size="small" class="sb-section-chevron" />
+        <span>{props.group.label}</span>
       </div>
       <Show when={open()}>
         <Show
-          when={props.account.projects.length > 0}
+          when={props.group.projects.length > 0}
           fallback={<div class="sb-section-empty">{props._(sidebar.noSessions)}</div>}
         >
-          <For each={props.account.projects}>
-            {(project) => {
-              const target = createMemo(() => managedProjectRouteTarget(project))
-              return (
-                <Show when={target()}>
-                  <button
-                    type="button"
-                    class="sb-channel-managed-project"
-                    onClick={() => {
-                      const t = target()
-                      if (!t) return
-                      navigate(`/${base64Encode(t.worktree)}/session`)
-                    }}
-                  >
-                    <Icon name={getSemanticIcon("workspace.main")} size="small" />
-                    <span>{project.name || project.scopeID}</span>
-                  </button>
-                </Show>
-              )
-            }}
-          </For>
+          {props.children}
         </Show>
       </Show>
     </div>

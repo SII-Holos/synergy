@@ -13266,6 +13266,38 @@ msgid "settings.catalog.worktrees.searchTerms"
 msgstr "worktree | git | checkout | branch | delete | project"
 
 #. js-lingui-explicit-id
+msgid "settings.channels.clarus.accounts"
+msgstr "Clarus accounts"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.description"
+msgstr "Enable or disable Clarus task execution for Holos Agent accounts."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnostics"
+msgstr "Download diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.diagnosticsFailed"
+msgstr "Failed to download Clarus diagnostics"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.empty"
+msgstr "No Clarus accounts configured yet."
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refresh"
+msgstr "Refresh projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.refreshFailed"
+msgstr "Failed to refresh Clarus projects"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.clarus.title"
+msgstr "Clarus"
+
+#. js-lingui-explicit-id
 msgid "settings.channels.feishu.accounts"
 msgstr "Feishu accounts"
 
@@ -13288,6 +13320,38 @@ msgstr "External messaging channel accounts."
 #. js-lingui-explicit-id
 msgid "settings.channels.page.title"
 msgstr "Channels"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connected"
+msgstr "Connected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.connecting"
+msgstr "Connecting…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disabled"
+msgstr "Disabled"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.disconnected"
+msgstr "Disconnected"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.failed"
+msgstr "Connection failed"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.syncing"
+msgstr "Syncing…"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.unavailable"
+msgstr "Status unavailable"
+
+#. js-lingui-explicit-id
+msgid "settings.channels.status.waitingForTransport"
+msgstr "Waiting for transport"
 
 #. js-lingui-explicit-id
 msgid "settings.codeChecks.include.desc"

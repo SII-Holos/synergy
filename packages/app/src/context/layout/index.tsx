@@ -20,6 +20,7 @@ import { reconcile } from "solid-js/store"
 import {
   applySessionToNavList,
   githubNavQuery,
+  managedProjectScopesByWorktree,
   mergeNavListByID,
   navUpdateFromSession,
   orderNavEntries,
@@ -879,6 +880,14 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       })
     })
 
+    const managedScopesByWorktree = createMemo(() =>
+      managedProjectScopesByWorktree(
+        channelProjection().channelAccounts,
+        new Map(globalSync.data.scope.map((scope) => [scope.id, scope])),
+        supplementalExpanded(),
+      ),
+    )
+
     // Whether a project is supplemental (not locally tracked). Supplemental
     // projects manage expand state in-memory and load sessions lazily.
     function isSupplementalScope(scope: { worktree: string }): boolean {
@@ -1192,6 +1201,7 @@ export const { use: useLayout, provider: LayoutProvider } = createSimpleContext(
       },
       scopes: {
         list,
+        managed: (directory: string) => managedScopesByWorktree().get(directory),
         isSupplemental: isSupplementalScope,
         toggleSupplementalExpand,
         async open(directory: string) {

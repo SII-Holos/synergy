@@ -1,16 +1,7 @@
-/**
- * Channel Account Sidebar Model
- *
- * Pure model functions for Channel Account → managed Project → Task Session
- * sidebar rendering and account actions. All functions derive from the
- * canonical layout projection (partitionScopeNavigation / deriveChannelAccountActions).
- */
-
-import type { ChannelAccount, ChannelAccountActions, ChannelAccountStatus } from "@/context/layout/nav"
-import type { ScopeNavEntry } from "@/context/layout"
+import type { ChannelAccount, ChannelAccountStatus } from "@/context/layout/nav"
+import type { NavEntry, ScopeNavEntry } from "@/context/layout"
 import type { AppMessageDescriptor } from "@/locales/messages"
 import { sidebar } from "@/locales/messages"
-
 // ── Status Labels ─────────────────────────────────────────────────────
 
 /** Map every ChannelAccountStatus variant to an accessibility-safe i18n descriptor. */
@@ -36,64 +27,42 @@ export function channelAccountStatusLabel(status: ChannelAccountStatus): AppMess
 
 // ── Account Display ───────────────────────────────────────────────────
 
-/** Produce a stable, screen-reader-safe label for a ChannelAccount group. */
+/** Produce a stable, human-readable label without exposing internal account identity. */
 export function channelAccountGroupLabel(account: ChannelAccount): string {
-  return `${account.channelType}: ${account.accountId}`
+  if (account.channelType === "clarus") return "Clarus"
+  if (account.channelType === "feishu") return "Feishu"
+  return account.channelType.charAt(0).toUpperCase() + account.channelType.slice(1)
 }
 
-// ── Account Actions ───────────────────────────────────────────────────
-
-/** Resolve which account-level actions are available and in what state. */
-export interface ChannelAccountActionState {
-  action: "refreshProjects" | "downloadDiagnostics"
-  label: AppMessageDescriptor
-  /** Whether the action should be rendered as disabled (e.g. sync in progress). */
-  disabled: boolean
-  /** Non-empty when the action is disabled with a reason. */
-  disabledReason?: string
-  /** The keyboard shortcut hint, if any. */
-  shortcut?: string
+export type ChannelProviderGroup = {
+  channelType: string
+  label: string
+  projects: ScopeNavEntry[]
 }
 
-/** Return the sorted list of visible action states for a ChannelAccount. */
-export function channelAccountActionStates(
-  account: ChannelAccount,
-  actions: ChannelAccountActions,
-  refreshPending?: boolean,
-): ChannelAccountActionState[] {
-  const states: ChannelAccountActionState[] = []
-
-  if (!actions.hiddenActions.includes("refreshProjects")) {
-    const pending = refreshPending === true || isRefreshPending(account)
-    states.push({
-      action: "refreshProjects",
-      label: sidebar.channelRefreshProjects,
-      disabled: pending,
-      disabledReason: pending ? "Sync is in progress" : undefined,
+export function channelProviderGroups(accounts: readonly ChannelAccount[]): ChannelProviderGroup[] {
+  const groups = new Map<string, ChannelProviderGroup>()
+  for (const account of accounts) {
+    const existing = groups.get(account.channelType)
+    if (existing) {
+      existing.projects.push(...account.projects)
+      continue
+    }
+    groups.set(account.channelType, {
+      channelType: account.channelType,
+      label: channelAccountGroupLabel(account),
+      projects: [...account.projects],
     })
   }
-
-  if (!actions.hiddenActions.includes("downloadDiagnostics")) {
-    states.push({
-      action: "downloadDiagnostics",
-      label: sidebar.channelDownloadDiagnostics,
-      disabled: false,
-    })
-  }
-
-  return states
+  return [...groups.values()]
 }
 
-/** Determine whether a ChannelAccount's refresh action is currently pending. */
-export function isRefreshPending(account: ChannelAccount): boolean {
-  return account.status?.kind === "syncing"
-}
-
-// ── Diagnostics ───────────────────────────────────────────────────────
-
-/** Derive a stable diagnostics filename from account identity and timestamp. */
-export function diagnosticsFilename(account: ChannelAccount): string {
-  return `${account.channelType}-${account.accountId}-diagnostics.ndjson`
+/** Exclude Channel-managed worktrees from the ordinary Projects section while preserving order. */
+export function filterGenericScopeWorktrees(
+  worktrees: readonly string[],
+  managedWorktrees: ReadonlySet<string>,
+): string[] {
+  return worktrees.filter((worktree) => !managedWorktrees.has(worktree))
 }
 
 // ── Section Prerequisites ──────────────────────────────────────────────
@@ -109,4 +78,14 @@ export function shouldRenderChannelAccountSection(accounts: ChannelAccount[]): b
 export function managedProjectRouteTarget(entry: ScopeNavEntry): { worktree: string; sessionID?: string } | null {
   if (!entry.managedProject) return null
   return { worktree: entry.directory }
+}
+
+// ── Session Visibility ─────────────────────────────────────────────────
+
+/** Managed Projects include channel Task Sessions; ordinary Projects remain project-only. */
+export function selectVisibleProjectEntries(entries: readonly NavEntry[], isManaged: boolean): NavEntry[] {
+  if (isManaged) {
+    return entries.filter((entry) => entry.category === "project" || entry.category === "channel")
+  }
+  return entries.filter((entry) => entry.category === "project")
 }
