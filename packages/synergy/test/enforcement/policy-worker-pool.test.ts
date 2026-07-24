@@ -4,6 +4,7 @@ import { PolicyWorkerProtocol } from "@/enforcement/policy-worker/protocol"
 import {
   DEFAULT_POLICY_WORKER_POOL_OPTIONS,
   PolicyWorkerPool,
+  PolicyWorkerStartupTimeoutError,
   PolicyWorkerTimeoutError,
 } from "@/enforcement/policy-worker/worker-pool"
 
@@ -93,6 +94,90 @@ function fakeProcess(
 }
 
 describe("PolicyWorkerPool", () => {
+  test("waits for a worker handshake before reporting the pool ready", async () => {
+    let workerOptions: SpawnPolicyWorkerProcessOptions | undefined
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        heartbeatTimeoutMs: 100,
+      },
+      (options) => {
+        workerOptions = options
+        return fakeProcess(options, "unready", { killed: false })
+      },
+    )
+
+    try {
+      pool.start()
+      const ready = pool.ready()
+      let settled = false
+      void ready.finally(() => {
+        settled = true
+      })
+
+      await Bun.sleep(1)
+      expect(settled).toBe(false)
+
+      workerOptions?.onMessage({
+        type: "ready",
+        protocolVersion: PolicyWorkerProtocol.VERSION,
+        pid: 100,
+      })
+
+      await expect(ready).resolves.toBeUndefined()
+      expect(pool.stats().ready).toBe(1)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("bounds readiness when a worker process never completes its handshake", async () => {
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        heartbeatTimeoutMs: 10_000,
+      },
+      (options) => fakeProcess(options, "unready", { killed: false }),
+      {
+        startupReadyTimeoutMs: 5,
+      },
+    )
+
+    try {
+      await expect(pool.ready()).rejects.toBeInstanceOf(PolicyWorkerStartupTimeoutError)
+    } finally {
+      await pool.stop()
+    }
+  })
+
+  test("stays ready while all workers are busy so later requests can enter the bounded queue", async () => {
+    const pool = new PolicyWorkerPool(
+      {
+        ...DEFAULT_POLICY_WORKER_POOL_OPTIONS,
+        size: 1,
+        timeoutMs: 500,
+        heartbeatTimeoutMs: 10_000,
+      },
+      (options) => fakeProcess(options, "hang", { killed: false }),
+    )
+    const controller = new AbortController()
+
+    try {
+      const active = pool.run(classificationInput(), controller.signal)
+      for (let i = 0; i < 20 && pool.stats().active === 0; i++) await Bun.sleep(1)
+
+      expect(pool.stats().active).toBe(1)
+      await expect(pool.ready()).resolves.toBeUndefined()
+
+      controller.abort()
+      await expect(active).rejects.toMatchObject({ name: "AbortError" })
+    } finally {
+      await pool.stop()
+    }
+  })
+
   test("backs off repeated startup exits and opens a finite startup circuit", async () => {
     let spawned = 0
     const pool = new PolicyWorkerPool(

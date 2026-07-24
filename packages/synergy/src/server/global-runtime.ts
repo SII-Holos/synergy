@@ -73,7 +73,9 @@ export namespace GlobalRuntime {
             cancelGraceMs: config.execution?.policyCancelGraceMs,
             heartbeatTimeoutMs: config.execution?.policyHeartbeatTimeoutMs,
           })
-          PolicyWorker.start()
+          void PolicyWorker.start().catch((error) => {
+            log.warn("policy worker prewarm failed", { error })
+          })
           ToolScheduler.configure({
             maxConcurrent: config.execution?.toolConcurrency,
             maxQueued: config.execution?.toolQueueMax,

@@ -1055,7 +1055,12 @@ export namespace EnforcementGate {
       return classes.join("|") || "file_read"
     }
 
-    function evaluateClassified(toolName: string, args: Record<string, any>, classification: ClassifyResult): Envelope {
+    function evaluateClassified(
+      toolName: string,
+      args: Record<string, any>,
+      classification: ClassifyResult,
+      policyFailure?: string,
+    ): Envelope {
       const perfStart = performance.now()
       // ── ExecPolicy: bash command routing ──────────────────────────────
       let execPolicyMatch: RuleMatch | undefined
@@ -1155,6 +1160,12 @@ export namespace EnforcementGate {
         deniedCapClass = deniedCapClass ?? capabilities.find((c) => c.class !== "file_read")?.class ?? "tool_request"
       }
 
+      if (policyFailure) {
+        decision = "deny"
+        deniedCapClass = "protected_op"
+        amendment = undefined
+      }
+
       // Approval cache: if the profile says "ask" but the capability was
       // previously approved for this session, skip the prompt.
       if (decision === "ask") {
@@ -1167,7 +1178,14 @@ export namespace EnforcementGate {
 
       // Populate refusal info for deny decisions
       let refusal: Envelope["refusal"]
-      if (decision === "deny") {
+      if (policyFailure) {
+        refusal = {
+          reason: `Policy classification is unavailable (${policyFailure}); the operation was not executed`,
+          permanent: false,
+          matchedPermission: "protected_op",
+          guidance: "Retry after the Policy worker has recovered.",
+        }
+      } else if (decision === "deny") {
         const isAutonomous = profileId === "autonomous"
         const diagnosticReasons = capabilities
           .filter((c) => c.reason)
@@ -1256,8 +1274,8 @@ export namespace EnforcementGate {
         })
       } catch (error) {
         if (signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw error
-        const name = error instanceof Error ? error.name : "Error"
-        classification = {
+        const name = error instanceof Error && error.name ? error.name : "Error"
+        const classification = {
           capabilities: [
             {
               class: "protected_op",
@@ -1275,6 +1293,7 @@ export namespace EnforcementGate {
           module: "enforcement",
           labels: { tool: toolName, failure: name },
         })
+        return evaluateClassified(toolName, args, classification, name)
       }
       return evaluateClassified(toolName, args, classification)
     }

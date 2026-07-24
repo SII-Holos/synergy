@@ -22,6 +22,7 @@ export interface PolicyWorkerPoolOptions {
 }
 
 export interface PolicyWorkerSupervisorOptions {
+  startupReadyTimeoutMs: number
   startupBackoffBaseMs: number
   startupBackoffMaxMs: number
   maxConsecutiveStartupFailures: number
@@ -29,6 +30,7 @@ export interface PolicyWorkerSupervisorOptions {
 }
 
 const DEFAULT_POLICY_WORKER_SUPERVISOR_OPTIONS: PolicyWorkerSupervisorOptions = {
+  startupReadyTimeoutMs: 10_000,
   startupBackoffBaseMs: 250,
   startupBackoffMaxMs: 4_000,
   maxConsecutiveStartupFailures: 5,
@@ -66,10 +68,22 @@ interface PoolWorker {
   lastHeartbeatAt: number
 }
 
+interface PoolReadyWaiter {
+  resolve(): void
+  reject(error: unknown): void
+}
+
 export class PolicyWorkerTimeoutError extends Error {
   constructor(timeoutMs: number) {
     super(`Policy classification exceeded ${timeoutMs}ms`)
     this.name = "PolicyWorkerTimeoutError"
+  }
+}
+
+export class PolicyWorkerStartupTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Policy worker did not become ready within ${timeoutMs}ms`)
+    this.name = "PolicyWorkerStartupTimeoutError"
   }
 }
 
@@ -85,6 +99,7 @@ export class PolicyWorkerPool {
   private startupRetryGeneration = 0
   private startupCircuitError: Error | undefined
   private startupRetryPending = false
+  private readonly readyWaiters = new Set<PoolReadyWaiter>()
 
   constructor(
     private readonly options: PolicyWorkerPoolOptions,
@@ -110,6 +125,51 @@ export class PolicyWorkerPool {
   start(): void {
     if (this.stopping) throw new Error("Policy worker pool is stopping")
     this.ensureWorkers()
+  }
+
+  ready(signal?: AbortSignal): Promise<void> {
+    if (this.stopping) return Promise.reject(new Error("Policy worker pool is stopping"))
+    if (this.hasReadyWorker()) return Promise.resolve()
+    if (this.startupCircuitError) return Promise.reject(this.startupCircuitError)
+    if (signal?.aborted) {
+      return Promise.reject(signal.reason ?? new DOMException("Policy worker startup aborted", "AbortError"))
+    }
+    this.start()
+
+    return new Promise<void>((resolve, reject) => {
+      let waiter!: PoolReadyWaiter
+      const cleanup = () => {
+        clearTimeout(timer)
+        signal?.removeEventListener("abort", onAbort)
+        this.readyWaiters.delete(waiter)
+      }
+      const onAbort = () => {
+        cleanup()
+        reject(signal?.reason ?? new DOMException("Policy worker startup aborted", "AbortError"))
+      }
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new PolicyWorkerStartupTimeoutError(this.supervisor.startupReadyTimeoutMs))
+      }, this.supervisor.startupReadyTimeoutMs)
+      timer.unref()
+      waiter = {
+        resolve() {
+          cleanup()
+          resolve()
+        },
+        reject(error) {
+          cleanup()
+          reject(error)
+        },
+      }
+      this.readyWaiters.add(waiter)
+      signal?.addEventListener("abort", onAbort, { once: true })
+      if (signal?.aborted) {
+        onAbort()
+        return
+      }
+      if (this.hasReadyWorker()) waiter.resolve()
+    })
   }
 
   run(input: PolicyClassificationInput, signal?: AbortSignal): Promise<ClassifyResult> {
@@ -193,6 +253,7 @@ export class PolicyWorkerPool {
     this.startupRetryGeneration++
     this.startupRetryPending = false
     const error = new Error("Policy worker pool stopped")
+    this.rejectReadyWaiters(error)
     for (const task of this.queue.splice(0)) {
       this.queuedBytes -= task.requestBytes
       this.failTask(task, error)
@@ -249,6 +310,7 @@ export class PolicyWorkerPool {
       worker.lastHeartbeatAt = Date.now()
       this.consecutiveStartupFailures = 0
       this.startupCircuitError = undefined
+      this.resolveReadyWaiters()
       this.ensureWorkers()
       this.drain()
       return
@@ -383,6 +445,7 @@ export class PolicyWorkerPool {
     this.startupRetryPending = false
     this.startupRetryGeneration++
     this.log.error("policy worker startup circuit opened", { attempts, cause })
+    this.rejectReadyWaiters(error)
     ObservabilityMetrics.record({
       name: "policy.worker.startup_circuit_open",
       value: 1,
@@ -584,6 +647,18 @@ export class PolicyWorkerPool {
 
   private availableWorker(): boolean {
     return [...this.workers.values()].some((worker) => worker.ready && !worker.stopping && !worker.task)
+  }
+
+  private hasReadyWorker(): boolean {
+    return [...this.workers.values()].some((worker) => worker.ready && !worker.stopping)
+  }
+
+  private resolveReadyWaiters(): void {
+    for (const waiter of [...this.readyWaiters]) waiter.resolve()
+  }
+
+  private rejectReadyWaiters(error: unknown): void {
+    for (const waiter of [...this.readyWaiters]) waiter.reject(error)
   }
 }
 

@@ -39,13 +39,14 @@ export namespace PolicyWorker {
     }
   }
 
-  export function start(): void {
+  export async function start(): Promise<void> {
     if (!accepting || stopPromise) throw new Error("Policy worker pool is stopping")
     pool ??= new PolicyWorkerPool(options)
     pool.start()
+    await pool.ready()
   }
 
-  export function classify(input: {
+  export async function classify(input: {
     context: PolicyClassificationContext
     toolName: string
     args: Record<string, unknown>
@@ -53,7 +54,9 @@ export namespace PolicyWorker {
   }): Promise<ClassifyResult> {
     if (!accepting || stopPromise) return Promise.reject(new Error("Policy worker pool is stopping"))
     pool ??= new PolicyWorkerPool(options)
-    return pool.run(
+    pool.start()
+    await pool.ready(input.signal)
+    return await pool.run(
       {
         context: input.context,
         toolName: input.toolName,
@@ -100,6 +103,7 @@ export type { PolicyClassificationContext, PolicyClassificationInput } from "./p
 export {
   DEFAULT_POLICY_WORKER_POOL_OPTIONS,
   PolicyWorkerPool,
+  PolicyWorkerStartupTimeoutError,
   PolicyWorkerTimeoutError,
   type PolicyWorkerPoolOptions,
 } from "./worker-pool"
