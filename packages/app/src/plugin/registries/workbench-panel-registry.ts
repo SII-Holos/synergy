@@ -34,6 +34,7 @@ export interface WorkbenchPanelEntry extends SurfaceEntry {
   cardinality: WorkbenchPanelCardinality
   requiresSession?: boolean
   supportsDraftSession?: boolean
+  launchable?: boolean
   component?: Component<WorkbenchPanelContentProps>
   loader?: () => Promise<{ default: Component<WorkbenchPanelContentProps> }>
   exportName?: string

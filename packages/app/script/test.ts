@@ -5,7 +5,7 @@ import path from "node:path"
 
 const root = path.resolve(import.meta.dir, "..")
 const isolated = "test/app-build-css-contract.test.ts"
-const browserOnly = "test/plugin/builtin-navigation.test.ts"
+const browserOnly = ["test/pages/fatal-error.test.tsx", "test/plugin/builtin-navigation.test.ts"]
 
 async function collectTests(directory: string): Promise<string[]> {
   const entries = await readdir(path.join(root, directory), { withFileTypes: true })
@@ -30,6 +30,6 @@ async function run(tests: string[], options: { browser?: boolean } = {}) {
 }
 
 const tests = (await collectTests("test")).toSorted()
-await run(tests.filter((test) => test !== isolated && test !== browserOnly))
-await run([browserOnly], { browser: true })
+await run(tests.filter((test) => test !== isolated && !browserOnly.includes(test)))
+await run(browserOnly, { browser: true })
 await run([isolated])

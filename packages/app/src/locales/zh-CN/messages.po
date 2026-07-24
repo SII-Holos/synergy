@@ -738,6 +738,70 @@ msgstr "外部"
 msgid "app.agentVisual.external"
 msgstr "外部"
 
+#. js-lingui-explicit-id
+msgid "app.attachment.action.download"
+msgstr "下载"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.action.viewSourceFile"
+msgstr "在“文件”中查看源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.loading"
+msgstr "正在加载附件…"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.label"
+msgstr "附件查看模式"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.preview"
+msgstr "预览"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.mode.source"
+msgstr "源文件"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.fitWidth"
+msgstr "适应宽度"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.nextPage"
+msgstr "下一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.pagePosition"
+msgstr "{page} / {count}"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.previousPage"
+msgstr "上一页"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomIn"
+msgstr "放大"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.pdf.zoomOut"
+msgstr "缩小"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.error"
+msgstr "无法预览此附件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.preview.tooLarge"
+msgstr "此附件过大，无法预览。请下载后查看完整文件。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unavailable"
+msgstr "此附件已无法从当前会话中获取。"
+
+#. js-lingui-explicit-id
+msgid "app.attachment.unsupported"
+msgstr "此文件类型暂不支持预览。"
+
 #. ── Browser ──────────────────────────────────────────────────────────────────
 msgid "app.browser.action.cancel"
 msgstr "取消"
@@ -2065,6 +2129,62 @@ msgstr "未知错误"
  *  Translate at use time via `useLocale().i18n._(descriptor)`.
 msgid "app.error.versionLabel"
 msgstr "版本：{version}"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.changeServer"
+msgstr "更换服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.reloadInterface"
+msgstr "重新加载界面"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.action.tryAgain"
+msgstr "重试"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.connection.description"
+msgstr "Synergy 服务器当前无响应，无法确认正在运行的任务状态。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.connection.title"
+msgstr "无法连接到服务器"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.initialization.description"
+msgstr "配置、Provider 或设置错误导致 Synergy 无法完成启动。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.initialization.title"
+msgstr "Synergy 启动失败"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.renderer.description"
+msgstr "重新加载此页面不会停止服务器上已在运行的任务。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.renderer.title"
+msgstr "界面遇到了问题"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.scope.description"
+msgstr "工作区无法加载，可能是临时故障或配置问题。"
+
+#. ── pages/fatal-error.tsx ───────────────────────────────────────────
+msgid "app.fatalError.scope.title"
+msgstr "无法加载此项目"
+
+#. Runtime Lingui descriptors for app shell, entry, commands, and pages.
+ *  Translate at use time via `useLocale().i18n._(descriptor)`.
+msgid "app.fatalError.summaryLabel"
+msgstr "摘要"
 
 #. ── File workbench ───────────────────────────────────────────────────────────
 msgid "app.file.action.close"
@@ -4085,6 +4205,10 @@ msgid "app.notification.session.error"
 msgstr "会话错误"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.attachment"
+msgstr "附件"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.browser"
 msgstr "浏览器"
 
@@ -5241,6 +5365,18 @@ msgstr "插件"
 #. ── Plugin marketplace ────────────────────────────────────────────────────────
 msgid "app.plugin.marketplace.pluginApi.label"
 msgstr "Plugin API {version}"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.description"
+msgstr "Synergy 无法连接到此插件注册表。请检查网络连接后重试。"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.retry"
+msgstr "重试"
+
+#. ── Plugin marketplace ────────────────────────────────────────────────────────
+msgid "app.plugin.marketplace.registryUnavailable.title"
+msgstr "插件注册表不可用"
 
 #. js-lingui-explicit-id
 msgid "app.plugin.marketplace.row.installed"
@@ -7390,6 +7526,14 @@ msgstr "工作区"
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "重新加载应用"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "重试"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
@@ -17310,6 +17454,10 @@ msgstr "未选择图片"
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.openNewWindow"
 msgstr "在新窗口打开图片"
+
+#. js-lingui-explicit-id
+msgid "ui.imagePreview.openSource"
+msgstr "在“文件”中查看源文件"
 
 #. js-lingui-explicit-id
 msgid "ui.imagePreview.previous"

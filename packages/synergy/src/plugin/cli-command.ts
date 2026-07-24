@@ -30,7 +30,7 @@ interface PluginCliWriter {
 
 export function createPluginCliCommandModule(input: {
   plugin: LoadedPlugin
-  scope: Scope
+  resolveScope: () => Promise<Scope>
   invoke?: InvokePluginCliCommand
   stdout?: PluginCliWriter
   stderr?: PluginCliWriter
@@ -57,8 +57,9 @@ export function createPluginCliCommandModule(input: {
             return commandYargs
           },
           handler: async (args) => {
+            const scope = await input.resolveScope()
             await ScopeContext.provide({
-              scope: input.scope,
+              scope,
               async fn() {
                 const options = Object.fromEntries(
                   Object.keys(command.options).flatMap((name) =>

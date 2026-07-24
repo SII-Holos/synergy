@@ -92,6 +92,7 @@ import { UpdateRoute } from "./update-route"
 import { ScopeBootstrapRoute } from "./scope-bootstrap-route"
 import { SessionVolatileBatchRoute } from "./session-volatile-batch-route"
 import { SynergyLinkRoute } from "./synergy-link-route"
+import { resolveAppStaticRequest } from "./app-static"
 
 // @ts-ignore This global is needed to prevent ai-sdk from logging warnings to stdout https://github.com/vercel/ai/blob/2dc67e0ef538307f21368db32d5a12345d98831b/packages/ai/src/logger/log-warnings.ts#L85
 globalThis.AI_SDK_LOG_WARNINGS = false
@@ -1536,38 +1537,14 @@ export namespace Server {
         const serveFile = (resolved: string, immutable?: boolean) => {
           const file = Bun.file(resolved)
           if (immutable) c.header("Cache-Control", "public, immutable, max-age=31536000")
+          else if (path.extname(resolved) === ".html") c.header("Cache-Control", "no-cache")
           c.header("Content-Security-Policy", spaCsp())
           return c.body(file.stream(), { headers: { "Content-Type": file.type || "application/octet-stream" } })
         }
 
-        const tryServe = async (candidate: string) => {
-          if (!candidate.startsWith(APP_DIST)) return false
-          const file = Bun.file(candidate)
-          if (!(await file.exists().catch(() => false))) return false
-          const stat = await file.stat()
-          return !stat.isDirectory()
-        }
-
-        const exact = path.join(APP_DIST, reqPath)
-        if (await tryServe(exact)) return serveFile(exact, exact.includes("/assets/"))
-
-        // With base:"./", SPA deep-route refreshes cause the browser to resolve
-        // relative asset paths against the current URL (e.g. /scope/session/assets/x.js
-        // instead of /assets/x.js). Normalize by extracting the /assets/... suffix.
-        const assetsIdx = reqPath.lastIndexOf("/assets/")
-        if (assetsIdx > 0) {
-          const normalized = path.join(APP_DIST, reqPath.slice(assetsIdx))
-          if (await tryServe(normalized)) return serveFile(normalized, true)
-        }
-
-        // Root-level static files (favicon, webmanifest, etc.) also shift under
-        // deep routes. Fall back to matching by basename in APP_DIST root.
-        const basename = reqPath.split("/").pop()
-        if (basename && basename.includes(".")) {
-          const rootCandidate = path.join(APP_DIST, basename)
-          if (rootCandidate !== exact && (await tryServe(rootCandidate))) return serveFile(rootCandidate)
-        }
-
+        const resolved = await resolveAppStaticRequest(APP_DIST, reqPath)
+        if (resolved.type === "file") return serveFile(resolved.path, resolved.immutable)
+        if (resolved.type === "missing") return c.notFound()
         return next()
       })
       .get("/*", async (c) => {
@@ -1576,6 +1553,7 @@ export namespace Server {
           const html = await file.text()
           const reqPath = new URL(c.req.url).pathname
           const routeTag = `<script>window.__SYNERGY_ROUTE__=${JSON.stringify(reqPath)}</script>`
+          c.header("Cache-Control", "no-cache")
           c.header("Content-Security-Policy", spaCsp())
           const rendered = html.includes("<head>")
             ? html.replace("<head>", `<head>\n${routeTag}`)

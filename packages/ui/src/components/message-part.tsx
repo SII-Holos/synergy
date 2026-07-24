@@ -1912,6 +1912,9 @@ function ToolAttachments(props: { attachments: AttachmentPart[] }) {
   const files = createMemo(() =>
     props.attachments.map(
       (f): AttachmentFile => ({
+        id: f.id,
+        sessionID: f.sessionID,
+        messageID: f.messageID,
         mime: f.mime,
         filename: f.filename,
         url: f.url,
