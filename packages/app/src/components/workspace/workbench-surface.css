@@ -324,6 +324,17 @@
   color: var(--text-critical-base, var(--text-weak));
 }
 
+.workbench-surface-load-error {
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workbench-surface-load-error-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .workbench-surface,
   .workbench-surface:not(.workbench-surface--resizing),

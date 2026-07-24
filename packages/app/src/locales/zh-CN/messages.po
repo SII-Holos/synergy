@@ -7392,6 +7392,14 @@ msgid "app.workspace.mobileHeader.close"
 msgstr "关闭工作区"
 
 #. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.reload"
+msgstr "重新加载应用"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
+msgid "app.workspace.panel.retry"
+msgstr "重试"
+
+#. ── Workspace core ───────────────────────────────────────────────────────────
 msgid "app.workspace.panel.unavailable"
 msgstr "面板不可用"
 
