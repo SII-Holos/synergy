@@ -278,6 +278,25 @@ describe.serial("McpSupervisor", () => {
         expect(Object.getOwnPropertySymbols(entry!.inputSchema)).toEqual([])
         expect(Object.getOwnPropertySymbols(entry!.tool.inputSchema)).not.toEqual([])
         expect(MCP.toolCallTimeout("mcp__demo-plugin__layout__demo_tool")).toBe(2468)
+        expect(McpSupervisor.get("demo-plugin::layout")?.localProcess).toMatchObject({
+          stdioState: "open",
+          closeTimeoutMs: 5_000,
+          descendantPipeGraceMs: 2_000,
+        })
+        expect(McpSupervisor.resourceStats()).toMatchObject({
+          processCount: 1,
+          measuredProcessCount: 1,
+          stdio: { open: 1, closing: 0, timedOut: 0 },
+        })
+        await MCP.disconnect("demo-plugin::layout")
+        expect(McpSupervisor.resourceStats()).toMatchObject({
+          processCount: 0,
+          stdio: { open: 0, closing: 0, closed: 1, timedOut: 0 },
+          lastRecovery: {
+            action: "close",
+            timedOut: false,
+          },
+        })
       },
     })
   })

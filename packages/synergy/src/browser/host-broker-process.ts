@@ -6,6 +6,7 @@ import type { BrowserOwner } from "./owner.js"
 import { BrowserInstall } from "./install.js"
 import { Installation } from "../global/installation.js"
 import { redactBrowserText, type BrowserHostStatus } from "@ericsanchezok/synergy-browser"
+import { ProcessInspection } from "../process/inspection.js"
 
 export namespace BrowserHostBrokerProcess {
   export interface EnsureInput {
@@ -24,6 +25,19 @@ export namespace BrowserHostBrokerProcess {
   let activityInstalled = false
   let activityUnsubscribe: (() => void) | null = null
   let hostStatus: BrowserHostStatus = "idle"
+  let baselineRssBytes: number | undefined
+  let peakRssBytes = 0
+  let currentRssBytes: number | undefined
+  let lastRecovery:
+    | {
+        action: "idle_retire"
+        reason: "no_active_pages"
+        at: number
+        beforeBytes?: number
+        afterBytes: number
+        reclaimedBytes?: number
+      }
+    | undefined
 
   export function key(): string {
     return "browser-host-broker"
@@ -38,6 +52,32 @@ export namespace BrowserHostBrokerProcess {
     if (BrowserBroker.ready("webrtc")) return "ready"
     if (!enabled()) return "unavailable"
     return hostStatus
+  }
+
+  export function resourceStats() {
+    const active = proc?.exitCode === null ? proc : undefined
+    if (active) {
+      const sample = ProcessInspection.rssBytes(active.pid)
+      if (sample !== undefined) {
+        currentRssBytes = sample
+        baselineRssBytes = baselineRssBytes === undefined ? sample : Math.min(baselineRssBytes, sample)
+        peakRssBytes = Math.max(peakRssBytes, sample)
+      }
+    } else {
+      currentRssBytes = undefined
+    }
+    return {
+      processCount: active ? 1 : 0,
+      measuredProcessCount: active && currentRssBytes !== undefined ? 1 : 0,
+      currentBytes: currentRssBytes,
+      baselineBytes: baselineRssBytes,
+      peakBytes: peakRssBytes || undefined,
+      retainedBytes:
+        currentRssBytes === undefined
+          ? undefined
+          : Math.max(0, currentRssBytes - (baselineRssBytes ?? currentRssBytes)),
+      lastRecovery,
+    }
   }
 
   export async function ensure(input: EnsureInput): Promise<EnsureResult> {
@@ -108,10 +148,11 @@ export namespace BrowserHostBrokerProcess {
     return { status: "started", key: key() }
   }
 
-  export async function stop(): Promise<void> {
+  export async function stop(reason: "shutdown" | "idle_no_pages" = "shutdown"): Promise<void> {
     cancelIdleStop()
     const active = proc
     if (!active) return
+    const beforeBytes = ProcessInspection.rssBytes(active.pid) ?? currentRssBytes
     let exited = active.exitCode !== null
     const exit = active.exited.then(() => {
       exited = true
@@ -127,6 +168,17 @@ export namespace BrowserHostBrokerProcess {
     serverUrl = null
     hostStatus = "idle"
     BrowserBroker.publishHostStatus(hostStatus)
+    currentRssBytes = undefined
+    if (reason === "idle_no_pages") {
+      lastRecovery = {
+        action: "idle_retire",
+        reason: "no_active_pages",
+        at: Date.now(),
+        beforeBytes,
+        afterBytes: 0,
+        reclaimedBytes: beforeBytes,
+      }
+    }
   }
 
   export function resetForTest(): void {
@@ -135,6 +187,10 @@ export namespace BrowserHostBrokerProcess {
     proc = null
     serverUrl = null
     hostStatus = "idle"
+    baselineRssBytes = undefined
+    peakRssBytes = 0
+    currentRssBytes = undefined
+    lastRecovery = undefined
     activityUnsubscribe?.()
     activityUnsubscribe = null
     activityInstalled = false
@@ -151,7 +207,7 @@ export namespace BrowserHostBrokerProcess {
       if (!proc || idleTimer) return
       idleTimer = setTimeout(() => {
         idleTimer = null
-        void stop()
+        void stop("idle_no_pages")
       }, 60_000)
     })
   }

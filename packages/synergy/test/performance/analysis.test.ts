@@ -26,7 +26,7 @@ describe("performance analysis", () => {
       windowMs: 900_000,
       health: { status: "degraded", score: 72, openIssueCount: 1, criticalIssueCount: 0 },
       backend: { requestCount: 10, errorRate: 0.1, activeSessions: 2, pendingSessions: 1 },
-      resources: { rssBytes: 512_000_000 },
+      resources: { rssBytes: 512_000_000, owners: [] },
       sessions: { turnCount: 3, llmCallCount: 4, toolCallCount: 5 },
       frontend: { longTaskCount: 1 },
       runtime: {
@@ -183,7 +183,7 @@ describe("performance analysis", () => {
       quality: { partial: true, truncated: true },
       health: { status: "degraded", score: 50, openIssueCount: 20, criticalIssueCount: 1 },
       backend: { requestCount: 1, errorRate: 0, activeSessions: 0, pendingSessions: 0 },
-      resources: { rssBytes: 1 },
+      resources: { rssBytes: 1, owners: [] },
       sessions: { turnCount: 0, llmCallCount: 0, toolCallCount: 0 },
       frontend: { longTaskCount: 0 },
       runtime: {

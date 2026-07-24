@@ -39,6 +39,8 @@ The context is request state; do not cache it as a current Scope. `runtime` is r
 
 External plugins use `process`. Trusted built-ins may use `inProcess`. The process boundary isolates crashes, timeouts, and cleanup; it is not an OS security sandbox and does not claim to restrict direct filesystem or network access by plugin code.
 
+External runtime generations are sampled by the host memory monitor. `pluginRuntimePolicy.limits.maxMemoryMb` sets the per-generation RSS limit and `memorySampleIntervalMs` sets the polling interval. A limit breach stops and restarts only the exact active registry generation, preserving its manifest and runtime limits, and records the measured recycle effect. A stale callback from a draining generation cannot stop or replace the current generation. Trusted `inProcess` plugins remain part of Control Plane memory and are not double-counted as external plugin processes.
+
 ## Capabilities and Host Services
 
 Capabilities describe Synergy services the host may inject. A contribution's `requires` must be a subset of the definition's top-level capability list.
@@ -123,6 +125,8 @@ Ordering is priority, plugin ID, then contribution ID. Each hook point owns inpu
 ## Generation Changes and Lifecycle
 
 A new generation starts and validates before it becomes active. The previous generation drains in-flight calls. A late response from an inactive generation is rejected.
+
+Every external generation owns its memory-monitor handle. Startup failure, crash, drain, upgrade, uninstall, and ordinary shutdown all stop that handle before the registry entry is removed.
 
 `lifecycle.upgrade` runs on the prepared new version before activation. Failure keeps the old version active. Plugin migrations must be idempotent because Synergy cannot roll back arbitrary plugin-owned data changes.
 

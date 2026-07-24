@@ -1,10 +1,10 @@
 import type { ChildProcess } from "child_process"
-import { readFileSync } from "fs"
 import { Log } from "../util/log"
 import { Identifier } from "../id/id"
 import { Observability } from "../observability"
 import { ObservabilityMetrics } from "@/observability/metrics"
 import { ObservabilityRedaction } from "@/observability/redaction"
+import { ProcessInspection as OwnedProcessInspection } from "./inspection"
 
 const log = Log.create({ service: "process.registry" })
 
@@ -152,6 +152,15 @@ export namespace ProcessRegistry {
     exited: boolean
     backgrounded: boolean
     lastOutputAt?: number
+    stdioState: "open" | "draining" | "closed"
+    exitObservedAt?: number
+    stdioClosedAt?: number
+    drainTimedOut?: boolean
+    drainGraceMs?: number
+    timedOut?: boolean
+    currentRssBytes?: number
+    baselineRssBytes?: number
+    peakRssBytes?: number
   }
 
   export interface FinishedProcess {
@@ -167,6 +176,14 @@ export namespace ProcessRegistry {
     output: string
     tail: string
     truncated: boolean
+    stdioState: "closed"
+    exitObservedAt?: number
+    stdioClosedAt?: number
+    drainTimedOut?: boolean
+    drainGraceMs?: number
+    timedOut?: boolean
+    baselineRssBytes?: number
+    peakRssBytes?: number
   }
 
   export interface ProcessInspection {
@@ -188,6 +205,12 @@ export namespace ProcessRegistry {
     lastOutputAt?: number
     alive?: boolean
     rssBytes?: number
+    stdioState: "open" | "draining" | "closed"
+    exitObservedAt?: number
+    stdioClosedAt?: number
+    drainTimedOut?: boolean
+    drainGraceMs?: number
+    timedOut?: boolean
   }
 
   export type ProcessInspector = (pid: number, proc: Process) => ProcessInspection
@@ -199,6 +222,17 @@ export namespace ProcessRegistry {
   let sweeper: Timer | null = null
   let ttlMs = DEFAULT_TTL_MS
   let processInspector: ProcessInspector = defaultProcessInspector
+  let lastRecovery:
+    | {
+        action: "close"
+        reason: "process_exit"
+        at: number
+        beforeBytes?: number
+        afterBytes: number
+        reclaimedBytes?: number
+        timedOut: boolean
+      }
+    | undefined
 
   export function create(opts: {
     command: string
@@ -228,6 +262,7 @@ export namespace ProcessRegistry {
       truncated: false,
       exited: false,
       backgrounded: false,
+      stdioState: "open",
     }
     outputBuffers.set(proc, outputBuffer)
     running.set(id, proc)
@@ -298,6 +333,19 @@ export namespace ProcessRegistry {
     })
   }
 
+  export function markExitObserved(proc: Process, input: { drainGraceMs: number; timedOut: boolean }) {
+    proc.stdioState = "draining"
+    proc.exitObservedAt = Date.now()
+    proc.drainGraceMs = input.drainGraceMs
+    proc.timedOut = input.timedOut
+  }
+
+  export function markStdioClosed(proc: Process, input: { drainTimedOut: boolean }) {
+    proc.stdioState = "closed"
+    proc.stdioClosedAt = Date.now()
+    proc.drainTimedOut = input.drainTimedOut
+  }
+
   export function markExited(proc: Process, exitCode: number | null, exitSignal: NodeJS.Signals | number | null) {
     proc.exited = true
     proc.exitCode = exitCode
@@ -324,7 +372,24 @@ export namespace ProcessRegistry {
       output: proc.output,
       tail: proc.tail,
       truncated: proc.truncated,
+      stdioState: "closed",
+      exitObservedAt: proc.exitObservedAt,
+      stdioClosedAt: proc.stdioClosedAt,
+      drainTimedOut: proc.drainTimedOut,
+      drainGraceMs: proc.drainGraceMs,
+      timedOut: proc.timedOut,
+      baselineRssBytes: proc.baselineRssBytes,
+      peakRssBytes: proc.peakRssBytes,
     })
+    lastRecovery = {
+      action: "close",
+      reason: "process_exit",
+      at: Date.now(),
+      beforeBytes: proc.currentRssBytes,
+      afterBytes: 0,
+      reclaimedBytes: proc.currentRssBytes,
+      timedOut: proc.timedOut ?? false,
+    }
 
     ObservabilityMetrics.record({
       name: "process.duration",
@@ -392,6 +457,14 @@ export namespace ProcessRegistry {
     for (const proc of Array.from(running.values())) {
       if (proc.exited) continue
       const inspection = inspect(proc)
+      if (inspection.rssBytes !== undefined) {
+        proc.currentRssBytes = inspection.rssBytes
+        proc.baselineRssBytes =
+          proc.baselineRssBytes === undefined
+            ? inspection.rssBytes
+            : Math.min(proc.baselineRssBytes, inspection.rssBytes)
+        proc.peakRssBytes = Math.max(proc.peakRssBytes ?? 0, inspection.rssBytes)
+      }
       if (opts.settleStale && proc.pid !== undefined && inspection.alive === false) {
         markStale(proc)
         continue
@@ -410,6 +483,12 @@ export namespace ProcessRegistry {
         lastOutputAt: proc.lastOutputAt,
         alive: inspection.alive,
         rssBytes: inspection.rssBytes,
+        stdioState: proc.stdioState,
+        exitObservedAt: proc.exitObservedAt,
+        stdioClosedAt: proc.stdioClosedAt,
+        drainTimedOut: proc.drainTimedOut,
+        drainGraceMs: proc.drainGraceMs,
+        timedOut: proc.timedOut,
       })
     }
     return result.sort((a, b) => (b.rssBytes ?? -1) - (a.rssBytes ?? -1) || b.startedAt - a.startedAt)
@@ -417,6 +496,33 @@ export namespace ProcessRegistry {
 
   export function settleStaleProcesses() {
     resourceSnapshot({ settleStale: true })
+  }
+
+  export function resourceStats() {
+    const processes = resourceSnapshot()
+    const measured = processes.filter((entry) => entry.rssBytes !== undefined)
+    const owned = [...running.values()].filter((entry) => !entry.exited)
+    return {
+      processCount: processes.length,
+      measuredProcessCount: measured.length,
+      currentBytes: measured.reduce((sum, entry) => sum + (entry.rssBytes ?? 0), 0),
+      baselineBytes: owned.reduce((sum, entry) => sum + (entry.baselineRssBytes ?? 0), 0),
+      peakBytes: owned.reduce((sum, entry) => sum + (entry.peakRssBytes ?? 0), 0),
+      retainedBytes: owned.reduce(
+        (sum, entry) =>
+          sum + Math.max(0, (entry.currentRssBytes ?? 0) - (entry.baselineRssBytes ?? entry.currentRssBytes ?? 0)),
+        0,
+      ),
+      stdio: {
+        open: owned.filter((entry) => entry.stdioState === "open").length,
+        draining: owned.filter((entry) => entry.stdioState === "draining").length,
+        closed: owned.filter((entry) => entry.stdioState === "closed").length,
+        timedOut: owned.filter((entry) => entry.timedOut).length,
+        drainTimedOut: owned.filter((entry) => entry.drainTimedOut).length,
+        descendantPipeGraceMs: Math.max(0, ...owned.map((entry) => entry.drainGraceMs ?? 0)),
+      },
+      lastRecovery,
+    }
   }
 
   export function setProcessInspector(inspector: ProcessInspector) {
@@ -463,6 +569,7 @@ export namespace ProcessRegistry {
   export function reset() {
     running.clear()
     finished.clear()
+    lastRecovery = undefined
     if (sweeper) {
       clearInterval(sweeper)
       sweeper = null
@@ -537,31 +644,10 @@ export namespace ProcessRegistry {
   }
 
   function defaultProcessInspector(pid: number): ProcessInspection {
-    const alive = isPidAlive(pid)
+    const alive = OwnedProcessInspection.alive(pid)
     return {
       alive,
-      rssBytes: alive ? readLinuxRssBytes(pid) : undefined,
-    }
-  }
-
-  function isPidAlive(pid: number) {
-    try {
-      process.kill(pid, 0)
-      return true
-    } catch (error) {
-      return (error as NodeJS.ErrnoException).code === "EPERM"
-    }
-  }
-
-  function readLinuxRssBytes(pid: number) {
-    if (process.platform !== "linux") return undefined
-    try {
-      const status = readFileSync(`/proc/${pid}/status`, "utf8")
-      const match = /^VmRSS:\s+(\d+)\s+kB$/m.exec(status)
-      if (!match) return undefined
-      return Number(match[1]) * 1024
-    } catch {
-      return undefined
+      rssBytes: alive ? OwnedProcessInspection.rssBytes(pid) : undefined,
     }
   }
 }

@@ -118,6 +118,11 @@ export namespace AgentTurn {
         heapTotalBytes: 0,
         externalBytes: 0,
         arrayBuffersBytes: 0,
+        baselineBytes: 0,
+        peakBytes: 0,
+        retainedBytes: 0,
+        measuredWorkers: 0,
+        lastRecovery: undefined,
       }
     )
   }

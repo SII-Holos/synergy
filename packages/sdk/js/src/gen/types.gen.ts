@@ -430,6 +430,44 @@ export type PerfTimelineQuality = {
   unavailableReason?: string
 }
 
+export type PerfResourceOwnerKind =
+  | "control_plane"
+  | "agent"
+  | "policy"
+  | "plugin"
+  | "browser"
+  | "mcp"
+  | "local_process"
+
+export type PerfResourceRecovery = {
+  action: "gc" | "recycle" | "idle_retire" | "close"
+  reason: string
+  at: number
+  beforeBytes?: number
+  afterBytes?: number
+  reclaimedBytes?: number
+  timedOut?: boolean
+}
+
+export type PerfResourceOwner = {
+  owner: PerfResourceOwnerKind
+  processCount: number
+  measuredProcessCount: number
+  currentBytes?: number
+  peakBytes?: number
+  baselineBytes?: number
+  retainedBytes?: number
+  heapUsedBytes?: number
+  externalBytes?: number
+  arrayBuffersBytes?: number
+  source: "process_api" | "worker_ipc" | "plugin_monitor" | "browser_runtime" | "mcp_stdio" | "process_registry"
+  completeness: "full" | "partial" | "unavailable"
+  attributes?: {
+    [key: string]: string | number | boolean
+  }
+  lastRecovery?: PerfResourceRecovery
+}
+
 export type PerfModule =
   | "server"
   | "session"
@@ -546,10 +584,15 @@ export type PerfDashboardSummary = {
     measuredChildProcessCount?: number
     serviceMemory?: {
       rssBytes?: number
+      currentBytes?: number
+      workingSetBytes?: number
+      reclaimableBytes?: number
+      peakBytes?: number
       source: "cgroup_v2" | "process_api"
       completeness: "full" | "partial"
     }
     childProcessRssBytes?: number
+    owners: Array<PerfResourceOwner>
   }
   sessions: {
     turnCount: number
@@ -615,6 +658,9 @@ export type PerfDashboardSummary = {
         queuedBytes: number
         rssBytes: number
         heapUsedBytes: number
+        heapTotalBytes: number
+        externalBytes: number
+        arrayBuffersBytes: number
       }
       toolTasks: {
         active: number
@@ -2104,6 +2150,14 @@ export type PluginRuntimeLimitsConfig = {
    * Heartbeat interval in milliseconds
    */
   heartbeatIntervalMs?: number
+  /**
+   * External plugin runtime RSS limit in megabytes
+   */
+  maxMemoryMb?: number
+  /**
+   * External plugin runtime RSS sampling interval in milliseconds
+   */
+  memorySampleIntervalMs?: number
 }
 
 /**

@@ -89,6 +89,25 @@ export namespace SessionMemoryPressure {
   let pendingRelease: { count: number; input: CollectionInput } | undefined
   let releaseTimer: ReturnType<typeof setTimeout> | undefined
   let releaseFlushInFlight: Promise<ReleaseResult | undefined> | undefined
+  let lastAssessment:
+    | {
+        at: number
+        pressure: PressureLevel
+        processPressure: PressureLevel
+        servicePressure: PressureLevel
+        decision: Decision
+      }
+    | undefined
+  let lastRecovery:
+    | {
+        action: "gc"
+        reason: string
+        at: number
+        beforeBytes: number
+        afterBytes: number
+        reclaimedBytes: number
+      }
+    | undefined
 
   export function currentSnapshot(): Snapshot {
     const memory = process.memoryUsage()
@@ -275,6 +294,7 @@ export namespace SessionMemoryPressure {
     }
 
     if (decision.action === "skip" || decision.action === "unavailable") {
+      lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
       log.debug("gc skipped", {
         sessionID: input.sessionID,
         messageID: input.messageID,
@@ -291,6 +311,18 @@ export namespace SessionMemoryPressure {
     lastGCAt = now
     if (synchronous) lastFullGCAt = now
     const after = input.snapshot ? await input.snapshot() : currentSnapshot()
+    lastAssessment = { at: now, pressure, processPressure, servicePressure, decision }
+    lastRecovery = {
+      action: "gc",
+      reason: decision.reason,
+      at: now,
+      beforeBytes: before.heapUsedBytes + before.externalBytes,
+      afterBytes: after.heapUsedBytes + after.externalBytes,
+      reclaimedBytes: Math.max(
+        0,
+        before.heapUsedBytes + before.externalBytes - after.heapUsedBytes - after.externalBytes,
+      ),
+    }
     RetentionProbe.checkReleased({ phase: input.phase, afterGC: true })
     log.info("gc completed", {
       sessionID: input.sessionID,
@@ -369,6 +401,10 @@ export namespace SessionMemoryPressure {
     })
   }
 
+  export function stats() {
+    return { lastAssessment, lastRecovery }
+  }
+
   export function streamStarted() {
     activeStreamCount++
   }
@@ -387,6 +423,8 @@ export namespace SessionMemoryPressure {
     pendingRelease = undefined
     releaseTimer = undefined
     releaseFlushInFlight = undefined
+    lastAssessment = undefined
+    lastRecovery = undefined
   }
 
   async function defaultCollect(synchronous: boolean) {
