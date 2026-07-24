@@ -23,7 +23,7 @@ export namespace Shell {
 
   export async function killTree(
     proc: ChildProcess,
-    opts?: { exited?: () => boolean; runtime?: KillTreeRuntimeForTest },
+    opts?: { exited?: () => boolean; allowExitedParent?: boolean; runtime?: KillTreeRuntimeForTest },
   ): Promise<void> {
     try {
       await killTreeOnce(proc, opts)
@@ -32,15 +32,15 @@ export namespace Shell {
 
   async function killTreeOnce(
     proc: ChildProcess,
-    opts?: { exited?: () => boolean; runtime?: KillTreeRuntimeForTest },
+    opts?: { exited?: () => boolean; allowExitedParent?: boolean; runtime?: KillTreeRuntimeForTest },
   ): Promise<void> {
     const pid = proc.pid
-    if (!pid || didExit(opts?.exited)) return
+    if (!pid || (!opts?.allowExitedParent && didExit(opts?.exited))) return
     const runtime = opts?.runtime ?? killTreeRuntime
 
     if (runtime.platform === "win32") {
       const succeeded = await runTaskkill(runtime, pid)
-      if (didExit(opts?.exited) || (succeeded && !isPidAlive(runtime, pid))) return
+      if ((!opts?.allowExitedParent && didExit(opts?.exited)) || (succeeded && !isPidAlive(runtime, pid))) return
       try {
         proc.kill("SIGKILL")
       } catch {}

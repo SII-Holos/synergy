@@ -214,13 +214,17 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
   proc.stderr?.on("data", appendOutput)
 
   let aborted = false
-  const terminate = async () => {
+  const terminate = async (allowExitedParent = false) => {
     if (windowsProcessOwner) {
-      windowsProcessOwner.terminate()
+      try {
+        windowsProcessOwner.terminate()
+      } catch {
+        windowsProcessOwner.release()
+      }
       windowsProcessOwner = undefined
       return
     }
-    await Shell.killTree(proc, { exited: () => exited })
+    await Shell.killTree(proc, { exited: () => exited, allowExitedParent })
   }
   let exited = false
   const closed = ChildProcessClose.wait(proc, {
@@ -228,7 +232,7 @@ async function shellInSession(input: ShellInput, lease: SessionManager.LoopLease
       exited = true
     },
     onDrainTimeout() {
-      return terminate()
+      return terminate(true)
     },
   })
 

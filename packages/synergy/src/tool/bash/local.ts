@@ -225,7 +225,8 @@ export const LocalBashBackend = {
     })
 
     const detachedRisk = detectDetachedDaemonRisk(params.command)
-    if (detachedRisk && !allowsDetachedDaemons(ctx)) {
+    const detachedDaemonAllowed = Boolean(detachedRisk && allowsDetachedDaemons(ctx))
+    if (detachedRisk && !detachedDaemonAllowed) {
       await trace(
         "bash.detached_daemon.blocked",
         {
@@ -439,7 +440,9 @@ export const LocalBashBackend = {
             fallback: sandboxFallback,
           })
         }
-        windowsProcessJob = WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
+        windowsProcessJob = detachedDaemonAllowed
+          ? undefined
+          : WindowsProcessJob.prepareShell({ shell, command: executionCommand, env: sandboxEnv })
         child = windowsProcessJob
           ? spawn(windowsProcessJob.command, windowsProcessJob.args, {
               cwd,
@@ -504,7 +507,16 @@ export const LocalBashBackend = {
       scheduleMetadata()
     }
 
-    const kill = () => ProcessRegistry.terminate(regProc)
+    const kill = async () => {
+      try {
+        await ProcessRegistry.terminate(regProc)
+      } catch (error) {
+        if (!windowsProcessOwner) throw error
+        windowsProcessOwner.release()
+        windowsProcessOwner = undefined
+        log.warn("Windows job termination failed; released kill-on-close owner", { error })
+      }
+    }
 
     let hardCeilingTimer: ReturnType<typeof setTimeout> | undefined
     let commandTimeoutTimer: ReturnType<typeof setTimeout> | undefined
@@ -553,7 +565,13 @@ export const LocalBashBackend = {
       if (finalized) return
       finalized = true
       childError = error
-      windowsProcessOwner?.terminate()
+      if (windowsProcessOwner) {
+        try {
+          windowsProcessOwner.terminate()
+        } catch {
+          windowsProcessOwner.release()
+        }
+      }
       exited = true
       cleanupAllTimers()
       ProcessRegistry.remove(regProc.id)
@@ -624,7 +642,7 @@ export const LocalBashBackend = {
       },
       onDrainTimeout() {
         if (regProc.backgrounded || allowsDetachedDaemons(ctx)) return
-        return ProcessRegistry.terminate(regProc)
+        return ProcessRegistry.terminate(regProc, { allowExitedParent: true })
       },
     }).then(
       (result) => finishClose(result.code, result.signal, result.drainTimedOut),

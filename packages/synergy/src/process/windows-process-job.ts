@@ -8,6 +8,9 @@ import type { Pointer } from "bun:ffi"
 export namespace WindowsProcessJob {
   const PROCESS_TERMINATE = 0x0001
   const PROCESS_SET_QUOTA = 0x0100
+  const JOB_OBJECT_EXTENDED_LIMIT_INFORMATION = 9
+  const JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+  const BASIC_LIMIT_FLAGS_OFFSET = 16
 
   const BOOTSTRAP = [
     "$gate = $env:SYNERGY_WINDOWS_JOB_GATE",
@@ -40,6 +43,7 @@ export namespace WindowsProcessJob {
 
   export interface RuntimeForTest {
     createJob(): Handle | null
+    configureJob(job: Handle, information: Uint8Array): boolean
     openProcess(pid: number): Handle | null
     assignProcess(job: Handle, process: Handle): boolean
     terminateJob(job: Handle): boolean
@@ -96,7 +100,11 @@ export namespace WindowsProcessJob {
           await Bun.write(gatePath, "ready")
           return owner
         } catch (error) {
-          owner.terminate()
+          try {
+            owner.terminate()
+          } catch {
+            owner.release()
+          }
           cleanup()
           throw error
         }
@@ -126,6 +134,9 @@ export namespace WindowsProcessJob {
 
     let processHandle: Handle | null = null
     try {
+      if (!runtime.configureJob(job, killOnCloseInformation())) {
+        throw new Error(`SetInformationJobObject failed: ${runtime.lastError()}`)
+      }
       processHandle = runtime.openProcess(pid)
       if (processHandle === null) throw new Error(`OpenProcess failed: ${runtime.lastError()}`)
       if (!runtime.assignProcess(job, processHandle)) {
@@ -147,7 +158,9 @@ export namespace WindowsProcessJob {
     return {
       terminate() {
         if (released) return
-        runtime.terminateJob(job)
+        if (!runtime.terminateJob(job)) {
+          throw new Error(`TerminateJobObject failed: ${runtime.lastError()}`)
+        }
         release()
       },
       release,
@@ -161,9 +174,13 @@ export namespace WindowsProcessJob {
   }
 
   async function loadRuntime(): Promise<RuntimeForTest> {
-    const { dlopen, FFIType } = await import("bun:ffi")
+    const { dlopen, FFIType, ptr } = await import("bun:ffi")
     const library = dlopen("kernel32.dll", {
       CreateJobObjectW: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.ptr },
+      SetInformationJobObject: {
+        args: [FFIType.ptr, FFIType.u32, FFIType.ptr, FFIType.u32],
+        returns: FFIType.bool,
+      },
       OpenProcess: { args: [FFIType.u32, FFIType.bool, FFIType.u32], returns: FFIType.ptr },
       AssignProcessToJobObject: { args: [FFIType.ptr, FFIType.ptr], returns: FFIType.bool },
       TerminateJobObject: { args: [FFIType.ptr, FFIType.u32], returns: FFIType.bool },
@@ -173,6 +190,15 @@ export namespace WindowsProcessJob {
     const symbols = library.symbols
     return {
       createJob: () => symbols.CreateJobObjectW(null, null),
+      configureJob: (job, information) =>
+        Boolean(
+          symbols.SetInformationJobObject(
+            job as Pointer,
+            JOB_OBJECT_EXTENDED_LIMIT_INFORMATION,
+            ptr(information),
+            information.byteLength,
+          ),
+        ),
       openProcess: (pid) => symbols.OpenProcess(PROCESS_TERMINATE | PROCESS_SET_QUOTA, false, pid),
       assignProcess: (job, processHandle) =>
         Boolean(symbols.AssignProcessToJobObject(job as Pointer, processHandle as Pointer)),
@@ -180,5 +206,15 @@ export namespace WindowsProcessJob {
       closeHandle: (handle) => Boolean(symbols.CloseHandle(handle as Pointer)),
       lastError: () => symbols.GetLastError(),
     }
+  }
+
+  function killOnCloseInformation() {
+    const pointerBytes = process.arch === "ia32" ? 4 : 8
+    const basicLimitInformationBytes = pointerBytes === 4 ? 48 : 64
+    const ioCountersBytes = 48
+    const trailingSizeTBytes = pointerBytes * 4
+    const information = new Uint8Array(basicLimitInformationBytes + ioCountersBytes + trailingSizeTBytes)
+    new DataView(information.buffer).setUint32(BASIC_LIMIT_FLAGS_OFFSET, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, true)
+    return information
   }
 }

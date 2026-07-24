@@ -157,6 +157,35 @@ describe("util.shell", () => {
     expect(directSignals).toEqual(["SIGKILL"])
     expect(alive).toBe(false)
   })
+  test("allows drain cleanup after the direct Windows parent exits", async () => {
+    const directSignals: Array<NodeJS.Signals | number | undefined> = []
+    const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
+    killer.kill = () => true
+    const child = {
+      pid: 457,
+      kill: (signal?: NodeJS.Signals | number) => {
+        directSignals.push(signal)
+        return true
+      },
+    } as ChildProcess
+    const runtime: Shell.KillTreeRuntimeForTest = {
+      platform: "win32",
+      taskkill: () => {
+        queueMicrotask(() => killer.emit("exit", 1))
+        return killer
+      },
+      isPidAlive: () => true,
+      taskkillTimeoutMs: 10,
+    }
+
+    await Shell.killTree(child, {
+      exited: () => true,
+      allowExitedParent: true,
+      runtime,
+    })
+
+    expect(directSignals).toEqual(["SIGKILL"])
+  })
   test("does not reject when Windows fallback kill throws", async () => {
     const killer = new EventEmitter() as EventEmitter & { kill: () => boolean }
     killer.kill = () => true
