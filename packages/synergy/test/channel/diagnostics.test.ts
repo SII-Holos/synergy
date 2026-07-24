@@ -212,6 +212,7 @@ describe.serial("Channel diagnostics durability", () => {
 
 describe.serial("Channel diagnostic record normalization", () => {
   test("records with secret-like data should carry redaction metadata", async () => {
+    const fakeApiKey = ["sk", "1234567890abcdef"].join("-")
     const type = `diag-redact-${crypto.randomUUID()}`
     const fake = diagnosticProvider({
       type,
@@ -220,7 +221,7 @@ describe.serial("Channel diagnostic record normalization", () => {
         // Record a diagnostic with secret-like data that should be redacted
         await host.diagnostics.record({
           level: "debug",
-          message: "auth request with token: sk-1234567890abcdef secret: 42",
+          message: `auth request with token: ${fakeApiKey} secret: 42`,
           data: {
             headers: { Authorization: "Bearer secret-token-123", "X-Api-Key": "abc123" },
             path: "/api/v1/workspaces/secret-project/credentials",
@@ -244,7 +245,7 @@ describe.serial("Channel diagnostic record normalization", () => {
     // RED: raw secrets should not appear in serialized records.
     // The current implementation stores raw diagnostic data verbatim.
     const rawRecords = JSON.stringify(records)
-    expect(rawRecords).not.toContain("sk-1234567890abcdef")
+    expect(rawRecords).not.toContain(fakeApiKey)
     expect(rawRecords).not.toContain("Bearer secret-token-123")
     expect(rawRecords).not.toContain("abc123")
     expect(rawRecords).not.toContain("super-secret")

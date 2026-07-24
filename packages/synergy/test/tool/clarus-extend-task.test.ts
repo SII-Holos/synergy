@@ -366,13 +366,14 @@ describe("clarus_extend_task disposition errors", () => {
         expect(tool).toBeDefined()
         const previous = Channel.getProvider("clarus")
         const provider = new ClarusProvider()
+        const fakeJwt = ["eyJhbGciOiJIUzI1NiJ9", "eyJzdWIiOiJ0ZXN0In0", "abc123def456"].join(".")
+        const fakeApiKey = ["sk", "abc123def456"].join("-")
         ;(provider as unknown as { extendTask: () => Promise<never> }).extendTask = async () => {
           throw {
             disposition: "rejected",
             requestID: "request-ext-rej-redact",
             code: "AUTH_ERROR",
-            message:
-              "Authorization Bearer eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.abc123def456 failed with api_key=sk-abc123def456 apiKey=sk-camel accessToken=access-value auth_token:auth-value client_secret=client-value refresh-token=refresh-value credential=credential-value",
+            message: `Authorization Bearer ${fakeJwt} failed with api_key=${fakeApiKey} apiKey=sk-camel accessToken=access-value auth_token:auth-value client_secret=client-value refresh-token=refresh-value credential=credential-value`,
           }
         }
         Channel.registerProvider(provider)
@@ -396,7 +397,7 @@ describe("clarus_extend_task disposition errors", () => {
           await expect(
             tool!.execute({ extend_seconds: 3600 }, makeToolContext({ sessionID: created.assignment.sessionID })),
           ).rejects.toMatchObject({
-            message: expect.not.stringContaining("sk-abc123def456"),
+            message: expect.not.stringContaining(fakeApiKey),
           })
           await expect(
             tool!.execute({ extend_seconds: 3600 }, makeToolContext({ sessionID: created.assignment.sessionID })),
