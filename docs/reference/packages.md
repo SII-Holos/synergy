@@ -8,6 +8,7 @@ Synergy is a Bun monorepo. Package ownership is intentionally split between the 
 | `packages/browser`               | `@ericsanchezok/synergy-browser`: private Browser protocol, CDP controller, locators, errors, redaction, and safety   |
 | `packages/app`                   | `@ericsanchezok/synergy-app`: Solid/Vite Web workbench and product UI                                                 |
 | `packages/desktop`               | `@ericsanchezok/synergy-desktop`: Electron shell, managed local runtime, native Browser, packaging, signing, updating |
+| `packages/tui`                   | `@ericsanchezok/synergy-tui`: OpenTUI terminal client, state convergence, rendering, input, and SDK adapter           |
 | `packages/plugin`                | `@ericsanchezok/synergy-plugin`: public plugin SDK, manifest/contribution types, hooks, permissions, UI contracts     |
 | `packages/plugin-kit`            | `@ericsanchezok/synergy-plugin-kit`: standalone `synergy-plugin` authoring/build/validation CLI                       |
 | `packages/sdk/js`                | `@ericsanchezok/synergy-sdk`: generated and hand-written TypeScript client/server helpers                             |
@@ -22,6 +23,8 @@ Synergy is a Bun monorepo. Package ownership is intentionally split between the 
 `packages/synergy` owns product truth for server behavior. Web clients call its routes through `@ericsanchezok/synergy-sdk`; internal product routes should not be duplicated as hand-written frontend fetches.
 
 `packages/app` owns Web interaction and workbench behavior. Durable visual and UX principles live in `packages/app/PRODUCT.md`, while reusable primitives belong in `packages/ui`.
+
+`packages/tui` owns terminal interaction and presentation only. It calls the runtime through `@ericsanchezok/synergy-sdk`, sanitizes untrusted terminal content, and maintains a client projection from bootstrap, delta events, replay, and explicit resync; it does not import runtime internals or own session truth.
 
 `packages/desktop` owns native capabilities and production hosting, not a separate session model. Its managed mode launches the packaged server; its Browser native presentation executes the shared Browser command protocol.
 

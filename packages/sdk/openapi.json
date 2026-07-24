@@ -19837,7 +19837,14 @@
         "description": "After a reconnect, return the state events published for this scope since `since`. Returns status \"reset\" when the client's epoch is stale or the required events have aged out of the journal, in which case the client must resync from snapshots.",
         "responses": {
           "200": {
-            "description": "Replay result"
+            "description": "Replay result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventReplayResult"
+                }
+              }
+            }
           },
           "400": {
             "description": "Bad request",
@@ -19875,6 +19882,14 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "stream",
+            "schema": {
+              "type": "string",
+              "enum": ["delta"]
+            }
           }
         ],
         "summary": "Subscribe to events",
@@ -19885,7 +19900,7 @@
             "content": {
               "text/event-stream": {
                 "schema": {
-                  "$ref": "#/components/schemas/Event"
+                  "$ref": "#/components/schemas/EventStreamPayload"
                 }
               }
             }
@@ -39903,6 +39918,17 @@
           },
           "properties": {
             "$ref": "#/components/schemas/Scope"
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -39925,6 +39951,17 @@
               }
             },
             "required": ["id"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -39947,6 +39984,17 @@
               }
             },
             "required": ["scopeID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -39966,6 +40014,17 @@
               }
             },
             "required": ["health"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -39985,6 +40044,17 @@
               }
             },
             "required": ["version"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40004,6 +40074,17 @@
               }
             },
             "required": ["version"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40030,6 +40111,17 @@
               }
             },
             "required": ["scope", "changedFields"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40049,6 +40141,17 @@
               }
             },
             "required": ["server"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40068,6 +40171,17 @@
               }
             },
             "required": ["server"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40087,6 +40201,17 @@
               }
             },
             "required": ["server"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40101,6 +40226,17 @@
           "properties": {
             "type": "object",
             "properties": {}
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40123,6 +40259,17 @@
               }
             },
             "required": ["server", "error"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40142,6 +40289,17 @@
               }
             },
             "required": ["info"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40164,6 +40322,17 @@
               }
             },
             "required": ["sessionID", "messageID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40186,6 +40355,17 @@
               }
             },
             "required": ["part"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40211,6 +40391,17 @@
               }
             },
             "required": ["sessionID", "messageID", "partID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40224,6 +40415,17 @@
           },
           "properties": {
             "$ref": "#/components/schemas/PermissionRequest"
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40250,6 +40452,17 @@
               }
             },
             "required": ["sessionID", "requestID", "reply"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40272,6 +40485,17 @@
               }
             },
             "required": ["info"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40291,6 +40515,17 @@
               }
             },
             "required": ["info"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40316,6 +40551,17 @@
               }
             },
             "required": ["sessionID", "diff"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40335,6 +40581,17 @@
               },
               "error": {}
             }
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40357,6 +40614,17 @@
               }
             },
             "required": ["sessionID", "status"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40381,6 +40649,17 @@
               }
             },
             "required": ["sessionID", "unreadCount"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40400,6 +40679,17 @@
               }
             },
             "required": ["sessionID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40426,6 +40716,17 @@
               }
             },
             "required": ["sessionID", "items"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40445,6 +40746,17 @@
               }
             },
             "required": ["loop"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40464,6 +40776,17 @@
               }
             },
             "required": ["loop"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40483,6 +40806,17 @@
               }
             },
             "required": ["loopID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40505,6 +40839,17 @@
               }
             },
             "required": ["loopID", "error"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40524,6 +40869,17 @@
               }
             },
             "required": ["loopID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40543,6 +40899,17 @@
               }
             },
             "required": ["loopID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40565,6 +40932,17 @@
               }
             },
             "required": ["loopID", "reason"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40590,6 +40968,17 @@
               }
             },
             "required": ["scopeID", "note", "meta"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40622,6 +41011,17 @@
               }
             },
             "required": ["scopeID", "note", "meta", "changed"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40644,6 +41044,17 @@
               }
             },
             "required": ["id", "scopeID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40675,6 +41086,17 @@
               }
             },
             "required": ["ids", "scopeID", "metas"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40706,6 +41128,17 @@
               }
             },
             "required": ["ids", "scopeID", "metas"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40725,6 +41158,17 @@
               }
             },
             "required": ["run"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40744,6 +41188,17 @@
               }
             },
             "required": ["run"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40763,6 +41218,17 @@
               }
             },
             "required": ["event"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40776,6 +41242,17 @@
           },
           "properties": {
             "$ref": "#/components/schemas/QuestionRequest"
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40804,6 +41281,17 @@
               }
             },
             "required": ["sessionID", "requestID", "answers"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40826,6 +41314,17 @@
               }
             },
             "required": ["sessionID", "requestID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40848,6 +41347,17 @@
               }
             },
             "required": ["sessionID", "requestID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40867,6 +41377,17 @@
               }
             },
             "required": ["sessionID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40886,6 +41407,17 @@
               }
             },
             "required": ["file"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40920,6 +41452,17 @@
               }
             },
             "required": ["executed", "cascaded", "changedFields"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40942,6 +41485,17 @@
               }
             },
             "required": ["serverID", "path"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40956,6 +41510,17 @@
           "properties": {
             "type": "object",
             "properties": {}
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -40987,6 +41552,17 @@
               }
             },
             "required": ["sessionID", "nodes", "ready"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41012,6 +41588,17 @@
               }
             },
             "required": ["sessionID", "todos"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41031,6 +41618,17 @@
               }
             },
             "required": ["item"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41050,6 +41648,17 @@
               }
             },
             "required": ["item"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41072,6 +41681,17 @@
               }
             },
             "required": ["id", "scopeID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41091,6 +41711,17 @@
               }
             },
             "required": ["target"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41110,6 +41741,17 @@
               }
             },
             "required": ["target"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41130,6 +41772,17 @@
               }
             },
             "required": ["id"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41149,6 +41802,17 @@
               }
             },
             "required": ["task"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41168,6 +41832,17 @@
               }
             },
             "required": ["task"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41190,6 +41865,17 @@
               }
             },
             "required": ["tasks"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41244,6 +41930,17 @@
               "timestamp",
               "payload"
             ]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41274,6 +41971,17 @@
               }
             },
             "required": ["name", "sessionID", "arguments", "messageID"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41313,6 +42021,17 @@
               }
             },
             "required": ["file", "event"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41331,6 +42050,17 @@
                 "type": "string"
               }
             }
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41350,6 +42080,17 @@
               }
             },
             "required": ["info"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41369,6 +42110,17 @@
               }
             },
             "required": ["info"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41392,6 +42144,17 @@
               }
             },
             "required": ["id", "exitCode"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41412,6 +42175,17 @@
               }
             },
             "required": ["id"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41443,6 +42217,17 @@
               }
             },
             "required": ["name", "channelType", "accountId", "chatId"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41465,6 +42250,17 @@
               }
             },
             "required": ["channelType", "accountId"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41490,6 +42286,17 @@
               }
             },
             "required": ["channelType", "accountId"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41518,6 +42325,17 @@
               }
             },
             "required": ["channelType", "accountId", "chatId", "text"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41537,6 +42355,17 @@
               }
             },
             "required": ["contact"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41556,6 +42385,17 @@
               }
             },
             "required": ["id"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41575,6 +42415,17 @@
               }
             },
             "required": ["contact"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41594,6 +42445,17 @@
               }
             },
             "required": ["peerId"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41616,6 +42478,17 @@
               }
             },
             "required": ["status"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41639,6 +42512,17 @@
               }
             },
             "required": ["peerId", "status"]
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41653,6 +42537,17 @@
           "properties": {
             "type": "object",
             "properties": {}
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41667,6 +42562,17 @@
           "properties": {
             "type": "object",
             "properties": {}
+          },
+          "seq": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991
+          },
+          "epoch": {
+            "type": "string"
+          },
+          "streaming": {
+            "type": "boolean"
           }
         },
         "required": ["type", "properties"]
@@ -41915,6 +42821,94 @@
           },
           {
             "$ref": "#/components/schemas/Event.global.disposed"
+          }
+        ]
+      },
+      "EventReplayResult": {
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "ok"
+              },
+              "epoch": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "events": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Event"
+                }
+              }
+            },
+            "required": ["status", "epoch", "seq", "events"]
+          },
+          {
+            "type": "object",
+            "properties": {
+              "status": {
+                "type": "string",
+                "const": "reset"
+              },
+              "epoch": {
+                "type": "string"
+              },
+              "seq": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": ["status", "epoch", "seq"]
+          }
+        ]
+      },
+      "EventMessagePartDelta": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "message.part.delta"
+          },
+          "properties": {
+            "type": "object",
+            "properties": {
+              "sessionID": {
+                "type": "string"
+              },
+              "messageID": {
+                "type": "string"
+              },
+              "partID": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": ["text", "reasoning"]
+              },
+              "delta": {
+                "type": "string"
+              }
+            },
+            "required": ["sessionID", "messageID", "partID", "kind", "delta"]
+          }
+        },
+        "required": ["type", "properties"]
+      },
+      "EventStreamPayload": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/Event"
+          },
+          {
+            "$ref": "#/components/schemas/EventMessagePartDelta"
           }
         ]
       }

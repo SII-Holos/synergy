@@ -14,6 +14,7 @@ import { buildSynergyLinkProtocol } from "./nodes/build-synergy-link-protocol"
 import { buildUtil } from "./nodes/build-util"
 import { buildPlugin } from "./nodes/build-plugin"
 import { buildPluginKit } from "./nodes/build-plugin-kit"
+import { buildTui } from "./nodes/build-tui"
 import { buildSynergyBinaries } from "./nodes/build-synergy-binaries"
 import { prepareSynergyPackages } from "./nodes/prepare-synergy-packages"
 import { validateLocalArtifacts } from "./nodes/validate-local-artifacts"
@@ -22,6 +23,7 @@ import { publishSynergyLinkProtocolCandidate } from "./nodes/publish-synergy-lin
 import { publishUtilCandidate } from "./nodes/publish-util-candidate"
 import { publishPluginCandidate } from "./nodes/publish-plugin-candidate"
 import { publishPluginKitCandidate } from "./nodes/publish-plugin-kit-candidate"
+import { publishTuiCandidate } from "./nodes/publish-tui-candidate"
 import { publishSynergyCandidate } from "./nodes/publish-synergy-candidate"
 // synergy-link npm publish removed — package too large for npm registry
 // import { publishSynergyLinkCandidate } from "./nodes/publish-synergy-link-candidate"
@@ -51,6 +53,7 @@ try {
   await Promise.all([generateSchema(), generateSdk(), buildSynergyLinkProtocol(), buildUtil()])
   await buildPlugin()
   await buildPluginKit()
+  await buildTui()
   await buildApp()
   const platformNames = await buildSynergyBinaries(version, channel)
   await prepareSynergyPackages(version, platformNames)
@@ -60,6 +63,7 @@ try {
   await publishUtilCandidate(version, channel)
   await publishPluginCandidate(version, channel)
   await publishPluginKitCandidate(version, channel)
+  await publishTuiCandidate(version, channel)
   const synergy = await publishSynergyCandidate(version, channel)
   // synergy-link npm publish removed — package too large for npm registry
   // await publishSynergyLinkCandidate(version, channel)

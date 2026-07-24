@@ -1,3 +1,6 @@
+import { BusEvent } from "@/bus/bus-event"
+import z from "zod"
+
 // Streaming wire protocol (issue #350 D1).
 //
 // The in-process Bus publishes `message.part.updated` with the *full accumulated
@@ -28,15 +31,40 @@
 export namespace EventWire {
   export const CHECKPOINT_MS = 1000
 
-  export interface DeltaFrame {
-    type: "message.part.delta"
-    properties: {
-      sessionID: string
-      messageID: string
-      partID: string
-      kind: "text" | "reasoning"
-      delta: string
-    }
+  export const DeltaFrame = z
+    .object({
+      type: z.literal("message.part.delta"),
+      properties: z.object({
+        sessionID: z.string(),
+        messageID: z.string(),
+        partID: z.string(),
+        kind: z.enum(["text", "reasoning"]),
+        delta: z.string(),
+      }),
+    })
+    .meta({ ref: "EventMessagePartDelta" })
+  export type DeltaFrame = z.infer<typeof DeltaFrame>
+
+  export function payloads() {
+    return z.union([BusEvent.payloads(), DeltaFrame]).meta({ ref: "EventStreamPayload" })
+  }
+
+  export function replayResult() {
+    return z
+      .discriminatedUnion("status", [
+        z.object({
+          status: z.literal("ok"),
+          epoch: z.string(),
+          seq: z.number().int().nonnegative(),
+          events: z.array(BusEvent.payloads()),
+        }),
+        z.object({
+          status: z.literal("reset"),
+          epoch: z.string(),
+          seq: z.number().int().nonnegative(),
+        }),
+      ])
+      .meta({ ref: "EventReplayResult" })
   }
 
   type WirePayload = {

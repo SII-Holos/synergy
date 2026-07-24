@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@ericsanchezok/synergy-tui",
+  "version": "1.1.26",
+  "type": "module",
+  "description": "First-party terminal interface for the Synergy agent runtime",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SII-Holos/synergy.git",
+    "directory": "packages/tui"
+  },
+  "homepage": "https://github.com/SII-Holos/synergy#readme",
+  "bugs": "https://github.com/SII-Holos/synergy/issues",
+  "license": "MIT",
+  "exports": {
+    ".": {
+      "bun": "./src/index.ts",
+      "types": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "typecheck": "tsgo --noEmit",
+    "test": "bun test",
+    "build": "bun ./script/build.ts",
+    "compile:smoke": "bun ./script/compile-smoke.ts"
+  },
+  "dependencies": {
+    "@ericsanchezok/synergy-sdk": "workspace:*",
+    "@opentui/core": "0.4.5"
+  },
+  "devDependencies": {
+    "@tsconfig/bun": "catalog:",
+    "@types/bun": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "typescript": "catalog:"
+  },
+  "optionalDependencies": {
+    "@opentui/core-darwin-arm64": "0.4.5",
+    "@opentui/core-darwin-x64": "0.4.5",
+    "@opentui/core-linux-arm64": "0.4.5",
+    "@opentui/core-linux-arm64-musl": "0.4.5",
+    "@opentui/core-linux-x64": "0.4.5",
+    "@opentui/core-linux-x64-musl": "0.4.5",
+    "@opentui/core-win32-arm64": "0.4.5",
+    "@opentui/core-win32-x64": "0.4.5"
+  }
+}

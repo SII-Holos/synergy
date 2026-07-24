@@ -2,7 +2,7 @@
 
 Synergy is an open-source AI agent workspace for persistent, recoverable software and knowledge work.
 
-It provides one runtime for sessions, agents, tools, automation, knowledge, and integrations. Web, Desktop, and CLI are different clients of that runtime, so work can move between interactive, background, and one-off flows without creating separate product worlds.
+It provides one runtime for sessions, agents, tools, automation, knowledge, and integrations. Web, Desktop, TUI, and CLI are different clients of that runtime, so work can move between interactive, background, and one-off flows without creating separate product worlds.
 
 Synergy can run on its own. Connecting to Holos adds account identity and networked capabilities, allowing for seamless work across agents around the world.
 
@@ -29,6 +29,7 @@ Clients connect to the server and supply the context needed for the work they st
 | ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Web        | The primary interactive workbench for sessions, projects, notes, knowledge, automation, Browser, settings, and operational views.                                                                           |
 | Desktop    | The production Electron client. It can manage a packaged local server and provides native desktop capabilities such as the embedded Browser presentation, folder selection, protocol handling, and updates. |
+| TUI        | The keyboard-first terminal client for session timelines, commands, interactive permissions and questions, tasks, DAG progress, and streamed work.                                                          |
 | CLI        | Starts and manages the runtime, opens clients, runs one-off `send` tasks, and exposes operational workflows.                                                                                                |
 | Server API | The shared product boundary used by first-party clients, generated SDKs, and integrations.                                                                                                                  |
 
@@ -101,7 +102,7 @@ Synergy supports several execution patterns. They share sessions and control bou
 
 ### Interactive and one-off work
 
-Users can work interactively from Web or Desktop, or submit a one-off task with `send`. Both paths use the same agents, tools, Scope model, and session infrastructure.
+Users can work interactively from Web, Desktop, or TUI, or submit a one-off task with `send`. Every path uses the same agents, tools, Scope model, session infrastructure, permission requests, and durable history.
 
 ### Plan and Blueprint execution
 
@@ -211,7 +212,7 @@ A standalone Synergy installation supports the complete local work model:
 - configurable agents and providers
 - built-in, MCP, and plugin tools
 - Library, Notes, Blueprints, and Agenda
-- Web, Desktop, CLI, and Browser workflows
+- Web, Desktop, TUI, CLI, and Browser workflows
 
 Connecting Holos adds a network identity and connected-agent capabilities. Provider credentials and model usage remain separate from Holos account identity: users configure model access through providers, whether or not Holos is connected.
 

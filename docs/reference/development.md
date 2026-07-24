@@ -20,6 +20,7 @@ bun dev app --open
 bun dev web
 bun dev desktop
 bun dev desktop --managed
+bun dev tui
 bun dev send "your message"
 bun dev build app
 bun dev build desktop
@@ -32,13 +33,30 @@ bun dev build desktop
 | `web`               | source server, Vite app, and remote Browser Host                          |
 | `desktop`           | source server, Vite app, and Electron in external-server mode             |
 | `desktop --managed` | build plugin/app, then Electron with production-style managed server mode |
+| `tui`               | source server followed by the interactive source terminal client          |
 | `send`              | one-off source CLI execution                                              |
 
-Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined Web or Desktop flows. `--hostname` binds both the source server and Vite app in Web and external Desktop modes. The orchestrator checks required ports and target health before starting dependent processes. Parallel and serial modes terminate complete descendant process trees, including nested package scripts that create another process group, so stopping the orchestrator does not leave servers or Electron hosts running.
+Use `--port` for standalone `server` and `app` modes. Use `--server-port`, `--app-port`, `--hostname`, and `--attach` for combined flows. `--hostname` binds the source server and any applicable Vite app. The orchestrator checks required ports and target health before starting dependent processes. Parallel and serial modes terminate complete descendant process trees, including nested package scripts that create another process group, so stopping the orchestrator does not leave an owned source server behind.
 
 Managed Desktop rebuilds the Web distribution before launch so packaged-server behavior is not tested against stale frontend assets. Its server also watches the Electron parent and shuts down if Electron is force-terminated without running normal quit handlers. Normal daily Desktop work should use external mode for Vite reload speed.
 
 The development orchestrator tags each spawned command so shutdown can recover descendant process groups after an intermediate package wrapper exits. Managed servers arm cross-platform parent-process liveness monitoring before startup work can report healthy.
+
+### Terminal UI
+
+Run the source TUI and a source server together from the repository root:
+
+```bash
+bun dev tui
+```
+
+The orchestrator waits for the source server health endpoint before giving the TUI direct ownership of terminal stdin, stdout, and stderr. Use `--server-port` and `--hostname` for the local server. Use `--directory`, `--scope`, `--session`, and `--theme system|light|dark` for TUI startup selection. To connect only the source TUI to an existing runtime without starting another server:
+
+```bash
+bun dev tui --attach http://127.0.0.1:4097
+```
+
+The installed `synergy tui --attach http://127.0.0.1:4096` remains the product CLI path for testing the installed TUI package against a source server. Run TUI package checks with the commands in [Tests](#tests).
 
 ## Developing Synergy with Synergy
 
@@ -79,6 +97,9 @@ bun turbo test
 bun run desktop:test
 bun run --cwd packages/app test
 bun run --cwd packages/ui test
+bun run --cwd packages/tui test
+bun run --cwd packages/tui typecheck
+bun run --cwd packages/tui compile:smoke
 ```
 
 Every test file lives under the owning package's `test/` directory; repository script and policy tests live under the root `test/` directory. Mirror source-domain subdirectories where useful, but never colocate `*.test.*` or `*.spec.*` beside implementation files. Run `bun run test-layout:check` to validate the repository boundary.
@@ -178,5 +199,5 @@ When implementation or review reveals a reusable required pattern, registration,
 - Session/message loop: read the session and frontend-sync contracts, run focused session tests, then shared checks.
 - Frontend: typecheck `packages/app`, run relevant UI tests, preserve generated SDK usage and `PRODUCT.md` principles.
 - Desktop/release: run Desktop typecheck/tests/build validation and review the Desktop release runbook.
-- Plugin/public package: build package, run `package:check`, and verify exported ESM/type paths.
+- Plugin/public package/TUI: build the package, run its focused tests and typecheck, run `package:check`, and verify exported ESM/type paths. TUI changes also run `compile:smoke` to exercise OpenTUI native loading in a compiled Bun executable.
 - Config/auth examples: run secret scanning and verify both global and project configuration behavior.

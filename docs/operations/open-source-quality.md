@@ -73,7 +73,7 @@ The test job excludes `synergy` from the Turbo package pass, then runs the compl
 | oxlint            | Fast JavaScript/TypeScript linting without style-heavy churn                                        | Every change through `bun run lint`; auto-fix safe issues with `bun run lint:fix`                                        |
 | sherif            | Workspace package and dependency consistency                                                        | Every change through `bun run monorepo:check`, especially package manifest edits                                         |
 | knip              | Dead code, unused dependencies, unused scripts, unresolved entries, and catalog hygiene             | CI and explicit local checks through `bun run deadcode`; configure precise entries/ignores for dynamic or generated code |
-| publint           | npm package manifest, exports, and publish-shape validation                                         | Publishable package, release, SDK, plugin, util, or Synergy Link protocol changes through `bun run package:check`        |
+| publint           | npm package manifest, exports, and publish-shape validation                                         | Publishable package, release, SDK, plugin, util, TUI, or Synergy Link protocol changes through `bun run package:check`   |
 | attw              | TypeScript package resolution validation for published tarballs                                     | Same path as publint through `bun run package:check`                                                                     |
 | actionlint        | GitHub Actions syntax and expression validation                                                     | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
 | zizmor            | GitHub Actions security analysis                                                                    | Workflow changes through `bun run workflow:check` and CI `workflow-validation`                                           |
@@ -87,6 +87,7 @@ The `package:check` script validates every publishable npm package in the monore
 | Package                                | Build | publint | attw (esm-only) |
 | -------------------------------------- | ----- | ------- | --------------- |
 | `@ericsanchezok/synergy-sdk`           | ✅    | ✅      | ✅              |
+| `@ericsanchezok/synergy-tui`           | ✅    | ✅      | ✅              |
 | `@ericsanchezok/synergy-util`          | ✅    | ✅      | ✅              |
 | `@ericsanchezok/synergy-link-protocol` | ✅    | ✅      | —               |
 | `@ericsanchezok/synergy-plugin`        | ✅    | ✅      | ✅              |
@@ -183,7 +184,7 @@ bun run workflow:check      # workflow syntax + security analysis
 bun run secrets:check       # requires local gitleaks; CI always runs secret-scan
 ```
 
-### I changed publishable package exports, release scripts, or SDK/plugin packages
+### I changed publishable package exports, release scripts, or SDK/plugin/TUI packages
 
 ```bash
 bun run package:check

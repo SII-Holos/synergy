@@ -1426,7 +1426,10 @@ export namespace Server {
               "aged out of the journal, in which case the client must resync from snapshots.",
             operationId: "event.replay",
             responses: {
-              200: { description: "Replay result" },
+              200: {
+                description: "Replay result",
+                content: { "application/json": { schema: resolver(EventWire.replayResult()) } },
+              },
               ...errors(400),
             },
           }),
@@ -1461,12 +1464,20 @@ export namespace Server {
                 description: "Event stream",
                 content: {
                   "text/event-stream": {
-                    schema: resolver(BusEvent.payloads()),
+                    schema: resolver(EventWire.payloads()),
                   },
                 },
               },
             },
           }),
+          validator(
+            "query",
+            z.object({
+              directory: z.string().optional(),
+              scopeID: z.string().optional(),
+              stream: z.enum(["delta"]).optional(),
+            }),
+          ),
           async (c) => {
             log.info("event connected")
             c.header("X-Accel-Buffering", "no")

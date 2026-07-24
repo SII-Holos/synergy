@@ -41,4 +41,16 @@ describe("product CLI help", () => {
     expect(help).not.toContain("--dev")
     expect(help).not.toContain("Vite")
   })
+
+  test("tui command documents runtime and Scope attachment options", async () => {
+    const rootHelp = await cliHelp(["--help"])
+    const help = await cliHelp(["tui", "--help"])
+
+    expect(rootHelp).toContain("tui")
+    expect(help).toContain("--attach")
+    expect(help).toContain("--directory")
+    expect(help).toContain("--scope")
+    expect(help).toContain("--session")
+    expect(help).toContain("--theme")
+  })
 })

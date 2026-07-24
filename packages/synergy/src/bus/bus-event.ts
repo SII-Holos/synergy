@@ -37,6 +37,9 @@ export namespace BusEvent {
               .object({
                 type: z.literal(type),
                 properties: def.properties,
+                seq: z.number().int().positive().optional(),
+                epoch: z.string().optional(),
+                streaming: z.boolean().optional(),
               })
               .meta({
                 ref: "Event" + "." + def.type,

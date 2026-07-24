@@ -21,6 +21,7 @@ import { ImportCommand } from "./cli/cmd/import"
 import { AcpCommand } from "./cli/cmd/acp"
 import { EOL } from "os"
 import { WebCommand } from "./cli/cmd/web"
+import { TuiCommand } from "./cli/cmd/tui"
 import { SessionCommand } from "./cli/cmd/session"
 import { ChannelCommand } from "./cli/cmd/channel"
 import { HolosCommand } from "./cli/cmd/holos"
@@ -145,6 +146,7 @@ const cli = yargs(hideBin(process.argv))
   .command(UninstallCommand)
   .command(ServerCommand)
   .command(WebCommand)
+  .command(TuiCommand)
   .command(ModelsCommand)
   .command(StatsCommand)
   .command(ExportCommand)
@@ -228,6 +230,7 @@ function firstPositionalArg() {
 function isLongRunningCommand() {
   const command = firstPositionalArg() ?? "server"
   if (command === "server") return true
+  if (command === "tui") return true
   if (command === "logs") {
     return process.argv.includes("-f") || process.argv.includes("--follow")
   }

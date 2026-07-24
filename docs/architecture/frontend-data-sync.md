@@ -357,6 +357,23 @@ Loaded message and part buckets are memory-bounded independently of session meta
 
 Session lists, status, inbox, todo, and other non-message state are not evicted by this policy.
 
+## Terminal Client Synchronization
+
+`packages/tui` maintains an independent, non-reactive projection of the same server-owned Scope and session state. It uses the generated SDK for snapshots and mutations and opts into `/event?stream=delta` over SSE for live updates.
+
+Startup subscribes before loading health and `scope.bootstrap()` so events published during the snapshot request are buffered rather than lost. The bootstrap watermark comes from `X-Synergy-Epoch` and `X-Synergy-Seq`; buffered events are reduced only after the snapshot has been applied. The active session then loads a bounded latest message page plus Todo and DAG resources.
+
+The TUI reducer enforces the shared event contract:
+
+- duplicate or older sequenced events are ignored;
+- a sequence gap replays from the last accepted watermark through `event.replay()`;
+- replay `reset`, an epoch change, or missing initial sequencing triggers a complete bootstrap;
+- unsequenced text and reasoning deltas append provisionally, while full checkpoints replace the part authoritatively;
+- stale message cursors fall back to a fresh latest page;
+- reconnect reports `recovering`, replays or bootstraps before accepting the new live stream, and surfaces failed recovery as `offline`.
+
+Terminal presentation remains client-owned. Every server-, model-, plugin-, tool-, path-, and user-provided string is stripped of terminal control sequences before rendering. The runtime remains the only owner of session, permission, question, command, Todo, and DAG truth.
+
 ## Composer Intent
 
 Composer model selection has strict one-way layering:

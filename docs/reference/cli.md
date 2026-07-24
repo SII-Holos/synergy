@@ -21,6 +21,7 @@ Run `synergy --help` or `synergy <command> --help` for the exact options support
 | `synergy start`    | Install/start a managed background service through launchd, systemd user services, or Windows Task Scheduler      |
 | `synergy server`   | Run the server in the current foreground terminal; bare `synergy` is an alias for this command                    |
 | `synergy web`      | Open the Web UI served by an already running runtime                                                              |
+| `synergy tui`      | Open the terminal UI attached to an already running runtime                                                       |
 | `synergy send ...` | Attach to a runtime when `--attach` is supplied; otherwise start a private ephemeral local server for the command |
 
 These modes share data and configuration when they use the same `SYNERGY_HOME`, but only one persistent server process may own that home at a time. A private `send` server stops when its task reaches idle.
@@ -60,6 +61,35 @@ synergy web --attach http://localhost:4097
 ```
 
 `web` does not start a server. It verifies `/global/health`, verifies that the target serves the Web application, and opens the authenticated attach URL. The default target is `http://localhost:4096`.
+
+### Terminal UI
+
+```bash
+synergy tui
+synergy tui --directory ./my-project
+synergy tui --scope <scope-id> -s <session-id>
+synergy tui --attach http://localhost:4097 --theme dark
+```
+
+`tui` is an interactive client and does not start a server. It requires terminal stdin and stdout, connects to `http://localhost:4096` by default, and uses the current directory to resolve the active Scope unless `--scope` is supplied. `--directory` and `--scope` are mutually exclusive. `--session` (`-s`) opens a specific session initially, and `--theme system|light|dark` selects terminal colors; `system` uses the terminal-reported background when available.
+
+The client renders the active conversation, streamed Markdown and reasoning, tool activity and diffs, active Todo/DAG summaries, runtime commands, permissions, and questions. It does not reserve screen space for a persistent session sidebar: enter `/sessions` to open the session picker and switch conversations at any terminal width. The client subscribes before bootstrap, replays sequenced gaps after reconnect, and performs a full Scope resync when the runtime epoch or replay journal requires it.
+
+| Key / command | Action                                                                                |
+| ------------- | ------------------------------------------------------------------------------------- |
+| `Enter`       | Send the composer text or execute a leading `/command`                                |
+| `Shift+Enter` | Insert a newline                                                                      |
+| `Up` / `Down` | Navigate input history at the first/last composer line                                |
+| `/sessions`   | Open the session picker and switch the active session                                 |
+| `Ctrl+K`      | Open the runtime command palette and insert a selected command for review             |
+| `Ctrl+N`      | Create and select a new session                                                       |
+| `Ctrl+P`      | Pin or unpin the active session                                                       |
+| `Ctrl+C`      | Abort active work when the session is busy; otherwise quit and restore terminal state |
+| `Escape`      | Dismiss the active modal                                                              |
+
+The footer presents context-sensitive hints rather than every binding at once. Idle sessions show create, pin, command, and `/sessions` actions as space allows; busy sessions prioritize abort. Modal overlays replace the normal hints with navigation controls. The connection indicator uses `●` for live, `○` for offline, and `◐` for transitional states. The bindings above do not change when a hint is hidden.
+
+Permission modals expose allow-once, allow-for-session, persistent allow, and reject decisions supported by the runtime. Question modals support single and multiple selection. All runtime and model strings are sanitized before terminal rendering.
 
 ## One-off Work with `send`
 

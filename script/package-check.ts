@@ -10,6 +10,7 @@ import {
   PLUGIN_DIR,
   PLUGIN_KIT_DIR,
   SDK_DIR,
+  TUI_DIR,
   SYNERGY_DIST_DIR,
   SYNERGY_DIR,
   UTIL_DIR,
@@ -25,6 +26,13 @@ import { currentGitRemoteUrl } from "./release/shared/git"
 
 const publishablePackages: PublishablePackage[] = [
   { name: "@ericsanchezok/synergy-sdk", dir: SDK_DIR, build: true, attw: true },
+  {
+    name: "@ericsanchezok/synergy-tui",
+    dir: TUI_DIR,
+    build: true,
+    attw: true,
+    dependencyVersions: { "@ericsanchezok/synergy-sdk": packageVersion(SDK_DIR) },
+  },
   { name: "@ericsanchezok/synergy-util", dir: UTIL_DIR, build: true, attw: true },
   { name: "@ericsanchezok/synergy-link-protocol", dir: SYNERGY_LINK_PROTOCOL_DIR, build: true, attw: false },
   {
