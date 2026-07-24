@@ -50,6 +50,8 @@ The execution session is marked with `loopRole: "execution"`; the visible Cortex
 
 `blueprint_loop_stop` records a durable stop intent during the executor turn. After the execution-session lease is released, the BlueprintLoop continuation prepares the visible Cortex reviewer, binds its task and audit session IDs while moving the loop to `auditing`, then starts the reviewer. The reviewer appears in the execution session's Subagent Dock, while ordinary Cortex completion notification stays disabled because approve or reject owns workflow result delivery. Rejection increments the audit attempt count; when the incremented count reaches `maxIterations`, the loop fails with `iteration_exhausted` instead of returning to execution.
 
+Audit evidence must match the semantic strength of each claim. Structural or toolchain checks do not by themselves prove behavior, integration, experience, holistic quality, or end-to-end success. Every required outcome must be verified with appropriate evidence before approval; a required outcome that cannot be verified remains blocking rather than being implicitly deferred.
+
 For user-owned loops, approval returns a completion notice to the execution session. For Lattice-owned loops, the BlueprintLoop record is the execution fact consumed by the Lattice controller. Bus events only wake reconciliation and are never sufficient on their own to advance a Pathway.
 
 ## Light Loop State
@@ -78,7 +80,7 @@ A Run has an independent lifecycle status (`active`, `paused`, `completed`, `fai
 
 Step status is one of `pending`, `current`, `executing`, `completed`, `failed`, or `cancelled`.
 
-Step history preserves Blueprint bindings and every BlueprintLoop attempt. Completed, failed, and cancelled attempts remain immutable evidence. A failed or cancelled current attempt pauses the Run; only an explicit resume for that pause reason reopens the same Step for Blueprint work. After a successful step, Lattice returns to `reviewing_pathway` whenever future steps remain, so later work can adapt to the observed result. The final successful step completes the Run.
+Step history preserves Blueprint bindings and every BlueprintLoop attempt. Completed, failed, and cancelled attempts remain immutable evidence. A failed or cancelled current attempt pauses the Run; only an explicit resume for that pause reason reopens the same Step for Blueprint work. After a successful step, Lattice returns to `reviewing_pathway` whenever future steps remain, so later work can adapt to the observed result. The final successful step completes the Run and delivers the reviewed completion summary to the execution session.
 
 Pathway reads separate immutable history and current work from the editable pending suffix. Replanning atomically replaces only that pending suffix: retaining an ID revises or reorders an existing future Step, omitting an existing pending ID removes it, and omitting an ID creates a new Step. Replanning never changes Step status or rewrites completed evidence.
 

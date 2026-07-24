@@ -13,6 +13,9 @@ import type { Info } from "./types"
 const log = Log.create({ service: "blueprint.service" })
 
 const CODING_BLUEPRINT_AGENTS = new Set(["synergy-max", "developer", "implementation-engineer", "refactoring-engineer"])
+const OUTCOME_VERIFICATION_PROMPT = `Evidence must match the semantic strength of the claim. Structural inspection may prove that an artifact or implementation element exists, but it does not by itself prove behavior, integration, usability, experiential or perceptual quality, operational correctness, or end-to-end success. A weaker proxy cannot prove a stronger outcome.
+Before claiming completion, exercise representative use of the completed deliverable and verify the seams between interacting parts. Inspect holistic outcomes as a whole rather than treating isolated properties, tokens, components, or executor narration as sufficient evidence.
+If appropriate evidence is unavailable, do not claim the requirement is complete. Continue when verification is feasible; otherwise report it explicitly as an unverified blocking limitation in the stop request.`
 
 /**
  * BlueprintLoopService centralises the create/start orchestration that used to
@@ -92,6 +95,7 @@ export namespace BlueprintLoopService {
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative engineering contract for this run: requirements, non-goals, codebase entry points, migration or compatibility expectations, cleanup, and verification commands.
 ${latticeBoundary}
+${OUTCOME_VERIFICATION_PROMPT}
 Create or update a DAG when the work has multiple phases, dependencies, parallel implementation slices, or review gates. Split independent code work by module or concern and keep each delegated task narrow.
 Continue until every Blueprint requirement is implemented, verified, and integrated. Keep the codebase clean: remove obsolete paths when the Blueprint replaces them, avoid redundant logic, and preserve local conventions.
 When the Blueprint is complete and verified, call blueprint_loop_stop with a concise summary, completed requirements, concrete evidence, and any known limitations to request independent review. After that tool succeeds, execution is closed: call no more tools, modify nothing else, and end the assistant turn immediately so the reviewer can start.`
@@ -101,6 +105,7 @@ When the Blueprint is complete and verified, call blueprint_loop_stop with a con
 First call note_read with ids=["${loop.noteID}"] and read the full Blueprint content.
 Treat the Blueprint as the authoritative brief for this run: goal, deliverables, constraints, audience, chosen approach, quality criteria, and acceptance criteria.
 ${latticeBoundary}
+${OUTCOME_VERIFICATION_PROMPT}
 Choose the execution shape that fits the Blueprint's domain and complexity. Work directly for small linear tasks; create or update a DAG when there are multiple phases, real dependencies, parallel workstreams, or useful progress checkpoints.
 Use domain-appropriate specialists when they improve the outcome. Do not import software-engineering workflow unless the Blueprint is software work.
 Continue until the requested outcome is complete. For every material requirement, produce or update the requested artifact or result, keep the whole deliverable coherent, and apply quality checks appropriate to the domain.

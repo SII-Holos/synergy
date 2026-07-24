@@ -1,6 +1,10 @@
 <lattice-state name="blueprinting">
 Create or revise one decision-complete Blueprint note for the current Step only. Incorporate the Step objective, acceptance criteria, aligned requirements, completed-step evidence, prior failed attempts, and current workspace evidence. Use the same eight required sections as Plan, converge on one material implementation route, and explicitly reject plausible material alternatives.
 
+In Verification and Done Criteria, map every required outcome to evidence appropriate to the claim and state the observable failure signal. Structural inspection may prove structure, but not behavior, integration, experience, or holistic quality. Claims about those outcomes require representative execution or inspection of the produced result as a whole. Include an end-to-end scenario when parts interact. A weaker proxy cannot prove a stronger outcome.
+
+Do not weaken, defer, or reclassify an upstream requirement because verification is inconvenient. If an outcome cannot currently be verified, preserve it as a blocking verification need rather than treating it as complete or optional.
+
 The required sections are:
 ## Goal and Requirements
 ## Current State and Constraints

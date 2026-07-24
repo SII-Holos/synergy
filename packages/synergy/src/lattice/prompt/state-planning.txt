@@ -1,5 +1,7 @@
 <lattice-state name="planning">
-Translate the aligned requirements into a small ordered Pathway. Each Step must be suitable for one BlueprintLoop and include a clear objective and verifiable acceptance criteria. Pass the complete remaining list through pathway_write.futureSteps; partial patching is not available.
+Translate the aligned requirements into a small ordered Pathway. Each Step must be suitable for one BlueprintLoop and include a clear objective and acceptance criteria stated as observable outcomes, not merely the presence of implementation elements. The criteria must make success and failure distinguishable. When a deliverable has interacting parts, include at least one representative end-to-end scenario that verifies the integrated outcome rather than isolated components. Existing implementation is evidence of current state, not the source of truth for acceptance criteria.
+
+Pass the complete remaining list through pathway_write.futureSteps; partial patching is not available.
 
 Do not create a Blueprint or execute work. When the candidate Pathway is complete, call lattice_submit with action submit_pathway as the final tool call, then end the turn. The host will advance to Pathway review.
 </lattice-state>

@@ -16,6 +16,7 @@ import { ScopeContext } from "../../src/scope/context"
 import { Session } from "../../src/session"
 import { SessionDrive } from "../../src/session/drive"
 import { SessionInbox } from "../../src/session/inbox"
+import { SessionManager } from "../../src/session/manager"
 import { tmpdir } from "../fixture/fixture"
 
 setDefaultTimeout(30_000)
@@ -181,20 +182,51 @@ describe("LatticeController", () => {
       })
       LatticeModelCalls.record(session.id)
 
-      await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
+      const deliver = SessionManager.deliver
+      const deliveries: Parameters<typeof SessionManager.deliver>[0][] = []
+      ;(SessionManager.deliver as any) = async (input: Parameters<typeof SessionManager.deliver>[0]) => {
+        deliveries.push(input)
+      }
+      try {
+        await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
 
-      const completed = await LatticeStore.getByRunID(scopeID, run.id)
-      expect(completed).toMatchObject({
-        status: "completed",
-        modelCallCount: 1,
-        pathway: [{ status: "completed", resultSummary: "Final Step verified" }],
-      })
-      expect((await Session.get(session.id)).workflow).toBeUndefined()
+        const completed = await LatticeStore.getByRunID(scopeID, run.id)
+        expect(completed).toMatchObject({
+          status: "completed",
+          modelCallCount: 1,
+          pathway: [{ status: "completed", resultSummary: "Final Step verified" }],
+        })
+        expect((await Session.get(session.id)).workflow).toBeUndefined()
+        expect(deliveries).toHaveLength(1)
+        expect(deliveries[0]).toMatchObject({
+          target: session.id,
+          waitForProcessing: false,
+          mail: {
+            type: "user",
+            metadata: {
+              source: "lattice_completed",
+              runID: run.id,
+              status: "completed",
+              completedSteps: 1,
+              totalSteps: 1,
+              finalStepTitle: "Recover interrupted execution",
+              summary: "Final Step verified",
+            },
+          },
+        })
+        expect(deliveries[0].mail.parts[0]).toMatchObject({
+          type: "text",
+          origin: "system",
+        })
 
-      const revision = completed?.revision
-      await LatticeModelCalls.flush(scopeID, session.id)
-      await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
-      expect((await LatticeStore.getByRunID(scopeID, run.id))?.revision).toBe(revision)
+        const revision = completed?.revision
+        await LatticeModelCalls.flush(scopeID, session.id)
+        await LatticeController.reconcileDirect(scopeID, session.id, "loop_terminal")
+        expect((await LatticeStore.getByRunID(scopeID, run.id))?.revision).toBe(revision)
+        expect(deliveries).toHaveLength(1)
+      } finally {
+        ;(SessionManager.deliver as any) = deliver
+      }
     })
   })
 

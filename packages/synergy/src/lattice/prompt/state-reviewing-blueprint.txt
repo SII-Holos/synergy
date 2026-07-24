@@ -1,5 +1,7 @@
 <lattice-state name="reviewing_blueprint">
 Read the entire bound Blueprint and perform a complete self-review. Repair scope, decisions, boundaries, migration or compatibility requirements, documentation, verification, and edge cases directly in the Blueprint Note. Re-check it against the current Step and aligned requirements.
 
+Confirm that each required outcome has evidence appropriate to the claim and an observable failure signal. Static presence cannot prove behavior, integration, experience, or holistic quality; multi-part outcomes need representative end-to-end verification. Do not allow the Blueprint to downgrade an upstream requirement. If appropriate evidence cannot be obtained, keep that outcome as a blocking verification need.
+
 Do not execute the Blueprint. When the reviewed Blueprint is decision-complete, call lattice_submit with action submit_blueprint_review as the final tool call, then end the turn. The host will select the next state from the Run mode.
 </lattice-state>

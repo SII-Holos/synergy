@@ -57,8 +57,12 @@ describe("Plan Blueprint prompt contract", () => {
     expect(LATTICE_CLARIFYING).toContain("blocking question")
     expect(LATTICE_AUTO).toContain("clarifying")
     expect(LATTICE_REVIEWING_PATHWAY).toContain("adversarial self-review")
+    expect(LATTICE_PLANNING).toContain("observable outcome")
+    expect(LATTICE_PLANNING).toContain("representative end-to-end scenario")
     expect(LATTICE_BLUEPRINTING).toContain("same eight required sections")
     expect(LATTICE_BLUEPRINTING).toContain("one material implementation route")
+    expect(LATTICE_BLUEPRINTING).toContain("evidence appropriate to the claim")
+    expect(LATTICE_REVIEWING_BLUEPRINT).toContain("blocking verification need")
     for (const section of REQUIRED_BLUEPRINT_SECTIONS) {
       expect(LATTICE_BLUEPRINTING).toContain(section)
     }
@@ -73,8 +77,8 @@ describe("Plan Blueprint prompt contract", () => {
 
   test("ends the turn after a successful Lattice state submission", () => {
     expect(LATTICE_BASE).toContain("final tool call")
-    expect(LATTICE_BASE).toContain("still report the current state")
-    expect(LATTICE_BASE).toContain("Do not poll, resubmit, or begin the next state")
+    expect(LATTICE_BASE).toContain("LATTICE_ACTION_QUEUED")
+    expect(LATTICE_BASE).toContain("Do not call another tool, poll, resubmit")
 
     for (const statePrompt of [
       LATTICE_AWAITING_EXECUTION,

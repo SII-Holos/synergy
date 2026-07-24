@@ -1,10 +1,12 @@
 import { BlueprintLoopService, BlueprintLoopStore } from "../blueprint"
 import type { Info as BlueprintLoopInfo } from "../blueprint/types"
+import { Identifier } from "../id/id"
 import { NoteDocument, NoteStore } from "../note"
 import type { ContinuationKernel } from "../session/continuation-kernel"
 import { SessionDrive } from "../session/drive"
 import { SessionHistory } from "../session/history"
 import { SessionInbox } from "../session/inbox"
+import { SessionManager } from "../session/manager"
 import { Log } from "../util/log"
 import { LatticeError } from "./error"
 import { LatticeLock } from "./lock"
@@ -27,6 +29,7 @@ export namespace LatticeController {
   type DirectOutcome = {
     shouldDrive: boolean
     terminalRunID?: string
+    completedRun?: LatticeTypes.Run
   }
 
   export async function reconcileGate(gate: ContinuationKernel.Gate): Promise<ContinuationKernel.PolicyResult> {
@@ -96,6 +99,7 @@ export namespace LatticeController {
     if (outcome.terminalRunID) {
       await clearTerminalWorkflowProjection(sessionID, outcome.terminalRunID)
     }
+    if (outcome.completedRun) await deliverCompletion(outcome.completedRun)
     if (outcome.shouldDrive) await SessionDrive.request(sessionID, `lattice-${reason}`)
   }
 
@@ -129,6 +133,7 @@ export namespace LatticeController {
       return {
         shouldDrive: false,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
+        completedRun: run.status === "completed" ? run : undefined,
       }
     }
     if (run.maxModelCalls > 0 && count >= run.maxModelCalls) {
@@ -142,6 +147,7 @@ export namespace LatticeController {
       return {
         shouldDrive: false,
         terminalRunID: LatticeTypes.isTerminalRun(run.status) ? run.id : undefined,
+        completedRun: run.status === "completed" ? run : undefined,
       }
     }
     if (run.effect?.kind !== "deliver_prompt") return { shouldDrive: false }
@@ -233,6 +239,49 @@ export namespace LatticeController {
   async function clearTerminalWorkflowProjection(sessionID: string, runID: string): Promise<void> {
     const { SessionWorkflowService } = await import("../session/workflow")
     await SessionWorkflowService.clearIfLattice(sessionID, runID)
+  }
+
+  async function deliverCompletion(run: LatticeTypes.Run): Promise<void> {
+    const completedSteps = run.pathway.filter((step) => step.status === "completed")
+    const finalStep = completedSteps.at(-1)
+    const summary = finalStep?.resultSummary?.trim()
+    const text = [
+      "Lattice completed.",
+      `Pathway: ${completedSteps.length}/${run.pathway.length} steps completed and reviewed.`,
+      finalStep ? `Final Step: ${finalStep.title}.` : "",
+      summary ? `Audit summary: ${summary}` : "",
+      "No further Lattice work remains. Summarize completion for the user.",
+    ]
+      .filter(Boolean)
+      .join("\n")
+
+    await SessionManager.deliver({
+      target: run.sessionID,
+      waitForProcessing: false,
+      mail: {
+        type: "user",
+        summary: { title: "Lattice completed" },
+        parts: [
+          {
+            id: Identifier.ascending("part"),
+            sessionID: run.sessionID,
+            messageID: "",
+            type: "text",
+            text,
+            origin: "system",
+          },
+        ],
+        metadata: {
+          source: "lattice_completed",
+          runID: run.id,
+          status: run.status,
+          completedSteps: completedSteps.length,
+          totalSteps: run.pathway.length,
+          ...(finalStep ? { finalStepID: finalStep.id, finalStepTitle: finalStep.title } : {}),
+          ...(summary ? { summary } : {}),
+        },
+      },
+    })
   }
 
   async function settleDeliveredPrompt(
