@@ -8,6 +8,7 @@ import { shortestUniqueFileTitle } from "@/components/file-workbench/model"
 import { panels as P } from "@/locales/messages"
 import { useLocale } from "@/context/locale"
 import { createContextWorkbenchPanel } from "./context-panel-entry"
+import { createLatticeWorkbenchPanel } from "./lattice-panel-entry"
 export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
   const terminal = useTerminal()
   const file = useFile()
@@ -41,6 +42,7 @@ export function BuiltinWorkbenchPanelsProvider(props: ParentProps) {
         loader: async () => ({ default: (await import("./tool-session-review")).SessionReviewWorkbenchContent }),
         title: () => i18n._(P.review),
       }),
+      registerWorkbenchPanel(createLatticeWorkbenchPanel(i18n._(P.lattice))),
       registerWorkbenchPanel({
         id: "attachment",
         label: i18n._(P.attachment),

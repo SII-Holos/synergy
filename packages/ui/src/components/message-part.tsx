@@ -59,6 +59,7 @@ import { TOOL_TITLE_DESC } from "./tool-title-descriptors"
 import { MESSAGE_PART_DESC } from "./tool-title-descriptors"
 import { useLingui } from "@lingui/solid"
 import { createTextPartProjection, isTextPartTerminal } from "./text-part-render"
+import { getLatticeToolPresentation } from "./tool/classifier"
 
 export type UserMessageVariant = "default" | "turn-bubble"
 
@@ -503,6 +504,8 @@ export function getToolInfo(tool: string, input: any = {}, metadata: any = {}): 
   if (qz) return qz
   const browser = getBrowserToolInfo(tool, input, metadata)
   if (browser) return browser
+  const lattice = getLatticeToolPresentation(tool, input, metadata)
+  if (lattice) return lattice
 
   if (isAnysearchToolName(tool)) return getAnysearchToolInfo(tool, input)
 

@@ -21,9 +21,11 @@ Use `note_read` with the Blueprint noteID from context. Read the full document. 
 | **Verified complete** | Delivered outcome or artifact exists, matches the spec, and has appropriate evidence |
 | **Not found** | Requirement is clearly stated in the Blueprint but has no corresponding delivered outcome or evidence |
 | **Partially done** | Delivered work exists but is incomplete, incorrect, or missing appropriate evidence |
-| **Cannot verify** | Manual confirmation needed — e.g. UI behavior, deployment config, external integration |
+| **Cannot verify** | Evidence appropriate to a required outcome remains unavailable after reasonable domain-appropriate verification attempts |
 
 Do not skip any Blueprint section. Vague judgments like "looks mostly done" are not acceptable.
+
+Contract precedence is user instruction, current Lattice Step when present, run-specific instruction, then Blueprint implementation detail. A Blueprint, executor, or reviewer must not downgrade an upstream required outcome to optional or deferred because it is difficult to implement or verify.
 
 ## 2. Gather evidence
 
@@ -34,6 +36,15 @@ For every requirement, map it to concrete evidence:
 - **Diff evidence**: git diff when workspace files changed
 - **Trajectory evidence**: the executing agent's session log
 
+Evidence must match the semantic strength of the claim. A weaker proxy cannot prove a stronger outcome:
+- Structural inspection can prove that an artifact or element exists, but not that it behaves correctly.
+- Build, typecheck, lint, and source presence cannot by themselves prove runtime behavior, integration, usability, or operational correctness.
+- Isolated component evidence cannot prove a required end-to-end outcome.
+- The presence of individual stylistic properties cannot prove holistic experiential or perceptual quality.
+- Executor claims and trajectory narration identify evidence to inspect; they are not proof.
+
+Exercise a representative scenario when the outcome depends on interacting parts. Inspect the produced result as a whole when the requirement concerns experience, perception, coherence, or overall quality.
+
 ## 3. Dispatch analysis subagents
 
 Use the Specialist Selection Guide above to dispatch agents via `task` for evidence collection. Each subagent gets one narrow audit concern with the relevant Blueprint excerpt.
@@ -43,8 +54,11 @@ Use the Specialist Selection Guide above to dispatch agents via `task` for evide
 
 After collecting evidence, classify the overall audit result:
 
-- **approve**: every verifiable requirement is Verified complete; any Cannot verify items are documented and non-blocking
-- **reject**: at least one requirement is Not found or Partially done at blocking severity
+- **approve**: every required outcome is Verified complete with evidence appropriate to the claim
+- **reject**: at least one required outcome is Not found, Partially done, or Cannot verify
+
+Approve only when every required outcome is Verified complete.
+A required outcome classified as Cannot verify is blocking. Inability to verify is not evidence of completion. An item may be non-blocking only when the authoritative contract explicitly marks it optional or out of scope without contradicting an upstream requirement.
 
 # Rejection instructions (when NOT complete)
 
@@ -82,11 +96,10 @@ Before calling `blueprint_loop_approve`, produce a completion summary:
 ## Audit result: completed
 
 ### Requirements
-19 checked, 19 verified complete, 0 not found, 0 partially done, 2 cannot verify
+19 checked, 19 verified complete, 0 not found, 0 partially done, 0 blocking cannot verify
 
-### Cannot verify
-- Frontend Blueprint Panel UI (Phase 6-9, deferred)
-- Plan workflow toggle UX (Phase 6-9, deferred)
+### Optional observations
+- One explicitly optional item was not evaluated and does not affect completion.
 
 ### Evidence sources
 - Blueprint note: all acceptance criteria mapped
@@ -95,7 +108,7 @@ Before calling `blueprint_loop_approve`, produce a completion summary:
 - Domain quality checks: completed and summarized
 
 ### Verdict
-All required outcomes have evidence of completion. Deferred or manual-only items are documented and non-blocking.
+All required outcomes have evidence appropriate to their claims.
 Calling blueprint_loop_approve now. The approve tool will automatically notify the execution session; do not send a separate completion notification.
 ```
 

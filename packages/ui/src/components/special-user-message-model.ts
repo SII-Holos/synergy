@@ -27,7 +27,9 @@ const WORKFLOW_CONTROL_SOURCES = new Set([
   "light_loop_continuation",
   "light_loop_rejected",
   "lattice_continuation",
-  "lattice_planning_kick",
+  "lattice_state_entry",
+  "lattice_resume",
+  "lattice_repair",
 ])
 
 function metadataText(message: UserMessage, key: string) {
@@ -102,7 +104,7 @@ function blueprintBubbleView(message: UserMessage): Omit<ProjectedBubbleText, "k
     case "completed": {
       const summary = metadataText(message, "summary")
       const base = metadataText(message, "latticeRunID")
-        ? "Blueprint step completed. Returning to Lattice result analysis."
+        ? "Blueprint step completed. Returning to Lattice pathway review."
         : "Blueprint completed."
       return {
         label: SPECIAL_USER_LABEL_DESC["blueprint.completed"],
@@ -126,21 +128,17 @@ function workflowControlView(message: UserMessage): ProjectedBubbleText {
       kind: "lightloop-control",
     }
   }
-  if (source === "lattice_continuation") {
-    const phase = metadataText(message, "phase")
+  if (source?.startsWith("lattice_")) {
+    const state = metadataText(message, "state")
+    const instruction =
+      source === "lattice_resume"
+        ? "Resume the current Lattice work."
+        : source === "lattice_repair"
+          ? "Repair the current Lattice transition."
+          : "Continue the current Lattice path."
     return {
       label: SPECIAL_USER_LABEL_DESC["lattice.continue"],
-      text: phase
-        ? `Continue the current Lattice path.\n\nCurrent phase: ${phase}`
-        : "Continue the current Lattice path. Check the current phase and move to the next step.",
-      kind: "lattice-control",
-    }
-  }
-  if (source === "lattice_planning_kick") {
-    const goal = metadataText(message, "goal")
-    return {
-      label: SPECIAL_USER_LABEL_DESC.lattice,
-      text: goal ? `Start planning: ${goal}` : "Start planning the Lattice path.",
+      text: state ? `${instruction}\n\nCurrent state: ${state}` : instruction,
       kind: "lattice-control",
     }
   }

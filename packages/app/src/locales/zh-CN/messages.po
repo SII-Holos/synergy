@@ -2528,16 +2528,12 @@ msgid "app.lattice.config.budgetDescription"
 msgstr "Lattice 在继续推进前检查预算；计入当前 Lattice 会话的模型调用，而不是 Pathway 步骤。0 表示不设置预算。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.continueExisting"
-msgstr "继续上次运行"
-
-#. js-lingui-explicit-id
 msgid "app.lattice.config.current"
 msgstr "当前"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.description"
-msgstr "Lattice 会先把目标规划成一条有序的 Pathway，再通过 BlueprintLoop 逐步执行。选择“自主推进”后，它会连续规划和执行，无需逐步确认；选择“与你协作”后，每个 Blueprint 都会在执行前暂停，等你审阅或补充指示。"
+msgstr "Lattice 会对齐需求、规划 Pathway、审查每个 Blueprint，再交给 BlueprintLoop 执行。“与你协作”模式会在执行前等待你的明确批准。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.enable"
@@ -2545,7 +2541,7 @@ msgstr "启用 Lattice"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.failed"
-msgstr "启用 Lattice 失败"
+msgstr "配置 Lattice 失败"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalOptional"
@@ -2554,6 +2550,14 @@ msgstr "目标（可选）"
 #. js-lingui-explicit-id
 msgid "app.lattice.config.goalPlaceholder"
 msgstr "这次 Lattice 运行要完成什么？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loadFailed"
+msgstr "无法加载上一次 Lattice 运行。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.loading"
+msgstr "正在加载上一次 Lattice 运行…"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.mode"
@@ -2573,15 +2577,27 @@ msgstr "模型调用次数"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.nextMessageGoal"
-msgstr "你的下一条消息将用作本次运行的目标。"
+msgstr "你的下一条消息将开始本次运行的需求对齐。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.notStarted"
+msgstr "尚未开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.pausedHint"
+msgstr "请先在 Lattice 面板中恢复或取消此运行，再更改其设置。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.previousRun"
 msgstr "上次运行"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.config.restart"
-msgstr "重新运行"
+msgid "app.lattice.config.save"
+msgstr "保存设置"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.config.startNew"
+msgstr "开始新运行"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.config.stepsCompleted"
@@ -2600,60 +2616,436 @@ msgid "app.lattice.config.unlimited"
 msgstr "不限"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReview"
-msgstr "Blueprint 等待你审阅"
+msgid "app.lattice.event.actionConsumed"
+msgstr "工作已接收"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.blueprintReviewHint"
-msgstr "你可以在对话中讨论或修改 Blueprint；这些消息只用于讨论。确认无误后，点击“继续”开始执行。"
+msgid "app.lattice.event.actionSubmitted"
+msgstr "工作已提交"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.blueprintBound"
+msgstr "Blueprint 已准备"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.budgetExhausted"
+msgstr "已达到模型调用预算"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.loopCancelled"
+msgstr "BlueprintLoop 已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.pathwayReplaced"
+msgstr "Pathway 已更新"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.recoveryReconciled"
+msgstr "恢复步骤已协调"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCancelled"
+msgstr "运行已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCompleted"
+msgstr "运行已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runCreated"
+msgstr "运行已开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runFailed"
+msgstr "运行失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runPaused"
+msgstr "运行已暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runResumed"
+msgstr "运行已恢复"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.runUpdated"
+msgstr "运行已更新"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stateChanged"
+msgstr "工作状态已变化"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCancelled"
+msgstr "步骤已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepCompleted"
+msgstr "步骤已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepFailed"
+msgstr "步骤失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.event.stepStarted"
+msgstr "步骤已开始"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.armed"
+msgstr "已就绪"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.auditing"
+msgstr "正在审查"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.running"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.loop.waiting"
+msgstr "等待中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.acceptanceCriteria"
+msgstr "验收标准"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailed"
+msgstr "Lattice 操作失败。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.actionFailedTitle"
+msgstr "Lattice 操作失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalConflict"
+msgstr "Blueprint 已更改。继续前请审查最新版本。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalHint"
+msgstr "请审查上方绑定的 Blueprint。确认此版本可以执行后再继续。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.approvalTitle"
+msgstr "Blueprint 已准备好，可以审查"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.assumptions"
+msgstr "假设"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetails"
+msgstr "Blueprint 详情"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintDetailsHint"
+msgstr "目标、验收标准、假设与执行尝试"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.blueprintVersion"
+msgstr "Blueprint v{version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.boundVersion"
+msgstr "绑定版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.budgetGuidance"
+msgstr "此暂停运行无法更改预算。请先取消，再以更高限制开始新的运行。"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.calls"
 msgstr "模型调用"
 
 #. js-lingui-explicit-id
+msgid "app.lattice.panel.cancel"
+msgstr "取消运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirm"
+msgstr "此运行会标记为已取消，活动的 BlueprintLoop 也会停止。运行无法恢复，但 Pathway 和历史记录仍会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.cancelConfirmTitle"
+msgstr "要取消此 Lattice 运行吗？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.configure"
+msgstr "配置 Lattice"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.confirmCancel"
+msgstr "取消运行"
+
+#. js-lingui-explicit-id
 msgid "app.lattice.panel.continue"
 msgstr "继续"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.continueFailed"
-msgstr "继续失败"
+msgid "app.lattice.panel.continuing"
+msgstr "正在继续…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.current"
-msgstr "当前步骤"
+msgid "app.lattice.panel.emptyDescription"
+msgstr "配置一个运行，用于对齐需求、规划 Pathway，并执行经过审查的 Blueprint。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.mode"
-msgstr "Lattice · {mode}"
+msgid "app.lattice.panel.emptyTitle"
+msgstr "还没有 Lattice 运行"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstruction"
-msgstr "补充执行指示（可选）"
+msgid "app.lattice.panel.executionHistory"
+msgstr "执行尝试"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.optionalInstructionPlaceholder"
-msgstr "添加给当前步骤的执行指示…"
+msgid "app.lattice.panel.historyLoadFailed"
+msgstr "无法加载运行历史。"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.paused"
-msgstr "已暂停"
+msgid "app.lattice.panel.historyLoading"
+msgstr "正在加载运行历史…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.recovery"
-msgstr "恢复步骤"
+msgid "app.lattice.panel.keepRun"
+msgstr "保留运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loadFailed"
+msgstr "无法加载此 Lattice 运行。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loading"
+msgstr "正在加载 Lattice…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.loopAttempts"
+msgstr "{count, plural, one {# 次执行尝试} other {# 次执行尝试}}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noBlueprints"
+msgstr "尚未准备任何 Blueprint。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.noHistory"
+msgstr "没有可用的审计事件。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.notStarted"
+msgstr "Pathway 尚未开始。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.now"
+msgstr "当前"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pathway"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pause"
+msgstr "暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.pausing"
+msgstr "正在暂停…"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.previousStep"
+msgstr "之前的步骤"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.progressLabel"
+msgstr "Pathway 进度"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.recoveryFor"
+msgstr "用于恢复：{steps}"
 
 #. js-lingui-explicit-id
 msgid "app.lattice.panel.resume"
-msgstr "继续 Lattice"
+msgstr "恢复"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.resumeFailed"
-msgstr "恢复失败"
+msgid "app.lattice.panel.resuming"
+msgstr "正在恢复…"
 
 #. js-lingui-explicit-id
-msgid "app.lattice.panel.unknown"
-msgstr "未知"
+msgid "app.lattice.panel.retry"
+msgstr "重试"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.reviewedVersion"
+msgstr "已审查版本 {version}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistory"
+msgstr "运行历史"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.runHistoryHint"
+msgstr "持久化的生命周期与 Pathway 事件"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.settings"
+msgstr "设置"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.startNew"
+msgstr "开始新的运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.steps"
+msgstr "Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.stepsCompleted"
+msgstr "已完成 {completed}/{total}"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unavailableTitle"
+msgstr "Lattice 暂不可用"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.panel.unlimited"
+msgstr "不限"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.attention"
+msgstr "已暂停，可以恢复"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.budget"
+msgstr "已达到模型调用预算"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopCancelled"
+msgstr "BlueprintLoop 已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.loopFailed"
+msgstr "BlueprintLoop 失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.modelError"
+msgstr "模型回合失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.turnInterrupted"
+msgstr "模型回合已中断"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userExit"
+msgstr "已由你退出"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.reason.userPause"
+msgstr "已由你暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.cancel"
+msgstr "保留当前运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.confirm"
+msgstr "开始新的运行"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.description"
+msgstr "新运行会用全新的 Pathway 和模型调用计数替换当前 Session 指针。之前的运行及其历史仍会保留。"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.restart.title"
+msgstr "要开始新的 Lattice 运行吗？"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.awaitingExecution"
+msgstr "等待你确认"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.blueprinting"
+msgstr "设计 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.clarifying"
+msgstr "理解需求"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.executing"
+msgstr "执行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.planning"
+msgstr "规划 Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingBlueprint"
+msgstr "审查 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.state.reviewingPathway"
+msgstr "审查 Pathway"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.active"
+msgstr "运行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.status.paused"
+msgstr "已暂停"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.cancelled"
+msgstr "已取消"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.completed"
+msgstr "已完成"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.current"
+msgstr "当前"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.executing"
+msgstr "执行中"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.failed"
+msgstr "失败"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.step.pending"
+msgstr "待处理"
+
+#. js-lingui-explicit-id
+msgid "app.lattice.workspace.sessionRequired"
+msgstr "打开一个 Session 后即可使用 Lattice。"
 
 #. ── pages/layout.tsx ────────────────────────────────────────────────
 msgid "app.layout.colorScheme"
@@ -4223,6 +4615,10 @@ msgstr "文件"
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.files.openFile"
 msgstr "打开文件"
+
+#. ── Builtin panel labels ─────────────────────────────────────────────────────
+msgid "app.panel.lattice"
+msgstr "Lattice"
 
 #. ── Builtin panel labels ─────────────────────────────────────────────────────
 msgid "app.panel.notes"
@@ -16573,6 +16969,14 @@ msgstr "找到 {count} 项"
 msgid "tool.label.items"
 msgstr "{count} 项"
 
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourceChat"
+msgstr "对话"
+
+#. js-lingui-explicit-id
+msgid "tool.label.latticeSourcePanel"
+msgstr "面板"
+
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.matches"
 msgstr "{count} 个匹配项"
@@ -16592,6 +16996,10 @@ msgstr "{count} 条记忆"
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.notes"
 msgstr "{count} 个笔记"
+
+#. js-lingui-explicit-id
+msgid "tool.label.pathwaySteps"
+msgstr "{count} 个步骤"
 
 #. ── Tool label descriptors (ICU plural count labels) ─────────────────
 msgid "tool.label.posts"
@@ -16929,6 +17337,34 @@ msgstr "查看作业指标"
 msgid "tool.title.jobs"
 msgstr "查看作业"
 
+#. js-lingui-explicit-id
+msgid "tool.title.latticeApproveExecution"
+msgstr "批准执行 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmit"
+msgstr "提交 Lattice 操作"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprint"
+msgstr "选择 Blueprint"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitBlueprintReview"
+msgstr "完成 Blueprint 审查"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathway"
+msgstr "提交 Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitPathwayReview"
+msgstr "完成 Pathway 审查"
+
+#. js-lingui-explicit-id
+msgid "tool.title.latticeSubmitRequirements"
+msgstr "对齐需求"
+
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.leave-worktree"
 msgstr "退出隔离工作区"
@@ -17032,6 +17468,14 @@ msgstr "已应用"
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.patch-generating"
 msgstr "正在生成补丁…"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayRead"
+msgstr "读取 Pathway"
+
+#. js-lingui-explicit-id
+msgid "tool.title.pathwayWrite"
+msgstr "写入 Pathway"
 
 #. ── Tool trigger titles ────────────────────────────────────────────
 msgid "tool.title.plan"

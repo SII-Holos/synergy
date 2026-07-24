@@ -117,9 +117,9 @@ Calling `loop_stop` requests an independent review rather than ending the workfl
 
 ### Lattice
 
-Lattice is the structured workflow for larger goals that need staged planning, execution, and validation. It turns the goal into an ordered Pathway, creates a Blueprint for the current step, executes that step through a Lattice-owned BlueprintLoop, analyzes the result, and advances to the next eligible step.
+Lattice is the structured workflow for larger goals that need staged planning, execution, and validation. A Run moves through clarifying, planning, Pathway review, Blueprint authoring and review, optional execution approval, and execution. Each Step runs through a Lattice-owned BlueprintLoop. A successful Step returns to Pathway review while unfinished Steps remain, so the remaining Pathway can adapt before the next Step starts.
 
-An `auto` run starts the current step's bound Blueprint as the session becomes idle. A `collaborative` run pauses at Blueprint review so the user can inspect or refine the step before continuing. Lattice tracks phases, step outcomes, model-call budget, events, and pause/resume state, and it can revise remaining Pathway steps without rewriting terminal history.
+An `auto` run starts a reviewed Blueprint without another approval. A `collaborative` run enters `awaiting_execution` until the user explicitly approves that exact reviewed Blueprint. Lattice keeps immutable terminal Run history, Step and Blueprint histories, Loop summaries, a soft model-call budget, best-effort audit events, and explicit pause/resume state. Failed or interrupted Steps remain inspectable and reopen only through Resume.
 
 ### Delegated work
 

@@ -34,9 +34,9 @@ describe("SessionWorkflowService", () => {
       const plan = await Session.create({})
       await SessionWorkflowService.enablePlan(plan.id)
       await expect(SessionWorkflowService.startLightloop(plan.id, "continue")).rejects.toThrow("plan workflow")
-      await expect(SessionWorkflowService.enableLattice(plan.id, { kind: "lattice", mode: "auto" })).rejects.toThrow(
-        "plan",
-      )
+      await expect(
+        SessionWorkflowService.enableLattice(plan.id, { kind: "lattice", mode: "auto" }),
+      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plan") } })
 
       const lightloop = await Session.create({})
       await SessionWorkflowService.startLightloop(lightloop.id, "continue")
@@ -45,6 +45,55 @@ describe("SessionWorkflowService", () => {
       const lattice = await Session.create({})
       await SessionWorkflowService.enableLattice(lattice.id, { kind: "lattice", mode: "auto" })
       await expect(SessionWorkflowService.enablePlan(lattice.id)).rejects.toThrow("lattice")
+    })
+  })
+
+  test("serializes concurrent workflow enables without orphaning an active Lattice Run", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      const outcomes = await Promise.allSettled([
+        SessionWorkflowService.enablePlan(session.id),
+        SessionWorkflowService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "auto",
+          goal: "Do not orphan this Run",
+        }),
+      ])
+
+      expect(outcomes.filter((outcome) => outcome.status === "fulfilled")).toHaveLength(1)
+      expect(outcomes.filter((outcome) => outcome.status === "rejected")).toHaveLength(1)
+
+      const storedSession = await Session.get(session.id)
+      const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
+      if (storedSession.workflow?.kind === "lattice") {
+        expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
+      } else {
+        expect(storedSession.workflow).toEqual({ kind: "plan" })
+        expect(run?.status).not.toBe("active")
+      }
+    })
+  })
+
+  test("serializes Lattice enable and disable into one consistent durable owner", async () => {
+    await withScope(async () => {
+      const session = await Session.create({})
+      await Promise.all([
+        SessionWorkflowService.enableLattice(session.id, {
+          kind: "lattice",
+          mode: "auto",
+          goal: "Race safely",
+        }),
+        SessionWorkflowService.setNone(session.id),
+      ])
+
+      const storedSession = await Session.get(session.id)
+      const run = await LatticeStore.getOrUndefined(ScopeContext.current.scope.id, session.id)
+      if (storedSession.workflow?.kind === "lattice") {
+        expect(run).toMatchObject({ id: storedSession.workflow.runID, status: "active" })
+      } else {
+        expect(storedSession.workflow).toBeUndefined()
+        expect(run?.status).toBe("paused")
+      }
     })
   })
 
@@ -129,9 +178,9 @@ describe("SessionWorkflowService", () => {
       const session = await Session.create({})
       await bindLoop(session.id, "user")
 
-      await expect(SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })).rejects.toThrow(
-        "user BlueprintLoop",
-      )
+      await expect(
+        SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
+      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("user BlueprintLoop") } })
     })
   })
 
@@ -286,9 +335,9 @@ describe("BlueprintLoop workflow source gates", () => {
       const session = await Session.create({})
       await bindLoop(session.id, "plugin")
 
-      await expect(SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" })).rejects.toThrow(
-        "plugin BlueprintLoop",
-      )
+      await expect(
+        SessionWorkflowService.enableLattice(session.id, { kind: "lattice", mode: "auto" }),
+      ).rejects.toMatchObject({ data: { reason: expect.stringContaining("plugin BlueprintLoop") } })
     })
   })
 

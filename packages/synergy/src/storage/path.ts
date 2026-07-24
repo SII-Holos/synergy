@@ -155,19 +155,37 @@ export namespace StoragePath {
     eventID,
   ]
 
-  // Lattice: one run per session, keyed by sessionID so the bridge can locate a
-  // run from a loop's sessionID in O(1). Events live in a sibling collection so
-  // the frequently-rewritten run document does not carry an ever-growing array.
-  export const latticeRunsRoot = (scopeID: ScopeID) => ["lattice", "runs", scopeID as string]
-  export const latticeRun = (scopeID: ScopeID, sessionID: string) => [...latticeRunsRoot(scopeID), sessionID]
-  export const latticeEventsRoot = (scopeID: ScopeID, sessionID: string) => [
-    "lattice",
+  export const latticeRoot = () => ["lattice"]
+  export function latticeRunsRoot(): string[]
+  export function latticeRunsRoot(scopeID: ScopeID): string[]
+  export function latticeRunsRoot(scopeID?: ScopeID) {
+    return scopeID ? [...latticeRoot(), "runs", scopeID as string] : [...latticeRoot(), "runs"]
+  }
+  export const latticeRun = (scopeID: ScopeID, runID: string) => [...latticeRunsRoot(scopeID), runID]
+  export const latticeCurrentRoot = (scopeID: ScopeID) => [...latticeRoot(), "current", scopeID as string]
+  export const latticeCurrent = (scopeID: ScopeID, sessionID: string) => [...latticeCurrentRoot(scopeID), sessionID]
+  export const latticeEventsRoot = (scopeID: ScopeID, runID: string) => [
+    ...latticeRoot(),
+    "events",
+    scopeID as string,
+    runID,
+  ]
+  export const latticeEvent = (scopeID: ScopeID, runID: string, eventID: string) => [
+    ...latticeEventsRoot(scopeID, runID),
+    eventID,
+  ]
+
+  // v1 used the same collection roots but keyed records by sessionID. These
+  // helpers are migration-only and must not be used by the v2 runtime.
+  export const latticeLegacyRun = (scopeID: ScopeID, sessionID: string) => [...latticeRunsRoot(scopeID), sessionID]
+  export const latticeLegacyEventsRoot = (scopeID: ScopeID, sessionID: string) => [
+    ...latticeRoot(),
     "events",
     scopeID as string,
     sessionID,
   ]
-  export const latticeEvent = (scopeID: ScopeID, sessionID: string, eventID: string) => [
-    ...latticeEventsRoot(scopeID, sessionID),
+  export const latticeLegacyEvent = (scopeID: ScopeID, sessionID: string, eventID: string) => [
+    ...latticeLegacyEventsRoot(scopeID, sessionID),
     eventID,
   ]
 

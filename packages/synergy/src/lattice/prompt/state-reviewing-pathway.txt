@@ -1,0 +1,7 @@
+<lattice-state name="reviewing_pathway">
+Perform an adversarial self-review of the remaining Pathway against the aligned requirements and evidence from completed steps. Check coverage, step size, ordering, dependencies, assumptions, and acceptance criteria. Every criterion must describe an observable outcome with a distinguishable failure signal. Static or structural proxies must not stand in for required behavior, integration, experience, or holistic quality. Multi-part deliverables need a representative end-to-end scenario.
+
+Read pathway_read.pathway.editableFuture and pass only that pending suffix through pathway_write.futureSteps when corrections are needed. Never copy pathway.history or pathway.current into pathway_write. If no correction is needed, do not call pathway_write.
+
+Do not create a Blueprint or execute work. When the remaining Pathway is decision-complete, call lattice_submit with action submit_pathway_review as the final tool call, then end the turn. The host will select the current Step and advance to Blueprinting.
+</lattice-state>

@@ -503,9 +503,11 @@ export namespace SessionInbox {
     return publicItem(await writeItem(item))
   }
 
-  export async function enqueueMail(input: { sessionID: string; mail: SessionManager.SessionMail }): Promise<Item> {
-    const itemID = Identifier.ascending("inbox")
-    const messageID = Identifier.ascending("message")
+  function mailItem(
+    input: { sessionID: string; mail: SessionManager.SessionMail },
+    ids: { itemID: string; messageID: string; orderKey: string },
+    deliveryKey?: string,
+  ): StoredItem {
     const summarized = summarizeParts(input.mail.parts)
     const mailMetadata = input.mail.metadata ?? {}
     const mailSourceLabel = mailMetadata.source
@@ -526,9 +528,10 @@ export namespace SessionInbox {
     const assistantMail = input.mail as SessionManager.SessionMail.Assistant
     const origin = input.mail.type === "user" ? MessageV2.originFromMetadata(input.mail.metadata) : undefined
     const mode = mailMode(input.mail)
-    const item: StoredItem = {
-      id: itemID,
+    return {
+      id: ids.itemID,
       sessionID: input.sessionID,
+      deliveryKey,
       mode,
       message: {
         role: input.mail.type === "assistant" ? "assistant" : "user",
@@ -549,10 +552,39 @@ export namespace SessionInbox {
       detail: summarized.detail,
       source,
       time: { created: Date.now() },
-      orderKey: itemID,
-      messageID,
+      orderKey: ids.orderKey,
+      messageID: ids.messageID,
     }
-    return publicItem(await writeItem(item))
+  }
+
+  export async function enqueueMail(input: { sessionID: string; mail: SessionManager.SessionMail }): Promise<Item> {
+    const itemID = Identifier.ascending("inbox")
+    const ids = { itemID, messageID: Identifier.ascending("message"), orderKey: itemID }
+    return publicItem(await writeItem(mailItem(input, ids)))
+  }
+
+  export async function enqueueMailUnique(input: {
+    sessionID: string
+    deliveryKey: string
+    mail: SessionManager.SessionMail
+  }): Promise<{ itemID: string; messageID: string; created: boolean }> {
+    const itemID = stableDeliveryItemID(input.sessionID, input.deliveryKey)
+    using _ = await Lock.write(`session-inbox-delivery:${input.sessionID}:${input.deliveryKey}`)
+
+    const existing = await getStored(input.sessionID, itemID).catch(() => undefined)
+    if (existing) return { itemID: existing.id, messageID: existing.messageID, created: false }
+
+    const legacyMessageID = legacyStableMessageID(input.sessionID, input.deliveryKey)
+    const materialized = (await SessionHistory.messageInfos(input.sessionID)).find(
+      (info) => info.id === legacyMessageID || info.metadata?.inboxDeliveryKey === input.deliveryKey,
+    )
+    if (materialized) return { itemID, messageID: materialized.id, created: false }
+
+    const orderKey = Identifier.ascending("inbox")
+    const messageID = Identifier.ascending("message")
+    const ids = { itemID, messageID, orderKey }
+    await writeItem(mailItem(input, ids, input.deliveryKey))
+    return { itemID, messageID, created: true }
   }
 
   /**
