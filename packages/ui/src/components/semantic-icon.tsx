@@ -196,6 +196,8 @@ export const SemanticIconToken = {
   "action.refresh": "refresh-ccw",
   "action.restore": "refresh-ccw-dot",
   "action.view": "eye",
+  "action.zoomOut": "zoom-out",
+  "action.zoomIn": "zoom-in",
   "action.hide": "eye-off",
   "action.stop": "circle-stop",
   "account.create": "user-plus",

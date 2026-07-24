@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test"
 import {
   attachmentColumns,
+  attachmentSourcePath,
+  resolveAttachmentOpenTarget,
   resolveAttachmentPresentation,
   resolveAttachmentThumbnailUrl,
   resolveImagePreviewImage,
@@ -107,6 +109,20 @@ describe("image preview attachment resolver", () => {
     ).toMatchObject({ filename: "image", alt: "image", size: 4096 })
   })
 
+  test("carries the source path into image preview gallery items", () => {
+    expect(
+      resolveImagePreviewImage(
+        "http://localhost:3000",
+        {
+          mime: "image/png",
+          assetId: "asset-2",
+          localPath: "/workspace/output/plot.png",
+        },
+        0,
+      ),
+    ).toMatchObject({ sourcePath: "/workspace/output/plot.png" })
+  })
+
   test("keeps duplicate source URLs distinct by visible index", () => {
     const first = resolveImagePreviewImage(
       "http://localhost:3000",
@@ -125,5 +141,62 @@ describe("image preview attachment resolver", () => {
 
   test("columnizes generic gallery items with the existing distribution", () => {
     expect(attachmentColumns(["a", "b", "c", "d", "e"])).toEqual([["a", "d"], ["b", "e"], ["c"]])
+  })
+})
+
+describe("attachment opening policy", () => {
+  test("keeps images in the modal and routes located non-images to the attachment workspace", () => {
+    expect(
+      resolveAttachmentOpenTarget({
+        mime: "image/png",
+        id: "part-image",
+        sessionID: "session-1",
+        messageID: "message-1",
+      }),
+    ).toBe("image-preview")
+    expect(
+      resolveAttachmentOpenTarget({
+        mime: "application/pdf",
+        id: "part-pdf",
+        sessionID: "session-1",
+        messageID: "message-1",
+      }),
+    ).toBe("attachment-workspace")
+    expect(
+      resolveAttachmentOpenTarget({
+        mime: "video/mp4",
+        id: "part-video",
+        sessionID: "session-1",
+        messageID: "message-1",
+      }),
+    ).toBe("attachment-workspace")
+  })
+
+  test("keeps draft and legacy non-image attachments on the compatibility path", () => {
+    expect(resolveAttachmentOpenTarget({ mime: "text/markdown", url: "asset://legacy" })).toBe("compatibility")
+  })
+
+  test("resolves source paths in the documented precedence order", () => {
+    expect(
+      attachmentSourcePath({
+        mime: "text/plain",
+        localPath: "/workspace/local.txt",
+        source: { type: "file", path: "/workspace/source.txt" },
+        metadata: { attachment: { sourcePath: "/workspace/metadata.txt" } },
+      }),
+    ).toBe("/workspace/local.txt")
+    expect(
+      attachmentSourcePath({
+        mime: "text/plain",
+        source: { type: "file", path: "/workspace/source.txt" },
+        metadata: { attachment: { sourcePath: "/workspace/metadata.txt" } },
+      }),
+    ).toBe("/workspace/source.txt")
+    expect(
+      attachmentSourcePath({
+        mime: "text/plain",
+        metadata: { attachment: { sourcePath: "/workspace/metadata.txt" } },
+      }),
+    ).toBe("/workspace/metadata.txt")
   })
 })

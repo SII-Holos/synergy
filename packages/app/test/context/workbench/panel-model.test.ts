@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test"
 import {
   closeWorkbenchPanelTab,
+  isWorkbenchPanelLaunchable,
   moveWorkbenchPanelTab,
   openWorkbenchPanelTab,
   resolveWorkbenchEscapeAction,
@@ -243,5 +244,31 @@ describe("workbench Escape routing", () => {
     expect(resolveWorkbenchEscapeAction({ key: "Enter", opened: true, addOpen: false, dialogActive: false })).toBe(
       "none",
     )
+  })
+})
+
+describe("workbench panel launchability", () => {
+  test("keeps programmatic resource panels out of launchers without affecting existing panels", () => {
+    expect(
+      isWorkbenchPanelLaunchable({
+        id: "attachment",
+        label: "Attachment",
+        icon: "file",
+        pluginId: "builtin",
+        surface: "side",
+        cardinality: "multi",
+        launchable: false,
+      }),
+    ).toBe(false)
+    expect(
+      isWorkbenchPanelLaunchable({
+        id: "plugin-panel",
+        label: "Plugin",
+        icon: "file",
+        pluginId: "plugin",
+        surface: "side",
+        cardinality: "multi",
+      }),
+    ).toBe(true)
   })
 })

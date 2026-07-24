@@ -227,6 +227,8 @@ import {
   Wrench,
   X,
   Zap,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-solid"
 
 const icons = {
@@ -457,6 +459,8 @@ const icons = {
   wrench: Wrench,
   x: X,
   zap: Zap,
+  "zoom-in": ZoomIn,
+  "zoom-out": ZoomOut,
 }
 
 export type IconName = keyof typeof icons | string

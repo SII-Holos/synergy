@@ -2,6 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test"
 import { BrowserCommandService } from "../../src/browser/command-service"
 import type { BrowserOwner } from "../../src/browser/owner"
 import type { BrowserSession } from "../../src/browser/types"
+import {
+  browserHostOriginAllowed,
+  browserSignalingEventSocket,
+  browserSignalingPageAvailable,
+} from "../../src/server/browser-route"
 import { Server } from "../../src/server/server"
 import { Scope } from "../../src/scope"
 import { ScopeContext } from "../../src/scope/context"
@@ -103,6 +108,35 @@ describe("BrowserRoute protocol v2", () => {
       expect(response.status).toBe(400)
       expect(await response.json()).toMatchObject({ type: "error", code: "browser_ticket_page_unavailable" })
     })
+  })
+
+  test("allows only the Host to attach while its broker page is reserved for creation", () => {
+    const owner: BrowserOwner.Info = {
+      mode: "session",
+      scopeID: "home",
+      sessionID: "session-route",
+      directory: "/workspace",
+    }
+    const session = suspended(owner)
+
+    expect(browserSignalingPageAvailable("host", "page-1", session, true)).toBe(true)
+    expect(browserSignalingPageAvailable("viewer", "page-1", session, true)).toBe(false)
+    expect(browserSignalingPageAvailable("host", "page-1", session, false)).toBe(false)
+  })
+
+  test("accepts the file controller origin without accepting web-page Host connections", () => {
+    expect(browserHostOriginAllowed(undefined)).toBe(true)
+    expect(browserHostOriginAllowed("file://")).toBe(true)
+    expect(browserHostOriginAllowed("http://127.0.0.1:3000")).toBe(false)
+    expect(browserHostOriginAllowed("https://example.com")).toBe(false)
+  })
+
+  test("keeps the registered socket identity across websocket event wrappers", () => {
+    const registered = { send() {}, close() {} }
+    const eventWrapper = { send() {}, close() {} }
+
+    expect(browserSignalingEventSocket(registered, eventWrapper)).toBe(registered)
+    expect(browserSignalingEventSocket(undefined, eventWrapper)).toBeUndefined()
   })
 
   test("rejects an oversized Browser body using its actual streamed bytes", async () => {

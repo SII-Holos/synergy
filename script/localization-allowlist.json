@@ -262,5 +262,109 @@
     "occurrence": 1,
     "category": "code",
     "reason": "The checker cannot resolve EmbeddingModelPresentation types across module boundaries, but the property is statically a MessageDescriptor."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "reload-interface",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "try-again",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "try-again",
+    "occurrence": 2,
+    "category": "machine-identifier",
+    "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "try-again",
+    "occurrence": 3,
+    "category": "machine-identifier",
+    "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "change-server",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-action lookup key, not user-visible text. Rendered through AP.fatalErrorAction."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "renderer",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "renderer",
+    "occurrence": 2,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "connection",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "connection",
+    "occurrence": 2,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "initialization",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "initialization",
+    "occurrence": 2,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "scope",
+    "occurrence": 1,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
+  },
+  {
+    "path": "packages/app/src/pages/error-presentation.ts",
+    "kind": "user-visible-property",
+    "literal": "scope",
+    "occurrence": 2,
+    "category": "machine-identifier",
+    "reason": "i18n-title/description lookup key, not user-visible text. Rendered through AP.fatalErrorTitle/AP.fatalErrorDescription."
   }
 ]

@@ -27,6 +27,10 @@ export function isWorkbenchPanelAvailable(entry: WorkbenchPanelEntry, hasSession
   return !entry.requiresSession || hasSession || entry.supportsDraftSession === true
 }
 
+export function isWorkbenchPanelLaunchable(entry: WorkbenchPanelEntry) {
+  return entry.launchable !== false
+}
+
 export type WorkbenchEscapeAction = "none" | "close-add-menu" | "close-surface"
 
 export function resolveWorkbenchEscapeAction(input: {

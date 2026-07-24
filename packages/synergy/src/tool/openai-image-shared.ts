@@ -195,6 +195,7 @@ export async function buildOpenAIImageResult(params: OpenAIImageResultParams) {
       mime: OPENAI_IMAGE_OUTPUT_MIME,
       filename,
       url: `asset://${assetId}`,
+      localPath: params.outputPath,
       presentation: { renderer: "image", size: "medium", crop: false },
       model: {
         mode: "provider-file",
