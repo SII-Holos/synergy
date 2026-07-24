@@ -38,6 +38,21 @@ describe("AgentTurnProtocol", () => {
         memory,
       }),
     ).toMatchObject({ type: "released", collection: "full" })
+    expect(
+      AgentTurnProtocol.parseWorkerToHost({
+        type: "heartbeat",
+        requestId: "turn",
+        turns: 1,
+        collection: "full",
+        memory,
+      }),
+    ).toMatchObject({ type: "heartbeat", collection: "full" })
+    expect(
+      AgentTurnProtocol.HostToWorkerSchema.parse({
+        type: "collect-memory",
+        requestId: "turn",
+      }),
+    ).toEqual({ type: "collect-memory", requestId: "turn" })
   })
 
   test("accepts a request at the configured byte boundary and rejects a larger request", () => {

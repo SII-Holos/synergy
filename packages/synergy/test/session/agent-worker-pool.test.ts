@@ -714,7 +714,7 @@ describe("AgentWorkerPool", () => {
     await pool.stop()
   })
 
-  test("terminates a worker that crosses its heap watermark", async () => {
+  test("collects memory and keeps an active worker when post-GC heap recovers", async () => {
     const fake = fakeWorkers()
     const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
     const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
@@ -727,6 +727,63 @@ describe("AgentWorkerPool", () => {
       type: "heartbeat",
       requestId: run.requestId,
       turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+
+    expect(fake.workers[0].sent).toContainEqual({ type: "collect-memory", requestId: run.requestId })
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
+      memory: workerMemory(32, 63),
+    })
+    fake.workers[0].receive({
+      type: "complete",
+      requestId: run.requestId,
+      turns: 1,
+      memoryBeforeDispose: workerMemory(32, 63),
+      memory: workerMemory(32, 63),
+    })
+    releaseTurn(fake.workers[0], run.requestId, 1, workerMemory(32, 63))
+
+    expect((await stream.fullStream[Symbol.asyncIterator]().next()).done).toBe(true)
+    await pool.stop()
+  })
+
+  test("terminates an active worker only when post-GC heap remains over its watermark", async () => {
+    const fake = fakeWorkers()
+    const pool = new AgentWorkerPool({ ...options, maxHeapBytes: 64 }, fake.spawn)
+    const streamPromise = inScope(() => pool.run(input(new AbortController().signal)))
+    fake.workers[0].ready()
+    const run = startTurn(fake.workers[0])
+    fake.workers[0].receive({ type: "started", requestId: run.requestId })
+    const stream = await streamPromise
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 65),
+    })
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "none",
+      memory: workerMemory(32, 66),
+    })
+    expect(pool.stats()).toMatchObject({ workers: 1, active: 1 })
+
+    fake.workers[0].receive({
+      type: "heartbeat",
+      requestId: run.requestId,
+      turns: 0,
+      collection: "full",
       memory: workerMemory(32, 65),
     })
 
