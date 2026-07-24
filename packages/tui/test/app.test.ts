@@ -389,6 +389,60 @@ describe("Synergy TUI app", () => {
     harness.app.stop()
   })
 
+  test("repaints question steps and multi-select state immediately", async () => {
+    const stepAdapter = new UiAdapter(bootstrap([session("s1", 1)]))
+    stepAdapter.interactions.questions = [
+      {
+        id: "question-steps",
+        sessionID: "s1",
+        questions: [
+          {
+            header: "Mode",
+            question: "Choose execution mode",
+            options: [{ label: "Safe", description: "Use guarded execution" }],
+          },
+          {
+            header: "Review",
+            question: "Choose review depth",
+            options: [{ label: "Focused", description: "Review changed behavior" }],
+          },
+        ],
+      },
+    ]
+    const stepHarness = await createHarness(stepAdapter)
+    expect(stepHarness.captureCharFrame()).toContain("QUESTION 1/2 · Mode")
+
+    stepHarness.mockInput.pressEnter()
+    const stepFrame = await stepHarness.waitForFrame((frame) => frame.includes("QUESTION 2/2 · Review"))
+
+    expect(stepFrame).toContain("QUESTION 2/2 · Review")
+    stepHarness.app.stop()
+
+    const multipleAdapter = new UiAdapter(bootstrap([session("s1", 1)]))
+    multipleAdapter.interactions.questions = [
+      {
+        id: "question-multiple",
+        sessionID: "s1",
+        questions: [
+          {
+            header: "Checks",
+            question: "Choose checks",
+            multiple: true,
+            options: [{ label: "Tests", description: "Run focused tests" }],
+          },
+        ],
+      },
+    ]
+    const multipleHarness = await createHarness(multipleAdapter)
+    expect(multipleHarness.captureCharFrame()).toContain("○ Tests")
+
+    multipleHarness.mockInput.pressEnter()
+    const multipleFrame = await multipleHarness.waitForFrame((frame) => frame.includes("✓ Tests"))
+
+    expect(multipleFrame).toContain("✓ Tests")
+    multipleHarness.app.stop()
+  })
+
   test("rejects dismissed permission and question interactions on the server", async () => {
     const permissionAdapter = new UiAdapter(bootstrap([session("s1", 1)]))
     permissionAdapter.interactions.permissions = [

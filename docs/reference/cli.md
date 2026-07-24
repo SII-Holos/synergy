@@ -67,11 +67,11 @@ synergy web --attach http://localhost:4097
 ```bash
 synergy tui
 synergy tui --directory ./my-project
-synergy tui --scope <scope-id> --session <session-id>
+synergy tui --scope <scope-id> -s <session-id>
 synergy tui --attach http://localhost:4097 --theme dark
 ```
 
-`tui` is an interactive client and does not start a server. It requires terminal stdin and stdout, connects to `http://localhost:4096` by default, and uses the current directory to resolve the active Scope unless `--scope` is supplied. `--directory` and `--scope` are mutually exclusive. `--session` opens a specific session initially, and `--theme system|light|dark` selects terminal colors; `system` uses the terminal-reported background when available.
+`tui` is an interactive client and does not start a server. It requires terminal stdin and stdout, connects to `http://localhost:4096` by default, and uses the current directory to resolve the active Scope unless `--scope` is supplied. `--directory` and `--scope` are mutually exclusive. `--session` (`-s`) opens a specific session initially, and `--theme system|light|dark` selects terminal colors; `system` uses the terminal-reported background when available.
 
 The client renders the active conversation, streamed Markdown and reasoning, tool activity and diffs, active Todo/DAG summaries, runtime commands, permissions, and questions. It does not reserve screen space for a persistent session sidebar: enter `/sessions` to open the session picker and switch conversations at any terminal width. The client subscribes before bootstrap, replays sequenced gaps after reconnect, and performs a full Scope resync when the runtime epoch or replay journal requires it.
 

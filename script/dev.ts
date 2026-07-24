@@ -61,6 +61,16 @@ function defaultRepoRoot() {
 }
 
 function normalizeUrl(value: string) {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error("attach URL must be a valid http or https URL")
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("attach URL must use http or https")
+  }
+  if (url.username || url.password) throw new Error("attach URL must not contain credentials")
   return value.replace(/\/+$/, "")
 }
 

@@ -106,6 +106,15 @@ describe("dev orchestrator planner", () => {
     ])
   })
 
+  test("rejects attached TUI URLs outside the HTTP trust boundary", () => {
+    expect(() => createDevPlan(["tui", "--attach", "file:///tmp/runtime"], options)).toThrow(
+      "attach URL must use http or https",
+    )
+    expect(() => createDevPlan(["tui", "--attach", "https://user:secret@remote.example"], options)).toThrow(
+      "attach URL must not contain credentials",
+    )
+  })
+
   test("plans desktop development in external mode by default", () => {
     const plan = createDevPlan(["desktop"], options)
 
